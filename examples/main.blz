@@ -1,11 +1,13 @@
+2 + + * = 2 = 4 - 1 = 3
+
 let 4ws_two: i8 = 2
-#const TWO = 1 + 1
+const TWO = 1 + 1
 
 #fn quick_maths(): i8 {
 #    var result = TWO + TWO
 #    result = FOUR - 1
 
-    return result
+#    return result
 # }
 
 # entry point function can have any name
