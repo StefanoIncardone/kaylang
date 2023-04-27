@@ -156,16 +156,19 @@ impl Lexer {
                         // ':' => Token{ kind: TokenKind::Colon, col },
                         // ';' => Token{ kind: TokenKind::SemiColon, col },
                         '#' => {
-                            token_text.clear();
-                            token_text.push( ch );
+                            // token_text.clear();
+                            // token_text.push( ch );
 
-                            while let Some( next ) = src.next() {
-                                token_text.push( next );
+                            while let Some( _ ) = src.next() {
+                                // FIXME find better way to drain the line iterators
+                                // consume the rest of the tokens in the current line
+                                // token_text.push( next );
                             }
 
-                            let token = Token{ kind: TokenKind::Comment( token_text.clone() ), col };
-                            col += token_text.len() - 1;
-                            token
+                            continue;
+                            // let token = Token{ kind: TokenKind::Comment( token_text.clone() ), col };
+                            // col += token_text.len() - 1;
+                            // token
                         }
                         '0'..='9' => {
                             token_text.clear();
@@ -223,7 +226,10 @@ impl Lexer {
                     col += 1;
                 }
 
-                lines.push( line );
+                // skip empty lines
+                if line.tokens.len() > 0 {
+                    lines.push( line );
+                }
                 row += 1;
             }
         }
@@ -411,7 +417,7 @@ fn main() -> ExitCode {
     // args.push( "src/main.rs".to_string() );
     // args.push( "-h".to_string() );
     // args.push( "-v".to_string() );
-    args.push( "./examples/main.blz".to_string() );
+    args.push( "examples/main.blz".to_string() );
     // args.push( "-s".to_string() );
 
     if args.len() < 2 {
@@ -472,7 +478,7 @@ fn main() -> ExitCode {
     let lexer = Lexer::parse( source_file_path, source_file );
     // let ast = AST::parse( &tokens );
 
-    // println!( "{:?}", lexer );
+    println!( "{:?}", lexer );
     // println!( "{:?}", ast );
     return ExitCode::SUCCESS;
 }
