@@ -1,15 +1,16 @@
-const TWO = 1 + 1;
+let 4ws_two: i8 = 2
+#const TWO = 1 + 1
 
-fn quick_maths(): i8 {
-    var result = TWO + TWO;
-    result = FOUR - 1;
+#fn quick_maths(): i8 {
+#    var result = TWO + TWO
+#    result = FOUR - 1
 
-    return result;
-}
+    return result
+# }
 
 # entry point function can have any name
-entry fn programEntryPoint( args: String[] ): u8 {
-    let result = quick_maths();
+#entry fn programEntryPoint( args: String[] ): u8 {
+#    let result = quick_maths()
 
-    return result;
-}
+#    return result
+#}

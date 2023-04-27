@@ -1,19 +1,23 @@
-use std::{io::{BufReader, BufRead, ErrorKind}, fs::File, env, process::ExitCode};
+// TODO create IDEAS.md
+use std::{io::{BufReader, BufRead, ErrorKind}, fs::File, env, process::ExitCode, fmt::{Display, write}};
 
 
 #[derive( Debug, PartialEq )]
-pub enum TokenKind {
-    Unexpected( String ),
+enum LiteralKind {
+    Int{ base: i8, value: String }
+}
+
+#[derive( Debug, PartialEq )]
+enum TokenKind {
+    Unexpected( String, &'static str ),
 
     // Brackets
     OpenRoundBracket,
     CloseRoundBracket,
-    OpenSquareBracket,
-    CloseSquareBracket,
-    OpenCurlyBracket,
-    CloseCurlyBracket,
-
-    // TODO handle different bit sizes and bases
+    // OpenSquareBracket,
+    // CloseSquareBracket,
+    // OpenCurlyBracket,
+    // CloseCurlyBracket,
     /*
         IDEA handle arbitrary bases: has to be bigger than 1 and smaller than 36 => {
             ...b1 = error,
@@ -22,21 +26,20 @@ pub enum TokenKind {
             ...b35 = base 35,
             ...b37 = error,
         }
-
-        IDEA let the user define new bases with custom symbols => { TODO }
     */
-    // Identifiers
-    Digit( String, i8 ),
-    Identifier( String ),
+    // IDEA let the user define new bases with custom symbols
+
+    Literal{ kind: LiteralKind },
+    // Identifier( String ),
     Comment( String ),
 
     // Keywords
-    Entry,
-    Fn,
-    Let,
-    Const,
-    Var,
-    Return,
+    // Entry,
+    // Fn,
+    // Let,
+    // Const,
+    // Var,
+    // Return,
 
     // Symbols and operators
     Plus,
@@ -44,13 +47,33 @@ pub enum TokenKind {
     Times,
     Divide,
     Pow,
-    Equals,
-    Colon,
-    SemiColon,
+    // Equals,
+    // Colon,
+    // SemiColon,
 
     // Special characters
-    NewLine,
+    // NewLine,
     EOF,
+}
+
+impl Display for TokenKind {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        match self {
+            Self::Unexpected( text, _ ) => write!( f, "{}", text ),
+            Self::OpenRoundBracket => write!( f, "(" ),
+            Self::CloseRoundBracket => write!( f, ")" ),
+            Self::Literal{ kind } => match kind {
+                LiteralKind::Int{ base: _, value } => write!( f, "{}", value ),
+            },
+            Self::Comment( text ) => write!( f, "{}", text ),
+            Self::Plus => write!( f, "+" ),
+            Self::Minus => write!( f, "-" ),
+            Self::Times => write!( f, "*" ),
+            Self::Divide => write!( f, "/" ),
+            Self::Pow => write!( f, "^" ),
+            Self::EOF => write!( f, "" ),
+        }
+    }
 }
 
 #[derive( Debug )]
@@ -65,15 +88,41 @@ struct Line {
     tokens: Vec<Token>,
 }
 
+impl Display for Line {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        if self.tokens.len() == 0 {
+            write!( f, "" )?;
+            return Ok( () );
+        }
+
+        write!( f, "{}", " ".repeat( self.tokens[ 0 ].col - 1 ) )?;
+
+        let mut tokens = self.tokens.iter().peekable();
+        while let Some( token ) = tokens.next() {
+            let spaces = if let Some( next_token ) = tokens.peek() {
+                ((*next_token).col - token.col) - token.kind.to_string().len()
+            }
+            else {
+                0
+            };
+
+            write!( f, "{}{}", token.kind, " ".repeat( spaces ) )?;
+        }
+
+        return Ok( () );
+    }
+}
+
 #[derive( Debug )]
 struct Lexer {
+    file_path: String,
     lines: Vec<Line>,
 }
 
 impl Lexer {
-    fn parse( source_file: File ) -> Self {
+    fn parse( file_path: String, source_file: File ) -> Self {
         let mut lines: Vec<Line> = Vec::new();
-        let mut current_token_text = String::new();
+        let mut token_text = String::new();
         let mut row: usize = 1;
 
         for source_line in BufReader::new( source_file ).lines() {
@@ -92,33 +141,33 @@ impl Lexer {
                         },
                         '(' => Token{ kind: TokenKind::OpenRoundBracket, col },
                         ')' => Token{ kind: TokenKind::CloseRoundBracket, col },
-                        '[' => Token{ kind: TokenKind::OpenSquareBracket, col },
-                        ']' => Token{ kind: TokenKind::CloseSquareBracket, col },
-                        '{' => Token{ kind: TokenKind::OpenCurlyBracket, col },
-                        '}' => Token{ kind: TokenKind::CloseCurlyBracket, col },
+                        // '[' => Token{ kind: TokenKind::OpenSquareBracket, col },
+                        // ']' => Token{ kind: TokenKind::CloseSquareBracket, col },
+                        // '{' => Token{ kind: TokenKind::OpenCurlyBracket, col },
+                        // '}' => Token{ kind: TokenKind::CloseCurlyBracket, col },
                         '+' => Token{ kind: TokenKind::Plus, col },
                         '-' => Token{ kind: TokenKind::Minus, col },
                         '*' => Token{ kind: TokenKind::Times, col },
                         '/' => Token{ kind: TokenKind::Divide, col },
                         '^' => Token{ kind: TokenKind::Pow, col },
-                        '=' => Token{ kind: TokenKind::Equals, col },
-                        ':' => Token{ kind: TokenKind::Colon, col },
-                        ';' => Token{ kind: TokenKind::SemiColon, col },
+                        // '=' => Token{ kind: TokenKind::Equals, col },
+                        // ':' => Token{ kind: TokenKind::Colon, col },
+                        // ';' => Token{ kind: TokenKind::SemiColon, col },
                         '#' => {
-                            current_token_text.clear();
-                            current_token_text.push( ch );
+                            token_text.clear();
+                            token_text.push( ch );
 
                             while let Some( next ) = src.next() {
-                                current_token_text.push( next );
+                                token_text.push( next );
                             }
 
-                            let token = Token{ kind: TokenKind::Comment( current_token_text.clone() ), col };
-                            col += current_token_text.len() - 1;
+                            let token = Token{ kind: TokenKind::Comment( token_text.clone() ), col };
+                            col += token_text.len() - 1;
                             token
                         }
                         '0'..='9' => {
-                            current_token_text.clear();
-                            current_token_text.push( ch );
+                            token_text.clear();
+                            token_text.push( ch );
 
                             let mut is_digit = true;
                             while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
@@ -126,43 +175,44 @@ impl Lexer {
                                     is_digit = false;
                                 }
 
-                                current_token_text.push( next );
+                                token_text.push( next );
                             }
 
                             let kind = if is_digit {
-                                TokenKind::Digit( current_token_text.clone(), 10 )
+                                TokenKind::Literal{ kind: LiteralKind::Int{ base: 10, value: token_text.clone() } }
                             }
                             else {
-                                TokenKind::Unexpected( current_token_text.clone() )
+                                TokenKind::Unexpected( token_text.clone(), "invalid number literal" )
                             };
 
                             let token = Token{ kind, col };
-                            col += current_token_text.len() - 1;
+                            col += token_text.len() - 1;
                             token
                         }
                         'a'..='z' | 'A'..='Z' | '_' => {
-                            current_token_text.clear();
-                            current_token_text.push( ch );
+                            token_text.clear();
+                            token_text.push( ch );
 
                             while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
-                                current_token_text.push( next );
+                                token_text.push( next );
                             }
 
-                            let kind = match current_token_text.as_str() {
-                                "entry" => TokenKind::Entry,
-                                "fn" => TokenKind::Fn,
-                                "const" => TokenKind::Const,
-                                "let" => TokenKind::Let,
-                                "var" => TokenKind::Var,
-                                "return" => TokenKind::Return,
-                                _ => TokenKind::Identifier( current_token_text.clone() )
+                            let kind = match token_text.as_str() {
+                                // "entry" => TokenKind::Entry,
+                                // "fn" => TokenKind::Fn,
+                                // "const" => TokenKind::Const,
+                                // "let" => TokenKind::Let,
+                                // "var" => TokenKind::Var,
+                                // "return" => TokenKind::Return,
+                                // _ => TokenKind::Identifier( current_token_text.clone() )
+                                _ => TokenKind::Unexpected( token_text.clone(), "unrecognized token" )
                             };
 
                             let token = Token{ kind, col };
-                            col += current_token_text.len() - 1;
+                            col += token_text.len() - 1;
                             token
                         },
-                        _ => Token{ kind: TokenKind::Unexpected( ch.into() ), col },
+                        _ => Token{ kind: TokenKind::Unexpected( ch.into(), "unrecognized token" ), col },
                     };
 
                     line.tokens.push( token );
@@ -176,11 +226,173 @@ impl Lexer {
 
         lines.push( Line{ row, tokens: vec![ Token{ kind: TokenKind::EOF, col: 1 } ] } );
 
-        return Self{ lines };
+        let lexer =  Self{ file_path, lines };
+        lexer.print_error_context();
+        return lexer;
+    }
+
+    fn print_error_context( &self ) {
+        let padding_count = self.lines.len().ilog10() as usize + 1;
+        let padding = " ".repeat( padding_count );
+        
+        for line in &self.lines {
+            let line_text = line.to_string();
+            for token in &line.tokens {
+                match &token.kind {
+                    TokenKind::Unexpected( token_text, err ) => {
+                        // TODO pad line number left so that the right bar is positioned base on the line number digit count
+                        let error_visualization = &format!(
+                            " {} |\n {: >padding_count$} | {}\n {} | {}{} <- {}",
+                            padding, line.row, line_text, padding,
+                            " ".repeat( token.col - 1 ), "^".repeat( token_text.len() ), err
+                        );
+
+                        eprintln!( "Error:\n {padding} > {}:{}:{}\n{}\n", self.file_path, line.row, token.col, error_visualization );
+                    }
+                    _ => continue,
+                }
+
+            }
+        }
     }
 }
 
-// TODO add man page
+// #[derive( Debug )]
+// enum Mutability {
+//     Let,
+//     Var,
+//     Const,
+// }
+
+// #[derive( Debug )]
+// enum Value {
+//     Integer( String, i8 ),
+// }
+
+
+// #[derive( Debug )]
+// struct Variable {
+//     kind: VariableDefinitionKind,
+//     name: String,
+//     value: VariableValue
+// }
+
+// #[derive( Debug )]
+// enum Node {
+//     Unrecognized,
+
+//     Variable{
+//         mutability: Mutability,
+//         name: Option<String>,
+//         typ: String,
+//         value: Option<Value>,
+//     },
+// }
+
+// #[derive( Debug )]
+// struct AST {
+//     statements: Vec<Node>,
+// }
+
+// impl AST {
+//     fn parse( lexer: &Lexer ) -> Self {
+//         let mut statements: Vec<Node> = Vec::new();
+//         for line in &lexer.lines {
+//             let mut tokens = line.tokens.iter().peekable();
+//             while let Some( current_token ) = tokens.next() {
+//                 match current_token.kind {
+//                     TokenKind::Comment( _ ) /* | TokenKind::NewLine */ | TokenKind::EOF | TokenKind::SemiColon => continue,
+//                     TokenKind::Let | TokenKind::Var | TokenKind::Const => {
+//                         let mutability = match current_token.kind {
+//                             TokenKind::Let => Mutability::Let,
+//                             TokenKind::Var => Mutability::Var,
+//                             TokenKind::Const => Mutability::Const,
+//                             _ => unreachable!(),
+//                         };
+
+//                         let name = match tokens.next() {
+//                             Some( token ) => match &token.kind {
+//                                 TokenKind::Identifier( var_name ) => Some( var_name.clone() ),
+//                                 _ => {
+//                                     eprintln!( "Error: expected identifier in variable definition!" );
+//                                     None
+//                                 }
+//                             },
+//                             None => {
+//                                 eprintln!( "Error: Run out of tokens!" );
+//                                 None
+//                             },
+//                         };
+                        
+//                         let mut typ = match tokens.next() {
+//                             Some( token ) => match &token.kind {
+//                                 TokenKind::Colon => match tokens.next() {
+//                                     Some( var_type ) => match &var_type.kind {
+//                                         TokenKind::Identifier( type_name ) => type_name.clone(),
+//                                         _ => {
+//                                             eprintln!( "Error: expected type identifier!" );
+//                                             String::new()
+//                                         }
+//                                     }
+//                                     None => {
+//                                         eprintln!( "Error: run out of tokens!" );
+//                                         String::new()
+//                                     }
+//                                 }
+//                                 _ => {
+//                                     eprintln!( "Error: expected type qualification!" );
+//                                     String::new()
+//                                 }
+//                             },
+//                             None => {
+//                                 eprintln!( "Error: run out of tokens!" );
+//                                 String::new()
+//                             }
+//                         };
+                        
+//                         let value = match tokens.next() {
+//                             Some( token ) => match &token.kind {
+//                                 TokenKind::Equals => match tokens.next() {
+//                                     Some( initializer ) => match &initializer.kind {
+//                                         TokenKind::Literal{ kind } => match kind {
+//                                             LiteralKind::Int{ base, value } => {
+//                                                 typ = "int".to_string();
+//                                                 Some( Value::Integer( value.clone(), base.clone() ) )
+//                                             }
+//                                         },
+//                                         _ => {
+//                                             eprintln!( "Error: expected literal or expression!" );
+//                                             None
+//                                         }
+//                                     }
+//                                     None => {
+//                                         eprintln!( "Error: run out of tokens!" );
+//                                         None
+//                                     },
+//                                 },
+//                                 _ => {
+//                                     eprintln!( "Error: expected equals" );
+//                                     None
+//                                 },
+//                             },
+//                             None => {
+//                                 eprintln!( "Error: run out of tokens!" );
+//                                 None
+//                             },
+//                         };
+
+//                         statements.push( Node::Variable{ mutability, typ, name, value } );
+//                     }
+//                     _ => unreachable!(),
+//                 }
+//             }
+//         }
+
+//         return Self{ statements };
+//     }
+// }
+
+// IDEA add man page
 fn print_usage() {
     let usage = format!( r"
 Blitzlang compiler, version {}
@@ -260,8 +472,10 @@ fn main() -> ExitCode {
         },
     };
 
-    let tokens = Lexer::parse( source_file );
+    let tokens = Lexer::parse( source_file_path, source_file );
+    // let ast = AST::parse( &tokens );
 
-    println!( "{:?}", tokens );
+    println!( "{:?}\n", tokens );
+    // println!( "{:?}", ast );
     return ExitCode::SUCCESS;
 }
