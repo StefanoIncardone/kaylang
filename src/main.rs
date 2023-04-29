@@ -111,6 +111,51 @@ struct Line {
 // }
 
 #[derive( Debug )]
+struct LexerError {
+    line_text: String,
+    line: Line,
+}
+#[derive( Debug )]
+struct LexerErrors {
+    file_path: String,
+    err_lines: Vec<LexerError>,
+}
+
+impl Display for LexerErrors {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        for err_line in &self.err_lines {
+            for token in &err_line.line.tokens {
+                if let TokenKind::Unexpected{ token_text, err_msg, help_msg } = &token.kind {
+                    let gutter_padding_amount = err_line.line.number.ilog10() as usize + 1;
+                    let gutter_padding = " ".repeat( gutter_padding_amount );
+                    let pointers_padding = " ".repeat( token.col - 1 );
+                    let pointers = "^".repeat( token_text.len() );
+                    let bar = "\x1b[94;1m|\x1b[0m";
+
+                    let error_visualization = &format!(
+                        " {} {}\n \
+                         \x1b[94;1m{: >gutter_padding_amount$}\x1b[0m {} {}\n \
+                         {} {} {}\x1b[91m{} {}\x1b[0m",
+                        gutter_padding, bar,
+                        err_line.line.number, bar, err_line.line_text,
+                        gutter_padding, bar, pointers_padding, pointers, help_msg
+                    );
+
+                    writeln!( f,
+                        "\x1b[91;1mError\x1b[0m: \x1b[1m{}\x1b[0m\n \
+                         {} \x1b[91;1min\x1b[0m: {}:{}:{}\n{}\n",
+                        err_msg,
+                        gutter_padding, self.file_path, err_line.line.number, token.col, error_visualization
+                    )?;
+                }
+            }
+        }
+
+        return Ok( () );
+    }
+}
+
+#[derive( Debug )]
 struct Lexer {
     file_path: String,
     lines: Vec<Line>,
@@ -118,10 +163,13 @@ struct Lexer {
 
 // TODO implement iterator, yielding a line at a time
 impl Lexer {
-    fn parse( file_path: String, source_file: File ) -> Self {
+    fn parse( file_path: String, source_file: File ) -> Result<Self, LexerErrors> {
+        let mut found_errors = false;
+        let mut err_lines: Vec<LexerError> = Vec::new();
+
         let mut lines: Vec<Line> = Vec::new();
         let mut token_text = String::new();
-        
+
         let mut row: usize = 0;
         for src_line in BufReader::new( source_file ).lines() {
             if let Ok( current_line ) = src_line {
@@ -183,11 +231,8 @@ impl Lexer {
                                 TokenKind::Literal( LiteralKind::Int{ base: 10, value: token_text.clone() } )
                             }
                             else {
-                                TokenKind::Unexpected{
-                                    token_text: token_text.clone(),
-                                    err_msg: "unrecognized token",
-                                    help_msg: ""
-                                }
+                                found_errors = true;
+                                TokenKind::Unexpected{ token_text: token_text.clone(), err_msg: "unexpected token", help_msg: "only numbers are allowed for now" }
                             };
 
                             let token = Token{ kind, col };
@@ -210,62 +255,43 @@ impl Lexer {
                                 // "var" => TokenKind::Var,
                                 // "return" => TokenKind::Return,
                                 // _ => TokenKind::Identifier( current_token_text.clone() )
-                                _ => TokenKind::Unexpected{
-                                        token_text: token_text.clone(),
-                                        err_msg: "unrecognized token",
-                                        help_msg: ""
-                                    }
+                                _ => {
+                                    found_errors = true;
+                                    TokenKind::Unexpected{ token_text: token_text.clone(), err_msg: "unexpected token", help_msg: "only numbers are allowed for now" }
+                                },
                             };
 
                             let token = Token{ kind, col };
                             col += token_text.len() - 1;
                             token
                         },
-                        _ => Token{ col, kind: TokenKind::Unexpected{
-                                token_text: token_text.clone(),
-                                err_msg: "unrecognized token",
-                                help_msg: ""
-                            } }
+                        _ => {
+                            found_errors = true;
+                            Token{ col, kind: TokenKind::Unexpected{ token_text: token_text.clone(), err_msg: "unexpected token", help_msg: "only numbers are allowed for now" } }
+                        },
                     };
 
-                    Self::print_error( &file_path, row, &current_line, &token );
                     line.tokens.push( token );
                     col += 1;
                 }
 
-                // skip empty lines
-                if line.tokens.len() > 0 {
-                    lines.push( line );
+                if found_errors {
+                    err_lines.push( LexerError{ line_text: current_line.to_string(), line } );
+                }
+                else {
+                    // skip empty lines
+                    if line.tokens.len() > 0 {
+                        lines.push( line );
+                    }
                 }
             }
         }
 
-        return Self{ file_path, lines };
-    }
-
-    fn print_error( file_path: &str, line_number: usize, line: &str, token: &Token ) {
-        if let TokenKind::Unexpected{ token_text, err_msg, help_msg } = &token.kind  {
-            let gutter_padding_amount = line_number.ilog10() as usize + 1;
-            let gutter_padding = " ".repeat( gutter_padding_amount );
-            let pointers_padding = " ".repeat( token.col - 1 );
-            let pointers = "^".repeat( token_text.len() );
-            let bar = "\x1b[94;1m|\x1b[0m";
-
-            let error_visualization = &format!(
-                " {} {}\n \
-                 \x1b[94;1m{: >gutter_padding_amount$}\x1b[0m {} {}\n \
-                 {} {} {}\x1b[91m{} {}\x1b[0m",
-                gutter_padding, bar,
-                line_number, bar, line,
-                gutter_padding, bar, pointers_padding, pointers, help_msg
-            );
-
-            eprintln!(
-                "\x1b[91;1mError\x1b[0m: \x1b[1m{}\x1b[0m\n \
-                 {} \x1b[91;1min\x1b[0m: {}:{}:{}\n{}\n",
-                err_msg,
-                gutter_padding, file_path, line_number, token.col, error_visualization
-            );
+        if found_errors {
+            return Err( LexerErrors{ file_path, err_lines } );
+        }
+        else {
+            return Ok( Self{ file_path, lines } );
         }
     }
 }
@@ -488,8 +514,15 @@ fn main() -> ExitCode {
         },
     };
 
-    let lexer = Lexer::parse( source_file_path, source_file );
-    // let ast = AST::parse( &tokens );
+    let lexer = match Lexer::parse( source_file_path, source_file ) {
+        Err( errors ) => {
+            eprint!( "{}", errors );
+            return ExitCode::FAILURE;
+        }
+        Ok( lexer ) => lexer,
+    };
+
+    // let ast = AST::parse( &lexer );
 
     println!( "{:?}", lexer );
     // println!( "{:?}", ast );
