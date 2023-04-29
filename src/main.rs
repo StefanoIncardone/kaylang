@@ -21,8 +21,8 @@ enum LiteralKind {
 enum TokenKind {
     Unexpected{ token_text: String, err_msg: &'static str, help_msg: &'static str },
 
-    OpenRoundBracket,
-    CloseRoundBracket,
+    // OpenRoundBracket,
+    // CloseRoundBracket,
     // OpenSquareBracket,
     // CloseSquareBracket,
     // OpenCurlyBracket,
@@ -30,7 +30,7 @@ enum TokenKind {
 
     Literal( LiteralKind ),
     // Identifier( String ),
-    // Comment( String ),
+    Comment( String ),
 
     // Keywords
     // Entry,
@@ -51,26 +51,25 @@ enum TokenKind {
     // SemiColon,
 }
 
-// impl Display for TokenKind {
-//     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-//         match self {
-//             Self::Unexpected( text, _ ) => write!( f, "{}", text ),
-//             Self::OpenRoundBracket => write!( f, "(" ),
-//             Self::CloseRoundBracket => write!( f, ")" ),
-//             Self::Literal{ kind } => match kind {
-//                 LiteralKind::Int{ base: _, value } => write!( f, "{}", value ),
-//             },
-//             Self::Comment( text ) => write!( f, "{}", text ),
-//             Self::Plus => write!( f, "+" ),
-//             Self::Minus => write!( f, "-" ),
-//             Self::Times => write!( f, "*" ),
-//             Self::Divide => write!( f, "/" ),
-//             Self::Pow => write!( f, "^" ),
-//             // Self::Equals => write!( f, "=" ),
-//             Self::EOF => write!( f, "" ),
-//         }
-//     }
-// }
+impl Display for TokenKind {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        match self {
+            Self::Unexpected{ token_text, err_msg: _, help_msg: _ } => write!( f, "{}", token_text ),
+            // Self::OpenRoundBracket => write!( f, "(" ),
+            // Self::CloseRoundBracket => write!( f, ")" ),
+            Self::Literal( kind ) => match kind {
+                LiteralKind::Int{ base: _, value } => write!( f, "{}", value ),
+            },
+            Self::Comment( text ) => write!( f, "{}", text ),
+            Self::Plus => write!( f, "+" ),
+            Self::Minus => write!( f, "-" ),
+            Self::Times => write!( f, "*" ),
+            Self::Divide => write!( f, "/" ),
+            Self::Pow => write!( f, "^" ),
+            // Self::Equals => write!( f, "=" ),
+        }
+    }
+}
 
 #[derive( Debug )]
 struct Token {
@@ -84,71 +83,26 @@ struct Line {
     tokens: Vec<Token>,
 }
 
-// impl Display for Line {
-//     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-//         if self.tokens.len() == 0 {
-//             write!( f, "" )?;
-//             return Ok( () );
-//         }
-
-//         // leading whitespaces
-//         write!( f, "{}", " ".repeat( self.tokens[ 0 ].col - 1 ) )?;
-
-//         let mut tokens = self.tokens.iter().peekable();
-//         while let Some( token ) = tokens.next() {
-//             let spaces = if let Some( next_token ) = tokens.peek() {
-//                 ((*next_token).col - token.col) - token.kind.to_string().len()
-//             }
-//             else {
-//                 0
-//             };
-
-//             write!( f, "{}{}", token.kind, " ".repeat( spaces ) )?;
-//         }
-
-//         return Ok( () );
-//     }
-// }
-
-#[derive( Debug )]
-struct LexerError {
-    line_text: String,
-    line: Line,
-}
-#[derive( Debug )]
-struct LexerErrors {
-    file_path: String,
-    err_lines: Vec<LexerError>,
-}
-
-impl Display for LexerErrors {
+impl Display for Line {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        for err_line in &self.err_lines {
-            for token in &err_line.line.tokens {
-                if let TokenKind::Unexpected{ token_text, err_msg, help_msg } = &token.kind {
-                    let gutter_padding_amount = err_line.line.number.ilog10() as usize + 1;
-                    let gutter_padding = " ".repeat( gutter_padding_amount );
-                    let pointers_padding = " ".repeat( token.col - 1 );
-                    let pointers = "^".repeat( token_text.len() );
-                    let bar = "\x1b[94;1m|\x1b[0m";
+        if self.tokens.len() == 0 {
+            write!( f, "" )?;
+            return Ok( () );
+        }
 
-                    let error_visualization = &format!(
-                        " {} {}\n \
-                         \x1b[94;1m{: >gutter_padding_amount$}\x1b[0m {} {}\n \
-                         {} {} {}\x1b[91m{} {}\x1b[0m",
-                        gutter_padding, bar,
-                        err_line.line.number, bar, err_line.line_text,
-                        gutter_padding, bar, pointers_padding, pointers, help_msg
-                    );
+        // leading whitespaces
+        write!( f, "{}", " ".repeat( self.tokens[ 0 ].col - 1 ) )?;
 
-                    writeln!( f,
-                        "\x1b[91;1mError\x1b[0m: \x1b[1m{}\x1b[0m\n \
-                         {} \x1b[91;1min\x1b[0m: {}:{}:{}\n{}\n",
-                        err_msg,
-                        gutter_padding, self.file_path, err_line.line.number, token.col, error_visualization
-                    )?;
-                }
+        let mut tokens = self.tokens.iter().peekable();
+        while let Some( token ) = tokens.next() {
+            let spaces = if let Some( next_token ) = tokens.peek() {
+                ((*next_token).col - token.col) - token.kind.to_string().len()
             }
+            else {
+                0
+            };
+
+            write!( f, "{}{}", token.kind, " ".repeat( spaces ) )?;
         }
 
         return Ok( () );
@@ -163,9 +117,9 @@ struct Lexer {
 
 // TODO implement iterator, yielding a line at a time
 impl Lexer {
-    fn parse( file_path: String, source_file: File ) -> Result<Self, LexerErrors> {
+    fn parse( file_path: String, source_file: File ) -> Result<Self, Self> {
         let mut found_errors = false;
-        let mut err_lines: Vec<LexerError> = Vec::new();
+        let mut errors: Vec<Line> = Vec::new();
 
         let mut lines: Vec<Line> = Vec::new();
         let mut token_text = String::new();
@@ -185,8 +139,8 @@ impl Lexer {
                             col += 1;
                             continue;
                         },
-                        '(' => Token{ kind: TokenKind::OpenRoundBracket, col },
-                        ')' => Token{ kind: TokenKind::CloseRoundBracket, col },
+                        // '(' => Token{ kind: TokenKind::OpenRoundBracket, col },
+                        // ')' => Token{ kind: TokenKind::CloseRoundBracket, col },
                         // '[' => Token{ kind: TokenKind::OpenSquareBracket, col },
                         // ']' => Token{ kind: TokenKind::CloseSquareBracket, col },
                         // '{' => Token{ kind: TokenKind::OpenCurlyBracket, col },
@@ -200,19 +154,17 @@ impl Lexer {
                         // ':' => Token{ kind: TokenKind::Colon, col },
                         // ';' => Token{ kind: TokenKind::SemiColon, col },
                         '#' => {
-                            break;
-                            // token_text.clear();
-                            // token_text.push( ch );
+                            token_text.clear();
+                            token_text.push( ch );
 
-                            // // consume the rest of the tokens in the current line
-                            // while let Some( next ) = src.next() {
-                            //     token_text.push( next );
-                            // }
+                            // consume the rest of the tokens in the current line
+                            while let Some( next ) = src.next() {
+                                token_text.push( next );
+                            }
 
-                            // // ignore until the end of the line
-                            // let token = Token{ kind: TokenKind::Comment( token_text.clone() ), col };
-                            // col += token_text.len() - 1;
-                            // token
+                            let token = Token{ kind: TokenKind::Comment( token_text.clone() ), col };
+                            col += token_text.len() - 1;
+                            token
                         },
                         '0'..='9' => {
                             token_text.clear();
@@ -275,39 +227,57 @@ impl Lexer {
                     col += 1;
                 }
 
-                if found_errors {
-                    err_lines.push( LexerError{ line_text: current_line.to_string(), line } );
-                }
-                else {
-                    // skip empty lines
-                    if line.tokens.len() > 0 {
+                // skip empty lines
+                if line.tokens.len() > 0 {
+                    if found_errors {
+                        errors.push( line );
+                    }
+                    else {
                         lines.push( line );
                     }
                 }
             }
         }
 
-        if found_errors {
-            return Err( LexerErrors{ file_path, err_lines } );
+        return if found_errors {
+            Err( Self{ file_path, lines: errors } )
         }
         else {
-            return Ok( Self{ file_path, lines } );
+            Ok( Self{ file_path, lines } )
+        }
+    }
+
+    fn print_errors( &self ) {
+        for line in &self.lines {
+            let line_text = format!( "{}", line );
+            for token in &line.tokens {
+                if let TokenKind::Unexpected{ token_text, err_msg, help_msg } = &token.kind {
+                    let gutter_padding_amount = line.number.ilog10() as usize + 1;
+                    let gutter_padding = " ".repeat( gutter_padding_amount );
+                    let pointers_padding = " ".repeat( token.col - 1 );
+                    let pointers = "^".repeat( token_text.len() );
+                    let bar = "\x1b[94m|\x1b[0m";
+    
+                    let error_visualization = &format!(
+                        " {} {}\n \
+                         \x1b[94m{: >gutter_padding_amount$}\x1b[0m {} {}\n \
+                         {} {} {}\x1b[91m{} {}\x1b[0m",
+                        gutter_padding, bar,
+                        line.number, bar, line_text,
+                        gutter_padding, bar, pointers_padding, pointers, help_msg
+                    );
+    
+                    eprintln!(
+                        "\x1b[91;1mError\x1b[0m: \x1b[1m{}\x1b[0m\n \
+                         {} \x1b[91min\x1b[0m: {}:{}:{}\n{}\n",
+                        err_msg,
+                        gutter_padding, self.file_path, line.number, token.col, error_visualization
+                    );
+                }
+            }
         }
     }
 }
-
-// #[derive( Debug )]
-// enum Mutability {
-//     Let,
-//     Var,
-//     Const,
-// }
-
-// #[derive( Debug )]
-// enum Value {
-//     Integer( String, i8 ),
-// }
-
 
 // #[derive( Debug )]
 // struct Variable {
@@ -515,11 +485,14 @@ fn main() -> ExitCode {
     };
 
     let lexer = match Lexer::parse( source_file_path, source_file ) {
-        Err( errors ) => {
-            eprint!( "{}", errors );
+        Err( lexer ) => {
+            lexer.print_errors();
             return ExitCode::FAILURE;
         }
-        Ok( lexer ) => lexer,
+        Ok( lexer ) => {
+            println!( "{:?}\n", lexer );
+            lexer
+        },
     };
 
     // let ast = AST::parse( &lexer );
