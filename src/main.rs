@@ -4,20 +4,6 @@ use std::{io::{BufReader, BufRead, ErrorKind}, fs::File, env, process::ExitCode,
 
 #[derive( Debug, PartialEq )]
 enum LiteralKind {
-    Int{ base: i8, value: String }
-}
-
-#[derive( Debug, PartialEq )]
-enum TokenKind {
-    Unexpected( String, &'static str ),
-
-    // Brackets
-    OpenRoundBracket,
-    CloseRoundBracket,
-    // OpenSquareBracket,
-    // CloseSquareBracket,
-    // OpenCurlyBracket,
-    // CloseCurlyBracket,
     /*
         IDEA handle arbitrary bases: has to be bigger than 1 and smaller than 36 => {
             ...b1 = error,
@@ -28,10 +14,23 @@ enum TokenKind {
         }
     */
     // IDEA let the user define new bases with custom symbols
+    Int{ base: i8, value: String }
+}
 
-    Literal{ kind: LiteralKind },
+#[derive( Debug, PartialEq )]
+enum TokenKind {
+    Unexpected{ token_text: String, err_msg: &'static str, help_msg: &'static str },
+
+    OpenRoundBracket,
+    CloseRoundBracket,
+    // OpenSquareBracket,
+    // CloseSquareBracket,
+    // OpenCurlyBracket,
+    // CloseCurlyBracket,
+
+    Literal( LiteralKind ),
     // Identifier( String ),
-    Comment( String ),
+    // Comment( String ),
 
     // Keywords
     // Entry,
@@ -50,10 +49,6 @@ enum TokenKind {
     // Equals,
     // Colon,
     // SemiColon,
-
-    // Special characters
-    // NewLine,
-    EOF,
 }
 
 // impl Display for TokenKind {
@@ -85,7 +80,7 @@ struct Token {
 
 #[derive( Debug )]
 struct Line {
-    row: usize,
+    number: usize,
     tokens: Vec<Token>,
 }
 
@@ -121,23 +116,24 @@ struct Lexer {
     lines: Vec<Line>,
 }
 
+// TODO implement iterator, yielding a line at a time
 impl Lexer {
     fn parse( file_path: String, source_file: File ) -> Self {
         let mut lines: Vec<Line> = Vec::new();
         let mut token_text = String::new();
-        let mut row: usize = 1;
-
-        for source_line in BufReader::new( source_file ).lines() {
-            if let Ok( current_line ) = source_line {
+        
+        let mut row: usize = 0;
+        for src_line in BufReader::new( source_file ).lines() {
+            if let Ok( current_line ) = src_line {
                 let mut col: usize = 1;
-                let mut line = Line{ row, tokens: Vec::new() };
+                row += 1;
 
+                let mut line = Line{ number: row, tokens: Vec::new() };
                 let mut src = current_line.chars().peekable();
                 while let Some( ch ) = src.next() {
                     let token: Token = match ch {
-                        // TODO handle other whitespace characters
                         // ignore whitespace
-                        ' ' | '\t' => {
+                        c if c.is_ascii_whitespace() => {
                             col += 1;
                             continue;
                         },
@@ -156,20 +152,20 @@ impl Lexer {
                         // ':' => Token{ kind: TokenKind::Colon, col },
                         // ';' => Token{ kind: TokenKind::SemiColon, col },
                         '#' => {
+                            break;
                             // token_text.clear();
                             // token_text.push( ch );
 
-                            while let Some( _ ) = src.next() {
-                                // FIXME find better way to drain the line iterators
-                                // consume the rest of the tokens in the current line
-                                // token_text.push( next );
-                            }
+                            // // consume the rest of the tokens in the current line
+                            // while let Some( next ) = src.next() {
+                            //     token_text.push( next );
+                            // }
 
-                            continue;
+                            // // ignore until the end of the line
                             // let token = Token{ kind: TokenKind::Comment( token_text.clone() ), col };
                             // col += token_text.len() - 1;
                             // token
-                        }
+                        },
                         '0'..='9' => {
                             token_text.clear();
                             token_text.push( ch );
@@ -184,16 +180,20 @@ impl Lexer {
                             }
 
                             let kind = if is_digit {
-                                TokenKind::Literal{ kind: LiteralKind::Int{ base: 10, value: token_text.clone() } }
+                                TokenKind::Literal( LiteralKind::Int{ base: 10, value: token_text.clone() } )
                             }
                             else {
-                                TokenKind::Unexpected( token_text.clone(), "invalid number literal" )
+                                TokenKind::Unexpected{
+                                    token_text: token_text.clone(),
+                                    err_msg: "unrecognized token",
+                                    help_msg: ""
+                                }
                             };
 
                             let token = Token{ kind, col };
                             col += token_text.len() - 1;
                             token
-                        }
+                        },
                         'a'..='z' | 'A'..='Z' | '_' => {
                             token_text.clear();
                             token_text.push( ch );
@@ -210,17 +210,24 @@ impl Lexer {
                                 // "var" => TokenKind::Var,
                                 // "return" => TokenKind::Return,
                                 // _ => TokenKind::Identifier( current_token_text.clone() )
-                                _ => TokenKind::Unexpected( token_text.clone(), "unrecognized token" )
+                                _ => TokenKind::Unexpected{
+                                        token_text: token_text.clone(),
+                                        err_msg: "unrecognized token",
+                                        help_msg: ""
+                                    }
                             };
 
                             let token = Token{ kind, col };
                             col += token_text.len() - 1;
                             token
                         },
-                        _ => Token{ kind: TokenKind::Unexpected( ch.into(), "unrecognized token" ), col },
+                        _ => Token{ col, kind: TokenKind::Unexpected{
+                                token_text: token_text.clone(),
+                                err_msg: "unrecognized token",
+                                help_msg: ""
+                            } }
                     };
 
-                    // TODO push to a struct containing all errors and print that instead
                     Self::print_error( &file_path, row, &current_line, &token );
                     line.tokens.push( token );
                     col += 1;
@@ -230,28 +237,34 @@ impl Lexer {
                 if line.tokens.len() > 0 {
                     lines.push( line );
                 }
-                row += 1;
             }
         }
-
-        lines.push( Line{ row, tokens: vec![ Token{ kind: TokenKind::EOF, col: 1 } ] } );
 
         return Self{ file_path, lines };
     }
 
-    fn print_error( file_path: &str, row: usize, line: &str, token: &Token ) {
-        if let TokenKind::Unexpected( token_text, err ) = &token.kind  {
-            let padding_count = row.ilog10() as usize + 1;
-            let padding = " ".repeat( padding_count );
-            let bar = "\x1b[94m|\x1b[0m";
+    fn print_error( file_path: &str, line_number: usize, line: &str, token: &Token ) {
+        if let TokenKind::Unexpected{ token_text, err_msg, help_msg } = &token.kind  {
+            let gutter_padding_amount = line_number.ilog10() as usize + 1;
+            let gutter_padding = " ".repeat( gutter_padding_amount );
+            let pointers_padding = " ".repeat( token.col - 1 );
+            let pointers = "^".repeat( token_text.len() );
+            let bar = "\x1b[94;1m|\x1b[0m";
+
             let error_visualization = &format!(
-                " {padding} {bar}\n \x1b[94m{: >padding_count$}\x1b[0m {bar} {}\n {padding} {bar} {}\x1b[91m{} <- {}\x1b[0m",
-                row, line, " ".repeat( token.col - 1 ), "^".repeat( token_text.len() ), err
+                " {} {}\n \
+                 \x1b[94;1m{: >gutter_padding_amount$}\x1b[0m {} {}\n \
+                 {} {} {}\x1b[91m{} {}\x1b[0m",
+                gutter_padding, bar,
+                line_number, bar, line,
+                gutter_padding, bar, pointers_padding, pointers, help_msg
             );
 
             eprintln!(
-                "\x1b[91mError\x1b[0m:\n {padding} \x1b[94m>\x1b[0m {}:{}:{}\n{}\n",
-                file_path, row, token.col, error_visualization
+                "\x1b[91;1mError\x1b[0m: \x1b[1m{}\x1b[0m\n \
+                 {} \x1b[91;1min\x1b[0m: {}:{}:{}\n{}\n",
+                err_msg,
+                gutter_padding, file_path, line_number, token.col, error_visualization
             );
         }
     }
