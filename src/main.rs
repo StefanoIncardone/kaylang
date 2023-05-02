@@ -230,7 +230,7 @@ impl Lexer {
                             token
                         },
                         _ => Token{ col, kind: TokenKind::Unexpected{
-                                token_text: token_text.clone(),
+                                token_text: ch.to_string(),
                                 err_msg: "unexpected token",
                                 help_msg: "only numbers are allowed for now"
                         } },
@@ -440,28 +440,32 @@ impl<'program> Display for Parser<'program> {
         for statement in &self.statements {
             let line_text = format!( "{}", statement.line );
 
-            if let Node::Unexpected{ token, err_msg, help_msg } = statement.node {
-                let gutter_padding_amount = statement.line.number.ilog10() as usize + 1;
-                let gutter_padding = " ".repeat( gutter_padding_amount );
-                let pointers_padding = " ".repeat( token.col - 1 );
-                let pointers = "^".repeat( token.kind.to_string().len() );
-                let bar = "\x1b[94m|\x1b[0m";
+            match &statement.node {
+                Node::Unexpected{ token, err_msg, help_msg } => {
+                    let gutter_padding_amount = statement.line.number.ilog10() as usize + 1;
+                    let gutter_padding = " ".repeat( gutter_padding_amount );
+                    let pointers_padding = " ".repeat( token.col - 1 );
+                    let pointers = "^".repeat( token.kind.to_string().len() );
+                    let bar = "\x1b[94m|\x1b[0m";
 
-                let error_visualization = &format!(
-                    " {} {}\n \
-                        \x1b[94m{: >gutter_padding_amount$}\x1b[0m {} {}\n \
-                        {} {} {}\x1b[91m{} {}\x1b[0m",
-                    gutter_padding, bar,
-                    statement.line.number, bar, line_text,
-                    gutter_padding, bar, pointers_padding, pointers, help_msg
-                );
+                    let error_visualization = &format!(
+                        " {} {}\n \
+                            \x1b[94m{: >gutter_padding_amount$}\x1b[0m {} {}\n \
+                            {} {} {}\x1b[91m{} {}\x1b[0m",
+                        gutter_padding, bar,
+                        statement.line.number, bar, line_text,
+                        gutter_padding, bar, pointers_padding, pointers, help_msg
+                    );
 
-                writeln!( f,
-                    "\x1b[91;1mError\x1b[0m: \x1b[1m{}\x1b[0m\n \
-                        {} \x1b[91min\x1b[0m: {}:{}:{}\n{}\n",
-                    err_msg,
-                    gutter_padding, self.lexer.file_path, statement.line.number, token.col, error_visualization
-                )?;
+                    writeln!( f,
+                        "\x1b[91;1mError\x1b[0m: \x1b[1m{}\x1b[0m\n \
+                            {} \x1b[91min\x1b[0m: {}:{}:{}\n{}\n",
+                        err_msg,
+                        gutter_padding, self.lexer.file_path, statement.line.number, token.col, error_visualization
+                    )?;
+                },
+                Node::Literal( literal ) => writeln!( f, "literal: {:?}", literal )?,
+                Node::BinaryOp{ lhs, op, rhs } => writeln!( f, "binary op: {:?} - {:?} - {:?}", lhs, op, rhs )?,
             }
         }
 
@@ -562,7 +566,7 @@ fn main() -> ExitCode {
 
     let parser = match Parser::parse( &lexer ) {
         Ok( parser ) => {
-            eprint!( "{:?}", parser );
+            eprint!( "{}", parser );
             parser
         },
         Err( parser ) => {
