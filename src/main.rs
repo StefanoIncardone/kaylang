@@ -1,21 +1,20 @@
-// TODO create IDEAS.md
-use std::{io::{BufReader, BufRead, ErrorKind}, fs::File, env, process::ExitCode, fmt::Display};
+// TODO improve displaying of structures
+use std::{io::{BufReader, BufRead, ErrorKind}, fs::File, env, process::ExitCode, fmt::Display, iter::Peekable};
 
 
-#[derive( Debug, PartialEq )]
+#[derive( Debug, PartialEq, Clone, Copy )]
 enum LiteralKind {
-    /*
-        IDEA handle arbitrary bases: has to be bigger than 1 and smaller than 36 => {
-            ...b1 = error,
-            ...b2 = base 2,
-            ...b4 = base 4,
-            ...b35 = base 35,
-            ...b37 = error,
-        }
-    */
-    // IDEA let the user define new bases with custom symbols
-    Int{ base: i8, value: i64 }
+    U64{ base: u8, value: u64 }
 }
+
+impl Display for LiteralKind {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        match self {
+            Self::U64 { base: _, value } => write!( f, "{}", value ),
+        }
+    }
+}
+
 
 #[derive( Debug, PartialEq )]
 enum TokenKind {
@@ -45,7 +44,7 @@ enum TokenKind {
     Minus,
     Times,
     Divide,
-    Pow,
+    // Pow,
     // Equals,
     // Colon,
     // SemiColon,
@@ -57,19 +56,18 @@ impl Display for TokenKind {
             Self::Unexpected{ token_text, err_msg: _, help_msg: _ } => write!( f, "{}", token_text ),
             // Self::OpenRoundBracket => write!( f, "(" ),
             // Self::CloseRoundBracket => write!( f, ")" ),
-            Self::Literal( kind ) => match kind {
-                LiteralKind::Int{ base: _, value } => write!( f, "{}", value ),
-            },
+            Self::Literal( literal ) => write!( f, "{}", literal ),
             Self::Comment( text ) => write!( f, "{}", text ),
             Self::Plus => write!( f, "+" ),
             Self::Minus => write!( f, "-" ),
             Self::Times => write!( f, "*" ),
             Self::Divide => write!( f, "/" ),
-            Self::Pow => write!( f, "^" ),
+            // Self::Pow => write!( f, "^" ),
             // Self::Equals => write!( f, "=" ),
         }
     }
 }
+
 
 #[derive( Debug )]
 struct Token {
@@ -77,6 +75,7 @@ struct Token {
     kind: TokenKind,
 }
 
+// TODO try lines generic over the tokens, to accomodate for parser statements
 #[derive( Debug )]
 struct Line {
     number: usize,
@@ -115,15 +114,15 @@ struct Lexer {
     lines: Vec<Line>,
 }
 
-// TODO implement iterator, yielding a line at a time
+// TODO implement iterator for lexer
 impl Lexer {
+    // TODO make the input character stream generic
     fn parse( file_path: String, source_file: File ) -> Result<Self, Self> {
         let mut found_errors = false;
         let mut errors: Vec<Line> = Vec::new();
-
         let mut lines: Vec<Line> = Vec::new();
-        let mut token_text = String::new();
 
+        let mut token_text = String::new();
         let mut row: usize = 0;
         for src_line in BufReader::new( source_file ).lines() {
             if let Ok( current_line ) = src_line {
@@ -150,7 +149,7 @@ impl Lexer {
                         '-' => Token{ kind: TokenKind::Minus, col },
                         '*' => Token{ kind: TokenKind::Times, col },
                         '/' => Token{ kind: TokenKind::Divide, col },
-                        '^' => Token{ kind: TokenKind::Pow, col },
+                        // '^' => Token{ kind: TokenKind::Pow, col },
                         // '=' => Token{ kind: TokenKind::Equals, col },
                         // ':' => Token{ kind: TokenKind::Colon, col },
                         // ';' => Token{ kind: TokenKind::SemiColon, col },
@@ -167,7 +166,7 @@ impl Lexer {
                             col += token_text.len() - 1;
                             token
                         },
-                        '0'..='9' => {
+                        '0'..='9' => { // TODO handle negative numbers
                             token_text.clear();
                             token_text.push( ch );
 
@@ -182,11 +181,11 @@ impl Lexer {
 
                             let kind = if is_digit {
                                 match token_text.parse() {
-                                    Ok( number ) => TokenKind::Literal( LiteralKind::Int{ base: 10, value: number } ),
+                                    Ok( number ) => TokenKind::Literal( LiteralKind::U64{ base: 10, value: number } ),
                                     Err( _ ) => TokenKind::Unexpected{
                                         token_text: token_text.clone(),
                                         err_msg: "expected number literal",
-                                        help_msg: "this overflows a 64 bit number [-9223372036854775808, 9223372036854775807]"
+                                        help_msg: "overflows a 64 bit unsigned number [0, 18446744073709551615]"
                                     },
                                 }
                             }
@@ -194,7 +193,7 @@ impl Lexer {
                                 TokenKind::Unexpected{
                                     token_text: token_text.clone(),
                                     err_msg: "unexpected token",
-                                    help_msg: "expected number literal"
+                                    help_msg: "not a number literal"
                                 }
                             };
 
@@ -221,7 +220,7 @@ impl Lexer {
                                 _ => TokenKind::Unexpected{
                                     token_text: token_text.clone(),
                                     err_msg: "unexpected token",
-                                    help_msg: "only numbers are allowed for now"
+                                    help_msg: "here"
                                 },
                             };
 
@@ -229,11 +228,24 @@ impl Lexer {
                             col += token_text.len() - 1;
                             token
                         },
-                        _ => Token{ col, kind: TokenKind::Unexpected{
-                                token_text: ch.to_string(),
+                        _ => {
+                            token_text.clear();
+                            token_text.push( ch );
+
+                            while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
+                                token_text.push( next );
+                            }
+
+                            let kind = TokenKind::Unexpected{
+                                token_text: token_text.clone(),
                                 err_msg: "unexpected token",
-                                help_msg: "only numbers are allowed for now"
-                        } },
+                                help_msg: "here"
+                            };
+
+                            let token = Token{ kind, col };
+                            col += token_text.len() - 1;
+                            token
+                        },
                     };
 
                     if let TokenKind::Unexpected{ token_text: _, err_msg: _, help_msg: _ } = token.kind {
@@ -266,7 +278,7 @@ impl Lexer {
     }
 }
 
-impl Display for Lexer{
+impl Display for Lexer {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         for line in &self.lines {
             let line_text = format!( "{}", line );
@@ -280,8 +292,8 @@ impl Display for Lexer{
 
                     let error_visualization = &format!(
                         " {} {}\n \
-                         \x1b[94m{: >gutter_padding_amount$}\x1b[0m {} {}\n \
-                         {} {} {}\x1b[91m{} {}\x1b[0m",
+                        \x1b[94m{: >gutter_padding_amount$}\x1b[0m {} {}\n \
+                        {} {} {}\x1b[91m{} {}\x1b[0m",
                         gutter_padding, bar,
                         line.number, bar, line_text,
                         gutter_padding, bar, pointers_padding, pointers, help_msg
@@ -289,7 +301,7 @@ impl Display for Lexer{
 
                     writeln!( f,
                         "\x1b[91;1mError\x1b[0m: \x1b[1m{}\x1b[0m\n \
-                         {} \x1b[91min\x1b[0m: {}:{}:{}\n{}\n",
+                        {} \x1b[91min\x1b[0m: {}:{}:{}\n{}\n",
                         err_msg,
                         gutter_padding, self.file_path, line.number, token.col, error_visualization
                     )?;
@@ -301,10 +313,37 @@ impl Display for Lexer{
     }
 }
 
-#[derive( Debug )]
-enum Value {
-    I64{ base: i8, value: i64 },
-}
+
+// #[derive( Debug )]
+// enum UnaryOpKind {
+//     Plus,
+//     Minus,
+// }
+
+// impl Display for UnaryOpKind {
+//     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+//         match self {
+//             Self::Plus => write!( f, "+" ),
+//             Self::Minus => write!( f, "-" ),
+//         }
+//     }
+// }
+
+
+// #[derive( Debug )]
+// enum UnaryOpKind {
+//     Plus,
+//     Minus,
+// }
+
+// impl Display for UnaryOpKind {
+//     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+//         match self {
+//             Self::Plus => write!( f, "+" ),
+//             Self::Minus => write!( f, "-" ),
+//         }
+//     }
+// }
 
 #[derive( Debug )]
 enum BinaryOpKind {
@@ -315,12 +354,54 @@ enum BinaryOpKind {
     Pow,
 }
 
+impl Display for BinaryOpKind {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        match self {
+            Self::Plus => write!( f, "+" ),
+            Self::Minus => write!( f, "-" ),
+            Self::Times => write!( f, "*" ),
+            Self::Divide => write!( f, "/" ),
+            Self::Pow => write!( f, "^" ),
+        }
+    }
+}
+
+// #[derive( Debug )]
+// enum OpKind {
+//     Unary{ lhs: LiteralKind, op: UnaryOpKind },
+//     Binary{ lhs: LiteralKind, op: BinaryOpKind, rhs: LiteralKind },
+// }
+
+// impl Display for OpKind {
+//     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+//         match self {
+//             Self::Unary{ lhs, op } => write!( f, "{} {}", lhs,op ),
+//             Self::Binary{ lhs, op, rhs } => write!( f, "{} {} {}", lhs, op, rhs ),
+//         }
+//     }
+// }
+
+
 #[derive( Debug )]
 enum Node<'program> {
     Unexpected{ token: &'program Token, err_msg: &'static str, help_msg: &'static str },
 
-    Literal( Value ),
-    BinaryOp{ lhs: Value, op: BinaryOpKind, rhs: Value },
+    Literal( LiteralKind ),
+    // UnaryOp{ op: UnaryOpKind, rhs: LiteralKind },
+    BinaryOp{ lhs: Box<Node<'program>>, op: BinaryOpKind, rhs: Box<Node<'program>> },
+}
+
+impl<'program> Display for Node<'program> {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        match self {
+            Self::Literal( literal ) => write!( f, "{}", literal ),
+            Self::BinaryOp{ lhs, op, rhs } => match op {
+                BinaryOpKind::Divide | BinaryOpKind::Times | BinaryOpKind::Pow => write!( f, "({} {} {})", lhs, op, rhs ),
+                _ => write!( f, "{} {} {}", lhs, op, rhs ),
+            },
+            _ => write!( f, "{:?}", self ),
+        }
+    }
 }
 
 #[derive( Debug )]
@@ -328,6 +409,7 @@ struct Statement<'program> {
     line: &'program Line,
     node: Node<'program>,
 }
+
 
 #[derive( Debug )]
 struct Parser<'program> {
@@ -344,85 +426,131 @@ impl<'program> Parser<'program> {
         for line in &lexer.lines {
             let mut tokens = line.tokens.iter().peekable();
 
-            while let Some( token ) = tokens.next() {
-                let node = match &token.kind {
-                    TokenKind::Comment( _ ) => continue,
-                    TokenKind::Literal( literal ) => match literal {
-                        LiteralKind::Int{ base, value } => {
-                            let lhs = Value::I64{ base: *base, value: *value };
-                            
-                            let op_token = tokens.next();
-                            let op_node = match op_token {
-                                Some( next ) => match next.kind {
-                                    TokenKind::Plus => Some( Ok( BinaryOpKind::Plus ) ),
-                                    TokenKind::Minus => Some( Ok( BinaryOpKind::Minus ) ),
-                                    TokenKind::Times => Some( Ok( BinaryOpKind::Times ) ),
-                                    TokenKind::Divide => Some( Ok( BinaryOpKind::Divide ) ),
-                                    TokenKind::Pow => Some( Ok( BinaryOpKind::Pow ) ),
-                                    _ => Some( Err( Node::Unexpected{
-                                        token: next,
-                                        err_msg: "expected binary operator",
-                                        help_msg: "needs to be either one of '+', '-', '*', '/' or '^'"
-                                    } ) ),
-                                },
-                                None => None,
-                            };
-
-                            let rhs_token = tokens.next();
-                            let rhs_node = match rhs_token {
-                                Some( next ) => match &next.kind {
-                                    TokenKind::Literal( literal ) => match literal {
-                                        LiteralKind::Int{ base, value } => Some( Ok( Value::I64{ base: *base, value: *value } ) ),
-                                    },
-                                    _ => Some( Err( Node::Unexpected{
-                                        token: next,
-                                        err_msg: "expected number literal",
-                                        help_msg: "not a number literal"
-                                    } ) ),
-                                },
-                                None => None,
-                            };
-
-                            match op_node {
-                                Some( op_result ) => match op_result {
-                                    Ok( op ) => match rhs_node {
-                                        Some( rhs_result ) => match rhs_result {
-                                            Ok( rhs ) => Node::BinaryOp{ lhs, op, rhs },
-                                            Err( rhs_err ) => rhs_err,
-                                        },
-                                        None => {
-                                            Node::Unexpected{
-                                                token: op_token.unwrap(),
-                                                err_msg: "unexpected line end",
-                                                help_msg: "expected number literal after the operator"
-                                            }
-                                        },
-                                    },
-                                    Err( op_err ) => op_err,
-                                },
-                                None => Node::Literal( lhs ),
-                            }
-                        }
+            while let Some( token ) = tokens.peek() {
+                let next_node = match &token.kind {
+                    TokenKind::Comment( _ ) => {
+                        tokens.next();
+                        continue;
                     },
-                    TokenKind::Unexpected{ token_text: _, err_msg: _, help_msg: _ } => Node::Unexpected{
-                        token,
-                        err_msg: "unexpected token",
-                        help_msg: "this may be a bug in the compiler"
-                    },
-                    _ => Node::Unexpected{
-                        token,
-                        err_msg: "unexpected token",
-                        help_msg: ""
-                    },
+                    _ => Parser::factor( &mut tokens ),
                 };
 
-                if let Node::Unexpected{ token: _, err_msg: _, help_msg: _ } = node {
-                    found_errors = true;
-                    errors.push( Statement{ line: &line, node } );
+                if let Some( node ) = next_node {
+                    match node {
+                        Ok( node_ok ) => statements.push( Statement { line, node: node_ok } ),
+                        Err( node_err ) => {
+                            found_errors = true;
+                            errors.push( Statement { line, node: node_err } )
+                        },
+                    }
                 }
-                else {
-                    statements.push( Statement{ line: &line, node } );
-                }
+            //     let mut node = match &token.kind {
+            //         TokenKind::Comment( _ ) => continue,
+            //         TokenKind::Literal( literal ) =>  match literal {
+            //             LiteralKind::U64{ base: _, value: _ } => {
+            //                 let lhs = literal.clone();
+
+            //                 let op_token = tokens.next();
+            //                 let op_node = match op_token {
+            //                     Some( next ) => match next.kind {
+            //                         TokenKind::Plus => Some( Ok( BinaryOp::Plus ) ),
+            //                         TokenKind::Minus => Some( Ok( BinaryOp::Minus ) ),
+            //                         TokenKind::Times => Some( Ok( BinaryOp::Times ) ),
+            //                         TokenKind::Divide => Some( Ok( BinaryOp::Divide ) ),
+            //                         TokenKind::Pow => Some( Ok( BinaryOp::Pow ) ),
+            //                         _ => Some( Err( Node::Unexpected{
+            //                             token: next,
+            //                             err_msg: "expected binary operator",
+            //                             help_msg: "needs to be either one of '+', '-', '*', '/' or '^'"
+            //                         } ) ),
+            //                     },
+            //                     None => None,
+            //                 };
+
+            //                 let rhs_token = tokens.next();
+            //                 let rhs_node = match rhs_token {
+            //                     Some( next ) => match &next.kind {
+            //                         TokenKind::Literal( literal ) => match literal {
+            //                             LiteralKind::U64{ base: _, value: _ } => Some( Ok( literal.clone() ) ),
+            //                         },
+            //                         _ => Some( Err( Node::Unexpected{
+            //                             token: next,
+            //                             err_msg: "expected number literal",
+            //                             help_msg: "not a number literal"
+            //                         } ) ),
+            //                     },
+            //                     None => None,
+            //                 };
+
+            //                 match op_node {
+            //                     Some( op_result ) => match op_result {
+            //                         Ok( op ) => match rhs_node {
+            //                             Some( rhs_result ) => match rhs_result {
+            //                                 Ok( rhs ) => Node::BinaryOp{ lhs: Box::new( Node::Literal( lhs ) ), op, rhs: Box::new( Node::Literal( rhs ) ) },
+            //                                 Err( rhs_err ) => rhs_err,
+            //                             },
+            //                             None => Node::Unexpected{
+            //                                 token: op_token.unwrap(),
+            //                                 err_msg: "unexpected line end",
+            //                                 help_msg: "expected number literal after operator"
+            //                             },
+            //                         },
+            //                         Err( op_err ) => op_err,
+            //                     },
+            //                     None => Node::Literal( lhs ),
+            //                 }
+            //             }
+            //         },
+            //         TokenKind::Unexpected{ token_text: _, err_msg: _, help_msg: _ } => Node::Unexpected{
+            //             token,
+            //             err_msg: "unexpected token",
+            //             help_msg: "this may be a bug in the compiler"
+            //         },
+            //         _ => Node::Unexpected{
+            //             token,
+            //             err_msg: "unexpected token",
+            //             help_msg: "only single binary operations supported for now"
+            //         },
+            //     };
+
+            //     if let Node::Unexpected{ token: _, err_msg: _, help_msg: _ } = node {
+            //         found_errors = true;
+            //         errors.push( Statement{ line: &line, node } );
+            //     }
+            //     else {
+            //         statements.push( Statement{ line: &line, node } );
+            //     }
+
+            //     // consume until the end of the line, we only allow a single expression per line for now
+            //     // TODO group every trailing token in one
+            //     while let Some( token ) = tokens.next() {
+            //         node = match &token.kind {
+            //             TokenKind::Comment( _ ) => continue,
+            //             _ => {
+            //                 // let mut token_text = token.kind.to_string();
+
+            //                 // while let Some( next_token ) = tokens.next() {
+            //                 //     token_text.push_str( &next_token.kind.to_string() );
+            //                 // }
+
+            //                 // token.kind = TokenKind::Unexpected{ token_text, err_msg: "", help_msg: "" };
+
+            //                 Node::Unexpected{
+            //                     token,
+            //                     err_msg: "unexpected token",
+            //                     help_msg: "only single expression per line supported for now"
+            //                 }
+            //             },
+            //         };
+
+            //         if let Node::Unexpected{ token: _, err_msg: _, help_msg: _ } = node {
+            //             found_errors = true;
+            //             errors.push( Statement{ line: &line, node } );
+            //         }
+            //         else {
+            //             statements.push( Statement{ line: &line, node } );
+            //         }
+            //     }
             }
         }
 
@@ -432,6 +560,74 @@ impl<'program> Parser<'program> {
         else {
             Ok( Self{ lexer, statements } )
         }
+    }
+
+    fn number<I: Iterator<Item = &'program Token>>( tokens: &mut Peekable<I> ) -> Option<Result<Node<'program>, Node<'program>>> {
+        let token = tokens.peek()?;
+        let number = match token.kind {
+            TokenKind::Literal( literal ) => match literal {
+                LiteralKind::U64{ base: _, value: _ } => Some( Ok( Node::Literal( literal.clone() ))),
+            },
+            _ => Some( Err( Node::Unexpected { token, err_msg: "unexpected token", help_msg: "expected number literal" })),
+        };
+
+        if let Some( Ok( _ )) = number {
+            tokens.next();
+        }
+        
+        number
+    }
+
+    fn term_op<I: Iterator<Item = &'program Token>>( tokens: &mut Peekable<I> ) -> Option<Result<BinaryOpKind, Node<'program>>> {
+        let token = tokens.peek()?;
+        let op = match token.kind {
+            TokenKind::Times => Some( Ok( BinaryOpKind::Times )),
+            TokenKind::Divide => Some( Ok( BinaryOpKind::Divide )),
+            _ => Some( Err( Node::Unexpected { token, err_msg: "unexpected token", help_msg: "expected '*' or '/' operator" })),
+        };
+
+        if let Some( Ok( _ )) = op {
+            tokens.next();
+        }
+        
+        op
+    }
+
+    fn term<I: Iterator<Item = &'program Token>>( tokens: &mut Peekable<I> ) -> Option<Result<Node<'program>, Node<'program>>> {
+        let mut lhs = Self::number( tokens )?;
+
+        while let Some( Ok( op ) ) = Self::term_op( tokens ) {
+            let rhs = Self::number( tokens )?;
+            lhs = Ok( Node::BinaryOp { lhs: Box::new( lhs.unwrap() ), op, rhs: Box::new( rhs.unwrap() ) } );
+        }
+
+        return Some( lhs );
+    }
+
+    fn factor_op<I: Iterator<Item = &'program Token>>( tokens: &mut Peekable<I> ) -> Option<Result<BinaryOpKind, Node<'program>>> {
+        let token = tokens.peek()?;
+        let factor = match token.kind {
+            TokenKind::Plus => Some( Ok( BinaryOpKind::Plus )),
+            TokenKind::Minus => Some( Ok( BinaryOpKind::Minus )),
+            _ => Some( Err( Node::Unexpected { token, err_msg: "unexpected token", help_msg: "expected '+' or '-' operator" })),
+        };
+
+        if let Some( Ok( _ )) = factor {
+            tokens.next();
+        }
+
+        factor
+    }
+
+    fn factor<I: Iterator<Item = &'program Token>>( tokens: &mut Peekable<I> ) -> Option<Result<Node<'program>, Node<'program>>> {
+        let mut lhs = Self::term( tokens )?;
+
+        while let Some( Ok( op ) ) = Self::factor_op( tokens ) {
+            let rhs = Self::term( tokens )?;
+            lhs = Ok( Node::BinaryOp { lhs: Box::new( lhs.unwrap() ), op, rhs: Box::new( rhs.unwrap() ) } );
+        }
+
+        return Some( lhs );
     }
 }
 
@@ -450,8 +646,8 @@ impl<'program> Display for Parser<'program> {
 
                     let error_visualization = &format!(
                         " {} {}\n \
-                            \x1b[94m{: >gutter_padding_amount$}\x1b[0m {} {}\n \
-                            {} {} {}\x1b[91m{} {}\x1b[0m",
+                        \x1b[94m{: >gutter_padding_amount$}\x1b[0m {} {}\n \
+                        {} {} {}\x1b[91m{} {}\x1b[0m",
                         gutter_padding, bar,
                         statement.line.number, bar, line_text,
                         gutter_padding, bar, pointers_padding, pointers, help_msg
@@ -459,19 +655,19 @@ impl<'program> Display for Parser<'program> {
 
                     writeln!( f,
                         "\x1b[91;1mError\x1b[0m: \x1b[1m{}\x1b[0m\n \
-                            {} \x1b[91min\x1b[0m: {}:{}:{}\n{}\n",
+                        {} \x1b[91min\x1b[0m: {}:{}:{}\n{}\n",
                         err_msg,
                         gutter_padding, self.lexer.file_path, statement.line.number, token.col, error_visualization
                     )?;
                 },
-                Node::Literal( literal ) => writeln!( f, "literal: {:?}", literal )?,
-                Node::BinaryOp{ lhs, op, rhs } => writeln!( f, "binary op: {:?} - {:?} - {:?}", lhs, op, rhs )?,
+                _ => writeln!( f, "{}", statement.node )?,
             }
         }
 
         return Ok( () );
     }
 }
+
 
 // IDEA add man page
 fn print_usage() {
@@ -483,7 +679,8 @@ Usage: blitz [Options] file.blz
 Options:
     -h, --help Display this message
 ",
-env!( "CARGO_PKG_VERSION" ) );
+        env!( "CARGO_PKG_VERSION" )
+);
 
     println!( "{}", usage );
 }
@@ -558,8 +755,8 @@ fn main() -> ExitCode {
             // println!( "{:?}\n", lexer );
             lexer
         },
-        Err( lexer ) => {
-            eprint!( "{}", lexer );
+        Err( errors ) => {
+            eprint!( "{}", errors );
             return ExitCode::FAILURE;
         },
     };

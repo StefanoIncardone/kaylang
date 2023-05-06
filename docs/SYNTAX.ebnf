@@ -1,0 +1,28 @@
+(* program *)
+program = line_comment | expression;
+
+(* comments *)
+line_comment = "#", ? any character ?, "\n";
+
+(* numbers *)
+zero = "0";
+non_zero = "1".."9";
+digit = zero | non_zero;
+number = {digit};
+
+(* operators *)
+plus = "+";
+minus = "-";
+times = "*";
+power = "^";
+divide = "/";
+unary_op = plus | minus;
+binary_op = unary_op | times | power | divide;
+op = unary_op | binary_op;
+
+(* expressions *)
+term_op = plus | minus;
+term = number, [term_op, number];
+
+expression_op = times | divide;
+expression = term, [expression_op, term];
