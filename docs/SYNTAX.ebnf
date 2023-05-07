@@ -1,5 +1,5 @@
 (* program *)
-program = line_comment | expression;
+program = {line_comment | (expression, ';')};
 
 (* comments *)
 line_comment = "#", ? any character ?, "\n";

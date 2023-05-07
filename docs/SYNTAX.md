@@ -1,15 +1,14 @@
 # Language Syntax
 
-The language is currently only capable of recognizing individual tokens, it doesn't actually recognize semantics errors.
-(see the [full language syntax](SYNTAX.ebnf))
+see the [full language syntax](SYNTAX.ebnf)
 
 ## Integers
 
-64 bit positive base 10 number literals
+64 bit unsigned base 10 number literals
 
 ## Comments
 
-Line comment ignore everything until the end of the line: `#...`
+Line comment ignores everything until the end of the line: `#...`
 
 ## Operators
 
@@ -23,5 +22,3 @@ Line comment ignore everything until the end of the line: `#...`
     1. multiplication as a binary operator
 - divide `/`:
     1. division as a binary operator
-- power `^`:
-    1. exponentiation as a binary operator

@@ -1,4 +1,5 @@
 // TODO improve displaying of structures
+// TODO try to unify the errors reporting and struct handling
 use std::{io::{BufReader, BufRead, ErrorKind}, fs::File, env, process::ExitCode, fmt::Display, iter::Peekable};
 
 
@@ -18,7 +19,7 @@ impl Display for LiteralKind {
 
 #[derive( Debug, PartialEq )]
 enum TokenKind {
-    Unexpected{ token_text: String, err_msg: &'static str, help_msg: &'static str },
+    Unexpected{ text: String, err_msg: &'static str, help_msg: &'static str },
 
     // OpenRoundBracket,
     // CloseRoundBracket,
@@ -47,13 +48,17 @@ enum TokenKind {
     // Pow,
     // Equals,
     // Colon,
-    // SemiColon,
+    SemiColon,
+
+    // Special
+    // Newline,
+    EOF,
 }
 
 impl Display for TokenKind {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         match self {
-            Self::Unexpected{ token_text, err_msg: _, help_msg: _ } => write!( f, "{}", token_text ),
+            Self::Unexpected { text, err_msg: _, help_msg: _ } => write!( f, "{}", text ),
             // Self::OpenRoundBracket => write!( f, "(" ),
             // Self::CloseRoundBracket => write!( f, ")" ),
             Self::Literal( literal ) => write!( f, "{}", literal ),
@@ -62,6 +67,8 @@ impl Display for TokenKind {
             Self::Minus => write!( f, "-" ),
             Self::Times => write!( f, "*" ),
             Self::Divide => write!( f, "/" ),
+            Self::SemiColon => write!( f, ";" ),
+            /* Self::Newline | */ Self::EOF => write!( f, "" ),
             // Self::Pow => write!( f, "^" ),
             // Self::Equals => write!( f, "=" ),
         }
@@ -72,10 +79,10 @@ impl Display for TokenKind {
 #[derive( Debug )]
 struct Token {
     col: usize,
+    len: usize,
     kind: TokenKind,
 }
 
-// TODO try lines generic over the tokens, to accomodate for parser statements
 #[derive( Debug )]
 struct Line {
     number: usize,
@@ -84,7 +91,7 @@ struct Line {
 
 impl Display for Line {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        if self.tokens.len() == 0 {
+        if self.tokens.is_empty() {
             write!( f, "" )?;
             return Ok( () );
         }
@@ -94,8 +101,11 @@ impl Display for Line {
 
         let mut tokens = self.tokens.iter().peekable();
         while let Some( token ) = tokens.next() {
-            let spaces = if let Some( next_token ) = tokens.peek() {
-                ((*next_token).col - token.col) - token.kind.to_string().len()
+            let spaces = if let TokenKind::Comment( _ ) = token.kind {
+                0
+            }
+            else if let Some( &next_token ) = tokens.peek() {
+                next_token.col - (token.col + token.len)
             }
             else {
                 0
@@ -108,172 +118,190 @@ impl Display for Line {
     }
 }
 
+
 #[derive( Debug )]
 struct Lexer {
     file_path: String,
     lines: Vec<Line>,
 }
 
-// TODO implement iterator for lexer
 impl Lexer {
     // TODO make the input character stream generic
     fn parse( file_path: String, source_file: File ) -> Result<Self, Self> {
         let mut found_errors = false;
         let mut errors: Vec<Line> = Vec::new();
         let mut lines: Vec<Line> = Vec::new();
+        let mut number: usize = 1;
 
+        let mut src_lines = BufReader::new( source_file );
+        let mut src_line = String::new();
         let mut token_text = String::new();
-        let mut row: usize = 0;
-        for src_line in BufReader::new( source_file ).lines() {
-            if let Ok( current_line ) = src_line {
-                let mut line_contains_errors = false;
-                let mut col: usize = 1;
-                row += 1;
-
-                let mut line = Line{ number: row, tokens: Vec::new() };
-                let mut src = current_line.chars().peekable();
-                while let Some( ch ) = src.next() {
-                    let token: Token = match ch {
-                        // ignore whitespace
-                        c if c.is_ascii_whitespace() => {
-                            col += 1;
-                            continue;
-                        },
-                        // '(' => Token{ kind: TokenKind::OpenRoundBracket, col },
-                        // ')' => Token{ kind: TokenKind::CloseRoundBracket, col },
-                        // '[' => Token{ kind: TokenKind::OpenSquareBracket, col },
-                        // ']' => Token{ kind: TokenKind::CloseSquareBracket, col },
-                        // '{' => Token{ kind: TokenKind::OpenCurlyBracket, col },
-                        // '}' => Token{ kind: TokenKind::CloseCurlyBracket, col },
-                        '+' => Token{ kind: TokenKind::Plus, col },
-                        '-' => Token{ kind: TokenKind::Minus, col },
-                        '*' => Token{ kind: TokenKind::Times, col },
-                        '/' => Token{ kind: TokenKind::Divide, col },
-                        // '^' => Token{ kind: TokenKind::Pow, col },
-                        // '=' => Token{ kind: TokenKind::Equals, col },
-                        // ':' => Token{ kind: TokenKind::Colon, col },
-                        // ';' => Token{ kind: TokenKind::SemiColon, col },
-                        '#' => {
-                            token_text.clear();
-                            token_text.push( ch );
-
-                            // consume the rest of the tokens in the current line
-                            while let Some( next ) = src.next() {
-                                token_text.push( next );
-                            }
-
-                            let token = Token{ kind: TokenKind::Comment( token_text.clone() ), col };
-                            col += token_text.len() - 1;
-                            token
-                        },
-                        '0'..='9' => { // TODO handle negative numbers
-                            token_text.clear();
-                            token_text.push( ch );
-
-                            let mut is_digit = true;
-                            while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
-                                if !next.is_ascii_digit() {
-                                    is_digit = false;
-                                }
-
-                                token_text.push( next );
-                            }
-
-                            let kind = if is_digit {
-                                match token_text.parse() {
-                                    Ok( number ) => TokenKind::Literal( LiteralKind::U64{ base: 10, value: number } ),
-                                    Err( _ ) => TokenKind::Unexpected{
-                                        token_text: token_text.clone(),
-                                        err_msg: "expected number literal",
-                                        help_msg: "overflows a 64 bit unsigned number [0, 18446744073709551615]"
-                                    },
-                                }
-                            }
-                            else {
-                                TokenKind::Unexpected{
-                                    token_text: token_text.clone(),
-                                    err_msg: "unexpected token",
-                                    help_msg: "not a number literal"
-                                }
-                            };
-
-                            let token = Token{ kind, col };
-                            col += token_text.len() - 1;
-                            token
-                        },
-                        'a'..='z' | 'A'..='Z' | '_' => {
-                            token_text.clear();
-                            token_text.push( ch );
-
-                            while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
-                                token_text.push( next );
-                            }
-
-                            let kind = match token_text.as_str() {
-                                // "entry" => TokenKind::Entry,
-                                // "fn" => TokenKind::Fn,
-                                // "const" => TokenKind::Const,
-                                // "let" => TokenKind::Let,
-                                // "var" => TokenKind::Var,
-                                // "return" => TokenKind::Return,
-                                // _ => TokenKind::Identifier( current_token_text.clone() )
-                                _ => TokenKind::Unexpected{
-                                    token_text: token_text.clone(),
-                                    err_msg: "unexpected token",
-                                    help_msg: "here"
-                                },
-                            };
-
-                            let token = Token{ kind, col };
-                            col += token_text.len() - 1;
-                            token
-                        },
-                        _ => {
-                            token_text.clear();
-                            token_text.push( ch );
-
-                            while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
-                                token_text.push( next );
-                            }
-
-                            let kind = TokenKind::Unexpected{
-                                token_text: token_text.clone(),
-                                err_msg: "unexpected token",
-                                help_msg: "here"
-                            };
-
-                            let token = Token{ kind, col };
-                            col += token_text.len() - 1;
-                            token
-                        },
-                    };
-
-                    if let TokenKind::Unexpected{ token_text: _, err_msg: _, help_msg: _ } = token.kind {
-                        line_contains_errors = true;
-                    }
-
-                    line.tokens.push( token );
-                    col += 1;
-                }
-
-                // skip empty lines
-                if line.tokens.len() > 0 {
-                    if line_contains_errors {
-                        found_errors = true;
-                        errors.push( line );
-                    }
-                    else {
-                        lines.push( line );
-                    }
-                }
+        while let Ok( chars_read ) = src_lines.read_line( &mut src_line ) {
+            // reached EOF on an empty line
+            if chars_read == 0 {
+                lines.push( Line { number, tokens: vec![Token { col: 1, len: 1, kind: TokenKind::EOF }] } );
+                break;
             }
+
+            let mut line_contains_errors = false;
+            let mut line = Line { number, tokens: Vec::new() };
+            let mut col = 1;
+
+            let mut src = src_line.chars().peekable();
+            while let Some( ch ) = src.next() {
+                let token: Token = match ch {
+                    // '\n' => Token { col, len: 1, kind: TokenKind::Newline },
+                    // ignore whitespace
+                    c if c.is_ascii_whitespace() => {
+                        col += 1;
+                        continue;
+                    },
+                    // '(' => Token { kind: TokenKind::OpenRoundBracket, col },
+                    // ')' => Token { kind: TokenKind::CloseRoundBracket, col },
+                    // '[' => Token { kind: TokenKind::OpenSquareBracket, col },
+                    // ']' => Token { kind: TokenKind::CloseSquareBracket, col },
+                    // '{' => Token { kind: TokenKind::OpenCurlyBracket, col },
+                    // '}' => Token { kind: TokenKind::CloseCurlyBracket, col },
+                    '+' => Token { col, len: 1, kind: TokenKind::Plus },
+                    '-' => Token { col, len: 1, kind: TokenKind::Minus },
+                    '*' => Token { col, len: 1, kind: TokenKind::Times },
+                    '/' => Token { col, len: 1, kind: TokenKind::Divide },
+                    // '^' => Token { kind: TokenKind::Pow, col },
+                    // '=' => Token { kind: TokenKind::Equals, col },
+                    // ':' => Token { kind: TokenKind::Colon, col },
+                    ';' => Token { col, len: 1, kind: TokenKind::SemiColon },
+                    '#' => {
+                        token_text.clear();
+                        token_text.push( ch );
+                        
+                        // consume the rest of the tokens in the current line
+                        while let Some( next ) = src.next_if( |c| !matches!( c, '\r' | '\n' ) ) {
+                            token_text.push( next );
+                        }
+
+                        let len = token_text.len();
+                        let token = Token { col, len, kind: TokenKind::Comment( token_text.clone() ) };
+                        col += len - 1;
+                        token
+                    },
+                    '0'..='9' => { // TODO handle negative numbers
+                        token_text.clear();
+                        token_text.push( ch );
+
+                        let mut is_digit = true;
+                        while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
+                            if !next.is_ascii_digit() {
+                                is_digit = false;
+                            }
+
+                            token_text.push( next );
+                        }
+
+                        let kind = if is_digit {
+                            match token_text.parse() {
+                                Ok( value ) => TokenKind::Literal( LiteralKind::U64{ base: 10, value } ),
+                                Err( _ ) => TokenKind::Unexpected {
+                                    text: token_text.clone(),
+                                    err_msg: "expected number literal",
+                                    help_msg: "overflows a 64 bit unsigned integer [0, 18446744073709551615]"
+                                },
+                            }
+                        }
+                        else {
+                            TokenKind::Unexpected{
+                                text: token_text.clone(),
+                                err_msg: "expected number literal",
+                                help_msg: "not a number literal"
+                            }
+                        };
+
+                        let len = token_text.len();
+                        let token = Token { col, len, kind };
+                        col += len - 1;
+                        token
+                    },
+                    // 'a'..='z' | 'A'..='Z' | '_' => {
+                    //     token_text.clear();
+                    //     token_text.push( ch );
+
+                    //     while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
+                    //         token_text.push( next );
+                    //     }
+
+                    //     let kind = match token_text.as_str() {
+                    //         // "entry" => TokenKind::Entry,
+                    //         // "fn" => TokenKind::Fn,
+                    //         // "const" => TokenKind::Const,
+                    //         // "let" => TokenKind::Let,
+                    //         // "var" => TokenKind::Var,
+                    //         // "return" => TokenKind::Return,
+                    //         // _ => TokenKind::Identifier( current_token_text.clone() )
+                    //         _ => TokenKind::Unexpected {
+                    //             token_text: token_text.clone(),
+                    //             err_msg: "unexpected token",
+                    //             help_msg: "here"
+                    //         },
+                    //     };
+
+                    //     let token = Token { kind, col };
+                    //     col += token_text.len() - 1;
+                    //     token
+                    // },
+                    _ => {
+                        token_text.clear();
+                        token_text.push( ch );
+
+                        while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
+                            token_text.push( next );
+                        }
+
+                        let kind = TokenKind::Unexpected {
+                            text: token_text.clone(),
+                            err_msg: "unexpected token",
+                            help_msg: "here"
+                        };
+
+                        let len = token_text.len();
+                        let token = Token { col, len, kind };
+                        col += len - 1;
+                        token
+                    },
+                };
+
+                if let TokenKind::Unexpected { text: _, err_msg: _, help_msg: _ } = token.kind {
+                    line_contains_errors = true;
+                }
+
+                line.tokens.push( token );
+                col += 1;
+            }
+
+            let file_ended_at_line_end = !src_line.ends_with( "\n" );
+            if file_ended_at_line_end {
+                line.tokens.push( Token { col, len: 1, kind: TokenKind::EOF } );
+            }
+
+            if line_contains_errors {
+                found_errors = true;
+                errors.push( line );
+            }
+            else {
+                lines.push( line );
+            }
+
+            if file_ended_at_line_end {
+                break;
+            }
+
+            src_line.clear();
+            number += 1;
         }
 
-        return if found_errors {
-            Err( Self{ file_path, lines: errors } )
+        if found_errors {
+            return Err( Self { file_path, lines: errors } );
         }
         else {
-            Ok( Self{ file_path, lines } )
+            return Ok( Self { file_path, lines } );
         }
     }
 }
@@ -282,12 +310,13 @@ impl Display for Lexer {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         for line in &self.lines {
             let line_text = format!( "{}", line );
+
             for token in &line.tokens {
-                if let TokenKind::Unexpected{ token_text, err_msg, help_msg } = &token.kind {
+                if let TokenKind::Unexpected { text: _, err_msg, help_msg } = &token.kind {
                     let gutter_padding_amount = line.number.ilog10() as usize + 1;
                     let gutter_padding = " ".repeat( gutter_padding_amount );
                     let pointers_padding = " ".repeat( token.col - 1 );
-                    let pointers = "^".repeat( token_text.len() );
+                    let pointers = "^".repeat( token.len );
                     let bar = "\x1b[94m|\x1b[0m";
 
                     let error_visualization = &format!(
@@ -313,6 +342,47 @@ impl Display for Lexer {
     }
 }
 
+impl<'lexer> IntoIterator for &'lexer Lexer {
+    type Item = (usize, &'lexer Token);
+    type IntoIter = LexerTokenIter<'lexer>;
+
+
+    fn into_iter( self ) -> Self::IntoIter {
+        return LexerTokenIter{ lexer: self, line: 0, token: 0 };
+    }
+}
+
+#[derive( Debug )]
+struct LexerTokenIter<'lexer> {
+    lexer: &'lexer Lexer,
+    line: usize,
+    token: usize,
+}
+
+impl<'lexer> Iterator for LexerTokenIter<'lexer> {
+    type Item = (usize, &'lexer Token);
+
+    fn next( &mut self ) -> Option<Self::Item> {
+        if self.line < self.lexer.lines.len() {
+            let tokens = &self.lexer.lines[ self.line ].tokens;
+            if self.token < tokens.len() {
+                let token = &tokens[ self.token ];
+                self.token += 1;
+                return Some( (self.line, token) );
+            }
+            else {
+                self.line += 1;
+                self.token = 0;
+
+                return self.next();
+            }
+        }
+        else {
+            return None;
+        }
+    }
+}
+
 
 // #[derive( Debug )]
 // enum UnaryOpKind {
@@ -344,6 +414,7 @@ impl Display for Lexer {
 //         }
 //     }
 // }
+
 
 #[derive( Debug )]
 enum BinaryOpKind {
@@ -351,7 +422,7 @@ enum BinaryOpKind {
     Minus,
     Times,
     Divide,
-    Pow,
+    // Pow,
 }
 
 impl Display for BinaryOpKind {
@@ -361,10 +432,11 @@ impl Display for BinaryOpKind {
             Self::Minus => write!( f, "-" ),
             Self::Times => write!( f, "*" ),
             Self::Divide => write!( f, "/" ),
-            Self::Pow => write!( f, "^" ),
+            // Self::Pow => write!( f, "^" ),
         }
     }
 }
+
 
 // #[derive( Debug )]
 // enum OpKind {
@@ -396,7 +468,7 @@ impl<'program> Display for Node<'program> {
         match self {
             Self::Literal( literal ) => write!( f, "{}", literal ),
             Self::BinaryOp{ lhs, op, rhs } => match op {
-                BinaryOpKind::Divide | BinaryOpKind::Times | BinaryOpKind::Pow => write!( f, "({} {} {})", lhs, op, rhs ),
+                BinaryOpKind::Divide | BinaryOpKind::Times/*  | BinaryOpKind::Pow */ => write!( f, "({} {} {})", lhs, op, rhs ),
                 _ => write!( f, "{} {} {}", lhs, op, rhs ),
             },
             _ => write!( f, "{:?}", self ),
@@ -404,12 +476,12 @@ impl<'program> Display for Node<'program> {
     }
 }
 
+
 #[derive( Debug )]
 struct Statement<'program> {
     line: &'program Line,
     node: Node<'program>,
 }
-
 
 #[derive( Debug )]
 struct Parser<'program> {
@@ -422,213 +494,171 @@ impl<'program> Parser<'program> {
         let mut found_errors = false;
         let mut errors: Vec<Statement> = Vec::new();
         let mut statements: Vec<Statement> = Vec::new();
+        let mut tokens = lexer.into_iter().peekable();
 
-        for line in &lexer.lines {
-            let mut tokens = line.tokens.iter().peekable();
+        // TODO fix errors occurring while parsing expressions that span multiple lines
+        while let Some( (line, token) ) = tokens.peek() {
+            let line = &lexer.lines[ *line ];
+            let node = match &token.kind {
+                TokenKind::Comment( _ ) | TokenKind::EOF /* | TokenKind::Newline */ => {
+                    tokens.next();
+                    continue;
+                },
+                TokenKind::Literal( _ ) => Parser::term( &mut tokens ),
+                _ => {
+                    let node = Node::Unexpected {
+                        token,
+                        err_msg: "unexpected token",
+                        help_msg: "here"
+                    };
+                    tokens.next();
+                    node
+                },
+            };
 
-            while let Some( token ) = tokens.peek() {
-                let next_node = match &token.kind {
-                    TokenKind::Comment( _ ) => {
-                        tokens.next();
-                        continue;
-                    },
-                    _ => Parser::factor( &mut tokens ),
-                };
-
-                if let Some( node ) = next_node {
-                    match node {
-                        Ok( node_ok ) => statements.push( Statement { line, node: node_ok } ),
-                        Err( node_err ) => {
-                            found_errors = true;
-                            errors.push( Statement { line, node: node_err } )
-                        },
-                    }
-                }
-            //     let mut node = match &token.kind {
-            //         TokenKind::Comment( _ ) => continue,
-            //         TokenKind::Literal( literal ) =>  match literal {
-            //             LiteralKind::U64{ base: _, value: _ } => {
-            //                 let lhs = literal.clone();
-
-            //                 let op_token = tokens.next();
-            //                 let op_node = match op_token {
-            //                     Some( next ) => match next.kind {
-            //                         TokenKind::Plus => Some( Ok( BinaryOp::Plus ) ),
-            //                         TokenKind::Minus => Some( Ok( BinaryOp::Minus ) ),
-            //                         TokenKind::Times => Some( Ok( BinaryOp::Times ) ),
-            //                         TokenKind::Divide => Some( Ok( BinaryOp::Divide ) ),
-            //                         TokenKind::Pow => Some( Ok( BinaryOp::Pow ) ),
-            //                         _ => Some( Err( Node::Unexpected{
-            //                             token: next,
-            //                             err_msg: "expected binary operator",
-            //                             help_msg: "needs to be either one of '+', '-', '*', '/' or '^'"
-            //                         } ) ),
-            //                     },
-            //                     None => None,
-            //                 };
-
-            //                 let rhs_token = tokens.next();
-            //                 let rhs_node = match rhs_token {
-            //                     Some( next ) => match &next.kind {
-            //                         TokenKind::Literal( literal ) => match literal {
-            //                             LiteralKind::U64{ base: _, value: _ } => Some( Ok( literal.clone() ) ),
-            //                         },
-            //                         _ => Some( Err( Node::Unexpected{
-            //                             token: next,
-            //                             err_msg: "expected number literal",
-            //                             help_msg: "not a number literal"
-            //                         } ) ),
-            //                     },
-            //                     None => None,
-            //                 };
-
-            //                 match op_node {
-            //                     Some( op_result ) => match op_result {
-            //                         Ok( op ) => match rhs_node {
-            //                             Some( rhs_result ) => match rhs_result {
-            //                                 Ok( rhs ) => Node::BinaryOp{ lhs: Box::new( Node::Literal( lhs ) ), op, rhs: Box::new( Node::Literal( rhs ) ) },
-            //                                 Err( rhs_err ) => rhs_err,
-            //                             },
-            //                             None => Node::Unexpected{
-            //                                 token: op_token.unwrap(),
-            //                                 err_msg: "unexpected line end",
-            //                                 help_msg: "expected number literal after operator"
-            //                             },
-            //                         },
-            //                         Err( op_err ) => op_err,
-            //                     },
-            //                     None => Node::Literal( lhs ),
-            //                 }
-            //             }
-            //         },
-            //         TokenKind::Unexpected{ token_text: _, err_msg: _, help_msg: _ } => Node::Unexpected{
-            //             token,
-            //             err_msg: "unexpected token",
-            //             help_msg: "this may be a bug in the compiler"
-            //         },
-            //         _ => Node::Unexpected{
-            //             token,
-            //             err_msg: "unexpected token",
-            //             help_msg: "only single binary operations supported for now"
-            //         },
-            //     };
-
-            //     if let Node::Unexpected{ token: _, err_msg: _, help_msg: _ } = node {
-            //         found_errors = true;
-            //         errors.push( Statement{ line: &line, node } );
-            //     }
-            //     else {
-            //         statements.push( Statement{ line: &line, node } );
-            //     }
-
-            //     // consume until the end of the line, we only allow a single expression per line for now
-            //     // TODO group every trailing token in one
-            //     while let Some( token ) = tokens.next() {
-            //         node = match &token.kind {
-            //             TokenKind::Comment( _ ) => continue,
-            //             _ => {
-            //                 // let mut token_text = token.kind.to_string();
-
-            //                 // while let Some( next_token ) = tokens.next() {
-            //                 //     token_text.push_str( &next_token.kind.to_string() );
-            //                 // }
-
-            //                 // token.kind = TokenKind::Unexpected{ token_text, err_msg: "", help_msg: "" };
-
-            //                 Node::Unexpected{
-            //                     token,
-            //                     err_msg: "unexpected token",
-            //                     help_msg: "only single expression per line supported for now"
-            //                 }
-            //             },
-            //         };
-
-            //         if let Node::Unexpected{ token: _, err_msg: _, help_msg: _ } = node {
-            //             found_errors = true;
-            //             errors.push( Statement{ line: &line, node } );
-            //         }
-            //         else {
-            //             statements.push( Statement{ line: &line, node } );
-            //         }
-            //     }
+            match node {
+                Node::Unexpected { token: _, err_msg: _, help_msg: _ } => {
+                    found_errors = true;
+                    errors.push( Statement { line, node } )
+                },
+                _ => statements.push( Statement { line, node } ),
             }
         }
 
-        return if found_errors {
-            Err( Self{ lexer, statements: errors } )
+        if found_errors {
+            return Err( Self { lexer, statements: errors } );
         }
         else {
-            Ok( Self{ lexer, statements } )
+            return Ok( Self { lexer, statements } );
         }
     }
 
-    fn number<I: Iterator<Item = &'program Token>>( tokens: &mut Peekable<I> ) -> Option<Result<Node<'program>, Node<'program>>> {
-        let token = tokens.peek()?;
-        let number = match token.kind {
-            TokenKind::Literal( literal ) => match literal {
-                LiteralKind::U64{ base: _, value: _ } => Some( Ok( Node::Literal( literal.clone() ))),
+
+    fn skip_comments_and_newlines( tokens: &mut Peekable<LexerTokenIter<'program>>, err_msg: &'static str ) -> Result<&'program Token, Node<'program>> {
+        match tokens.peek() {
+            Some( (_, token) ) => match token.kind {
+                TokenKind::EOF => Err( Node::Unexpected {
+                    token,
+                    err_msg,
+                    help_msg: "file ended here instead"
+                } ),
+                /* TokenKind::Newline | */ TokenKind::Comment( _ ) => {
+                    tokens.next();
+                    return Self::skip_comments_and_newlines( tokens, err_msg );
+                },
+                _ => return Ok( token ),
             },
-            _ => Some( Err( Node::Unexpected { token, err_msg: "unexpected token", help_msg: "expected number literal" })),
+            None => unreachable!(),
+        }
+    }
+
+    fn number( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Node<'program> {
+        let token = match Self::skip_comments_and_newlines( tokens, "expected number literal" ) {
+            Ok( t ) => t,
+            Err( err ) => return err,
         };
 
-        if let Some( Ok( _ )) = number {
-            tokens.next();
-        }
-        
+        tokens.next();
+        let number = match token.kind {
+            TokenKind::Literal( literal ) => match literal {
+                LiteralKind::U64 { base: _, value: _ } => Node::Literal( literal ),
+            },
+            _ => Node::Unexpected {
+                token,
+                err_msg: "unexpected token",
+                help_msg: "expected number literal" }
+            ,
+        };
+
         number
     }
 
-    fn term_op<I: Iterator<Item = &'program Token>>( tokens: &mut Peekable<I> ) -> Option<Result<BinaryOpKind, Node<'program>>> {
-        let token = tokens.peek()?;
+    fn term_op( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Option<Result<BinaryOpKind, Node<'program>>> {
+        let token = match Self::skip_comments_and_newlines( tokens, "expected binary operator" ) {
+            Ok( t ) => t,
+            Err( _ ) => return None,
+        };
+        
+        tokens.next();
         let op = match token.kind {
-            TokenKind::Times => Some( Ok( BinaryOpKind::Times )),
-            TokenKind::Divide => Some( Ok( BinaryOpKind::Divide )),
-            _ => Some( Err( Node::Unexpected { token, err_msg: "unexpected token", help_msg: "expected '*' or '/' operator" })),
+            TokenKind::SemiColon => return None,
+            TokenKind::Times => Some( Ok( BinaryOpKind::Times ) ),
+            TokenKind::Divide => Some( Ok( BinaryOpKind::Divide ) ),
+            _ => Some( Err( Node::Unexpected {
+                token,
+                err_msg: "expected binary operator",
+                help_msg: "expected '*' or '/' operator" }
+            ) ),
         };
 
-        if let Some( Ok( _ )) = op {
-            tokens.next();
-        }
-        
         op
     }
 
-    fn term<I: Iterator<Item = &'program Token>>( tokens: &mut Peekable<I> ) -> Option<Result<Node<'program>, Node<'program>>> {
-        let mut lhs = Self::number( tokens )?;
-
-        while let Some( Ok( op ) ) = Self::term_op( tokens ) {
-            let rhs = Self::number( tokens )?;
-            lhs = Ok( Node::BinaryOp { lhs: Box::new( lhs.unwrap() ), op, rhs: Box::new( rhs.unwrap() ) } );
+    fn term( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Node<'program> {
+        let mut lhs = Self::number( tokens );
+        if let Node::Unexpected { token: _, err_msg: _, help_msg: _ } = lhs {
+            return lhs;
         }
 
-        return Some( lhs );
-    }
+        while let Some( op_result ) = Self::term_op( tokens ) {
+            let op = match op_result {
+                Ok( o ) => o,
+                Err( err ) => return err,
+            };
 
-    fn factor_op<I: Iterator<Item = &'program Token>>( tokens: &mut Peekable<I> ) -> Option<Result<BinaryOpKind, Node<'program>>> {
-        let token = tokens.peek()?;
-        let factor = match token.kind {
-            TokenKind::Plus => Some( Ok( BinaryOpKind::Plus )),
-            TokenKind::Minus => Some( Ok( BinaryOpKind::Minus )),
-            _ => Some( Err( Node::Unexpected { token, err_msg: "unexpected token", help_msg: "expected '+' or '-' operator" })),
-        };
+            let rhs = Self::number( tokens );
+            if let Node::Unexpected { token: _, err_msg: _, help_msg: _ } = rhs {
+                return rhs;
+            }
 
-        if let Some( Ok( _ )) = factor {
-            tokens.next();
+            lhs = Node::BinaryOp { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
 
-        factor
+        return lhs;
     }
 
-    fn factor<I: Iterator<Item = &'program Token>>( tokens: &mut Peekable<I> ) -> Option<Result<Node<'program>, Node<'program>>> {
-        let mut lhs = Self::term( tokens )?;
+    // fn factor_op( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Option<Result<BinaryOpKind, Node<'program>>> {
+    //     let token = match Self::skip_comments_and_newlines( tokens, "expected binary operator" ) {
+    //         Ok( t ) => t,
+    //         Err( _ ) => return None,
+    //     };
 
-        while let Some( Ok( op ) ) = Self::factor_op( tokens ) {
-            let rhs = Self::term( tokens )?;
-            lhs = Ok( Node::BinaryOp { lhs: Box::new( lhs.unwrap() ), op, rhs: Box::new( rhs.unwrap() ) } );
-        }
+    //     let factor = match token.kind {
+    //         TokenKind::Plus => Some( Ok( BinaryOpKind::Plus ) ),
+    //         TokenKind::Minus => Some( Ok( BinaryOpKind::Minus ) ),
+    //         _ => Some( Err( Node::Unexpected {
+    //             token,
+    //             err_msg: "expected binary operator",
+    //             help_msg: "expected '+' or '-' operator" }
+    //         ) ),
+    //     };
 
-        return Some( lhs );
-    }
+    //     tokens.next();
+    //     factor
+    // }
+
+    // fn factor( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Node<'program> {
+    //     let mut lhs = Self::term( tokens );
+    //     if let Node::Unexpected { token: _, err_msg: _, help_msg: _ } = lhs {
+    //         return lhs;
+    //     }
+
+    //     while let Some( op_result ) = Self::factor_op( tokens ) {
+    //         let op = match op_result {
+    //             Ok( o ) => o,
+    //             Err( err ) => return err,
+    //         };
+
+    //         let rhs = Self::term( tokens );
+    //         if let Node::Unexpected { token: _, err_msg: _, help_msg: _ } = rhs {
+    //             return rhs;
+    //         }
+
+    //         lhs = Node::BinaryOp { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+    //     }
+
+    //     return lhs;
+    // }
 }
 
 impl<'program> Display for Parser<'program> {
@@ -637,11 +667,11 @@ impl<'program> Display for Parser<'program> {
             let line_text = format!( "{}", statement.line );
 
             match &statement.node {
-                Node::Unexpected{ token, err_msg, help_msg } => {
+                Node::Unexpected { token, err_msg, help_msg } => {
                     let gutter_padding_amount = statement.line.number.ilog10() as usize + 1;
                     let gutter_padding = " ".repeat( gutter_padding_amount );
                     let pointers_padding = " ".repeat( token.col - 1 );
-                    let pointers = "^".repeat( token.kind.to_string().len() );
+                    let pointers = "^".repeat( token.len );
                     let bar = "\x1b[94m|\x1b[0m";
 
                     let error_visualization = &format!(
@@ -671,7 +701,7 @@ impl<'program> Display for Parser<'program> {
 
 // IDEA add man page
 fn print_usage() {
-    let usage = format!( r"
+    println!( r"
 Blitzlang compiler, version {}
 
 Usage: blitz [Options] file.blz
@@ -680,9 +710,7 @@ Options:
     -h, --help Display this message
 ",
         env!( "CARGO_PKG_VERSION" )
-);
-
-    println!( "{}", usage );
+    );
 }
 
 fn main() -> ExitCode {
@@ -716,15 +744,13 @@ fn main() -> ExitCode {
         }
         else {
             match arg.as_str() {
-                _ => {
-                    if let None = source_file_path {
+                _ => if source_file_path.is_none() {
                         source_file_path = Some( arg );
                     }
                     else {
                         eprintln!( "Error: too many source file paths provided!" );
                         return ExitCode::FAILURE;
                     }
-                }
             }
         }
     }
@@ -752,7 +778,7 @@ fn main() -> ExitCode {
 
     let lexer = match Lexer::parse( source_file_path, source_file ) {
         Ok( lexer ) => {
-            // println!( "{:?}\n", lexer );
+            println!( "{:?}\n", lexer );
             lexer
         },
         Err( errors ) => {
@@ -761,9 +787,9 @@ fn main() -> ExitCode {
         },
     };
 
-    let parser = match Parser::parse( &lexer ) {
+    let _parser = match Parser::parse( &lexer ) {
         Ok( parser ) => {
-            eprint!( "{}", parser );
+            println!( "{}", parser );
             parser
         },
         Err( parser ) => {
