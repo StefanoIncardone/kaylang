@@ -1,5 +1,7 @@
 print 6 ^ 2 + 11 * 3;
 print_char 10;
+print_char 8 + 48;
+print_char 10;
 print 1000 / 5 * 2 + 20;
 print_char 10;
 print_char 10;

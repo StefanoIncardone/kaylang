@@ -1,5 +1,5 @@
 (* program *)
-program = {line_comment | ([print_char], number) | ([print], factor, ';')};
+program = {line_comment | ([print | print_char], factor, ';')};
 
 (* keywords *)
 print = "print";

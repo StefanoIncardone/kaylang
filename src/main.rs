@@ -474,7 +474,7 @@ enum Node<'program> {
     // UnaryOp{ op: UnaryOpKind, rhs: LiteralKind },
     Expression{ lhs: Box<Node<'program>>, op: BinaryOpKind, rhs: Box<Node<'program>> },
     Print( Box<Node<'program>> ),
-    PrintChar( LiteralKind ),
+    PrintChar( Box<Node<'program>> ),
 }
 
 impl<'program> Display for Node<'program> {
@@ -487,9 +487,7 @@ impl<'program> Display for Node<'program> {
                 _ => write!( f, "{} {} {}", lhs, op, rhs ),
             },
             Self::Print( node ) => write!( f, "print {}", node ),
-            Self::PrintChar( ascii ) => match ascii {
-                LiteralKind::U64 { base: _, value } => write!( f, "print_char {}", *value as u8 as char ),
-            },
+            Self::PrintChar( ascii ) => write!( f, "print {}", ascii ),
         }
     }
 }
@@ -533,11 +531,11 @@ impl<'program> Parser<'program> {
                 },
                 TokenKind::PrintChar => {
                     tokens.next();
-                    let factor = Parser::number( &mut tokens );
+                    let factor = Parser::factor( &mut tokens );
                     match factor {
                         Node::Unexpected { token: _, err_msg: _, help_msg: _ } => factor,
-                        Node::Print( _ ) | Node::PrintChar( _ ) | Node::Expression { lhs: _, op: _, rhs: _ } => unreachable!(),
-                        Node::Literal( ascii ) => Node::PrintChar( ascii )
+                        Node::Print( _ ) | Node::PrintChar( _ ) => unreachable!(),
+                        Node::Expression { lhs: _, op: _, rhs: _ } | Node::Literal( _ ) => Node::PrintChar( Box::new( factor ) )
                     }
                 }
                 TokenKind::Plus | TokenKind::Minus | TokenKind::Times | TokenKind::Divide | TokenKind::Pow => {
@@ -780,15 +778,19 @@ impl<'program> Display for Parser<'program> {
 struct Program;
 
 impl Program {
-    fn execute( ast: &Parser ) {
+    fn interpret( ast: &Parser ) {
         for statement in &ast.statements {
             match &statement.node {
                 Node::Unexpected { token: _, err_msg: _, help_msg: _ } => unreachable!(), // should have been cought during parsing
-                Node::PrintChar( ascii ) => match ascii {
-                    LiteralKind::U64 { base: _, value } => print!( "{}", *value as u8 as char ),
+                Node::PrintChar( node ) => match &**node {
+                    Node::Literal( value ) => match *value {
+                        LiteralKind::U64 { base: _, value } => print!( "{}", value as u8 as char ),
+                    },
+                    Node::Expression { lhs: _, op: _, rhs: _ } => print!( "{}", Self::evaluate_expression( node ) as u8 as char ),
+                    _ => unreachable!(),
                 }
                 Node::Print( node ) => match &**node {
-                    Node::Literal( value ) => match value {
+                    Node::Literal( value ) => match *value {
                         LiteralKind::U64 { base: _, value } => print!( "{}", value ),
                     },
                     Node::Expression { lhs: _, op: _, rhs: _ } => print!( "{}", Self::evaluate_expression( node ) ),
@@ -808,8 +810,8 @@ impl Program {
                 BinaryOpKind::Divide => Self::evaluate_expression( lhs ) / Self::evaluate_expression( rhs ),
                 BinaryOpKind::Pow => Self::evaluate_expression( lhs ).pow( Self::evaluate_expression( rhs ) as u32 ),
             },
-            Node::Literal( value ) => match value {
-                LiteralKind::U64 { base: _, value } => *value,
+            Node::Literal( value ) => match *value {
+                LiteralKind::U64 { base: _, value } => value,
             },
             _ => unreachable!(),
         };
@@ -923,6 +925,6 @@ fn main() -> ExitCode {
         },
     };
 
-    Program::execute( &ast );
+    Program::interpret( &ast );
     return ExitCode::SUCCESS;
 }
