@@ -25,4 +25,5 @@ Line comment ignores everything until the end of the line: `#...`
 
 ## Printing to screen
 
-integer expressions can be printed using the `print` keyword
+- integer expressions can be printed using the `print` keyword
+- integer numbers can be printed as character using the `print_char` keyword

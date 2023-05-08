@@ -34,6 +34,7 @@ enum TokenKind {
 
     // Keywords
     Print, // temporary way of printing numbers
+    PrintChar, // temporary way of printing numbers interpreted as ascii characters
     // Entry,
     // Fn,
     // Let,
@@ -67,6 +68,7 @@ impl Display for TokenKind {
             Self::Comment( text ) => write!( f, "{}", text ),
             
             Self::Print => write!( f, "print" ),
+            Self::PrintChar => write!( f, "print_char" ),
             
             Self::Plus => write!( f, "+" ),
             Self::Minus => write!( f, "-" ),
@@ -236,6 +238,7 @@ impl Lexer {
 
                         let kind = match token_text.as_str() {
                             "print" => TokenKind::Print,
+                            "print_char" => TokenKind::PrintChar,
                             // "entry" => TokenKind::Entry,
                             // "fn" => TokenKind::Fn,
                             // "const" => TokenKind::Const,
@@ -471,6 +474,7 @@ enum Node<'program> {
     // UnaryOp{ op: UnaryOpKind, rhs: LiteralKind },
     Expression{ lhs: Box<Node<'program>>, op: BinaryOpKind, rhs: Box<Node<'program>> },
     Print( Box<Node<'program>> ),
+    PrintChar( LiteralKind ),
 }
 
 impl<'program> Display for Node<'program> {
@@ -482,7 +486,10 @@ impl<'program> Display for Node<'program> {
                 BinaryOpKind::Divide | BinaryOpKind::Times | BinaryOpKind::Pow => write!( f, "({} {} {})", lhs, op, rhs ),
                 _ => write!( f, "{} {} {}", lhs, op, rhs ),
             },
-            Self::Print( node ) => write!( f, "print {}", node )
+            Self::Print( node ) => write!( f, "print {}", node ),
+            Self::PrintChar( ascii ) => match ascii {
+                LiteralKind::U64 { base: _, value } => write!( f, "print_char {}", *value as u8 as char ),
+            },
         }
     }
 }
@@ -520,10 +527,19 @@ impl<'program> Parser<'program> {
                     let factor = Parser::factor( &mut tokens );
                     match factor {
                         Node::Unexpected { token: _, err_msg: _, help_msg: _ } => factor,
-                        Node::Print( _ ) => unreachable!(),
-                        _ => Node::Print( Box::new( factor ) )
+                        Node::Print( _ ) | Node::PrintChar( _ ) => unreachable!(),
+                        Node::Expression { lhs: _, op: _, rhs: _ } | Node::Literal( _ ) => Node::Print( Box::new( factor ) )
                     }
                 },
+                TokenKind::PrintChar => {
+                    tokens.next();
+                    let factor = Parser::number( &mut tokens );
+                    match factor {
+                        Node::Unexpected { token: _, err_msg: _, help_msg: _ } => factor,
+                        Node::Print( _ ) | Node::PrintChar( _ ) | Node::Expression { lhs: _, op: _, rhs: _ } => unreachable!(),
+                        Node::Literal( ascii ) => Node::PrintChar( ascii )
+                    }
+                }
                 TokenKind::Plus | TokenKind::Minus | TokenKind::Times | TokenKind::Divide | TokenKind::Pow => {
                     let node = Node::Unexpected {
                         token,
@@ -768,14 +784,17 @@ impl Program {
         for statement in &ast.statements {
             match &statement.node {
                 Node::Unexpected { token: _, err_msg: _, help_msg: _ } => unreachable!(), // should have been cought during parsing
+                Node::PrintChar( ascii ) => match ascii {
+                    LiteralKind::U64 { base: _, value } => print!( "{}", *value as u8 as char ),
+                }
                 Node::Print( node ) => match &**node {
                     Node::Literal( value ) => match value {
-                        LiteralKind::U64 { base: _, value } => println!( "{}\n", value ),
+                        LiteralKind::U64 { base: _, value } => print!( "{}", value ),
                     },
-                    Node::Expression { lhs: _, op: _, rhs: _ } => println!( "evaluating: {}\nresult: {}\n", node, Self::evaluate_expression( node ) ),
+                    Node::Expression { lhs: _, op: _, rhs: _ } => print!( "{}", Self::evaluate_expression( node ) ),
                     _ => unreachable!(),
                 }
-                _ => continue,
+                _ => (),
             }
         }
     }

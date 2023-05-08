@@ -1,8 +1,9 @@
 (* program *)
-program = {line_comment | ([print], factor, ';')};
+program = {line_comment | ([print_char], number) | ([print], factor, ';')};
 
 (* keywords *)
 print = "print";
+print_char = "print_char";
 
 (* comments *)
 line_comment = "#", ? any character ?, "\n";
