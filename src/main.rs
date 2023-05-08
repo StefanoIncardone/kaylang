@@ -329,7 +329,7 @@ impl Display for Lexer {
                     );
 
                     writeln!( f,
-                        "\x1b[91;1mError\x1b[0m: \x1b[1m{}\x1b[0m\n \
+                        "\x1b[91;1mError\x1b[0m [L]: \x1b[1m{}\x1b[0m\n \
                         {} \x1b[91min\x1b[0m: {}:{}:{}\n{}\n",
                         err_msg,
                         gutter_padding, self.file_path, line.number, token.col, error_visualization
@@ -684,7 +684,7 @@ impl<'program> Display for Parser<'program> {
                     );
 
                     writeln!( f,
-                        "\x1b[91;1mError\x1b[0m: \x1b[1m{}\x1b[0m\n \
+                        "\x1b[91;1mError\x1b[0m [P]: \x1b[1m{}\x1b[0m\n \
                         {} \x1b[91min\x1b[0m: {}:{}:{}\n{}\n",
                         err_msg,
                         gutter_padding, self.lexer.file_path, statement.line.number, token.col, error_visualization
