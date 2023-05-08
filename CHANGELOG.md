@@ -6,3 +6,4 @@
 - 64 bit unsigned base 10 number literals
 - basic math expression: `+`, `-`, `*`, `/`, `^`
 - each expression is separated by semicolons
+- printing of math expressions using the `print` keyword

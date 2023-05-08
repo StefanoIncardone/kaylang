@@ -19,6 +19,10 @@ Line comment ignores everything until the end of the line: `#...`
 - times `*`:
     1. multiplication as a binary operator
 - divide `/`:
-    1. division as a binary operator
+    1. floor division as a binary operator
 - power `^`:
     1. exponentiation as a binary operator
+
+## Printing to screen
+
+integer expressions can be printed using the `print` keyword
