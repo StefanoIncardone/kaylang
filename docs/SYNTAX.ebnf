@@ -1,5 +1,5 @@
 (* program *)
-program = {line_comment | (expression, ';')};
+program = {line_comment | (factor, ';')};
 
 (* comments *)
 line_comment = "#", ? any character ?, "\n";
@@ -24,5 +24,5 @@ op = unary_op | binary_op;
 term_op = plus | minus;
 term = number, [term_op, number];
 
-expression_op = times | divide;
-expression = term, [expression_op, term];
+factor_op = times | divide | power;
+factor = term, [factor_op, term];

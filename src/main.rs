@@ -1,4 +1,4 @@
-// TODO improve displaying of structures
+// TODO implement NOTE, HINT, HELP in error messages
 // TODO try to unify the errors reporting and struct handling
 use std::{io::{BufReader, BufRead, ErrorKind}, fs::File, env, process::ExitCode, fmt::Display, iter::Peekable};
 
@@ -45,7 +45,7 @@ enum TokenKind {
     Minus,
     Times,
     Divide,
-    // Pow,
+    Pow,
     // Equals,
     // Colon,
     SemiColon,
@@ -68,8 +68,8 @@ impl Display for TokenKind {
             Self::Times => write!( f, "*" ),
             Self::Divide => write!( f, "/" ),
             Self::SemiColon => write!( f, ";" ),
+            Self::Pow => write!( f, "^" ),
             /* Self::Newline | */ Self::EOF => write!( f, "" ),
-            // Self::Pow => write!( f, "^" ),
             // Self::Equals => write!( f, "=" ),
         }
     }
@@ -166,7 +166,7 @@ impl Lexer {
                     '-' => Token { col, len: 1, kind: TokenKind::Minus },
                     '*' => Token { col, len: 1, kind: TokenKind::Times },
                     '/' => Token { col, len: 1, kind: TokenKind::Divide },
-                    // '^' => Token { kind: TokenKind::Pow, col },
+                    '^' => Token { col, len: 1, kind: TokenKind::Pow },
                     // '=' => Token { kind: TokenKind::Equals, col },
                     // ':' => Token { kind: TokenKind::Colon, col },
                     ';' => Token { col, len: 1, kind: TokenKind::SemiColon },
@@ -422,7 +422,7 @@ enum BinaryOpKind {
     Minus,
     Times,
     Divide,
-    // Pow,
+    Pow,
 }
 
 impl Display for BinaryOpKind {
@@ -432,7 +432,7 @@ impl Display for BinaryOpKind {
             Self::Minus => write!( f, "-" ),
             Self::Times => write!( f, "*" ),
             Self::Divide => write!( f, "/" ),
-            // Self::Pow => write!( f, "^" ),
+            Self::Pow => write!( f, "^" ),
         }
     }
 }
@@ -468,7 +468,7 @@ impl<'program> Display for Node<'program> {
         match self {
             Self::Literal( literal ) => write!( f, "{}", literal ),
             Self::BinaryOp{ lhs, op, rhs } => match op {
-                BinaryOpKind::Divide | BinaryOpKind::Times/*  | BinaryOpKind::Pow */ => write!( f, "({} {} {})", lhs, op, rhs ),
+                BinaryOpKind::Divide | BinaryOpKind::Times | BinaryOpKind::Pow => write!( f, "({} {} {})", lhs, op, rhs ),
                 _ => write!( f, "{} {} {}", lhs, op, rhs ),
             },
             _ => write!( f, "{:?}", self ),
@@ -500,11 +500,20 @@ impl<'program> Parser<'program> {
         while let Some( (line, token) ) = tokens.peek() {
             let line = &lexer.lines[ *line ];
             let node = match &token.kind {
-                TokenKind::Comment( _ ) | TokenKind::EOF /* | TokenKind::Newline */ => {
+                TokenKind::Comment( _ ) | TokenKind::EOF | TokenKind::SemiColon /* | TokenKind::Newline */ => {
                     tokens.next();
                     continue;
                 },
-                TokenKind::Literal( _ ) => Parser::term( &mut tokens ),
+                TokenKind::Plus | TokenKind::Minus | TokenKind::Times | TokenKind::Divide | TokenKind::Pow => {
+                    let node = Node::Unexpected {
+                        token,
+                        err_msg: "expected number literal",
+                        help_msg: "stray binary operation"
+                    };
+                    tokens.next();
+                    node
+                }
+                TokenKind::Literal( _ ) => Parser::factor( &mut tokens ),
                 _ => {
                     let node = Node::Unexpected {
                         token,
@@ -516,12 +525,32 @@ impl<'program> Parser<'program> {
                 },
             };
 
-            match node {
+            let statement = Statement { line, node };
+            match statement.node {
                 Node::Unexpected { token: _, err_msg: _, help_msg: _ } => {
                     found_errors = true;
-                    errors.push( Statement { line, node } )
+                    errors.push( statement )
                 },
-                _ => statements.push( Statement { line, node } ),
+                _ => statements.push( statement ),
+            }
+
+            let next = tokens.peek();
+            match next {
+                Some( (_, Token{ col: _, len: _, kind: TokenKind::SemiColon }) ) => (),
+                Some( (_, next_token) ) => {
+                    found_errors = true;
+                    let help_msg = match next_token.kind {
+                        TokenKind::EOF => "put a semicolon here to end the previous statement",
+                        _ => "put a semicolon before this token to end the previous statement",
+                    };
+
+                    errors.push( Statement { line, node: Node::Unexpected {
+                        token: next_token,
+                        err_msg: "expected semicolon",
+                        help_msg
+                    } } );
+                },
+                None => unreachable!(),
             }
         }
 
@@ -558,7 +587,6 @@ impl<'program> Parser<'program> {
             Err( err ) => return err,
         };
 
-        tokens.next();
         let number = match token.kind {
             TokenKind::Literal( literal ) => match literal {
                 LiteralKind::U64 { base: _, value: _ } => Node::Literal( literal ),
@@ -566,9 +594,13 @@ impl<'program> Parser<'program> {
             _ => Node::Unexpected {
                 token,
                 err_msg: "unexpected token",
-                help_msg: "expected number literal" }
-            ,
+                help_msg: "expected number literal"
+            },
         };
+        
+        if let Node::Unexpected { token: _, err_msg: _, help_msg: _ } = number {} else {
+            tokens.next();
+        }
 
         number
     }
@@ -579,17 +611,22 @@ impl<'program> Parser<'program> {
             Err( _ ) => return None,
         };
         
-        tokens.next();
         let op = match token.kind {
             TokenKind::SemiColon => return None,
             TokenKind::Times => Some( Ok( BinaryOpKind::Times ) ),
             TokenKind::Divide => Some( Ok( BinaryOpKind::Divide ) ),
-            _ => Some( Err( Node::Unexpected {
-                token,
-                err_msg: "expected binary operator",
-                help_msg: "expected '*' or '/' operator" }
-            ) ),
+            TokenKind::Pow => Some( Ok( BinaryOpKind::Pow ) ),
+            // _ => Some( Err( Node::Unexpected {
+            //     token,
+            //     err_msg: "expected binary operator",
+            //     help_msg: "expected '*' or '/' operator before this token" }
+            // ) ),
+            _ => return None,
         };
+        
+        if let Some( Err( Node::Unexpected { token: _, err_msg: _, help_msg: _ } ) ) = op {} else {
+            tokens.next();
+        }
 
         op
     }
@@ -617,48 +654,56 @@ impl<'program> Parser<'program> {
         return lhs;
     }
 
-    // fn factor_op( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Option<Result<BinaryOpKind, Node<'program>>> {
-    //     let token = match Self::skip_comments_and_newlines( tokens, "expected binary operator" ) {
-    //         Ok( t ) => t,
-    //         Err( _ ) => return None,
-    //     };
+    fn factor_op( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Option<Result<BinaryOpKind, Node<'program>>> {
+        let token = match Self::skip_comments_and_newlines( tokens, "expected binary operator" ) {
+            Ok( t ) => t,
+            Err( _ ) => return None,
+        };
 
-    //     let factor = match token.kind {
-    //         TokenKind::Plus => Some( Ok( BinaryOpKind::Plus ) ),
-    //         TokenKind::Minus => Some( Ok( BinaryOpKind::Minus ) ),
-    //         _ => Some( Err( Node::Unexpected {
-    //             token,
-    //             err_msg: "expected binary operator",
-    //             help_msg: "expected '+' or '-' operator" }
-    //         ) ),
-    //     };
+        let op = match token.kind {
+            TokenKind::SemiColon => return None,
+            TokenKind::Plus => Some( Ok( BinaryOpKind::Plus ) ),
+            TokenKind::Minus => Some( Ok( BinaryOpKind::Minus ) ),
+            // _ => Some( Err( Node::Unexpected {
+            //     token,
+            //     err_msg: "expected binary operator",
+            //     help_msg: "expected '+' or '-' operator before this token" }
+            // ) ),
+            _ => return None,
+        };
 
-    //     tokens.next();
-    //     factor
-    // }
+        if let Some( Err( Node::Unexpected { token: _, err_msg: _, help_msg: _ } ) ) = op {} else {
+            tokens.next();
+        }
+        
+        op
+    }
 
-    // fn factor( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Node<'program> {
-    //     let mut lhs = Self::term( tokens );
-    //     if let Node::Unexpected { token: _, err_msg: _, help_msg: _ } = lhs {
-    //         return lhs;
-    //     }
+    fn factor( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Node<'program> {
+        let mut lhs = Self::term( tokens );
+        if let Node::Unexpected { token, err_msg: _, help_msg: _ } = lhs {
+            match token.kind {
+                TokenKind::Plus | TokenKind::Minus => (),
+                _ => return lhs,
+            }
+        }
 
-    //     while let Some( op_result ) = Self::factor_op( tokens ) {
-    //         let op = match op_result {
-    //             Ok( o ) => o,
-    //             Err( err ) => return err,
-    //         };
+        while let Some( op_result ) = Self::factor_op( tokens ) {
+            let op = match op_result {
+                Ok( o ) => o,
+                Err( err ) => return err,
+            };
 
-    //         let rhs = Self::term( tokens );
-    //         if let Node::Unexpected { token: _, err_msg: _, help_msg: _ } = rhs {
-    //             return rhs;
-    //         }
+            let rhs = Self::term( tokens );
+            if let Node::Unexpected { token: _, err_msg: _, help_msg: _ } = rhs {
+                return rhs;
+            }
 
-    //         lhs = Node::BinaryOp { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
-    //     }
+            lhs = Node::BinaryOp { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+        }
 
-    //     return lhs;
-    // }
+        return lhs;
+    }
 }
 
 impl<'program> Display for Parser<'program> {
@@ -778,7 +823,7 @@ fn main() -> ExitCode {
 
     let lexer = match Lexer::parse( source_file_path, source_file ) {
         Ok( lexer ) => {
-            println!( "{:?}\n", lexer );
+            // println!( "{:?}\n", lexer );
             lexer
         },
         Err( errors ) => {
