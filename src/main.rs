@@ -136,7 +136,6 @@ struct Lexer {
 impl Lexer {
     // TODO make the input character stream generic
     fn parse( file_path: String, source_file: File ) -> Result<Self, Self> {
-        let mut found_errors = false;
         let mut errors: Vec<Line> = Vec::new();
         let mut lines: Vec<Line> = Vec::new();
         let mut number: usize = 1;
@@ -293,7 +292,6 @@ impl Lexer {
             }
 
             if line_contains_errors {
-                found_errors = true;
                 errors.push( line );
             }
             else {
@@ -308,7 +306,7 @@ impl Lexer {
             number += 1;
         }
 
-        if found_errors {
+        if !errors.is_empty() {
             return Err( Self { file_path, lines: errors } );
         }
         else {
@@ -508,7 +506,6 @@ struct Parser<'program> {
 
 impl<'program> Parser<'program> {
     fn parse( lexer: &'program Lexer ) -> Result<Self, Self> {
-        let mut found_errors = false;
         let mut errors: Vec<Statement> = Vec::new();
         let mut statements: Vec<Statement> = Vec::new();
         let mut tokens = lexer.into_iter().peekable();
@@ -560,7 +557,6 @@ impl<'program> Parser<'program> {
             let statement = Statement { line, node };
             match statement.node {
                 Node::Unexpected { token: _, err_msg: _, help_msg: _ } => {
-                    found_errors = true;
                     errors.push( statement )
                 },
                 _ => statements.push( statement ),
@@ -570,7 +566,6 @@ impl<'program> Parser<'program> {
             match next {
                 Some( (_, Token{ col: _, len: _, kind: TokenKind::SemiColon }) ) => (),
                 Some( (next_line, next_token) ) => {
-                    found_errors = true;
                     let help_msg = match next_token.kind {
                         TokenKind::EOF => "put a semicolon here to end the previous statement",
                         _ => "put a semicolon before this token to end the previous statement",
@@ -586,7 +581,7 @@ impl<'program> Parser<'program> {
             }
         }
 
-        if found_errors {
+        if !errors.is_empty() {
             return Err( Self { lexer, statements: errors } );
         }
         else {
