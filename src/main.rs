@@ -354,7 +354,7 @@ impl Display for Lexer {
 }
 
 impl<'lexer> IntoIterator for &'lexer Lexer {
-    type Item = (usize, &'lexer Token);
+    type Item = (&'lexer Line, &'lexer Token);
     type IntoIter = LexerTokenIter<'lexer>;
 
 
@@ -372,15 +372,16 @@ struct LexerTokenIter<'lexer> {
 }
 
 impl<'lexer> Iterator for LexerTokenIter<'lexer> {
-    type Item = (usize, &'lexer Token);
+    type Item = (&'lexer Line, &'lexer Token);
 
     fn next( &mut self ) -> Option<Self::Item> {
         if self.line < self.lexer.lines.len() {
-            let tokens = &self.lexer.lines[ self.line ].tokens;
+            let line = &self.lexer.lines[ self.line ];
+            let tokens = &line.tokens;
             if self.token < tokens.len() {
                 let token = &tokens[ self.token ];
                 self.token += 1;
-                return Some( (self.line, token) );
+                return Some( (line, token) );
             }
             else {
                 self.line += 1;
@@ -514,7 +515,7 @@ impl<'program> Parser<'program> {
 
         // TODO fix errors occurring while parsing expressions that span multiple lines
         while let Some( (line, token) ) = tokens.peek() {
-            let line = &lexer.lines[ *line ];
+            let line = *line;
             let node = match &token.kind {
                 TokenKind::Comment( _ ) | TokenKind::EOF | TokenKind::SemiColon /* | TokenKind::Newline */ => {
                     tokens.next();
@@ -529,6 +530,7 @@ impl<'program> Parser<'program> {
                         Node::Expression { lhs: _, op: _, rhs: _ } | Node::Literal( _ ) => Node::Print( Box::new( factor ) )
                     }
                 },
+
                 TokenKind::PrintChar => {
                     tokens.next();
                     let factor = Parser::factor( &mut tokens );
@@ -542,7 +544,7 @@ impl<'program> Parser<'program> {
                     let node = Node::Unexpected {
                         token,
                         err_msg: "expected number literal",
-                        help_msg: "stray binary operation"
+                        help_msg: "stray binary operation, consider putting a number before this operator, or removing this operator"
                     };
                     tokens.next();
                     node
@@ -567,16 +569,16 @@ impl<'program> Parser<'program> {
             let next = tokens.peek();
             match next {
                 Some( (_, Token{ col: _, len: _, kind: TokenKind::SemiColon }) ) => (),
-                Some( (_, next_token) ) => {
+                Some( (next_line, next_token) ) => {
                     found_errors = true;
                     let help_msg = match next_token.kind {
                         TokenKind::EOF => "put a semicolon here to end the previous statement",
                         _ => "put a semicolon before this token to end the previous statement",
                     };
 
-                    errors.push( Statement { line, node: Node::Unexpected {
+                    errors.push( Statement { line: next_line, node: Node::Unexpected {
                         token: next_token,
-                        err_msg: "expected semicolon",
+                        err_msg: "missing semicolon",
                         help_msg
                     } } );
                 },
@@ -592,8 +594,8 @@ impl<'program> Parser<'program> {
         }
     }
 
-
-    fn skip_comments_and_newlines( tokens: &mut Peekable<LexerTokenIter<'program>>, err_msg: &'static str ) -> Result<&'program Token, Node<'program>> {
+    // TODO check for semicolon at end of statement
+    fn skip_to_next_token( tokens: &mut Peekable<LexerTokenIter<'program>>, err_msg: &'static str ) -> Result<&'program Token, Node<'program>> {
         match tokens.peek() {
             Some( (_, token) ) => match token.kind {
                 TokenKind::EOF => Err( Node::Unexpected {
@@ -603,7 +605,7 @@ impl<'program> Parser<'program> {
                 } ),
                 /* TokenKind::Newline | */ TokenKind::Comment( _ ) => {
                     tokens.next();
-                    return Self::skip_comments_and_newlines( tokens, err_msg );
+                    return Self::skip_to_next_token( tokens, err_msg );
                 },
                 _ => return Ok( token ),
             },
@@ -612,7 +614,7 @@ impl<'program> Parser<'program> {
     }
 
     fn number( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Node<'program> {
-        let token = match Self::skip_comments_and_newlines( tokens, "expected number literal" ) {
+        let token = match Self::skip_to_next_token( tokens, "expected number literal" ) {
             Ok( t ) => t,
             Err( err ) => return err,
         };
@@ -636,21 +638,22 @@ impl<'program> Parser<'program> {
     }
 
     fn term_op( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Option<Result<BinaryOpKind, Node<'program>>> {
-        let token = match Self::skip_comments_and_newlines( tokens, "expected binary operator" ) {
-            Ok( t ) => t,
+        let token = match Self::skip_to_next_token( tokens, "expected binary operator" ) {
+            Ok( t ) => match t.kind {
+                TokenKind::Literal( _ ) => return Some( Err( Node::Unexpected {
+                    token: t,
+                    err_msg: "expected binary operator",
+                    help_msg: "expected '*', '/' or '^' operator before this token, or a ';' to end the previous statement"
+                } ) ),
+                _ => t,
+            },
             Err( _ ) => return None,
         };
         
         let op = match token.kind {
-            TokenKind::SemiColon => return None,
             TokenKind::Times => Some( Ok( BinaryOpKind::Times ) ),
             TokenKind::Divide => Some( Ok( BinaryOpKind::Divide ) ),
             TokenKind::Pow => Some( Ok( BinaryOpKind::Pow ) ),
-            // _ => Some( Err( Node::Unexpected {
-            //     token,
-            //     err_msg: "expected binary operator",
-            //     help_msg: "expected '*' or '/' operator before this token" }
-            // ) ),
             _ => return None,
         };
         
@@ -685,20 +688,21 @@ impl<'program> Parser<'program> {
     }
 
     fn factor_op( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Option<Result<BinaryOpKind, Node<'program>>> {
-        let token = match Self::skip_comments_and_newlines( tokens, "expected binary operator" ) {
-            Ok( t ) => t,
+        let token = match Self::skip_to_next_token( tokens, "expected binary operator" ) {
+            Ok( t ) => match t.kind {
+                TokenKind::Literal( _ ) => return Some( Err( Node::Unexpected {
+                    token: t,
+                    err_msg: "expected binary operator",
+                    help_msg: "expected '+' or '-' operator before this token, or a ';' to end the previous statement"
+                } ) ),
+                _ => t,
+            },
             Err( _ ) => return None,
         };
 
         let op = match token.kind {
-            TokenKind::SemiColon => return None,
             TokenKind::Plus => Some( Ok( BinaryOpKind::Plus ) ),
             TokenKind::Minus => Some( Ok( BinaryOpKind::Minus ) ),
-            // _ => Some( Err( Node::Unexpected {
-            //     token,
-            //     err_msg: "expected binary operator",
-            //     help_msg: "expected '+' or '-' operator before this token" }
-            // ) ),
             _ => return None,
         };
 
@@ -711,11 +715,8 @@ impl<'program> Parser<'program> {
 
     fn factor( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Node<'program> {
         let mut lhs = Self::term( tokens );
-        if let Node::Unexpected { token, err_msg: _, help_msg: _ } = lhs {
-            match token.kind {
-                TokenKind::Plus | TokenKind::Minus => (),
-                _ => return lhs,
-            }
+        if let Node::Unexpected { token: _, err_msg: _, help_msg: _ } = lhs {
+            return lhs;
         }
 
         while let Some( op_result ) = Self::factor_op( tokens ) {
