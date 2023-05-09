@@ -831,10 +831,15 @@ fn print_usage() {
     println!( r"
 Blitzlang compiler, version {}
 
-Usage: blitz [Options] file.blz
+Usage: blitz [Options] [Commands] file.blz
 
 Options:
-    -h, --help Display this message
+    -h, --help              Display this message
+
+Commands:
+    TODO: interpret <file.blz>    Run the program in interpret mode
+    TODO: build <file.blz>        Compile the program down to a binary executable
+    TODO: run <file.blz>          Compile and run the generated binary executable
 ",
         env!( "CARGO_PKG_VERSION" )
     );
@@ -844,11 +849,8 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().collect();
 
     // to quickly debug
-    // args.push( "src/main.rs".to_string() );
-    // args.push( "-h".to_string() );
-    // args.push( "-v".to_string() );
+    args.push( "interpret".to_string() );
     args.push( "examples/main.blz".to_string() );
-    // args.push( "-s".to_string() );
 
     if args.len() < 2 {
         print_usage();
@@ -856,29 +858,22 @@ fn main() -> ExitCode {
     }
 
     let mut source_file_path: Option<String> = None;
-    for arg in args.into_iter().skip( 1 ) {
-        if arg.starts_with( '-' ) {
-            match arg.as_str() {
-                "-h" | "--help" => {
-                    print_usage();
-                    return ExitCode::SUCCESS;
-                },
-                _ => {
-                    eprintln!( "Error: unrecognized option flag!" );
-                    return ExitCode::FAILURE;
+    for arg in args.into_iter().skip( 1 ) { // skipping the name of this executable
+        match arg.as_str() {
+            "-h" | "--help" => {
+                print_usage();
+                return ExitCode::SUCCESS;
+            },
+            "interpret" => (),
+            "build" => (),
+            "run" => (),
+            _ => if source_file_path.is_none() {
+                    source_file_path = Some( arg );
                 }
-            }
-        }
-        else {
-            match arg.as_str() {
-                _ => if source_file_path.is_none() {
-                        source_file_path = Some( arg );
-                    }
-                    else {
-                        eprintln!( "Error: too many source file paths provided!" );
-                        return ExitCode::FAILURE;
-                    }
-            }
+                else {
+                    eprintln!( "Error: too many source file paths provided!" );
+                    return ExitCode::FAILURE;
+                },
         }
     }
 
