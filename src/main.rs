@@ -1,5 +1,5 @@
 // TODO implement NOTE, HINT, HELP in error messages
-use std::{io::{BufReader, BufRead, ErrorKind}, fs::File, env, process::ExitCode, fmt::Display, iter::Peekable};
+use std::{io::{BufReader, BufRead, ErrorKind}, fs::File, env, process::ExitCode, fmt::Display};
 
 
 #[derive( Debug, PartialEq, Clone, Copy )]
@@ -181,7 +181,7 @@ impl Lexer {
                         token_text.push( ch );
 
                         // consume the rest of the tokens in the current line
-                        while let Some( next ) = src.next_if( |c| !matches!( c, '\r' | '\n' ) ) {
+                        while let Some( next ) = src.next_if( |c| *c != '\n' ) {
                             token_text.push( next );
                         }
 
@@ -361,28 +361,131 @@ impl<'lexer> IntoIterator for &'lexer Lexer {
 }
 
 
-// BUG calling peek() consumes the next item
-    // TODO implement own peek()
-// TODO create method current()
 #[derive( Debug )]
 struct LexerTokenIter<'lexer> {
     lexer: &'lexer Lexer,
-    line: isize,
-    token: isize,
+    line: usize,
+    token: usize,
+}
+
+impl<'lexer> LexerTokenIter<'lexer> {
+    fn next_back_non_whitespace( &mut self, err_msg: &'static str ) -> Result<(&'lexer Line, &'lexer Token), SyntaxError<'lexer>> {
+        match self.next_back() {
+            Some( (line, token) ) => match token.kind {
+                TokenKind::EOF => return Err( SyntaxError {
+                    line,
+                    token,
+                    msg: err_msg,
+                    help_msg: "file ended here instead"
+                } ),
+                /* TokenKind::Newline | */ TokenKind::Comment( _ ) => return self.next_back_non_whitespace( err_msg ),
+                _ => return Ok( (line, token) ),
+            },
+            None => unreachable!(),
+        }
+    }
+
+    fn next_non_whitespace( &mut self, err_msg: &'static str ) -> Result<(&'lexer Line, &'lexer Token), SyntaxError<'lexer>> {
+        match self.next() {
+            Some( (line, token) ) => match token.kind {
+                TokenKind::EOF => return Err( SyntaxError {
+                    line,
+                    token,
+                    msg: err_msg,
+                    help_msg: "file ended here instead"
+                } ),
+                /* TokenKind::Newline | */ TokenKind::Comment( _ ) => return self.next_non_whitespace( err_msg ),
+                _ => return Ok( (line, token) ),
+            },
+            None => unreachable!(),
+        }
+    }
+
+    // // TODO make so that it does not modifiy the state of the iterator
+    // fn peek_back_non_whitespace( &mut self, err_msg: &'static str ) -> Result<(&'lexer Line, &'lexer Token), SyntaxError<'lexer>> {
+    //     match self.peek_back() {
+    //         Some( (line, token) ) => match token.kind {
+    //             TokenKind::EOF => return Err( SyntaxError {
+    //                 line,
+    //                 token,
+    //                 msg: err_msg,
+    //                 help_msg: "file ended here instead"
+    //             } ),
+    //             /* TokenKind::Newline | */ TokenKind::Comment( _ ) => {
+    //                 self.next_back();
+    //                 return self.peek_back_non_whitespace( err_msg );
+    //             },
+    //             _ => return Ok( (line, token) ),
+    //         },
+    //         None => unreachable!(),
+    //     }
+    // }
+
+    // TODO make so that it does not modifiy the state of the iterator
+    fn peek_non_whitespace( &mut self, err_msg: &'static str ) -> Result<(&'lexer Line, &'lexer Token), SyntaxError<'lexer>> {
+        match self.peek() {
+            Some( (line, token) ) => match token.kind {
+                TokenKind::EOF => return Err( SyntaxError {
+                    line,
+                    token,
+                    msg: err_msg,
+                    help_msg: "file ended here instead"
+                } ),
+                /* TokenKind::Newline | */ TokenKind::Comment( _ ) => {
+                    self.next();
+                    return self.peek_non_whitespace( err_msg );
+                },
+                _ => return Ok( (line, token) ),
+            },
+            None => unreachable!(),
+        }
+    }
+
+    // TODO make this take an immutable reference to self by properly calculating the previous value
+    fn peek( &mut self ) -> Option<(&'lexer Line, &'lexer Token)> {
+        // if (self.line as usize) >= self.lexer.lines.len() {
+        //     return None;
+        // }
+
+        // let line = &self.lexer.lines[ self.line as usize ];
+        // let tokens = &line.tokens;
+        // if (self.token as usize) < tokens.len() {
+        //     let token = &tokens[ self.token as usize ];
+        //     return Some( (line, token) );
+        // }
+        // else {
+        //     if ((self.line + 1) as usize) >= self.lexer.lines.len() {
+        //         return None;
+        //     }
+
+        //     let token = &self.lexer.lines[ (self.line + 1) as usize ].tokens[ 0 ];
+        //     return Some( (line, token) );
+        // }
+        let next = self.next();
+        self.next_back();
+        return next;
+    }
+
+    // // TODO make this take an immutable reference to self by properly calculating the previous value
+    // fn peek_back( &mut self ) -> Option<(&'lexer Line, &'lexer Token)> {
+    //     let previous = self.next_back();
+    //     self.next();
+    //     return previous;
+    // }
 }
 
 impl<'lexer> Iterator for LexerTokenIter<'lexer> {
     type Item = (&'lexer Line, &'lexer Token);
 
     fn next( &mut self ) -> Option<Self::Item> {
-        if (self.line as usize) >= self.lexer.lines.len() {
+        if (self.line) >= self.lexer.lines.len() {
             return None;
         }
 
-        let line = &self.lexer.lines[ self.line as usize ];
+        let line = &self.lexer.lines[ self.line ];
         let tokens = &line.tokens;
-        if (self.token as usize) < tokens.len() {
-            let token = &tokens[ self.token as usize ];
+        if (self.token) < tokens.len() {
+            let token = &tokens[ self.token ];
             self.token += 1;
             return Some( (line, token) );
         }
@@ -403,19 +506,19 @@ impl<'lexer> DoubleEndedIterator for LexerTokenIter<'lexer> {
             }
 
             self.line -= 1;
-            let line = &self.lexer.lines[ self.line as usize ];
+            let line = &self.lexer.lines[ self.line ];
             let tokens = &line.tokens;
-            
-            self.token = (tokens.len() - 1) as isize;
-            let token = &tokens[ self.token as usize ];
+
+            self.token = tokens.len() - 1;
+            let token = &tokens[ self.token ];
             return Some( (line, token) );
         }
         else {
-            let line = &self.lexer.lines[ self.line as usize ];
+            let line = &self.lexer.lines[ self.line ];
             let tokens = &line.tokens;
-            
+
             self.token -= 1;
-            let token = &tokens[ self.token as usize ];
+            let token = &tokens[ self.token ];
             return Some( (line, token) );
         }
     }
@@ -495,7 +598,6 @@ impl Display for BinaryOpKind {
 #[derive( Debug )]
 enum Node {
     Literal( LiteralKind ),
-    // UnaryOp{ op: UnaryOpKind, rhs: LiteralKind },
     Expression{ lhs: Box<Node>, op: BinaryOpKind, rhs: Box<Node> },
     Print( Box<Node> ),
     PrintChar( Box<Node> ),
@@ -573,10 +675,9 @@ impl Parser {
     fn parse<'program>( lexer: &'program Lexer ) -> Result<Self, SyntaxErrors<'program>> {
         let mut errors: Vec<SyntaxError> = Vec::new();
         let mut statements: Vec<Node> = Vec::new();
-        let mut tokens = lexer.into_iter().peekable();
 
+        let mut tokens = lexer.into_iter();
         while let Some( (line, token) ) = tokens.peek() {
-            let line = *line;
             let statement_result = match &token.kind {
                 TokenKind::Comment( _ ) | TokenKind::EOF | TokenKind::SemiColon /* | TokenKind::Newline */ => {
                     tokens.next();
@@ -584,59 +685,35 @@ impl Parser {
                 },
                 TokenKind::Print => {
                     tokens.next();
-                    let factor_result = Parser::factor( &mut tokens );
-                    match factor_result {
+                    match Parser::factor( &mut tokens ) {
                         Ok( factor ) => Ok( Node::Print( Box::new( factor ) ) ),
-                        Err( _ ) => factor_result,
+                        err @ Err( _ ) => err,
                     }
                 },
                 TokenKind::PrintChar => {
                     tokens.next();
-                    let factor_result = Parser::factor( &mut tokens );
-                    match factor_result {
+                    match Parser::factor( &mut tokens ) {
                         Ok( factor ) => Ok( Node::PrintChar( Box::new( factor ) ) ),
-                        Err( _ ) => factor_result,
+                        err @ Err( _ ) => err,
                     }
                 },
-                TokenKind::Plus | TokenKind::Minus | TokenKind::Times | TokenKind::Divide | TokenKind::Pow => {
-                    let node = Err( SyntaxError {
+                TokenKind::Literal( _ ) => Parser::factor( &mut tokens ),
+                TokenKind::Plus | TokenKind::Minus | TokenKind::Times |
+                TokenKind::Divide | TokenKind::Pow => {
+                    tokens.next();
+                    Err( SyntaxError {
                         line,
                         token,
-                        msg: "expected number literal",
-                        help_msg: "stray binary operation"
-                    } );
-                    tokens.next();
-                    node
+                        msg: "incomplete expression",
+                        help_msg: "stray binary operator"
+                    } )
                 },
-                TokenKind::Literal( _ ) => Parser::factor( &mut tokens ),
                 TokenKind::Unexpected { .. } => unreachable!(),
             };
 
             match statement_result {
                 Ok( statement ) => statements.push( statement ),
-                Err( error ) => errors.push( error ),
-            };
-
-            let next = tokens.peek();
-            match next {
-                Some( (_, Token{ kind: TokenKind::SemiColon, .. }) ) => (),
-                Some( (_, _) ) => {
-                    // BUG since calling peek() advances the iterator we have to go back two places
-                    tokens.next_back();
-                    let (line, token) = tokens.next_back().unwrap();
-                    
-                    errors.push( SyntaxError {
-                        line,
-                        token,
-                        msg: "missing semicolon",
-                        help_msg: "put a semicolon after this token to end the statement"
-                    } );
-                    
-                    // BUG since calling peek() advances the iterator we have to go forward two places to return to the original location in the iterator
-                    tokens.next();
-                    tokens.next();
-                },
-                None => unreachable!(),
+                Err( err ) => errors.push( err )
             }
         }
 
@@ -648,39 +725,25 @@ impl Parser {
         }
     }
 
-    fn skip_to_next_token<'program>(
-        tokens: &mut Peekable<LexerTokenIter<'program>>, err_msg: &'static str
-    ) -> Result<(&'program Line, &'program Token), SyntaxError<'program>>
-    {
-        match tokens.peek() {
-            Some( (line, token) ) => match token.kind {
-                TokenKind::EOF => return Err( SyntaxError {
-                    line,
-                    token,
-                    msg: err_msg,
-                    help_msg: "file ended here instead"
-                } ),
-                /* TokenKind::Newline | */ TokenKind::Comment( _ ) => {
-                    tokens.next();
-                    return Self::skip_to_next_token( tokens, err_msg );
-                },
-                _ => return Ok( (line, token) ),
-            },
-            None => unreachable!(),
-        }
-    }
-
-    fn number<'program>( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Result<Node, SyntaxError<'program>> {
-        let (line, token) = Self::skip_to_next_token( tokens, "expected number literal" )?;
+    fn number<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
+        let (line, token) = tokens.peek_non_whitespace( "expected number literal" )?;
 
         let number = match token.kind {
-            TokenKind::Literal( literal ) => match literal {
-                LiteralKind::U64 { .. } => Ok( Node::Literal( literal ) ),
+            TokenKind::Literal( literal ) => Ok( Node::Literal( literal ) ),
+            TokenKind::Plus | TokenKind::Minus | TokenKind::Times |
+            TokenKind::Divide | TokenKind::Pow => {
+                tokens.next();
+                Err( SyntaxError {
+                    line,
+                    token,
+                    msg: "incomplete expression",
+                    help_msg: "stray binary operator"
+                } )
             },
             _ => Err( SyntaxError {
                 line,
                 token,
-                msg: "unexpected token",
+                msg: "incomplete expression",
                 help_msg: "expected number literal"
             } ),
         };
@@ -692,33 +755,24 @@ impl Parser {
         return number;
     }
 
-    fn term_op<'program>( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Result<Option<BinaryOpKind>, SyntaxError<'program>> {
-        let (line, token) = match Self::skip_to_next_token( tokens, "expected binary operator" ) {
-            Ok( (line, token) ) => (line, token),
-            Err( _ ) => return Ok( None ),
-        };
+    fn term_op<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Option<BinaryOpKind>, SyntaxError<'program>> {
+        let (_line, token) = tokens.peek_non_whitespace( "expected expression or semicolon" )?;
 
         let op = match token.kind {
             TokenKind::Times => Ok( Some( BinaryOpKind::Times ) ),
             TokenKind::Divide => Ok( Some( BinaryOpKind::Divide ) ),
             TokenKind::Pow => Ok( Some( BinaryOpKind::Pow ) ),
-            TokenKind::Literal( _ ) => Err( SyntaxError {
-                line,
-                token,
-                msg: "expected binary operator",
-                help_msg: "expected '+', '-', '*', '/' or '^' before this token, or a ';' to end the previous statement"
-            } ),
-            _ => return Ok( None ),
+            TokenKind::Plus | TokenKind::Minus | TokenKind::SemiColon | _ => Ok( None ),
         };
 
-        if let Ok( _ ) = op {
+        if let Ok( Some( _ ) ) = op {
             tokens.next();
         }
 
         return op;
     }
 
-    fn term<'program>( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Result<Node, SyntaxError<'program>> {
+    fn term<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
         let mut lhs = Self::number( tokens )?;
 
         while let Some( op ) = Self::term_op( tokens )? {
@@ -729,26 +783,44 @@ impl Parser {
         return Ok( lhs );
     }
 
-    fn factor_op<'program>( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Result<Option<BinaryOpKind>, SyntaxError<'program>> {
-        let (_, token) = match Self::skip_to_next_token( tokens, "expected binary operator" ) {
-            Ok( (line, token) ) => (line, token),
-            Err( _ ) => return Ok( None ),
-        };
+    fn factor_op<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Option<BinaryOpKind>, SyntaxError<'program>> {
+        let (_line, token) = tokens.peek_non_whitespace( "expected expression or semicolon" )?;
 
         let op = match token.kind {
             TokenKind::Plus => Ok( Some( BinaryOpKind::Plus ) ),
             TokenKind::Minus => Ok( Some( BinaryOpKind::Minus ) ),
-            _ => return Ok( None ),
+            TokenKind::SemiColon => Ok( None ),
+            _ => {
+                let (previous_line, previous_token) = tokens.next_back_non_whitespace( "" ).unwrap();
+                
+                let err = match token.kind {
+                    TokenKind::Literal( _ ) => Err( SyntaxError {
+                        line: previous_line,
+                        token: previous_token,
+                        msg: "incomplete expression",
+                        help_msg: "expected '+', '-', '*', '/' or '^' after this token to complete the expression"
+                    } ),
+                    _ => Err( SyntaxError {
+                        line: previous_line,
+                        token: previous_token,
+                        msg: "incomplete expression or missing semicolon",
+                        help_msg: "expected '+', '-', '*', '/' or '^' after this token to complete the expression, or a ';' after this token to end the previous statement"
+                    } ),
+                };
+
+                tokens.next_non_whitespace( "" ).unwrap();
+                err
+            },
         };
 
-        if let Ok( _ ) = op {
+        if let Ok( Some( _ ) ) = op {
             tokens.next();
         }
 
         return op;
     }
 
-    fn factor<'program>( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Result<Node, SyntaxError<'program>> {
+    fn factor<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
         let mut lhs = Self::term( tokens )?;
 
         while let Some( op ) = Self::factor_op( tokens )? {

@@ -20,6 +20,7 @@
 - `build` to compile the program down to a binary executable
 - `run` to compile and run the compiled native assembly code
 
+
 ## 0.1
 
 - line comments: `#...`
