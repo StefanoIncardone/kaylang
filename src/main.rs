@@ -1,5 +1,4 @@
 // TODO implement NOTE, HINT, HELP in error messages
-// TODO try to unify the errors reporting and struct handling
 use std::{io::{BufReader, BufRead, ErrorKind}, fs::File, env, process::ExitCode, fmt::Display, iter::Peekable};
 
 
@@ -11,7 +10,7 @@ enum LiteralKind {
 impl Display for LiteralKind {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         match self {
-            Self::U64 { base: _, value } => write!( f, "{}", value ),
+            Self::U64 { value, .. } => write!( f, "{}", value ),
         }
     }
 }
@@ -60,16 +59,16 @@ enum TokenKind {
 impl Display for TokenKind {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         match self {
-            Self::Unexpected { text, err_msg: _, help_msg: _ } => write!( f, "{}", text ),
+            Self::Unexpected { text, .. } => write!( f, "{}", text ),
             // Self::OpenRoundBracket => write!( f, "(" ),
             // Self::CloseRoundBracket => write!( f, ")" ),
 
             Self::Literal( literal ) => write!( f, "{}", literal ),
             Self::Comment( text ) => write!( f, "{}", text ),
-            
+
             Self::Print => write!( f, "print" ),
             Self::PrintChar => write!( f, "print_char" ),
-            
+
             Self::Plus => write!( f, "+" ),
             Self::Minus => write!( f, "-" ),
             Self::Times => write!( f, "*" ),
@@ -180,7 +179,7 @@ impl Lexer {
                     '#' => {
                         token_text.clear();
                         token_text.push( ch );
-                        
+
                         // consume the rest of the tokens in the current line
                         while let Some( next ) = src.next_if( |c| !matches!( c, '\r' | '\n' ) ) {
                             token_text.push( next );
@@ -278,7 +277,7 @@ impl Lexer {
                     },
                 };
 
-                if let TokenKind::Unexpected { text: _, err_msg: _, help_msg: _ } = token.kind {
+                if let TokenKind::Unexpected { .. } = token.kind {
                     line_contains_errors = true;
                 }
 
@@ -321,7 +320,7 @@ impl Display for Lexer {
             let line_text = format!( "{}", line );
 
             for token in &line.tokens {
-                if let TokenKind::Unexpected { text: _, err_msg, help_msg } = &token.kind {
+                if let TokenKind::Unexpected { err_msg, help_msg, .. } = &token.kind {
                     let gutter_padding_amount = line.number.ilog10() as usize + 1;
                     let gutter_padding = " ".repeat( gutter_padding_amount );
                     let pointers_padding = " ".repeat( token.col - 1 );
@@ -362,34 +361,35 @@ impl<'lexer> IntoIterator for &'lexer Lexer {
 }
 
 
+// TODO try fixing the implementation of next/peek or implement my own
+// TODO create method current()
 #[derive( Debug )]
 struct LexerTokenIter<'lexer> {
     lexer: &'lexer Lexer,
-    line: usize,
-    token: usize,
+    line: isize,
+    token: isize,
 }
 
 impl<'lexer> Iterator for LexerTokenIter<'lexer> {
     type Item = (&'lexer Line, &'lexer Token);
 
     fn next( &mut self ) -> Option<Self::Item> {
-        if self.line < self.lexer.lines.len() {
-            let line = &self.lexer.lines[ self.line ];
-            let tokens = &line.tokens;
-            if self.token < tokens.len() {
-                let token = &tokens[ self.token ];
-                self.token += 1;
-                return Some( (line, token) );
-            }
-            else {
-                self.line += 1;
-                self.token = 0;
+        if (self.line as usize) >= self.lexer.lines.len() {
+            return None;
+        }
 
-                return self.next();
-            }
+        let line = &self.lexer.lines[ self.line as usize ];
+        let tokens = &line.tokens;
+        if (self.token as usize) < tokens.len() {
+            let token = &tokens[ self.token as usize ];
+            self.token += 1;
+            return Some( (line, token) );
         }
         else {
-            return None;
+            self.line += 1;
+            self.token = 0;
+
+            return self.next();
         }
     }
 }
@@ -466,20 +466,17 @@ impl Display for BinaryOpKind {
 
 
 #[derive( Debug )]
-enum Node<'program> {
-    Unexpected{ token: &'program Token, err_msg: &'static str, help_msg: &'static str },
-
+enum Node {
     Literal( LiteralKind ),
     // UnaryOp{ op: UnaryOpKind, rhs: LiteralKind },
-    Expression{ lhs: Box<Node<'program>>, op: BinaryOpKind, rhs: Box<Node<'program>> },
-    Print( Box<Node<'program>> ),
-    PrintChar( Box<Node<'program>> ),
+    Expression{ lhs: Box<Node>, op: BinaryOpKind, rhs: Box<Node> },
+    Print( Box<Node> ),
+    PrintChar( Box<Node> ),
 }
 
-impl<'program> Display for Node<'program> {
+impl Display for Node {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         match self {
-            Self::Unexpected { token: _, err_msg: _, help_msg: _ } => write!( f, "{:?}", self ),
             Self::Literal( literal ) => write!( f, "{}", literal ),
             Self::Expression{ lhs, op, rhs } => match op {
                 BinaryOpKind::Divide | BinaryOpKind::Times | BinaryOpKind::Pow => write!( f, "({} {} {})", lhs, op, rhs ),
@@ -492,277 +489,47 @@ impl<'program> Display for Node<'program> {
 }
 
 
+// TODO extract line to separate struct => SyntaxErrors { line: Line, errors: Vec<SyntaxError> }
 #[derive( Debug )]
-struct Statement<'program> {
-    line: &'program Line,
-    node: Node<'program>,
+struct SyntaxError<'line> {
+    line: &'line Line,
+    token: &'line Token,
+    msg: &'static str,
+    help_msg: &'static str,
 }
 
 #[derive( Debug )]
-struct Parser<'program> {
-    lexer: &'program Lexer,
-    statements: Vec<Statement<'program>>,
+struct SyntaxErrors<'program> {
+    file_path: String,
+    errors: Vec<SyntaxError<'program>>,
 }
 
-impl<'program> Parser<'program> {
-    fn parse( lexer: &'program Lexer ) -> Result<Self, Self> {
-        let mut errors: Vec<Statement> = Vec::new();
-        let mut statements: Vec<Statement> = Vec::new();
-        let mut tokens = lexer.into_iter().peekable();
-
-        // TODO fix errors occurring while parsing expressions that span multiple lines
-        while let Some( (line, token) ) = tokens.peek() {
-            let line = *line;
-            let node = match &token.kind {
-                TokenKind::Comment( _ ) | TokenKind::EOF | TokenKind::SemiColon /* | TokenKind::Newline */ => {
-                    tokens.next();
-                    continue;
-                },
-                TokenKind::Print => {
-                    tokens.next();
-                    let factor = Parser::factor( &mut tokens );
-                    match factor {
-                        Node::Unexpected { token: _, err_msg: _, help_msg: _ } => factor,
-                        Node::Print( _ ) | Node::PrintChar( _ ) => unreachable!(),
-                        Node::Expression { lhs: _, op: _, rhs: _ } | Node::Literal( _ ) => Node::Print( Box::new( factor ) )
-                    }
-                },
-
-                TokenKind::PrintChar => {
-                    tokens.next();
-                    let factor = Parser::factor( &mut tokens );
-                    match factor {
-                        Node::Unexpected { token: _, err_msg: _, help_msg: _ } => factor,
-                        Node::Print( _ ) | Node::PrintChar( _ ) => unreachable!(),
-                        Node::Expression { lhs: _, op: _, rhs: _ } | Node::Literal( _ ) => Node::PrintChar( Box::new( factor ) )
-                    }
-                }
-                TokenKind::Plus | TokenKind::Minus | TokenKind::Times | TokenKind::Divide | TokenKind::Pow => {
-                    let node = Node::Unexpected {
-                        token,
-                        err_msg: "expected number literal",
-                        help_msg: "stray binary operation, consider putting a number before this operator, or removing this operator"
-                    };
-                    tokens.next();
-                    node
-                }
-                TokenKind::Literal( _ ) => Parser::factor( &mut tokens ),
-                TokenKind::Unexpected { text: _, err_msg: _, help_msg: _ } => Node::Unexpected {
-                    token,
-                    err_msg: "unexpected token",
-                    help_msg: "this might be a bug during lexing"
-                },
-            };
-
-            let statement = Statement { line, node };
-            match statement.node {
-                Node::Unexpected { token: _, err_msg: _, help_msg: _ } => {
-                    errors.push( statement )
-                },
-                _ => statements.push( statement ),
-            }
-
-            let next = tokens.peek();
-            match next {
-                Some( (_, Token{ col: _, len: _, kind: TokenKind::SemiColon }) ) => (),
-                Some( (next_line, next_token) ) => {
-                    let help_msg = match next_token.kind {
-                        TokenKind::EOF => "put a semicolon here to end the previous statement",
-                        _ => "put a semicolon before this token to end the previous statement",
-                    };
-
-                    errors.push( Statement { line: next_line, node: Node::Unexpected {
-                        token: next_token,
-                        err_msg: "missing semicolon",
-                        help_msg
-                    } } );
-                },
-                None => unreachable!(),
-            }
-        }
-
-        if !errors.is_empty() {
-            return Err( Self { lexer, statements: errors } );
-        }
-        else {
-            return Ok( Self { lexer, statements } );
-        }
-    }
-
-    // TODO check for semicolon at end of statement
-    fn skip_to_next_token( tokens: &mut Peekable<LexerTokenIter<'program>>, err_msg: &'static str ) -> Result<&'program Token, Node<'program>> {
-        match tokens.peek() {
-            Some( (_, token) ) => match token.kind {
-                TokenKind::EOF => Err( Node::Unexpected {
-                    token,
-                    err_msg,
-                    help_msg: "file ended here instead"
-                } ),
-                /* TokenKind::Newline | */ TokenKind::Comment( _ ) => {
-                    tokens.next();
-                    return Self::skip_to_next_token( tokens, err_msg );
-                },
-                _ => return Ok( token ),
-            },
-            None => unreachable!(),
-        }
-    }
-
-    fn number( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Node<'program> {
-        let token = match Self::skip_to_next_token( tokens, "expected number literal" ) {
-            Ok( t ) => t,
-            Err( err ) => return err,
-        };
-
-        let number = match token.kind {
-            TokenKind::Literal( literal ) => match literal {
-                LiteralKind::U64 { base: _, value: _ } => Node::Literal( literal ),
-            },
-            _ => Node::Unexpected {
-                token,
-                err_msg: "unexpected token",
-                help_msg: "expected number literal"
-            },
-        };
-        
-        if let Node::Unexpected { token: _, err_msg: _, help_msg: _ } = number {} else {
-            tokens.next();
-        }
-
-        number
-    }
-
-    fn term_op( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Option<Result<BinaryOpKind, Node<'program>>> {
-        let token = match Self::skip_to_next_token( tokens, "expected binary operator" ) {
-            Ok( t ) => match t.kind {
-                TokenKind::Literal( _ ) => return Some( Err( Node::Unexpected {
-                    token: t,
-                    err_msg: "expected binary operator",
-                    help_msg: "expected '*', '/' or '^' operator before this token, or a ';' to end the previous statement"
-                } ) ),
-                _ => t,
-            },
-            Err( _ ) => return None,
-        };
-        
-        let op = match token.kind {
-            TokenKind::Times => Some( Ok( BinaryOpKind::Times ) ),
-            TokenKind::Divide => Some( Ok( BinaryOpKind::Divide ) ),
-            TokenKind::Pow => Some( Ok( BinaryOpKind::Pow ) ),
-            _ => return None,
-        };
-        
-        if let Some( Err( Node::Unexpected { token: _, err_msg: _, help_msg: _ } ) ) = op {} else {
-            tokens.next();
-        }
-
-        op
-    }
-
-    fn term( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Node<'program> {
-        let mut lhs = Self::number( tokens );
-        if let Node::Unexpected { token: _, err_msg: _, help_msg: _ } = lhs {
-            return lhs;
-        }
-
-        while let Some( op_result ) = Self::term_op( tokens ) {
-            let op = match op_result {
-                Ok( o ) => o,
-                Err( err ) => return err,
-            };
-
-            let rhs = Self::number( tokens );
-            if let Node::Unexpected { token: _, err_msg: _, help_msg: _ } = rhs {
-                return rhs;
-            }
-
-            lhs = Node::Expression { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
-        }
-
-        return lhs;
-    }
-
-    fn factor_op( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Option<Result<BinaryOpKind, Node<'program>>> {
-        let token = match Self::skip_to_next_token( tokens, "expected binary operator" ) {
-            Ok( t ) => match t.kind {
-                TokenKind::Literal( _ ) => return Some( Err( Node::Unexpected {
-                    token: t,
-                    err_msg: "expected binary operator",
-                    help_msg: "expected '+' or '-' operator before this token, or a ';' to end the previous statement"
-                } ) ),
-                _ => t,
-            },
-            Err( _ ) => return None,
-        };
-
-        let op = match token.kind {
-            TokenKind::Plus => Some( Ok( BinaryOpKind::Plus ) ),
-            TokenKind::Minus => Some( Ok( BinaryOpKind::Minus ) ),
-            _ => return None,
-        };
-
-        if let Some( Err( Node::Unexpected { token: _, err_msg: _, help_msg: _ } ) ) = op {} else {
-            tokens.next();
-        }
-        
-        op
-    }
-
-    fn factor( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Node<'program> {
-        let mut lhs = Self::term( tokens );
-        if let Node::Unexpected { token: _, err_msg: _, help_msg: _ } = lhs {
-            return lhs;
-        }
-
-        while let Some( op_result ) = Self::factor_op( tokens ) {
-            let op = match op_result {
-                Ok( o ) => o,
-                Err( err ) => return err,
-            };
-
-            let rhs = Self::term( tokens );
-            if let Node::Unexpected { token: _, err_msg: _, help_msg: _ } = rhs {
-                return rhs;
-            }
-
-            lhs = Node::Expression { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
-        }
-
-        return lhs;
-    }
-}
-
-impl<'program> Display for Parser<'program> {
+impl<'program> Display for SyntaxErrors<'program> {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        for statement in &self.statements {
-            let line_text = format!( "{}", statement.line );
+        for error in &self.errors {
+            let line_text = format!( "{}", error.line );
 
-            match &statement.node {
-                Node::Unexpected { token, err_msg, help_msg } => {
-                    let gutter_padding_amount = statement.line.number.ilog10() as usize + 1;
-                    let gutter_padding = " ".repeat( gutter_padding_amount );
-                    let pointers_padding = " ".repeat( token.col - 1 );
-                    let pointers = "^".repeat( token.len );
-                    let bar = "\x1b[94m|\x1b[0m";
+            let gutter_padding_amount = error.line.number.ilog10() as usize + 1;
+            let gutter_padding = " ".repeat( gutter_padding_amount );
+            let pointers_padding = " ".repeat( error.token.col - 1 );
+            let pointers = "^".repeat( error.token.len );
+            let bar = "\x1b[94m|\x1b[0m";
 
-                    let error_visualization = &format!(
-                        " {} {}\n \
-                        \x1b[94m{: >gutter_padding_amount$}\x1b[0m {} {}\n \
-                        {} {} {}\x1b[91m{} {}\x1b[0m",
-                        gutter_padding, bar,
-                        statement.line.number, bar, line_text,
-                        gutter_padding, bar, pointers_padding, pointers, help_msg
-                    );
+            let error_visualization = &format!(
+                " {} {}\n \
+                \x1b[94m{: >gutter_padding_amount$}\x1b[0m {} {}\n \
+                {} {} {}\x1b[91m{} {}\x1b[0m",
+                gutter_padding, bar,
+                error.line.number, bar, line_text,
+                gutter_padding, bar, pointers_padding, pointers, error.help_msg
+            );
 
-                    writeln!( f,
-                        "\x1b[91;1mError\x1b[0m [P]: \x1b[1m{}\x1b[0m\n \
-                        {} \x1b[91min\x1b[0m: {}:{}:{}\n{}\n",
-                        err_msg,
-                        gutter_padding, self.lexer.file_path, statement.line.number, token.col, error_visualization
-                    )?;
-                },
-                _ => writeln!( f, "{}", statement.node )?,
-            }
+            writeln!( f,
+                "\x1b[91;1mError\x1b[0m [P]: \x1b[1m{}\x1b[0m\n \
+                {} \x1b[91min\x1b[0m: {}:{}:{}\n{}\n",
+                error.msg,
+                gutter_padding, self.file_path, error.line.number, error.token.col, error_visualization
+            )?;
         }
 
         return Ok( () );
@@ -771,25 +538,214 @@ impl<'program> Display for Parser<'program> {
 
 
 #[derive( Debug )]
+struct Parser {
+    ast: Vec<Node>,
+}
+
+impl Parser {
+    fn parse<'program>( lexer: &'program Lexer ) -> Result<Self, SyntaxErrors<'program>> {
+        let mut errors: Vec<SyntaxError> = Vec::new();
+        let mut statements: Vec<Node> = Vec::new();
+        let mut tokens = lexer.into_iter().peekable();
+
+        while let Some( (line, token) ) = tokens.peek() {
+            let line = *line;
+            let statement_result = match &token.kind {
+                TokenKind::Comment( _ ) | TokenKind::EOF | TokenKind::SemiColon /* | TokenKind::Newline */ => {
+                    tokens.next();
+                    continue;
+                },
+                TokenKind::Print => {
+                    tokens.next();
+                    let factor_result = Parser::factor( &mut tokens );
+                    match factor_result {
+                        Ok( factor ) => Ok( Node::Print( Box::new( factor ) ) ),
+                        Err( _ ) => factor_result,
+                    }
+                },
+                TokenKind::PrintChar => {
+                    tokens.next();
+                    let factor_result = Parser::factor( &mut tokens );
+                    match factor_result {
+                        Ok( factor ) => Ok( Node::PrintChar( Box::new( factor ) ) ),
+                        Err( _ ) => factor_result,
+                    }
+                },
+                TokenKind::Plus | TokenKind::Minus | TokenKind::Times | TokenKind::Divide | TokenKind::Pow => {
+                    let node = Err( SyntaxError {
+                        line,
+                        token,
+                        msg: "expected number literal",
+                        help_msg: "stray binary operation"
+                    } );
+                    tokens.next();
+                    node
+                },
+                TokenKind::Literal( _ ) => Parser::factor( &mut tokens ),
+                TokenKind::Unexpected { .. } => unreachable!(),
+            };
+
+            match statement_result {
+                Ok( statement ) => statements.push( statement ),
+                Err( error ) => errors.push( error ),
+            };
+
+            let next = tokens.peek();
+            match next {
+                Some( (_, Token{ kind: TokenKind::SemiColon, .. }) ) => (),
+                Some( (line, token) ) => {
+                    let help_msg = match token.kind {
+                        TokenKind::EOF => "put a semicolon here to end the previous statement",
+                        _ => "put a semicolon before this token to end the previous statement",
+                    };
+
+                    errors.push( SyntaxError {
+                        line,
+                        token,
+                        msg: "missing semicolon",
+                        help_msg
+                    } );
+
+                },
+                None => unreachable!(),
+            }
+        }
+
+        if !errors.is_empty() {
+            return Err( SyntaxErrors { file_path: lexer.file_path.clone(), errors } );
+        }
+        else {
+            return Ok( Self { ast: statements } );
+        }
+    }
+
+    // TODO check for semicolon at end of statement
+    fn skip_to_next_token<'program>(
+        tokens: &mut Peekable<LexerTokenIter<'program>>, err_msg: &'static str
+    ) -> Result<(&'program Line, &'program Token), SyntaxError<'program>>
+    {
+        match tokens.peek() {
+            Some( (line, token) ) => match token.kind {
+                TokenKind::EOF => return Err( SyntaxError {
+                    line,
+                    token,
+                    msg: err_msg,
+                    help_msg: "file ended here instead"
+                } ),
+                /* TokenKind::Newline | */ TokenKind::Comment( _ ) => {
+                    tokens.next();
+                    return Self::skip_to_next_token( tokens, err_msg );
+                },
+                _ => return Ok( (line, token) ),
+            },
+            None => unreachable!(),
+        }
+    }
+
+    fn number<'program>( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Result<Node, SyntaxError<'program>> {
+        let (line, token) = Self::skip_to_next_token( tokens, "expected number literal" )?;
+
+        let number = match token.kind {
+            TokenKind::Literal( literal ) => match literal {
+                LiteralKind::U64 { .. } => Ok( Node::Literal( literal ) ),
+            },
+            _ => Err( SyntaxError {
+                line,
+                token,
+                msg: "unexpected token",
+                help_msg: "expected number literal"
+            } ),
+        };
+
+        if let Ok( _ ) = number {
+            tokens.next();
+        }
+
+        return number;
+    }
+
+    fn term_op<'program>( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Result<Option<BinaryOpKind>, SyntaxError<'program>> {
+        let (line, token) = Self::skip_to_next_token( tokens, "expected binary operator" )?;
+
+        let op = match token.kind {
+            TokenKind::Times => Ok( Some( BinaryOpKind::Times ) ),
+            TokenKind::Divide => Ok( Some( BinaryOpKind::Divide ) ),
+            TokenKind::Pow => Ok( Some( BinaryOpKind::Pow ) ),
+            TokenKind::Literal( _ ) => Err( SyntaxError {
+                line,
+                token,
+                msg: "expected binary operator",
+                help_msg: "expected '+', '-', '*', '/' or '^' before this token, or a ';' to end the previous statement"
+            } ),
+            _ => return Ok( None ),
+        };
+
+        if let Ok( _ ) = op {
+            tokens.next();
+        }
+
+        return op;
+    }
+
+    fn term<'program>( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Result<Node, SyntaxError<'program>> {
+        let mut lhs = Self::number( tokens )?;
+
+        while let Some( op ) = Self::term_op( tokens )? {
+            let rhs = Self::number( tokens )?;
+            lhs = Node::Expression { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+        }
+
+        return Ok( lhs );
+    }
+
+    fn factor_op<'program>( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Result<Option<BinaryOpKind>, SyntaxError<'program>> {
+        let (_, token) = Self::skip_to_next_token( tokens, "expected binary operator" )?;
+
+        let op = match token.kind {
+            TokenKind::Plus => Ok( Some( BinaryOpKind::Plus ) ),
+            TokenKind::Minus => Ok( Some( BinaryOpKind::Minus ) ),
+            _ => return Ok( None ),
+        };
+
+        if let Ok( _ ) = op {
+            tokens.next();
+        }
+
+        return op;
+    }
+
+    fn factor<'program>( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Result<Node, SyntaxError<'program>> {
+        let mut lhs = Self::term( tokens )?;
+
+        while let Some( op ) = Self::factor_op( tokens )? {
+            let rhs = Self::term( tokens )?;
+            lhs = Node::Expression { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+        }
+
+        return Ok( lhs );
+    }
+}
+
+
+#[derive( Debug )]
 struct Program;
 
 impl Program {
-    fn interpret( ast: &Parser ) {
-        for statement in &ast.statements {
-            match &statement.node {
-                Node::Unexpected { token: _, err_msg: _, help_msg: _ } => unreachable!(), // should have been cought during parsing
-                Node::PrintChar( node ) => match &**node {
-                    Node::Literal( value ) => match *value {
-                        LiteralKind::U64 { base: _, value } => print!( "{}", value as u8 as char ),
+    fn interpret( parser: &Parser ) {
+        for node in &parser.ast {
+            match &node {
+                Node::PrintChar( number ) => match **number {
+                    Node::Literal( value ) => match value {
+                        LiteralKind::U64 { value, .. } => print!( "{}", value as u8 as char ),
                     },
-                    Node::Expression { lhs: _, op: _, rhs: _ } => print!( "{}", Self::evaluate_expression( node ) as u8 as char ),
+                    Node::Expression { .. } => print!( "{}", Self::evaluate_expression( &*number ) as u8 as char ),
                     _ => unreachable!(),
                 }
-                Node::Print( node ) => match &**node {
-                    Node::Literal( value ) => match *value {
-                        LiteralKind::U64 { base: _, value } => print!( "{}", value ),
+                Node::Print( number ) => match **number {
+                    Node::Literal( value ) => match value {
+                        LiteralKind::U64 { value, .. } => print!( "{}", value ),
                     },
-                    Node::Expression { lhs: _, op: _, rhs: _ } => print!( "{}", Self::evaluate_expression( node ) ),
+                    Node::Expression { .. } => print!( "{}", Self::evaluate_expression( &*number ) ),
                     _ => unreachable!(),
                 }
                 _ => (),
@@ -797,6 +753,7 @@ impl Program {
         }
     }
 
+    // TODO make non recursive
     fn _evaluate_expression<'a>( expression: &'a Node, result: u64 ) -> u64 {
         let value = match expression {
             Node::Expression{ lhs, op, rhs } => match op {
@@ -807,7 +764,7 @@ impl Program {
                 BinaryOpKind::Pow => Self::evaluate_expression( lhs ).pow( Self::evaluate_expression( rhs ) as u32 ),
             },
             Node::Literal( value ) => match *value {
-                LiteralKind::U64 { base: _, value } => value,
+                LiteralKind::U64 { value, .. } => value,
             },
             _ => unreachable!(),
         };
@@ -818,7 +775,7 @@ impl Program {
     fn evaluate_expression<'a>( expression: &'a Node ) -> u64 {
         return Self::_evaluate_expression( expression, 0 );
     }
-    
+
 }
 
 
@@ -905,17 +862,17 @@ fn main() -> ExitCode {
         },
     };
 
-    let ast = match Parser::parse( &lexer ) {
+    let parser = match Parser::parse( &lexer ) {
         Ok( parser ) => {
             // println!( "{}", parser );
             parser
         },
-        Err( parser ) => {
-            eprint!( "{}", parser );
+        Err( errors ) => {
+            eprint!( "{}", errors );
             return ExitCode::FAILURE;
         },
     };
 
-    Program::interpret( &ast );
+    Program::interpret( &parser );
     return ExitCode::SUCCESS;
 }
