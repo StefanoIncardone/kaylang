@@ -361,7 +361,8 @@ impl<'lexer> IntoIterator for &'lexer Lexer {
 }
 
 
-// TODO try fixing the implementation of next/peek or implement my own
+// BUG calling peek() consumes the next item
+    // TODO implement own peek()
 // TODO create method current()
 #[derive( Debug )]
 struct LexerTokenIter<'lexer> {
@@ -390,6 +391,32 @@ impl<'lexer> Iterator for LexerTokenIter<'lexer> {
             self.token = 0;
 
             return self.next();
+        }
+    }
+}
+
+impl<'lexer> DoubleEndedIterator for LexerTokenIter<'lexer> {
+    fn next_back( &mut self ) -> Option<Self::Item> {
+        if self.token == 0 {
+            if self.line == 0 {
+                return None;
+            }
+
+            self.line -= 1;
+            let line = &self.lexer.lines[ self.line as usize ];
+            let tokens = &line.tokens;
+            
+            self.token = (tokens.len() - 1) as isize;
+            let token = &tokens[ self.token as usize ];
+            return Some( (line, token) );
+        }
+        else {
+            let line = &self.lexer.lines[ self.line as usize ];
+            let tokens = &line.tokens;
+            
+            self.token -= 1;
+            let token = &tokens[ self.token as usize ];
+            return Some( (line, token) );
         }
     }
 }
@@ -593,19 +620,21 @@ impl Parser {
             let next = tokens.peek();
             match next {
                 Some( (_, Token{ kind: TokenKind::SemiColon, .. }) ) => (),
-                Some( (line, token) ) => {
-                    let help_msg = match token.kind {
-                        TokenKind::EOF => "put a semicolon here to end the previous statement",
-                        _ => "put a semicolon before this token to end the previous statement",
-                    };
-
+                Some( (_, _) ) => {
+                    // BUG since calling peek() advances the iterator we have to go back two places
+                    tokens.next_back();
+                    let (line, token) = tokens.next_back().unwrap();
+                    
                     errors.push( SyntaxError {
                         line,
                         token,
                         msg: "missing semicolon",
-                        help_msg
+                        help_msg: "put a semicolon after this token to end the statement"
                     } );
-
+                    
+                    // BUG since calling peek() advances the iterator we have to go forward two places to return to the original location in the iterator
+                    tokens.next();
+                    tokens.next();
                 },
                 None => unreachable!(),
             }
@@ -619,7 +648,6 @@ impl Parser {
         }
     }
 
-    // TODO check for semicolon at end of statement
     fn skip_to_next_token<'program>(
         tokens: &mut Peekable<LexerTokenIter<'program>>, err_msg: &'static str
     ) -> Result<(&'program Line, &'program Token), SyntaxError<'program>>
@@ -665,7 +693,10 @@ impl Parser {
     }
 
     fn term_op<'program>( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Result<Option<BinaryOpKind>, SyntaxError<'program>> {
-        let (line, token) = Self::skip_to_next_token( tokens, "expected binary operator" )?;
+        let (line, token) = match Self::skip_to_next_token( tokens, "expected binary operator" ) {
+            Ok( (line, token) ) => (line, token),
+            Err( _ ) => return Ok( None ),
+        };
 
         let op = match token.kind {
             TokenKind::Times => Ok( Some( BinaryOpKind::Times ) ),
@@ -699,7 +730,10 @@ impl Parser {
     }
 
     fn factor_op<'program>( tokens: &mut Peekable<LexerTokenIter<'program>> ) -> Result<Option<BinaryOpKind>, SyntaxError<'program>> {
-        let (_, token) = Self::skip_to_next_token( tokens, "expected binary operator" )?;
+        let (_, token) = match Self::skip_to_next_token( tokens, "expected binary operator" ) {
+            Ok( (line, token) ) => (line, token),
+            Err( _ ) => return Ok( None ),
+        };
 
         let op = match token.kind {
             TokenKind::Plus => Ok( Some( BinaryOpKind::Plus ) ),
