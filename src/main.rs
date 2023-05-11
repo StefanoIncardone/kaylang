@@ -618,7 +618,6 @@ impl Display for Node {
 }
 
 
-// TODO extract line to separate struct => SyntaxErrors { line: Line, errors: Vec<SyntaxError> }
 #[derive( Debug )]
 struct SyntaxError<'line> {
     line: &'line Line,
@@ -685,19 +684,19 @@ impl Parser {
                 },
                 TokenKind::Print => {
                     tokens.next();
-                    match Parser::factor( &mut tokens ) {
+                    match Parser::expression( &mut tokens ) {
                         Ok( factor ) => Ok( Node::Print( Box::new( factor ) ) ),
                         err @ Err( _ ) => err,
                     }
                 },
                 TokenKind::PrintChar => {
                     tokens.next();
-                    match Parser::factor( &mut tokens ) {
+                    match Parser::expression( &mut tokens ) {
                         Ok( factor ) => Ok( Node::PrintChar( Box::new( factor ) ) ),
                         err @ Err( _ ) => err,
                     }
                 },
-                TokenKind::Literal( _ ) => Parser::factor( &mut tokens ),
+                TokenKind::Literal( _ ) => Parser::expression( &mut tokens ),
                 TokenKind::Plus | TokenKind::Minus | TokenKind::Times |
                 TokenKind::Divide | TokenKind::Pow => {
                     tokens.next();
@@ -705,7 +704,7 @@ impl Parser {
                         line,
                         token,
                         msg: "incomplete expression",
-                        help_msg: "stray binary operator"
+                        help_msg: "stray binary operator, consider putting a number literal before this token"
                     } )
                 },
                 TokenKind::Unexpected { .. } => unreachable!(),
@@ -730,14 +729,15 @@ impl Parser {
 
         let number = match token.kind {
             TokenKind::Literal( literal ) => Ok( Node::Literal( literal ) ),
-            TokenKind::Plus | TokenKind::Minus | TokenKind::Times |
-            TokenKind::Divide | TokenKind::Pow => {
+            TokenKind::Pow |
+            TokenKind::Times | TokenKind::Divide |
+            TokenKind::Plus | TokenKind::Minus => {
                 tokens.next();
                 Err( SyntaxError {
                     line,
                     token,
                     msg: "incomplete expression",
-                    help_msg: "stray binary operator"
+                    help_msg: "stray binary operator, consider putting a number literal before this token"
                 } )
             },
             _ => Err( SyntaxError {
@@ -755,14 +755,43 @@ impl Parser {
         return number;
     }
 
-    fn term_op<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Option<BinaryOpKind>, SyntaxError<'program>> {
+    fn power<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Option<BinaryOpKind>, SyntaxError<'program>> {
+        let (_line, token) = tokens.peek_non_whitespace( "expected expression or semicolon" )?;
+
+        let op = match token.kind {
+            TokenKind::Pow => Ok( Some( BinaryOpKind::Pow ) ),
+            TokenKind::Times | TokenKind::Divide |
+            TokenKind::Plus | TokenKind::Minus |
+            TokenKind::SemiColon | _ => Ok( None ),
+        };
+
+        if let Ok( Some( _ ) ) = op {
+            tokens.next();
+        }
+
+        return op;
+    }
+
+    fn exponentiation<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
+        let mut lhs = Self::number( tokens )?;
+
+        while let Some( op ) = Self::power( tokens )? {
+            let rhs = Self::number( tokens )?;
+            lhs = Node::Expression { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+        }
+
+        return Ok( lhs );
+    }
+
+    fn times_or_divide<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Option<BinaryOpKind>, SyntaxError<'program>> {
         let (_line, token) = tokens.peek_non_whitespace( "expected expression or semicolon" )?;
 
         let op = match token.kind {
             TokenKind::Times => Ok( Some( BinaryOpKind::Times ) ),
             TokenKind::Divide => Ok( Some( BinaryOpKind::Divide ) ),
-            TokenKind::Pow => Ok( Some( BinaryOpKind::Pow ) ),
-            TokenKind::Plus | TokenKind::Minus | TokenKind::SemiColon | _ => Ok( None ),
+            TokenKind::Pow |
+            TokenKind::Plus | TokenKind::Minus |
+            TokenKind::SemiColon | _ => Ok( None ),
         };
 
         if let Ok( Some( _ ) ) = op {
@@ -773,17 +802,17 @@ impl Parser {
     }
 
     fn term<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
-        let mut lhs = Self::number( tokens )?;
+        let mut lhs = Self::exponentiation( tokens )?;
 
-        while let Some( op ) = Self::term_op( tokens )? {
-            let rhs = Self::number( tokens )?;
+        while let Some( op ) = Self::times_or_divide( tokens )? {
+            let rhs = Self::exponentiation( tokens )?;
             lhs = Node::Expression { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
     }
 
-    fn factor_op<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Option<BinaryOpKind>, SyntaxError<'program>> {
+    fn plus_or_minus<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Option<BinaryOpKind>, SyntaxError<'program>> {
         let (_line, token) = tokens.peek_non_whitespace( "expected expression or semicolon" )?;
 
         let op = match token.kind {
@@ -792,7 +821,7 @@ impl Parser {
             TokenKind::SemiColon => Ok( None ),
             _ => {
                 let (previous_line, previous_token) = tokens.next_back_non_whitespace( "" ).unwrap();
-                
+
                 let err = match token.kind {
                     TokenKind::Literal( _ ) => Err( SyntaxError {
                         line: previous_line,
@@ -820,10 +849,10 @@ impl Parser {
         return op;
     }
 
-    fn factor<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
+    fn expression<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
         let mut lhs = Self::term( tokens )?;
 
-        while let Some( op ) = Self::factor_op( tokens )? {
+        while let Some( op ) = Self::plus_or_minus( tokens )? {
             let rhs = Self::term( tokens )?;
             lhs = Node::Expression { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
@@ -859,7 +888,6 @@ impl Program {
         }
     }
 
-    // TODO make non recursive
     fn _evaluate_expression<'a>( expression: &'a Node, result: u64 ) -> u64 {
         let value = match expression {
             Node::Expression{ lhs, op, rhs } => match op {
