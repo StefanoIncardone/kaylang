@@ -22,6 +22,8 @@ Line comment ignores everything until the end of the line: `#...`
     1. floor division as a binary operator
 - power `^`:
     1. exponentiation as a binary operator
+- round brackets `(`, `)`:
+    1. changing the order or operation
 
 ## Printing to screen
 

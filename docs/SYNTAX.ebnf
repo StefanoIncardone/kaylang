@@ -1,5 +1,5 @@
 (* program *)
-program = {line_comment | ([print | print_char], factor, ';')};
+program = {line_comment | ([print | print_char], expression, ';')};
 
 (* keywords *)
 print = "print";
@@ -14,19 +14,19 @@ non_zero = "1".."9";
 digit = zero | non_zero;
 number = {digit};
 
+(* symbols *)
+open_round_bracket = "(";
+close_round_bracket = ")";
+
 (* operators *)
 plus = "+";
 minus = "-";
 times = "*";
 power = "^";
 divide = "/";
-unary_op = plus | minus;
-binary_op = unary_op | times | power | divide;
-op = unary_op | binary_op;
 
-(* expressions *)
-term_op = plus | minus;
-term = number, [term_op, number];
-
-factor_op = times | divide | power;
-factor = term, [factor_op, term];
+(* expressions, from highest precedence to lowest *)
+factor = number | (open_round_bracket, expression, close_round_bracket);
+exponentiation = factor, [power, factor];
+term = exponentiation, [times | divide, exponentiation];
+expression = term, [plus | minus, term];

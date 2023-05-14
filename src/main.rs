@@ -4,13 +4,35 @@ use std::{io::{BufReader, BufRead, ErrorKind}, fs::File, env, process::ExitCode,
 
 #[derive( Debug, PartialEq, Clone, Copy )]
 enum LiteralKind {
-    U64{ base: u8, value: u64 }
+    I64{ base: u8, value: i64 }
 }
 
 impl Display for LiteralKind {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         match self {
-            Self::U64 { value, .. } => write!( f, "{}", value ),
+            Self::I64 { value, .. } => write!( f, "{}", value ),
+        }
+    }
+}
+
+
+#[derive( Debug, PartialEq, Clone, Copy )]
+enum OpKind {
+    Plus,
+    Minus,
+    Times,
+    Divide,
+    Pow,
+}
+
+impl Display for OpKind {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        match self {
+            Self::Plus => write!( f, "+" ),
+            Self::Minus => write!( f, "-" ),
+            Self::Times => write!( f, "*" ),
+            Self::Divide => write!( f, "/" ),
+            Self::Pow => write!( f, "^" ),
         }
     }
 }
@@ -20,16 +42,23 @@ impl Display for LiteralKind {
 enum TokenKind {
     Unexpected{ text: String, err_msg: &'static str, help_msg: &'static str },
 
-    // OpenRoundBracket,
-    // CloseRoundBracket,
+    // Whitespace
+    Comment( String ),
+
+    // Symbols
+    OpenRoundBracket,
+    CloseRoundBracket,
     // OpenSquareBracket,
     // CloseSquareBracket,
     // OpenCurlyBracket,
     // CloseCurlyBracket,
+    // Equals,
+    // Colon,
+    SemiColon,
 
+    // Identifiers
     Literal( LiteralKind ),
     // Identifier( String ),
-    Comment( String ),
 
     // Keywords
     Print, // temporary way of printing numbers
@@ -41,15 +70,8 @@ enum TokenKind {
     // Var,
     // Return,
 
-    // Symbols and operators
-    Plus,
-    Minus,
-    Times,
-    Divide,
-    Pow,
-    // Equals,
-    // Colon,
-    SemiColon,
+    // Operators
+    Op( OpKind ),
 
     // Special
     // Newline,
@@ -60,22 +82,19 @@ impl Display for TokenKind {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         match self {
             Self::Unexpected { text, .. } => write!( f, "{}", text ),
-            // Self::OpenRoundBracket => write!( f, "(" ),
-            // Self::CloseRoundBracket => write!( f, ")" ),
+            Self::Comment( text ) => write!( f, "{}", text ),
+
+            Self::OpenRoundBracket => write!( f, "(" ),
+            Self::CloseRoundBracket => write!( f, ")" ),
+            Self::SemiColon => write!( f, ";" ),
 
             Self::Literal( literal ) => write!( f, "{}", literal ),
-            Self::Comment( text ) => write!( f, "{}", text ),
 
             Self::Print => write!( f, "print" ),
             Self::PrintChar => write!( f, "print_char" ),
 
-            Self::Plus => write!( f, "+" ),
-            Self::Minus => write!( f, "-" ),
-            Self::Times => write!( f, "*" ),
-            Self::Divide => write!( f, "/" ),
-            Self::Pow => write!( f, "^" ),
+            Self::Op( op ) => write!( f, "{}", op ),
             // Self::Equals => write!( f, "=" ),
-            Self::SemiColon => write!( f, ";" ),
 
             /* Self::Newline | */ Self::EOF => write!( f, "" ),
         }
@@ -162,17 +181,17 @@ impl Lexer {
                         col += 1;
                         continue;
                     },
-                    // '(' => Token { kind: TokenKind::OpenRoundBracket, col },
-                    // ')' => Token { kind: TokenKind::CloseRoundBracket, col },
+                    '(' => Token { col, len: 1, kind: TokenKind::OpenRoundBracket },
+                    ')' => Token { col, len: 1, kind: TokenKind::CloseRoundBracket },
                     // '[' => Token { kind: TokenKind::OpenSquareBracket, col },
                     // ']' => Token { kind: TokenKind::CloseSquareBracket, col },
                     // '{' => Token { kind: TokenKind::OpenCurlyBracket, col },
                     // '}' => Token { kind: TokenKind::CloseCurlyBracket, col },
-                    '+' => Token { col, len: 1, kind: TokenKind::Plus },
-                    '-' => Token { col, len: 1, kind: TokenKind::Minus },
-                    '*' => Token { col, len: 1, kind: TokenKind::Times },
-                    '/' => Token { col, len: 1, kind: TokenKind::Divide },
-                    '^' => Token { col, len: 1, kind: TokenKind::Pow },
+                    '+' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Plus ) },
+                    '-' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Minus ) },
+                    '*' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Times ) },
+                    '/' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Divide ) },
+                    '^' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Pow ) },
                     // '=' => Token { kind: TokenKind::Equals, col },
                     // ':' => Token { kind: TokenKind::Colon, col },
                     ';' => Token { col, len: 1, kind: TokenKind::SemiColon },
@@ -205,7 +224,7 @@ impl Lexer {
 
                         let kind = if is_digit {
                             match token_text.parse() {
-                                Ok( value ) => TokenKind::Literal( LiteralKind::U64{ base: 10, value } ),
+                                Ok( value ) => TokenKind::Literal( LiteralKind::I64{ base: 10, value } ),
                                 Err( _ ) => TokenKind::Unexpected {
                                     text: token_text.clone(),
                                     err_msg: "expected number literal",
@@ -369,6 +388,11 @@ struct LexerTokenIter<'lexer> {
 }
 
 impl<'lexer> LexerTokenIter<'lexer> {
+    fn current( &self ) -> (&'lexer Line, &'lexer Token) {
+        let line = &self.lexer.lines[ self.line ];
+        return (line, &line.tokens[ self.token ]);
+    }
+
     fn next_back_non_whitespace( &mut self, err_msg: &'static str ) -> Result<(&'lexer Line, &'lexer Token), SyntaxError<'lexer>> {
         match self.next_back() {
             Some( (line, token) ) => match token.kind {
@@ -557,27 +581,6 @@ impl<'lexer> DoubleEndedIterator for LexerTokenIter<'lexer> {
 // }
 
 
-#[derive( Debug )]
-enum BinaryOpKind {
-    Plus,
-    Minus,
-    Times,
-    Divide,
-    Pow,
-}
-
-impl Display for BinaryOpKind {
-    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        match self {
-            Self::Plus => write!( f, "+" ),
-            Self::Minus => write!( f, "-" ),
-            Self::Times => write!( f, "*" ),
-            Self::Divide => write!( f, "/" ),
-            Self::Pow => write!( f, "^" ),
-        }
-    }
-}
-
 
 // #[derive( Debug )]
 // enum OpKind {
@@ -598,7 +601,7 @@ impl Display for BinaryOpKind {
 #[derive( Debug )]
 enum Node {
     Literal( LiteralKind ),
-    Expression{ lhs: Box<Node>, op: BinaryOpKind, rhs: Box<Node> },
+    Expression{ lhs: Box<Node>, op: OpKind, rhs: Box<Node> },
     Print( Box<Node> ),
     PrintChar( Box<Node> ),
 }
@@ -607,10 +610,7 @@ impl Display for Node {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         match self {
             Self::Literal( literal ) => write!( f, "{}", literal ),
-            Self::Expression{ lhs, op, rhs } => match op {
-                BinaryOpKind::Divide | BinaryOpKind::Times | BinaryOpKind::Pow => write!( f, "({} {} {})", lhs, op, rhs ),
-                _ => write!( f, "{} {} {}", lhs, op, rhs ),
-            },
+            Self::Expression{ lhs, op, rhs } => write!( f, "({} {} {})", lhs, op, rhs ),
             Self::Print( node ) => write!( f, "print {}", node ),
             Self::PrintChar( ascii ) => write!( f, "print {}", ascii ),
         }
@@ -666,14 +666,14 @@ impl<'program> Display for SyntaxErrors<'program> {
 
 
 #[derive( Debug )]
-struct Parser {
-    ast: Vec<Node>,
+struct AST {
+    nodes: Vec<Node>,
 }
 
-impl Parser {
+impl AST {
     fn parse<'program>( lexer: &'program Lexer ) -> Result<Self, SyntaxErrors<'program>> {
-        let mut errors: Vec<SyntaxError> = Vec::new();
-        let mut statements: Vec<Node> = Vec::new();
+        let mut syntax_errors = SyntaxErrors { file_path: lexer.file_path.clone(), errors: Vec::new() };
+        let mut ast = AST{ nodes: Vec::new() };
 
         let mut tokens = lexer.into_iter();
         while let Some( (line, token) ) = tokens.peek() {
@@ -684,66 +684,83 @@ impl Parser {
                 },
                 TokenKind::Print => {
                     tokens.next();
-                    match Parser::expression( &mut tokens ) {
+                    match AST::expression( &mut tokens ) {
                         Ok( factor ) => Ok( Node::Print( Box::new( factor ) ) ),
                         err @ Err( _ ) => err,
                     }
                 },
                 TokenKind::PrintChar => {
                     tokens.next();
-                    match Parser::expression( &mut tokens ) {
+                    match AST::expression( &mut tokens ) {
                         Ok( factor ) => Ok( Node::PrintChar( Box::new( factor ) ) ),
                         err @ Err( _ ) => err,
                     }
                 },
-                TokenKind::Literal( _ ) => Parser::expression( &mut tokens ),
-                TokenKind::Plus | TokenKind::Minus | TokenKind::Times |
-                TokenKind::Divide | TokenKind::Pow => {
+                TokenKind::Literal( _ ) | TokenKind::OpenRoundBracket |
+                TokenKind::Op( _ ) => AST::expression( &mut tokens ),
+                TokenKind::CloseRoundBracket => {
                     tokens.next();
                     Err( SyntaxError {
                         line,
                         token,
-                        msg: "incomplete expression",
-                        help_msg: "stray binary operator, consider putting a number literal before this token"
+                        msg: "invalid expression",
+                        help_msg: "stray closed parenthesis, may be missing an opening round bracket"
                     } )
                 },
                 TokenKind::Unexpected { .. } => unreachable!(),
             };
 
             match statement_result {
-                Ok( statement ) => statements.push( statement ),
-                Err( err ) => errors.push( err )
+                Ok( statement ) => ast.nodes.push( statement ),
+                Err( err ) => syntax_errors.errors.push( err )
             }
         }
 
-        if !errors.is_empty() {
-            return Err( SyntaxErrors { file_path: lexer.file_path.clone(), errors } );
+        if !syntax_errors.errors.is_empty() {
+            return Err( syntax_errors );
         }
         else {
-            return Ok( Self { ast: statements } );
+            return Ok( ast );
         }
     }
 
-    fn number<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
-        let (line, token) = tokens.peek_non_whitespace( "expected number literal" )?;
+    fn factor<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
+        let (line, token) = tokens.peek_non_whitespace( "expected expression" )?;
 
         let number = match token.kind {
             TokenKind::Literal( literal ) => Ok( Node::Literal( literal ) ),
-            TokenKind::Pow |
-            TokenKind::Times | TokenKind::Divide |
-            TokenKind::Plus | TokenKind::Minus => {
+            TokenKind::OpenRoundBracket => {
+                tokens.next();
+                // FIXME handling of case when the expression is just an empty bracket pair
+                // FIXME handling of case when a bracket is used as a factor for an expression (eg: "3 + )")
+                let expression = Self::expression( tokens );
+                let (_current_line, current_token) = tokens.current();
+
+                if let Token { kind: TokenKind::CloseRoundBracket, .. } = current_token {
+                    expression
+                }
+                else {
+                    Err( SyntaxError {
+                        line,
+                        token,
+                        msg: "invalid expression",
+                        help_msg: "unclosed parenthesis"
+                    } )
+                }
+            },
+            TokenKind::Op( _ ) => {
                 tokens.next();
                 Err( SyntaxError {
                     line,
                     token,
-                    msg: "incomplete expression",
+                    msg: "invalid expression",
                     help_msg: "stray binary operator, consider putting a number literal before this token"
                 } )
             },
             _ => Err( SyntaxError {
                 line,
                 token,
-                msg: "incomplete expression",
+                msg: "invalid expression",
                 help_msg: "expected number literal"
             } ),
         };
@@ -755,13 +772,11 @@ impl Parser {
         return number;
     }
 
-    fn power<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Option<BinaryOpKind>, SyntaxError<'program>> {
+    fn power<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Option<OpKind>, SyntaxError<'program>> {
         let (_line, token) = tokens.peek_non_whitespace( "expected expression or semicolon" )?;
 
         let op = match token.kind {
-            TokenKind::Pow => Ok( Some( BinaryOpKind::Pow ) ),
-            TokenKind::Times | TokenKind::Divide |
-            TokenKind::Plus | TokenKind::Minus |
+            TokenKind::Op( op @ OpKind::Pow ) => Ok( Some( op ) ),
             TokenKind::SemiColon | _ => Ok( None ),
         };
 
@@ -773,24 +788,21 @@ impl Parser {
     }
 
     fn exponentiation<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
-        let mut lhs = Self::number( tokens )?;
+        let mut lhs = Self::factor( tokens )?;
 
         while let Some( op ) = Self::power( tokens )? {
-            let rhs = Self::number( tokens )?;
+            let rhs = Self::factor( tokens )?;
             lhs = Node::Expression { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
     }
 
-    fn times_or_divide<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Option<BinaryOpKind>, SyntaxError<'program>> {
+    fn times_or_divide<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Option<OpKind>, SyntaxError<'program>> {
         let (_line, token) = tokens.peek_non_whitespace( "expected expression or semicolon" )?;
 
         let op = match token.kind {
-            TokenKind::Times => Ok( Some( BinaryOpKind::Times ) ),
-            TokenKind::Divide => Ok( Some( BinaryOpKind::Divide ) ),
-            TokenKind::Pow |
-            TokenKind::Plus | TokenKind::Minus |
+            TokenKind::Op( op @ OpKind::Times | op @ OpKind::Divide ) => Ok( Some( op ) ),
             TokenKind::SemiColon | _ => Ok( None ),
         };
 
@@ -812,13 +824,12 @@ impl Parser {
         return Ok( lhs );
     }
 
-    fn plus_or_minus<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Option<BinaryOpKind>, SyntaxError<'program>> {
+    fn plus_or_minus<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Option<OpKind>, SyntaxError<'program>> {
         let (_line, token) = tokens.peek_non_whitespace( "expected expression or semicolon" )?;
 
         let op = match token.kind {
-            TokenKind::Plus => Ok( Some( BinaryOpKind::Plus ) ),
-            TokenKind::Minus => Ok( Some( BinaryOpKind::Minus ) ),
-            TokenKind::SemiColon => Ok( None ),
+            TokenKind::Op( op @ OpKind::Plus | op @ OpKind::Minus ) => Ok( Some( op ) ),
+            TokenKind::CloseRoundBracket | TokenKind::SemiColon => Ok( None ),
             _ => {
                 let (previous_line, previous_token) = tokens.next_back_non_whitespace( "" ).unwrap();
 
@@ -826,13 +837,13 @@ impl Parser {
                     TokenKind::Literal( _ ) => Err( SyntaxError {
                         line: previous_line,
                         token: previous_token,
-                        msg: "incomplete expression",
+                        msg: "invalid expression",
                         help_msg: "expected '+', '-', '*', '/' or '^' after this token to complete the expression"
                     } ),
                     _ => Err( SyntaxError {
                         line: previous_line,
                         token: previous_token,
-                        msg: "incomplete expression or missing semicolon",
+                        msg: "invalid expression or missing semicolon",
                         help_msg: "expected '+', '-', '*', '/' or '^' after this token to complete the expression, or a ';' after this token to end the previous statement"
                     } ),
                 };
@@ -866,20 +877,16 @@ impl Parser {
 struct Program;
 
 impl Program {
-    fn interpret( parser: &Parser ) {
-        for node in &parser.ast {
+    fn interpret( ast: &AST ) {
+        for node in &ast.nodes {
             match &node {
                 Node::PrintChar( number ) => match **number {
-                    Node::Literal( value ) => match value {
-                        LiteralKind::U64 { value, .. } => print!( "{}", value as u8 as char ),
-                    },
+                    Node::Literal( _ ) |
                     Node::Expression { .. } => print!( "{}", Self::evaluate_expression( &*number ) as u8 as char ),
                     _ => unreachable!(),
-                }
+                },
                 Node::Print( number ) => match **number {
-                    Node::Literal( value ) => match value {
-                        LiteralKind::U64 { value, .. } => print!( "{}", value ),
-                    },
+                    Node::Literal( _ ) |
                     Node::Expression { .. } => print!( "{}", Self::evaluate_expression( &*number ) ),
                     _ => unreachable!(),
                 }
@@ -888,28 +895,21 @@ impl Program {
         }
     }
 
-    fn _evaluate_expression<'a>( expression: &'a Node, result: u64 ) -> u64 {
-        let value = match expression {
-            Node::Expression{ lhs, op, rhs } => match op {
-                BinaryOpKind::Plus => Self::evaluate_expression( lhs ) + Self::evaluate_expression( rhs ),
-                BinaryOpKind::Minus => Self::evaluate_expression( lhs ) - Self::evaluate_expression( rhs ),
-                BinaryOpKind::Times => Self::evaluate_expression( lhs ) * Self::evaluate_expression( rhs ),
-                BinaryOpKind::Divide => Self::evaluate_expression( lhs ) / Self::evaluate_expression( rhs ),
-                BinaryOpKind::Pow => Self::evaluate_expression( lhs ).pow( Self::evaluate_expression( rhs ) as u32 ),
-            },
+    fn evaluate_expression<'a>( expression: &'a Node ) -> i64 {
+        return match expression {
             Node::Literal( value ) => match *value {
-                LiteralKind::U64 { value, .. } => value,
+                LiteralKind::I64 { value, .. } => value,
+            },
+            Node::Expression{ lhs, op, rhs } => match op {
+                OpKind::Plus => Self::evaluate_expression( lhs ) + Self::evaluate_expression( rhs ),
+                OpKind::Minus => Self::evaluate_expression( lhs ) - Self::evaluate_expression( rhs ),
+                OpKind::Times => Self::evaluate_expression( lhs ) * Self::evaluate_expression( rhs ),
+                OpKind::Divide => Self::evaluate_expression( lhs ) / Self::evaluate_expression( rhs ),
+                OpKind::Pow => Self::evaluate_expression( lhs ).pow( Self::evaluate_expression( rhs ) as u32 ),
             },
             _ => unreachable!(),
         };
-
-        return result + value;
     }
-
-    fn evaluate_expression<'a>( expression: &'a Node ) -> u64 {
-        return Self::_evaluate_expression( expression, 0 );
-    }
-
 }
 
 
@@ -996,10 +996,10 @@ fn main() -> ExitCode {
         },
     };
 
-    let parser = match Parser::parse( &lexer ) {
-        Ok( parser ) => {
+    let ast = match AST::parse( &lexer ) {
+        Ok( ast ) => {
             // println!( "{}", parser );
-            parser
+            ast
         },
         Err( errors ) => {
             eprint!( "{}", errors );
@@ -1007,6 +1007,6 @@ fn main() -> ExitCode {
         },
     };
 
-    Program::interpret( &parser );
+    Program::interpret( &ast );
     return ExitCode::SUCCESS;
 }
