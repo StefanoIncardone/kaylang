@@ -228,7 +228,7 @@ impl Lexer {
                                 Err( _ ) => TokenKind::Unexpected {
                                     text: token_text.clone(),
                                     err_msg: "expected number literal",
-                                    help_msg: "overflows a 64 bit unsigned integer [0, 18446744073709551615]"
+                                    help_msg: "overflows a 64 bit unsigned integer [-9223372036854775808, 9223372036854775807]"
                                 },
                             }
                         }
