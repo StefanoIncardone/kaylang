@@ -1,5 +1,5 @@
 // TODO implement NOTE, HINT, HELP in error messages
-use std::{io::{BufReader, BufRead, ErrorKind}, fs::File, env, process::ExitCode, fmt::Display};
+use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write}, fs::File, env, process::{ExitCode, Command}, fmt::Display, path::{Path, PathBuf}};
 
 
 #[derive( Debug, PartialEq, Clone, Copy )]
@@ -153,7 +153,7 @@ struct Lexer {
 
 impl Lexer {
     // TODO make the input character stream generic
-    fn parse( file_path: String, source_file: File ) -> Result<Self, Self> {
+    fn parse( file_path: &str, source_file: File ) -> Result<Self, Self> {
         let mut errors: Vec<Line> = Vec::new();
         let mut lines: Vec<Line> = Vec::new();
         let mut number: usize = 1;
@@ -325,10 +325,10 @@ impl Lexer {
         }
 
         if !errors.is_empty() {
-            return Err( Self { file_path, lines: errors } );
+            return Err( Self { file_path: file_path.to_string(), lines: errors } );
         }
         else {
-            return Ok( Self { file_path, lines } );
+            return Ok( Self { file_path: file_path.to_string(), lines } );
         }
     }
 }
@@ -547,55 +547,6 @@ impl<'lexer> DoubleEndedIterator for LexerTokenIter<'lexer> {
         }
     }
 }
-
-
-// #[derive( Debug )]
-// enum UnaryOpKind {
-//     Plus,
-//     Minus,
-// }
-
-// impl Display for UnaryOpKind {
-//     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-//         match self {
-//             Self::Plus => write!( f, "+" ),
-//             Self::Minus => write!( f, "-" ),
-//         }
-//     }
-// }
-
-
-// #[derive( Debug )]
-// enum UnaryOpKind {
-//     Plus,
-//     Minus,
-// }
-
-// impl Display for UnaryOpKind {
-//     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-//         match self {
-//             Self::Plus => write!( f, "+" ),
-//             Self::Minus => write!( f, "-" ),
-//         }
-//     }
-// }
-
-
-
-// #[derive( Debug )]
-// enum OpKind {
-//     Unary{ lhs: LiteralKind, op: UnaryOpKind },
-//     Binary{ lhs: LiteralKind, op: BinaryOpKind, rhs: LiteralKind },
-// }
-
-// impl Display for OpKind {
-//     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-//         match self {
-//             Self::Unary{ lhs, op } => write!( f, "{} {}", lhs,op ),
-//             Self::Binary{ lhs, op, rhs } => write!( f, "{} {} {}", lhs, op, rhs ),
-//         }
-//     }
-// }
 
 
 #[derive( Debug )]
@@ -877,25 +828,174 @@ impl AST {
 struct Program;
 
 impl Program {
-    fn interpret( ast: &AST ) {
+    fn interpret( ast: &AST, file_path: &str ) {
+        println!( "\x1b[92;1mIntepreting\x1b[0m: {}", file_path );
+
         for node in &ast.nodes {
             match &node {
-                Node::PrintChar( number ) => match **number {
-                    Node::Literal( _ ) |
-                    Node::Expression { .. } => print!( "{}", Self::evaluate_expression( &*number ) as u8 as char ),
-                    _ => unreachable!(),
-                },
-                Node::Print( number ) => match **number {
-                    Node::Literal( _ ) |
-                    Node::Expression { .. } => print!( "{}", Self::evaluate_expression( &*number ) ),
-                    _ => unreachable!(),
-                }
-                _ => (),
+                // Node::PrintChar( number ) => match **number {
+                //     Node::Literal( _ ) |
+                //     Node::Expression { .. } => print!( "{}", Self::evaluate_expression( &*number ) as u8 as char ),
+                //     _ => unreachable!(),
+                // },
+                // Node::Print( number ) => match **number {
+                //     Node::Literal( _ ) |
+                //     Node::Expression { .. } => print!( "{}", Self::evaluate_expression( &*number ) ),
+                //     _ => unreachable!(),
+                // }
+                _ => println!( "{}", node ),
             }
         }
     }
 
-    fn evaluate_expression<'a>( expression: &'a Node ) -> i64 {
+    fn build( ast: &AST, file_path: &str ) -> Result<PathBuf, ()> {
+        let src_file_path = Path::new( file_path );
+        println!( "\x1b[92;1mBuilding\x1b[0m: {}", src_file_path.display() );
+
+        let asm_file_path = src_file_path.with_extension( "asm" );
+        let mut asm_file = BufWriter::new( File::create( &asm_file_path ).unwrap() );
+
+        let preamble =
+r"global _start
+
+section .rodata
+ stdout: equ 1
+ SYS_write: equ 1
+ SYS_exit: equ 60
+ EXIT_SUCCESS: equ 0
+ newline: db 10
+
+ I64_MIN: equ 1 << 63
+ I64_MAX: equ I64_MIN - 1
+
+ INT_MAX_DIGITS: equ 64
+
+section .data
+ int_str: times INT_MAX_DIGITS + 1 db 0
+ int_str_bufsize: equ $ - int_str
+ int_str_len: equ int_str_bufsize - 1";
+
+        let int_to_str =
+r"int_toStr:
+ mov rsi, 10
+
+ push rcx
+ mov rcx, (int_str + int_str_len) - 1
+
+ mov rax, rdi
+ cmp rax, 0
+ je .writeZero
+ jl .makeNumberPositive
+ jg .extractNextDigit
+
+.writeZero:
+ mov byte [rcx], '0'
+ jmp .done
+
+.makeNumberPositive:
+ neg rax
+
+.extractNextDigit:
+ xor rdx, rdx
+ idiv rsi
+
+ add dl, '0'
+ mov byte [rcx], dl
+ dec rcx
+
+ cmp rax, 0
+ jne .extractNextDigit
+
+ cmp rdi, 0
+ jl .addMinusSign
+ inc rcx
+ jmp .done
+
+.addMinusSign:
+ mov byte [rcx], '-'
+
+.done:
+ mov rdx, int_str + int_str_len
+ sub rdx, rcx
+
+ mov rax, rcx
+ pop rcx
+ ret";
+
+        let sys_exit =
+r" mov rdi, EXIT_SUCCESS
+ mov rax, SYS_exit
+ syscall";
+
+        let user_program =
+r" mov rdi, 34
+ add rdi, 35
+ mov rsi, 10
+ call int_toStr
+
+ mov rdi, stdout
+ mov rsi, rax
+ mov rdx, rdx
+ mov rax, SYS_write
+ syscall
+
+ push `\n`
+ mov rdi, stdout
+ mov rsi, rsp
+ mov rdx, 1
+ mov rax, SYS_write
+ syscall
+ pop rsi
+ ";
+
+        let program = format!(
+r"{}
+
+section .text
+{}
+
+_start:
+{}
+
+{}
+", preamble, int_to_str, user_program, sys_exit );
+
+        asm_file.write_all( program.as_bytes() ).unwrap();
+
+        asm_file.flush().unwrap();
+
+        let nasm = Command::new( "nasm" )
+                            .args( ["-felf64", "-gdwarf", asm_file_path.to_str().unwrap()] )
+                            .output()
+                            .expect( "failed to run nasm assembler" );
+
+        print!( "{}", String::from_utf8_lossy( &nasm.stdout ) );
+        print!( "{}", String::from_utf8_lossy( &nasm.stderr ) );
+
+        let obj_file_path = src_file_path.with_extension( "o" );
+        let executable_file_path = src_file_path.with_extension( "" );
+        let ld = Command::new( "ld" )
+                        .args( [obj_file_path.to_str().unwrap(), "-o", executable_file_path.to_str().unwrap()] )
+                        .output()
+                        .expect( "failed to link" );
+
+        print!( "{}", String::from_utf8_lossy( &ld.stdout ) );
+        print!( "{}", String::from_utf8_lossy( &ld.stderr ) );
+
+        return Ok( executable_file_path );
+    }
+
+    fn run( ast: &AST, file_path: &str ) -> Result<(), ()> {
+        let executable_file_path = Self::build( &ast, &file_path )?;
+
+        println!( "\x1b[92;1mRunning\x1b[0m: {}", executable_file_path.display() );
+        let output = Command::new( format!( "{}", executable_file_path.display() ) ).output().unwrap();
+        print!( "{}", String::from_utf8_lossy( &output.stdout ) );
+
+        return Ok( () );
+    }
+
+    fn evaluate_expression<'ast>( expression: &'ast Node ) -> i64 {
         return match expression {
             Node::Literal( value ) => match *value {
                 LiteralKind::I64 { value, .. } => value,
@@ -918,15 +1018,15 @@ fn print_usage() {
     println!( r"
 Blitzlang compiler, version {}
 
-Usage: blitz [Options] [Commands] file.blz
+Usage: blitz [Options] [Run mode] file.blz
 
 Options:
     -h, --help              Display this message
 
-Commands:
-    TODO: interpret <file.blz>    Run the program in interpret mode
-    TODO: build <file.blz>        Compile the program down to a binary executable
-    TODO: run <file.blz>          Compile and run the generated binary executable
+Run mode:
+    interpret <file.blz>    Run the program in interpret mode
+    build     <file.blz>    Compile the program down to a binary executable
+    run       <file.blz>    Compile and run the generated binary executable
 ",
         env!( "CARGO_PKG_VERSION" )
     );
@@ -936,13 +1036,19 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().collect();
 
     // to quickly debug
-    args.push( "interpret".to_string() );
+    // args.push( "interpret".to_string() );
+    // args.push( "build".to_string() );
+    args.push( "run".to_string() );
     args.push( "examples/main.blz".to_string() );
 
     if args.len() < 2 {
         print_usage();
         return ExitCode::SUCCESS;
     }
+
+    let mut interpret_flag = false;
+    let mut build_flag = false;
+    let mut run_flag = false;
 
     let mut source_file_path: Option<String> = None;
     for arg in args.into_iter().skip( 1 ) { // skipping the name of this executable
@@ -951,41 +1057,62 @@ fn main() -> ExitCode {
                 print_usage();
                 return ExitCode::SUCCESS;
             },
-            "interpret" => (),
-            "build" => (),
-            "run" => (),
+            "interpret" => interpret_flag = true,
+            "build" => build_flag = true,
+            "run" => run_flag = true,
             _ => if source_file_path.is_none() {
                     source_file_path = Some( arg );
                 }
                 else {
-                    eprintln!( "Error: too many source file paths provided!" );
+                    eprintln!( "\x1b[91;1mError\x1b[0m: too many source file paths provided" );
                     return ExitCode::FAILURE;
                 },
         }
     }
 
+    if !interpret_flag && !build_flag && !run_flag {
+        eprintln!( "\x1b[91;1mError\x1b[0m: no run mode command provided" );
+        return ExitCode::FAILURE;
+    }
+    else if interpret_flag && (build_flag || run_flag) {
+        eprintln!( "\x1b[91;1mError\x1b[0m: canno interpret and build/run at the same time" );
+        return ExitCode::FAILURE;
+    }
+    else if build_flag && run_flag {
+        eprintln!( "\x1b[91;1mError\x1b[0m: build and run commands cannot be used together" );
+        return ExitCode::FAILURE;
+    }
+
     let source_file_path = match source_file_path {
         Some( path ) => path,
         None => {
-            eprintln!( "Error: no source file path provided!" );
+            eprintln!( "\x1b[91;1mError\x1b[0m: no source file path provided" );
             return ExitCode::FAILURE;
         }
     };
 
     let source_file = match File::open( &source_file_path ) {
-        Ok( file ) => file,
+        Ok( file ) => {
+            if file.metadata().unwrap().is_dir() {
+                eprintln!( "\x1b[91;1mError\x1b[0m: provided file was a directory" );
+                return ExitCode::FAILURE;
+            }
+            else {
+                file
+            }
+        },
         Err( err ) => {
             let cause = match err.kind() {
                 ErrorKind::NotFound => "file not found, or wrong file name",
                 _ => "unknown error",
             };
 
-            eprintln!( "Error: could not open file '{}'!\nCause: {}!", &source_file_path, cause );
+            eprintln!( "\x1b[91;1mError\x1b[0m: could not open file '{}'!\nCause: {}", &source_file_path, cause );
             return ExitCode::FAILURE;
         },
     };
 
-    let lexer = match Lexer::parse( source_file_path, source_file ) {
+    let lexer = match Lexer::parse( &source_file_path, source_file ) {
         Ok( lexer ) => {
             // println!( "{:?}\n", lexer );
             lexer
@@ -1007,6 +1134,15 @@ fn main() -> ExitCode {
         },
     };
 
-    Program::interpret( &ast );
+    if interpret_flag {
+        Program::interpret( &ast, &source_file_path );
+    }
+    else if build_flag {
+        Program::build( &ast, &source_file_path ).unwrap();
+    }
+    else if run_flag {
+        Program::run( &ast, &source_file_path ).unwrap();
+    }
+
     return ExitCode::SUCCESS;
 }
