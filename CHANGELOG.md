@@ -18,13 +18,16 @@
 ## 0.1
 
 - run modes:
+    - line comments: `#...`
+    - 64 bit unsigned base 10 number literals
+    - each expression is separated by semicolons
+    - enclosing an expression in round brackets promotes its precedence to the highest level
     - `interpret` to interpret the program without compiling it
-        - line comments: `#...`
-        - 64 bit unsigned base 10 number literals
         - basic math expression: `+`, `-`, `*`, `/`, `^`
-        - each expression is separated by semicolons
-        - enclosing an expression in round brackets promotes its precedence to the highest level
         - printing of math expressions using the `print` keyword
-        - printing of numbers interpreted as ascii characters using the `print_char` keyword
+        - printing of math expressions interpreted as ascii characters using the `print_char` keyword
     - `build` to compile the program down to a binary executable
+        - single addition expressions
+        - printing of single addition expressions using the `print` keyword
+        - printing of single addition expressions interpreted as ascii characters using the `print_char` keyword
     - `run` to compile and run the compiled native assembly code

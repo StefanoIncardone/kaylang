@@ -828,23 +828,121 @@ impl AST {
 struct Program;
 
 impl Program {
+    fn evaluate_expression<'ast>( expression: &'ast Node ) -> i64 {
+        return match expression {
+            Node::Literal( value ) => match *value {
+                LiteralKind::I64 { value, .. } => value,
+            },
+            Node::Expression{ lhs, op, rhs } => match op {
+                OpKind::Plus => Self::evaluate_expression( lhs ) + Self::evaluate_expression( rhs ),
+                OpKind::Minus => Self::evaluate_expression( lhs ) - Self::evaluate_expression( rhs ),
+                OpKind::Times => Self::evaluate_expression( lhs ) * Self::evaluate_expression( rhs ),
+                OpKind::Divide => Self::evaluate_expression( lhs ) / Self::evaluate_expression( rhs ),
+                OpKind::Pow => Self::evaluate_expression( lhs ).pow( Self::evaluate_expression( rhs ) as u32 ),
+            },
+            _ => unreachable!(),
+        };
+    }
+
     fn interpret( ast: &AST, file_path: &str ) {
         println!( "\x1b[92;1mIntepreting\x1b[0m: {}", file_path );
 
         for node in &ast.nodes {
             match &node {
-                // Node::PrintChar( number ) => match **number {
-                //     Node::Literal( _ ) |
-                //     Node::Expression { .. } => print!( "{}", Self::evaluate_expression( &*number ) as u8 as char ),
-                //     _ => unreachable!(),
-                // },
-                // Node::Print( number ) => match **number {
-                //     Node::Literal( _ ) |
-                //     Node::Expression { .. } => print!( "{}", Self::evaluate_expression( &*number ) ),
-                //     _ => unreachable!(),
-                // }
-                _ => println!( "{}", node ),
+                Node::PrintChar( number ) => match **number {
+                    Node::Literal( _ ) |
+                    Node::Expression { .. } => print!( "{}", Self::evaluate_expression( &*number ) as u8 as char ),
+                    _ => unreachable!(),
+                },
+                Node::Print( number ) => match **number {
+                    Node::Literal( _ ) |
+                    Node::Expression { .. } => print!( "{}", Self::evaluate_expression( &*number ) ),
+                    _ => unreachable!(),
+                }
+                _ => (),
             }
+        }
+    }
+
+    fn compile( ast: &AST ) -> String {
+        let mut src_code = String::new();
+
+        for node in &ast.nodes {
+            let expression_asm = match &node {
+                Node::PrintChar( character_node ) => {
+                    let character = match **character_node {
+                        Node::Literal( literal ) => match literal {
+                            LiteralKind::I64 { value, .. } => format!( "{}", value ),
+                        },
+                        // Node::Expression { .. } => src_code.push_str( &format!( "{}", Self::evaluate_expression( &*number ) ) ),
+                        _ => unreachable!()
+                    };
+
+                    format!( " push {character}\
+                        \n mov rdi, stdout\
+                        \n mov rsi, rsp\
+                        \n mov rdx, 1\
+                        \n mov rax, SYS_write\
+                        \n syscall\
+                        \n pop rsi\
+                        \n\n"
+                    )
+                },
+                Node::Print( number_node ) => {
+                    let number = match **number_node {
+                        Node::Literal( literal ) => match literal {
+                            LiteralKind::I64 { value, .. } => format!( "mov rdi, {}", value ),
+                        },
+                        Node::Expression { .. } => Self::compile_expression( &number_node ),
+                        _ => unreachable!()
+                    };
+
+                    format!( "{number}\
+                        \n mov rsi, 10\
+                        \n call int_toStr\
+                        \n\
+                        \n mov rdi, stdout\
+                        \n mov rsi, rax\
+                        \n mov rdx, rdx\
+                        \n mov rax, SYS_write\
+                        \n syscall\
+                        \n\n"
+                    )
+                },
+                Node::Literal( literal ) => match literal {
+                    LiteralKind::I64 { value, .. } => format!( " mov rdi, {}\n", value ),
+                },
+                Node::Expression { .. } => Self::compile_expression( node ),
+            };
+
+            src_code.push_str( &expression_asm );
+        }
+
+        return src_code;
+    }
+
+    fn compile_expression( node: &Node ) -> String {
+        match &node {
+            Node::Literal( literal ) => match literal {
+                LiteralKind::I64 { value, .. } => return format!( "{}", value ),
+            },
+            Node::Expression { lhs, op, rhs } => match op {
+                OpKind::Plus => {
+                    let lhs_asm = format!( "{}", &Self::compile_expression( lhs ) );
+                    let rhs_asm = format!( "{}", &Self::compile_expression( rhs ) );
+
+                    return format!( " mov rdi, {}\
+                        \n add rdi, {}",
+                        lhs_asm, rhs_asm
+                    );
+                }
+                // OpKind::Minus => Self::evaluate_expression( lhs ) - Self::evaluate_expression( rhs ),
+                // OpKind::Times => Self::evaluate_expression( lhs ) * Self::evaluate_expression( rhs ),
+                // OpKind::Divide => Self::evaluate_expression( lhs ) / Self::evaluate_expression( rhs ),
+                // OpKind::Pow => Self::evaluate_expression( lhs ).pow( Self::evaluate_expression( rhs ) as u32 ),
+                _ => unreachable!(),
+            },
+            _ => unreachable!(),
         }
     }
 
@@ -866,7 +964,7 @@ section .rodata
  newline: db 10
 
  I64_MIN: equ 1 << 63
- I64_MAX: equ I64_MIN - 1
+ I64_MAX: equ ~I64_MIN
 
  INT_MAX_DIGITS: equ 64
 
@@ -922,31 +1020,61 @@ r"int_toStr:
  pop rcx
  ret";
 
+        let int_pow =
+r"
+int_pow:
+ cmp rsi, 1
+ je .exponent_is_one
+
+ cmp rsi, 0
+ je .exponent_is_zero
+
+ push rdi
+ push rsi
+
+ mov rax, rdi
+ mov rdi, 1
+
+.next_power:
+ cmp rsi, 1
+ jle .done
+
+ test rsi, 1
+ jnz .exponent_is_odd
+
+ imul rax, rax
+ shr rsi, 1
+ jmp .next_power
+
+.exponent_is_odd:
+ imul rdi, rax
+ imul rax, rax
+
+ dec rsi
+ shr rsi, 1
+ jmp .next_power
+
+.done:
+ imul rax, rdi
+
+ pop rsi
+ pop rdi
+ ret
+
+.exponent_is_one:
+ mov rax, rdi
+ ret
+
+.exponent_is_zero:
+ mov rax, 1
+ ret";
+
         let sys_exit =
 r" mov rdi, EXIT_SUCCESS
  mov rax, SYS_exit
  syscall";
 
-        let user_program =
-r" mov rdi, 34
- add rdi, 35
- mov rsi, 10
- call int_toStr
-
- mov rdi, stdout
- mov rsi, rax
- mov rdx, rdx
- mov rax, SYS_write
- syscall
-
- push `\n`
- mov rdi, stdout
- mov rsi, rsp
- mov rdx, 1
- mov rax, SYS_write
- syscall
- pop rsi
- ";
+        let user_program = Self::compile( &ast );
 
         let program = format!(
 r"{}
@@ -954,11 +1082,12 @@ r"{}
 section .text
 {}
 
-_start:
 {}
 
-{}
-", preamble, int_to_str, user_program, sys_exit );
+
+_start:
+{}{}
+", preamble, int_to_str, int_pow, user_program, sys_exit );
 
         asm_file.write_all( program.as_bytes() ).unwrap();
 
@@ -994,22 +1123,6 @@ _start:
 
         return Ok( () );
     }
-
-    fn evaluate_expression<'ast>( expression: &'ast Node ) -> i64 {
-        return match expression {
-            Node::Literal( value ) => match *value {
-                LiteralKind::I64 { value, .. } => value,
-            },
-            Node::Expression{ lhs, op, rhs } => match op {
-                OpKind::Plus => Self::evaluate_expression( lhs ) + Self::evaluate_expression( rhs ),
-                OpKind::Minus => Self::evaluate_expression( lhs ) - Self::evaluate_expression( rhs ),
-                OpKind::Times => Self::evaluate_expression( lhs ) * Self::evaluate_expression( rhs ),
-                OpKind::Divide => Self::evaluate_expression( lhs ) / Self::evaluate_expression( rhs ),
-                OpKind::Pow => Self::evaluate_expression( lhs ).pow( Self::evaluate_expression( rhs ) as u32 ),
-            },
-            _ => unreachable!(),
-        };
-    }
 }
 
 
@@ -1036,9 +1149,9 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().collect();
 
     // to quickly debug
-    // args.push( "interpret".to_string() );
+    args.push( "interpret".to_string() );
     // args.push( "build".to_string() );
-    args.push( "run".to_string() );
+    // args.push( "run".to_string() );
     args.push( "examples/main.blz".to_string() );
 
     if args.len() < 2 {

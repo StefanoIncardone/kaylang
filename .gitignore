@@ -4,3 +4,4 @@
 *.asm
 *.o
 Makefile
+main

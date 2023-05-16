@@ -1,2 +1,4 @@
-print 34 + 35;
+print 400 + 20;
+print_char 10;
+print_char 69;
 print_char 10;
