@@ -878,7 +878,8 @@ impl Program {
                         _ => unreachable!()
                     };
 
-                    format!( " push {character}\
+                    format!(
+                        " push {character}\
                         \n mov rdi, stdout\
                         \n mov rsi, rsp\
                         \n mov rdx, 1\
@@ -897,7 +898,8 @@ impl Program {
                         _ => unreachable!()
                     };
 
-                    format!( "{number}\
+                    format!(
+                        "{number}\
                         \n mov rsi, 10\
                         \n call int_toStr\
                         \n\
@@ -931,16 +933,62 @@ impl Program {
                     let lhs_asm = format!( "{}", &Self::compile_expression( lhs ) );
                     let rhs_asm = format!( "{}", &Self::compile_expression( rhs ) );
 
-                    return format!( " mov rdi, {}\
-                        \n add rdi, {}",
-                        lhs_asm, rhs_asm
+                    return format!(
+                        " ; {}\
+                        \n mov rdi, {}\
+                        \n add rdi, {}\n",
+                        node, lhs_asm, rhs_asm
                     );
                 }
-                // OpKind::Minus => Self::evaluate_expression( lhs ) - Self::evaluate_expression( rhs ),
-                // OpKind::Times => Self::evaluate_expression( lhs ) * Self::evaluate_expression( rhs ),
-                // OpKind::Divide => Self::evaluate_expression( lhs ) / Self::evaluate_expression( rhs ),
-                // OpKind::Pow => Self::evaluate_expression( lhs ).pow( Self::evaluate_expression( rhs ) as u32 ),
-                _ => unreachable!(),
+                OpKind::Minus => {
+                    let lhs_asm = format!( "{}", &Self::compile_expression( lhs ) );
+                    let rhs_asm = format!( "{}", &Self::compile_expression( rhs ) );
+
+                    return format!(
+                        " ; {}\
+                        \n mov rdi, {}\
+                        \n sub rdi, {}\n",
+                        node, lhs_asm, rhs_asm
+                    );
+                }
+                OpKind::Times => {
+                    let lhs_asm = format!( "{}", &Self::compile_expression( lhs ) );
+                    let rhs_asm = format!( "{}", &Self::compile_expression( rhs ) );
+
+                    return format!(
+                        " ; {}\
+                        \n mov rdi, {}\
+                        \n mov rsi, {}\
+                        \n imul rdi, rsi\n",
+                        node, lhs_asm, rhs_asm
+                    );
+                }
+                OpKind::Divide => {
+                    let lhs_asm = format!( "{}", &Self::compile_expression( lhs ) );
+                    let rhs_asm = format!( "{}", &Self::compile_expression( rhs ) );
+
+                    return format!(
+                        " ; {}\
+                        \n mov rax, {}\
+                        \n mov rdi, {}\
+                        \n idiv rdi\
+                        \n mov rdi, rax\n",
+                        node, lhs_asm, rhs_asm
+                    );
+                }
+                OpKind::Pow => {
+                    let lhs_asm = format!( "{}", &Self::compile_expression( lhs ) );
+                    let rhs_asm = format!( "{}", &Self::compile_expression( rhs ) );
+
+                    return format!(
+                        " ; {}\
+                        \n mov rdi, {}\
+                        \n mov rsi, {}\
+                        \n call int_pow\
+                        \n mov rdi, rax\n",
+                        node, lhs_asm, rhs_asm
+                    );
+                }
             },
             _ => unreachable!(),
         }
@@ -1149,9 +1197,9 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().collect();
 
     // to quickly debug
-    args.push( "interpret".to_string() );
+    // args.push( "interpret".to_string() );
     // args.push( "build".to_string() );
-    // args.push( "run".to_string() );
+    args.push( "run".to_string() );
     args.push( "examples/main.blz".to_string() );
 
     if args.len() < 2 {
