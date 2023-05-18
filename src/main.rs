@@ -32,7 +32,7 @@ impl Display for OpKind {
             Self::Minus => write!( f, "-" ),
             Self::Times => write!( f, "*" ),
             Self::Divide => write!( f, "/" ),
-            Self::Pow => write!( f, "^" ),
+            Self::Pow => write!( f, "**" ),
         }
     }
 }
@@ -189,9 +189,16 @@ impl Lexer {
                     // '}' => Token { kind: TokenKind::CloseCurlyBracket, col },
                     '+' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Plus ) },
                     '-' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Minus ) },
-                    '*' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Times ) },
+                    '*' => {
+                        if let Some( '*' ) = src.peek() {
+                            src.next();
+                            Token { col, len: 1, kind: TokenKind::Op( OpKind::Pow ) }
+                        }
+                        else {
+                            Token { col, len: 1, kind: TokenKind::Op( OpKind::Times ) }
+                        }
+                    },
                     '/' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Divide ) },
-                    '^' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Pow ) },
                     // '=' => Token { kind: TokenKind::Equals, col },
                     // ':' => Token { kind: TokenKind::Colon, col },
                     ';' => Token { col, len: 1, kind: TokenKind::SemiColon },
