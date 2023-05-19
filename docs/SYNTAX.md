@@ -8,7 +8,7 @@ see the [full language syntax](SYNTAX.ebnf)
 
 ## Comments
 
-Line comment ignores everything until the end of the line: `#...`
+Line comment `#...`: ignores everything until the end of the line
 
 ## Operators
 

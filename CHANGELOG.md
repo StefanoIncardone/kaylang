@@ -14,20 +14,30 @@
 | 035_   |           |   b35   |         |         base 35         |
 | 037_   |           |   b37   |         |          error          |
 
+### Unchecked/Checked and signed/unsigned operators
+
+- unchecked (+, -, /, ... ): overflow will wrap, division by zero will crash
+- checked (c+, c-, c/, ...): added code to check for overflows/division by zero
+
+| signed | unsigned |
+| :----: | :------: |
+|   +    |    ++     |
+|   -    |    --     |
+|   *    |   ???    |
+|   /    |    //    |
+|   %    |    %%    |
+|   /%   |   //%    |
+|   **   |   **    |
+
 
 ## 0.1
 
-- run modes:
-    - line comments: `#...`
-    - 64 bit unsigned base 10 number literals
-    - each expression is separated by semicolons
-    - enclosing an expression in round brackets promotes its precedence to the highest level
-    - `interpret` to interpret the program without compiling it
-        - basic math expression: `+`, `-`, `*`, `/`, `^`
-        - printing of math expressions using the `print` keyword
-        - printing of math expressions interpreted as ascii characters using the `print_char` keyword
-    - `build` to compile the program down to a binary executable
-        - single addition expressions
-        - printing of single addition expressions using the `print` keyword
-        - printing of single addition expressions interpreted as ascii characters using the `print_char` keyword
-    - `run` to compile and run the compiled native assembly code
+- `build` to compile the program down to a binary executable
+- `run` to compile and run the compiled native assembly code
+- `interpret` to interpret the program without compiling it
+- line comments: `#...`
+- 64 bit unsigned base 10 number literals
+- each expression is separated by semicolons
+- math expression (PEMDAS): `+`, `-`, `*`, `/`, `**`
+- printing of math expressions using the `print` keyword
+- printing of math expressions interpreted as ascii characters using the `print_char` keyword

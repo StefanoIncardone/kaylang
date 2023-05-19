@@ -568,7 +568,10 @@ impl Display for Node {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         match self {
             Self::Literal( literal ) => write!( f, "{}", literal ),
-            Self::Expression{ lhs, op, rhs } => write!( f, "({} {} {})", lhs, op, rhs ),
+            Self::Expression{ lhs, op, rhs } => match op {
+                OpKind::Plus | OpKind::Minus => write!( f, "{} {} {}", lhs, op, rhs ),
+                OpKind::Times | OpKind::Divide | OpKind::Pow => write!( f, "({} {} {})", lhs, op, rhs ),
+            },
             Self::Print( node ) => write!( f, "print {}", node ),
             Self::PrintChar( ascii ) => write!( f, "print {}", ascii ),
         }
@@ -856,17 +859,17 @@ impl Program {
 
         for node in &ast.nodes {
             match &node {
+                Node::Print( number ) => match **number {
+                    Node::Literal( _ ) |
+                    Node::Expression { .. } => print!( "{}", Self::evaluate_expression( &*number ) ),
+                    _ => unreachable!(),
+                },
                 Node::PrintChar( number ) => match **number {
                     Node::Literal( _ ) |
                     Node::Expression { .. } => print!( "{}", Self::evaluate_expression( &*number ) as u8 as char ),
                     _ => unreachable!(),
                 },
-                Node::Print( number ) => match **number {
-                    Node::Literal( _ ) |
-                    Node::Expression { .. } => print!( "{}", Self::evaluate_expression( &*number ) ),
-                    _ => unreachable!(),
-                }
-                _ => (),
+                _ => continue,
             }
         }
     }
@@ -876,52 +879,34 @@ impl Program {
 
         for node in &ast.nodes {
             let expression_asm = match &node {
-                Node::PrintChar( character_node ) => {
-                    let character = match **character_node {
-                        Node::Literal( literal ) => match literal {
-                            LiteralKind::I64 { value, .. } => format!( "{}", value ),
-                        },
-                        // Node::Expression { .. } => src_code.push_str( &format!( "{}", Self::evaluate_expression( &*number ) ) ),
-                        _ => unreachable!()
-                    };
-
-                    format!(
-                        " push {character}\
-                        \n mov rdi, stdout\
-                        \n mov rsi, rsp\
-                        \n mov rdx, 1\
-                        \n mov rax, SYS_write\
-                        \n syscall\
-                        \n pop rsi\
-                        \n\n"
-                    )
-                },
-                Node::Print( number_node ) => {
-                    let number = match **number_node {
-                        Node::Literal( literal ) => match literal {
-                            LiteralKind::I64 { value, .. } => format!( "mov rdi, {}", value ),
-                        },
-                        Node::Expression { .. } => Self::compile_expression( &number_node ),
-                        _ => unreachable!()
-                    };
-
-                    format!(
-                        "{number}\
-                        \n mov rsi, 10\
-                        \n call int_toStr\
-                        \n\
-                        \n mov rdi, stdout\
-                        \n mov rsi, rax\
-                        \n mov rdx, rdx\
-                        \n mov rax, SYS_write\
-                        \n syscall\
-                        \n\n"
-                    )
-                },
-                Node::Literal( literal ) => match literal {
-                    LiteralKind::I64 { value, .. } => format!( " mov rdi, {}\n", value ),
-                },
-                Node::Expression { .. } => Self::compile_expression( node ),
+                Node::Print( number ) => format!(
+                    " ; {}\
+                    \n{}\
+                    \x20pop rdi\
+                    \n mov rsi, 10\
+                    \n call int_toStr\
+                    \n\
+                    \n mov rdi, stdout\
+                    \n mov rsi, rax\
+                    \n mov rdx, rdx\
+                    \n mov rax, SYS_write\
+                    \n syscall\n\n",
+                    node,
+                    Self::compile_expression( &*number )
+                ),
+                Node::PrintChar( character ) => format!(
+                    " ; {}\
+                    \n{}\
+                    \x20mov rdi, stdout\
+                    \n mov rsi, rsp\
+                    \n mov rdx, 1\
+                    \n mov rax, SYS_write\
+                    \n syscall\
+                    \n pop rsi\n\n",
+                    node,
+                    Self::compile_expression( &*character )
+                ),
+                _ => continue,
             };
 
             src_code.push_str( &expression_asm );
@@ -931,73 +916,56 @@ impl Program {
     }
 
     fn compile_expression( node: &Node ) -> String {
+        /* NOTE
+            it is literally possible to copy paste the entire literal expression (won't work with variables)
+            in the generated asm file (only if it doesn't include exponentiations)
+
+            IDEA check if the expression contains exponents, if not just copy paste the literal expression
+        */
         match &node {
-            Node::Literal( literal ) => match literal {
-                LiteralKind::I64 { value, .. } => return format!( "{}", value ),
+            Node::Literal( literal ) => match &literal {
+                LiteralKind::I64 { value, .. } => return format!( " push {}\n", value )
             },
-            Node::Expression { lhs, op, rhs } => match op {
-                OpKind::Plus => {
-                    let lhs_asm = format!( "{}", &Self::compile_expression( lhs ) );
-                    let rhs_asm = format!( "{}", &Self::compile_expression( rhs ) );
-
-                    return format!(
-                        " ; {}\
-                        \n mov rdi, {}\
-                        \n add rdi, {}\n",
-                        node, lhs_asm, rhs_asm
-                    );
-                }
-                OpKind::Minus => {
-                    let lhs_asm = format!( "{}", &Self::compile_expression( lhs ) );
-                    let rhs_asm = format!( "{}", &Self::compile_expression( rhs ) );
-
-                    return format!(
-                        " ; {}\
-                        \n mov rdi, {}\
-                        \n sub rdi, {}\n",
-                        node, lhs_asm, rhs_asm
-                    );
-                }
-                OpKind::Times => {
-                    let lhs_asm = format!( "{}", &Self::compile_expression( lhs ) );
-                    let rhs_asm = format!( "{}", &Self::compile_expression( rhs ) );
-
-                    return format!(
-                        " ; {}\
-                        \n mov rdi, {}\
-                        \n mov rsi, {}\
-                        \n imul rdi, rsi\n",
-                        node, lhs_asm, rhs_asm
-                    );
-                }
-                OpKind::Divide => {
-                    let lhs_asm = format!( "{}", &Self::compile_expression( lhs ) );
-                    let rhs_asm = format!( "{}", &Self::compile_expression( rhs ) );
-
-                    return format!(
-                        " ; {}\
-                        \n mov rax, {}\
-                        \n mov rdi, {}\
-                        \n idiv rdi\
-                        \n mov rdi, rax\n",
-                        node, lhs_asm, rhs_asm
-                    );
-                }
-                OpKind::Pow => {
-                    let lhs_asm = format!( "{}", &Self::compile_expression( lhs ) );
-                    let rhs_asm = format!( "{}", &Self::compile_expression( rhs ) );
-
-                    return format!(
-                        " ; {}\
-                        \n mov rdi, {}\
-                        \n mov rsi, {}\
+            Node::Expression { lhs, op, rhs } => {
+                let lhs_asm = Self::compile_expression( lhs );
+                let rhs_asm = Self::compile_expression( rhs );
+                let op_asm = match op {
+                    OpKind::Plus =>
+                        " pop rax\
+                        \n pop rbx\
+                        \n add rax, rbx\
+                        \n push rax\n\n".to_string()
+                    ,
+                    OpKind::Minus =>
+                        " pop rbx\
+                        \n pop rax\
+                        \n sub rax, rbx\
+                        \n push rax\n\n".to_string()
+                    ,
+                    OpKind::Times =>
+                        " pop rax\
+                        \n pop rbx\
+                        \n imul rax, rbx\
+                        \n push rax\n\n".to_string()
+                    ,
+                    OpKind::Divide =>
+                        " pop rbx\
+                        \n pop rax\
+                        \n xor rdx, rdx\
+                        \n idiv rbx\
+                        \n push rax\n\n".to_string()
+                    ,
+                    OpKind::Pow =>
+                        " pop rsi\
+                        \n pop rdi\
                         \n call int_pow\
-                        \n mov rdi, rax\n",
-                        node, lhs_asm, rhs_asm
-                    );
-                }
+                        \n push rax\n\n".to_string()
+                    ,
+                };
+
+                return format!( "{}{}{}", lhs_asm, rhs_asm, op_asm)
             },
-            _ => unreachable!(),
+            _ => unreachable!()
         }
     }
 
@@ -1076,8 +1044,7 @@ r"int_toStr:
  ret";
 
         let int_pow =
-r"
-int_pow:
+r"int_pow:
  cmp rsi, 1
  je .exponent_is_one
 
@@ -1141,7 +1108,8 @@ section .text
 
 
 _start:
-{}{}
+{}
+{}
 ", preamble, int_to_str, int_pow, user_program, sys_exit );
 
         asm_file.write_all( program.as_bytes() ).unwrap();
@@ -1192,9 +1160,9 @@ Options:
     -h, --help              Display this message
 
 Run mode:
-    interpret <file.blz>    Run the program in interpret mode
     build     <file.blz>    Compile the program down to a binary executable
     run       <file.blz>    Compile and run the generated binary executable
+    interpret <file.blz>    Run the program in interpret mode
 ",
         env!( "CARGO_PKG_VERSION" )
     );
@@ -1206,7 +1174,7 @@ fn main() -> ExitCode {
     // to quickly debug
     // args.push( "interpret".to_string() );
     // args.push( "build".to_string() );
-    args.push( "run".to_string() );
+    // args.push( "run".to_string() );
     args.push( "examples/main.blz".to_string() );
 
     if args.len() < 2 {
