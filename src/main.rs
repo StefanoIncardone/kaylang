@@ -192,7 +192,9 @@ impl Lexer {
                     '*' => {
                         if let Some( '*' ) = src.peek() {
                             src.next();
-                            Token { col, len: 1, kind: TokenKind::Op( OpKind::Pow ) }
+                            let token = Token { col, len: 2, kind: TokenKind::Op( OpKind::Pow ) };
+                            col += 1;
+                            token
                         }
                         else {
                             Token { col, len: 1, kind: TokenKind::Op( OpKind::Times ) }
@@ -573,7 +575,7 @@ impl Display for Node {
                 OpKind::Times | OpKind::Divide | OpKind::Pow => write!( f, "({} {} {})", lhs, op, rhs ),
             },
             Self::Print( node ) => write!( f, "print {}", node ),
-            Self::PrintChar( ascii ) => write!( f, "print {}", ascii ),
+            Self::PrintChar( ascii ) => write!( f, "print_char {}", ascii ),
         }
     }
 }
