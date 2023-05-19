@@ -922,7 +922,7 @@ impl Program {
             it is literally possible to copy paste the entire literal expression (won't work with variables)
             in the generated asm file (only if it doesn't include exponentiations)
 
-            IDEA check if the expression contains exponents, if not just copy paste the literal expression
+            IDEA check if the expression contains non inlineable expression, if not just copy paste the literal expression
         */
         match &node {
             Node::Literal( literal ) => match &literal {
@@ -932,36 +932,41 @@ impl Program {
                 let lhs_asm = Self::compile_expression( lhs );
                 let rhs_asm = Self::compile_expression( rhs );
                 let op_asm = match op {
-                    OpKind::Plus =>
-                        " pop rax\
+                    OpKind::Plus => format!(
+                        " ; {}\
+                        \n pop rax\
                         \n pop rbx\
                         \n add rax, rbx\
-                        \n push rax\n\n".to_string()
+                        \n push rax\n\n", node )
                     ,
-                    OpKind::Minus =>
-                        " pop rbx\
+                    OpKind::Minus => format!(
+                        " ; {}\
+                        \n pop rbx\
                         \n pop rax\
                         \n sub rax, rbx\
-                        \n push rax\n\n".to_string()
+                        \n push rax\n\n", node )
                     ,
-                    OpKind::Times =>
-                        " pop rax\
+                    OpKind::Times => format!(
+                        " ; {}\
+                        \n pop rax\
                         \n pop rbx\
                         \n imul rax, rbx\
-                        \n push rax\n\n".to_string()
+                        \n push rax\n\n", node )
                     ,
-                    OpKind::Divide =>
-                        " pop rbx\
+                    OpKind::Divide => format!(
+                        " ; {}\
+                        \n pop rbx\
                         \n pop rax\
                         \n xor rdx, rdx\
                         \n idiv rbx\
-                        \n push rax\n\n".to_string()
+                        \n push rax\n\n", node )
                     ,
-                    OpKind::Pow =>
-                        " pop rsi\
+                    OpKind::Pow => format!(
+                        " ; {}\
+                        \n pop rsi\
                         \n pop rdi\
                         \n call int_pow\
-                        \n push rax\n\n".to_string()
+                        \n push rax\n\n", node )
                     ,
                 };
 
