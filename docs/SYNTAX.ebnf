@@ -1,5 +1,8 @@
 (* program *)
-program = {line_comment | ([print | print_char], expression, ';')};
+program = {
+    line_comment |
+    ([(print, expression) | (print_char, char), ';'])
+};
 
 (* keywords *)
 print = "print";
@@ -13,6 +16,10 @@ zero = "0";
 non_zero = "1".."9";
 digit = zero | non_zero;
 number = {digit};
+
+(* character literals *)
+single_quote = "'";
+char = single_quote, "\n" | ? ASCII 32..255 ?, single_quote;
 
 (* symbols *)
 open_round_bracket = "(";

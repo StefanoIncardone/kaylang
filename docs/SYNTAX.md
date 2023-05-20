@@ -6,6 +6,14 @@ see the [full language syntax](SYNTAX.ebnf)
 
 64 bit unsigned base 10 number literals
 
+## Characters
+
+Extended ASCII characters `[0, 255]`
+
+- any Extended ASCII character surrounded by `'`
+    - escaped characters:
+        - `'\n'` as a newline
+
 ## Comments
 
 Line comment `#...`: ignores everything until the end of the line

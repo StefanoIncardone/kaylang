@@ -36,8 +36,11 @@
 - `run` to compile and run the compiled native assembly code
 - `interpret` to interpret the program without compiling it
 - line comments: `#...`
+- each statement is separated by semicolons
 - 64 bit unsigned base 10 number literals
-- each expression is separated by semicolons
-- math expression (PEMDAS): `+`, `-`, `*`, `/`, `**`
-- printing of math expressions using the `print` keyword
-- printing of math expressions interpreted as ascii characters using the `print_char` keyword
+- math expressions (PEMDAS): `+`, `-`, `*`, `/`, `**`
+- printing of value of math expressions using the `print` keyword
+- character literals:
+    - `\n`: newline
+    - any Extended ASCII character
+- printing of characters using the `print_char` keyword
