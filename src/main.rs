@@ -1,5 +1,9 @@
+// TODO create standardized error class, with error codes and corresponding error messages
 // TODO implement NOTE, HINT, HELP in error messages
-use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write}, fs::File, env, process::{ExitCode, Command}, fmt::Display, path::{Path, PathBuf}, str::Chars, iter::Peekable};
+// FIX handle tabs in source code
+
+
+use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write}, fs::File, env, process::{ExitCode, Command}, fmt::Display, path::{Path, PathBuf}, iter::Peekable, str::Chars};
 
 
 #[derive( Debug, PartialEq, Clone, Copy )]
@@ -12,7 +16,7 @@ impl Display for LiteralKind {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         match self {
             Self::I64 { value, .. } => write!( f, "{}", value ),
-            Self::Char { value } => write!( f, "'{}'", value.escape_ascii().to_string() ),
+            Self::Char { value } => write!( f, "'{}'", value.escape_ascii().to_string() ), // TODO create own escaping function
         }
     }
 }
@@ -154,9 +158,55 @@ struct Lexer {
 }
 
 impl Lexer {
-    // fn next_non_newline( src: Peekable<Chars> ) -> Result<char, TokenKind> {
+    fn next_in_char_literal( src: &mut Peekable<Chars>, token_text: &mut String ) -> Result<u8, TokenKind> {
+        return match src.next() {
+            Some( '\n' ) | None => Err( TokenKind::Unexpected {
+                text: token_text.clone(),
+                err_msg: "invalid character literal",
+                help_msg: "missing closing single quote"
+            } ),
+            Some( next ) => {
+                token_text.push( next );
+                match next {
+                    control if control < '\x20' || control == '\x7F' => Err( TokenKind::Unexpected {
+                        text: token_text.clone(),
+                        err_msg: "invalid character literal",
+                        help_msg: "cannot be a control character"
+                    } ),
+                    _ => Ok( next as u8 )
+                }
+            },
+        };
+    }
 
-    // }
+    fn parse_char( src: &mut Peekable<Chars>, token_text: &mut String ) -> Result<u8, TokenKind> {
+        // IDEA treat character literals as just strings of lenght 1, reporting errors if over 1
+        let value = match Self::next_in_char_literal( src, token_text )? {
+            b'\'' => return Err( TokenKind::Unexpected {
+                text: token_text.clone(),
+                err_msg: "empty character literal",
+                help_msg: "must not be empty"
+            } ),
+            b'\\' => match Self::next_in_char_literal( src, token_text )? {
+                b'n' => Ok( b'\n' ),
+                _ => Err( TokenKind::Unexpected {
+                    text: token_text.clone(),
+                    err_msg: "invalid escaped character literal",
+                    help_msg: "expected '\\n'"
+                } ),
+            },
+            next => Ok( next ),
+        };
+
+        match Self::next_in_char_literal( src, token_text )? {
+            b'\'' => value,
+            _ => return Err( TokenKind::Unexpected {
+                text: token_text.clone(),
+                err_msg: "unclosed character literal",
+                help_msg: "missing closing single quote"
+            } ),
+        }
+    }
 
     // TODO make the input character stream generic
     fn parse( file_path: &str, source_file: File ) -> Result<Self, Self> {
@@ -217,98 +267,9 @@ impl Lexer {
                         text.clear();
                         text.push( ch );
 
-                        // FIXME collect the text between the single quotes and do the parsing afterwards
-                        let kind = match src.next() {
-                            Some( '\'' ) => {
-                                text.push( '\'' );
-                                TokenKind::Unexpected {
-                                    text: text.clone(),
-                                    err_msg: "invalid character literal",
-                                    help_msg: "must not be empty"
-                                }
-                            },
-                            Some( '\n' ) => {
-                                // FIXME improve error reporting
-                                TokenKind::Unexpected {
-                                    text: text.clone(),
-                                    err_msg: "invalid character literal",
-                                    help_msg: "unclosed character literal or character literals spanning multiple lines"
-                                }
-                            },
-                            Some( next ) => {
-                                text.push( next );
-
-                                let actual_char = match next {
-                                    '\\' => match src.next() {
-                                        Some( '\n' ) => {
-                                            // FIXME improve error reporting
-                                            Err( TokenKind::Unexpected {
-                                                text: text.clone(),
-                                                err_msg: "invalid character literal",
-                                                help_msg: "unclosed character literal or character literals spanning multiple lines"
-                                            } )
-                                        },
-                                        Some( next ) => {
-                                            text.push( next );
-
-                                            match next {
-                                                'n' => Ok( '\n' ),
-                                                _ => Err( TokenKind::Unexpected {
-                                                    text: text.clone(),
-                                                    err_msg: "invalid escaped character literal",
-                                                    help_msg: "here"
-                                                } ),
-                                            }
-                                        },
-                                        None => Err( TokenKind::Unexpected {
-                                            text: text.clone(),
-                                            err_msg: "invalid character literal",
-                                            help_msg: "unclosed character literal or character literals spanning multiple lines"
-                                        } ),
-                                    },
-                                    _ => Ok( next ),
-                                };
-
-                                match actual_char {
-                                    Ok( value ) => {
-                                        text.push( value );
-
-                                        match src.next() {
-                                            Some( '\n' ) => {
-                                                // FIXME improve error reporting
-                                                TokenKind::Unexpected {
-                                                    text: text.clone(),
-                                                    err_msg: "invalid character literal",
-                                                    help_msg: "unclosed character literal or character literals spanning multiple lines"
-                                                }
-                                            },
-                                            Some( next ) => {
-                                                text.push( next );
-
-                                                match next {
-                                                    '\'' => TokenKind::Literal( LiteralKind::Char { value: value as u8 } ),
-                                                    _ => TokenKind::Unexpected {
-                                                        text: text.clone(),
-                                                        err_msg: "unclosed character literal",
-                                                        help_msg: "expected closing single quote"
-                                                    },
-                                                }
-                                            }
-                                            None => TokenKind::Unexpected {
-                                                text: text.clone(),
-                                                err_msg: "unclosed character literal",
-                                                help_msg: "file ended here instead"
-                                            },
-                                        }
-                                    },
-                                    Err( err ) => err,
-                                }
-                            },
-                            None => TokenKind::Unexpected {
-                                text: text.clone(),
-                                err_msg: "expected character literal",
-                                help_msg: "unclosed character literal or character literals spanning multiple lines"
-                            },
+                        let kind = match Self::parse_char( &mut src, &mut text ) {
+                            Ok( value ) => TokenKind::Literal( LiteralKind::Char { value } ),
+                            Err( err ) => err
                         };
 
                         let len = text.len();
@@ -344,12 +305,13 @@ impl Lexer {
                         }
 
                         let kind = if is_digit {
+                            // TODO create own number parsing function
                             match text.parse() {
                                 Ok( value ) => TokenKind::Literal( LiteralKind::I64{ base: 10, value } ),
                                 Err( _ ) => TokenKind::Unexpected {
                                     text: text.clone(),
                                     err_msg: "expected number literal",
-                                    help_msg: "overflows a 64 bit unsigned integer [-9223372036854775808, 9223372036854775807]"
+                                    help_msg: "overflows a 64 bit integer [-9223372036854775808, 9223372036854775807]"
                                 },
                             }
                         }
@@ -836,7 +798,7 @@ impl AST {
         let (line, token) = tokens.peek_non_whitespace( "expected expression" )?;
 
         let number = match token.kind {
-            TokenKind::Literal( literal ) => Ok( Node::Literal( literal ) ),
+            TokenKind::Literal( literal @ LiteralKind::I64 { .. } ) => Ok( Node::Literal( literal ) ),
             TokenKind::OpenRoundBracket => {
                 tokens.next();
                 // FIXME handling of case when the expression is just an empty bracket pair
@@ -1068,7 +1030,7 @@ impl Program {
             it is literally possible to copy paste the entire literal expression (won't work with variables)
             in the generated asm file (only if it doesn't include exponentiations)
 
-            IDEA check if the expression contains non inlineable expression, if not just copy paste the literal expression
+            // IDEA check if the expression contains non inlineable expression, if not just copy paste the literal expression
         */
         match &node {
             Node::Literal( literal ) => match &literal {
@@ -1328,7 +1290,7 @@ fn main() -> ExitCode {
     // to quickly debug
     // args.push( "interpret".to_string() );
     // args.push( "build".to_string() );
-    // args.push( "run".to_string() );
+    args.push( "run".to_string() );
     args.push( "examples/main.blz".to_string() );
 
     if args.len() < 2 {
@@ -1404,7 +1366,7 @@ fn main() -> ExitCode {
 
     let lexer = match Lexer::parse( &source_file_path, source_file ) {
         Ok( lexer ) => {
-            println!( "{:?}\n", lexer );
+            // println!( "{:?}\n", lexer );
             lexer
         },
         Err( errors ) => {
