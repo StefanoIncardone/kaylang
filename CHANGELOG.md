@@ -18,6 +18,7 @@
 
 - unchecked (+, -, /, ... ): overflow will wrap, division by zero will crash
 - checked (c+, c-, c/, ...): added code to check for overflows/division by zero
+- maybe have a compiler flag to use checked/unchecked operators
 
 | signed | unsigned |
 | :----: | :------: |
@@ -35,12 +36,13 @@
 - `build` to compile the program down to a binary executable
 - `run` to compile and run the compiled native assembly code
 - `interpret` to interpret the program without compiling it
-- line comments: `#...`
 - each statement is separated by semicolons
-- 64 bit unsigned base 10 number literals
-- math expressions (PEMDAS): `+`, `-`, `*`, `/`, `**`
-- printing of value of math expressions using the `print` keyword
+- line comments: `#...`
+- integers and math operators:
+    - 64 bit base 10 number literals
+    - math expressions (PEMDAS): `()`, `**`, `*`, `/`, `+`, `-`
+    - can be printed using the `print` keyword
 - character literals:
-    - `\n`: newline
-    - any Extended ASCII character
-- printing of characters using the `print_char` keyword
+    - any Extended ASCII character (`[0, 255]`)
+    - `'\n'`: newline
+    - can be printed using the `print_char` keyword

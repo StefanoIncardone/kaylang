@@ -1,8 +1,8 @@
 (* program *)
-program = {
+program = [ {
     line_comment |
-    ([(print, expression) | (print_char, char), ';'])
-};
+    ((print, expression) | (print_char, char), ';')
+} ];
 
 (* keywords *)
 print = "print";
