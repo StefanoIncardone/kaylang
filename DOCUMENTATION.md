@@ -1,4 +1,4 @@
-# Language Syntax
+# Language Features
 
 see the [full language syntax](SYNTAX.ebnf)
 
@@ -12,7 +12,7 @@ Line comment `#...`: ignores everything until the end of the line
 - 64 bit unsigned base 10 number literals
 - Math expressions following PEMDAS:
     - round brackets `(`, `)`: changing the order or operation
-    - power `**`: exponentiation as a binary operator
+    - power `^`: exponentiation as a binary operator
     - times `*`: multiplication as a binary operator
     - divide `/`: floor division as a binary operator
     - plus `+`: addition as a binary operator

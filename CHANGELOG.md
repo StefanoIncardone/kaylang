@@ -14,21 +14,11 @@
 | 035_   |           |   b35   |         |         base 35         |
 | 037_   |           |   b37   |         |          error          |
 
-### Unchecked/Checked and signed/unsigned operators
+### Unchecked/Checked
 
 - unchecked (+, -, /, ... ): overflow will wrap, division by zero will crash
 - checked (c+, c-, c/, ...): added code to check for overflows/division by zero
 - maybe have a compiler flag to use checked/unchecked operators
-
-| signed | unsigned |
-| :----: | :------: |
-|   +    |    ++     |
-|   -    |    --     |
-|   *    |   ???    |
-|   /    |    //    |
-|   %    |    %%    |
-|   /%   |   //%    |
-|   **   |   **    |
 
 
 ## 0.1
@@ -40,7 +30,7 @@
 - line comments: `#...`
 - integers and math operators:
     - 64 bit base 10 number literals
-    - math expressions (PEMDAS): `()`, `**`, `*`, `/`, `+`, `-`
+    - math expressions (PEMDAS): `()`, `^`, `*`, `/`, `+`, `-`
     - can be printed using the `print` keyword
 - character literals:
     - any Extended ASCII character (`[0, 255]`)

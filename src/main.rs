@@ -38,7 +38,7 @@ impl Display for OpKind {
             Self::Minus => write!( f, "-" ),
             Self::Times => write!( f, "*" ),
             Self::Divide => write!( f, "/" ),
-            Self::Pow => write!( f, "**" ),
+            Self::Pow => write!( f, "^" ),
         }
     }
 }
@@ -208,7 +208,7 @@ impl Lexer {
         }
     }
 
-    // TODO make the input character stream generic
+    // IDEA make the input character stream generic, eg: to be able to compile from strings instead of just files
     fn parse( file_path: &str, source_file: File ) -> Result<Self, Self> {
         let mut errors: Vec<Line> = Vec::new();
         let mut lines: Vec<Line> = Vec::new();
@@ -246,20 +246,11 @@ impl Lexer {
                     // ']' => Token { kind: TokenKind::CloseSquareBracket, col },
                     // '{' => Token { kind: TokenKind::OpenCurlyBracket, col },
                     // '}' => Token { kind: TokenKind::CloseCurlyBracket, col },
+                    '^' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Pow ) },
+                    '*' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Times ) },
+                    '/' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Divide ) },
                     '+' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Plus ) },
                     '-' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Minus ) },
-                    '*' => {
-                        if let Some( '*' ) = src.peek() {
-                            src.next();
-                            let token = Token { col, len: 2, kind: TokenKind::Op( OpKind::Pow ) };
-                            col += 1;
-                            token
-                        }
-                        else {
-                            Token { col, len: 1, kind: TokenKind::Op( OpKind::Times ) }
-                        }
-                    },
-                    '/' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Divide ) },
                     // '=' => Token { kind: TokenKind::Equals, col },
                     // ':' => Token { kind: TokenKind::Colon, col },
                     ';' => Token { col, len: 1, kind: TokenKind::SemiColon },
