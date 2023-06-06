@@ -1,28 +1,25 @@
 // TODO create standardized error class, with error codes and corresponding error messages
 // TODO implement NOTE, HINT, HELP in error messages
-// FIX handle tabs in source code
-
-
 use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write}, fs::File, env, process::{ExitCode, Command}, fmt::Display, path::{Path, PathBuf}, iter::Peekable, str::Chars};
 
 
-#[derive( Debug, PartialEq, Clone, Copy )]
-enum LiteralKind {
-    I64{ base: u8, value: i64 },
-    Char{ value: u8 }, // only supporting Extended ASCII characters for now
+#[derive( Debug, Clone )]
+enum Type {
+    I64{ value: i64 },
+    Char{ value: u8 }, // only supporting ASCII characters for now
 }
 
-impl Display for LiteralKind {
+impl Display for Type {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         match self {
-            Self::I64 { value, .. } => write!( f, "{}", value ),
+            Self::I64 { value } => write!( f, "{}", value ),
             Self::Char { value } => write!( f, "'{}'", value.escape_ascii().to_string() ), // TODO create own escaping function
         }
     }
 }
 
 
-#[derive( Debug, PartialEq, Clone, Copy )]
+#[derive( Debug, Clone )]
 enum OpKind {
     Plus,
     Minus,
@@ -44,7 +41,7 @@ impl Display for OpKind {
 }
 
 
-#[derive( Debug, PartialEq )]
+#[derive( Debug )]
 enum TokenKind {
     Unexpected{ text: String, err_msg: &'static str, help_msg: &'static str },
 
@@ -58,20 +55,19 @@ enum TokenKind {
     // CloseSquareBracket,
     // OpenCurlyBracket,
     // CloseCurlyBracket,
-    // Equals,
+    Equals,
     // Colon,
     SemiColon,
 
     // Identifiers
-    Literal( LiteralKind ),
-    // Identifier( String ),
+    Literal( Type ),
+    Identifier( String ),
 
     // Keywords
-    Print, // temporary way of printing numbers
-    PrintChar, // temporary way of printing numbers interpreted as ascii characters
+    Print, // temporary way of printing values
     // Entry,
     // Fn,
-    // Let,
+    Let,
     // Const,
     // Var,
     // Return,
@@ -92,15 +88,16 @@ impl Display for TokenKind {
 
             Self::OpenRoundBracket => write!( f, "(" ),
             Self::CloseRoundBracket => write!( f, ")" ),
+            Self::Equals => write!( f, "=" ),
             Self::SemiColon => write!( f, ";" ),
 
             Self::Literal( literal ) => write!( f, "{}", literal ),
+            Self::Identifier( name ) => write!( f, "{}", name ),
 
             Self::Print => write!( f, "print" ),
-            Self::PrintChar => write!( f, "print_char" ),
+            Self::Let => write!( f, "let" ),
 
             Self::Op( op ) => write!( f, "{}", op ),
-            // Self::Equals => write!( f, "=" ),
 
             /* Self::Newline | */ Self::EOF => write!( f, "" ),
         }
@@ -158,8 +155,21 @@ struct Lexer {
 }
 
 impl Lexer {
+    // FIX properly handle non ASCII codes in error messages
+    fn next_ascii( src: &mut Peekable<Chars> ) -> Result<Option<char>, TokenKind> {
+        match src.next() {
+            Some( next @ ..='\x7F' ) => Ok( Some( next ) ),
+            Some( next ) => Err( TokenKind::Unexpected {
+                text: next.to_string(),
+                err_msg: "unrecognized character",
+                help_msg: "not a valid ASCII character"
+            } ),
+            None => Ok( None )
+        }
+    }
+
     fn next_in_char_literal( src: &mut Peekable<Chars>, token_text: &mut String ) -> Result<u8, TokenKind> {
-        return match src.next() {
+        return match Self::next_ascii( src )? {
             Some( '\n' ) | None => Err( TokenKind::Unexpected {
                 text: token_text.clone(),
                 err_msg: "invalid character literal",
@@ -167,44 +177,31 @@ impl Lexer {
             } ),
             Some( next ) => {
                 token_text.push( next );
-                match next {
-                    control if control < '\x20' || control == '\x7F' => Err( TokenKind::Unexpected {
-                        text: token_text.clone(),
-                        err_msg: "invalid character literal",
-                        help_msg: "cannot be a control character"
-                    } ),
-                    _ => Ok( next as u8 )
-                }
+                Ok( next as u8 )
             },
         };
     }
 
     fn parse_char( src: &mut Peekable<Chars>, token_text: &mut String ) -> Result<u8, TokenKind> {
         // IDEA treat character literals as just strings of lenght 1, reporting errors if over 1
-        let value = match Self::next_in_char_literal( src, token_text )? {
-            b'\'' => return Err( TokenKind::Unexpected {
-                text: token_text.clone(),
-                err_msg: "empty character literal",
-                help_msg: "must not be empty"
-            } ),
+        match Self::next_in_char_literal( src, token_text )? {
             b'\\' => match Self::next_in_char_literal( src, token_text )? {
-                b'n' => Ok( b'\n' ),
+                b'n' => Ok( b'\n' as u8 ),
+                b't' => Ok( b'\t' as u8 ),
+                b'\'' => Ok( b'\'' as u8 ),
+                b'"' => Ok( b'"' as u8 ),
                 _ => Err( TokenKind::Unexpected {
                     text: token_text.clone(),
-                    err_msg: "invalid escaped character literal",
-                    help_msg: "expected '\\n'"
+                    err_msg: "invalid escape character literal",
+                    help_msg: "check the documentation for a list of valid escape characters"
                 } ),
             },
-            next => Ok( next ),
-        };
-
-        match Self::next_in_char_literal( src, token_text )? {
-            b'\'' => value,
-            _ => return Err( TokenKind::Unexpected {
+            b'\x00'..=b'\x1F' | b'\x7F' => Err( TokenKind::Unexpected {
                 text: token_text.clone(),
-                err_msg: "unclosed character literal",
-                help_msg: "missing closing single quote"
+                err_msg: "invalid character literal",
+                help_msg: "cannot be a control character"
             } ),
+            next => Ok( next as u8 ),
         }
     }
 
@@ -216,9 +213,9 @@ impl Lexer {
 
         let mut src_lines = BufReader::new( source_file );
         let mut src_line = String::new();
-        let mut text = String::new();
+        let mut token_text = String::new();
         while let Ok( chars_read ) = src_lines.read_line( &mut src_line ) {
-            // FIXME improve handling of EOF
+            // FIX improve handling of EOF
             // reached EOF on an empty line
             if chars_read == 0 {
                 lines.push( Line { number, tokens: vec![Token { col: 1, len: 1, kind: TokenKind::EOF }] } );
@@ -230,143 +227,149 @@ impl Lexer {
             let mut col = 1;
 
             let mut src = src_line.chars().peekable();
-            while let Some( ch ) = src.next() {
-                // TODO consume until not whitespace
-                // ignore whitespace
-                if ch.is_ascii_whitespace() {
-                    col += 1;
-                    continue;
-                }
-
-                let token: Token = match ch {
-                    // '\n' => Token { col, len: 1, kind: TokenKind::Newline },
-                    '(' => Token { col, len: 1, kind: TokenKind::OpenRoundBracket },
-                    ')' => Token { col, len: 1, kind: TokenKind::CloseRoundBracket },
-                    // '[' => Token { kind: TokenKind::OpenSquareBracket, col },
-                    // ']' => Token { kind: TokenKind::CloseSquareBracket, col },
-                    // '{' => Token { kind: TokenKind::OpenCurlyBracket, col },
-                    // '}' => Token { kind: TokenKind::CloseCurlyBracket, col },
-                    '^' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Pow ) },
-                    '*' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Times ) },
-                    '/' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Divide ) },
-                    '+' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Plus ) },
-                    '-' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Minus ) },
-                    // '=' => Token { kind: TokenKind::Equals, col },
-                    // ':' => Token { kind: TokenKind::Colon, col },
-                    ';' => Token { col, len: 1, kind: TokenKind::SemiColon },
-                    '\'' => {
-                        text.clear();
-                        text.push( ch );
-
-                        let kind = match Self::parse_char( &mut src, &mut text ) {
-                            Ok( value ) => TokenKind::Literal( LiteralKind::Char { value } ),
-                            Err( err ) => err
-                        };
-
-                        let len = text.len();
-                        let token = Token { col, len, kind };
-                        col += len - 1;
-                        token
+            loop {
+                let token: Token = match Self::next_ascii( &mut src ) {
+                    Ok( None ) => break,
+                    Err( err ) => match &err {
+                        TokenKind::Unexpected { text, err_msg: _, help_msg: _ } => {
+                            let len = text.len();
+                            let token = Token { col, len, kind: err };
+                            col += len - 1;
+                            token
+                        },
+                        _ => unreachable!(),
                     },
-                    '#' => {
-                        text.clear();
-                        text.push( ch );
+                    Ok( Some( ch ) ) => match ch {
+                        // TODO consume until not whitespace
+                        // ignore whitespace
+                        _ if ch.is_ascii_whitespace() => {
+                            col += 1;
+                            continue;
+                        },
+                        // '\n' => Token { col, len: 1, kind: TokenKind::Newline },
+                        '(' => Token { col, len: 1, kind: TokenKind::OpenRoundBracket },
+                        ')' => Token { col, len: 1, kind: TokenKind::CloseRoundBracket },
+                        // '[' => Token { kind: TokenKind::OpenSquareBracket, col },
+                        // ']' => Token { kind: TokenKind::CloseSquareBracket, col },
+                        // '{' => Token { kind: TokenKind::OpenCurlyBracket, col },
+                        // '}' => Token { kind: TokenKind::CloseCurlyBracket, col },
+                        '=' => Token { col, len: 1, kind: TokenKind::Equals },
+                        '^' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Pow ) },
+                        '*' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Times ) },
+                        '/' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Divide ) },
+                        '+' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Plus ) },
+                        '-' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Minus ) },
+                        // ':' => Token { kind: TokenKind::Colon, col },
+                        ';' => Token { col, len: 1, kind: TokenKind::SemiColon },
+                        '\'' => {
+                            token_text.clear();
+                            token_text.push( ch );
 
-                        // consume the rest of the tokens in the current line
-                        while let Some( next ) = src.next_if( |c| *c != '\n' ) {
-                            text.push( next );
-                        }
-
-                        let len = text.len();
-                        let token = Token { col, len, kind: TokenKind::Comment( text.clone() ) };
-                        col += len - 1;
-                        token
-                    },
-                    '0'..='9' => { // TODO handle negative numbers
-                        text.clear();
-                        text.push( ch );
-
-                        let mut is_digit = true;
-                        while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
-                            if !next.is_ascii_digit() {
-                                is_digit = false;
-                            }
-
-                            text.push( next );
-                        }
-
-                        let kind = if is_digit {
-                            // TODO create own number parsing function
-                            match text.parse() {
-                                Ok( value ) => TokenKind::Literal( LiteralKind::I64{ base: 10, value } ),
-                                Err( _ ) => TokenKind::Unexpected {
-                                    text: text.clone(),
-                                    err_msg: "expected number literal",
-                                    help_msg: "overflows a 64 bit integer [-9223372036854775808, 9223372036854775807]"
+                            let kind = match Self::parse_char( &mut src, &mut token_text ) {
+                                Ok( b'\'' ) if token_text.len() == 2 => TokenKind::Unexpected {
+                                text: token_text.clone(),
+                                err_msg: "empty character literal",
+                                help_msg: "must not be empty"
                                 },
+                                Ok( value ) => match Self::next_in_char_literal( &mut src, &mut token_text ) {
+                                    Ok( next ) => match next {
+                                        b'\'' => TokenKind::Literal( Type::Char { value } ),
+                                        _ => TokenKind::Unexpected {
+                                            text: token_text.clone(),
+                                            err_msg: "unclosed character literal",
+                                            help_msg: "missing closing single quote"
+                                        },
+                                    },
+                                    Err( err ) => err,
+                                },
+                                Err( err ) => err,
+                            };
+
+                            let len = token_text.len();
+                            let token = Token { col, len, kind };
+                            col += len - 1;
+                            token
+                        },
+                        '#' => {
+                            token_text.clear();
+                            token_text.push( ch );
+
+                            // consume the rest of the tokens in the current line
+                            while let Some( next ) = src.next_if( |c| *c != '\n' ) {
+                                token_text.push( next );
                             }
-                        }
-                        else {
-                            TokenKind::Unexpected{
-                                text: text.clone(),
-                                err_msg: "expected number literal",
-                                help_msg: "not a number literal"
+
+                            let len = token_text.len();
+                            let token = Token { col, len, kind: TokenKind::Comment( token_text.clone() ) };
+                            col += len - 1;
+                            token
+                        },
+                        '0'..='9' => { // TODO handle negative numbers
+                            token_text.clear();
+                            token_text.push( ch );
+
+                            let mut is_digit = true;
+                            while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
+                                if !next.is_ascii_digit() {
+                                    is_digit = false;
+                                }
+
+                                token_text.push( next );
                             }
-                        };
 
-                        let len = text.len();
-                        let token = Token { col, len, kind };
-                        col += len - 1;
-                        token
-                    },
-                    'a'..='z' | 'A'..='Z' | '_' => {
-                        text.clear();
-                        text.push( ch );
+                            let kind = if is_digit {
+                                // TODO create own number parsing function
+                                match token_text.parse() {
+                                    Ok( value ) => TokenKind::Literal( Type::I64{ value } ),
+                                    Err( _ ) => TokenKind::Unexpected {
+                                        text: token_text.clone(),
+                                        err_msg: "expected number literal",
+                                        help_msg: "overflows a 64 bit integer [-9223372036854775808, 9223372036854775807]"
+                                    },
+                                }
+                            }
+                            else {
+                                TokenKind::Unexpected{
+                                    text: token_text.clone(),
+                                    err_msg: "expected number literal",
+                                    help_msg: "not a number literal"
+                                }
+                            };
 
-                        while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
-                            text.push( next );
-                        }
+                            let len = token_text.len();
+                            let token = Token { col, len, kind };
+                            col += len - 1;
+                            token
+                        },
+                        'a'..='z' | 'A'..='Z' | '_'  => {
+                            token_text.clear();
+                            token_text.push( ch );
 
-                        let kind = match text.as_str() {
-                            "print" => TokenKind::Print,
-                            "print_char" => TokenKind::PrintChar,
-                            // "entry" => TokenKind::Entry,
-                            // "fn" => TokenKind::Fn,
-                            // "const" => TokenKind::Const,
-                            // "let" => TokenKind::Let,
-                            // "var" => TokenKind::Var,
-                            // "return" => TokenKind::Return,
-                            // _ => TokenKind::Identifier( current_token_text.clone() )
-                            _ => TokenKind::Unexpected {
-                                text: text.clone(),
-                                err_msg: "unexpected token",
-                                help_msg: "here"
-                            },
-                        };
+                            while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
+                                token_text.push( next );
+                            }
 
-                        let len = text.len();
-                        let token = Token { col, len, kind };
-                        col += len - 1;
-                        token
-                    },
-                    _ => {
-                        text.clear();
-                        text.push( ch );
+                            let kind = match token_text.as_str() {
+                                "print" => TokenKind::Print,
+                                // "entry" => TokenKind::Entry,
+                                // "fn" => TokenKind::Fn,
+                                // "const" => TokenKind::Const,
+                                "let" => TokenKind::Let,
+                                // "var" => TokenKind::Var,
+                                // "return" => TokenKind::Return,
+                                _ => TokenKind::Identifier( token_text.clone() )
+                            };
 
-                        while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
-                            text.push( next );
-                        }
-
-                        let kind = TokenKind::Unexpected {
-                            text: text.clone(),
-                            err_msg: "unexpected token",
-                            help_msg: "here"
-                        };
-
-                        let len = text.len();
-                        let token = Token { col, len, kind };
-                        col += len - 1;
-                        token
+                            let len = token_text.len();
+                            let token = Token { col, len, kind };
+                            col += len - 1;
+                            token
+                        },
+                        _ => Token{ col, len: 1, kind: TokenKind::Unexpected {
+                            text: ch.to_string(),
+                            err_msg: "unexpected character",
+                            help_msg: "unrecognized"
+                        } }
                     },
                 };
 
@@ -461,6 +464,8 @@ struct LexerTokenIter<'lexer> {
     token: usize,
 }
 
+// TODO create method current_non_eof( err_msg ) method
+// TODO create peek methods that remember the last position, advances the iterator and then restores the state of the iterator to the original position
 impl<'lexer> LexerTokenIter<'lexer> {
     fn current( &self ) -> (&'lexer Line, &'lexer Token) {
         let line = &self.lexer.lines[ self.line ];
@@ -474,7 +479,7 @@ impl<'lexer> LexerTokenIter<'lexer> {
                     line,
                     token,
                     msg: err_msg,
-                    help_msg: "file ended here instead"
+                    help_msg: "file started here instead"
                 } ),
                 /* TokenKind::Newline | */ TokenKind::Comment( _ ) => return self.next_back_non_whitespace( err_msg ),
                 _ => return Ok( (line, token) ),
@@ -624,23 +629,47 @@ impl<'lexer> DoubleEndedIterator for LexerTokenIter<'lexer> {
 
 
 #[derive( Debug )]
+enum DefinitionKind {
+    Let,
+}
+
+impl Display for DefinitionKind {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        match self {
+            Self::Let => write!( f, "let" ),
+        }
+    }
+}
+
+
+#[derive( Debug )]
+struct Identifier {
+    kind: DefinitionKind,
+    name: String,
+    value: Box<Node>,
+}
+
+
+#[derive( Debug )]
 enum Node {
-    Literal( LiteralKind ),
+    Literal( Type ),
     Expression{ lhs: Box<Node>, op: OpKind, rhs: Box<Node> },
+    Identifier( String ),
+    Definition( Identifier ),
     Print( Box<Node> ),
-    PrintChar( Box<Node> ),
 }
 
 impl Display for Node {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         match self {
             Self::Literal( literal ) => write!( f, "{}", literal ),
-            Self::Expression{ lhs, op, rhs } => match op {
+            Self::Expression { lhs, op, rhs } => match op {
                 OpKind::Plus | OpKind::Minus => write!( f, "{} {} {}", lhs, op, rhs ),
                 OpKind::Times | OpKind::Divide | OpKind::Pow => write!( f, "({} {} {})", lhs, op, rhs ),
             },
+            Self::Definition( assignment ) => write!( f, "{} {} = {}", assignment.kind, assignment.name, assignment.value ),
+            Self::Identifier( name ) => write!( f, "{}", name ),
             Self::Print( node ) => write!( f, "print {}", node ),
-            Self::PrintChar( ascii ) => write!( f, "print_char {}", ascii ),
         }
     }
 }
@@ -710,30 +739,42 @@ impl AST {
                     tokens.next();
                     continue;
                 },
-                TokenKind::Print => {
-                    tokens.next();
-                    match Self::expression( &mut tokens ) {
-                        Ok( factor ) => Ok( Node::Print( Box::new( factor ) ) ),
-                        err @ Err( _ ) => err,
-                    }
+                TokenKind::Let => Self::variable_definition( &mut tokens ),
+                TokenKind::Print => Self::print( &mut tokens ),
+                TokenKind::Literal( literal ) => match literal {
+                    Type::Char { .. } => Self::character( &mut tokens ),
+                    Type::I64 { .. } => Self::expression( &mut tokens ),
                 },
-                TokenKind::PrintChar => {
+                TokenKind::Identifier( name ) => {
                     tokens.next();
-                    match Self::character( &mut tokens ) {
-                        Ok( character ) => Ok( Node::PrintChar( Box::new( character ) ) ),
-                        err @ Err( _ ) => err,
-                    }
+                    Ok( Node::Identifier( name.clone() ) )
                 },
-                TokenKind::Literal( LiteralKind::Char { .. } ) => Self::character( &mut tokens ),
-                TokenKind::Literal( LiteralKind::I64 { base: _, value: _ } ) | TokenKind::OpenRoundBracket |
-                TokenKind::Op( _ ) => Self::expression( &mut tokens ),
+                TokenKind::OpenRoundBracket => Self::expression( &mut tokens ),
                 TokenKind::CloseRoundBracket => {
                     tokens.next();
                     Err( SyntaxError {
                         line,
                         token,
                         msg: "invalid expression",
-                        help_msg: "stray closed parenthesis, may be missing an opening round bracket"
+                        help_msg: "stray closed parenthesis"
+                    } )
+                },
+                TokenKind::Op( _ ) => {
+                    tokens.next();
+                    Err( SyntaxError {
+                        line,
+                        token,
+                        msg: "invalid expression",
+                        help_msg: "stray binary operator, consider putting a number literal before this token"
+                    } )
+                },
+                TokenKind::Equals => {
+                    tokens.next();
+                    Err( SyntaxError {
+                        line,
+                        token,
+                        msg: "invalid assignment",
+                        help_msg: "stray assignment"
                     } )
                 },
                 TokenKind::Unexpected { .. } => unreachable!(),
@@ -753,55 +794,147 @@ impl AST {
         }
     }
 
+    fn semicolon<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<(), SyntaxError<'program>> {
+        let (semicolon_line, semicolon_token) = tokens.peek_non_whitespace( "expected semicolon" )?;
+        match semicolon_token.kind {
+            TokenKind::SemiColon => {
+                tokens.next();
+                return Ok( () );
+            },
+            _ => return Err( SyntaxError {
+                line: semicolon_line,
+                token: semicolon_token,
+                msg: "invalid expression",
+                help_msg: "expected semicolon after this token"
+            } ),
+        }
+    }
+
+    fn print<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
+        tokens.next();
+        let (argument_line, argument_token) = tokens.peek_non_whitespace( "expected print argument" )?;
+        let argument = match &argument_token.kind {
+            TokenKind::Literal( literal ) => match literal {
+                Type::Char { .. } => Self::character( tokens )?,
+                Type::I64 { .. } => Self::expression( tokens )?,
+            },
+            TokenKind::OpenRoundBracket => Self::expression( tokens )?,
+            TokenKind::Identifier( name ) => {
+                tokens.next();
+                Node::Identifier( name.clone() )
+            },
+            _ => return Err( SyntaxError {
+                line: argument_line,
+                token: argument_token,
+                msg: "invalid argument",
+                help_msg: "unrecognized"
+            } )
+        };
+
+        Self::semicolon( tokens )?;
+        return Ok( Node::Print( Box::new( argument ) ) );
+    }
+
+    // FIX error messages
+    fn variable_definition<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
+        let (_definition_kind_line, definition_kind_token) = tokens.next_non_whitespace( "expected definition keyword" )?;
+        let kind = match definition_kind_token.kind {
+            TokenKind::Let => DefinitionKind::Let,
+            _ => unreachable!(),
+        };
+
+        let (identifier_line, identifier_token) = tokens.next_non_whitespace( "expected identifier" )?;
+        let name = match &identifier_token.kind {
+            TokenKind::Identifier( name ) => name.clone(),
+            _ => return Err( SyntaxError {
+                line: identifier_line,
+                token: identifier_token,
+                msg: "invalid let assignment",
+                help_msg: "expected identifier"
+            } ),
+        };
+
+        let (equals_line, equals_token) = tokens.next_non_whitespace( "expected equals" )?;
+        match equals_token.kind {
+            TokenKind::Equals => (),
+            _ => return Err( SyntaxError {
+                line: equals_line,
+                token: equals_token,
+                msg: "invalid let assignment",
+                help_msg: "expected '='"
+            } ),
+        }
+
+        let (value_line, value_token) = tokens.peek_non_whitespace( "expected expression" )?;
+        let value = match value_token.kind {
+            TokenKind::Literal( Type::Char { .. } ) => Self::character( tokens )?,
+            TokenKind::Literal( Type::I64 { .. } ) | TokenKind::OpenRoundBracket |
+            TokenKind::Identifier( _ ) => Self::expression( tokens )?,
+            _ => return Err( SyntaxError {
+                line: value_line,
+                token: value_token,
+                msg: "invalid let assignment",
+                help_msg: "expected expression"
+            } ),
+        };
+
+        Self::semicolon( tokens )?;
+        return Ok( Node::Definition( Identifier { kind, name, value: Box::new( value ) } ) );
+    }
+
     fn character<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
         let (line, token) = tokens.peek_non_whitespace( "expected character literal" )?;
-
-        let character = match token.kind {
-            TokenKind::Literal( literal @ LiteralKind::Char { value: _ } ) => {
+        match &token.kind {
+            TokenKind::Literal( literal @ Type::Char { .. } ) => {
                 tokens.next();
-                let (_next_line, next_token) = tokens.peek_non_whitespace( "expected semicolon" )?;
-                match next_token.kind {
-                    TokenKind::SemiColon => Ok( Node::Literal( literal ) ),
-                    _ => Err( SyntaxError {
-                        line,
-                        token,
-                        msg: "invalid expression",
-                        help_msg: "expected semicolon after this token"
-                    } ),
-                }
+                return Ok( Node::Literal( literal.clone() ) )
             },
-            _ => Err( SyntaxError {
+            _ => return Err( SyntaxError {
                 line,
                 token,
                 msg: "invalid expression",
                 help_msg: "expected character literal"
             } ),
         };
-
-        if let Ok( _ ) = character {
-            tokens.next();
-        }
-
-        character
     }
 
+    // FIX trying to assign to a literal
     fn factor<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
         let (line, token) = tokens.peek_non_whitespace( "expected expression" )?;
-
-        let number = match token.kind {
-            TokenKind::Literal( literal @ LiteralKind::I64 { .. } ) => Ok( Node::Literal( literal ) ),
+        match &token.kind {
+            TokenKind::Literal( literal @ Type::I64 { .. } ) => {
+                tokens.next();
+                return Ok( Node::Literal( literal.clone() ) );
+            },
+            TokenKind::Identifier( name ) => {
+                tokens.next();
+                return Ok( Node::Identifier( name.clone() ) );
+            },
             TokenKind::OpenRoundBracket => {
                 tokens.next();
-                // FIXME handling of case when the expression is just an empty bracket pair
-                // FIXME handling of case when a bracket is used as a factor for an expression (eg: "3 + )")
+                // FIX handling of case when the expression is just an empty bracket pair
+                let (empty_expression_line, empty_expression_token) = tokens.next_non_whitespace( "expected expression" )?;
+                tokens.next_back_non_whitespace( "" ).unwrap();
+
+                if let TokenKind::CloseRoundBracket = empty_expression_token.kind {
+                    tokens.next();
+                    return Err( SyntaxError {
+                        line: empty_expression_line,
+                        token: empty_expression_token,
+                        msg: "invalid expression",
+                        help_msg: "empty expressions are not allowed"
+                    } );
+                }
+
                 let expression = Self::expression( tokens );
                 let (_current_line, current_token) = tokens.current();
 
-                if let Token { kind: TokenKind::CloseRoundBracket, .. } = current_token {
-                    expression
+                if let TokenKind::CloseRoundBracket = current_token.kind {
+                    tokens.next();
+                    return expression;
                 }
                 else {
-                    Err( SyntaxError {
+                    return Err( SyntaxError {
                         line,
                         token,
                         msg: "invalid expression",
@@ -809,43 +942,24 @@ impl AST {
                     } )
                 }
             },
-            TokenKind::Op( _ ) => {
-                tokens.next();
-                Err( SyntaxError {
-                    line,
-                    token,
-                    msg: "invalid expression",
-                    help_msg: "stray binary operator, consider putting a number literal before this token"
-                } )
-            },
-            _ => Err( SyntaxError {
+            _ => return Err( SyntaxError {
                 line,
                 token,
                 msg: "invalid expression",
                 help_msg: "expected number literal"
             } ),
-        };
-
-        if let Ok( _ ) = number {
-            tokens.next();
         }
-
-        return number;
     }
 
     fn power<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Option<OpKind>, SyntaxError<'program>> {
         let (_line, token) = tokens.peek_non_whitespace( "expected expression or semicolon" )?;
-
-        let op = match token.kind {
-            TokenKind::Op( op @ OpKind::Pow ) => Ok( Some( op ) ),
-            TokenKind::SemiColon | _ => Ok( None ),
-        };
-
-        if let Ok( Some( _ ) ) = op {
-            tokens.next();
+        match &token.kind {
+            TokenKind::Op( op @ OpKind::Pow ) => {
+                tokens.next();
+                return Ok( Some( op.clone() ) )
+            },
+            _ => return Ok( None ),
         }
-
-        return op;
     }
 
     fn exponentiation<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
@@ -861,17 +975,13 @@ impl AST {
 
     fn times_or_divide<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Option<OpKind>, SyntaxError<'program>> {
         let (_line, token) = tokens.peek_non_whitespace( "expected expression or semicolon" )?;
-
-        let op = match token.kind {
-            TokenKind::Op( op @ OpKind::Times | op @ OpKind::Divide ) => Ok( Some( op ) ),
-            TokenKind::SemiColon | _ => Ok( None ),
-        };
-
-        if let Ok( Some( _ ) ) = op {
-            tokens.next();
+        match &token.kind {
+            TokenKind::Op( op @ (OpKind::Times | OpKind::Divide) ) => {
+                tokens.next();
+                return Ok( Some( op.clone() ) )
+            },
+            _ => return Ok( None ),
         }
-
-        return op;
     }
 
     fn term<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
@@ -887,38 +997,24 @@ impl AST {
 
     fn plus_or_minus<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Option<OpKind>, SyntaxError<'program>> {
         let (_line, token) = tokens.peek_non_whitespace( "expected expression or semicolon" )?;
-
-        let op = match token.kind {
-            TokenKind::Op( op @ OpKind::Plus | op @ OpKind::Minus ) => Ok( Some( op ) ),
-            TokenKind::CloseRoundBracket | TokenKind::SemiColon => Ok( None ),
+        match &token.kind {
+            TokenKind::Op( op @ (OpKind::Plus | OpKind::Minus) ) => {
+                tokens.next();
+                return Ok( Some( op.clone() ) )
+            },
+            TokenKind::CloseRoundBracket | TokenKind::SemiColon => return Ok( None ),
             _ => {
                 let (previous_line, previous_token) = tokens.next_back_non_whitespace( "" ).unwrap();
-
-                let err = match token.kind {
-                    TokenKind::Literal( _ ) => Err( SyntaxError {
-                        line: previous_line,
-                        token: previous_token,
-                        msg: "invalid expression",
-                        help_msg: "expected '+', '-', '*', '/' or '^' after this token to complete the expression"
-                    } ),
-                    _ => Err( SyntaxError {
-                        line: previous_line,
-                        token: previous_token,
-                        msg: "invalid expression or missing semicolon",
-                        help_msg: "expected '+', '-', '*', '/' or '^' after this token to complete the expression, or a ';' after this token to end the previous statement"
-                    } ),
-                };
-
                 tokens.next_non_whitespace( "" ).unwrap();
-                err
+
+                return Err( SyntaxError {
+                    line: previous_line,
+                    token: previous_token,
+                    msg: "invalid expression or missing semicolon",
+                    help_msg: "expected '+', '-', '*', '/' or '^' after this token to complete the expression, or a ';' after this token to end the previous statement"
+                } );
             },
-        };
-
-        if let Ok( Some( _ ) ) = op {
-            tokens.next();
         }
-
-        return op;
     }
 
     fn expression<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
@@ -935,85 +1031,90 @@ impl AST {
 
 
 #[derive( Debug )]
-struct Program;
+struct Program {
+    tokens: Lexer,
+    ast: Vec<Node>,
+    identifiers: Vec<Identifier>,
+}
 
 impl Program {
-    fn evaluate_expression<'ast>( expression: &'ast Node ) -> i64 {
+    fn evaluate_expression<'program>( expression: &'program Node, identifiers: &'program Vec<Identifier> ) -> Result<i64, SyntaxError<'program>> {
         return match expression {
             Node::Literal( value ) => match *value {
-                LiteralKind::I64 { value, .. } => value,
-                LiteralKind::Char { value } => value as i64,
+                Type::I64 { value, .. } => Ok( value ),
+                Type::Char { value } => Ok( value as i64 ),
             },
             Node::Expression{ lhs, op, rhs } => match op {
-                OpKind::Plus => Self::evaluate_expression( lhs ) + Self::evaluate_expression( rhs ),
-                OpKind::Minus => Self::evaluate_expression( lhs ) - Self::evaluate_expression( rhs ),
-                OpKind::Times => Self::evaluate_expression( lhs ) * Self::evaluate_expression( rhs ),
-                OpKind::Divide => Self::evaluate_expression( lhs ) / Self::evaluate_expression( rhs ),
-                OpKind::Pow => Self::evaluate_expression( lhs ).pow( Self::evaluate_expression( rhs ) as u32 ),
+                OpKind::Plus => Ok( Self::evaluate_expression( lhs, identifiers )? + Self::evaluate_expression( rhs, identifiers )? ),
+                OpKind::Minus => Ok( Self::evaluate_expression( lhs, identifiers )? - Self::evaluate_expression( rhs, identifiers )? ),
+                OpKind::Times => Ok( Self::evaluate_expression( lhs, identifiers )? * Self::evaluate_expression( rhs, identifiers )? ),
+                OpKind::Divide => Ok( Self::evaluate_expression( lhs, identifiers )? / Self::evaluate_expression( rhs, identifiers )? ),
+                OpKind::Pow => Ok( Self::evaluate_expression( lhs, identifiers )?.pow( Self::evaluate_expression( rhs, identifiers )? as u32 ) ),
             },
+            Node::Identifier( name ) => match Self::resolve_identifier( name, identifiers ) {
+                Some( identifier ) => Ok( Self::evaluate_expression( &identifier.value, identifiers )? ),
+                None => todo!( "identifier not defined" ),
+            }
             _ => unreachable!(),
         };
     }
 
-    fn interpret( ast: &AST, file_path: &str ) {
-        println!( "\x1b[92;1mIntepreting\x1b[0m: {}", file_path );
-
-        for node in &ast.nodes {
-            match &node {
-                Node::Print( number ) => match **number {
-                    Node::Literal( _ ) |
-                    Node::Expression { .. } => print!( "{}", Self::evaluate_expression( &*number ) ),
-                    _ => unreachable!(),
-                },
-                Node::PrintChar( number ) => match **number {
-                    Node::Literal( _ ) |
-                    Node::Expression { .. } => print!( "{}", Self::evaluate_expression( &*number ) as u8 as char ),
-                    _ => unreachable!(),
-                },
-                _ => continue,
+    fn resolve_identifier<'program>( name: &str, identifiers: &'program Vec<Identifier> ) -> Option<&'program Identifier> {
+        for ident in identifiers {
+            if ident.name == name {
+                return Some( ident );
             }
         }
+
+        return None;
     }
 
-    fn compile( ast: &AST ) -> String {
-        let mut src_code = String::new();
+    fn interpret( ast: AST, file_path: &str ) {
+        println!( "\x1b[92;1mIntepreting\x1b[0m: {}", file_path );
 
-        for node in &ast.nodes {
-            let expression_asm = match &node {
-                Node::Print( number ) => format!(
-                    " ; {}\
-                    \n{}\
-                    \x20pop rdi\
-                    \n mov rsi, 10\
-                    \n call int_toStr\
-                    \n\
-                    \n mov rdi, stdout\
-                    \n mov rsi, rax\
-                    \n mov rdx, rdx\
-                    \n mov rax, SYS_write\
-                    \n syscall\n\n",
-                    node,
-                    Self::compile_expression( &*number )
-                ),
-                Node::PrintChar( character ) => format!(
-                    " ; {}\
-                    \n{}\
-                    \x20mov rdi, stdout\
-                    \n mov rsi, rsp\
-                    \n mov rdx, 1\
-                    \n mov rax, SYS_write\
-                    \n syscall\
-                    \n pop rsi\n\n",
-                    node,
-                    Self::compile_expression( &*character )
-                ),
-                _ => continue,
-            };
+        let mut identifiers: Vec<Identifier> = Vec::new();
 
-            src_code.push_str( &expression_asm );
+        for node in ast.nodes {
+            match node {
+                Node::Definition( identifier ) => match Self::resolve_identifier( &identifier.name, &mut identifiers ) {
+                    Some( _ident ) => todo!( "identifier already defined" ),
+                    None => identifiers.push( identifier ),
+                },
+                Node::Print( value ) => match *value {
+                    Node::Literal( literal ) => match literal {
+                        Type::I64 { value } => print!( "{}", value ),
+                        Type::Char { value } => print!( "{}", value as char ),
+                    },
+                    Node::Expression { .. } => match Self::evaluate_expression( &*value, &identifiers ) {
+                        Ok( result ) => print!( "{}", result ),
+                        Err( _err ) => todo!( "error during evaluation of expression" ),
+                    },
+                    Node::Identifier( name ) => match Self::resolve_identifier( &name, &identifiers ) {
+                        Some( ident ) => match &*ident.value {
+                            Node::Literal( literal ) => match literal {
+                                Type::I64 { value } => print!( "{}", value ),
+                                Type::Char { value } => print!( "{}", *value as char ),
+                            },
+                            Node::Expression { .. } => match Self::evaluate_expression( &*ident.value, &identifiers ) {
+                                Ok( result ) => print!( "{}", result ),
+                                Err( _err ) => todo!( "error during evaluation of expression" ),
+                            },
+                            _ => unreachable!(),
+                        },
+                        None => todo!( "identifier not defined" ),
+                    },
+                    _ => unreachable!(),
+                },
+                Node::Identifier( name ) => match Self::resolve_identifier( &name, &identifiers ) {
+                    Some( ident ) => match Self::evaluate_expression( &*ident.value, &identifiers ) {
+                        Ok( result ) => print!( "{}", result ),
+                        Err( _err ) => todo!( "error during evaluation of expression" ),
+                    },
+                    None => todo!( "identifier not defined" ),
+                },
+                _ => (),
+            }
         }
-
-        return src_code;
     }
 
     fn compile_expression( node: &Node ) -> String {
@@ -1025,8 +1126,8 @@ impl Program {
         */
         match &node {
             Node::Literal( literal ) => match &literal {
-                LiteralKind::I64 { value, .. } => return format!( " push {}\n", value ),
-                LiteralKind::Char { value } => return format!( " push {}\n", value )
+                Type::I64 { value, .. } => return format!( " push {}\n", value ),
+                Type::Char { value } => return format!( " push {}\n", value ),
             },
             Node::Expression { lhs, op, rhs } => {
                 let lhs_asm = Self::compile_expression( lhs );
@@ -1074,6 +1175,48 @@ impl Program {
             },
             _ => unreachable!()
         }
+    }
+
+    fn compile( ast: &AST ) -> String {
+        let mut src_code = String::new();
+
+        for node in &ast.nodes {
+            // let expression_asm = match &node {
+            //     Node::Print( number ) => format!(
+            //         " ; {}\
+            //         \n{}\
+            //         \x20pop rdi\
+            //         \n mov rsi, 10\
+            //         \n call int_toStr\
+            //         \n\
+            //         \n mov rdi, stdout\
+            //         \n mov rsi, rax\
+            //         \n mov rdx, rdx\
+            //         \n mov rax, SYS_write\
+            //         \n syscall\n\n",
+            //         node,
+            //         Self::compile_expression( &*number )
+            //     ),
+            //     Node::PrintChar( character ) => format!(
+            //         " ; {}\
+            //         \n{}\
+            //         \x20mov rdi, stdout\
+            //         \n mov rsi, rsp\
+            //         \n mov rdx, 1\
+            //         \n mov rax, SYS_write\
+            //         \n syscall\
+            //         \n pop rsi\n\n",
+            //         node,
+            //         Self::compile_expression( &*character )
+            //     ),
+            //     _ => continue,
+            // };
+
+            // src_code.push_str( &expression_asm );
+            todo!( "compilation mode currently not working" );
+        }
+
+        return src_code;
     }
 
     fn build( ast: &AST, file_path: &str ) -> Result<PathBuf, ()> {
@@ -1279,9 +1422,9 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().collect();
 
     // to quickly debug
-    // args.push( "interpret".to_string() );
+    args.push( "interpret".to_string() );
     // args.push( "build".to_string() );
-    args.push( "run".to_string() );
+    // args.push( "run".to_string() );
     args.push( "examples/main.blz".to_string() );
 
     if args.len() < 2 {
@@ -1368,7 +1511,7 @@ fn main() -> ExitCode {
 
     let ast = match AST::parse( &lexer ) {
         Ok( ast ) => {
-            // println!( "{}", parser );
+            println!( "{:?}", ast );
             ast
         },
         Err( errors ) => {
@@ -1378,7 +1521,7 @@ fn main() -> ExitCode {
     };
 
     if interpret_flag {
-        Program::interpret( &ast, &source_file_path );
+        Program::interpret( ast, &source_file_path );
     }
     else if build_flag {
         Program::build( &ast, &source_file_path ).unwrap();

@@ -1,39 +1,25 @@
-(* program *)
-program = [ {
+digit = "0".."9";
+valid_character = ? ASCII 32..126 ?;
+
+number_literal = {digit};
+
+identifier = "_" | "A".."Z" | "a".."z", {"_" | "A".."Z" | "a".."z" | digit};
+line_comment = "#", {valid_character}, "\n";
+
+escape_character = "\n" | "\t" | "\'" | '"' | '\"';
+character_literal = "'", escape_character | valid_character, "'";
+
+(* from highest precedence to lowest *)
+factor = number_literal | identifier | ("(", expression, ")");
+exponentiation = factor, ["^", factor];
+term = exponentiation, ["*" | "/", exponentiation];
+expression = term, ["+" | "-", term];
+
+program = [{
     line_comment |
-    ((print, expression) | (print_char, char), ';')
-} ];
-
-(* keywords *)
-print = "print";
-print_char = "print_char";
-
-(* comments *)
-line_comment = "#", ? any character ?, "\n";
-
-(* numbers *)
-zero = "0";
-non_zero = "1".."9";
-digit = zero | non_zero;
-number = {digit};
-
-(* character literals *)
-single_quote = "'";
-char = single_quote, "\n" | ? ASCII 32..255 ?, single_quote;
-
-(* symbols *)
-open_round_bracket = "(";
-close_round_bracket = ")";
-
-(* operators *)
-plus = "+";
-minus = "-";
-times = "*";
-power = "^";
-divide = "/";
-
-(* expressions, from highest precedence to lowest *)
-factor = number | (open_round_bracket, expression, close_round_bracket);
-exponentiation = factor, [power, factor];
-term = exponentiation, [times | divide, exponentiation];
-expression = term, [plus | minus, term];
+    (
+        ("print", expression | character_literal | identifier) |
+        ("let", identifier, "=", expression | character_literal | identifier),
+        ';'
+    )
+}];

@@ -23,16 +23,13 @@
 
 ## 0.1
 
+- only supporting ASCII characters (`[0, 127]`) for now
 - `build` to compile the program down to a binary executable
 - `run` to compile and run the compiled native assembly code
 - `interpret` to interpret the program without compiling it
 - each statement is separated by semicolons
 - line comments: `#...`
-- integers and math operators:
-    - 64 bit base 10 number literals
-    - math expressions (PEMDAS): `()`, `^`, `*`, `/`, `+`, `-`
-    - can be printed using the `print` keyword
-- character literals:
-    - any Extended ASCII character (`[0, 255]`)
-    - `'\n'`: newline
-    - can be printed using the `print_char` keyword
+- integers and math operators
+- character literals
+- variables
+- values (integers, characters, variables, ...) can be printed using the `print` keyword
