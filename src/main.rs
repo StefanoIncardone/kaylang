@@ -112,6 +112,7 @@ struct Token {
     kind: TokenKind,
 }
 
+
 #[derive( Debug )]
 struct Line {
     number: usize,
@@ -154,59 +155,12 @@ struct Lexer {
     lines: Vec<Line>,
 }
 
-impl Lexer {
-    // FIX properly handle non ASCII codes in error messages
-    fn next_ascii( src: &mut Peekable<Chars> ) -> Result<Option<char>, TokenKind> {
-        match src.next() {
-            Some( next @ ..='\x7F' ) => Ok( Some( next ) ),
-            Some( next ) => Err( TokenKind::Unexpected {
-                text: next.to_string(),
-                err_msg: "unrecognized character",
-                help_msg: "not a valid ASCII character"
-            } ),
-            None => Ok( None )
-        }
-    }
-
-    fn next_in_char_literal( src: &mut Peekable<Chars>, token_text: &mut String ) -> Result<u8, TokenKind> {
-        return match Self::next_ascii( src )? {
-            Some( '\n' ) | None => Err( TokenKind::Unexpected {
-                text: token_text.clone(),
-                err_msg: "invalid character literal",
-                help_msg: "missing closing single quote"
-            } ),
-            Some( next ) => {
-                token_text.push( next );
-                Ok( next as u8 )
-            },
-        };
-    }
-
-    fn parse_char( src: &mut Peekable<Chars>, token_text: &mut String ) -> Result<u8, TokenKind> {
-        // IDEA treat character literals as just strings of lenght 1, reporting errors if over 1
-        match Self::next_in_char_literal( src, token_text )? {
-            b'\\' => match Self::next_in_char_literal( src, token_text )? {
-                b'n' => Ok( b'\n' as u8 ),
-                b't' => Ok( b'\t' as u8 ),
-                b'\'' => Ok( b'\'' as u8 ),
-                b'"' => Ok( b'"' as u8 ),
-                _ => Err( TokenKind::Unexpected {
-                    text: token_text.clone(),
-                    err_msg: "invalid escape character literal",
-                    help_msg: "check the documentation for a list of valid escape characters"
-                } ),
-            },
-            b'\x00'..=b'\x1F' | b'\x7F' => Err( TokenKind::Unexpected {
-                text: token_text.clone(),
-                err_msg: "invalid character literal",
-                help_msg: "cannot be a control character"
-            } ),
-            next => Ok( next as u8 ),
-        }
-    }
+impl TryFrom<(&str, File)> for Lexer {
+    type Error = Self;
 
     // IDEA make the input character stream generic, eg: to be able to compile from strings instead of just files
-    fn parse( file_path: &str, source_file: File ) -> Result<Self, Self> {
+    fn try_from( src: (&str, File) ) -> Result<Self, Self::Error> {
+        let (file_path, source_file) = (src.0, src.1);
         let mut errors: Vec<Line> = Vec::new();
         let mut lines: Vec<Line> = Vec::new();
         let mut number: usize = 1;
@@ -456,12 +410,114 @@ impl<'lexer> IntoIterator for &'lexer Lexer {
     }
 }
 
+impl Lexer {
+    // FIX properly handle non ASCII codes in error messages
+    fn next_ascii( src: &mut Peekable<Chars> ) -> Result<Option<char>, TokenKind> {
+        match src.next() {
+            Some( next @ ..='\x7F' ) => return Ok( Some( next ) ),
+            Some( next ) => return Err( TokenKind::Unexpected {
+                text: next.to_string(),
+                err_msg: "unrecognized character",
+                help_msg: "not a valid ASCII character"
+            } ),
+            None => return Ok( None ),
+        }
+    }
+
+    fn next_in_char_literal( src: &mut Peekable<Chars>, token_text: &mut String ) -> Result<u8, TokenKind> {
+        match Self::next_ascii( src )? {
+            Some( '\n' ) | None => return Err( TokenKind::Unexpected {
+                text: token_text.clone(),
+                err_msg: "invalid character literal",
+                help_msg: "missing closing single quote"
+            } ),
+            Some( next ) => {
+                token_text.push( next );
+                return Ok( next as u8 );
+            },
+        }
+    }
+
+    fn parse_char( src: &mut Peekable<Chars>, token_text: &mut String ) -> Result<u8, TokenKind> {
+        // IDEA treat character literals as just strings of lenght 1, reporting errors if over 1
+        match Self::next_in_char_literal( src, token_text )? {
+            b'\\' => match Self::next_in_char_literal( src, token_text )? {
+                b'n' => return Ok( b'\n' as u8 ),
+                b't' => return Ok( b'\t' as u8 ),
+                b'\'' => return Ok( b'\'' as u8 ),
+                b'"' => return Ok( b'"' as u8 ),
+                _ => return Err( TokenKind::Unexpected {
+                    text: token_text.clone(),
+                    err_msg: "invalid escape character literal",
+                    help_msg: "check the documentation for a list of valid escape characters"
+                } ),
+            },
+            b'\x00'..=b'\x1F' | b'\x7F' => return Err( TokenKind::Unexpected {
+                text: token_text.clone(),
+                err_msg: "invalid character literal",
+                help_msg: "cannot be a control character"
+            } ),
+            next => return Ok( next as u8 ),
+        }
+    }
+}
+
 
 #[derive( Debug )]
 struct LexerTokenIter<'lexer> {
     lexer: &'lexer Lexer,
     line: usize,
     token: usize,
+}
+
+impl<'lexer> Iterator for LexerTokenIter<'lexer> {
+    type Item = (&'lexer Line, &'lexer Token);
+
+    fn next( &mut self ) -> Option<Self::Item> {
+        if (self.line) >= self.lexer.lines.len() {
+            return None;
+        }
+
+        let line = &self.lexer.lines[ self.line ];
+        let tokens = &line.tokens;
+        if (self.token) < tokens.len() {
+            let token = &tokens[ self.token ];
+            self.token += 1;
+            return Some( (line, token) );
+        }
+        else {
+            self.line += 1;
+            self.token = 0;
+
+            return self.next();
+        }
+    }
+}
+
+impl<'lexer> DoubleEndedIterator for LexerTokenIter<'lexer> {
+    fn next_back( &mut self ) -> Option<Self::Item> {
+        if self.token == 0 {
+            if self.line == 0 {
+                return None;
+            }
+
+            self.line -= 1;
+            let line = &self.lexer.lines[ self.line ];
+            let tokens = &line.tokens;
+
+            self.token = tokens.len() - 1;
+            let token = &tokens[ self.token ];
+            return Some( (line, token) );
+        }
+        else {
+            let line = &self.lexer.lines[ self.line ];
+            let tokens = &line.tokens;
+
+            self.token -= 1;
+            let token = &tokens[ self.token ];
+            return Some( (line, token) );
+        }
+    }
 }
 
 // TODO create method current_non_eof( err_msg ) method
@@ -577,56 +633,6 @@ impl<'lexer> LexerTokenIter<'lexer> {
     // }
 }
 
-impl<'lexer> Iterator for LexerTokenIter<'lexer> {
-    type Item = (&'lexer Line, &'lexer Token);
-
-    fn next( &mut self ) -> Option<Self::Item> {
-        if (self.line) >= self.lexer.lines.len() {
-            return None;
-        }
-
-        let line = &self.lexer.lines[ self.line ];
-        let tokens = &line.tokens;
-        if (self.token) < tokens.len() {
-            let token = &tokens[ self.token ];
-            self.token += 1;
-            return Some( (line, token) );
-        }
-        else {
-            self.line += 1;
-            self.token = 0;
-
-            return self.next();
-        }
-    }
-}
-
-impl<'lexer> DoubleEndedIterator for LexerTokenIter<'lexer> {
-    fn next_back( &mut self ) -> Option<Self::Item> {
-        if self.token == 0 {
-            if self.line == 0 {
-                return None;
-            }
-
-            self.line -= 1;
-            let line = &self.lexer.lines[ self.line ];
-            let tokens = &line.tokens;
-
-            self.token = tokens.len() - 1;
-            let token = &tokens[ self.token ];
-            return Some( (line, token) );
-        }
-        else {
-            let line = &self.lexer.lines[ self.line ];
-            let tokens = &line.tokens;
-
-            self.token -= 1;
-            let token = &tokens[ self.token ];
-            return Some( (line, token) );
-        }
-    }
-}
-
 
 #[derive( Debug )]
 enum DefinitionKind {
@@ -663,10 +669,7 @@ impl Display for Node {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         match self {
             Self::Literal( literal ) => write!( f, "{}", literal ),
-            Self::Expression { lhs, op, rhs } => match op {
-                OpKind::Plus | OpKind::Minus => write!( f, "{} {} {}", lhs, op, rhs ),
-                OpKind::Times | OpKind::Divide | OpKind::Pow => write!( f, "({} {} {})", lhs, op, rhs ),
-            },
+            Self::Expression { lhs, op, rhs } => write!( f, "({} {} {})", lhs, op, rhs ),
             Self::Definition( assignment ) => write!( f, "{} {} = {}", assignment.kind, assignment.name, assignment.value ),
             Self::Identifier( name ) => write!( f, "{}", name ),
             Self::Print( node ) => write!( f, "print {}", node ),
@@ -725,12 +728,15 @@ impl<'program> Display for SyntaxErrors<'program> {
 #[derive( Debug )]
 struct AST {
     nodes: Vec<Node>,
+    identifiers: Vec<Identifier>,
 }
 
-impl AST {
-    fn parse<'program>( lexer: &'program Lexer ) -> Result<Self, SyntaxErrors<'program>> {
+impl<'lexer> TryFrom<&'lexer Lexer> for AST {
+    type Error = SyntaxErrors<'lexer>;
+
+    fn try_from( lexer: &'lexer Lexer ) -> Result<Self, Self::Error> {
         let mut syntax_errors = SyntaxErrors { file_path: lexer.file_path.clone(), errors: Vec::new() };
-        let mut ast = AST{ nodes: Vec::new() };
+        let mut ast = AST{ nodes: Vec::new(), identifiers: Vec::new() };
 
         let mut tokens = lexer.into_iter();
         while let Some( (line, token) ) = tokens.peek() {
@@ -793,7 +799,9 @@ impl AST {
             return Ok( ast );
         }
     }
+}
 
+impl AST {
     fn semicolon<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<(), SyntaxError<'program>> {
         let (semicolon_line, semicolon_token) = tokens.peek_non_whitespace( "expected semicolon" )?;
         match semicolon_token.kind {
@@ -1039,20 +1047,20 @@ struct Program {
 
 impl Program {
     fn evaluate_expression<'program>( expression: &'program Node, identifiers: &'program Vec<Identifier> ) -> Result<i64, SyntaxError<'program>> {
-        return match expression {
+        match expression {
             Node::Literal( value ) => match *value {
-                Type::I64 { value, .. } => Ok( value ),
-                Type::Char { value } => Ok( value as i64 ),
+                Type::I64 { value, .. } => return Ok( value ),
+                Type::Char { value } => return Ok( value as i64 ),
             },
             Node::Expression{ lhs, op, rhs } => match op {
-                OpKind::Plus => Ok( Self::evaluate_expression( lhs, identifiers )? + Self::evaluate_expression( rhs, identifiers )? ),
-                OpKind::Minus => Ok( Self::evaluate_expression( lhs, identifiers )? - Self::evaluate_expression( rhs, identifiers )? ),
-                OpKind::Times => Ok( Self::evaluate_expression( lhs, identifiers )? * Self::evaluate_expression( rhs, identifiers )? ),
-                OpKind::Divide => Ok( Self::evaluate_expression( lhs, identifiers )? / Self::evaluate_expression( rhs, identifiers )? ),
-                OpKind::Pow => Ok( Self::evaluate_expression( lhs, identifiers )?.pow( Self::evaluate_expression( rhs, identifiers )? as u32 ) ),
+                OpKind::Plus => return Ok( Self::evaluate_expression( lhs, identifiers )? + Self::evaluate_expression( rhs, identifiers )? ),
+                OpKind::Minus => return Ok( Self::evaluate_expression( lhs, identifiers )? - Self::evaluate_expression( rhs, identifiers )? ),
+                OpKind::Times => return Ok( Self::evaluate_expression( lhs, identifiers )? * Self::evaluate_expression( rhs, identifiers )? ),
+                OpKind::Divide => return Ok( Self::evaluate_expression( lhs, identifiers )? / Self::evaluate_expression( rhs, identifiers )? ),
+                OpKind::Pow => return Ok( Self::evaluate_expression( lhs, identifiers )?.pow( Self::evaluate_expression( rhs, identifiers )? as u32 ) ),
             },
             Node::Identifier( name ) => match Self::resolve_identifier( name, identifiers ) {
-                Some( identifier ) => Ok( Self::evaluate_expression( &identifier.value, identifiers )? ),
+                Some( identifier ) => return Ok( Self::evaluate_expression( &identifier.value, identifiers )? ),
                 None => todo!( "identifier not defined" ),
             }
             _ => unreachable!(),
@@ -1498,7 +1506,7 @@ fn main() -> ExitCode {
         },
     };
 
-    let lexer = match Lexer::parse( &source_file_path, source_file ) {
+    let lexer = match Lexer::try_from( (source_file_path.as_str(), source_file) ) {
         Ok( lexer ) => {
             // println!( "{:?}\n", lexer );
             lexer
@@ -1509,7 +1517,7 @@ fn main() -> ExitCode {
         },
     };
 
-    let ast = match AST::parse( &lexer ) {
+    let ast = match AST::try_from( &lexer ) {
         Ok( ast ) => {
             println!( "{:?}", ast );
             ast
