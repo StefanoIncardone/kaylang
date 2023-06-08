@@ -41,6 +41,24 @@ impl Display for OpKind {
 }
 
 
+
+#[derive( Debug, Clone )]
+enum DefinitionKind {
+    // Fn,
+    Let,
+    // Const,
+    // Var,
+}
+
+impl Display for DefinitionKind {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        match self {
+            Self::Let => write!( f, "let" ),
+        }
+    }
+}
+
+
 #[derive( Debug )]
 enum TokenKind {
     Unexpected{ text: String, err_msg: &'static str, help_msg: &'static str },
@@ -66,10 +84,7 @@ enum TokenKind {
     // Keywords
     Print, // temporary way of printing values
     // Entry,
-    // Fn,
-    Let,
-    // Const,
-    // Var,
+    Definition( DefinitionKind ),
     // Return,
 
     // Operators
@@ -95,7 +110,7 @@ impl Display for TokenKind {
             Self::Identifier( name ) => write!( f, "{}", name ),
 
             Self::Print => write!( f, "print" ),
-            Self::Let => write!( f, "let" ),
+            Self::Definition( kind ) => write!( f, "{}", kind ),
 
             Self::Op( op ) => write!( f, "{}", op ),
 
@@ -308,7 +323,7 @@ impl TryFrom<(&str, File)> for Lexer {
                                 // "entry" => TokenKind::Entry,
                                 // "fn" => TokenKind::Fn,
                                 // "const" => TokenKind::Const,
-                                "let" => TokenKind::Let,
+                                "let" => TokenKind::Definition( DefinitionKind::Let ),
                                 // "var" => TokenKind::Var,
                                 // "return" => TokenKind::Return,
                                 _ => TokenKind::Identifier( token_text.clone() )
@@ -406,11 +421,15 @@ impl<'lexer> IntoIterator for &'lexer Lexer {
 
 
     fn into_iter( self ) -> Self::IntoIter {
-        return LexerTokenIter{ lexer: self, line: 0, token: 0 };
+        return self.iter();
     }
 }
 
 impl Lexer {
+    fn iter( &self ) -> LexerTokenIter {
+        return LexerTokenIter{ lexer: self, line: 0, token: 0 };
+    }
+
     // FIX properly handle non ASCII codes in error messages
     fn next_ascii( src: &mut Peekable<Chars> ) -> Result<Option<char>, TokenKind> {
         match src.next() {
@@ -634,34 +653,38 @@ impl<'lexer> LexerTokenIter<'lexer> {
 }
 
 
-#[derive( Debug )]
-enum DefinitionKind {
-    Let,
-}
-
-impl Display for DefinitionKind {
-    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        match self {
-            Self::Let => write!( f, "let" ),
-        }
-    }
-}
-
-
-#[derive( Debug )]
-struct Identifier {
+#[derive( Debug, Clone )]
+struct Definition {
     kind: DefinitionKind,
     name: String,
     value: Box<Node>,
 }
 
-
 #[derive( Debug )]
+struct Definitions {
+    definitions: Vec<Box<Definition>>,
+}
+
+impl Definitions {
+    fn resolve<'ast>( &'ast self, name: &str ) -> Option<&'ast Box<Definition>> {
+        for ident in &self.definitions {
+            if ident.name == name {
+                return Some( ident );
+            }
+        }
+
+        return None;
+    }
+}
+
+
+
+#[derive( Debug, Clone )]
 enum Node {
     Literal( Type ),
     Expression{ lhs: Box<Node>, op: OpKind, rhs: Box<Node> },
-    Identifier( String ),
-    Definition( Identifier ),
+    Identifier( Box<Definition> ),
+    Definition( Box<Definition> ),
     Print( Box<Node> ),
 }
 
@@ -671,11 +694,12 @@ impl Display for Node {
             Self::Literal( literal ) => write!( f, "{}", literal ),
             Self::Expression { lhs, op, rhs } => write!( f, "({} {} {})", lhs, op, rhs ),
             Self::Definition( assignment ) => write!( f, "{} {} = {}", assignment.kind, assignment.name, assignment.value ),
-            Self::Identifier( name ) => write!( f, "{}", name ),
+            Self::Identifier( identifier ) => write!( f, "{}", identifier.name ),
             Self::Print( node ) => write!( f, "print {}", node ),
         }
     }
 }
+
 
 
 #[derive( Debug )]
@@ -726,38 +750,35 @@ impl<'program> Display for SyntaxErrors<'program> {
 
 
 #[derive( Debug )]
-struct AST {
+struct AST<'lexer> {
     nodes: Vec<Node>,
-    identifiers: Vec<Identifier>,
+    tokens: LexerTokenIter<'lexer>,
+    definitions: Definitions,
 }
 
-impl<'lexer> TryFrom<&'lexer Lexer> for AST {
+impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
     type Error = SyntaxErrors<'lexer>;
 
     fn try_from( lexer: &'lexer Lexer ) -> Result<Self, Self::Error> {
         let mut syntax_errors = SyntaxErrors { file_path: lexer.file_path.clone(), errors: Vec::new() };
-        let mut ast = AST{ nodes: Vec::new(), identifiers: Vec::new() };
+        let mut ast = Self{ nodes: Vec::new(), tokens: lexer.iter(), definitions: Definitions{ definitions: Vec::new() } };
 
-        let mut tokens = lexer.into_iter();
-        while let Some( (line, token) ) = tokens.peek() {
+        while let Some( (line, token) ) = ast.tokens.peek() {
             let statement_result = match &token.kind {
                 TokenKind::Comment( _ ) | TokenKind::EOF | TokenKind::SemiColon /* | TokenKind::Newline */ => {
-                    tokens.next();
+                    ast.tokens.next();
                     continue;
                 },
-                TokenKind::Let => Self::variable_definition( &mut tokens ),
-                TokenKind::Print => Self::print( &mut tokens ),
+                TokenKind::Definition( _ ) => ast.variable_definition(),
+                TokenKind::Print => ast.print(),
                 TokenKind::Literal( literal ) => match literal {
-                    Type::Char { .. } => Self::character( &mut tokens ),
-                    Type::I64 { .. } => Self::expression( &mut tokens ),
+                    Type::Char { .. } => ast.character(),
+                    Type::I64 { .. } => ast.expression(),
                 },
-                TokenKind::Identifier( name ) => {
-                    tokens.next();
-                    Ok( Node::Identifier( name.clone() ) )
-                },
-                TokenKind::OpenRoundBracket => Self::expression( &mut tokens ),
+                TokenKind::Identifier( identifier ) => ast.resolve_identifier( &identifier ),
+                TokenKind::OpenRoundBracket => ast.expression(),
                 TokenKind::CloseRoundBracket => {
-                    tokens.next();
+                    ast.tokens.next();
                     Err( SyntaxError {
                         line,
                         token,
@@ -766,7 +787,7 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST {
                     } )
                 },
                 TokenKind::Op( _ ) => {
-                    tokens.next();
+                    ast.tokens.next();
                     Err( SyntaxError {
                         line,
                         token,
@@ -775,7 +796,7 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST {
                     } )
                 },
                 TokenKind::Equals => {
-                    tokens.next();
+                    ast.tokens.next();
                     Err( SyntaxError {
                         line,
                         token,
@@ -801,12 +822,12 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST {
     }
 }
 
-impl AST {
-    fn semicolon<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<(), SyntaxError<'program>> {
-        let (semicolon_line, semicolon_token) = tokens.peek_non_whitespace( "expected semicolon" )?;
+impl<'lexer> AST<'lexer> {
+    fn semicolon( &mut self ) -> Result<(), SyntaxError<'lexer>> {
+        let (semicolon_line, semicolon_token) = self.tokens.peek_non_whitespace( "expected semicolon" )?;
         match semicolon_token.kind {
             TokenKind::SemiColon => {
-                tokens.next();
+                self.tokens.next();
                 return Ok( () );
             },
             _ => return Err( SyntaxError {
@@ -818,19 +839,16 @@ impl AST {
         }
     }
 
-    fn print<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
-        tokens.next();
-        let (argument_line, argument_token) = tokens.peek_non_whitespace( "expected print argument" )?;
+    fn print( &mut self ) -> Result<Node, SyntaxError<'lexer>> {
+        self.tokens.next();
+        let (argument_line, argument_token) = self.tokens.peek_non_whitespace( "expected print argument" )?;
         let argument = match &argument_token.kind {
             TokenKind::Literal( literal ) => match literal {
-                Type::Char { .. } => Self::character( tokens )?,
-                Type::I64 { .. } => Self::expression( tokens )?,
+                Type::Char { .. } => self.character()?,
+                Type::I64 { .. } => self.expression()?,
             },
-            TokenKind::OpenRoundBracket => Self::expression( tokens )?,
-            TokenKind::Identifier( name ) => {
-                tokens.next();
-                Node::Identifier( name.clone() )
-            },
+            TokenKind::OpenRoundBracket => self.expression()?,
+            TokenKind::Identifier( identifier ) => self.resolve_identifier( &identifier )?,
             _ => return Err( SyntaxError {
                 line: argument_line,
                 token: argument_token,
@@ -839,19 +857,19 @@ impl AST {
             } )
         };
 
-        Self::semicolon( tokens )?;
+        self.semicolon()?;
         return Ok( Node::Print( Box::new( argument ) ) );
     }
 
     // FIX error messages
-    fn variable_definition<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
-        let (_definition_kind_line, definition_kind_token) = tokens.next_non_whitespace( "expected definition keyword" )?;
-        let kind = match definition_kind_token.kind {
-            TokenKind::Let => DefinitionKind::Let,
+    fn variable_definition( &mut self ) -> Result<Node, SyntaxError<'lexer>> {
+        let (_definition_kind_line, definition_kind_token) = self.tokens.next_non_whitespace( "expected definition keyword" )?;
+        let kind = match &definition_kind_token.kind {
+            TokenKind::Definition( kind ) => kind.clone(),
             _ => unreachable!(),
         };
 
-        let (identifier_line, identifier_token) = tokens.next_non_whitespace( "expected identifier" )?;
+        let (identifier_line, identifier_token) = self.tokens.next_non_whitespace( "expected identifier" )?;
         let name = match &identifier_token.kind {
             TokenKind::Identifier( name ) => name.clone(),
             _ => return Err( SyntaxError {
@@ -862,7 +880,7 @@ impl AST {
             } ),
         };
 
-        let (equals_line, equals_token) = tokens.next_non_whitespace( "expected equals" )?;
+        let (equals_line, equals_token) = self.tokens.next_non_whitespace( "expected equals" )?;
         match equals_token.kind {
             TokenKind::Equals => (),
             _ => return Err( SyntaxError {
@@ -873,11 +891,11 @@ impl AST {
             } ),
         }
 
-        let (value_line, value_token) = tokens.peek_non_whitespace( "expected expression" )?;
+        let (value_line, value_token) = self.tokens.peek_non_whitespace( "expected expression" )?;
         let value = match value_token.kind {
-            TokenKind::Literal( Type::Char { .. } ) => Self::character( tokens )?,
+            TokenKind::Literal( Type::Char { .. } ) => self.character()?,
             TokenKind::Literal( Type::I64 { .. } ) | TokenKind::OpenRoundBracket |
-            TokenKind::Identifier( _ ) => Self::expression( tokens )?,
+            TokenKind::Identifier( _ ) => self.expression()?,
             _ => return Err( SyntaxError {
                 line: value_line,
                 token: value_token,
@@ -886,15 +904,31 @@ impl AST {
             } ),
         };
 
-        Self::semicolon( tokens )?;
-        return Ok( Node::Definition( Identifier { kind, name, value: Box::new( value ) } ) );
+        self.semicolon()?;
+        let definition = Box::new( Definition { kind, name, value: Box::new( value ) } );
+        self.definitions.definitions.push( definition.clone() );
+        return Ok( Node::Definition( definition ) );
     }
 
-    fn character<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
-        let (line, token) = tokens.peek_non_whitespace( "expected character literal" )?;
+    fn resolve_identifier( &mut self, name: &str ) -> Result<Node, SyntaxError<'lexer>> {
+        let (identifier_line, identifier_token) = self.tokens.current();
+        self.tokens.next();
+        match self.definitions.resolve( name ) {
+            Some( identifier ) => return Ok( Node::Identifier( identifier.to_owned() ) ),
+            None => return Err( SyntaxError {
+                line: identifier_line,
+                token: identifier_token,
+                msg: "variable not defined",
+                help_msg: "was not previously defined"
+            } )
+        }
+    }
+
+    fn character( &mut self ) -> Result<Node, SyntaxError<'lexer>> {
+        let (line, token) = self.tokens.peek_non_whitespace( "expected character literal" )?;
         match &token.kind {
             TokenKind::Literal( literal @ Type::Char { .. } ) => {
-                tokens.next();
+                self.tokens.next();
                 return Ok( Node::Literal( literal.clone() ) )
             },
             _ => return Err( SyntaxError {
@@ -907,25 +941,22 @@ impl AST {
     }
 
     // FIX trying to assign to a literal
-    fn factor<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
-        let (line, token) = tokens.peek_non_whitespace( "expected expression" )?;
+    fn factor( &mut self ) -> Result<Node, SyntaxError<'lexer>> {
+        let (line, token) = self.tokens.peek_non_whitespace( "expected expression" )?;
         match &token.kind {
             TokenKind::Literal( literal @ Type::I64 { .. } ) => {
-                tokens.next();
+                self.tokens.next();
                 return Ok( Node::Literal( literal.clone() ) );
             },
-            TokenKind::Identifier( name ) => {
-                tokens.next();
-                return Ok( Node::Identifier( name.clone() ) );
-            },
+            TokenKind::Identifier( name ) => return self.resolve_identifier( name ),
             TokenKind::OpenRoundBracket => {
-                tokens.next();
+                self.tokens.next();
                 // FIX handling of case when the expression is just an empty bracket pair
-                let (empty_expression_line, empty_expression_token) = tokens.next_non_whitespace( "expected expression" )?;
-                tokens.next_back_non_whitespace( "" ).unwrap();
+                let (empty_expression_line, empty_expression_token) = self.tokens.next_non_whitespace( "expected expression" )?;
+                self.tokens.next_back_non_whitespace( "" ).unwrap();
 
                 if let TokenKind::CloseRoundBracket = empty_expression_token.kind {
-                    tokens.next();
+                    self.tokens.next();
                     return Err( SyntaxError {
                         line: empty_expression_line,
                         token: empty_expression_token,
@@ -934,12 +965,12 @@ impl AST {
                     } );
                 }
 
-                let expression = Self::expression( tokens );
-                let (_current_line, current_token) = tokens.current();
+                let expression = self.expression()?;
+                let (_current_line, current_token) = self.tokens.current();
 
                 if let TokenKind::CloseRoundBracket = current_token.kind {
-                    tokens.next();
-                    return expression;
+                    self.tokens.next();
+                    return Ok( expression );
                 }
                 else {
                     return Err( SyntaxError {
@@ -959,61 +990,61 @@ impl AST {
         }
     }
 
-    fn power<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Option<OpKind>, SyntaxError<'program>> {
-        let (_line, token) = tokens.peek_non_whitespace( "expected expression or semicolon" )?;
+    fn power( &mut self ) -> Result<Option<OpKind>, SyntaxError<'lexer>> {
+        let (_line, token) = self.tokens.peek_non_whitespace( "expected expression or semicolon" )?;
         match &token.kind {
             TokenKind::Op( op @ OpKind::Pow ) => {
-                tokens.next();
+                self.tokens.next();
                 return Ok( Some( op.clone() ) )
             },
             _ => return Ok( None ),
         }
     }
 
-    fn exponentiation<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
-        let mut lhs = Self::factor( tokens )?;
+    fn exponentiation( &mut self ) -> Result<Node, SyntaxError<'lexer>> {
+        let mut lhs = self.factor()?;
 
-        while let Some( op ) = Self::power( tokens )? {
-            let rhs = Self::factor( tokens )?;
+        while let Some( op ) = self.power()? {
+            let rhs = self.factor()?;
             lhs = Node::Expression { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
     }
 
-    fn times_or_divide<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Option<OpKind>, SyntaxError<'program>> {
-        let (_line, token) = tokens.peek_non_whitespace( "expected expression or semicolon" )?;
+    fn times_or_divide( &mut self ) -> Result<Option<OpKind>, SyntaxError<'lexer>> {
+        let (_line, token) = self.tokens.peek_non_whitespace( "expected expression or semicolon" )?;
         match &token.kind {
             TokenKind::Op( op @ (OpKind::Times | OpKind::Divide) ) => {
-                tokens.next();
+                self.tokens.next();
                 return Ok( Some( op.clone() ) )
             },
             _ => return Ok( None ),
         }
     }
 
-    fn term<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
-        let mut lhs = Self::exponentiation( tokens )?;
+    fn term( &mut self ) -> Result<Node, SyntaxError<'lexer>> {
+        let mut lhs = self.exponentiation()?;
 
-        while let Some( op ) = Self::times_or_divide( tokens )? {
-            let rhs = Self::exponentiation( tokens )?;
+        while let Some( op ) = self.times_or_divide()? {
+            let rhs = self.exponentiation()?;
             lhs = Node::Expression { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
     }
 
-    fn plus_or_minus<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Option<OpKind>, SyntaxError<'program>> {
-        let (_line, token) = tokens.peek_non_whitespace( "expected expression or semicolon" )?;
+    fn plus_or_minus( &mut self ) -> Result<Option<OpKind>, SyntaxError<'lexer>> {
+        let (_line, token) = self.tokens.peek_non_whitespace( "expected expression or semicolon" )?;
         match &token.kind {
             TokenKind::Op( op @ (OpKind::Plus | OpKind::Minus) ) => {
-                tokens.next();
+                self.tokens.next();
                 return Ok( Some( op.clone() ) )
             },
             TokenKind::CloseRoundBracket | TokenKind::SemiColon => return Ok( None ),
             _ => {
-                let (previous_line, previous_token) = tokens.next_back_non_whitespace( "" ).unwrap();
-                tokens.next_non_whitespace( "" ).unwrap();
+                let (previous_line, previous_token) = self.tokens.next_back_non_whitespace( "" ).unwrap();
+                self.tokens.next_non_whitespace( "" ).unwrap();
 
                 return Err( SyntaxError {
                     line: previous_line,
@@ -1025,11 +1056,11 @@ impl AST {
         }
     }
 
-    fn expression<'program>( tokens: &mut LexerTokenIter<'program> ) -> Result<Node, SyntaxError<'program>> {
-        let mut lhs = Self::term( tokens )?;
+    fn expression( &mut self ) -> Result<Node, SyntaxError<'lexer>> {
+        let mut lhs = self.term()?;
 
-        while let Some( op ) = Self::plus_or_minus( tokens )? {
-            let rhs = Self::term( tokens )?;
+        while let Some( op ) = self.plus_or_minus()? {
+            let rhs = self.term()?;
             lhs = Node::Expression { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
 
@@ -1039,86 +1070,49 @@ impl AST {
 
 
 #[derive( Debug )]
-struct Program {
-    tokens: Lexer,
-    ast: Vec<Node>,
-    identifiers: Vec<Identifier>,
-}
+struct Program;
 
 impl Program {
-    fn evaluate_expression<'program>( expression: &'program Node, identifiers: &'program Vec<Identifier> ) -> Result<i64, SyntaxError<'program>> {
+    fn evaluate_expression( expression: &Node ) -> i64 {
         match expression {
             Node::Literal( value ) => match *value {
-                Type::I64 { value, .. } => return Ok( value ),
-                Type::Char { value } => return Ok( value as i64 ),
+                Type::I64 { value, .. } => return value,
+                Type::Char { value } => return value as i64,
             },
             Node::Expression{ lhs, op, rhs } => match op {
-                OpKind::Plus => return Ok( Self::evaluate_expression( lhs, identifiers )? + Self::evaluate_expression( rhs, identifiers )? ),
-                OpKind::Minus => return Ok( Self::evaluate_expression( lhs, identifiers )? - Self::evaluate_expression( rhs, identifiers )? ),
-                OpKind::Times => return Ok( Self::evaluate_expression( lhs, identifiers )? * Self::evaluate_expression( rhs, identifiers )? ),
-                OpKind::Divide => return Ok( Self::evaluate_expression( lhs, identifiers )? / Self::evaluate_expression( rhs, identifiers )? ),
-                OpKind::Pow => return Ok( Self::evaluate_expression( lhs, identifiers )?.pow( Self::evaluate_expression( rhs, identifiers )? as u32 ) ),
+                OpKind::Plus => return Self::evaluate_expression( lhs ) + Self::evaluate_expression( rhs ),
+                OpKind::Minus => return Self::evaluate_expression( lhs ) - Self::evaluate_expression( rhs ),
+                OpKind::Times => return Self::evaluate_expression( lhs ) * Self::evaluate_expression( rhs ),
+                OpKind::Divide => return Self::evaluate_expression( lhs ) / Self::evaluate_expression( rhs ),
+                OpKind::Pow => return Self::evaluate_expression( lhs ).pow( Self::evaluate_expression( rhs ) as u32 ),
             },
-            Node::Identifier( name ) => match Self::resolve_identifier( name, identifiers ) {
-                Some( identifier ) => return Ok( Self::evaluate_expression( &identifier.value, identifiers )? ),
-                None => todo!( "identifier not defined" ),
-            }
+            Node::Identifier( identifier ) => Self::evaluate_expression( &identifier.value ),
             _ => unreachable!(),
-        };
-    }
-
-    fn resolve_identifier<'program>( name: &str, identifiers: &'program Vec<Identifier> ) -> Option<&'program Identifier> {
-        for ident in identifiers {
-            if ident.name == name {
-                return Some( ident );
-            }
         }
-
-        return None;
     }
 
-    fn interpret( ast: AST, file_path: &str ) {
+
+    fn interpret( ast: &AST, file_path: &str ) {
         println!( "\x1b[92;1mIntepreting\x1b[0m: {}", file_path );
 
-        let mut identifiers: Vec<Identifier> = Vec::new();
-
-        for node in ast.nodes {
+        for node in &ast.nodes {
             match node {
-                Node::Definition( identifier ) => match Self::resolve_identifier( &identifier.name, &mut identifiers ) {
-                    Some( _ident ) => todo!( "identifier already defined" ),
-                    None => identifiers.push( identifier ),
-                },
-                Node::Print( value ) => match *value {
+                Node::Print( value ) => match &**value {
                     Node::Literal( literal ) => match literal {
                         Type::I64 { value } => print!( "{}", value ),
-                        Type::Char { value } => print!( "{}", value as char ),
+                        Type::Char { value } => print!( "{}", *value as char ),
                     },
-                    Node::Expression { .. } => match Self::evaluate_expression( &*value, &identifiers ) {
-                        Ok( result ) => print!( "{}", result ),
-                        Err( _err ) => todo!( "error during evaluation of expression" ),
-                    },
-                    Node::Identifier( name ) => match Self::resolve_identifier( &name, &identifiers ) {
-                        Some( ident ) => match &*ident.value {
-                            Node::Literal( literal ) => match literal {
-                                Type::I64 { value } => print!( "{}", value ),
-                                Type::Char { value } => print!( "{}", *value as char ),
-                            },
-                            Node::Expression { .. } => match Self::evaluate_expression( &*ident.value, &identifiers ) {
-                                Ok( result ) => print!( "{}", result ),
-                                Err( _err ) => todo!( "error during evaluation of expression" ),
-                            },
-                            _ => unreachable!(),
+                    Node::Expression { .. } => print!( "{}", Self::evaluate_expression( &*value ) ),
+                    Node::Identifier( identifier ) => match &*identifier.value {
+                        // Self::resolve_identifier( &name, &identifiers ) {
+                        Node::Literal( literal ) => match literal {
+                            Type::I64 { value } => print!( "{}", value ),
+                            Type::Char { value } => print!( "{}", *value as char ),
                         },
-                        None => todo!( "identifier not defined" ),
+                        Node::Expression { .. } => print!( "{}", Self::evaluate_expression( &identifier.value ) ),
+                        _ => unreachable!(),
                     },
                     _ => unreachable!(),
-                },
-                Node::Identifier( name ) => match Self::resolve_identifier( &name, &identifiers ) {
-                    Some( ident ) => match Self::evaluate_expression( &*ident.value, &identifiers ) {
-                        Ok( result ) => print!( "{}", result ),
-                        Err( _err ) => todo!( "error during evaluation of expression" ),
-                    },
-                    None => todo!( "identifier not defined" ),
                 },
                 _ => (),
             }
@@ -1189,38 +1183,38 @@ impl Program {
         let mut src_code = String::new();
 
         for node in &ast.nodes {
-            // let expression_asm = match &node {
-            //     Node::Print( number ) => format!(
-            //         " ; {}\
-            //         \n{}\
-            //         \x20pop rdi\
-            //         \n mov rsi, 10\
-            //         \n call int_toStr\
-            //         \n\
-            //         \n mov rdi, stdout\
-            //         \n mov rsi, rax\
-            //         \n mov rdx, rdx\
-            //         \n mov rax, SYS_write\
-            //         \n syscall\n\n",
-            //         node,
-            //         Self::compile_expression( &*number )
-            //     ),
-            //     Node::PrintChar( character ) => format!(
-            //         " ; {}\
-            //         \n{}\
-            //         \x20mov rdi, stdout\
-            //         \n mov rsi, rsp\
-            //         \n mov rdx, 1\
-            //         \n mov rax, SYS_write\
-            //         \n syscall\
-            //         \n pop rsi\n\n",
-            //         node,
-            //         Self::compile_expression( &*character )
-            //     ),
-            //     _ => continue,
-            // };
+            let expression_asm: String = match &node {
+                // Node::Print( number ) => format!(
+                //     " ; {}\
+                //     \n{}\
+                //     \x20pop rdi\
+                //     \n mov rsi, 10\
+                //     \n call int_toStr\
+                //     \n\
+                //     \n mov rdi, stdout\
+                //     \n mov rsi, rax\
+                //     \n mov rdx, rdx\
+                //     \n mov rax, SYS_write\
+                //     \n syscall\n\n",
+                //     node,
+                //     Self::compile_expression( &*number )
+                // ),
+                // Node::PrintChar( character ) => format!(
+                //     " ; {}\
+                //     \n{}\
+                //     \x20mov rdi, stdout\
+                //     \n mov rsi, rsp\
+                //     \n mov rdx, 1\
+                //     \n mov rax, SYS_write\
+                //     \n syscall\
+                //     \n pop rsi\n\n",
+                //     node,
+                //     Self::compile_expression( &*character )
+                // ),
+                _ => unimplemented!(),
+            };
 
-            // src_code.push_str( &expression_asm );
+            src_code.push_str( &expression_asm );
             todo!( "compilation mode currently not working" );
         }
 
@@ -1529,7 +1523,7 @@ fn main() -> ExitCode {
     };
 
     if interpret_flag {
-        Program::interpret( ast, &source_file_path );
+        Program::interpret( &ast, &source_file_path );
     }
     else if build_flag {
         Program::build( &ast, &source_file_path ).unwrap();

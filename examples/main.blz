@@ -1,8 +1,5 @@
-let two = 2;
-let five = 5;
-let six = 6;
-let nineteen = (two * five) + (six + six / 2);
+let two = one + 1;
 let newline = '\n';
 
-print nineteen;
+print franco;
 print newline;
