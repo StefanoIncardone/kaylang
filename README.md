@@ -36,7 +36,8 @@ Math expressions follow the PEMDAS order of operations:
 
 ### Characters
 
-Character literals are surrounded by `'`
+Character literals are surrounded by `'`.
+They can also be used in math expression, being automatically converted to their ASCII code (temporary implicit conversion)
 
 ``` blitz
 '\n'; # newline
@@ -50,20 +51,25 @@ Character literals are surrounded by `'`
 Variable names can be any made of (but not starting with) numbers, underscores and letters
 
 ``` blitz
-let number = 19;
-let newline = '\n';
+var ten = 5 * 2;
+let nine = 3 ^ 2;
+const nineteen = ten + nine;
 ```
+
+- `let`, `var`, `const`: immutable variable (temporary)
 
 ### Printing
 
 The only way to print values is using the temporary intrinsic `print` keyword
 
 ``` blitz
-let ten = 10;
-let nine = 9;
-let lucky = ten + nine;
-let newline = '\n';
-print 47;
+const newline = '\n';
+
+var ten = 5 * 2;
+let nine = 3 ^ 2;
+const nineteen = ten + nine;
+
+print 42;
 print lucky;
 print newline;
 ```

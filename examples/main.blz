@@ -1,5 +1,8 @@
-let two = one + 1;
-let newline = '\n';
+const newline = '\n';
 
-print franco;
+let ten = 5 * 2;
+let nine = 3 ^ 2;
+let nineteen = ten + nine;
+
+print nineteen;
 print newline;

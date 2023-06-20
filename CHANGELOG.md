@@ -20,6 +20,13 @@
 - checked (c+, c-, c/, ...): added code to check for overflows/division by zero
 - maybe have a compiler flag to use checked/unchecked operators
 
+### Absolute value operator
+
+```blitz
+|19| == 19
+|-19| == 19
+```
+
 
 ## 0.1
 

@@ -19,7 +19,7 @@ program = [{
     line_comment |
     (
         ("print", expression | character_literal | identifier) |
-        ("let", identifier, "=", expression | character_literal | identifier),
+        (("let" | "var" | "const"), identifier, "=", expression | character_literal | identifier),
         ';'
     )
 }];
