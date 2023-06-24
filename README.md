@@ -46,6 +46,10 @@ They can also be used in math expression, being automatically converted to their
 '\"'; '"' # double quote
 ```
 
+### Booleans
+
+Boolean values are `true` and `false`, being functionally equivalent to `1` and `0` when used inside math expressions
+
 ### Variables
 
 Variable names can be any made of (but not starting with) numbers, underscores and letters

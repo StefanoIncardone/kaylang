@@ -2,6 +2,7 @@ digit = "0".."9";
 valid_character = ? ASCII 32..126 ?;
 
 number_literal = {digit};
+boolean_literal = "true" | "false";
 
 identifier = "_" | "A".."Z" | "a".."z", {"_" | "A".."Z" | "a".."z" | digit};
 line_comment = "#", {valid_character}, "\n";
@@ -10,7 +11,7 @@ escape_character = "\n" | "\t" | "\'" | '"' | '\"';
 character_literal = "'", escape_character | valid_character, "'";
 
 (* from highest precedence to lowest *)
-factor = number_literal | identifier | ("(", expression, ")");
+factor = number_literal | identifier | character_literal | boolean_literal | ("(", expression, ")");
 exponentiation = factor, ["^", factor];
 term = exponentiation, ["*" | "/", exponentiation];
 expression = term, ["+" | "-", term];

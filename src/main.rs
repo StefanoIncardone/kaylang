@@ -4,10 +4,11 @@ use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write}, fs::File, env, 
 
 #[derive( Debug, Clone )]
 enum Type {
-    I64{ value: i64 },
+    I64 { value: i64 },
 
     // TODO convert to using char
-    Char{ value: u8 }, // only supporting ASCII characters for now
+    Char { value: u8 }, // only supporting ASCII characters for now
+    Bool { value: bool },
 }
 
 impl Display for Type {
@@ -15,6 +16,7 @@ impl Display for Type {
         match self {
             Self::I64 { value } => write!( f, "{}", value ),
             Self::Char { value } => write!( f, "'{}'", value.escape_ascii().to_string() ), // TODO create own escaping function
+            Self::Bool { value } => write!( f, "{}", value ),
         }
     }
 }
@@ -362,12 +364,14 @@ impl TryFrom<(&str, File)> for Lexer {
                             }
 
                             let kind = match token_text.as_str() {
-                                "print" => TokenKind::Print,
                                 // "entry" => TokenKind::Entry,
                                 // "fn" => TokenKind::Fn,
                                 "let" => TokenKind::Definition( DefinitionKind::Let ),
                                 "const" => TokenKind::Definition( DefinitionKind::Const ),
                                 "var" => TokenKind::Definition( DefinitionKind::Var ),
+                                "true" => TokenKind::Literal( Type::Bool { value: true } ),
+                                "false" => TokenKind::Literal( Type::Bool { value: false } ),
+                                "print" => TokenKind::Print,
                                 // "return" => TokenKind::Return,
                                 _ => TokenKind::Identifier( token_text.clone() )
                             };
@@ -618,8 +622,6 @@ impl<'lexer> BoundedLexerItem<'lexer> for Option<LexerIterItem<'lexer>> {
         }
     }
 }
-
-
 
 
 #[derive( Debug, Clone )]
@@ -901,8 +903,11 @@ impl<'lexer, 'ast> AST {
     fn factor( tokens: &mut LexerIter<'lexer>, definitions: &Definitions ) -> Result<Node, SyntaxError<'lexer>> {
         let (line, token) = tokens.current_or_next().bounded( tokens, "expected expression" )?.unwrap();
         let result = match &token.kind {
-            // FIX forbid implicit conversion between numbers and characters
-            TokenKind::Literal( literal ) => Ok( Node::Literal( literal.clone() ) ),
+            // FIX forbid implicit conversions
+            TokenKind::Literal( literal ) => match literal {
+                Type::Bool { value } => Ok( Node::Literal( Type::I64 { value: *value as i64 } ) ),
+                _ => Ok( Node::Literal( literal.clone() ) ),
+            },
             TokenKind::Identifier( name ) => match definitions.resolve( name ) {
                 Some( _ ) => Ok( Node::Identifier( name.clone() ) ),
                 None => Err( SyntaxError {
@@ -1039,6 +1044,7 @@ impl<'lexer, 'ast> AST {
             Node::Literal( value ) => match *value {
                 Type::I64 { value } => return value,
                 Type::Char { value } => return value as i64,
+                Type::Bool { value } => return value as i64,
             },
             Node::Expression{ lhs, op, rhs } => match op {
                 OpKind::Plus => return self.evaluate_node( lhs ) + self.evaluate_node( rhs ),
@@ -1066,6 +1072,7 @@ impl<'lexer, 'ast> AST {
                     Node::Literal( value ) => match *value {
                         Type::I64 { value } => print!( "{}", value ),
                         Type::Char { value } => print!( "{}", value as char ),
+                        Type::Bool { value } => print!( "{}", value ),
                     },
                     Node::Expression{ .. } => print!( "{}", self.evaluate_node( argument ) ),
                     Node::Print( _ ) | Node::Identifier( _ ) | Node::Definition( _ ) => unreachable!()
@@ -1084,7 +1091,7 @@ impl<'lexer, 'ast> AST {
         */
         match node {
             Node::Print( argument ) => {
-                asm.push_str( &format!( " ; {}\n", node ) );
+                asm.push_str( &format!( " ; {}", node ) );
 
                 let arg = match &**argument {
                     Node::Print( _ ) | Node::Definition( _ ) => unreachable!(),
@@ -1095,7 +1102,7 @@ impl<'lexer, 'ast> AST {
                 match arg {
                     Node::Literal( literal ) => match literal {
                         Type::I64 { value } => asm.push_str( &format!(
-                            "\n mod rdi {}\
+                            "\n mov rdi, {}\
                             \n mov rsi, 10\
                             \n call int_toStr\
                             \n\
@@ -1114,6 +1121,15 @@ impl<'lexer, 'ast> AST {
                             \n mov rax, SYS_write\
                             \n syscall\
                             \n pop rsi\n\n",
+                            value
+                        ) ),
+                        Type::Bool { value } => asm.push_str( &format!(
+                            "\n mov rdi, stdout\
+                            \n mov rsi, {}\
+                            \n mov rdx, {}_str_len\
+                            \n mov rax, SYS_write\
+                            \n syscall\n\n",
+                            value,
                             value
                         ) ),
                     },
@@ -1136,8 +1152,10 @@ impl<'lexer, 'ast> AST {
                 }
             },
             Node::Literal( literal ) => match &literal {
-                Type::I64 { value, .. } => asm.push_str( &format!( " push {}\n", value ) ),
-                Type::Char { value } => asm.push_str( &format!( " push {}\n", value ) ),
+                // Type::I64 { value, .. } => asm.push_str( &format!( " push {}\n", value ) ),
+                // Type::Char { value } => asm.push_str( &format!( " push {}\n", value ) ),
+                // Type::Bool { value } => asm.push_str( &format!( " push {}\n", value ) ),
+                _ => panic!( "Bug: fix case when not printing values, as they just get pushed on to the stack and never get popped" ),
             },
             Node::Expression { lhs, op, rhs } => {
                 self.compile_node( lhs, asm );
@@ -1212,7 +1230,7 @@ impl<'lexer, 'ast> AST {
         let mut asm_file = BufWriter::new( File::create( &asm_file_path ).unwrap() );
 
         let preamble =
-r"global _start
+r#"global _start
 
 section .rodata
  stdout: equ 1
@@ -1223,13 +1241,18 @@ section .rodata
 
  I64_MIN: equ 1 << 63
  I64_MAX: equ ~I64_MIN
-
  INT_MAX_DIGITS: equ 64
+
+ true: db "true", 0
+ true_str_len: equ $ - true
+
+ false: db "false", 0
+ false_str_len: equ $ - false
 
 section .data
  int_str: times INT_MAX_DIGITS + 1 db 0
  int_str_bufsize: equ $ - int_str
- int_str_len: equ int_str_bufsize - 1";
+ int_str_len: equ int_str_bufsize - 1"#;
 
         let int_to_str =
 r"int_toStr:

@@ -38,5 +38,6 @@
 - line comments: `#...`
 - integers and math operators
 - character literals
+- boolean values
 - variables
 - values (integers, characters, variables, ...) can be printed using the `print` keyword
