@@ -523,51 +523,49 @@ impl<'lexer> LexerIter<'lexer> {
 
     fn next( &mut self ) -> Option<LexerIterItem<'lexer>> {
         let line = self.lexer.lines.get( self.line )?;
-        if self.token + 1 < line.tokens.len() {
+        let (line, token) = if self.token + 1 < line.tokens.len() {
             self.token += 1;
             let token = line.tokens.get( self.token )?;
 
-            match token.kind {
-                TokenKind::Comment( _ ) | TokenKind::Empty => return self.next(),
-                _ => return Some( (line, token) ),
-            }
+            (line, token)
         }
         else {
             self.line += 1;
-            let next_line = self.lexer.lines.get( self.line )?;
+            let line = self.lexer.lines.get( self.line )?;
 
             self.token = 0;
-            let token = next_line.tokens.get( self.token )?;
+            let token = line.tokens.get( self.token )?;
 
-            match token.kind {
-                TokenKind::Comment( _ ) | TokenKind::Empty => return self.next(),
-                _ => return Some( (next_line, token) ),
-            }
+            (line, token)
+        };
+
+        match token.kind {
+            TokenKind::Comment( _ ) | TokenKind::Empty => self.next(),
+            _ => Some( (line, token) ),
         }
     }
 
     fn previous( &mut self ) -> Option<LexerIterItem<'lexer>> {
         let line = self.lexer.lines.get( self.line )?;
-        if self.token > 0 {
+        let (line, token) = if self.token > 0 {
             self.token -= 1;
             let token = line.tokens.get( self.token )?;
 
-            match token.kind {
-                TokenKind::Comment( _ ) | TokenKind::Empty => return self.previous(),
-                _ => return Some( (line, token) ),
-            }
+            (line, token)
         }
         else {
             self.line -= 1;
-            let previous_line = self.lexer.lines.get( self.line )?;
+            let line = self.lexer.lines.get( self.line )?;
 
-            self.token = previous_line.tokens.len() - 1;
-            let token = previous_line.tokens.get( self.token )?;
+            self.token = line.tokens.len() - 1;
+            let token = line.tokens.get( self.token )?;
 
-            match token.kind {
-                TokenKind::Comment( _ ) | TokenKind::Empty => return self.previous(),
-                _ => return Some( (previous_line, token) ),
-            }
+            (line, token)
+        };
+
+        match token.kind {
+            TokenKind::Comment( _ ) | TokenKind::Empty => return self.previous(),
+            _ => return Some( (line, token) ),
         }
     }
 
