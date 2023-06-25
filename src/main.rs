@@ -784,7 +784,7 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
                 TokenKind::Print => ast.print(),
                 TokenKind::True | TokenKind::False | TokenKind::Literal( _ ) |
                 TokenKind::Identifier( _ ) |
-                TokenKind::OpenRoundBracket => ast.math(),
+                TokenKind::OpenRoundBracket => ast.expression(),
                 TokenKind::CloseRoundBracket => {
                     ast.tokens.next();
                     Err( SyntaxError {
@@ -886,7 +886,7 @@ impl<'lexer> AST<'lexer> {
         let (_value_line, value_token) = self.tokens.next().bounded( &mut self.tokens, "expected expression" )?.unwrap();
         let value = match value_token.kind {
             TokenKind::True | TokenKind::False | TokenKind::Literal( _ ) |
-            TokenKind::Identifier( _ ) | TokenKind::OpenRoundBracket => self.math(),
+            TokenKind::Identifier( _ ) | TokenKind::OpenRoundBracket => self.expression(),
             _ => Err( SyntaxError {
                 line: equals_line,
                 token: equals_token,
@@ -919,7 +919,7 @@ impl<'lexer> AST<'lexer> {
         let (argument_line, argument_token) = self.tokens.next().bounded( &mut self.tokens, "expected print argument" )?.unwrap();
         let argument = match &argument_token.kind {
             TokenKind::True | TokenKind::False | TokenKind::Literal( _ ) |
-            TokenKind::Identifier( _ ) | TokenKind::OpenRoundBracket => self.math(),
+            TokenKind::Identifier( _ ) | TokenKind::OpenRoundBracket => self.expression(),
             _ => Err( SyntaxError {
                 line: argument_line,
                 token: argument_token,
@@ -960,7 +960,7 @@ impl<'lexer> AST<'lexer> {
                         help_msg: "empty expressions are not allowed"
                     } ),
                     _ => {
-                        let expression = self.expression()?;
+                        let expression = self.math()?;
                         let (_close_bracket_line, close_bracket_token) = self.tokens.current_or_next().bounded( &mut self.tokens, "expected closed parenthesis" )?.unwrap();
                         match close_bracket_token.kind {
                             TokenKind::CloseRoundBracket => Ok( expression ),
@@ -1035,7 +1035,7 @@ impl<'lexer> AST<'lexer> {
         return Ok( lhs );
     }
 
-    fn expression( &mut self ) -> Result<Node, SyntaxError<'lexer>> {
+    fn math( &mut self ) -> Result<Node, SyntaxError<'lexer>> {
         let mut lhs = self.multiplication_or_division()?;
 
         while let Some( op ) = self.operator( &[OpKind::Plus, OpKind::Minus] )? {
@@ -1046,11 +1046,11 @@ impl<'lexer> AST<'lexer> {
         return Ok( lhs );
     }
 
-    fn math( &mut self ) -> Result<Node, SyntaxError<'lexer>> {
-        let mut lhs = self.expression()?;
+    fn expression( &mut self ) -> Result<Node, SyntaxError<'lexer>> {
+        let mut lhs = self.math()?;
 
         while let Some( op ) = self.operator( &[OpKind::DoubleEquals] )? {
-            let rhs = self.expression()?;
+            let rhs = self.math()?;
             lhs = Node::Expression { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
 

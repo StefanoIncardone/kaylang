@@ -11,17 +11,17 @@ escape_character = "\n" | "\t" | "\'" | '"' | '\"';
 character_literal = "'", (escape_character | valid_character), "'";
 
 (* from highest precedence to lowest *)
-factor = number_literal | identifier | character_literal | boolean_literal | ("(", math, ")");
+factor = number_literal | identifier | character_literal | boolean_literal | ("(", expression, ")");
 exponentiation = factor, ["^", factor];
 term = exponentiation, [("*" | "/"), exponentiation];
-expression = term, [("+" | "-"), term];
-math = expression, ["==", expression];
+math = term, [("+" | "-"), term];
+expression = math, ["==", math];
 
 program = [{
     line_comment |
     (
-        ("print", (math | character_literal | identifier)) |
-        (("let" | "var" | "const"), identifier, "=", (math | character_literal | identifier)),
+        ("print", expression) |
+        (("let" | "var" | "const"), identifier, "=", expression),
         ';'
     )
 }];
