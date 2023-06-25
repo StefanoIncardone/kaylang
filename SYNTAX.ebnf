@@ -8,19 +8,20 @@ identifier = "_" | "A".."Z" | "a".."z", {"_" | "A".."Z" | "a".."z" | digit};
 line_comment = "#", {valid_character}, "\n";
 
 escape_character = "\n" | "\t" | "\'" | '"' | '\"';
-character_literal = "'", escape_character | valid_character, "'";
+character_literal = "'", (escape_character | valid_character), "'";
 
 (* from highest precedence to lowest *)
-factor = number_literal | identifier | character_literal | boolean_literal | ("(", expression, ")");
+factor = number_literal | identifier | character_literal | boolean_literal | ("(", math, ")");
 exponentiation = factor, ["^", factor];
-term = exponentiation, ["*" | "/", exponentiation];
-expression = term, ["+" | "-", term];
+term = exponentiation, [("*" | "/"), exponentiation];
+expression = term, [("+" | "-"), term];
+math = expression, ["==", expression];
 
 program = [{
     line_comment |
     (
-        ("print", expression | character_literal | identifier) |
-        (("let" | "var" | "const"), identifier, "=", expression | character_literal | identifier),
+        ("print", (math | character_literal | identifier)) |
+        (("let" | "var" | "const"), identifier, "=", (math | character_literal | identifier)),
         ';'
     )
 }];

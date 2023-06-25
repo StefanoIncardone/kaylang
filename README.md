@@ -33,6 +33,7 @@ Math expressions follow the PEMDAS order of operations:
 - divide `/`: floor division as a binary operator
 - plus `+`: addition as a binary operator
 - minus `-`: subtraction as a binary operator
+- double equals `==`: boolean comparison as a binary operator (evaluates to `1` if the lefthand side is equivalent to the righthand side, otherwise `0`)
 
 ### Characters
 
