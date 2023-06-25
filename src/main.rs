@@ -89,6 +89,8 @@ enum TokenKind {
 
     // Keywords
     Print, // temporary way of printing values
+    True,
+    False,
     // Entry,
     Definition( DefinitionKind ),
     // Return,
@@ -117,6 +119,8 @@ impl Display for TokenKind {
             Self::Identifier( name ) => write!( f, "{}", name ),
 
             Self::Print => write!( f, "print" ),
+            Self::True => write!( f, "true" ),
+            Self::False => write!( f, "false" ),
             Self::Definition( kind ) => write!( f, "{}", kind ),
 
             Self::Op( op ) => write!( f, "{}", op ),
@@ -246,7 +250,7 @@ impl TryFrom<(&str, File)> for Lexer {
             let mut src = src_line.chars().peekable();
             // IDEA try extracting this to a separate function
             loop {
-                let token: Token = match Self::next_ascii( &mut src ) {
+                let token: Token = match Self::next( &mut src ) {
                     Ok( None ) => break,
                     Err( err ) => match &err {
                         TokenKind::Unexpected { text, err_msg: _, help_msg: _ } => {
@@ -271,8 +275,10 @@ impl TryFrom<(&str, File)> for Lexer {
                         // '{' => Token { kind: TokenKind::OpenCurlyBracket, col },
                         // '}' => Token { kind: TokenKind::CloseCurlyBracket, col },
                         '=' => {
-                            match Self::next_char( &mut src, &mut token_text ) {
-                                Ok( b'=' ) => {
+                            match Self::peek_next( &mut src ) {
+                                Ok( Some( '=' ) ) => {
+                                    let _ = Self::next( &mut src );
+
                                     let token = Token { col, len: 2, kind: TokenKind::Op( OpKind::DoubleEquals ) };
                                     col += 1;
                                     token
@@ -380,8 +386,8 @@ impl TryFrom<(&str, File)> for Lexer {
                                 "let" => TokenKind::Definition( DefinitionKind::Let ),
                                 "const" => TokenKind::Definition( DefinitionKind::Const ),
                                 "var" => TokenKind::Definition( DefinitionKind::Var ),
-                                "true" => TokenKind::Literal( Type::Bool { value: true } ),
-                                "false" => TokenKind::Literal( Type::Bool { value: false } ),
+                                "true" => TokenKind::True,
+                                "false" => TokenKind::False,
                                 "print" => TokenKind::Print,
                                 // "return" => TokenKind::Return,
                                 _ => TokenKind::Identifier( token_text.clone() )
@@ -450,7 +456,7 @@ impl Lexer {
     }
 
     // FIX properly handle non ASCII codes in error messages
-    fn next_ascii( src: &mut Peekable<Chars> ) -> Result<Option<char>, TokenKind> {
+    fn next( src: &mut Peekable<Chars> ) -> Result<Option<char>, TokenKind> {
         match src.next() {
             Some( next @ ..='\x7F' ) => return Ok( Some( next ) ),
             Some( next ) => return Err( TokenKind::Unexpected {
@@ -462,8 +468,20 @@ impl Lexer {
         }
     }
 
+    fn peek_next<'src>( src: &'src mut Peekable<Chars> ) -> Result<Option<&'src char>, TokenKind> {
+        match src.peek() {
+            Some( next @ ..='\x7F' ) => return Ok( Some( next ) ),
+            Some( next ) => return Err( TokenKind::Unexpected {
+                text: next.to_string(),
+                err_msg: "unrecognized character",
+                help_msg: "not a valid ASCII character"
+            } ),
+            None => return Ok( None ),
+        }
+    }
+
     fn next_char( src: &mut Peekable<Chars>, token_text: &mut String ) -> Result<u8, TokenKind> {
-        match Self::next_ascii( src )? {
+        match Self::next( src )? {
             Some( '\n' ) | None => return Err( TokenKind::Unexpected {
                 text: token_text.clone(),
                 err_msg: "invalid character literal",
@@ -671,7 +689,6 @@ enum Node {
     Expression{ lhs: Box<Node>, op: OpKind, rhs: Box<Node> },
     Identifier( String ),
     Print( Box<Node> ),
-    Definition( Definition ),
 }
 
 impl Display for Node {
@@ -681,7 +698,6 @@ impl Display for Node {
             Self::Expression { lhs, op, rhs } => write!( f, "({} {} {})", lhs, op, rhs ),
             Self::Identifier( name ) => write!( f, "{}", name ),
             Self::Print( node ) => write!( f, "print {}", node ),
-            Self::Definition( assignment ) => write!( f, "{} {} = {}", assignment.kind, assignment.name, assignment.value ),
         }
     }
 }
@@ -763,10 +779,10 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
                 // NOTE definitions are planned to be reworked, so this is just temporary
                 TokenKind::Definition( _ ) => match ast.variable_definition() {
                     Ok( _ ) => continue, // skipping this node since it is already in the definitions
-                    err @ Err( _ ) => err,
+                    Err( err ) => Err( err ),
                 },
                 TokenKind::Print => ast.print(),
-                TokenKind::Literal( _ ) |
+                TokenKind::True | TokenKind::False | TokenKind::Literal( _ ) |
                 TokenKind::Identifier( _ ) |
                 TokenKind::OpenRoundBracket => ast.math(),
                 TokenKind::CloseRoundBracket => {
@@ -838,8 +854,8 @@ impl<'lexer> AST<'lexer> {
         return result;
     }
 
-    fn variable_definition( &mut self ) -> Result<Node, SyntaxError<'lexer>> {
-        let (definition_kind_line, definition_kind_token) = self.tokens.current().unwrap();
+    fn variable_definition( &mut self ) -> Result<(), SyntaxError<'lexer>> {
+        let (_definition_kind_line, definition_kind_token) = self.tokens.current().unwrap();
         let kind = match &definition_kind_token.kind {
             TokenKind::Definition( kind ) => kind.clone(),
             _ => unreachable!(),
@@ -849,10 +865,10 @@ impl<'lexer> AST<'lexer> {
         let name = match &identifier_token.kind {
             TokenKind::Identifier( name ) => Ok( name.clone() ),
             _ => Err( SyntaxError {
-                line: definition_kind_line,
-                token: definition_kind_token,
+                line: identifier_line,
+                token: identifier_token,
                 msg: "invalid assignment",
-                help_msg: "expected variable name after definition kind specifier"
+                help_msg: "expected variable name"
             } ),
         };
 
@@ -869,7 +885,8 @@ impl<'lexer> AST<'lexer> {
 
         let (_value_line, value_token) = self.tokens.next().bounded( &mut self.tokens, "expected expression" )?.unwrap();
         let value = match value_token.kind {
-            TokenKind::Literal( _ ) | TokenKind::Identifier( _ ) | TokenKind::OpenRoundBracket => self.math(),
+            TokenKind::True | TokenKind::False | TokenKind::Literal( _ ) |
+            TokenKind::Identifier( _ ) | TokenKind::OpenRoundBracket => self.math(),
             _ => Err( SyntaxError {
                 line: equals_line,
                 token: equals_token,
@@ -886,7 +903,8 @@ impl<'lexer> AST<'lexer> {
         match self.definitions.resolve( &name ) {
             None => {
                 self.definitions.push( Definition { kind, name, value: Box::new( value ) } );
-                return Ok( Node::Definition( self.definitions.last().unwrap().clone() ) );
+                return Ok( () );
+                // return Ok( Node::Definition( self.definitions.last().unwrap().clone() ) );
             },
             Some( _ ) => return Err( SyntaxError {
                 line: identifier_line,
@@ -900,7 +918,8 @@ impl<'lexer> AST<'lexer> {
     fn print( &mut self ) -> Result<Node, SyntaxError<'lexer>> {
         let (argument_line, argument_token) = self.tokens.next().bounded( &mut self.tokens, "expected print argument" )?.unwrap();
         let argument = match &argument_token.kind {
-            TokenKind::Literal( _ ) | TokenKind::Identifier( _ ) | TokenKind::OpenRoundBracket => self.math(),
+            TokenKind::True | TokenKind::False | TokenKind::Literal( _ ) |
+            TokenKind::Identifier( _ ) | TokenKind::OpenRoundBracket => self.math(),
             _ => Err( SyntaxError {
                 line: argument_line,
                 token: argument_token,
@@ -919,10 +938,9 @@ impl<'lexer> AST<'lexer> {
         let (line, token) = self.tokens.current_or_next().bounded( &mut self.tokens, "expected expression" )?.unwrap();
         let result = match &token.kind {
             // FIX forbid implicit conversions
-            TokenKind::Literal( literal ) => match literal {
-                Type::Bool { value } => Ok( Node::Literal( Type::I64 { value: *value as i64 } ) ),
-                _ => Ok( Node::Literal( literal.clone() ) ),
-            },
+            TokenKind::Literal( literal ) => Ok( Node::Literal( literal.clone() ) ),
+            TokenKind::True => Ok( Node::Literal( Type::I64 { value: 1 } ) ),
+            TokenKind::False => Ok( Node::Literal( Type::I64 { value: 0 } ) ),
             TokenKind::Identifier( name ) => match self.definitions.resolve( name ) {
                 Some( _ ) => Ok( Node::Identifier( name.clone() ) ),
                 None => Err( SyntaxError {
@@ -1059,18 +1077,19 @@ impl<'lexer> AST<'lexer> {
                 OpKind::DoubleEquals => return (self.evaluate_node( lhs ) == self.evaluate_node( rhs )) as i64,
             },
             Node::Identifier( name ) => self.evaluate_node( &*self.definitions.resolve( name ).unwrap().value ),
-            Node::Print( _ ) | Node::Definition( _ ) => unreachable!(),
+            Node::Print( _ ) => unreachable!(),
         }
     }
 
+    // TODO print boolean values as "true" and "false"
     fn interpret_node( &self, node: &Node ) {
         match node {
             Node::Literal( _ ) | Node::Expression { .. } | Node::Identifier( _ ) => return, // ignored
             Node::Print( argument ) => {
                 let arg = match &**argument {
-                    Node::Print( _ ) | Node::Definition( _ ) => unreachable!(),
                     Node::Literal( _ ) | Node::Expression{ .. } => &**argument,
                     Node::Identifier( name ) => &*self.definitions.resolve( name ).unwrap().value,
+                    Node::Print( _ ) => unreachable!(),
                 };
 
                 match arg {
@@ -1080,10 +1099,9 @@ impl<'lexer> AST<'lexer> {
                         Type::Bool { value } => print!( "{}", value as bool ),
                     },
                     Node::Expression{ .. } => print!( "{}", self.evaluate_node( argument ) ),
-                    Node::Print( _ ) | Node::Identifier( _ ) | Node::Definition( _ ) => unreachable!()
+                    Node::Print( _ ) | Node::Identifier( _ ) => unreachable!()
                 }
             }
-            Node::Definition( _ ) => unreachable!(),
         }
     }
 
@@ -1099,9 +1117,9 @@ impl<'lexer> AST<'lexer> {
                 asm.push_str( &format!( " ; {}", node ) );
 
                 let arg = match &**argument {
-                    Node::Print( _ ) | Node::Definition( _ ) => unreachable!(),
                     Node::Literal( _ ) | Node::Expression{ .. } => &**argument,
                     Node::Identifier( name ) => &*self.definitions.resolve( name ).unwrap().value,
+                    Node::Print( _ ) => unreachable!(),
                 };
 
                 match arg {
@@ -1153,7 +1171,7 @@ impl<'lexer> AST<'lexer> {
                             \n syscall\n\n"
                         );
                     },
-                    Node::Print( _ ) | Node::Identifier( _ ) | Node::Definition( _ ) => unreachable!(),
+                    Node::Print( _ ) | Node::Identifier( _ ) => unreachable!(),
                 }
             },
             Node::Literal( literal ) => match &literal {
@@ -1222,7 +1240,6 @@ impl<'lexer> AST<'lexer> {
                 asm.push_str( &op_asm );
             },
             Node::Identifier( name ) => self.compile_node( &*self.definitions.resolve( name ).unwrap().value, asm ),
-            Node::Definition( _ ) => unreachable!(),
         }
     }
 
