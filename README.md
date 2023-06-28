@@ -22,6 +22,19 @@ only supporting ASCII (`[0, 127]`) characters for now
 
 line comment `#...`: ignores everything until the end of the line
 
+### Booleans
+
+Boolean values are `true` and `false`, being functionally equivalent to `1` and `0` when used inside math expressions
+
+- boolean comparisons (evaluates to `1` or `0`):
+    - equals to: `==`
+    - not equals to: `!=`
+    - greater than: `>`
+    - greater or equals than: `>=`
+    - less than: `<`
+    - less or equals than: `<=`
+    - compared to: `<=>` (`-1` if less than, `0` if equals, `1` if greater)
+
 ### Integers and Math Expressions
 
 Integers are 64 bit base 10 number literals.

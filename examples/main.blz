@@ -1,8 +1,20 @@
-const newline = '\n';
+print 1 == 2;
+print '\n';
 
-let ten = 5 * 2;
-let nine = 3 ^ 2;
-let nineteen = ten + nine;
+print 1 != 2;
+print '\n';
 
-print nineteen;
-print newline;
+print 1 > 1;
+print '\n';
+
+print 1 >= 1;
+print '\n';
+
+print 1 < 1;
+print '\n';
+
+print 1 <= 1;
+print '\n';
+
+print 1 <=> 1;
+print '\n';
