@@ -22,6 +22,19 @@ only supporting ASCII (`[0, 127]`) characters for now
 
 line comment `#...`: ignores everything until the end of the line
 
+### Booleans
+
+Boolean values are `true` and `false`, being functionally equivalent to `1` and `0` when used inside math expressions
+
+- boolean comparisons (evaluates to `1` or `0`):
+    - equals to: `==`
+    - not equals to: `!=`
+    - greater than: `>`
+    - greater or equals than: `>=`
+    - less than: `<`
+    - less or equals than: `<=`
+    - compared to: `<=>` (`-1` if less than, `0` if equals, `1` if greater)
+
 ### Integers and Math Expressions
 
 Integers are 64 bit base 10 number literals.
@@ -33,7 +46,6 @@ Math expressions follow the PEMDAS order of operations:
 - divide `/`: floor division as a binary operator
 - plus `+`: addition as a binary operator
 - minus `-`: subtraction as a binary operator
-- double equals `==`: boolean comparison as a binary operator (evaluates to `1` if the lefthand side is equivalent to the righthand side, otherwise `0`)
 
 ### Characters
 
@@ -46,10 +58,6 @@ They can also be used in math expression, being automatically converted to their
 '\''; # single quote
 '\"'; '"' # double quote
 ```
-
-### Booleans
-
-Boolean values are `true` and `false`, being functionally equivalent to `1` and `0` when used inside math expressions
 
 ### Variables
 

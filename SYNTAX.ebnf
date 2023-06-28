@@ -15,7 +15,7 @@ factor = number_literal | identifier | character_literal | boolean_literal | ("(
 exponentiation = factor, ["^", factor];
 term = exponentiation, [("*" | "/"), exponentiation];
 math = term, [("+" | "-"), term];
-expression = math, ["==", math];
+expression = math, [("==" | "!=" | ">" | ">=" | "<" | "<=" | "<=>"), math];
 
 program = [{
     line_comment |

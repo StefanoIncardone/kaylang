@@ -5,8 +5,6 @@ use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write}, fs::File, env, 
 #[derive( Debug, Clone )]
 enum Type {
     I64 { value: i64 },
-
-    // TODO convert to using char
     Char { value: u8 }, // only supporting ASCII characters for now
     Bool { value: bool },
 }
@@ -21,26 +19,62 @@ impl Display for Type {
     }
 }
 
+impl Into<i64> for Type {
+    fn into( self ) -> i64 {
+        match self {
+            Self::I64 { value } => value,
+            Self::Char { value } => value as i64,
+            Self::Bool { value } => value as i64,
+        }
+    }
+}
+
+impl Type {
+    fn interpret_print( &self ) {
+        match self {
+            Self::I64 { value } => print!( "{}", value ),
+            Self::Char { value } => print!( "{}", *value as char ),
+            Self::Bool { value } => print!( "{}", value ),
+        }
+    }
+}
+
 
 #[derive( Debug, Clone, PartialEq )]
 enum OpKind {
-    Plus,
-    Minus,
+    Pow,
     Times,
     Divide,
-    Pow,
-    DoubleEquals,
+    Plus,
+    Minus,
+
+    Equals,
+    NotEquals,
+    Greater,
+    GreaterOrEquals,
+    Less,
+    LessOrEquals,
+
+    Compare,
 }
 
 impl Display for OpKind {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         match self {
-            Self::Plus => write!( f, "+" ),
-            Self::Minus => write!( f, "-" ),
+            Self::Pow => write!( f, "^" ),
             Self::Times => write!( f, "*" ),
             Self::Divide => write!( f, "/" ),
-            Self::Pow => write!( f, "^" ),
-            Self::DoubleEquals => write!( f, "==" ),
+            Self::Plus => write!( f, "+" ),
+            Self::Minus => write!( f, "-" ),
+
+            Self::Equals => write!( f, "==" ),
+            Self::NotEquals => write!( f, "!=" ),
+            Self::Greater => write!( f, ">" ),
+            Self::GreaterOrEquals => write!( f, ">=" ),
+            Self::Less => write!( f, "<" ),
+            Self::LessOrEquals => write!( f, "<=" ),
+
+            Self::Compare => write!( f, "<=>" ),
         }
     }
 }
@@ -79,6 +113,7 @@ enum TokenKind {
     // CloseSquareBracket,
     // OpenCurlyBracket,
     // CloseCurlyBracket,
+
     Equals,
     // Colon,
     SemiColon,
@@ -86,13 +121,13 @@ enum TokenKind {
     // Identifiers
     Literal( Type ),
     Identifier( String ),
+    Definition( DefinitionKind ),
 
     // Keywords
     Print, // temporary way of printing values
     True,
     False,
     // Entry,
-    Definition( DefinitionKind ),
     // Return,
 
     // Operators
@@ -108,24 +143,26 @@ impl Display for TokenKind {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         match self {
             Self::Unexpected { text, .. } => write!( f, "{}", text ),
+
             Self::Comment( text ) => write!( f, "{}", text ),
 
             Self::OpenRoundBracket => write!( f, "(" ),
             Self::CloseRoundBracket => write!( f, ")" ),
+
             Self::Equals => write!( f, "=" ),
             Self::SemiColon => write!( f, ";" ),
 
             Self::Literal( literal ) => write!( f, "{}", literal ),
             Self::Identifier( name ) => write!( f, "{}", name ),
+            Self::Definition( kind ) => write!( f, "{}", kind ),
 
             Self::Print => write!( f, "print" ),
             Self::True => write!( f, "true" ),
             Self::False => write!( f, "false" ),
-            Self::Definition( kind ) => write!( f, "{}", kind ),
 
             Self::Op( op ) => write!( f, "{}", op ),
 
-            Self::Empty | Self::EOF | Self::SOF => write!( f, "" ),
+            Self::Empty | Self::SOF | Self::EOF => write!( f, "" ),
         }
     }
 }
@@ -227,6 +264,7 @@ impl TryFrom<(&str, File)> for Lexer {
     type Error = Self;
 
     // IDEA make the input character stream generic, eg: to be able to compile from strings instead of just files
+    // TODO make an character iterator similar to LexerIter
     fn try_from( src: (&str, File) ) -> Result<Self, Self::Error> {
         let (file_path, source_file) = (src.0, src.1);
         let mut errors: Vec<Line> = Vec::new();
@@ -274,17 +312,60 @@ impl TryFrom<(&str, File)> for Lexer {
                         // ']' => Token { kind: TokenKind::CloseSquareBracket, col },
                         // '{' => Token { kind: TokenKind::OpenCurlyBracket, col },
                         // '}' => Token { kind: TokenKind::CloseCurlyBracket, col },
-                        '=' => {
-                            match Self::peek_next( &mut src ) {
-                                Ok( Some( '=' ) ) => {
-                                    let _ = Self::next( &mut src );
+                        '=' => match Self::peek_next( &mut src ) {
+                            Ok( Some( '=' ) ) => {
+                                let _ = Self::next( &mut src );
 
-                                    let token = Token { col, len: 2, kind: TokenKind::Op( OpKind::DoubleEquals ) };
-                                    col += 1;
-                                    token
-                                },
-                                _ => Token { col, len: 1, kind: TokenKind::Equals },
-                            }
+                                let token = Token { col, len: 2, kind: TokenKind::Op( OpKind::Equals ) };
+                                col += 1;
+                                token
+                            },
+                            _ => Token { col, len: 1, kind: TokenKind::Equals },
+                        },
+                        '!' => match Self::peek_next( &mut src ) {
+                            Ok( Some( '=' ) ) => {
+                                let _ = Self::next( &mut src );
+
+                                let token = Token { col, len: 2, kind: TokenKind::Op( OpKind::NotEquals ) };
+                                col += 1;
+                                token
+                            },
+                            _ => Token{ col, len: 1, kind: TokenKind::Unexpected {
+                                text: ch.to_string(),
+                                err_msg: "unexpected character",
+                                help_msg: "unrecognized"
+                            } },
+                        },
+                        '>' => match Self::peek_next( &mut src ) {
+                            Ok( Some( '=' ) ) => {
+                                let _ = Self::next( &mut src );
+
+                                let token = Token { col, len: 2, kind: TokenKind::Op( OpKind::GreaterOrEquals ) };
+                                col += 1;
+                                token
+                            },
+                            _ => Token { col, len: 1, kind: TokenKind::Op( OpKind::Greater ) },
+                        },
+                        '<' => match Self::peek_next( &mut src ) {
+                            Ok( Some( '=' ) ) => {
+                                let _ = Self::next( &mut src );
+
+                                match Self::peek_next( &mut src ) {
+                                    Ok( Some( '>' ) ) => {
+                                        let _ = Self::next( &mut src );
+
+                                        let token = Token { col, len: 3, kind: TokenKind::Op( OpKind::Compare ) };
+                                        col += 2;
+                                        token
+                                    },
+                                    _ => {
+                                        let token = Token { col, len: 2, kind: TokenKind::Op( OpKind::LessOrEquals ) };
+                                        col += 1;
+                                        token
+                                    }
+                                }
+                            },
+                            _ => Token { col, len: 1, kind: TokenKind::Op( OpKind::Less ) },
                         },
                         '^' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Pow ) },
                         '*' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Times ) },
@@ -440,7 +521,6 @@ impl TryFrom<(&str, File)> for Lexer {
         }
 
         if !errors.is_empty() {
-            errors[ 0 ].tokens.insert( 0, Token { col: 1, len: 1, kind: TokenKind::SOF } );
             return Err( Self { file_path: file_path.to_string(), lines: errors } );
         }
         else {
@@ -682,7 +762,7 @@ impl Resolve for Definitions {
 }
 
 
-
+// TODO introduce Unexpected Node to let the parsing of the expression continue untill finished, and the reporting errors
 #[derive( Debug, Clone )]
 enum Node {
     Literal( Type ),
@@ -934,13 +1014,14 @@ impl<'lexer> AST<'lexer> {
         return Ok( Node::Print( Box::new( argument ) ) );
     }
 
+    // TODO implement negative numbers
     fn factor( &mut self ) -> Result<Node, SyntaxError<'lexer>> {
         let (line, token) = self.tokens.current_or_next().bounded( &mut self.tokens, "expected expression" )?.unwrap();
         let result = match &token.kind {
             // FIX forbid implicit conversions
             TokenKind::Literal( literal ) => Ok( Node::Literal( literal.clone() ) ),
-            TokenKind::True => Ok( Node::Literal( Type::I64 { value: 1 } ) ),
-            TokenKind::False => Ok( Node::Literal( Type::I64 { value: 0 } ) ),
+            TokenKind::True => Ok( Node::Literal( Type::Bool { value: true } ) ),
+            TokenKind::False => Ok( Node::Literal( Type::Bool { value: false } ) ),
             TokenKind::Identifier( name ) => match self.definitions.resolve( name ) {
                 Some( _ ) => Ok( Node::Identifier( name.clone() ) ),
                 None => Err( SyntaxError {
@@ -960,7 +1041,7 @@ impl<'lexer> AST<'lexer> {
                         help_msg: "empty expressions are not allowed"
                     } ),
                     _ => {
-                        let expression = self.math()?;
+                        let expression = self.expression()?;
                         let (_close_bracket_line, close_bracket_token) = self.tokens.current_or_next().bounded( &mut self.tokens, "expected closed parenthesis" )?.unwrap();
                         match close_bracket_token.kind {
                             TokenKind::CloseRoundBracket => Ok( expression ),
@@ -1049,7 +1130,14 @@ impl<'lexer> AST<'lexer> {
     fn expression( &mut self ) -> Result<Node, SyntaxError<'lexer>> {
         let mut lhs = self.math()?;
 
-        while let Some( op ) = self.operator( &[OpKind::DoubleEquals] )? {
+        let ops = [
+            OpKind::Equals, OpKind::NotEquals,
+            OpKind::Greater, OpKind::GreaterOrEquals,
+            OpKind::Less, OpKind::LessOrEquals,
+            OpKind::Compare
+        ];
+
+        while let Some( op ) = self.operator( &ops )? {
             let rhs = self.math()?;
             lhs = Node::Expression { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
@@ -1061,47 +1149,32 @@ impl<'lexer> AST<'lexer> {
 
 // After construction
 impl<'lexer> AST<'lexer> {
-    fn evaluate_node( &self, node: &Node ) -> i64 {
+    fn evaluate_node( &self, node: &Node ) -> Type {
         match node {
-            Node::Literal( value ) => match *value {
-                Type::I64 { value } => return value,
-                Type::Char { value } => return value as i64,
-                Type::Bool { value } => return value as i64,
-            },
-            Node::Expression{ lhs, op, rhs } => match op {
-                OpKind::Plus => return self.evaluate_node( lhs ) + self.evaluate_node( rhs ),
-                OpKind::Minus => return self.evaluate_node( lhs ) - self.evaluate_node( rhs ),
-                OpKind::Times => return self.evaluate_node( lhs ) * self.evaluate_node( rhs ),
-                OpKind::Divide => return self.evaluate_node( lhs ) / self.evaluate_node( rhs ),
-                OpKind::Pow => return self.evaluate_node( lhs ).pow( self.evaluate_node( rhs ) as u32 ),
-                OpKind::DoubleEquals => return (self.evaluate_node( lhs ) == self.evaluate_node( rhs )) as i64,
-            },
-            Node::Identifier( name ) => self.evaluate_node( &*self.definitions.resolve( name ).unwrap().value ),
-            Node::Print( _ ) => unreachable!(),
-        }
-    }
+            Node::Literal( value ) => return value.clone(),
+            Node::Expression{ lhs, op, rhs } => {
+                let lhs: i64 = self.evaluate_node( lhs ).into();
+                let rhs: i64 = self.evaluate_node( rhs ).into();
 
-    // TODO print boolean values as "true" and "false"
-    fn interpret_node( &self, node: &Node ) {
-        match node {
-            Node::Literal( _ ) | Node::Expression { .. } | Node::Identifier( _ ) => return, // ignored
-            Node::Print( argument ) => {
-                let arg = match &**argument {
-                    Node::Literal( _ ) | Node::Expression{ .. } => &**argument,
-                    Node::Identifier( name ) => &*self.definitions.resolve( name ).unwrap().value,
-                    Node::Print( _ ) => unreachable!(),
-                };
+                match op {
+                    OpKind::Plus => return Type::I64 { value: lhs + rhs },
+                    OpKind::Minus => return Type::I64 { value: lhs - rhs },
+                    OpKind::Times => return Type::I64 { value: lhs * rhs },
+                    OpKind::Divide => return Type::I64 { value: lhs / rhs },
+                    OpKind::Pow => return Type::I64 { value: lhs.pow( rhs as u32 ) },
 
-                match arg {
-                    Node::Literal( value ) => match *value {
-                        Type::I64 { value } => print!( "{}", value ),
-                        Type::Char { value } => print!( "{}", value as char ),
-                        Type::Bool { value } => print!( "{}", value as bool ),
-                    },
-                    Node::Expression{ .. } => print!( "{}", self.evaluate_node( argument ) ),
-                    Node::Print( _ ) | Node::Identifier( _ ) => unreachable!()
+                    OpKind::Equals => return Type::Bool { value: lhs == rhs },
+                    OpKind::NotEquals => return Type::Bool { value: lhs != rhs },
+                    OpKind::Greater => return Type::Bool { value: lhs > rhs },
+                    OpKind::GreaterOrEquals => return Type::Bool { value: lhs >= rhs },
+                    OpKind::Less => return Type::Bool { value: lhs < rhs },
+                    OpKind::LessOrEquals => return Type::Bool { value: lhs <= rhs },
+
+                    OpKind::Compare => return Type::I64 { value: lhs.cmp( &rhs ) as i64 },
                 }
-            }
+            },
+            Node::Identifier( name ) => return self.evaluate_node( &*self.definitions.resolve( name ).unwrap().value ),
+            Node::Print( argument ) => return self.evaluate_node( &**argument ),
         }
     }
 
@@ -1175,10 +1248,10 @@ impl<'lexer> AST<'lexer> {
                 }
             },
             Node::Literal( literal ) => match &literal {
-                // Type::I64 { value, .. } => asm.push_str( &format!( " push {}\n", value ) ),
-                // Type::Char { value } => asm.push_str( &format!( " push {}\n", value ) ),
-                // Type::Bool { value } => asm.push_str( &format!( " push {}\n", value ) ),
-                _ => panic!( "Bug: fix case when not printing values, as they just get pushed on to the stack and never get popped" ),
+                Type::I64 { value, .. } => asm.push_str( &format!( " push {}\n", value ) ),
+                Type::Char { value } => asm.push_str( &format!( " push {}\n", value ) ),
+                Type::Bool { value } => asm.push_str( &format!( " push {}\n", value ) ),
+                // _ => panic!( "Bug: fix case when not printing values, as they just get pushed on to the stack and never get popped" ),
             },
             Node::Expression { lhs, op, rhs } => {
                 self.compile_node( lhs, asm );
@@ -1225,16 +1298,31 @@ impl<'lexer> AST<'lexer> {
                         \n push rax\n\n",
                         node
                     ),
-                    OpKind::DoubleEquals => format!(
+                    OpKind::Equals => format!(
                         " ; {}\
                         \n pop rsi\
                         \n pop rdi\
-                        \n mov rdx, 1\
-                        \n xor rax, rax\
+                        \n mov rdx, true\
+                        \n mov rax, false\
                         \n cmp rsi, rdi\
                         \n cmove rax, rdx\n\n",
                         node
                     ),
+                    OpKind::NotEquals => format!(
+                        " ; {}\
+                        \n pop rsi\
+                        \n pop rdi\
+                        \n mov rdx, true\
+                        \n mov rax, false\
+                        \n cmp rsi, rdi\
+                        \n cmovne rax, rdx\n\n",
+                        node
+                    ),
+                    OpKind::Greater => todo!(),
+                    OpKind::GreaterOrEquals => todo!(),
+                    OpKind::Less => todo!(),
+                    OpKind::LessOrEquals => todo!(),
+                    OpKind::Compare => todo!(),
                 };
 
                 asm.push_str( &op_asm );
@@ -1247,7 +1335,7 @@ impl<'lexer> AST<'lexer> {
         println!( "\x1b[92;1mIntepreting\x1b[0m: {}", file_path );
 
         for node in &self.nodes {
-            self.interpret_node( node );
+            self.evaluate_node( node ).interpret_print();
         }
     }
 
@@ -1554,7 +1642,7 @@ fn main() -> ExitCode {
 
     let ast: AST = match (&lexer).try_into() {
         Ok( ast ) => {
-            println!( "{:#?}", ast );
+            // println!( "{:#?}", ast );
             ast
         },
         Err( errors ) => {
