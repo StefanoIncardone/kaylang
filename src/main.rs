@@ -22,15 +22,25 @@ impl Display for Type {
 impl Into<i64> for Type {
     fn into( self ) -> i64 {
         match self {
-            Self::I64 { value } => value,
-            Self::Char { value } => value as i64,
-            Self::Bool { value } => value as i64,
+            Self::I64 { value } => value.into(),
+            Self::Char { value } => value.into(),
+            Self::Bool { value } => value.into(),
+        }
+    }
+}
+
+impl Into<i64> for &Type {
+    fn into( self ) -> i64 {
+        match self {
+            Type::I64 { value } => value.to_owned().into(),
+            Type::Char { value } => value.to_owned().into(),
+            Type::Bool { value } => value.to_owned().into(),
         }
     }
 }
 
 impl Type {
-    fn interpret_print( &self ) {
+    fn actual( &self ) {
         match self {
             Self::I64 { value } => print!( "{}", value ),
             Self::Char { value } => print!( "{}", *value as char ),
@@ -1187,65 +1197,53 @@ impl<'lexer> AST<'lexer> {
         */
         match node {
             Node::Print( argument ) => {
-                asm.push_str( &format!( " ; {}", node ) );
-
-                let arg = match &**argument {
+                let value = match &**argument {
                     Node::Literal( _ ) | Node::Expression{ .. } => &**argument,
                     Node::Identifier( name ) => &*self.definitions.resolve( name ).unwrap().value,
                     Node::Print( _ ) => unreachable!(),
                 };
 
-                match arg {
-                    Node::Literal( literal ) => match literal {
-                        Type::I64 { value } => asm.push_str( &format!(
-                            "\n mov rdi, {}\
-                            \n mov rsi, 10\
-                            \n call int_toStr\
-                            \n\
-                            \n mov rdi, stdout\
-                            \n mov rsi, rax\
-                            \n mov rdx, rdx\
-                            \n mov rax, SYS_write\
-                            \n syscall\n\n",
-                            value
-                        ) ),
-                        Type::Char { value } => asm.push_str( &format!(
-                            "\n push {}\
-                            \n mov rdi, stdout\
-                            \n mov rsi, rsp\
-                            \n mov rdx, 1\
-                            \n mov rax, SYS_write\
-                            \n syscall\
-                            \n pop rsi\n\n",
-                            value
-                        ) ),
-                        Type::Bool { value } => asm.push_str( &format!(
-                            "\n mov rdi, stdout\
-                            \n mov rsi, {}\
-                            \n mov rdx, {}_str_len\
-                            \n mov rax, SYS_write\
-                            \n syscall\n\n",
-                            value,
-                            value
-                        ) ),
-                    },
-                    Node::Expression { .. } => {
-                        asm.push_str( &format!( " ; {}\n", argument ) );
-                        self.compile_node( argument, asm );
-                        asm.push_str(
-                            "\n pop rdi\
-                            \n mov rsi, 10\
-                            \n call int_toStr\
-                            \n\
-                            \n mov rdi, stdout\
-                            \n mov rsi, rax\
-                            \n mov rdx, rdx\
-                            \n mov rax, SYS_write\
-                            \n syscall\n\n"
-                        );
-                    },
+                let value_type = match value {
+                    Node::Literal( literal ) => literal,
+                    Node::Expression { op, .. } => match op {
+                        OpKind::Pow | OpKind::Times | OpKind::Divide |
+                        OpKind::Plus | OpKind::Minus | OpKind::Compare => &Type::I64 { value: 0 },
+                        OpKind::Equals | OpKind::NotEquals |
+                        OpKind::Greater | OpKind::GreaterOrEquals |
+                        OpKind::Less | OpKind::LessOrEquals => &Type::Bool { value: false }
+                    }
                     Node::Print( _ ) | Node::Identifier( _ ) => unreachable!(),
-                }
+                };
+
+                let print_asm = match value_type {
+                    Type::I64 { .. } =>
+                        "\n mov rdi, rax\
+                        \n mov rsi, 10\
+                        \n call int_toStr\
+                        \n\
+                        \n mov rdi, stdout\
+                        \n mov rsi, rax\
+                        \n mov rdx, rdx\
+                        \n mov rax, SYS_write\
+                        \n syscall",
+                    Type::Char { .. } =>
+                        "\n mov rdi, stdout\
+                        \n mov rsi, rsp\
+                        \n mov rdx, 1\
+                        \n mov rax, SYS_write\
+                        \n syscall\
+                        \n pop rsi",
+                    Type::Bool { .. } =>
+                        "\n mov rdi, stdout\
+                        \n mov rsi, rax\
+                        \n mov rdx, rdx\
+                        \n mov rax, SYS_write\
+                        \n syscall",
+                };
+
+                asm.push_str( &format!( " ; {}\n", node ) );
+                self.compile_node( value, asm );
+                asm.push_str( print_asm );
             },
             Node::Literal( literal ) => match &literal {
                 Type::I64 { value, .. } => asm.push_str( &format!( " push {}\n", value ) ),
@@ -1257,75 +1255,79 @@ impl<'lexer> AST<'lexer> {
                 self.compile_node( lhs, asm );
                 self.compile_node( rhs, asm );
                 let op_asm = match op {
-                    OpKind::Plus => format!(
-                        " ; {}\
-                        \n pop rax\
-                        \n pop rbx\
-                        \n add rax, rbx\
-                        \n push rax\n\n",
-                        node
-                    ),
-                    OpKind::Minus => format!(
-                        " ; {}\
-                        \n pop rbx\
-                        \n pop rax\
-                        \n sub rax, rbx\
-                        \n push rax\n\n",
-                        node
-                    ),
-                    OpKind::Times => format!(
-                        " ; {}\
-                        \n pop rax\
+                    OpKind::Pow =>
+                        "\n pop rsi\
+                        \n pop rdi\
+                        \n call int_pow\
+                        \n push rax".to_string(),
+                    OpKind::Times =>
+                        "\n pop rax\
                         \n pop rbx\
                         \n imul rax, rbx\
-                        \n push rax\n\n",
-                        node
-                    ),
-                    OpKind::Divide => format!(
-                        " ; {}\
-                        \n pop rbx\
+                        \n push rax".to_string(),
+                    OpKind::Divide =>
+                        "\n pop rbx\
                         \n pop rax\
                         \n xor rdx, rdx\
                         \n idiv rbx\
-                        \n push rax\n\n",
-                        node
-                    ),
-                    OpKind::Pow => format!(
-                        " ; {}\
-                        \n pop rsi\
+                        \n push rax".to_string(),
+                    OpKind::Plus =>
+                        "\n pop rax\
+                        \n pop rbx\
+                        \n add rax, rbx\
+                        \n push rax".to_string(),
+                    OpKind::Minus =>
+                        "\n pop rbx\
+                        \n pop rax\
+                        \n sub rax, rbx\
+                        \n push rax".to_string(),
+
+                    OpKind::Equals | OpKind::NotEquals |
+                    OpKind::Greater | OpKind::GreaterOrEquals |
+                    OpKind::Less | OpKind::LessOrEquals => {
+                        let asm_op = match op {
+                            OpKind::Equals => "cmove",
+                            OpKind::NotEquals => "cmovne",
+                            OpKind::Greater => "cmovg",
+                            OpKind::GreaterOrEquals => "cmovge",
+                            OpKind::Less => "cmovl",
+                            OpKind::LessOrEquals => "cmovle",
+                            _ => unreachable!(),
+                        };
+
+                        format!(
+                            "\n pop rsi\
+                            \n pop rdi\
+                            \n mov rbx, true\
+                            \n mov rax, false\
+                            \n cmp rsi, rdi\
+                            \n {} rax, rbx\
+                            \n mov rbx, true_str_len\
+                            \n mov rdx, false_str_len\
+                            \n cmp rsi, rdi\
+                            \n {} rdx, rbx",
+                            asm_op,
+                            asm_op
+                        )
+                    },
+
+                    OpKind::Compare =>
+                        "\n pop rsi
                         \n pop rdi\
-                        \n call int_pow\
-                        \n push rax\n\n",
-                        node
-                    ),
-                    OpKind::Equals => format!(
-                        " ; {}\
-                        \n pop rsi\
-                        \n pop rdi\
-                        \n mov rdx, true\
-                        \n mov rax, false\
-                        \n cmp rsi, rdi\
-                        \n cmove rax, rdx\n\n",
-                        node
-                    ),
-                    OpKind::NotEquals => format!(
-                        " ; {}\
-                        \n pop rsi\
-                        \n pop rdi\
-                        \n mov rdx, true\
-                        \n mov rax, false\
-                        \n cmp rsi, rdi\
-                        \n cmovne rax, rdx\n\n",
-                        node
-                    ),
-                    OpKind::Greater => todo!(),
-                    OpKind::GreaterOrEquals => todo!(),
-                    OpKind::Less => todo!(),
-                    OpKind::LessOrEquals => todo!(),
-                    OpKind::Compare => todo!(),
+                        \n mov rax, LESS\
+                        \n mov rbx, EQUAL\
+                        \n mov rdx, GREATER\
+                        \n cmp rdi, rsi\
+                        \n cmove rax, rbx\
+                        \n cmovg rax, rdx".to_string(),
                 };
 
-                asm.push_str( &op_asm );
+                asm.push_str( &format!(
+                    " ; {}\
+                    {}\n\n",
+                    node,
+                    op_asm
+                ) );
             },
             Node::Identifier( name ) => self.compile_node( &*self.definitions.resolve( name ).unwrap().value, asm ),
         }
@@ -1335,14 +1337,11 @@ impl<'lexer> AST<'lexer> {
         println!( "\x1b[92;1mIntepreting\x1b[0m: {}", file_path );
 
         for node in &self.nodes {
-            self.evaluate_node( node ).interpret_print();
+            self.evaluate_node( node ).actual();
         }
     }
 
     fn compile( &self, file_path: &str ) -> Result<PathBuf, ()> {
-        // println!( "\x1b[91;1mError\x1b[0m: compilation mode under development" );
-        // return Err( () );
-
         let src_file_path = Path::new( file_path );
         println!( "\x1b[92;1mBuilding\x1b[0m: {}", src_file_path.display() );
 
@@ -1368,6 +1367,10 @@ section .rodata
 
  false: db "false", 0
  false_str_len: equ $ - false
+
+ LESS: equ -1
+ EQUAL: equ 0
+ GREATER: equ 1
 
 section .data
  int_str: times INT_MAX_DIGITS + 1 db 0
@@ -1520,8 +1523,8 @@ _start:
 
     fn run( &self, file_path: &str ) -> Result<(), ()> {
         let executable_file_path = self.compile( &file_path )?;
-
         println!( "\x1b[92;1mRunning\x1b[0m: {}", executable_file_path.display() );
+
         let output = Command::new( format!( "{}", executable_file_path.display() ) ).output().unwrap();
         print!( "{}", String::from_utf8_lossy( &output.stdout ) );
 
