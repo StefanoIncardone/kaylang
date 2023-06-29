@@ -11,7 +11,7 @@ enum Type {
 
 impl Display for Type {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::I64 { value } => write!( f, "{}", value ),
             Self::Char { value } => write!( f, "'{}'", value.escape_ascii().to_string() ), // TODO create own escaping function
             Self::Bool { value } => write!( f, "{}", value ),
@@ -21,7 +21,7 @@ impl Display for Type {
 
 impl Into<i64> for Type {
     fn into( self ) -> i64 {
-        match self {
+        return match self {
             Self::I64 { value } => value.into(),
             Self::Char { value } => value.into(),
             Self::Bool { value } => value.into(),
@@ -31,7 +31,7 @@ impl Into<i64> for Type {
 
 impl Into<i64> for &Type {
     fn into( self ) -> i64 {
-        match self {
+        return match self {
             Type::I64 { value } => value.to_owned().into(),
             Type::Char { value } => value.to_owned().into(),
             Type::Bool { value } => value.to_owned().into(),
@@ -70,7 +70,7 @@ enum OpKind {
 
 impl Display for OpKind {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::Pow => write!( f, "^" ),
             Self::Times => write!( f, "*" ),
             Self::Divide => write!( f, "/" ),
@@ -100,7 +100,7 @@ enum DefinitionKind {
 
 impl Display for DefinitionKind {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::Let => write!( f, "let" ),
             Self::Const => write!( f, "const" ),
             Self::Var => write!( f, "var" ),
@@ -109,7 +109,7 @@ impl Display for DefinitionKind {
 }
 
 
-#[derive( Debug )]
+#[derive( Debug, Clone )]
 enum TokenKind {
     Unexpected{ text: String, err_msg: &'static str, help_msg: &'static str },
 
@@ -151,7 +151,7 @@ enum TokenKind {
 
 impl Display for TokenKind {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::Unexpected { text, .. } => write!( f, "{}", text ),
 
             Self::Comment( text ) => write!( f, "{}", text ),
@@ -178,7 +178,7 @@ impl Display for TokenKind {
 }
 
 
-#[derive( Debug )]
+#[derive( Debug, Clone )]
 struct Token {
     col: usize,
     len: usize,
@@ -195,31 +195,27 @@ struct Line {
 impl Display for Line {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         if self.tokens.is_empty() {
-            write!( f, "" )?;
-            return Ok( () );
+            return write!( f, "" );
         }
 
         // leading whitespaces
         write!( f, "{}", " ".repeat( self.tokens[ 0 ].col - 1 ) )?;
 
         let mut tokens = self.tokens.iter().peekable();
-
         if self.number == 1 {
             tokens.next(); // skipping the SOF
         }
 
         while let Some( token ) = tokens.next() {
-            let spaces = if let TokenKind::Comment( _ ) = token.kind {
-                0
-            }
-            else if let Some( &next_token ) = tokens.peek() {
-                next_token.col - (token.col + token.len)
-            }
-            else {
-                0
+            let spaces_before_next_token = match token.kind {
+                TokenKind::Comment( _ ) | TokenKind::EOF => 0,
+                _ => match tokens.peek() {
+                    Some( next_token ) => next_token.col - (token.col + token.len),
+                    None => 0,
+                }
             };
 
-            write!( f, "{}{}", token.kind, " ".repeat( spaces ) )?;
+            write!( f, "{}{}", token.kind, " ".repeat( spaces_before_next_token ) )?;
         }
 
         return Ok( () );
@@ -234,6 +230,30 @@ struct Lexer {
     lines: Vec<Line>,
 }
 
+fn display_error( f: &mut std::fmt::Formatter<'_>, file_path: &str, line_text: &str, line_number: usize, token_col: usize, token_len: usize, err_msg: &str, help_msg: &str ) -> std::fmt::Result {
+    let gutter_padding_amount = line_number.ilog10() as usize + 1;
+    let gutter_padding = " ".repeat( gutter_padding_amount );
+    let pointers_padding = " ".repeat( token_col - 1 );
+    let pointers = "^".repeat( token_len );
+    let bar = "\x1b[94m|\x1b[0m";
+
+    let error_visualization = &format!(
+        " {} {}\
+        \n \x1b[94m{: >gutter_padding_amount$}\x1b[0m {} {}\
+        \n {} {} {}\x1b[91m{} {}\x1b[0m",
+        gutter_padding, bar,
+        line_number, bar, line_text,
+        gutter_padding, bar, pointers_padding, pointers, help_msg
+    );
+
+    return writeln!( f,
+        "\x1b[91;1mError\x1b[0m [L]: \x1b[1m{}\x1b[0m\
+        \n {} \x1b[91min\x1b[0m: {}:{}:{}\n{}\n",
+        err_msg,
+        gutter_padding, file_path, line_number, token_col, error_visualization
+    );
+}
+
 impl Display for Lexer {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         for line in &self.lines {
@@ -241,27 +261,7 @@ impl Display for Lexer {
 
             for token in &line.tokens {
                 if let TokenKind::Unexpected { err_msg, help_msg, .. } = &token.kind {
-                    let gutter_padding_amount = line.number.ilog10() as usize + 1;
-                    let gutter_padding = " ".repeat( gutter_padding_amount );
-                    let pointers_padding = " ".repeat( token.col - 1 );
-                    let pointers = "^".repeat( token.len );
-                    let bar = "\x1b[94m|\x1b[0m";
-
-                    let error_visualization = &format!(
-                        " {} {}\
-                        \n \x1b[94m{: >gutter_padding_amount$}\x1b[0m {} {}\
-                        \n {} {} {}\x1b[91m{} {}\x1b[0m",
-                        gutter_padding, bar,
-                        line.number, bar, line_text,
-                        gutter_padding, bar, pointers_padding, pointers, help_msg
-                    );
-
-                    writeln!( f,
-                        "\x1b[91;1mError\x1b[0m [L]: \x1b[1m{}\x1b[0m\
-                        \n {} \x1b[91min\x1b[0m: {}:{}:{}\n{}\n",
-                        err_msg,
-                        gutter_padding, self.file_path, line.number, token.col, error_visualization
-                    )?;
+                    display_error( f, &self.file_path, &line_text, line.number, token.col, token.len, err_msg, help_msg )?;
                 }
             }
         }
@@ -283,16 +283,21 @@ impl TryFrom<(&str, File)> for Lexer {
 
         let mut src_lines = BufReader::new( source_file );
         let mut src_line = String::new();
+
+        let mut tokens: Vec<Token> = vec![ Token { col: 1, len: 1, kind: TokenKind::SOF } ];
         let mut token_text = String::new();
+
         while let Ok( chars_read ) = src_lines.read_line( &mut src_line ) {
             // reached EOF on an empty line
             if chars_read == 0 {
-                lines.push( Line { number, tokens: vec![Token { col: 1, len: 1, kind: TokenKind::EOF }] } );
+                tokens.push( Token { col: 1, len: 1, kind: TokenKind::Empty  } );
+                tokens.push( Token { col: 1, len: 1, kind: TokenKind::EOF } );
+
+                lines.push( Line { number, tokens } );
                 break;
             }
 
             let mut line_contains_errors = false;
-            let mut tokens: Vec<Token> = Vec::new();
             let mut col = 1;
 
             let mut src = src_line.chars().peekable();
@@ -505,16 +510,16 @@ impl TryFrom<(&str, File)> for Lexer {
                 col += 1;
             }
 
+            if tokens.is_empty() {
+                tokens.push( Token { col: 1, len: 1, kind: TokenKind::Empty  } );
+            }
+
             let file_ended_at_line_end = !src_line.ends_with( "\n" );
             if file_ended_at_line_end {
                 tokens.push( Token { col, len: 1, kind: TokenKind::EOF } );
             }
 
-            if tokens.is_empty() {
-                tokens.push( Token { col: 1, len: 1, kind: TokenKind::Empty  } );
-            }
-            let line = Line { number, tokens };
-
+            let line = Line { number, tokens: tokens.clone() };
             if line_contains_errors {
                 errors.push( line );
             }
@@ -527,83 +532,83 @@ impl TryFrom<(&str, File)> for Lexer {
             }
 
             src_line.clear();
+            tokens.clear();
             number += 1;
         }
 
-        if !errors.is_empty() {
-            return Err( Self { file_path: file_path.to_string(), lines: errors } );
+        return if errors.is_empty() {
+            Ok( Self { file_path: file_path.to_string(), lines } )
         }
         else {
-            lines[ 0 ].tokens.insert( 0, Token { col: 1, len: 1, kind: TokenKind::SOF } );
-            return Ok( Self { file_path: file_path.to_string(), lines } );
+            Err( Self { file_path: file_path.to_string(), lines: errors } )
         }
     }
 }
 
 impl Lexer {
     fn iter<'lexer>( &'lexer self ) -> LexerIter<'lexer> {
-        return LexerIter{ lexer: self, line: 0, token: 0 };
+        LexerIter{ lexer: self, line: 0, token: 0 }
     }
 
     // FIX properly handle non ASCII codes in error messages
     fn next( src: &mut Peekable<Chars> ) -> Result<Option<char>, TokenKind> {
-        match src.next() {
-            Some( next @ ..='\x7F' ) => return Ok( Some( next ) ),
-            Some( next ) => return Err( TokenKind::Unexpected {
+        return match src.next() {
+            Some( next @ ..='\x7F' ) => Ok( Some( next ) ),
+            Some( next ) => Err( TokenKind::Unexpected {
                 text: next.to_string(),
                 err_msg: "unrecognized character",
                 help_msg: "not a valid ASCII character"
             } ),
-            None => return Ok( None ),
+            None => Ok( None ),
         }
     }
 
     fn peek_next<'src>( src: &'src mut Peekable<Chars> ) -> Result<Option<&'src char>, TokenKind> {
-        match src.peek() {
-            Some( next @ ..='\x7F' ) => return Ok( Some( next ) ),
-            Some( next ) => return Err( TokenKind::Unexpected {
+        return match src.peek() {
+            Some( next @ ..='\x7F' ) => Ok( Some( next ) ),
+            Some( next ) => Err( TokenKind::Unexpected {
                 text: next.to_string(),
                 err_msg: "unrecognized character",
                 help_msg: "not a valid ASCII character"
             } ),
-            None => return Ok( None ),
+            None => Ok( None ),
         }
     }
 
     fn next_char( src: &mut Peekable<Chars>, token_text: &mut String ) -> Result<u8, TokenKind> {
-        match Self::next( src )? {
-            Some( '\n' ) | None => return Err( TokenKind::Unexpected {
+        return match Self::next( src )? {
+            Some( '\n' ) | None => Err( TokenKind::Unexpected {
                 text: token_text.clone(),
                 err_msg: "invalid character literal",
                 help_msg: "missing closing single quote"
             } ),
             Some( next ) => {
                 token_text.push( next );
-                return Ok( next as u8 );
+                Ok( next as u8 )
             },
         }
     }
 
     fn parse_char( src: &mut Peekable<Chars>, token_text: &mut String ) -> Result<u8, TokenKind> {
         // IDEA treat character literals as just strings of lenght 1, reporting errors if over 1
-        match Self::next_char( src, token_text )? {
+        return match Self::next_char( src, token_text )? {
             b'\\' => match Self::next_char( src, token_text )? {
-                b'n' => return Ok( b'\n' as u8 ),
-                b't' => return Ok( b'\t' as u8 ),
-                b'\'' => return Ok( b'\'' as u8 ),
-                b'"' => return Ok( b'"' as u8 ),
-                _ => return Err( TokenKind::Unexpected {
+                b'n' => Ok( b'\n' as u8 ),
+                b't' => Ok( b'\t' as u8 ),
+                b'\'' => Ok( b'\'' as u8 ),
+                b'"' => Ok( b'"' as u8 ),
+                _ => Err( TokenKind::Unexpected {
                     text: token_text.clone(),
                     err_msg: "invalid escape character literal",
                     help_msg: "check the documentation for a list of valid escape characters"
                 } ),
             },
-            b'\x00'..=b'\x1F' | b'\x7F' => return Err( TokenKind::Unexpected {
+            b'\x00'..=b'\x1F' | b'\x7F' => Err( TokenKind::Unexpected {
                 text: token_text.clone(),
                 err_msg: "invalid character literal",
                 help_msg: "cannot be a control character"
             } ),
-            next => return Ok( next as u8 ),
+            next => Ok( next as u8 ),
         }
     }
 }
@@ -630,17 +635,17 @@ impl<'lexer> LexerIter<'lexer> {
 
     fn current_or_next( &mut self ) -> Option<LexerIterItem<'lexer>> {
         let (line, token) = self.current()?;
-        match token.kind {
-            TokenKind::Comment( _ ) | TokenKind::Empty => return self.next(),
-            _ => return Some( (line, token) ),
+        return match token.kind {
+            TokenKind::Comment( _ ) | TokenKind::Empty => self.next(),
+            _ => Some( (line, token) ),
         }
     }
 
     fn current_or_previous( &mut self ) -> Option<LexerIterItem<'lexer>> {
         let (line, token) = self.current()?;
-        match token.kind {
-            TokenKind::Comment( _ ) | TokenKind::Empty => return self.previous(),
-            _ => return Some( (line, token) ),
+        return match token.kind {
+            TokenKind::Comment( _ ) | TokenKind::Empty => self.previous(),
+            _ => Some( (line, token) ),
         }
     }
 
@@ -663,7 +668,7 @@ impl<'lexer> LexerIter<'lexer> {
             (line, token)
         };
 
-        match token.kind {
+        return match token.kind {
             TokenKind::Comment( _ ) | TokenKind::Empty => self.next(),
             _ => Some( (line, token) ),
         }
@@ -687,9 +692,9 @@ impl<'lexer> LexerIter<'lexer> {
             (line, token)
         };
 
-        match token.kind {
-            TokenKind::Comment( _ ) | TokenKind::Empty => return self.previous(),
-            _ => return Some( (line, token) ),
+        return match token.kind {
+            TokenKind::Comment( _ ) | TokenKind::Empty => self.previous(),
+            _ => Some( (line, token) ),
         }
     }
 
@@ -716,12 +721,12 @@ trait BoundedLexerItem<'lexer> {
 
 impl<'lexer> BoundedLexerItem<'lexer> for Option<LexerIterItem<'lexer>> {
     fn bounded( &self, tokens: &mut LexerIter<'lexer>, err_msg: &'static str ) -> Result<Option<LexerIterItem<'lexer>>, SyntaxError<'lexer>> {
-        match self {
+        return match self {
             Some( (line, token) ) => match token.kind {
                 TokenKind::EOF => {
                     // we are always sure that there is at least the SOF token before the EOF token, so we can safely unwrap
                     let (previous_line, previous_token) = tokens.peek_previous().unwrap();
-                    return Err( SyntaxError {
+                    Err( SyntaxError {
                         line: previous_line,
                         token: previous_token,
                         msg: err_msg,
@@ -731,14 +736,14 @@ impl<'lexer> BoundedLexerItem<'lexer> for Option<LexerIterItem<'lexer>> {
                 TokenKind::SOF => {
                     // we are always sure that there is at least the EOF token after the SOF token, so we can safely unwrap
                     let (next_line, next_token) = tokens.peek_next().unwrap();
-                    return Err( SyntaxError {
+                    Err( SyntaxError {
                         line: next_line,
                         token: next_token,
                         msg: err_msg,
                         help_msg: "file ended after here instead"
                     } )
                 },
-                _ => return Ok( Some( (line, token) ) ),
+                _ => Ok( Some( (line, token) ) ),
             }
             None => Ok( None ),
         }
@@ -783,7 +788,7 @@ enum Node {
 
 impl Display for Node {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::Literal( literal ) => write!( f, "{}", literal ),
             Self::Expression { lhs, op, rhs } => write!( f, "({} {} {})", lhs, op, rhs ),
             Self::Identifier( name ) => write!( f, "{}", name ),
@@ -813,28 +818,7 @@ impl<'program> Display for SyntaxErrors<'program> {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         for error in &self.errors {
             let line_text = format!( "{}", error.line );
-
-            let gutter_padding_amount = error.line.number.ilog10() as usize + 1;
-            let gutter_padding = " ".repeat( gutter_padding_amount );
-            let pointers_padding = " ".repeat( error.token.col - 1 );
-            let pointers = "^".repeat( error.token.len );
-            let bar = "\x1b[94m|\x1b[0m";
-
-            let error_visualization = &format!(
-                " {} {}\
-                \n \x1b[94m{: >gutter_padding_amount$}\x1b[0m {} {}\
-                \n {} {} {}\x1b[91m{} {}\x1b[0m",
-                gutter_padding, bar,
-                error.line.number, bar, line_text,
-                gutter_padding, bar, pointers_padding, pointers, error.help_msg
-            );
-
-            writeln!( f,
-                "\x1b[91;1mError\x1b[0m [P]: \x1b[1m{}\x1b[0m\
-                \n {} \x1b[91min\x1b[0m: {}:{}:{}\n{}\n",
-                error.msg,
-                gutter_padding, self.file_path, error.line.number, error.token.col, error_visualization
-            )?;
+            display_error( f, &self.file_path, &line_text, error.line.number, error.token.col, error.token.len, error.msg, error.help_msg )?;
         }
 
         return Ok( () );
@@ -915,11 +899,11 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
             }
         }
 
-        if !errors.is_empty() {
-            return Err( SyntaxErrors { file_path: lexer.file_path.clone(), errors } );
+        if errors.is_empty() {
+            return Ok( ast );
         }
         else {
-            return Ok( ast );
+            return Err( SyntaxErrors { file_path: lexer.file_path.clone(), errors } );
         }
     }
 }
@@ -990,13 +974,13 @@ impl<'lexer> AST<'lexer> {
         let value = value?;
         self.semicolon()?;
 
-        match self.definitions.resolve( &name ) {
+        return match self.definitions.resolve( &name ) {
             None => {
                 self.definitions.push( Definition { kind, name, value: Box::new( value ) } );
-                return Ok( () );
+                Ok( () )
                 // return Ok( Node::Definition( self.definitions.last().unwrap().clone() ) );
             },
-            Some( _ ) => return Err( SyntaxError {
+            Some( _ ) => Err( SyntaxError {
                 line: identifier_line,
                 token: identifier_token,
                 msg: "variable redefinition",
@@ -1160,31 +1144,31 @@ impl<'lexer> AST<'lexer> {
 // After construction
 impl<'lexer> AST<'lexer> {
     fn evaluate_node( &self, node: &Node ) -> Type {
-        match node {
-            Node::Literal( value ) => return value.clone(),
+        return match node {
+            Node::Literal( value ) => value.clone(),
             Node::Expression{ lhs, op, rhs } => {
                 let lhs: i64 = self.evaluate_node( lhs ).into();
                 let rhs: i64 = self.evaluate_node( rhs ).into();
 
                 match op {
-                    OpKind::Plus => return Type::I64 { value: lhs + rhs },
-                    OpKind::Minus => return Type::I64 { value: lhs - rhs },
-                    OpKind::Times => return Type::I64 { value: lhs * rhs },
-                    OpKind::Divide => return Type::I64 { value: lhs / rhs },
-                    OpKind::Pow => return Type::I64 { value: lhs.pow( rhs as u32 ) },
+                    OpKind::Plus => Type::I64 { value: lhs + rhs },
+                    OpKind::Minus => Type::I64 { value: lhs - rhs },
+                    OpKind::Times => Type::I64 { value: lhs * rhs },
+                    OpKind::Divide => Type::I64 { value: lhs / rhs },
+                    OpKind::Pow => Type::I64 { value: lhs.pow( rhs as u32 ) },
 
-                    OpKind::Equals => return Type::Bool { value: lhs == rhs },
-                    OpKind::NotEquals => return Type::Bool { value: lhs != rhs },
-                    OpKind::Greater => return Type::Bool { value: lhs > rhs },
-                    OpKind::GreaterOrEquals => return Type::Bool { value: lhs >= rhs },
-                    OpKind::Less => return Type::Bool { value: lhs < rhs },
-                    OpKind::LessOrEquals => return Type::Bool { value: lhs <= rhs },
+                    OpKind::Equals => Type::Bool { value: lhs == rhs },
+                    OpKind::NotEquals => Type::Bool { value: lhs != rhs },
+                    OpKind::Greater => Type::Bool { value: lhs > rhs },
+                    OpKind::GreaterOrEquals => Type::Bool { value: lhs >= rhs },
+                    OpKind::Less => Type::Bool { value: lhs < rhs },
+                    OpKind::LessOrEquals => Type::Bool { value: lhs <= rhs },
 
-                    OpKind::Compare => return Type::I64 { value: lhs.cmp( &rhs ) as i64 },
+                    OpKind::Compare => Type::I64 { value: lhs.cmp( &rhs ) as i64 },
                 }
             },
-            Node::Identifier( name ) => return self.evaluate_node( &*self.definitions.resolve( name ).unwrap().value ),
-            Node::Print( argument ) => return self.evaluate_node( &**argument ),
+            Node::Identifier( name ) => self.evaluate_node( &*self.definitions.resolve( name ).unwrap().value ),
+            Node::Print( argument ) => self.evaluate_node( &**argument ),
         }
     }
 
