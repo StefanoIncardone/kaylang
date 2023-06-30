@@ -69,7 +69,9 @@ let nine = 3 ^ 2;
 const nineteen = ten + nine;
 ```
 
-- `let`, `var`, `const`: immutable variable (temporary)
+- `const`: compile time avaluated immutable variable
+- `let`: immutable variable
+- `var`: mutable variable
 
 ### Printing
 

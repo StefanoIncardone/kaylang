@@ -21,7 +21,8 @@ program = [{
     line_comment |
     (
         ("print", expression) |
-        (("let" | "var" | "const"), identifier, "=", expression),
+        (("let" | "var" | "const"), identifier, "=", expression) |
+        (identifier, "=", expression),
         ';'
     )
 }];
