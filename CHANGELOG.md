@@ -34,10 +34,6 @@
 - `build` to compile the program down to a binary executable
 - `run` to compile and run the compiled native assembly code
 - `interpret` to interpret the program without compiling it
-- each statement is separated by semicolons
 - line comments: `#...`
-- integers and math operators
-- character literals
-- boolean values and comparisons
-- variables
-- values (integers, characters, variables, ...) can be printed using the `print` keyword
+- integers and math operators, character literals, boolean values and comparisons, variables
+- values can be printed using the `print` or `println` (printing a newline character afterwards) keywords

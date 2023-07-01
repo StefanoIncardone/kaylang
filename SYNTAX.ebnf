@@ -20,7 +20,7 @@ expression = math, [("==" | "!=" | ">" | ">=" | "<" | "<=" | "<=>"), math];
 program = [{
     line_comment |
     (
-        ("print", expression) |
+        (("print" | "println"), expression) |
         (("let" | "var" | "const"), identifier, "=", expression) |
         (identifier, "=", expression),
         ';'

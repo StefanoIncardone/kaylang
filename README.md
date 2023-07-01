@@ -75,16 +75,13 @@ const nineteen = ten + nine;
 
 ### Printing
 
-The only way to print values is using the temporary intrinsic `print` keyword
+The only way to print values is using the temporary intrinsic `print` or `println` keywords
 
 ``` blitz
-const newline = '\n';
-
 var ten = 5 * 2;
 let nine = 3 ^ 2;
-const nineteen = ten + nine;
+const lucky = ten + nine;
 
+println lucky;
 print 42;
-print lucky;
-print newline;
 ```

@@ -30,18 +30,8 @@ impl Into<i64> for Type {
     }
 }
 
-impl Into<i64> for &Type {
-    fn into( self ) -> i64 {
-        return match self {
-            Type::I64 { value } => value.to_owned().into(),
-            Type::Char { value } => value.to_owned().into(),
-            Type::Bool { value } => value.to_owned().into(),
-        }
-    }
-}
-
 impl Type {
-    fn actual( &self ) {
+    fn display( &self ) {
         match self {
             Self::I64 { value } => print!( "{}", value ),
             Self::Char { value } => print!( "{}", *value as char ),
@@ -51,7 +41,7 @@ impl Type {
 }
 
 
-#[derive( Debug, Clone, PartialEq )]
+#[derive( Debug, Clone, Copy, PartialEq )]
 enum OpKind {
     Pow,
     Times,
@@ -91,7 +81,7 @@ impl Display for OpKind {
 }
 
 
-#[derive( Debug, Clone )]
+#[derive( Debug, Clone, Copy )]
 enum DefinitionKind {
     // Fn,
     Let,
@@ -136,6 +126,7 @@ enum TokenKind {
 
     // Keywords
     Print, // temporary way of printing values
+    PrintLn, // temporary way of printing values followed by a newline
     True,
     False,
     // Entry,
@@ -168,6 +159,7 @@ impl Display for TokenKind {
             Self::Definition( kind ) => write!( f, "{}", kind ),
 
             Self::Print => write!( f, "print" ),
+            Self::PrintLn => write!( f, "println" ),
             Self::True => write!( f, "true" ),
             Self::False => write!( f, "false" ),
 
@@ -486,6 +478,7 @@ impl TryFrom<(&str, File)> for Lexer {
                                 "true" => TokenKind::True,
                                 "false" => TokenKind::False,
                                 "print" => TokenKind::Print,
+                                "println" => TokenKind::PrintLn,
                                 // "return" => TokenKind::Return,
                                 _ => TokenKind::Identifier( token_text.clone() )
                             };
@@ -789,7 +782,7 @@ impl Resolve for Definitions {
 }
 
 
-#[derive( Debug )]
+#[derive( Debug, Clone, Copy )]
 enum IdentifierExpansion {
     Expand,
     Keep,
@@ -803,6 +796,7 @@ enum Node {
     Expression{ lhs: Box<Node>, op: OpKind, rhs: Box<Node> },
     Identifier( String ),
     Print( Box<Node> ),
+    PrintLn( Box<Node> ),
 }
 
 impl Display for Node {
@@ -812,6 +806,7 @@ impl Display for Node {
             Self::Expression { lhs, op, rhs } => write!( f, "({} {} {})", lhs, op, rhs ),
             Self::Identifier( name ) => write!( f, "{}", name ),
             Self::Print( node ) => write!( f, "print {}", node ),
+            Self::PrintLn( node ) => write!( f, "println {}", node ),
         }
     }
 }
@@ -851,7 +846,7 @@ impl<'program> Display for SyntaxErrors<'program> {
         // variables, functions, etc.
 #[derive( Debug )]
 struct AST<'lexer> {
-    tokens: LexerIter<'lexer>,
+    tokens: LexerIter<'lexer>, // TODO possibly remove this field
     nodes: Vec<Node>,
     definitions: Definitions,
 }
@@ -874,19 +869,19 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
                     Ok( _ ) => continue, // skipping this node since it is already in the definitions
                     Err( err ) => Err( err ),
                 },
-                TokenKind::Print => ast.print(),
-                TokenKind::True | TokenKind::False | TokenKind::Literal( _ ) |
-                TokenKind::OpenRoundBracket => ast.expression( &IdentifierExpansion::Keep ),
+                TokenKind::Print | TokenKind::PrintLn => ast.print(),
+                TokenKind::True | TokenKind::False |
+                TokenKind::Literal( _ ) | TokenKind::OpenRoundBracket => ast.expression( IdentifierExpansion::Keep ),
                 TokenKind::Identifier( _ ) => match ast.tokens.peek_next().bounded( &mut ast.tokens, "" ) {
                     Ok( Some( (_, token) ) ) => match token.kind {
                         TokenKind::Equals => match ast.variable_assignment() {
                             Ok( _ ) => continue,
                             Err( err ) => Err( err ),
                         },
-                        _ => ast.expression( &IdentifierExpansion::Keep ),
+                        _ => ast.expression( IdentifierExpansion::Keep ),
                     },
                     Ok( None ) => continue,
-                    Err( _ ) => ast.expression( &IdentifierExpansion::Keep ),
+                    Err( _ ) => ast.expression( IdentifierExpansion::Keep ),
                 },
                 TokenKind::CloseRoundBracket => {
                     ast.tokens.next();
@@ -989,7 +984,7 @@ impl<'lexer> AST<'lexer> {
         let (_value_line, value_token) = self.tokens.next().bounded( &mut self.tokens, "expected expression" )?.unwrap();
         let value = match value_token.kind {
             TokenKind::True | TokenKind::False | TokenKind::Literal( _ ) |
-            TokenKind::Identifier( _ ) | TokenKind::OpenRoundBracket => self.expression( &IdentifierExpansion::Keep ),
+            TokenKind::Identifier( _ ) | TokenKind::OpenRoundBracket => self.expression( IdentifierExpansion::Keep ),
             _ => Err( SyntaxError {
                 line: equals_line,
                 token: equals_token,
@@ -1031,7 +1026,7 @@ impl<'lexer> AST<'lexer> {
         let (_value_line, value_token) = self.tokens.next().bounded( &mut self.tokens, "expected expression" )?.unwrap();
         let value = match value_token.kind {
             TokenKind::True | TokenKind::False | TokenKind::Literal( _ ) |
-            TokenKind::Identifier( _ ) | TokenKind::OpenRoundBracket => self.expression( &IdentifierExpansion::Expand ),
+            TokenKind::Identifier( _ ) | TokenKind::OpenRoundBracket => self.expression( IdentifierExpansion::Expand ),
             _ => Err( SyntaxError {
                 line: equals_line,
                 token: equals_token,
@@ -1070,10 +1065,12 @@ impl<'lexer> AST<'lexer> {
     }
 
     fn print( &mut self ) -> Result<Node, SyntaxError<'lexer>> {
+        let (_print_line, print_token) = self.tokens.current().unwrap();
+
         let (argument_line, argument_token) = self.tokens.next().bounded( &mut self.tokens, "expected print argument" )?.unwrap();
         let argument = match &argument_token.kind {
             TokenKind::True | TokenKind::False | TokenKind::Literal( _ ) |
-            TokenKind::Identifier( _ ) | TokenKind::OpenRoundBracket => self.expression( &IdentifierExpansion::Keep ),
+            TokenKind::Identifier( _ ) | TokenKind::OpenRoundBracket => self.expression( IdentifierExpansion::Keep ),
             _ => Err( SyntaxError {
                 line: argument_line,
                 token: argument_token,
@@ -1085,10 +1082,16 @@ impl<'lexer> AST<'lexer> {
         let argument = argument?;
         self.semicolon()?;
 
-        return Ok( Node::Print( Box::new( argument ) ) );
+        let print = match print_token.kind {
+            TokenKind::Print => Node::Print( Box::new( argument ) ),
+            TokenKind::PrintLn => Node::PrintLn( Box::new( argument ) ),
+            _ => unreachable!(),
+        };
+
+        return Ok( print );
     }
 
-    fn factor( &mut self, expansion: &IdentifierExpansion ) -> Result<Node, SyntaxError<'lexer>> {
+    fn factor( &mut self, expansion: IdentifierExpansion ) -> Result<Node, SyntaxError<'lexer>> {
         let (line, token) = self.tokens.current_or_next().bounded( &mut self.tokens, "expected expression" )?.unwrap();
         let result = match &token.kind {
             // FIX forbid implicit conversions
@@ -1170,7 +1173,7 @@ impl<'lexer> AST<'lexer> {
         return result;
     }
 
-    fn exponentiation( &mut self, expansion: &IdentifierExpansion ) -> Result<Node, SyntaxError<'lexer>> {
+    fn exponentiation( &mut self, expansion: IdentifierExpansion ) -> Result<Node, SyntaxError<'lexer>> {
         let mut lhs = self.factor( expansion )?;
 
         while let Some( op ) = self.operator( &[OpKind::Pow] )? {
@@ -1181,7 +1184,7 @@ impl<'lexer> AST<'lexer> {
         return Ok( lhs );
     }
 
-    fn multiplication_or_division( &mut self, expansion: &IdentifierExpansion ) -> Result<Node, SyntaxError<'lexer>> {
+    fn multiplication_or_division( &mut self, expansion: IdentifierExpansion ) -> Result<Node, SyntaxError<'lexer>> {
         let mut lhs = self.exponentiation( expansion )?;
 
         while let Some( op ) = self.operator( &[OpKind::Times, OpKind::Divide] )? {
@@ -1192,7 +1195,7 @@ impl<'lexer> AST<'lexer> {
         return Ok( lhs );
     }
 
-    fn math( &mut self, expansion: &IdentifierExpansion ) -> Result<Node, SyntaxError<'lexer>> {
+    fn math( &mut self, expansion: IdentifierExpansion ) -> Result<Node, SyntaxError<'lexer>> {
         let mut lhs = self.multiplication_or_division( expansion )?;
 
         while let Some( op ) = self.operator( &[OpKind::Plus, OpKind::Minus] )? {
@@ -1203,7 +1206,7 @@ impl<'lexer> AST<'lexer> {
         return Ok( lhs );
     }
 
-    fn expression( &mut self, expansion: &IdentifierExpansion ) -> Result<Node, SyntaxError<'lexer>> {
+    fn expression( &mut self, expansion: IdentifierExpansion ) -> Result<Node, SyntaxError<'lexer>> {
         let mut lhs = self.math( expansion )?;
 
         let ops = [
@@ -1249,7 +1252,7 @@ impl<'lexer> AST<'lexer> {
                 }
             },
             Node::Identifier( name ) => self.evaluate_node( &*self.definitions.resolve( name ).unwrap().value ),
-            Node::Print( argument ) => self.evaluate_node( &**argument ),
+            Node::Print( _ ) |Node::PrintLn( _ ) => unreachable!(),
         }
     }
 
@@ -1265,7 +1268,7 @@ impl<'lexer> AST<'lexer> {
                 let value = match &**argument {
                     Node::Literal( _ ) | Node::Expression{ .. } => &**argument,
                     Node::Identifier( name ) => &*self.definitions.resolve( name ).unwrap().value,
-                    Node::Print( _ ) => unreachable!(),
+                    Node::Print( _ ) | Node::PrintLn( _ ) => unreachable!(),
                 };
 
                 let value_type = match value {
@@ -1277,12 +1280,13 @@ impl<'lexer> AST<'lexer> {
                         OpKind::Greater | OpKind::GreaterOrEquals |
                         OpKind::Less | OpKind::LessOrEquals => &Type::Bool { value: false }
                     }
-                    Node::Print( _ ) | Node::Identifier( _ ) => unreachable!(),
+                    Node::Print( _ ) | Node::PrintLn( _ ) | Node::Identifier( _ ) => unreachable!(),
                 };
 
                 let print_asm = match value_type {
                     Type::I64 { .. } =>
-                        "\n mov rdi, rax\
+                        "\n pop rax\
+                        \n mov rdi, rax\
                         \n mov rsi, 10\
                         \n call int_toStr\
                         \n\
@@ -1299,7 +1303,9 @@ impl<'lexer> AST<'lexer> {
                         \n syscall\
                         \n pop rsi",
                     Type::Bool { .. } =>
-                        "\n mov rdi, stdout\
+                        "\n pop rax\
+                        \n pop rdx\
+                        \n mov rdi, stdout\
                         \n mov rsi, rax\
                         \n mov rdx, rdx\
                         \n mov rax, SYS_write\
@@ -1308,10 +1314,10 @@ impl<'lexer> AST<'lexer> {
 
                 asm.push_str( &format!( " ; {}\n", node ) );
                 self.compile_node( value, asm );
-                asm.push_str( print_asm );
+                asm.push_str( &format!( "{}\n\n", print_asm ) );
             },
             Node::Literal( literal ) => match &literal {
-                Type::I64 { value, .. } => asm.push_str( &format!( " push {}\n", value ) ),
+                Type::I64 { value } => asm.push_str( &format!( " push {}\n", value ) ),
                 Type::Char { value } => asm.push_str( &format!( " push {}\n", value ) ),
                 Type::Bool { value } => asm.push_str( &format!( " push {}\n", value ) ),
             },
@@ -1364,12 +1370,13 @@ impl<'lexer> AST<'lexer> {
                             \n pop rdi\
                             \n mov rbx, true\
                             \n mov rax, false\
-                            \n cmp rsi, rdi\
+                            \n cmp rdi, rsi\
                             \n {} rax, rbx\
                             \n mov rbx, true_str_len\
                             \n mov rdx, false_str_len\
-                            \n cmp rsi, rdi\
-                            \n {} rdx, rbx",
+                            \n {} rdx, rbx\
+                            \n push rdx\
+                            \n push rax",
                             asm_op,
                             asm_op
                         )
@@ -1386,14 +1393,11 @@ impl<'lexer> AST<'lexer> {
                         \n cmovg rax, rdx".to_string(),
                 };
 
-                asm.push_str( &format!(
-                    " ; {}\
-                    {}\n\n",
-                    node,
-                    op_asm
-                ) );
+                asm.push_str( &format!( " ; {}", node ) );
+                asm.push_str( &format!( "{}\n\n", op_asm ) );
             },
             Node::Identifier( name ) => self.compile_node( &*self.definitions.resolve( name ).unwrap().value, asm ),
+            Node::PrintLn( _ ) => unreachable!(),
         }
     }
 
@@ -1402,7 +1406,13 @@ impl<'lexer> AST<'lexer> {
 
         for node in &self.nodes {
             match node {
-                Node::Print( _ ) => self.evaluate_node( node ).actual(),
+                Node::Print( argument ) => self.evaluate_node( argument ).display(),
+                Node::PrintLn( argument ) => {
+                    self.evaluate_node( argument ).display();
+
+                    let newline = Node::Literal( Type::Char { value: '\n' as u8 } );
+                    self.evaluate_node( &newline ).display();
+                }
                 _ => continue,
             }
         }
@@ -1549,6 +1559,13 @@ r" mov rdi, EXIT_SUCCESS
         for node in &self.nodes {
             match node {
                 Node::Print( _ ) => self.compile_node( node, &mut user_program ),
+                Node::PrintLn( argument ) => {
+                    let print = Node::Print( argument.clone() );
+                    self.compile_node( &print, &mut user_program );
+
+                    let newline = Node::Print( Box::new( Node::Literal( Type::Char { value: '\n' as u8 } ) ) );
+                    self.compile_node( &newline, &mut user_program );
+                }
                 _ => continue,
             }
         }
@@ -1626,9 +1643,9 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().collect();
 
     // to quickly debug
-    args.push( "interpret".to_string() );
+    // args.push( "interpret".to_string() );
     // args.push( "build".to_string() );
-    // args.push( "run".to_string() );
+    args.push( "run".to_string() );
     args.push( "examples/main.blz".to_string() );
 
     if args.len() < 2 {
@@ -1715,7 +1732,7 @@ fn main() -> ExitCode {
 
     let ast: AST = match (&lexer).try_into() {
         Ok( ast ) => {
-            println!( "{:#?}", ast );
+            // println!( "{:#?}", ast );
             ast
         },
         Err( errors ) => {

@@ -1,5 +1,7 @@
-var nice = (1 + 4) * 12 + 3 ^ 2;
-nice = nice * 2;
+var accumulator = 0;
+let one = 1;
+accumulator = accumulator + one;
+accumulator = accumulator * 2;
+let result = accumulator * 4;
 
-print nice;
-print '\n';
+println result >= 7;
