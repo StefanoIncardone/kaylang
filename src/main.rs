@@ -100,6 +100,29 @@ impl Display for DefinitionKind {
 }
 
 
+#[derive( Debug, Clone, Copy )]
+enum BracketKind {
+    OpenRound,
+    CloseRound,
+    // OpenSquare,
+    // CloseSquare,
+    OpenCurly,
+    CloseCurly,
+
+}
+
+impl Display for BracketKind {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        return match self {
+            Self::OpenRound => write!( f, "(" ),
+            Self::CloseRound => write!( f, ")" ),
+            Self::OpenCurly => write!( f, "{{" ),
+            Self::CloseCurly => write!( f, "}}" ),
+        }
+    }
+}
+
+
 #[derive( Debug, Clone )]
 enum TokenKind {
     Unexpected{ text: String, err_msg: &'static str, help_msg: &'static str },
@@ -108,13 +131,7 @@ enum TokenKind {
     Comment( String ),
 
     // Symbols
-    OpenRoundBracket,
-    CloseRoundBracket,
-    // OpenSquareBracket,
-    // CloseSquareBracket,
-    // OpenCurlyBracket,
-    // CloseCurlyBracket,
-
+    Bracket( BracketKind ),
     Equals,
     // Colon,
     SemiColon,
@@ -124,6 +141,9 @@ enum TokenKind {
     Identifier( String ),
     Definition( DefinitionKind ),
 
+    // Operators
+    Op( OpKind ),
+
     // Keywords
     Print, // temporary way of printing values
     PrintLn, // temporary way of printing values followed by a newline
@@ -131,9 +151,6 @@ enum TokenKind {
     False,
     // Entry,
     // Return,
-
-    // Operators
-    Op( OpKind ),
 
     // Special
     Empty,
@@ -148,9 +165,7 @@ impl Display for TokenKind {
 
             Self::Comment( text ) => write!( f, "{}", text ),
 
-            Self::OpenRoundBracket => write!( f, "(" ),
-            Self::CloseRoundBracket => write!( f, ")" ),
-
+            Self::Bracket( bracket ) => write!( f, "{}", bracket ),
             Self::Equals => write!( f, "=" ),
             Self::SemiColon => write!( f, ";" ),
 
@@ -158,12 +173,12 @@ impl Display for TokenKind {
             Self::Identifier( name ) => write!( f, "{}", name ),
             Self::Definition( kind ) => write!( f, "{}", kind ),
 
+            Self::Op( op ) => write!( f, "{}", op ),
+
             Self::Print => write!( f, "print" ),
             Self::PrintLn => write!( f, "println" ),
             Self::True => write!( f, "true" ),
             Self::False => write!( f, "false" ),
-
-            Self::Op( op ) => write!( f, "{}", op ),
 
             Self::Empty | Self::SOF | Self::EOF => write!( f, "" ),
         }
@@ -223,30 +238,6 @@ struct Lexer {
     lines: Vec<Line>,
 }
 
-fn display_error( f: &mut std::fmt::Formatter<'_>, file_path: &str, line_text: &str, line_number: usize, token_col: usize, token_len: usize, err_msg: &str, help_msg: &str ) -> std::fmt::Result {
-    let gutter_padding_amount = line_number.ilog10() as usize + 1;
-    let gutter_padding = " ".repeat( gutter_padding_amount );
-    let pointers_padding = " ".repeat( token_col - 1 );
-    let pointers = "^".repeat( token_len );
-    let bar = "\x1b[94m|\x1b[0m";
-
-    let error_visualization = &format!(
-        " {} {}\
-        \n \x1b[94m{: >gutter_padding_amount$}\x1b[0m {} {}\
-        \n {} {} {}\x1b[91m{} {}\x1b[0m",
-        gutter_padding, bar,
-        line_number, bar, line_text,
-        gutter_padding, bar, pointers_padding, pointers, help_msg
-    );
-
-    return writeln!( f,
-        "\x1b[91;1mError\x1b[0m [L]: \x1b[1m{}\x1b[0m\
-        \n {} \x1b[91min\x1b[0m: {}:{}:{}\n{}\n",
-        err_msg,
-        gutter_padding, file_path, line_number, token_col, error_visualization
-    );
-}
-
 impl Display for Lexer {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         for line in &self.lines {
@@ -254,7 +245,8 @@ impl Display for Lexer {
 
             for token in &line.tokens {
                 if let TokenKind::Unexpected { err_msg, help_msg, .. } = &token.kind {
-                    display_error( f, &self.file_path, &line_text, line.number, token.col, token.len, err_msg, help_msg )?;
+                    let error = SyntaxError { pos: Position{ line, token }, msg: err_msg, help_msg };
+                    error.display( f, &self.file_path, &line_text )?;
                 }
             }
         }
@@ -314,12 +306,12 @@ impl TryFrom<(&str, File)> for Lexer {
                             col += 1;
                             continue;
                         },
-                        '(' => Token { col, len: 1, kind: TokenKind::OpenRoundBracket },
-                        ')' => Token { col, len: 1, kind: TokenKind::CloseRoundBracket },
+                        '(' => Token { col, len: 1, kind: TokenKind::Bracket( BracketKind::OpenRound ) },
+                        ')' => Token { col, len: 1, kind: TokenKind::Bracket( BracketKind::CloseRound ) },
                         // '[' => Token { kind: TokenKind::OpenSquareBracket, col },
                         // ']' => Token { kind: TokenKind::CloseSquareBracket, col },
-                        // '{' => Token { kind: TokenKind::OpenCurlyBracket, col },
-                        // '}' => Token { kind: TokenKind::CloseCurlyBracket, col },
+                        '{' => Token { col, len: 1, kind: TokenKind::Bracket( BracketKind::OpenCurly ) },
+                        '}' => Token { col, len: 1, kind: TokenKind::Bracket( BracketKind::CloseCurly ) },
                         '=' => match Self::peek_next( &mut src ) {
                             Ok( Some( '=' ) ) => {
                                 let _ = Self::next( &mut src );
@@ -608,6 +600,12 @@ impl Lexer {
 }
 
 
+#[derive( Debug, Clone, Copy )]
+struct Position<'lexer> {
+    line: &'lexer Line,
+    token: &'lexer Token,
+}
+
 // IDEA introduce the current movement direction, to allow for better chaining of methods (ie. non_eof, or_next/or_previous versions of methods)
 #[derive( Debug )]
 struct LexerIter<'lexer> {
@@ -616,35 +614,34 @@ struct LexerIter<'lexer> {
     token: usize,
 }
 
-type LexerIterItem<'lexer> = (&'lexer Line, &'lexer Token);
 
 // IDEA create methods for iterating over all tokens, even whitespace
 impl<'lexer> LexerIter<'lexer> {
-    fn current( &self ) -> Option<LexerIterItem<'lexer>> {
+    fn current( &self ) -> Option<Position<'lexer>> {
         let line = self.lexer.lines.get( self.line )?;
         let token = line.tokens.get( self.token )?;
 
-        return Some( (line, token) );
+        return Some( Position { line, token } );
     }
 
-    fn current_or_next( &mut self ) -> Option<LexerIterItem<'lexer>> {
-        let (line, token) = self.current()?;
-        return match token.kind {
+    fn current_or_next( &mut self ) -> Option<Position<'lexer>> {
+        let current = self.current()?;
+        return match current.token.kind {
             TokenKind::Comment( _ ) | TokenKind::Empty => self.next(),
-            _ => Some( (line, token) ),
+            _ => Some( current ),
         }
     }
 
-    fn current_or_previous( &mut self ) -> Option<LexerIterItem<'lexer>> {
-        let (line, token) = self.current()?;
-        return match token.kind {
+    fn current_or_previous( &mut self ) -> Option<Position<'lexer>> {
+        let current = self.current()?;
+        return match current.token.kind {
             TokenKind::Comment( _ ) | TokenKind::Empty => self.previous(),
-            _ => Some( (line, token) ),
+            _ => Some( current ),
         }
     }
 
 
-    fn next( &mut self ) -> Option<LexerIterItem<'lexer>> {
+    fn next( &mut self ) -> Option<Position<'lexer>> {
         let line = self.lexer.lines.get( self.line )?;
         let (line, token) = if self.token + 1 < line.tokens.len() {
             self.token += 1;
@@ -664,11 +661,11 @@ impl<'lexer> LexerIter<'lexer> {
 
         return match token.kind {
             TokenKind::Comment( _ ) | TokenKind::Empty => self.next(),
-            _ => Some( (line, token) ),
+            _ => Some( Position { line, token } ),
         }
     }
 
-    fn previous( &mut self ) -> Option<LexerIterItem<'lexer>> {
+    fn previous( &mut self ) -> Option<Position<'lexer>> {
         let line = self.lexer.lines.get( self.line )?;
         let (line, token) = if self.token > 0 {
             self.token -= 1;
@@ -688,56 +685,49 @@ impl<'lexer> LexerIter<'lexer> {
 
         return match token.kind {
             TokenKind::Comment( _ ) | TokenKind::Empty => self.previous(),
-            _ => Some( (line, token) ),
+            _ => Some( Position { line, token } ),
         }
     }
 
 
-    fn peek_next( &mut self ) -> Option<LexerIterItem<'lexer>> {
+    fn peek_next( &mut self ) -> Option<Position<'lexer>> {
         let (starting_line, starting_token) = (self.line, self.token);
-        let item = self.next();
+        let position = self.next();
         (self.line, self.token) = (starting_line, starting_token);
-        return item;
+        return position;
     }
 
-    fn peek_previous( &mut self ) -> Option<LexerIterItem<'lexer>> {
+    fn peek_previous( &mut self ) -> Option<Position<'lexer>> {
         let (starting_line, starting_token) = (self.line, self.token);
-        let item = self.previous();
+        let position = self.previous();
         (self.line, self.token) = (starting_line, starting_token);
-        return item;
+        return position;
     }
 }
 
 
 trait BoundedLexerItem<'lexer> {
-    fn bounded( &self, tokens: &mut LexerIter<'lexer>, err_msg: &'static str ) -> Result<Option<LexerIterItem<'lexer>>, SyntaxError<'lexer>>;
+    fn bounded( self, tokens: &mut LexerIter<'lexer>, err_msg: &'static str ) -> Result<Self, SyntaxError<'lexer>>
+    where Self: Sized;
 }
 
-impl<'lexer> BoundedLexerItem<'lexer> for Option<LexerIterItem<'lexer>> {
-    fn bounded( &self, tokens: &mut LexerIter<'lexer>, err_msg: &'static str ) -> Result<Option<LexerIterItem<'lexer>>, SyntaxError<'lexer>> {
+impl<'lexer> BoundedLexerItem<'lexer> for Option<Position<'lexer>> {
+    fn bounded( self, tokens: &mut LexerIter<'lexer>, err_msg: &'static str ) -> Result<Self, SyntaxError<'lexer>> {
         return match self {
-            Some( (line, token) ) => match token.kind {
-                TokenKind::EOF => {
+            Some( current ) => match current.token.kind {
+                TokenKind::EOF => Err( SyntaxError {
                     // we are always sure that there is at least the SOF token before the EOF token, so we can safely unwrap
-                    let (previous_line, previous_token) = tokens.peek_previous().unwrap();
-                    Err( SyntaxError {
-                        line: previous_line,
-                        token: previous_token,
-                        msg: err_msg,
-                        help_msg: "file ended after here instead"
-                    } )
-                },
-                TokenKind::SOF => {
+                    pos: tokens.peek_previous().unwrap(),
+                    msg: err_msg,
+                    help_msg: "file ended after here instead"
+                } ),
+                TokenKind::SOF => Err( SyntaxError {
                     // we are always sure that there is at least the EOF token after the SOF token, so we can safely unwrap
-                    let (next_line, next_token) = tokens.peek_next().unwrap();
-                    Err( SyntaxError {
-                        line: next_line,
-                        token: next_token,
-                        msg: err_msg,
-                        help_msg: "file ended after here instead"
-                    } )
-                },
-                _ => Ok( Some( (line, token) ) ),
+                    pos: tokens.peek_next().unwrap(),
+                    msg: err_msg,
+                    help_msg: "file ended after here instead"
+                } ),
+                _ => Ok( Some( current ) ),
             }
             None => Ok( None ),
         }
@@ -815,12 +805,38 @@ impl Display for Node {
 // TODO create standardized error class for both lexing and parsing, with error codes and corresponding error messages
 // TODO implement NOTE, HINT, HELP in error messages
 #[derive( Debug )]
-struct SyntaxError<'line> {
-    line: &'line Line,
-    token: &'line Token,
+struct SyntaxError<'lexer> {
+    pos: Position<'lexer>,
     msg: &'static str,
     help_msg: &'static str,
 }
+
+impl<'lexer> SyntaxError<'lexer> {
+    fn display( &self, f: &mut std::fmt::Formatter<'_>, file_path: &str, line_text: &str ) -> std::fmt::Result {
+        let gutter_padding_amount = self.pos.line.number.ilog10() as usize + 1;
+        let gutter_padding = " ".repeat( gutter_padding_amount );
+        let pointers_padding = " ".repeat( self.pos.token.col - 1 );
+        let pointers = "^".repeat( self.pos.token.len );
+        let bar = "\x1b[94m|\x1b[0m";
+
+        let self_visualization = &format!(
+            " {} {}\
+            \n \x1b[94m{: >gutter_padding_amount$}\x1b[0m {} {}\
+            \n {} {} {}\x1b[91m{} {}\x1b[0m",
+            gutter_padding, bar,
+            self.pos.line.number, bar, line_text,
+            gutter_padding, bar, pointers_padding, pointers, self.help_msg
+        );
+
+        return writeln!( f,
+            "\x1b[91;1mError\x1b[0m: \x1b[97;1m{}\x1b[0m\
+            \n {} \x1b[91min\x1b[0m: {}:{}:{}\n{}\n",
+            self.msg,
+            gutter_padding, file_path, self.pos.line.number, self.pos.token.col, self_visualization
+        );
+    }
+}
+
 
 #[derive( Debug )]
 struct SyntaxErrors<'program> {
@@ -831,8 +847,8 @@ struct SyntaxErrors<'program> {
 impl<'program> Display for SyntaxErrors<'program> {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         for error in &self.errors {
-            let line_text = format!( "{}", error.line );
-            display_error( f, &self.file_path, &line_text, error.line.number, error.token.col, error.token.len, error.msg, error.help_msg )?;
+            let line_text = format!( "{}", error.pos.line );
+            error.display( f, &self.file_path, &line_text )?;
         }
 
         return Ok( () );
@@ -846,7 +862,7 @@ impl<'program> Display for SyntaxErrors<'program> {
         // variables, functions, etc.
 #[derive( Debug )]
 struct AST<'lexer> {
-    tokens: LexerIter<'lexer>, // TODO possibly remove this field
+    tokens: LexerIter<'lexer>, // NOTE possibly remove this field
     nodes: Vec<Node>,
     definitions: Definitions,
 }
@@ -855,15 +871,20 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
     type Error = SyntaxErrors<'lexer>;
 
     fn try_from( lexer: &'lexer Lexer ) -> Result<Self, Self::Error> {
-        let mut ast = Self { tokens: lexer.iter(), nodes: Vec::new(), definitions: Vec::new() };
+        let mut ast = Self {
+            tokens: lexer.iter(),
+            nodes: Vec::new(),
+            definitions: Vec::new(),
+        };
+
         if lexer.lines.is_empty() {
             return Ok( ast );
         }
 
         let mut errors: Vec<SyntaxError> = Vec::new();
         ast.tokens.next(); // skipping the SOF token
-        while let Some( (line, token) ) = ast.tokens.current_or_next() {
-            let statement_result = match &token.kind {
+        while let Some( current ) = ast.tokens.current_or_next() {
+            let statement_result = match current.token.kind {
                 // NOTE definitions are planned to be reworked, so this is just temporary
                 TokenKind::Definition( _ ) => match ast.variable_definition() {
                     Ok( _ ) => continue, // skipping this node since it is already in the definitions
@@ -871,9 +892,10 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
                 },
                 TokenKind::Print | TokenKind::PrintLn => ast.print(),
                 TokenKind::True | TokenKind::False |
-                TokenKind::Literal( _ ) | TokenKind::OpenRoundBracket => ast.expression( IdentifierExpansion::Keep ),
+                TokenKind::Literal( _ ) |
+                TokenKind::Bracket( BracketKind::OpenRound ) => ast.expression( IdentifierExpansion::Keep ),
                 TokenKind::Identifier( _ ) => match ast.tokens.peek_next().bounded( &mut ast.tokens, "" ) {
-                    Ok( Some( (_, token) ) ) => match token.kind {
+                    Ok( Some( next ) ) => match next.token.kind {
                         TokenKind::Equals => match ast.variable_assignment() {
                             Ok( _ ) => continue,
                             Err( err ) => Err( err ),
@@ -883,20 +905,27 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
                     Ok( None ) => continue,
                     Err( _ ) => ast.expression( IdentifierExpansion::Keep ),
                 },
-                TokenKind::CloseRoundBracket => {
+                TokenKind::Bracket( BracketKind::CloseRound ) => {
                     ast.tokens.next();
                     Err( SyntaxError {
-                        line,
-                        token,
+                        pos: current,
                         msg: "invalid expression",
                         help_msg: "stray closed parenthesis"
                     } )
                 },
+                TokenKind::Bracket( BracketKind::OpenCurly ) => {
+                    // ast.
+                    ast.tokens.next();
+                    continue;
+                },
+                TokenKind::Bracket( BracketKind::CloseCurly ) => {
+                    ast.tokens.next();
+                    continue;
+                },
                 TokenKind::Op( _ ) => {
                     ast.tokens.next();
                     Err( SyntaxError {
-                        line,
-                        token,
+                        pos: current,
                         msg: "invalid expression",
                         help_msg: "stray binary operator"
                     } )
@@ -904,8 +933,7 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
                 TokenKind::Equals => {
                     ast.tokens.next();
                     Err( SyntaxError {
-                        line,
-                        token,
+                        pos: current,
                         msg: "invalid assignment",
                         help_msg: "stray assignment"
                     } )
@@ -934,14 +962,13 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
 
 impl<'lexer> AST<'lexer> {
     fn semicolon( &mut self ) -> Result<(), SyntaxError<'lexer>> {
-        let (_line, token) = self.tokens.current_or_next().bounded( &mut self.tokens, "expected semicolon" )?.unwrap();
-        let result = match token.kind {
+        let current = self.tokens.current_or_next().bounded( &mut self.tokens, "expected semicolon" )?.unwrap();
+        let result = match current.token.kind {
             TokenKind::SemiColon => Ok( () ),
             _ => {
-                let (previous_line, previous_token) = self.tokens.peek_previous().bounded( &mut self.tokens, "expected semicolon" )?.unwrap();
+                let previous = self.tokens.peek_previous().bounded( &mut self.tokens, "expected semicolon" )?.unwrap();
                 Err( SyntaxError {
-                    line: previous_line,
-                    token: previous_token,
+                    pos: previous,
                     msg: "invalid expression",
                     help_msg: "expected semicolon after this token"
                 } )
@@ -953,41 +980,39 @@ impl<'lexer> AST<'lexer> {
     }
 
     fn variable_definition( &mut self ) -> Result<(), SyntaxError<'lexer>> {
-        let (_definition_kind_line, definition_kind_token) = self.tokens.current().unwrap();
-        let kind = match &definition_kind_token.kind {
+        let definition_pos = self.tokens.current().unwrap();
+        let kind = match definition_pos.token.kind {
             TokenKind::Definition( kind ) => kind.clone(),
             _ => unreachable!(),
         };
 
-        let (identifier_line, identifier_token) = self.tokens.next().bounded( &mut self.tokens, "expected identifier" )?.unwrap();
-        let name = match &identifier_token.kind {
+        let name_pos = self.tokens.next().bounded( &mut self.tokens, "expected identifier" )?.unwrap();
+        let name = match &name_pos.token.kind {
             TokenKind::Identifier( name ) => Ok( name.clone() ),
             _ => Err( SyntaxError {
-                line: identifier_line,
-                token: identifier_token,
+                pos: name_pos,
                 msg: "invalid assignment",
                 help_msg: "expected variable name"
             } ),
         };
 
-        let (equals_line, equals_token) = self.tokens.next().bounded( &mut self.tokens, "expected equals" )?.unwrap();
-        let equals = match equals_token.kind {
+        let equals_pos = self.tokens.next().bounded( &mut self.tokens, "expected equals" )?.unwrap();
+        let equals = match equals_pos.token.kind {
             TokenKind::Equals => Ok( () ),
             _ => Err( SyntaxError {
-                line: identifier_line,
-                token: identifier_token,
+                pos: name_pos,
                 msg: "invalid assignment",
                 help_msg: "expected '=' after variable name"
             } ),
         };
 
-        let (_value_line, value_token) = self.tokens.next().bounded( &mut self.tokens, "expected expression" )?.unwrap();
-        let value = match value_token.kind {
-            TokenKind::True | TokenKind::False | TokenKind::Literal( _ ) |
-            TokenKind::Identifier( _ ) | TokenKind::OpenRoundBracket => self.expression( IdentifierExpansion::Keep ),
+        let value_pos = self.tokens.next().bounded( &mut self.tokens, "expected expression" )?.unwrap();
+        let value = match value_pos.token.kind {
+            TokenKind::True | TokenKind::False |
+            TokenKind::Literal( _ ) | TokenKind::Identifier( _ ) |
+            TokenKind::Bracket( BracketKind::OpenRound ) => self.expression( IdentifierExpansion::Keep ),
             _ => Err( SyntaxError {
-                line: equals_line,
-                token: equals_token,
+                pos: equals_pos,
                 msg: "invalid assignment",
                 help_msg: "expected expression after '='"
             } ),
@@ -1010,8 +1035,7 @@ impl<'lexer> AST<'lexer> {
                 // return Ok( Node::Definition( self.definitions.last().unwrap().clone() ) );
             },
             Some( _ ) => Err( SyntaxError {
-                line: identifier_line,
-                token: identifier_token,
+                pos: name_pos,
                 msg: "variable redefinition",
                 help_msg: "was previously defined"
             } ),
@@ -1019,28 +1043,26 @@ impl<'lexer> AST<'lexer> {
     }
 
     fn variable_assignment( &mut self ) -> Result<(), SyntaxError<'lexer>> {
-        let (variable_line, variable_token) = self.tokens.current().unwrap();
+        let name_pos = self.tokens.current().unwrap();
+        let equals_pos = self.tokens.next().unwrap();
 
-        let (equals_line, equals_token) = self.tokens.next().bounded( &mut self.tokens, "expected equals" )?.unwrap();
-
-        let (_value_line, value_token) = self.tokens.next().bounded( &mut self.tokens, "expected expression" )?.unwrap();
-        let value = match value_token.kind {
-            TokenKind::True | TokenKind::False | TokenKind::Literal( _ ) |
-            TokenKind::Identifier( _ ) | TokenKind::OpenRoundBracket => self.expression( IdentifierExpansion::Expand ),
+        let value_pos = self.tokens.next().bounded( &mut self.tokens, "expected expression" )?.unwrap();
+        let value = match value_pos.token.kind {
+            TokenKind::True | TokenKind::False |
+            TokenKind::Literal( _ ) | TokenKind::Identifier( _ ) |
+            TokenKind::Bracket( BracketKind::OpenRound ) => self.expression( IdentifierExpansion::Expand ),
             _ => Err( SyntaxError {
-                line: equals_line,
-                token: equals_token,
+                pos: equals_pos,
                 msg: "invalid assignment",
                 help_msg: "expected expression after '='"
             } ),
         };
 
-        let mut variable = match &variable_token.kind {
+        let variable = match &name_pos.token.kind {
             TokenKind::Identifier( name ) => match self.definitions.resolve_mut( &name ) {
                 Some( identifier ) => identifier,
                 None => return Err( SyntaxError {
-                    line: variable_line,
-                    token: variable_token,
+                    pos: name_pos,
                     msg: "variable redefinition",
                     help_msg: "was not previously defined"
                 } )
@@ -1049,31 +1071,28 @@ impl<'lexer> AST<'lexer> {
         };
 
         let assignment = match variable.kind {
-            DefinitionKind::Let | DefinitionKind::Const => Err( SyntaxError {
-                line: variable_line,
-                token: variable_token,
+            DefinitionKind::Let | DefinitionKind::Const => return Err( SyntaxError {
+                pos: name_pos,
                 msg: "invalid assignment",
                 help_msg: "was defined as immutable"
             } ),
-            DefinitionKind::Var => value,
+            DefinitionKind::Var => value?,
         };
-
-        let assignment = assignment?;
 
         variable.value = Box::new( assignment );
         return Ok( () );
     }
 
     fn print( &mut self ) -> Result<Node, SyntaxError<'lexer>> {
-        let (_print_line, print_token) = self.tokens.current().unwrap();
+        let print_pos = self.tokens.current().unwrap();
 
-        let (argument_line, argument_token) = self.tokens.next().bounded( &mut self.tokens, "expected print argument" )?.unwrap();
-        let argument = match &argument_token.kind {
-            TokenKind::True | TokenKind::False | TokenKind::Literal( _ ) |
-            TokenKind::Identifier( _ ) | TokenKind::OpenRoundBracket => self.expression( IdentifierExpansion::Keep ),
+        let argument_pos = self.tokens.next().bounded( &mut self.tokens, "expected print argument" )?.unwrap();
+        let argument = match &argument_pos.token.kind {
+            TokenKind::True | TokenKind::False |
+            TokenKind::Literal( _ ) | TokenKind::Identifier( _ ) |
+            TokenKind::Bracket( BracketKind::OpenRound ) => self.expression( IdentifierExpansion::Keep ),
             _ => Err( SyntaxError {
-                line: argument_line,
-                token: argument_token,
+                pos: argument_pos,
                 msg: "invalid print argument",
                 help_msg: "expected an expression"
             } )
@@ -1082,7 +1101,7 @@ impl<'lexer> AST<'lexer> {
         let argument = argument?;
         self.semicolon()?;
 
-        let print = match print_token.kind {
+        let print = match print_pos.token.kind {
             TokenKind::Print => Node::Print( Box::new( argument ) ),
             TokenKind::PrintLn => Node::PrintLn( Box::new( argument ) ),
             _ => unreachable!(),
@@ -1092,41 +1111,42 @@ impl<'lexer> AST<'lexer> {
     }
 
     fn factor( &mut self, expansion: IdentifierExpansion ) -> Result<Node, SyntaxError<'lexer>> {
-        let (line, token) = self.tokens.current_or_next().bounded( &mut self.tokens, "expected expression" )?.unwrap();
-        let result = match &token.kind {
+        let pos = self.tokens.current_or_next().bounded( &mut self.tokens, "expected expression" )?.unwrap();
+        let result = match &pos.token.kind {
             // FIX forbid implicit conversions
-            TokenKind::Literal( literal ) => Ok( Node::Literal( literal.clone() ) ),
             TokenKind::True => Ok( Node::Literal( Type::Bool { value: true } ) ),
             TokenKind::False => Ok( Node::Literal( Type::Bool { value: false } ) ),
+            TokenKind::Literal( literal ) => Ok( Node::Literal( literal.clone() ) ),
             TokenKind::Identifier( name ) => match self.definitions.resolve( name ) {
                 Some( definition ) => match expansion {
                     IdentifierExpansion::Expand => Ok( *definition.value.clone() ),
                     IdentifierExpansion::Keep => Ok( Node::Identifier( name.clone() ) ),
                 },
                 None => Err( SyntaxError {
-                    line,
-                    token,
+                    pos,
                     msg: "variable not defined",
                     help_msg: "was not previously defined"
                 } )
             },
-            TokenKind::OpenRoundBracket => {
-                let (empty_expression_line, empty_expression_token) = self.tokens.next().bounded( &mut self.tokens, "expected expression" )?.unwrap();
-                match empty_expression_token.kind {
-                    TokenKind::CloseRoundBracket => Err( SyntaxError {
-                        line: empty_expression_line,
-                        token: empty_expression_token,
-                        msg: "invalid expression",
-                        help_msg: "empty expressions are not allowed"
-                    } ),
+            TokenKind::Bracket( BracketKind::OpenRound ) => {
+                let expression_start_pos = self.tokens.next().bounded( &mut self.tokens, "expected expression" )?.unwrap();
+                match expression_start_pos.token.kind {
+                    TokenKind::Bracket( BracketKind::CloseRound ) => {
+                        Err( SyntaxError {
+                            pos: expression_start_pos,
+                            msg: "invalid expression",
+                            help_msg: "empty expressions are not allowed"
+                        } )
+                    },
                     _ => {
                         let expression = self.expression( expansion )?;
-                        let (_close_bracket_line, close_bracket_token) = self.tokens.current_or_next().bounded( &mut self.tokens, "expected closed parenthesis" )?.unwrap();
-                        match close_bracket_token.kind {
-                            TokenKind::CloseRoundBracket => Ok( expression ),
+                        let close_bracket_pos = self.tokens.current_or_next().bounded( &mut self.tokens, "expected closed parenthesis" )?.unwrap();
+                        match close_bracket_pos.token.kind {
+                            TokenKind::Bracket( BracketKind::CloseRound ) => {
+                                Ok( expression )
+                            },
                             _ => Err( SyntaxError {
-                                line,
-                                token,
+                                pos,
                                 msg: "invalid expression",
                                 help_msg: "unclosed parenthesis"
                             } )
@@ -1135,8 +1155,7 @@ impl<'lexer> AST<'lexer> {
                 }
             },
             _ => Err( SyntaxError {
-                line,
-                token,
+                pos,
                 msg: "invalid expression",
                 help_msg: "expected number literal"
             } ),
@@ -1149,22 +1168,18 @@ impl<'lexer> AST<'lexer> {
     // FIX dealing with missing semicolons or missing operators
         // TODO move it outside the expression
     fn operator( &mut self, ops: &[OpKind] ) -> Result<Option<OpKind>, SyntaxError<'lexer>> {
-        let (_line, token) = self.tokens.current_or_next().bounded( &mut self.tokens, "expected expression or semicolon" )?.unwrap();
-        let result = match &token.kind {
-            TokenKind::Op( op ) => match ops.contains( op ) {
+        let current_pos = self.tokens.current_or_next().bounded( &mut self.tokens, "expected expression or semicolon" )?.unwrap();
+        let result = match current_pos.token.kind {
+            TokenKind::Op( op ) => match ops.contains( &op ) {
                 true => Ok( Some( op.clone() ) ),
                 false => Ok( None ),
             },
-            TokenKind::CloseRoundBracket | TokenKind::SemiColon => Ok( None ),
-             _ => {
-                let (previous_line, previous_token) = self.tokens.peek_previous().bounded( &mut self.tokens, "expected expression" )?.unwrap();
-                Err( SyntaxError {
-                    line: previous_line,
-                    token: previous_token,
-                    msg: "invalid expression or missing semicolon",
-                    help_msg: "expected an operator after this token to complete the expression, or a ';' to end the statement"
-                } )
-            },
+            TokenKind::Bracket( BracketKind::CloseRound ) | TokenKind::SemiColon => Ok( None ),
+             _ => Err( SyntaxError {
+                pos: self.tokens.peek_previous().bounded( &mut self.tokens, "expected expression" )?.unwrap(),
+                msg: "invalid expression or missing semicolon",
+                help_msg: "expected an operator after this token to complete the expression, or a ';' to end the statement"
+            } ),
         };
 
         if let Ok( Some( _ ) ) = result {
@@ -1252,7 +1267,7 @@ impl<'lexer> AST<'lexer> {
                 }
             },
             Node::Identifier( name ) => self.evaluate_node( &*self.definitions.resolve( name ).unwrap().value ),
-            Node::Print( _ ) |Node::PrintLn( _ ) => unreachable!(),
+            Node::Print( _ ) | Node::PrintLn( _ ) => unreachable!(),
         }
     }
 
@@ -1643,9 +1658,9 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().collect();
 
     // to quickly debug
-    // args.push( "interpret".to_string() );
+    args.push( "interpret".to_string() );
     // args.push( "build".to_string() );
-    args.push( "run".to_string() );
+    // args.push( "run".to_string() );
     args.push( "examples/main.blz".to_string() );
 
     if args.len() < 2 {
