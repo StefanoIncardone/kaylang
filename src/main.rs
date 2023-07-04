@@ -197,38 +197,39 @@ struct Token {
 #[derive( Debug )]
 struct Line {
     number: usize,
+    text: String,
     tokens: Vec<Token>,
 }
 
-impl Display for Line {
-    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        if self.tokens.is_empty() {
-            return write!( f, "" );
-        }
+// impl Display for Line {
+//     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+//         if self.tokens.is_empty() {
+//             return write!( f, "" );
+//         }
 
-        // leading whitespaces
-        write!( f, "{}", " ".repeat( self.tokens[ 0 ].col - 1 ) )?;
+//         // leading whitespaces
+//         write!( f, "{}", " ".repeat( self.tokens[ 0 ].col - 1 ) )?;
 
-        let mut tokens = self.tokens.iter().peekable();
-        if self.number == 1 {
-            tokens.next(); // skipping the SOF
-        }
+//         let mut tokens = self.tokens.iter().peekable();
+//         if self.number == 1 {
+//             tokens.next(); // skipping the SOF
+//         }
 
-        while let Some( token ) = tokens.next() {
-            let spaces_before_next_token = match token.kind {
-                TokenKind::Comment( _ ) | TokenKind::EOF => 0,
-                _ => match tokens.peek() {
-                    Some( next_token ) => next_token.col - (token.col + token.len),
-                    None => 0,
-                }
-            };
+//         while let Some( token ) = tokens.next() {
+//             let spaces_before_next_token = match token.kind {
+//                 TokenKind::Comment( _ ) | TokenKind::EOF => 0,
+//                 _ => match tokens.peek() {
+//                     Some( next_token ) => next_token.col - (token.col + token.len),
+//                     None => 0,
+//                 }
+//             };
 
-            write!( f, "{}{}", token.kind, " ".repeat( spaces_before_next_token ) )?;
-        }
+//             write!( f, "{}{}", token.kind, " ".repeat( spaces_before_next_token ) )?;
+//         }
 
-        return Ok( () );
-    }
-}
+//         return Ok( () );
+//     }
+// }
 
 
 // IDEA consider removing Line struct and have each token remember its line, or dont store the line number and calculate it somehow
@@ -241,12 +242,10 @@ struct Lexer {
 impl Display for Lexer {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         for line in &self.lines {
-            let line_text = format!( "{}", line );
-
             for token in &line.tokens {
                 if let TokenKind::Unexpected { err_msg, help_msg, .. } = &token.kind {
                     let error = SyntaxError { pos: Position{ line, token }, msg: err_msg, help_msg };
-                    error.display( f, &self.file_path, &line_text )?;
+                    error.display( f, &self.file_path, &line.text )?;
                 }
             }
         }
@@ -278,7 +277,7 @@ impl TryFrom<(&str, File)> for Lexer {
                 tokens.push( Token { col: 1, len: 1, kind: TokenKind::Empty  } );
                 tokens.push( Token { col: 1, len: 1, kind: TokenKind::EOF } );
 
-                lines.push( Line { number, tokens } );
+                lines.push( Line { number, text: src_line.clone(), tokens } );
                 break;
             }
 
@@ -501,11 +500,15 @@ impl TryFrom<(&str, File)> for Lexer {
             }
 
             let file_ended_at_line_end = !src_line.ends_with( "\n" );
-            if file_ended_at_line_end {
+            let text = if file_ended_at_line_end {
                 tokens.push( Token { col, len: 1, kind: TokenKind::EOF } );
+                src_line.clone()
             }
+            else {
+                src_line.trim_end().to_string()
+            };
 
-            let line = Line { number, tokens: tokens.clone() };
+            let line = Line { number, text, tokens: tokens.clone() };
             if line_contains_errors {
                 errors.push( line );
             }
