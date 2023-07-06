@@ -193,44 +193,37 @@ struct Token {
     kind: TokenKind,
 }
 
-
-#[derive( Debug )]
+#[derive( Debug, Clone )]
 struct Line {
     number: usize,
-    text: String,
     tokens: Vec<Token>,
 }
 
-// impl Display for Line {
-//     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-//         if self.tokens.is_empty() {
-//             return write!( f, "" );
-//         }
+impl Display for Line {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        let mut tokens = self.tokens.iter().peekable();
+        let leading_whitespace = match self.tokens[ 0 ].kind {
+            TokenKind::SOF => {
+                tokens.next(); // skipping the SOF
+                self.tokens[ 1 ].col - 1
+            },
+            _ => self.tokens[ 0 ].col - 1
+        };
 
-//         // leading whitespaces
-//         write!( f, "{}", " ".repeat( self.tokens[ 0 ].col - 1 ) )?;
+        write!( f, "{:leading_whitespace$}", "" )?;
 
-//         let mut tokens = self.tokens.iter().peekable();
-//         if self.number == 1 {
-//             tokens.next(); // skipping the SOF
-//         }
+        while let Some( token ) = tokens.next() {
+            let spaces_before_next_token = match tokens.peek() {
+                Some( next_token ) => next_token.col - (token.col + token.len),
+                None => 0,
+            };
 
-//         while let Some( token ) = tokens.next() {
-//             let spaces_before_next_token = match token.kind {
-//                 TokenKind::Comment( _ ) | TokenKind::EOF => 0,
-//                 _ => match tokens.peek() {
-//                     Some( next_token ) => next_token.col - (token.col + token.len),
-//                     None => 0,
-//                 }
-//             };
+            write!( f, "{}{:spaces_before_next_token$}", token.kind, "" )?;
+        }
 
-//             write!( f, "{}{}", token.kind, " ".repeat( spaces_before_next_token ) )?;
-//         }
-
-//         return Ok( () );
-//     }
-// }
-
+        return Ok( () );
+    }
+}
 
 // IDEA consider removing Line struct and have each token remember its line, or dont store the line number and calculate it somehow
 #[derive( Debug )]
@@ -260,44 +253,28 @@ impl TryFrom<(&str, File)> for Lexer {
     // IDEA make the input character stream generic, eg: to be able to compile from strings instead of just files
     // TODO make an character iterator similar to LexerIter
     fn try_from( src: (&str, File) ) -> Result<Self, Self::Error> {
-        let (file_path, source_file) = (src.0, src.1);
+        let (file_path, src_file) = (src.0, src.1);
         let mut errors: Vec<Line> = Vec::new();
         let mut lines: Vec<Line> = Vec::new();
-        let mut number: usize = 1;
+        let mut line = Line { number: 1, tokens: vec![ Token { col: 1, len: 1, kind: TokenKind::SOF } ] };
 
-        let mut src_lines = BufReader::new( source_file );
-        let mut src_line = String::new();
-
-        let mut tokens: Vec<Token> = vec![ Token { col: 1, len: 1, kind: TokenKind::SOF } ];
+        let mut src_lines = BufReader::new( src_file );
+        let mut src_line_text = String::new();
         let mut token_text = String::new();
 
-        while let Ok( chars_read ) = src_lines.read_line( &mut src_line ) {
-            // reached EOF on an empty line
-            if chars_read == 0 {
-                tokens.push( Token { col: 1, len: 1, kind: TokenKind::Empty  } );
-                tokens.push( Token { col: 1, len: 1, kind: TokenKind::EOF } );
-
-                lines.push( Line { number, text: src_line.clone(), tokens } );
-                break;
-            }
+        while let Ok( chars_read ) = src_lines.read_line( &mut src_line_text ) {
+            src_line_text = src_line_text.trim_end().to_string();
+            let trimmed_line_len = src_line_text.len();
 
             let mut line_contains_errors = false;
             let mut col = 1;
 
-            let mut src = src_line.chars().peekable();
+            let mut src = src_line_text.chars().peekable();
             // IDEA try extracting this to a separate function
             loop {
-                let token: Token = match Self::next( &mut src ) {
+                let (len, kind): (usize, TokenKind) = match Self::next( &mut src ) {
                     Ok( None ) => break,
-                    Err( err ) => match &err {
-                        TokenKind::Unexpected { text, err_msg: _, help_msg: _ } => {
-                            let len = text.len();
-                            let token = Token { col, len, kind: err };
-                            col += len - 1;
-                            token
-                        },
-                        _ => unreachable!(),
-                    },
+                    Err( err ) => (token_text.len(), err.clone()),
                     Ok( Some( ch ) ) => match ch {
                         // TODO consume until not whitespace
                         // ignore whitespace
@@ -305,45 +282,36 @@ impl TryFrom<(&str, File)> for Lexer {
                             col += 1;
                             continue;
                         },
-                        '(' => Token { col, len: 1, kind: TokenKind::Bracket( BracketKind::OpenRound ) },
-                        ')' => Token { col, len: 1, kind: TokenKind::Bracket( BracketKind::CloseRound ) },
-                        // '[' => Token { kind: TokenKind::OpenSquareBracket, col },
-                        // ']' => Token { kind: TokenKind::CloseSquareBracket, col },
-                        '{' => Token { col, len: 1, kind: TokenKind::Bracket( BracketKind::OpenCurly ) },
-                        '}' => Token { col, len: 1, kind: TokenKind::Bracket( BracketKind::CloseCurly ) },
+                        '(' => (1, TokenKind::Bracket( BracketKind::OpenRound )),
+                        ')' => (1, TokenKind::Bracket( BracketKind::CloseRound )),
+                        '{' => (1, TokenKind::Bracket( BracketKind::OpenCurly )),
+                        '}' => (1, TokenKind::Bracket( BracketKind::CloseCurly )),
                         '=' => match Self::peek_next( &mut src ) {
                             Ok( Some( '=' ) ) => {
                                 let _ = Self::next( &mut src );
-
-                                let token = Token { col, len: 2, kind: TokenKind::Op( OpKind::Equals ) };
-                                col += 1;
-                                token
+                                (2, TokenKind::Op( OpKind::Equals ))
                             },
-                            _ => Token { col, len: 1, kind: TokenKind::Equals },
+                            _ => (1, TokenKind::Equals),
                         },
                         '!' => match Self::peek_next( &mut src ) {
                             Ok( Some( '=' ) ) => {
                                 let _ = Self::next( &mut src );
 
-                                let token = Token { col, len: 2, kind: TokenKind::Op( OpKind::NotEquals ) };
-                                col += 1;
-                                token
+                                (2, TokenKind::Op( OpKind::NotEquals ) )
                             },
-                            _ => Token{ col, len: 1, kind: TokenKind::Unexpected {
+                            _ => (1, TokenKind::Unexpected {
                                 text: ch.to_string(),
                                 err_msg: "unexpected character",
                                 help_msg: "unrecognized"
-                            } },
+                            }),
                         },
                         '>' => match Self::peek_next( &mut src ) {
                             Ok( Some( '=' ) ) => {
                                 let _ = Self::next( &mut src );
 
-                                let token = Token { col, len: 2, kind: TokenKind::Op( OpKind::GreaterOrEquals ) };
-                                col += 1;
-                                token
+                                (2, TokenKind::Op( OpKind::GreaterOrEquals ) )
                             },
-                            _ => Token { col, len: 1, kind: TokenKind::Op( OpKind::Greater ) },
+                            _ => (1, TokenKind::Op( OpKind::Greater )),
                         },
                         '<' => match Self::peek_next( &mut src ) {
                             Ok( Some( '=' ) ) => {
@@ -353,26 +321,21 @@ impl TryFrom<(&str, File)> for Lexer {
                                     Ok( Some( '>' ) ) => {
                                         let _ = Self::next( &mut src );
 
-                                        let token = Token { col, len: 3, kind: TokenKind::Op( OpKind::Compare ) };
-                                        col += 2;
-                                        token
+                                        (3, TokenKind::Op( OpKind::Compare ) )
                                     },
                                     _ => {
-                                        let token = Token { col, len: 2, kind: TokenKind::Op( OpKind::LessOrEquals ) };
-                                        col += 1;
-                                        token
+                                        (2, TokenKind::Op( OpKind::LessOrEquals ) )
                                     }
                                 }
                             },
-                            _ => Token { col, len: 1, kind: TokenKind::Op( OpKind::Less ) },
+                            _ => (1, TokenKind::Op( OpKind::Less )),
                         },
-                        '^' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Pow ) },
-                        '*' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Times ) },
-                        '/' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Divide ) },
-                        '+' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Plus ) },
-                        '-' => Token { col, len: 1, kind: TokenKind::Op( OpKind::Minus ) },
-                        // ':' => Token { kind: TokenKind::Colon, col },
-                        ';' => Token { col, len: 1, kind: TokenKind::SemiColon },
+                        '^' => (1, TokenKind::Op( OpKind::Pow )),
+                        '*' => (1, TokenKind::Op( OpKind::Times )),
+                        '/' => (1, TokenKind::Op( OpKind::Divide )),
+                        '+' => (1, TokenKind::Op( OpKind::Plus )),
+                        '-' => (1, TokenKind::Op( OpKind::Minus )),
+                        ';' => (1, TokenKind::SemiColon),
                         '\'' => {
                             token_text.clear();
                             token_text.push( ch );
@@ -397,10 +360,7 @@ impl TryFrom<(&str, File)> for Lexer {
                                 Err( err ) => err,
                             };
 
-                            let len = token_text.len();
-                            let token = Token { col, len, kind };
-                            col += len - 1;
-                            token
+                            (token_text.len(), kind)
                         },
                         '#' => {
                             token_text.clear();
@@ -411,10 +371,7 @@ impl TryFrom<(&str, File)> for Lexer {
                                 token_text.push( next );
                             }
 
-                            let len = token_text.len();
-                            let token = Token { col, len, kind: TokenKind::Comment( token_text.clone() ) };
-                            col += len - 1;
-                            token
+                            (token_text.len(), TokenKind::Comment( token_text.clone() ))
                         },
                         '0'..='9' => { // TODO handle negative numbers
                             token_text.clear();
@@ -431,7 +388,7 @@ impl TryFrom<(&str, File)> for Lexer {
 
                             let kind = if is_digit {
                                 match token_text.parse() { // TODO create own number parsing function
-                                    Ok( value ) => TokenKind::Literal( Type::I64{ value } ),
+                                    Ok( value ) => TokenKind::Literal( Type::I64 { value } ),
                                     Err( _ ) => TokenKind::Unexpected {
                                         text: token_text.clone(),
                                         err_msg: "expected number literal",
@@ -440,17 +397,14 @@ impl TryFrom<(&str, File)> for Lexer {
                                 }
                             }
                             else {
-                                TokenKind::Unexpected{
+                                TokenKind::Unexpected {
                                     text: token_text.clone(),
                                     err_msg: "expected number literal",
                                     help_msg: "not a number literal"
                                 }
                             };
 
-                            let len = token_text.len();
-                            let token = Token { col, len, kind };
-                            col += len - 1;
-                            token
+                            (token_text.len(), kind)
                         },
                         'a'..='z' | 'A'..='Z' | '_'  => {
                             token_text.clear();
@@ -474,55 +428,47 @@ impl TryFrom<(&str, File)> for Lexer {
                                 _ => TokenKind::Identifier( token_text.clone() )
                             };
 
-                            let len = token_text.len();
-                            let token = Token { col, len, kind };
-                            col += len - 1;
-                            token
+                            (token_text.len(), kind)
                         },
-                        _ => Token{ col, len: 1, kind: TokenKind::Unexpected {
+                        _ => (1, TokenKind::Unexpected {
                             text: ch.to_string(),
                             err_msg: "unexpected character",
                             help_msg: "unrecognized"
-                        } }
+                        })
                     },
                 };
 
-                if let TokenKind::Unexpected { .. } = token.kind {
+                if let TokenKind::Unexpected { .. } = kind {
                     line_contains_errors = true;
                 }
 
-                tokens.push( token );
-                col += 1;
+                line.tokens.push( Token { col, len, kind } );
+                col += len;
             }
 
-            if tokens.is_empty() {
-                tokens.push( Token { col: 1, len: 1, kind: TokenKind::Empty  } );
+            if trimmed_line_len == 0 {
+                line.tokens.push( Token { col, len: 1, kind: TokenKind::Empty } );
             }
 
-            let file_ended_at_line_end = !src_line.ends_with( "\n" );
-            let text = if file_ended_at_line_end {
-                tokens.push( Token { col, len: 1, kind: TokenKind::EOF } );
-                src_line.clone()
+            let reached_eof = trimmed_line_len == chars_read;
+            if reached_eof {
+                line.tokens.push( Token { col, len: 1, kind: TokenKind::EOF } );
             }
-            else {
-                src_line.trim_end().to_string()
-            };
 
-            let line = Line { number, text, tokens: tokens.clone() };
             if line_contains_errors {
-                errors.push( line );
+                errors.push( line.clone() );
             }
             else {
-                lines.push( line );
+                lines.push( line.clone() );
             }
 
-            if file_ended_at_line_end {
+            if reached_eof {
                 break;
             }
 
-            src_line.clear();
-            tokens.clear();
-            number += 1;
+            src_line_text.clear();
+            line.tokens.clear();
+            line.number = lines.len() + 1;
         }
 
         return if errors.is_empty() {
@@ -609,7 +555,6 @@ struct Position<'lexer> {
     token: &'lexer Token,
 }
 
-// IDEA introduce the current movement direction, to allow for better chaining of methods (ie. non_eof, or_next/or_previous versions of methods)
 #[derive( Debug )]
 struct LexerIter<'lexer> {
     lexer: &'lexer Lexer,
@@ -617,8 +562,6 @@ struct LexerIter<'lexer> {
     token: usize,
 }
 
-
-// IDEA create methods for iterating over all tokens, even whitespace
 impl<'lexer> LexerIter<'lexer> {
     fn current( &self ) -> Option<Position<'lexer>> {
         let line = self.lexer.lines.get( self.line )?;
@@ -626,23 +569,6 @@ impl<'lexer> LexerIter<'lexer> {
 
         return Some( Position { line, token } );
     }
-
-    fn current_or_next( &mut self ) -> Option<Position<'lexer>> {
-        let current = self.current()?;
-        return match current.token.kind {
-            TokenKind::Comment( _ ) | TokenKind::Empty => self.next(),
-            _ => Some( current ),
-        }
-    }
-
-    fn current_or_previous( &mut self ) -> Option<Position<'lexer>> {
-        let current = self.current()?;
-        return match current.token.kind {
-            TokenKind::Comment( _ ) | TokenKind::Empty => self.previous(),
-            _ => Some( current ),
-        }
-    }
-
 
     fn next( &mut self ) -> Option<Position<'lexer>> {
         let line = self.lexer.lines.get( self.line )?;
@@ -662,10 +588,7 @@ impl<'lexer> LexerIter<'lexer> {
             (line, token)
         };
 
-        return match token.kind {
-            TokenKind::Comment( _ ) | TokenKind::Empty => self.next(),
-            _ => Some( Position { line, token } ),
-        }
+        return Some( Position { line, token } ).or_next( self );
     }
 
     fn previous( &mut self ) -> Option<Position<'lexer>> {
@@ -686,10 +609,7 @@ impl<'lexer> LexerIter<'lexer> {
             (line, token)
         };
 
-        return match token.kind {
-            TokenKind::Comment( _ ) | TokenKind::Empty => self.previous(),
-            _ => Some( Position { line, token } ),
-        }
+        return Some( Position { line, token } ).or_previous( self );
     }
 
 
@@ -708,13 +628,18 @@ impl<'lexer> LexerIter<'lexer> {
     }
 }
 
-
-trait BoundedLexerItem<'lexer> {
+trait BoundedPosition<'lexer> {
     fn bounded( self, tokens: &mut LexerIter<'lexer>, err_msg: &'static str ) -> Result<Self, SyntaxError<'lexer>>
+    where Self: Sized;
+
+    fn or_next( self, tokens: &mut LexerIter<'lexer> ) -> Self
+    where Self: Sized;
+
+    fn or_previous( self, tokens: &mut LexerIter<'lexer> ) -> Self
     where Self: Sized;
 }
 
-impl<'lexer> BoundedLexerItem<'lexer> for Option<Position<'lexer>> {
+impl<'lexer> BoundedPosition<'lexer> for Option<Position<'lexer>> {
     fn bounded( self, tokens: &mut LexerIter<'lexer>, err_msg: &'static str ) -> Result<Self, SyntaxError<'lexer>> {
         return match self {
             Some( current ) => match current.token.kind {
@@ -735,50 +660,20 @@ impl<'lexer> BoundedLexerItem<'lexer> for Option<Position<'lexer>> {
             None => Ok( None ),
         }
     }
-}
 
-
-#[derive( Debug, Clone )]
-struct Definition {
-    kind: DefinitionKind,
-    name: String,
-    value: Box<Node>,
-}
-
-type Definitions = Vec<Definition>;
-
-trait Resolve {
-    fn resolve<'ast>( &'ast self, name: &str ) -> Option<&'ast Definition>;
-    fn resolve_mut<'ast>( &'ast mut self, name: &str ) -> Option<&'ast mut Definition>;
-}
-
-impl Resolve for Definitions {
-    fn resolve<'ast>( &'ast self, name: &str ) -> Option<&'ast Definition> {
-        for definition in self {
-            if definition.name == name {
-                return Some( definition );
-            }
+    fn or_next( self, tokens: &mut LexerIter<'lexer> ) -> Self {
+        return match self?.token.kind {
+            TokenKind::Comment( _ ) | TokenKind::Empty => tokens.next(),
+            _ => self,
         }
-
-        return None;
     }
 
-    fn resolve_mut<'ast>( &'ast mut self, name: &str ) -> Option<&'ast mut Definition> {
-        for definition in self {
-            if definition.name == name {
-                return Some( definition );
-            }
+    fn or_previous( self, tokens: &mut LexerIter<'lexer> ) -> Self {
+        return match self?.token.kind {
+            TokenKind::Comment( _ ) | TokenKind::Empty => tokens.previous(),
+            _ => self,
         }
-
-        return None;
     }
-}
-
-
-#[derive( Debug, Clone, Copy )]
-enum IdentifierExpansion {
-    Expand,
-    Keep,
 }
 
 
@@ -821,7 +716,6 @@ impl<'lexer> SyntaxError<'lexer> {
         let location_padding = visualization_padding - 1;
 
         let bar = format!( "\x1b[94m{:>visualization_padding$}\x1b[0m", "|" );
-
         line_number_and_bar = format!( "\x1b[94m{:>visualization_padding$}\x1b[0m", line_number_and_bar );
 
         let pointers_col = self.pos.token.col - 1;
@@ -832,16 +726,15 @@ impl<'lexer> SyntaxError<'lexer> {
             \n\x1b[91m{:>location_padding$}\x1b[0m: {}:{}:{}\
             \n{}\
             \n{} {}\
-            \n{} {:>pointers_col$}\x1b[91m{:^>pointers_len$} {}\x1b[0m\n\n",
+            \n{} {:pointers_col$}\x1b[91m{:^>pointers_len$} {}\x1b[0m\n\n",
             "Error", self.err_msg,
             "in", file_path, self.pos.line.number, self.pos.token.col,
             bar,
-            line_number_and_bar, self.pos.line.text,
+            line_number_and_bar, self.pos.line,
             bar, "", "", self.help_msg
         );
     }
 }
-
 
 #[derive( Debug )]
 struct SyntaxErrors<'program> {
@@ -860,6 +753,19 @@ impl<'program> Display for SyntaxErrors<'program> {
 }
 
 
+#[derive( Debug, Clone, Copy )]
+enum IdentifierExpansion {
+    Expand,
+    Keep,
+}
+
+#[derive( Debug, Clone )]
+struct Definition {
+    kind: DefinitionKind,
+    name: String,
+    value: Box<Node>,
+}
+
 // TODO introduce the notion of context:
     // parenthesis stack
     // blocks and scopes
@@ -868,49 +774,46 @@ impl<'program> Display for SyntaxErrors<'program> {
 struct AST<'lexer> {
     tokens: LexerIter<'lexer>, // NOTE possibly remove this field
     nodes: Vec<Node>,
-    definitions: Definitions,
+    definitions: Vec<Definition>,
 }
 
 impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
     type Error = SyntaxErrors<'lexer>;
 
     fn try_from( lexer: &'lexer Lexer ) -> Result<Self, Self::Error> {
-        let mut ast = Self {
+        let mut this = Self {
             tokens: lexer.iter(),
             nodes: Vec::new(),
             definitions: Vec::new(),
         };
 
-        if lexer.lines.is_empty() {
-            return Ok( ast );
-        }
-
         let mut errors: Vec<SyntaxError> = Vec::new();
-        ast.tokens.next(); // skipping the SOF token
-        while let Some( current ) = ast.tokens.current_or_next() {
+        this.tokens.next(); // skipping the SOF token
+
+        while let Some( current ) = this.tokens.current().or_next( &mut this.tokens ) {
             let statement_result = match current.token.kind {
                 // NOTE definitions are planned to be reworked, so this is just temporary
-                TokenKind::Definition( _ ) => match ast.variable_definition() {
+                TokenKind::Definition( _ ) => match this.variable_definition() {
                     Ok( _ ) => continue, // skipping this node since it is already in the definitions
                     Err( err ) => Err( err ),
                 },
-                TokenKind::Print | TokenKind::PrintLn => ast.print(),
+                TokenKind::Print | TokenKind::PrintLn => this.print(),
                 TokenKind::True | TokenKind::False |
                 TokenKind::Literal( _ ) |
-                TokenKind::Bracket( BracketKind::OpenRound ) => ast.expression( IdentifierExpansion::Keep ),
-                TokenKind::Identifier( _ ) => match ast.tokens.peek_next().bounded( &mut ast.tokens, "" ) {
+                TokenKind::Bracket( BracketKind::OpenRound ) => this.expression( IdentifierExpansion::Keep ),
+                TokenKind::Identifier( _ ) => match this.tokens.peek_next().bounded( &mut this.tokens, "" ) {
                     Ok( Some( next ) ) => match next.token.kind {
-                        TokenKind::Equals => match ast.variable_assignment() {
+                        TokenKind::Equals => match this.variable_assignment() {
                             Ok( _ ) => continue,
                             Err( err ) => Err( err ),
                         },
-                        _ => ast.expression( IdentifierExpansion::Keep ),
+                        _ => this.expression( IdentifierExpansion::Keep ),
                     },
                     Ok( None ) => continue,
-                    Err( _ ) => ast.expression( IdentifierExpansion::Keep ),
+                    Err( _ ) => this.expression( IdentifierExpansion::Keep ),
                 },
                 TokenKind::Bracket( BracketKind::CloseRound ) => {
-                    ast.tokens.next();
+                    this.tokens.next();
                     Err( SyntaxError {
                         pos: current,
                         err_msg: "invalid expression",
@@ -918,16 +821,15 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
                     } )
                 },
                 TokenKind::Bracket( BracketKind::OpenCurly ) => {
-                    // ast.
-                    ast.tokens.next();
+                    this.tokens.next();
                     continue;
                 },
                 TokenKind::Bracket( BracketKind::CloseCurly ) => {
-                    ast.tokens.next();
+                    this.tokens.next();
                     continue;
                 },
                 TokenKind::Op( _ ) => {
-                    ast.tokens.next();
+                    this.tokens.next();
                     Err( SyntaxError {
                         pos: current,
                         err_msg: "invalid expression",
@@ -935,7 +837,7 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
                     } )
                 },
                 TokenKind::Equals => {
-                    ast.tokens.next();
+                    this.tokens.next();
                     Err( SyntaxError {
                         pos: current,
                         err_msg: "invalid assignment",
@@ -943,20 +845,20 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
                     } )
                 },
                 TokenKind::Comment( _ ) | TokenKind::SemiColon | TokenKind::Empty | TokenKind::EOF => {
-                    ast.tokens.next();
+                    this.tokens.next();
                     continue;
                 },
                 TokenKind::SOF | TokenKind::Unexpected { .. } => unreachable!(),
             };
 
             match statement_result {
-                Ok( statement ) => ast.nodes.push( statement ),
+                Ok( statement ) => this.nodes.push( statement ),
                 Err( err ) => errors.push( err )
             }
         }
 
         if errors.is_empty() {
-            return Ok( ast );
+            return Ok( this );
         }
         else {
             return Err( SyntaxErrors { file_path: lexer.file_path.clone(), errors } );
@@ -965,8 +867,29 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
 }
 
 impl<'lexer> AST<'lexer> {
+    fn resolve<'definition>( &'definition self, name: &str ) -> Option<&'definition Definition> {
+        for definition in &self.definitions {
+            if definition.name == name {
+                return Some( definition );
+            }
+        }
+
+        return None;
+    }
+
+    fn resolve_mut<'definition>( &'definition mut self, name: &str ) -> Option<&'definition mut Definition> {
+        for definition in &mut self.definitions {
+            if definition.name == name {
+                return Some( definition );
+            }
+        }
+
+        return None;
+    }
+
+
     fn semicolon( &mut self ) -> Result<(), SyntaxError<'lexer>> {
-        let current = self.tokens.current_or_next().bounded( &mut self.tokens, "expected semicolon" )?.unwrap();
+        let current = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected semicolon" )?.unwrap();
         let result = match current.token.kind {
             TokenKind::SemiColon => Ok( () ),
             _ => {
@@ -982,6 +905,7 @@ impl<'lexer> AST<'lexer> {
         self.tokens.next();
         return result;
     }
+
 
     fn variable_definition( &mut self ) -> Result<(), SyntaxError<'lexer>> {
         let definition_pos = self.tokens.current().unwrap();
@@ -1027,7 +951,7 @@ impl<'lexer> AST<'lexer> {
         let value = value?;
         self.semicolon()?;
 
-        return match self.definitions.resolve( &name ) {
+        return match self.resolve( &name ) {
             None => {
                 let value = match kind {
                     DefinitionKind::Let | DefinitionKind::Var => value,
@@ -1036,7 +960,6 @@ impl<'lexer> AST<'lexer> {
 
                 self.definitions.push( Definition { kind, name, value: Box::new( value ) } );
                 Ok( () )
-                // return Ok( Node::Definition( self.definitions.last().unwrap().clone() ) );
             },
             Some( _ ) => Err( SyntaxError {
                 pos: name_pos,
@@ -1063,7 +986,7 @@ impl<'lexer> AST<'lexer> {
         };
 
         let variable = match &name_pos.token.kind {
-            TokenKind::Identifier( name ) => match self.definitions.resolve_mut( &name ) {
+            TokenKind::Identifier( name ) => match self.resolve_mut( &name ) {
                 Some( identifier ) => identifier,
                 None => return Err( SyntaxError {
                     pos: name_pos,
@@ -1086,6 +1009,7 @@ impl<'lexer> AST<'lexer> {
         variable.value = Box::new( assignment );
         return Ok( () );
     }
+
 
     fn print( &mut self ) -> Result<Node, SyntaxError<'lexer>> {
         let print_pos = self.tokens.current().unwrap();
@@ -1114,14 +1038,15 @@ impl<'lexer> AST<'lexer> {
         return Ok( print );
     }
 
+
     fn factor( &mut self, expansion: IdentifierExpansion ) -> Result<Node, SyntaxError<'lexer>> {
-        let pos = self.tokens.current_or_next().bounded( &mut self.tokens, "expected expression" )?.unwrap();
+        let pos = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected expression" )?.unwrap();
         let result = match &pos.token.kind {
             // FIX forbid implicit conversions
             TokenKind::True => Ok( Node::Literal( Type::Bool { value: true } ) ),
             TokenKind::False => Ok( Node::Literal( Type::Bool { value: false } ) ),
             TokenKind::Literal( literal ) => Ok( Node::Literal( literal.clone() ) ),
-            TokenKind::Identifier( name ) => match self.definitions.resolve( name ) {
+            TokenKind::Identifier( name ) => match self.resolve( name ) {
                 Some( definition ) => match expansion {
                     IdentifierExpansion::Expand => Ok( *definition.value.clone() ),
                     IdentifierExpansion::Keep => Ok( Node::Identifier( name.clone() ) ),
@@ -1144,7 +1069,7 @@ impl<'lexer> AST<'lexer> {
                     },
                     _ => {
                         let expression = self.expression( expansion )?;
-                        let close_bracket_pos = self.tokens.current_or_next().bounded( &mut self.tokens, "expected closed parenthesis" )?.unwrap();
+                        let close_bracket_pos = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected closed parenthesis" )?.unwrap();
                         match close_bracket_pos.token.kind {
                             TokenKind::Bracket( BracketKind::CloseRound ) => {
                                 Ok( expression )
@@ -1171,8 +1096,9 @@ impl<'lexer> AST<'lexer> {
 
     // FIX dealing with missing semicolons or missing operators
         // TODO move it outside the expression
+        // IDEA create two versions of this function, one that checks for the closing semicolon, and one that doesn't
     fn operator( &mut self, ops: &[OpKind] ) -> Result<Option<OpKind>, SyntaxError<'lexer>> {
-        let current_pos = self.tokens.current_or_next().bounded( &mut self.tokens, "expected expression or semicolon" )?.unwrap();
+        let current_pos = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected expression or semicolon" )?.unwrap();
         let result = match current_pos.token.kind {
             TokenKind::Op( op ) => match ops.contains( &op ) {
                 true => Ok( Some( op.clone() ) ),
@@ -1270,7 +1196,7 @@ impl<'lexer> AST<'lexer> {
                     OpKind::Compare => Type::I64 { value: lhs.cmp( &rhs ) as i64 },
                 }
             },
-            Node::Identifier( name ) => self.evaluate_node( &*self.definitions.resolve( name ).unwrap().value ),
+            Node::Identifier( name ) => self.evaluate_node( &*self.resolve( name ).unwrap().value ),
             Node::Print( _ ) | Node::PrintLn( _ ) => unreachable!(),
         }
     }
@@ -1286,7 +1212,7 @@ impl<'lexer> AST<'lexer> {
             Node::Print( argument ) => {
                 let value = match &**argument {
                     Node::Literal( _ ) | Node::Expression{ .. } => &**argument,
-                    Node::Identifier( name ) => &*self.definitions.resolve( name ).unwrap().value,
+                    Node::Identifier( name ) => &*self.resolve( name ).unwrap().value,
                     Node::Print( _ ) | Node::PrintLn( _ ) => unreachable!(),
                 };
 
@@ -1415,7 +1341,7 @@ impl<'lexer> AST<'lexer> {
                 asm.push_str( &format!( " ; {}", node ) );
                 asm.push_str( &format!( "{}\n\n", op_asm ) );
             },
-            Node::Identifier( name ) => self.compile_node( &*self.definitions.resolve( name ).unwrap().value, asm ),
+            Node::Identifier( name ) => self.compile_node( &*self.resolve( name ).unwrap().value, asm ),
             Node::PrintLn( _ ) => unreachable!(),
         }
     }
