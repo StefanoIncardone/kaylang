@@ -53,10 +53,20 @@ Character literals are surrounded by `'`.
 They can also be used in math expression, being automatically converted to their ASCII code (temporary implicit conversion)
 
 ``` blitz
+'\\'; # backslash
 '\n'; # newline
 '\t'; # tab
 '\''; # single quote
 '\"'; '"' # double quote
+```
+
+### Strings
+
+String literals are surrounded by `"`.
+
+```blitz
+let lucky = "nineteen";
+println lucky;
 ```
 
 ### Variables

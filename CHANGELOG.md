@@ -20,12 +20,45 @@
 - checked (c+, c-, c/, ...): added code to check for overflows/division by zero
 - maybe have a compiler flag to use checked/unchecked operators
 
-### Absolute value operator
+### Operators
 
-```blitz
-|19| == 19
-|-19| == 19
-```
+- Absolute value:
+    - enclosed by a `|`
+
+    ```blitz
+    |19| == 19
+    |-19| == 19
+    ```
+
+- Floor:
+    - enclosed by `|\` and `/|`, and have to be written as a single token, so `| \` and `/ |` are not valid
+
+    ```blitz
+    |\19.3/| == 19
+    |\-19.3/| == -20
+    ```
+
+- Ceil:
+    - enclosed by `|/` and `\|`, and have to be written as a single token, so `| /` and `\ |` are not valid
+
+    ```blitz
+    |/19.3\| == 20
+    |/-19.3\| == -19
+    ```
+
+### Strings
+
+- immutable strings are surrounded by `"`: `"hello world"`
+- mutable strings (like string builders) are surrounded by `` ` ``: `"hello world"`
+- unescaped strings are prefixed by a `u`: `u"\this wo\n't be escaped`
+- multiline strings are prefixed by a `m`:
+    - lines will have newline characters appended to them unless they end in a `\`, which can be escaped using a `\\`
+    - whitespace will be preserved (except before the closing quote) and leading whitespace is calculated based on the
+        position of the closing quote, or by the text furthest to the left.  
+- formatted strings are prefixed by a `f`: `f"the answer is {40 + 2}"`
+- options can appear in any order right before the opening quote, but only once:
+    - `fum"`, `fu"`, `um"` are valid
+    - `fuum`, `ff "`, `u "` are not valid
 
 
 ## 0.1
@@ -35,5 +68,5 @@
 - `run` to compile and run the compiled native assembly code
 - `interpret` to interpret the program without compiling it
 - line comments: `#...`
-- integers and math operators, character literals, boolean values and comparisons, variables
+- integers and math operators, character literals, string literals, boolean values and comparisons, variables
 - values can be printed using the `print` or `println` (printing a newline character afterwards) keywords

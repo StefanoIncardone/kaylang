@@ -7,11 +7,12 @@ boolean_literal = "true" | "false";
 identifier = "_" | "A".."Z" | "a".."z", {"_" | "A".."Z" | "a".."z" | digit};
 line_comment = "#", {valid_character}, "\n";
 
-escape_character = "\n" | "\t" | "\'" | '"' | '\"';
+escape_character = "\\" | "\n" | "\t" | "\'" | '"' | '\"';
 character_literal = "'", (escape_character | valid_character), "'";
+string_literal = ["u" | "m" | "f"], '"', {escape_character | valid_character}, '"';
 
 (* from highest precedence to lowest *)
-factor = number_literal | identifier | character_literal | boolean_literal | ("(", expression, ")");
+factor = number_literal | identifier | character_literal | string_literal | boolean_literal | ("(", expression, ")");
 exponentiation = factor, ["^", factor];
 term = exponentiation, [("*" | "/"), exponentiation];
 math = term, [("+" | "-"), term];
