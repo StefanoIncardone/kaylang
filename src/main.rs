@@ -1,6 +1,12 @@
 // TODO create standardized module for outputting colored text
 // TODO implement negative numbers
+// IDEA read the src file line when printing errors instead of composing it from the tokens
 use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write}, fs::File, env, process::{ExitCode, Command}, fmt::Display, path::{Path, PathBuf}, iter::Peekable, str::Chars};
+
+
+trait Len {
+    fn len( &self ) -> usize;
+}
 
 
 #[derive( Debug, Clone )]
@@ -8,7 +14,7 @@ enum Type {
     I64 { value: i64 },
     Char { value: u8 }, // only supporting ASCII characters for now
     Bool { value: bool },
-    Str { value: Vec<u8> },
+    Str { text: Vec<u8> },
 }
 
 impl Display for Type {
@@ -17,9 +23,9 @@ impl Display for Type {
             Self::I64 { value } => write!( f, "{}", value ),
             Self::Char { value } => write!( f, "'{}'", value.escape_ascii() ), // TODO create own escaping function
             Self::Bool { value } => write!( f, "{}", value ),
-            Self::Str { value } => {
+            Self::Str { text } => {
                 write!( f, "\"" )?;
-                for character in value {
+                for character in text {
                     write!( f, "{}", character.escape_ascii() )?;
                 }
                 write!( f, "\"" )?;
@@ -36,7 +42,18 @@ impl Into<i64> for Type {
             Self::I64 { value } => value.into(),
             Self::Char { value } => value.into(),
             Self::Bool { value } => value.into(),
-            Self::Str { .. } => unreachable!( "attempting to convert a Str to a integer" ),
+            Self::Str { text: _ } => unreachable!( "attempting to convert a Str to a integer" ),
+        }
+    }
+}
+
+impl Len for Type {
+    fn len( &self ) -> usize {
+        match self {
+            Self::I64 { value } => value.to_string().len(),
+            Self::Char { value: _ } => 1 as usize,
+            Self::Bool { value } => value.to_string().len(),
+            Self::Str { text } => text.len(),
         }
     }
 }
@@ -47,12 +64,10 @@ impl Type {
             Self::I64 { value } => print!( "{}", value ),
             Self::Char { value } => print!( "{}", *value as char ),
             Self::Bool { value } => print!( "{}", value ),
-            Self::Str { value } => {
-                print!( "\"" );
-                for character in value {
+            Self::Str { text } => {
+                for character in text {
                     print!( "{}", *character as char );
                 }
-                print!( "\"" );
             },
         }
     }
@@ -98,12 +113,31 @@ impl Display for OpKind {
     }
 }
 
+impl Len for OpKind {
+    fn len( &self ) -> usize {
+        match self {
+            Self::Pow => 1,
+            Self::Times => 1,
+            Self::Divide => 1,
+            Self::Plus => 1,
+            Self::Minus => 1,
+            Self::Equals => 2,
+            Self::NotEquals => 2,
+            Self::Greater => 1,
+            Self::GreaterOrEquals => 2,
+            Self::Less => 1,
+            Self::LessOrEquals => 2,
+            Self::Compare => 3,
+        }
+    }
+}
+
 
 #[derive( Debug, Clone, Copy )]
 enum DefinitionKind {
     // Fn,
-    Let,
     Const,
+    Let,
     Var,
 }
 
@@ -113,6 +147,16 @@ impl Display for DefinitionKind {
             Self::Let => write!( f, "let" ),
             Self::Const => write!( f, "const" ),
             Self::Var => write!( f, "var" ),
+        }
+    }
+}
+
+impl Len for DefinitionKind {
+    fn len( &self ) -> usize {
+        match self {
+            Self::Const => 5,
+            Self::Let => 3,
+            Self::Var => 3,
         }
     }
 }
@@ -140,24 +184,20 @@ impl Display for BracketKind {
     }
 }
 
-
-#[derive( Debug, Clone )]
-struct LexerError {
-    text: String,
-    msg: &'static str,
-    help_msg: &'static str,
-}
-
-impl Display for LexerError {
-    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        return write!( f, "{}", self.text );
+impl Len for BracketKind {
+    fn len( &self ) -> usize {
+        match self {
+            Self::OpenRound => 1,
+            Self::CloseRound => 1,
+            Self::OpenCurly => 1,
+            Self::CloseCurly => 1,
+        }
     }
 }
 
+
 #[derive( Debug, Clone )]
 enum TokenKind {
-    Unexpected( LexerError ),
-
     // Whitespace
     Comment( String ),
 
@@ -192,8 +232,6 @@ enum TokenKind {
 impl Display for TokenKind {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
-            Self::Unexpected( err ) => write!( f, "{}", err ),
-
             Self::Comment( text ) => write!( f, "{}", text ),
 
             Self::Bracket( bracket ) => write!( f, "{}", bracket ),
@@ -216,11 +254,40 @@ impl Display for TokenKind {
     }
 }
 
+impl Len for TokenKind {
+    fn len( &self ) -> usize {
+        return match self {
+            Self::Comment( text ) => text.len(),
 
+            Self::Bracket( bracket ) => bracket.len(),
+            Self::Equals => 1,
+            Self::SemiColon => 1,
+
+            Self::Literal( typ ) => typ.len(),
+            Self::Identifier( name ) => name.len(),
+            Self::Definition( kind ) => kind.len(),
+
+            Self::Op( op ) => op.len(),
+
+            Self::Print => 5,
+            Self::PrintLn => 7,
+            Self::True => 4,
+            Self::False => 5,
+
+            Self::Empty => 1,
+            Self::SOF => 1,
+            Self::EOF => 1,
+        };
+    }
+}
+
+
+// IDEA have it contain the absolute column in the source file, and when encountering errors read the corresponding line
 #[derive( Debug, Clone )]
 struct Token {
+    // line: usize,
     col: usize,
-    len: usize,
+    // src_col: usize,
     kind: TokenKind,
 }
 
@@ -245,7 +312,7 @@ impl Display for Line {
 
         while let Some( token ) = tokens.next() {
             let spaces_before_next_token = match tokens.peek() {
-                Some( next_token ) => next_token.col - (token.col + token.len),
+                Some( next_token ) => next_token.col - (token.col + token.kind.len()),
                 None => 0,
             };
 
@@ -256,6 +323,65 @@ impl Display for Line {
     }
 }
 
+
+#[derive( Debug, Clone )]
+struct LexerError {
+    line: usize,
+    col: usize,
+    text: String,
+    msg: &'static str,
+    help_msg: &'static str,
+}
+
+#[derive( Debug )]
+struct LexerErrors {
+    file_path: String,
+    lines: Vec<Line>,
+    errors: Vec<LexerError>,
+}
+
+impl Display for LexerErrors {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        let mut line_number = self.errors[ 0 ].line;
+        let mut line = &self.lines[ line_number ];
+        let mut line_text = line.to_string();
+
+        for error in &self.errors {
+            if error.line != line_number {
+                line_number = error.line;
+                line = &self.lines[ line_number - 1 ];
+                line_text = line.to_string();
+            }
+
+            let mut line_number_and_bar = format!( "{} |", line.number );
+            let visualization_padding = line_number_and_bar.len();
+            let location_padding = visualization_padding - 1;
+
+            let bar = format!( "\x1b[94m{:>visualization_padding$}\x1b[0m", "|" );
+            line_number_and_bar = format!( "\x1b[94m{:>visualization_padding$}\x1b[0m", line_number_and_bar );
+
+            let pointers_col = error.col - 1;
+            let pointers_len = error.text.len();
+
+            write!( f,
+                "\x1b[91;1m{}\x1b[0m: \x1b[97;1m{}\x1b[0m\
+                \n\x1b[91m{:>location_padding$}\x1b[0m: {}:{}:{}\
+                \n{}\
+                \n{} {}\
+                \n{} {:pointers_col$}\x1b[91m{:^>pointers_len$} {}\x1b[0m\n\n",
+                "Error", error.msg,
+                "in", self.file_path, line.number, error.col,
+                bar,
+                line_number_and_bar, line_text,
+                bar, "", "", error.help_msg
+            )?;
+        }
+
+        return Ok( () );
+    }
+}
+
+
 // IDEA consider removing Line struct and have each token remember its line, or dont store the line number and calculate it somehow
 #[derive( Debug )]
 struct Lexer {
@@ -263,31 +389,16 @@ struct Lexer {
     lines: Vec<Line>,
 }
 
-impl Display for Lexer {
-    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        for line in &self.lines {
-            for token in &line.tokens {
-                if let TokenKind::Unexpected( err ) = &token.kind {
-                    let error = SyntaxError { pos: Position{ line, token }, msg: err.msg, help_msg: err.help_msg };
-                    error.display( f, &self.file_path )?;
-                }
-            }
-        }
-
-        return Ok( () );
-    }
-}
-
 impl TryFrom<(&str, File)> for Lexer {
-    type Error = Self;
+    type Error = LexerErrors;
 
     // IDEA make the input character stream generic, eg: to be able to compile from strings instead of just files
     // TODO make an character iterator similar to LexerIter
     fn try_from( src: (&str, File) ) -> Result<Self, Self::Error> {
         let (file_path, src_file) = (src.0, src.1);
-        let mut errors: Vec<Line> = Vec::new();
-        let mut lines: Vec<Line> = Vec::new();
-        let mut line = Line { number: 1, tokens: vec![ Token { col: 1, len: 1, kind: TokenKind::SOF } ] };
+        let mut errors = LexerErrors { file_path: file_path.to_string(), lines: Vec::new(), errors: Vec::new() };
+        let mut this = Self { file_path: file_path.to_string(), lines: Vec::new() };
+        let mut line = Line { number: 1, tokens: vec![ Token { col: 1, kind: TokenKind::SOF } ] };
 
         let mut src_lines = BufReader::new( src_file );
         let mut src_line_text = String::new();
@@ -303,9 +414,9 @@ impl TryFrom<(&str, File)> for Lexer {
             let mut src = src_line_text.chars().peekable();
             // IDEA try extracting this to a separate function
             loop {
-                let (len, kind): (usize, TokenKind) = match Self::next( &mut src ) {
+                let token_info: Result<TokenKind, LexerError> = match Self::next( &mut src ) {
                     Ok( None ) => break,
-                    Err( err ) => (err.text.len(), TokenKind::Unexpected( err )),
+                    Err( err ) => Err( err ),
                     Ok( Some( ch ) ) => match ch {
                         // TODO consume until not whitespace
                         // ignore whitespace
@@ -313,36 +424,38 @@ impl TryFrom<(&str, File)> for Lexer {
                             col += 1;
                             continue;
                         },
-                        '(' => (1, TokenKind::Bracket( BracketKind::OpenRound )),
-                        ')' => (1, TokenKind::Bracket( BracketKind::CloseRound )),
-                        '{' => (1, TokenKind::Bracket( BracketKind::OpenCurly )),
-                        '}' => (1, TokenKind::Bracket( BracketKind::CloseCurly )),
+                        '(' => Ok( TokenKind::Bracket( BracketKind::OpenRound ) ),
+                        ')' => Ok( TokenKind::Bracket( BracketKind::CloseRound ) ),
+                        '{' => Ok( TokenKind::Bracket( BracketKind::OpenCurly ) ),
+                        '}' => Ok( TokenKind::Bracket( BracketKind::CloseCurly ) ),
                         '=' => match Self::peek_next( &mut src ) {
                             Ok( Some( '=' ) ) => {
                                 let _ = Self::next( &mut src );
-                                (2, TokenKind::Op( OpKind::Equals ))
+                                Ok( TokenKind::Op( OpKind::Equals ) )
                             },
-                            _ => (1, TokenKind::Equals),
+                            _ => Ok( TokenKind::Equals ),
                         },
                         '!' => match Self::peek_next( &mut src ) {
                             Ok( Some( '=' ) ) => {
                                 let _ = Self::next( &mut src );
 
-                                (2, TokenKind::Op( OpKind::NotEquals ) )
+                                Ok( TokenKind::Op( OpKind::NotEquals ) )
                             },
-                            _ => (1, TokenKind::Unexpected( LexerError {
+                            _ => Err( LexerError {
+                                line: errors.lines.len(),
+                                col,
                                 text: ch.to_string(),
                                 msg: "unexpected character",
                                 help_msg: "unrecognized"
-                            } )),
+                            } ),
                         },
                         '>' => match Self::peek_next( &mut src ) {
                             Ok( Some( '=' ) ) => {
                                 let _ = Self::next( &mut src );
 
-                                (2, TokenKind::Op( OpKind::GreaterOrEquals ) )
+                                Ok( TokenKind::Op( OpKind::GreaterOrEquals ) )
                             },
-                            _ => (1, TokenKind::Op( OpKind::Greater )),
+                            _ => Ok( TokenKind::Op( OpKind::Greater ) ),
                         },
                         '<' => match Self::peek_next( &mut src ) {
                             Ok( Some( '=' ) ) => {
@@ -352,49 +465,51 @@ impl TryFrom<(&str, File)> for Lexer {
                                     Ok( Some( '>' ) ) => {
                                         let _ = Self::next( &mut src );
 
-                                        (3, TokenKind::Op( OpKind::Compare ) )
+                                        Ok( TokenKind::Op( OpKind::Compare ) )
                                     },
                                     _ => {
-                                        (2, TokenKind::Op( OpKind::LessOrEquals ) )
+                                        Ok( TokenKind::Op( OpKind::LessOrEquals ) )
                                     }
                                 }
                             },
-                            _ => (1, TokenKind::Op( OpKind::Less )),
+                            _ => Ok( TokenKind::Op( OpKind::Less ) ),
                         },
-                        '^' => (1, TokenKind::Op( OpKind::Pow )),
-                        '*' => (1, TokenKind::Op( OpKind::Times )),
-                        '/' => (1, TokenKind::Op( OpKind::Divide )),
-                        '+' => (1, TokenKind::Op( OpKind::Plus )),
-                        '-' => (1, TokenKind::Op( OpKind::Minus )),
-                        ';' => (1, TokenKind::SemiColon),
+                        '^' => Ok( TokenKind::Op( OpKind::Pow ) ),
+                        '*' => Ok( TokenKind::Op( OpKind::Times ) ),
+                        '/' => Ok( TokenKind::Op( OpKind::Divide ) ),
+                        '+' => Ok( TokenKind::Op( OpKind::Plus ) ),
+                        '-' => Ok( TokenKind::Op( OpKind::Minus ) ),
+                        ';' => Ok( TokenKind::SemiColon ),
                         '\'' => {
                             token_text.push( ch );
 
-                            let kind = match Self::parse_char( &mut src, &mut token_text ) {
-                                Ok( b'\'' ) if token_text.len() == 2 => TokenKind::Unexpected( LexerError {
+                            match Self::parse_char( &mut src, &mut token_text ) {
+                                Ok( b'\'' ) if token_text.len() == 2 => Err( LexerError {
+                                    line: errors.lines.len(),
+                                    col,
                                     text: token_text.clone(),
                                     msg: "empty character literal",
                                     help_msg: "must not be empty"
                                 } ),
                                 Ok( value ) => match Self::next_char( &mut src, &mut token_text ) {
                                     Ok( next ) => match next {
-                                        b'\'' => TokenKind::Literal( Type::Char { value } ),
-                                        _ => TokenKind::Unexpected( LexerError {
+                                        b'\'' => Ok( TokenKind::Literal( Type::Char { value } ) ),
+                                        _ => Err( LexerError {
+                                            line: errors.lines.len(),
+                                            col,
                                             text: token_text.clone(),
                                             msg: "unclosed character literal",
                                             help_msg: "missing closing single quote"
                                         } ),
                                     },
-                                    Err( err ) => TokenKind::Unexpected( err ),
+                                    Err( err ) => Err( err ),
                                 },
-                                Err( err ) => TokenKind::Unexpected( err ),
-                            };
-
-                            (token_text.len(), kind)
+                                Err( err ) => Err( err ),
+                            }
                         },
                         '"' => match Self::parse_str( &mut src ) {
-                            Ok( text ) => (text.len() + 2, TokenKind::Literal( Type::Str { value: text } )),
-                            Err( err ) => (err.text.len(), TokenKind::Unexpected( err )),
+                            Ok( text ) => Ok( TokenKind::Literal( Type::Str { text } ) ),
+                            Err( err ) => Err( err ),
                         },
                         '#' => {
                             token_text.push( ch );
@@ -404,7 +519,7 @@ impl TryFrom<(&str, File)> for Lexer {
                                 token_text.push( next );
                             }
 
-                            (token_text.len(), TokenKind::Comment( token_text.clone() ))
+                            Ok( TokenKind::Comment( token_text.clone() ) )
                         },
                         '0'..='9' => { // TODO handle negative numbers
                             token_text.push( ch );
@@ -418,10 +533,12 @@ impl TryFrom<(&str, File)> for Lexer {
                                 token_text.push( next );
                             }
 
-                            let kind = if is_digit {
+                            if is_digit {
                                 match token_text.parse() { // TODO create own number parsing function
-                                    Ok( value ) => TokenKind::Literal( Type::I64 { value } ),
-                                    Err( _ ) => TokenKind::Unexpected( LexerError {
+                                    Ok( value ) => Ok( TokenKind::Literal( Type::I64 { value } ) ),
+                                    Err( _ ) => Err( LexerError {
+                                        line: errors.lines.len(),
+                                        col,
                                         text: token_text.clone(),
                                         msg: "expected number literal",
                                         help_msg: "overflows a 64 bit integer [-9223372036854775808, 9223372036854775807]"
@@ -429,14 +546,14 @@ impl TryFrom<(&str, File)> for Lexer {
                                 }
                             }
                             else {
-                                TokenKind::Unexpected( LexerError {
+                                Err( LexerError {
+                                    line: errors.lines.len(),
+                                    col,
                                     text: token_text.clone(),
                                     msg: "expected number literal",
                                     help_msg: "not a number literal"
                                 } )
-                            };
-
-                            (token_text.len(), kind)
+                            }
                         },
                         'a'..='z' | 'A'..='Z' | '_'  => {
                             token_text.push( ch );
@@ -459,39 +576,60 @@ impl TryFrom<(&str, File)> for Lexer {
                                 _ => TokenKind::Identifier( token_text.clone() )
                             };
 
-                            (token_text.len(), kind)
+                            Ok( kind )
                         },
-                        _ => (1, TokenKind::Unexpected( LexerError {
+                        _ => Err( LexerError {
+                            line: errors.lines.len(),
+                            col,
                             text: ch.to_string(),
                             msg: "unexpected character",
                             help_msg: "unrecognized"
-                        } ))
+                        } ),
                     },
                 };
 
-                if let TokenKind::Unexpected { .. } = kind {
-                    line_contains_errors = true;
-                }
+                let len = match token_info {
+                    Ok( kind ) => {
+                        let len = kind.len();
+                        line.tokens.push( Token { col, kind } );
+                        len
+                    },
+                    Err( mut err ) => {
+                        line_contains_errors = true;
+
+                        err.line = errors.lines.len();
+                        err.col = col;
+                        let len = err.text.len();
+
+                        let place_holder = TokenKind::Comment( err.text.clone() );
+                        line.tokens.push( Token { col, kind: place_holder } );
+
+                        errors.errors.push( err );
+
+                        len
+                    }
+                };
 
                 token_text.clear();
-                line.tokens.push( Token { col, len, kind } );
                 col += len;
             }
 
             if trimmed_line_len == 0 {
-                line.tokens.push( Token { col, len: 1, kind: TokenKind::Empty } );
+                let kind = TokenKind::Empty;
+                line.tokens.push( Token { col, kind } );
             }
 
             let reached_eof = trimmed_line_len == chars_read;
             if reached_eof {
-                line.tokens.push( Token { col, len: 1, kind: TokenKind::EOF } );
+                let kind = TokenKind::EOF;
+                line.tokens.push( Token { col, kind } );
             }
 
             if line_contains_errors {
-                errors.push( line.clone() );
+                errors.lines.push( line.clone() );
             }
             else {
-                lines.push( line.clone() );
+                this.lines.push( line.clone() );
             }
 
             if reached_eof {
@@ -500,14 +638,14 @@ impl TryFrom<(&str, File)> for Lexer {
 
             src_line_text.clear();
             line.tokens.clear();
-            line.number = lines.len() + 1;
+            line.number = this.lines.len() + 1;
         }
 
-        return if errors.is_empty() {
-            Ok( Self { file_path: file_path.to_string(), lines } )
+        return if errors.errors.is_empty() {
+            Ok( this )
         }
         else {
-            Err( Self { file_path: file_path.to_string(), lines: errors } )
+            Err( errors )
         }
     }
 }
@@ -517,11 +655,13 @@ impl Lexer {
         LexerIter{ lexer: self, line: 0, token: 0 }
     }
 
-    // FIX properly handle non ASCII codes in error messages
+    // FIX properly handle non ASCII codes in error messages, or simply implement UTF-8 support
     fn next( src: &mut Peekable<Chars> ) -> Result<Option<char>, LexerError> {
         return match src.next() {
             Some( next @ ..='\x7F' ) => Ok( Some( next ) ),
             Some( next ) => Err( LexerError {
+                line: 0,
+                col: 0,
                 text: next.to_string(),
                 msg: "unrecognized character",
                 help_msg: "not a valid ASCII character"
@@ -534,6 +674,8 @@ impl Lexer {
         return match src.peek() {
             Some( next @ ..='\x7F' ) => Ok( Some( next ) ),
             Some( next ) => Err( LexerError {
+                line: 0,
+                col: 0,
                 text: next.to_string(),
                 msg: "unrecognized character",
                 help_msg: "not a valid ASCII character"
@@ -545,6 +687,8 @@ impl Lexer {
     fn next_char( src: &mut Peekable<Chars>, token_text: &mut String ) -> Result<u8, LexerError> {
         return match Self::next( src )? {
             Some( '\n' ) | None => Err( LexerError {
+                line: 0,
+                col: 0,
                 text: token_text.clone(),
                 msg: "invalid character literal",
                 help_msg: "missing closing single quote"
@@ -560,17 +704,22 @@ impl Lexer {
         // IDEA treat character literals as just strings of lenght 1, reporting errors if over 1
         return match Self::next_char( src, token_text )? {
             b'\\' => match Self::next_char( src, token_text )? {
+                b'\\' => Ok( b'\\' ),
                 b'n' => Ok( b'\n' ),
                 b't' => Ok( b'\t' ),
                 b'\'' => Ok( b'\'' ),
                 b'"' => Ok( b'"' ),
                 _ => Err( LexerError {
+                    line: 0,
+                    col: 0,
                     text: token_text.clone(),
                     msg: "invalid escape character literal",
                     help_msg: "check the documentation for a list of valid escape characters"
                 } ),
             },
             b'\x00'..=b'\x1F' | b'\x7F' => Err( LexerError {
+                line: 0,
+                col: 0,
                 text: token_text.clone(),
                 msg: "invalid character literal",
                 help_msg: "cannot be a control character"
@@ -583,6 +732,8 @@ impl Lexer {
         return match Self::next( src )? {
             Some( ch ) => Ok( ch as u8 ),
             None => Err( LexerError {
+                line: 0,
+                col: 0,
                 text: format!( "\"{}", String::from_utf8( text.to_owned() ).unwrap() ),
                 msg: "invalid string literal",
                 help_msg: "missing closing double quote"
@@ -610,14 +761,18 @@ impl Lexer {
                         text.push( b'\\' );
                         text.push( next );
                         return Err( LexerError {
-                            text: format!( "\"{}", String::from_utf8( text ).unwrap() ),
+                            line: 0,
+                            col: 0,
+                            text: format!( "\"{}", String::from_utf8( text.to_owned() ).unwrap() ),
                             msg: "invalid escape character",
                             help_msg: "check the documentation for a list of valid escape characters"
                         } );
                     },
                 },
                 b'\x00'..=b'\x1F' | b'\x7F' => return Err( LexerError {
-                    text: format!( "\"{}", String::from_utf8( text ).unwrap() ),
+                    line: 0,
+                    col: 0,
+                    text: format!( "\"{}", String::from_utf8( text.to_owned() ).unwrap() ),
                     msg: "invalid string literal",
                     help_msg: "contains a control character"
                 } ),
@@ -788,7 +943,7 @@ struct SyntaxError<'lexer> {
     help_msg: &'static str,
 }
 
-impl<'lexer> SyntaxError<'lexer> {
+impl SyntaxError<'_> {
     fn display( &self, f: &mut std::fmt::Formatter<'_>, file_path: &str ) -> std::fmt::Result {
         let mut line_number_and_bar = format!( "{} |", self.pos.line.number );
         let visualization_padding = line_number_and_bar.len();
@@ -798,7 +953,7 @@ impl<'lexer> SyntaxError<'lexer> {
         line_number_and_bar = format!( "\x1b[94m{:>visualization_padding$}\x1b[0m", line_number_and_bar );
 
         let pointers_col = self.pos.token.col - 1;
-        let pointers_len = self.pos.token.len;
+        let pointers_len = self.pos.token.kind.len();
 
         return write!( f,
             "\x1b[91;1m{}\x1b[0m: \x1b[97;1m{}\x1b[0m\
@@ -821,7 +976,7 @@ struct SyntaxErrors<'program> {
     errors: Vec<SyntaxError<'program>>,
 }
 
-impl<'program> Display for SyntaxErrors<'program> {
+impl Display for SyntaxErrors<'_> {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         for error in &self.errors {
             error.display( f, &self.file_path )?;
@@ -838,12 +993,14 @@ enum IdentifierExpansion {
     Keep,
 }
 
+
 #[derive( Debug, Clone )]
 struct Definition {
     kind: DefinitionKind,
     name: String,
     value: Box<Node>,
 }
+
 
 // TODO introduce the notion of context:
 // parenthesis stack
@@ -927,7 +1084,7 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
                     this.tokens.next();
                     continue;
                 },
-                TokenKind::SOF | TokenKind::Unexpected { .. } => unreachable!(),
+                TokenKind::SOF => unreachable!(),
             };
 
             match statement_result {
@@ -945,8 +1102,8 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
     }
 }
 
-impl<'lexer> AST<'lexer> {
-    fn resolve<'definition>( &'definition self, name: &str ) -> Option<&'definition Definition> {
+impl<'lexer, 'definition> AST<'lexer> {
+    fn resolve( &'definition self, name: &str ) -> Option<&'definition Definition> {
         for definition in &self.definitions {
             if definition.name == name {
                 return Some( definition );
@@ -956,7 +1113,7 @@ impl<'lexer> AST<'lexer> {
         return None;
     }
 
-    fn resolve_mut<'definition>( &'definition mut self, name: &str ) -> Option<&'definition mut Definition> {
+    fn resolve_mut( &'definition mut self, name: &str ) -> Option<&'definition mut Definition> {
         for definition in &mut self.definitions {
             if definition.name == name {
                 return Some( definition );
@@ -1336,7 +1493,7 @@ impl<'lexer> AST<'lexer> {
                     \n mov rdx, rdx\
                     \n mov rax, SYS_write\
                     \n syscall",
-                    Type::Str { value } => todo!(),
+                    Type::Str { text: _ } => todo!(),
                 };
 
                 asm.push_str( &format!( " ; {}\n", node ) );
@@ -1347,7 +1504,7 @@ impl<'lexer> AST<'lexer> {
                 Type::I64 { value } => asm.push_str( &format!( " push {}\n", value ) ),
                 Type::Char { value } => asm.push_str( &format!( " push {}\n", value ) ),
                 Type::Bool { value } => asm.push_str( &format!( " push {}\n", value ) ),
-                Type::Str { value } => todo!(),
+                Type::Str { text: _ } => todo!(),
             },
             Node::Expression { lhs, op, rhs } => {
                 self.compile_node( lhs, asm );
@@ -1454,133 +1611,133 @@ impl<'lexer> AST<'lexer> {
         let mut asm_file = BufWriter::new( File::create( &asm_file_path ).unwrap() );
 
         let preamble =
-        r#"global _start
+r#"global _start
 
-        section .rodata
-        stdout: equ 1
-        SYS_write: equ 1
-        SYS_exit: equ 60
-        EXIT_SUCCESS: equ 0
-        newline: db 10
+ section .rodata
+ stdout: equ 1
+ SYS_write: equ 1
+ SYS_exit: equ 60
+ EXIT_SUCCESS: equ 0
+ newline: db 10
 
-        I64_MIN: equ 1 << 63
-        I64_MAX: equ ~I64_MIN
-        INT_MAX_DIGITS: equ 64
+ I64_MIN: equ 1 << 63
+ I64_MAX: equ ~I64_MIN
+ INT_MAX_DIGITS: equ 64
 
-        true: db "true", 0
-        true_str_len: equ $ - true
+ true: db "true", 0
+true_str_len: equ $ - true
 
-        false: db "false", 0
-        false_str_len: equ $ - false
+false: db "false", 0
+false_str_len: equ $ - false
 
-        LESS: equ -1
-        EQUAL: equ 0
-        GREATER: equ 1
+LESS: equ -1
+EQUAL: equ 0
+GREATER: equ 1
 
-        section .data
-        int_str: times INT_MAX_DIGITS + 1 db 0
-        int_str_bufsize: equ $ - int_str
-        int_str_len: equ int_str_bufsize - 1"#;
+section .data
+int_str: times INT_MAX_DIGITS + 1 db 0
+int_str_bufsize: equ $ - int_str
+int_str_len: equ int_str_bufsize - 1"#;
 
         let int_to_str =
-        r"int_toStr:
-        mov rsi, 10
+r"int_toStr:
+ mov rsi, 10
 
-        push rcx
-        mov rcx, (int_str + int_str_len) - 1
+ push rcx
+ mov rcx, (int_str + int_str_len) - 1
 
-        mov rax, rdi
-        cmp rax, 0
-        je .writeZero
-        jl .makeNumberPositive
-        jg .extractNextDigit
+ mov rax, rdi
+ cmp rax, 0
+ je .writeZero
+ jl .makeNumberPositive
+ jg .extractNextDigit
 
-        .writeZero:
-        mov byte [rcx], '0'
-        jmp .done
+ .writeZero:
+ mov byte [rcx], '0'
+ jmp .done
 
-        .makeNumberPositive:
-        neg rax
+ .makeNumberPositive:
+ neg rax
 
-        .extractNextDigit:
-        xor rdx, rdx
-        idiv rsi
+ .extractNextDigit:
+ xor rdx, rdx
+ idiv rsi
 
-        add dl, '0'
-        mov byte [rcx], dl
-        dec rcx
+ add dl, '0'
+ mov byte [rcx], dl
+ dec rcx
 
-        cmp rax, 0
-        jne .extractNextDigit
+ cmp rax, 0
+ jne .extractNextDigit
 
-        cmp rdi, 0
-        jl .addMinusSign
-        inc rcx
-        jmp .done
+ cmp rdi, 0
+ jl .addMinusSign
+ inc rcx
+ jmp .done
 
-        .addMinusSign:
-        mov byte [rcx], '-'
+ .addMinusSign:
+ mov byte [rcx], '-'
 
-        .done:
-        mov rdx, int_str + int_str_len
-        sub rdx, rcx
+ .done:
+ mov rdx, int_str + int_str_len
+ sub rdx, rcx
 
-        mov rax, rcx
-        pop rcx
-        ret";
+ mov rax, rcx
+ pop rcx
+ ret";
 
         let int_pow =
-        r"int_pow:
-        cmp rsi, 1
-        je .exponent_is_one
+r"int_pow:
+ cmp rsi, 1
+ je .exponent_is_one
 
-        cmp rsi, 0
-        je .exponent_is_zero
+ cmp rsi, 0
+ je .exponent_is_zero
 
-        push rdi
-        push rsi
+ push rdi
+ push rsi
 
-        mov rax, rdi
-        mov rdi, 1
+ mov rax, rdi
+ mov rdi, 1
 
-        .next_power:
-        cmp rsi, 1
-        jle .done
+ .next_power:
+ cmp rsi, 1
+ jle .done
 
-        test rsi, 1
-        jnz .exponent_is_odd
+ test rsi, 1
+ jnz .exponent_is_odd
 
-        imul rax, rax
-        shr rsi, 1
-        jmp .next_power
+ imul rax, rax
+ shr rsi, 1
+ jmp .next_power
 
-        .exponent_is_odd:
-        imul rdi, rax
-        imul rax, rax
+ .exponent_is_odd:
+ imul rdi, rax
+ imul rax, rax
 
-        dec rsi
-        shr rsi, 1
-        jmp .next_power
+ dec rsi
+ shr rsi, 1
+ jmp .next_power
 
-        .done:
-        imul rax, rdi
+ .done:
+ imul rax, rdi
 
-        pop rsi
-        pop rdi
-        ret
+ pop rsi
+ pop rdi
+ ret
 
-        .exponent_is_one:
-        mov rax, rdi
-        ret
+ .exponent_is_one:
+ mov rax, rdi
+ ret
 
-        .exponent_is_zero:
-        mov rax, 1
-        ret";
+ .exponent_is_zero:
+ mov rax, 1
+ ret";
 
         let sys_exit =
-        r" mov rdi, EXIT_SUCCESS
-        mov rax, SYS_exit
-        syscall";
+r" mov rdi, EXIT_SUCCESS
+ mov rax, SYS_exit
+ syscall";
 
         let mut user_program = String::new();
 
@@ -1599,18 +1756,18 @@ impl<'lexer> AST<'lexer> {
         }
 
         let program = format!(
-            r"{}
+r"{}
 
-            section .text
-            {}
+section .text
+{}
 
-            {}
+{}
 
 
-            _start:
-            {}
-            {}
-            ", preamble, int_to_str, int_pow, user_program, sys_exit );
+_start:
+{}
+{}
+", preamble, int_to_str, int_pow, user_program, sys_exit );
 
             asm_file.write_all( program.as_bytes() ).unwrap();
             asm_file.flush().unwrap();
@@ -1648,23 +1805,21 @@ impl<'lexer> AST<'lexer> {
     }
 
 
-    // IDEA add man page
-    fn print_usage() {
-        println!( r"
-        Blitzlang compiler, version {}
+// IDEA add man page
+fn print_usage() {
+    println!( r"
+Blitzlang compiler, version {}
 
-        Usage: blitz [Options] [Run mode] file.blz
+Usage: blitz [Options] [Run mode] file.blz
 
-        Options:
-        -h, --help              Display this message
+Options:
+-h, --help              Display this message
 
-        Run mode:
-        build     <file.blz>    Compile the program down to a binary executable
-        run       <file.blz>    Compile and run the generated binary executable
-        interpret <file.blz>    Run the program in interpret mode
-        ",
-        env!( "CARGO_PKG_VERSION" )
-    );
+Run mode:
+build     <file.blz>    Compile the program down to a binary executable
+run       <file.blz>    Compile and run the generated binary executable
+interpret <file.blz>    Run the program in interpret mode
+", env!( "CARGO_PKG_VERSION" ) );
 }
 
 fn main() -> ExitCode {

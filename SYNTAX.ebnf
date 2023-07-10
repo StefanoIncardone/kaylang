@@ -9,7 +9,7 @@ line_comment = "#", {valid_character}, "\n";
 
 escape_character = "\\" | "\n" | "\t" | "\'" | '"' | '\"';
 character_literal = "'", (escape_character | valid_character), "'";
-string_literal = ["u" | "m" | "f"], '"', {escape_character | valid_character}, '"';
+string_literal = '"', {escape_character | valid_character}, '"';
 
 (* from highest precedence to lowest *)
 factor = number_literal | identifier | character_literal | string_literal | boolean_literal | ("(", expression, ")");
