@@ -331,7 +331,7 @@ impl Display for Line {
 // TODO implement NOTE, HINT, HELP in error messages
 #[derive( Debug, Clone )]
 struct SyntaxError {
-    line: usize,
+    err_line: usize,
     col: usize,
     text: String,
     msg: &'static str,
@@ -347,13 +347,13 @@ struct SyntaxErrors<'this> {
 
 impl Display for SyntaxErrors<'_> {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        let mut line_number = self.errors[ 0 ].line;
+        let mut line_number = self.errors[ 0 ].err_line;
         let mut line = &self.lines[ line_number ];
         let mut line_text = line.to_string();
 
         for error in &self.errors {
-            if error.line != line_number {
-                line_number = error.line;
+            if error.err_line != line_number {
+                line_number = error.err_line;
                 line = &self.lines[ line_number ];
                 line_text = line.to_string();
             }
@@ -450,7 +450,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                                 Ok( TokenKind::Op( OpKind::NotEquals ) )
                             },
                             _ => Err( SyntaxError {
-                                line: err_lines.len(),
+                                err_line: err_lines.len(),
                                 col,
                                 text: ch.to_string(),
                                 msg: "unexpected character",
@@ -493,7 +493,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
 
                             match Self::parse_char( &mut src, &mut token_text ) {
                                 Ok( b'\'' ) if token_text.len() == 2 => Err( SyntaxError {
-                                    line: err_lines.len(),
+                                    err_line: err_lines.len(),
                                     col,
                                     text: token_text.clone(),
                                     msg: "empty character literal",
@@ -503,7 +503,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                                     Ok( next ) => match next {
                                         b'\'' => Ok( TokenKind::Literal( Type::Char { value } ) ),
                                         _ => Err( SyntaxError {
-                                            line: err_lines.len(),
+                                            err_line: err_lines.len(),
                                             col,
                                             text: token_text.clone(),
                                             msg: "unclosed character literal",
@@ -545,7 +545,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                                 match token_text.parse() { // TODO create own number parsing function
                                     Ok( value ) => Ok( TokenKind::Literal( Type::I64 { value } ) ),
                                     Err( _ ) => Err( SyntaxError {
-                                        line: err_lines.len(),
+                                        err_line: err_lines.len(),
                                         col,
                                         text: token_text.clone(),
                                         msg: "expected number literal",
@@ -555,7 +555,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                             }
                             else {
                                 Err( SyntaxError {
-                                    line: err_lines.len(),
+                                    err_line: err_lines.len(),
                                     col,
                                     text: token_text.clone(),
                                     msg: "expected number literal",
@@ -587,7 +587,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                             Ok( kind )
                         },
                         _ => Err( SyntaxError {
-                            line: err_lines.len(),
+                            err_line: err_lines.len(),
                             col,
                             text: ch.to_string(),
                             msg: "unexpected character",
@@ -605,7 +605,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                     Err( mut err ) => {
                         line_contains_errors = true;
 
-                        err.line = err_lines.len();
+                        err.err_line = err_lines.len();
                         err.col = col;
                         let len = err.text.len();
 
@@ -666,7 +666,7 @@ impl Lexer {
         return match src.next() {
             Some( next @ ..='\x7F' ) => Ok( Some( next ) ),
             Some( next ) => Err( SyntaxError {
-                line: 0,
+                err_line: 0,
                 col: 0,
                 text: next.to_string(),
                 msg: "unrecognized character",
@@ -680,7 +680,7 @@ impl Lexer {
         return match src.peek() {
             Some( next @ ..='\x7F' ) => Ok( Some( next ) ),
             Some( next ) => Err( SyntaxError {
-                line: 0,
+                err_line: 0,
                 col: 0,
                 text: next.to_string(),
                 msg: "unrecognized character",
@@ -693,7 +693,7 @@ impl Lexer {
     fn next_char( src: &mut Peekable<Chars>, token_text: &mut String ) -> Result<u8, SyntaxError> {
         return match Self::next( src )? {
             Some( '\n' ) | None => Err( SyntaxError {
-                line: 0,
+                err_line: 0,
                 col: 0,
                 text: token_text.clone(),
                 msg: "invalid character literal",
@@ -716,7 +716,7 @@ impl Lexer {
                 b'\'' => Ok( b'\'' ),
                 b'"' => Ok( b'"' ),
                 _ => Err( SyntaxError {
-                    line: 0,
+                    err_line: 0,
                     col: 0,
                     text: token_text.clone(),
                     msg: "invalid escape character literal",
@@ -724,7 +724,7 @@ impl Lexer {
                 } ),
             },
             b'\x00'..=b'\x1F' | b'\x7F' => Err( SyntaxError {
-                line: 0,
+                err_line: 0,
                 col: 0,
                 text: token_text.clone(),
                 msg: "invalid character literal",
@@ -738,7 +738,7 @@ impl Lexer {
         return match Self::next( src )? {
             Some( ch ) => Ok( ch as u8 ),
             None => Err( SyntaxError {
-                line: 0,
+                err_line: 0,
                 col: 0,
                 text: format!( "\"{}", String::from_utf8( text.to_owned() ).unwrap() ),
                 msg: "invalid string literal",
@@ -767,7 +767,7 @@ impl Lexer {
                         text.push( b'\\' );
                         text.push( next );
                         return Err( SyntaxError {
-                            line: 0,
+                            err_line: 0,
                             col: 0,
                             text: format!( "\"{}", String::from_utf8( text.to_owned() ).unwrap() ),
                             msg: "invalid escape character",
@@ -776,7 +776,7 @@ impl Lexer {
                     },
                 },
                 b'\x00'..=b'\x1F' | b'\x7F' => return Err( SyntaxError {
-                    line: 0,
+                    err_line: 0,
                     col: 0,
                     text: format!( "\"{}", String::from_utf8( text.to_owned() ).unwrap() ),
                     msg: "invalid string literal",
@@ -891,7 +891,7 @@ impl<'lexer> BoundedPosition<'lexer> for Option<Position<'lexer>> {
                     let previous = tokens.peek_previous().unwrap();
                     Err( (Cow::Borrowed( previous.line ), SyntaxError {
                         // we are always sure that there is at least the SOF token before the EOF token, so we can safely unwrap
-                        line: 0,
+                        err_line: 0,
                         col: previous.token.col,
                         text: previous.token.kind.to_string(),
                         msg: err_msg,
@@ -902,7 +902,7 @@ impl<'lexer> BoundedPosition<'lexer> for Option<Position<'lexer>> {
                     let next = tokens.peek_previous().unwrap();
                     Err( (Cow::Borrowed( next.line ), SyntaxError {
                         // we are always sure that there is at least the EOF token after the SOF token, so we can safely unwrap
-                        line: 0,
+                        err_line: 0,
                         col: next.token.col,
                         text: next.token.kind.to_string(),
                         msg: err_msg,
@@ -1019,7 +1019,7 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
                 TokenKind::Bracket( BracketKind::CloseRound ) => {
                     this.tokens.next();
                     Err( (Cow::Borrowed( current.line ), SyntaxError {
-                        line: 0,
+                        err_line: 0,
                         col: current.token.col,
                         text: current.token.kind.to_string(),
                         msg: "invalid expression",
@@ -1037,7 +1037,7 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
                 TokenKind::Op( _ ) => {
                     this.tokens.next();
                     Err( (Cow::Borrowed( current.line ), SyntaxError {
-                        line: 0,
+                        err_line: 0,
                         col: current.token.col,
                         text: current.token.kind.to_string(),
                         msg: "invalid expression",
@@ -1047,7 +1047,7 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
                 TokenKind::Equals => {
                     this.tokens.next();
                     Err( (Cow::Borrowed( current.line ), SyntaxError {
-                        line: 0,
+                        err_line: 0,
                         col: current.token.col,
                         text: current.token.kind.to_string(),
                         msg: "invalid assignment",
@@ -1080,7 +1080,7 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
                         }
                     }
 
-                    err.line = err_lines.len() - 1;
+                    err.err_line = err_lines.len() - 1;
                     errors.push( err );
                 },
             }
@@ -1124,7 +1124,7 @@ impl<'lexer, 'definition> AST<'lexer> {
             _ => {
                 let previous = self.tokens.peek_previous().bounded( &mut self.tokens, "expected semicolon" )?.unwrap();
                 Err( (Cow::Borrowed( previous.line ), SyntaxError {
-                    line: 0,
+                    err_line: 0,
                     col: previous.token.col,
                     text: previous.token.kind.to_string(),
                     msg: "invalid expression",
@@ -1149,7 +1149,7 @@ impl<'lexer, 'definition> AST<'lexer> {
         let name = match &name_pos.token.kind {
             TokenKind::Identifier( name ) => Ok( name.clone() ),
             _ => Err( (Cow::Borrowed( name_pos.line ), SyntaxError {
-                line: 0,
+                err_line: 0,
                 col: name_pos.token.col,
                 text: name_pos.token.kind.to_string(),
                 msg: "invalid assignment",
@@ -1161,7 +1161,7 @@ impl<'lexer, 'definition> AST<'lexer> {
         let equals = match equals_pos.token.kind {
             TokenKind::Equals => Ok( () ),
             _ => Err( (Cow::Borrowed( name_pos.line ), SyntaxError {
-                line: 0,
+                err_line: 0,
                 col: name_pos.token.col,
                 text: name_pos.token.kind.to_string(),
                 msg: "invalid assignment",
@@ -1175,7 +1175,7 @@ impl<'lexer, 'definition> AST<'lexer> {
             TokenKind::Literal( _ ) | TokenKind::Identifier( _ ) |
             TokenKind::Bracket( BracketKind::OpenRound ) => self.expression( IdentifierExpansion::Keep ),
             _ => Err( (Cow::Borrowed( equals_pos.line ), SyntaxError {
-                line: 0,
+                err_line: 0,
                 col: equals_pos.token.col,
                 text: equals_pos.token.kind.to_string(),
                 msg: "invalid assignment",
@@ -1199,7 +1199,7 @@ impl<'lexer, 'definition> AST<'lexer> {
                 Ok( () )
             },
             Some( _ ) => Err( (Cow::Borrowed( name_pos.line ), SyntaxError {
-                line: 0,
+                err_line: 0,
                 col: name_pos.token.col,
                 text: name_pos.token.kind.to_string(),
                 msg: "variable redefinition",
@@ -1218,7 +1218,7 @@ impl<'lexer, 'definition> AST<'lexer> {
             TokenKind::Literal( _ ) | TokenKind::Identifier( _ ) |
             TokenKind::Bracket( BracketKind::OpenRound ) => self.expression( IdentifierExpansion::Expand ),
             _ => Err( (Cow::Borrowed( equals_pos.line ), SyntaxError {
-                line: 0,
+                err_line: 0,
                 col: equals_pos.token.col,
                 text: equals_pos.token.kind.to_string(),
                 msg: "invalid assignment",
@@ -1230,7 +1230,7 @@ impl<'lexer, 'definition> AST<'lexer> {
             TokenKind::Identifier( name ) => match self.resolve_mut( &name ) {
                 Some( identifier ) => identifier,
                 None => return Err( (Cow::Borrowed( name_pos.line ), SyntaxError {
-                    line: 0,
+                    err_line: 0,
                     col: name_pos.token.col,
                     text: name_pos.token.kind.to_string(),
                     msg: "variable redefinition",
@@ -1242,7 +1242,7 @@ impl<'lexer, 'definition> AST<'lexer> {
 
         let assignment = match variable.kind {
             DefinitionKind::Let | DefinitionKind::Const => return Err( (Cow::Borrowed( name_pos.line ), SyntaxError {
-                line: 0,
+                err_line: 0,
                 col: name_pos.token.col,
                 text: name_pos.token.kind.to_string(),
                 msg: "invalid assignment",
@@ -1265,7 +1265,7 @@ impl<'lexer, 'definition> AST<'lexer> {
             TokenKind::Literal( _ ) | TokenKind::Identifier( _ ) |
             TokenKind::Bracket( BracketKind::OpenRound ) => self.expression( IdentifierExpansion::Keep ),
             _ => Err( (Cow::Borrowed( argument_pos.line ), SyntaxError {
-                line: 0,
+                err_line: 0,
                 col: argument_pos.token.col,
                 text: argument_pos.token.kind.to_string(),
                 msg: "invalid print argument",
@@ -1301,7 +1301,7 @@ impl<'lexer, 'definition> AST<'lexer> {
                     IdentifierExpansion::Keep => Ok( Node::Identifier( name.clone() ) ),
                 },
                 None => Err( (Cow::Borrowed( current.line ), SyntaxError {
-                    line: 0,
+                    err_line: 0,
                     col: current.token.col,
                     text: current.token.kind.to_string(),
                     msg: "variable not defined",
@@ -1312,7 +1312,7 @@ impl<'lexer, 'definition> AST<'lexer> {
                 let expression_start_pos = self.tokens.next().bounded( &mut self.tokens, "expected expression" )?.unwrap();
                 match expression_start_pos.token.kind {
                     TokenKind::Bracket( BracketKind::CloseRound ) => Err( (Cow::Borrowed( expression_start_pos.line ), SyntaxError {
-                        line: 0,
+                        err_line: 0,
                         col: expression_start_pos.token.col,
                         text: expression_start_pos.token.kind.to_string(),
                         msg: "invalid expression",
@@ -1326,7 +1326,7 @@ impl<'lexer, 'definition> AST<'lexer> {
                                 Ok( expression )
                             },
                             _ => Err( (Cow::Borrowed( current.line ), SyntaxError {
-                                line: 0,
+                                err_line: 0,
                                 col: current.token.col,
                                 text: current.token.kind.to_string(),
                                 msg: "invalid expression",
@@ -1337,7 +1337,7 @@ impl<'lexer, 'definition> AST<'lexer> {
                 }
             },
             _ => Err( (Cow::Borrowed( current.line ), SyntaxError {
-                line: 0,
+                err_line: 0,
                 col: current.token.col,
                 text: current.token.kind.to_string(),
                 msg: "invalid expression",
@@ -1363,7 +1363,7 @@ impl<'lexer, 'definition> AST<'lexer> {
             _ => {
                 let previous = self.tokens.peek_previous().bounded( &mut self.tokens, "expected expression" )?.unwrap();
                 Err( (Cow::Borrowed( previous.line ), SyntaxError {
-                    line: 0,
+                    err_line: 0,
                     col: previous.token.col,
                     text: previous.token.kind.to_string(),
                     msg: "invalid expression or missing semicolon",
