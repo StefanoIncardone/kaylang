@@ -354,7 +354,7 @@ impl Display for SyntaxErrors<'_> {
         for error in &self.errors {
             if error.line != line_number {
                 line_number = error.line;
-                line = &self.lines[ line_number - 1 ];
+                line = &self.lines[ line_number ];
                 line_text = line.to_string();
             }
 
@@ -1019,7 +1019,7 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
                 TokenKind::Bracket( BracketKind::CloseRound ) => {
                     this.tokens.next();
                     Err( (Cow::Borrowed( current.line ), SyntaxError {
-                        line: err_lines.len(),
+                        line: 0,
                         col: current.token.col,
                         text: current.token.kind.to_string(),
                         msg: "invalid expression",
@@ -1037,7 +1037,7 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
                 TokenKind::Op( _ ) => {
                     this.tokens.next();
                     Err( (Cow::Borrowed( current.line ), SyntaxError {
-                        line: err_lines.len(),
+                        line: 0,
                         col: current.token.col,
                         text: current.token.kind.to_string(),
                         msg: "invalid expression",
@@ -1047,7 +1047,7 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
                 TokenKind::Equals => {
                     this.tokens.next();
                     Err( (Cow::Borrowed( current.line ), SyntaxError {
-                        line: err_lines.len(),
+                        line: 0,
                         col: current.token.col,
                         text: current.token.kind.to_string(),
                         msg: "invalid assignment",
@@ -1068,11 +1068,15 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
                         err_lines.push( err_line );
                     }
                     else {
+                        let mut found = false;
                         for line in &err_lines {
-                            if err_line.number != line.number {
-                                err_lines.push( err_line );
-                                break;
+                            if err_line.number == line.number {
+                                found = true;
                             }
+                        }
+
+                        if !found {
+                            err_lines.push( err_line );
                         }
                     }
 
