@@ -1,7 +1,10 @@
-// TODO create standardized module for outputting colored text
-// TODO implement negative numbers
-// IDEA read the src file line when printing errors instead of composing it from the tokens
+// TODO process entire statement for correctness and then report all the errors
+    // IDEA read the src file line when printing errors instead of composing it from the tokens
+        // IDEA have Token contain the absolute column in the source file, and when encountering errors read the corresponding line
 use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write}, fs::File, env, process::{ExitCode, Command}, fmt::Display, path::{Path, PathBuf}, iter::Peekable, str::Chars, borrow::Cow};
+
+mod color;
+use crate::color::*;
 
 
 trait Len {
@@ -282,7 +285,6 @@ impl Len for TokenKind {
 }
 
 
-// IDEA have it contain the absolute column in the source file, and when encountering errors read the corresponding line
 #[derive( Debug, Clone )]
 struct Token {
     // line: usize,
@@ -328,6 +330,61 @@ impl Display for Line {
 }
 
 
+const ERROR: &'static str = colored!{
+    text: "Error",
+    foreground: Foreground::LightRed,
+    background: Background::Default,
+    bold: true,
+    underline: false,
+    no_underline: false,
+    reverse_text: false,
+    positive_text: false,
+};
+
+const IN: &'static str = colored!{
+    text: "in",
+    foreground: Foreground::LightRed,
+    background: Background::Default,
+    bold: true,
+    underline: false,
+    no_underline: false,
+    reverse_text: false,
+    positive_text: false,
+};
+
+const INTERPRETING: &'static str = colored!{
+    text: "Interpreting",
+    foreground: Foreground::LightGreen,
+    background: Background::Default,
+    bold: true,
+    underline: false,
+    no_underline: false,
+    reverse_text: false,
+    positive_text: false,
+};
+
+const BUILDING: &'static str = colored!{
+    text: "Building",
+    foreground: Foreground::LightGreen,
+    background: Background::Default,
+    bold: true,
+    underline: false,
+    no_underline: false,
+    reverse_text: false,
+    positive_text: false,
+};
+
+const RUNNING: &'static str = colored!{
+    text: "Running",
+    foreground: Foreground::LightGreen,
+    background: Background::Default,
+    bold: true,
+    underline: false,
+    no_underline: false,
+    reverse_text: false,
+    positive_text: false,
+};
+
 // TODO implement NOTE, HINT, HELP in error messages
 #[derive( Debug, Clone )]
 struct SyntaxError {
@@ -341,7 +398,7 @@ struct SyntaxError {
 #[derive( Debug )]
 struct SyntaxErrors<'this> {
     file_path: String,
-    lines: Vec<Cow<'this, Line>>, // IDEA strore the contents of the lines in Strings
+    lines: Vec<Cow<'this, Line>>,
     errors: Vec<SyntaxError>,
 }
 
@@ -358,27 +415,52 @@ impl Display for SyntaxErrors<'_> {
                 line_text = line.to_string();
             }
 
-            let mut line_number_and_bar = format!( "{} |", line.number );
-            let visualization_padding = line_number_and_bar.len();
+            let mut line_number_and_bar = Colored {
+                text: format!( "{} |", line.number ),
+                foreground: Foreground::LightBlue,
+                ..Default::default()
+            };
+
+            let visualization_padding = line_number_and_bar.text.len();
             let location_padding = visualization_padding - 1;
 
-            let bar = format!( "\x1b[94m{:>visualization_padding$}\x1b[0m", "|" );
-            line_number_and_bar = format!( "\x1b[94m{:>visualization_padding$}\x1b[0m", line_number_and_bar );
+            let bar = Colored {
+                text: format!( "{:>visualization_padding$}", "|" ),
+                foreground: Foreground::LightBlue,
+                ..Default::default()
+            };
+
+            line_number_and_bar.text = format!( "{:>visualization_padding$}", line_number_and_bar );
+            line_number_and_bar.foreground = Foreground::LightBlue;
 
             let pointers_col = error.col - 1;
             let pointers_len = error.text.len();
 
+            let error_msg = Colored {
+                text: error.msg.to_string(),
+                foreground: Foreground::White,
+                bold: true,
+                ..Default::default()
+            };
+
+
+            let help_msg = Colored {
+                text: format!( "{:^>pointers_len$} {}", "", error.help_msg ),
+                foreground: Foreground::LightRed,
+                ..Default::default()
+            };
+
             writeln!( f,
-                "\x1b[91;1m{}\x1b[0m: \x1b[97;1m{}\x1b[0m\
-                \n\x1b[91m{:>location_padding$}\x1b[0m: {}:{}:{}\
+                "{}: {}\
+                \n{:>location_padding$}: {}:{}:{}\
                 \n{}\
                 \n{} {}\
-                \n{} {:pointers_col$}\x1b[91m{:^>pointers_len$} {}\x1b[0m\n",
-                "Error", error.msg,
-                "in", self.file_path, line.number, error.col,
+                \n{} {:pointers_col$}{}\n",
+                ERROR, error_msg,
+                IN, self.file_path, line.number, error.col,
                 bar,
                 line_number_and_bar, line_text,
-                bar, "", "", error.help_msg
+                bar, "", help_msg
             )?;
         }
 
@@ -387,7 +469,6 @@ impl Display for SyntaxErrors<'_> {
 }
 
 
-// IDEA consider removing Line struct and have each token remember its line, or dont store the line number and calculate it somehow
 #[derive( Debug )]
 struct Lexer {
     file_path: String,
@@ -747,7 +828,6 @@ impl Lexer {
         }
     }
 
-    // TODO process the entire string for correctness (closing quotes first) and then report invalid characters
     fn parse_str( src: &mut Peekable<Chars> ) -> Result<Vec<u8>, SyntaxError> {
         let mut text: Vec<u8> = Vec::new();
 
@@ -931,7 +1011,6 @@ impl<'lexer> BoundedPosition<'lexer> for Option<Position<'lexer>> {
 }
 
 
-// TODO introduce Unexpected Node to let the parsing of the expression continue untill finished, and the reporting errors
 #[derive( Debug, Clone )]
 enum Node {
     Literal( Type ),
@@ -1287,11 +1366,11 @@ impl<'lexer, 'definition> AST<'lexer> {
 
 
     // TODO disallow implicit conversions (str + i64, char + i64, str + char or str + str (maybe treat this as concatenation))
-    // IDEA introduce casting operators
+        // IDEA introduce casting operators
+    // TODO implement negative numbers
     fn factor( &mut self, expansion: IdentifierExpansion ) -> Result<Node, (Cow<'lexer, Line>, SyntaxError)> {
         let current = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected expression" )?.unwrap();
         let result = match &current.token.kind {
-            // FIX forbid implicit conversions
             TokenKind::True => Ok( Node::Literal( Type::Bool { value: true } ) ),
             TokenKind::False => Ok( Node::Literal( Type::Bool { value: false } ) ),
             TokenKind::Literal( literal ) => Ok( Node::Literal( literal.clone() ) ),
@@ -1350,8 +1429,8 @@ impl<'lexer, 'definition> AST<'lexer> {
     }
 
     // FIX dealing with missing semicolons or missing operators
-    // TODO move it outside the expression
-    // IDEA create two versions of this function, one that checks for the closing semicolon, and one that doesn't
+        // TODO move it outside the expression
+        // IDEA create two versions of this function, one that checks for the closing semicolon, and one that doesn't
     fn operator( &mut self, ops: &[OpKind] ) -> Result<Option<OpKind>, (Cow<'lexer, Line>, SyntaxError)> {
         let current_pos = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected expression or semicolon" )?.unwrap();
         let result = match current_pos.token.kind {
@@ -1462,12 +1541,8 @@ impl<'lexer> AST<'lexer> {
     }
 
     fn compile_node( &self, node: &Node, asm: &mut String ) {
-        /* NOTE
-        it is literally possible to copy paste the entire literal expression (won't work with variables)
-        in the generated asm file (only if it doesn't include exponentiations)
-
-        // IDEA check if the expression contains non inlineable expression, if not just copy paste the literal expression
-        */
+        // NOTE it is literally possible to copy paste the entire expression in the generated asm file (only if it doesn't include basic math expressions)
+            // IDEA check if the expression contains non basic math expressions, if not just copy paste the literal expression
         match node {
             Node::Print( argument ) => {
                 let value = match &**argument {
@@ -1609,7 +1684,7 @@ impl<'lexer> AST<'lexer> {
     }
 
     fn interpret( &self, file_path: &str ) {
-        println!( "\x1b[92;1mIntepreting\x1b[0m: {}", file_path );
+        println!( "{}: {}", INTERPRETING, file_path );
 
         for node in &self.nodes {
             match node {
@@ -1627,7 +1702,7 @@ impl<'lexer> AST<'lexer> {
 
     fn compile( &self, file_path: &str ) -> Result<PathBuf, ()> {
         let src_file_path = Path::new( file_path );
-        println!( "\x1b[92;1mBuilding\x1b[0m: {}", src_file_path.display() );
+        println!( "{}: {}", BUILDING, src_file_path.display() );
 
         let asm_file_path = src_file_path.with_extension( "asm" );
         let mut asm_file = BufWriter::new( File::create( &asm_file_path ).unwrap() );
@@ -1817,7 +1892,7 @@ _start:
 
         fn run( &self, file_path: &str ) -> Result<(), ()> {
             let executable_file_path = self.compile( &file_path )?;
-            println!( "\x1b[92;1mRunning\x1b[0m: {}", executable_file_path.display() );
+            println!( "{}: {}", RUNNING, executable_file_path.display() );
 
             let output = Command::new( format!( "{}", executable_file_path.display() ) ).output().unwrap();
             print!( "{}", String::from_utf8_lossy( &output.stdout ) );
@@ -1827,7 +1902,6 @@ _start:
     }
 
 
-// IDEA add man page
 fn print_usage() {
     println!( r"
 Blitzlang compiler, version {}
@@ -1844,6 +1918,7 @@ interpret <file.blz>    Run the program in interpret mode
 ", env!( "CARGO_PKG_VERSION" ) );
 }
 
+// TODO implement SyntaxErrors to report cli mistakes
 fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().collect();
 
@@ -1876,29 +1951,29 @@ fn main() -> ExitCode {
                 source_file_path = Some( arg );
             }
             else {
-                eprintln!( "\x1b[91;1mError\x1b[0m: too many source file paths provided" );
+                eprintln!( "{}: too many source file paths provided", ERROR );
                 return ExitCode::FAILURE;
             },
         }
     }
 
     if !interpret_flag && !build_flag && !run_flag {
-        eprintln!( "\x1b[91;1mError\x1b[0m: no run mode command provided" );
+        eprintln!( "{}: no run mode command provided", ERROR );
         return ExitCode::FAILURE;
     }
     else if interpret_flag && (build_flag || run_flag) {
-        eprintln!( "\x1b[91;1mError\x1b[0m: canno interpret and build/run at the same time" );
+        eprintln!( "{}: cannot interpret and build/run at the same time", ERROR );
         return ExitCode::FAILURE;
     }
     else if build_flag && run_flag {
-        eprintln!( "\x1b[91;1mError\x1b[0m: build and run commands cannot be used together" );
+        eprintln!( "{}: build and run commands cannot be used together", ERROR );
         return ExitCode::FAILURE;
     }
 
     let source_file_path = match source_file_path {
         Some( path ) => path,
         None => {
-            eprintln!( "\x1b[91;1mError\x1b[0m: no source file path provided" );
+            eprintln!( "{}: no source file path provided", ERROR );
             return ExitCode::FAILURE;
         }
     };
@@ -1906,7 +1981,7 @@ fn main() -> ExitCode {
     let source_file = match File::open( &source_file_path ) {
         Ok( file ) => {
             if file.metadata().unwrap().is_dir() {
-                eprintln!( "\x1b[91;1mError\x1b[0m: provided file was a directory" );
+                eprintln!( "{}: provided file was a directory", ERROR );
                 return ExitCode::FAILURE;
             }
             else {
@@ -1919,7 +1994,7 @@ fn main() -> ExitCode {
                 _ => "unknown error",
             };
 
-            eprintln!( "\x1b[91;1mError\x1b[0m: could not open file '{}'!\nCause: {}", &source_file_path, cause );
+            eprintln!( "{}: could not open file '{}'!\nCause: {}", ERROR, &source_file_path, cause );
             return ExitCode::FAILURE;
         },
     };
