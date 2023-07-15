@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 
-#[derive( Debug, Default, Clone, Copy )]
+#[derive( Debug, Default, Clone, Copy, PartialEq )]
 #[allow(dead_code)]
 pub enum Foreground {
     #[default]
@@ -24,7 +24,7 @@ pub enum Foreground {
     White = 97,
 }
 
-#[derive( Debug, Default, Clone, Copy )]
+#[derive( Debug, Default, Clone, Copy, PartialEq )]
 #[allow(dead_code)]
 pub enum Background {
     #[default]
@@ -63,10 +63,11 @@ pub struct Colored {
 impl Display for Colored {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         let mut codes = String::new();
-        if !matches!( self.foreground, Foreground::Default ) {
+
+        if self.foreground != Foreground::Default {
             codes.push_str( &format!( "{};", self.foreground as u8 ) )
         }
-        if !matches!( self.background, Background::Default ) {
+        if self.background != Background::Default {
             codes.push_str( &format!( "{};", self.background as u8 ) )
         }
         if self.bold {
@@ -98,7 +99,7 @@ impl Display for Colored {
 
 #[macro_export]
 macro_rules! foreground {
-    (Foreground::Defaul) => {""};
+    (Foreground::Default) => {""};
     (Foreground::Black) => {"30"};
     (Foreground::Red) => {"31"};
     (Foreground::Green) => {"32"};
@@ -172,9 +173,9 @@ macro_rules! positive_text {
 #[macro_export]
 macro_rules! colored {
     () => {""};
-    ($(text:)?$text: literal) => {$text};
-    ($(text:)?$text: literal,) => {$text};
-    ($(text:)?$text: literal,
+    ($(text:)?$text: literal$(,)?) => {$text};
+    (
+        $(text:)?$text: literal,
         $(foreground: Foreground::$fg: tt,)?
         $(background: Background::$bg: tt,)?
         $(bold: $b: ident,)?

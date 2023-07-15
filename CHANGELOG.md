@@ -2,6 +2,10 @@
 
 ## Feature Ideas
 
+### Language version embedded in file extension
+
+From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProjects/bldaps_for/common/bldaps_under_inpext.htm#:~:text=Typical%20Fortran%20source%20files%20have,f.)
+
 ### Arbitrary number bases between 1 and 37
 
 | prefix | shorthand | postfix |  base   |         result          |
