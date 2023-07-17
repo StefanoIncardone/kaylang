@@ -1,7 +1,28 @@
-var accumulator = 0;
-let one = 1;
-accumulator = accumulator + one;
-accumulator = accumulator * 2;
-let result = accumulator * 4;
+let ten = 10;
+print "ten = ";
+println ten;
 
-println result >= 7;
+{
+    let nine = 9;
+    print "nine = ";
+    println nine;
+
+    {
+        let twentyone = nine + ten;
+        print "twentyone = ";
+        println twentyone;
+
+        print "nine in the inner scope = ";
+        println nine;
+    }
+
+    print "ten in the inner scope = ";
+    println ten;
+}
+
+print "ten in the inner scope = ";
+println ten;
+
+# this will result in an error
+# print "nine in the inner scope = ";
+# println nine;

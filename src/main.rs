@@ -68,10 +68,8 @@ impl Type {
             Self::I64 { value } => print!( "{}", value ),
             Self::Char { value } => print!( "{}", *value as char ),
             Self::Bool { value } => print!( "{}", value ),
-            Self::Str { text } => {
-                for character in text {
-                    print!( "{}", *character as char );
-                }
+            Self::Str { text } => for character in text {
+                print!( "{}", *character as char );
             },
         }
     }
@@ -337,12 +335,6 @@ const ERROR: &'static str = colored!{
     bold: true,
 };
 
-const IN: &'static str = colored!{
-    text: "in",
-    foreground: Foreground::LightRed,
-    bold: true,
-};
-
 const INTERPRETING: &'static str = colored!{
     text: "Interpreting",
     foreground: Foreground::LightGreen,
@@ -391,6 +383,13 @@ impl Display for SyntaxErrors<'_> {
                 line_text = line.to_string();
             }
 
+            let error_msg = Colored {
+                text: error.msg.to_string(),
+                foreground: Foreground::White,
+                bold: true,
+                ..Default::default()
+            };
+
             let mut line_number_and_bar = Colored {
                 text: format!( "{} |", line.number ),
                 foreground: Foreground::LightBlue,
@@ -400,25 +399,24 @@ impl Display for SyntaxErrors<'_> {
             let visualization_padding = line_number_and_bar.text.len();
             let location_padding = visualization_padding - 1;
 
+            line_number_and_bar.text = format!( "{:>visualization_padding$}", line_number_and_bar );
+            line_number_and_bar.foreground = Foreground::LightBlue;
+
+            let in_ = Colored {
+                text: format!( "{:>location_padding$}", "in" ),
+                foreground: Foreground::LightRed,
+                bold: true,
+                ..Default::default()
+            };
+
             let bar = Colored {
                 text: format!( "{:>visualization_padding$}", "|" ),
                 foreground: Foreground::LightBlue,
                 ..Default::default()
             };
 
-            line_number_and_bar.text = format!( "{:>visualization_padding$}", line_number_and_bar );
-            line_number_and_bar.foreground = Foreground::LightBlue;
-
             let pointers_col = error.col - 1;
             let pointers_len = error.text.len();
-
-            let error_msg = Colored {
-                text: error.msg.to_string(),
-                foreground: Foreground::White,
-                bold: true,
-                ..Default::default()
-            };
-
 
             let help_msg = Colored {
                 text: format!( "{:^>pointers_len$} {}", "", error.help_msg ),
@@ -428,12 +426,12 @@ impl Display for SyntaxErrors<'_> {
 
             writeln!( f,
                 "{}: {}\
-                \n{:>location_padding$}: {}:{}:{}\
+                \n{}: {}:{}:{}\
                 \n{}\
                 \n{} {}\
                 \n{} {:pointers_col$}{}\n",
                 ERROR, error_msg,
-                IN, self.file_path, line.number, error.col,
+                in_, self.file_path, line.number, error.col,
                 bar,
                 line_number_and_bar, line_text,
                 bar, "", help_msg
@@ -630,13 +628,13 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                             let kind = match token_text.as_str() {
                                 // "entry" => TokenKind::Entry,
                                 // "fn" => TokenKind::Fn,
-                                "let" => TokenKind::Definition( DefinitionKind::Let ),
                                 "const" => TokenKind::Definition( DefinitionKind::Const ),
+                                "let" => TokenKind::Definition( DefinitionKind::Let ),
                                 "var" => TokenKind::Definition( DefinitionKind::Var ),
-                                "true" => TokenKind::True,
-                                "false" => TokenKind::False,
                                 "print" => TokenKind::Print,
                                 "println" => TokenKind::PrintLn,
+                                "true" => TokenKind::True,
+                                "false" => TokenKind::False,
                                 // "return" => TokenKind::Return,
                                 _ => TokenKind::Identifier( token_text.clone() )
                             };
@@ -859,6 +857,20 @@ struct LexerIter<'lexer> {
 }
 
 impl<'lexer> LexerIter<'lexer> {
+    // fn sof( &self ) -> Position<'lexer> {
+    //     let line = &self.lexer.lines[ 0 ];
+    //     let token = &line.tokens[ 0 ];
+
+    //     return Position { line, token };
+    // }
+
+    // fn eof( &self ) -> Position<'lexer> {
+    //     let line = self.lexer.lines.last().unwrap();
+    //     let token = line.tokens.last().unwrap();
+
+    //     return Position { line, token };
+    // }
+
     fn current( &self ) -> Option<Position<'lexer>> {
         let line = self.lexer.lines.get( self.line )?;
         let token = line.tokens.get( self.token )?;
@@ -907,7 +919,6 @@ impl<'lexer> LexerIter<'lexer> {
 
         return Some( Position { line, token } ).or_previous( self );
     }
-
 
     fn peek_next( &mut self ) -> Option<Position<'lexer>> {
         let (starting_line, starting_token) = (self.line, self.token);
@@ -1026,32 +1037,49 @@ struct Definition {
 
 #[derive( Debug )]
 struct Bracket<'lexer> {
-    line: &'lexer Line,
-    token: &'lexer Token,
+    position: Position<'lexer>,
     kind: BracketKind,
 }
 
-// TODO introduce the notion of context:
-    // parenthesis stack
-    // blocks and scopes
-    // variables, functions, etc.
+#[derive( Debug )]
+struct Scope/* <'lexer> */ {
+    parent: Option<usize>,
+    // start: Position<'lexer>,
+    definitions: Vec<Definition>,
+    // end: Option<Position<'lexer>>,
+}
+
+
 #[derive( Debug )]
 struct AST<'lexer> {
     tokens: LexerIter<'lexer>, // NOTE possibly remove this field
+
+    scopes: Vec<Scope/* <'lexer> */>,
+    current_scope: usize,
+
     nodes: Vec<Node>,
     brackets: Vec<Bracket<'lexer>>,
-    definitions: Vec<Definition>,
 }
 
 impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
     type Error = SyntaxErrors<'lexer>;
 
     fn try_from( lexer: &'lexer Lexer ) -> Result<Self, Self::Error> {
+        let tokens = lexer.iter();
+
+        let global_scope = Scope {
+            parent: None,
+            // start: tokens.sof(),
+            definitions: Vec::new(),
+            // end: Some( tokens.eof() ),
+        };
+
         let mut this = Self {
-            tokens: lexer.iter(),
+            tokens,
+            scopes: vec![ global_scope ],
+            current_scope: 0,
             nodes: Vec::new(),
             brackets: Vec::new(),
-            definitions: Vec::new(),
         };
 
         let mut err_lines: Vec<Cow<'lexer, Line>> = Vec::new();
@@ -1091,14 +1119,28 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
                     } ) )
                 },
                 TokenKind::Bracket( kind @ BracketKind::OpenCurly ) => {
-                    this.brackets.push( Bracket { line: current.line, token: current.token, kind } );
+                    this.brackets.push( Bracket { position: current, kind } );
+                    this.scopes.push( Scope {
+                        parent: Some( this.current_scope ),
+                        // start: current,
+                        definitions: Vec::new(),
+                        // end: None,
+                    } );
+
+                    this.current_scope = this.scopes.len() - 1;
                     this.tokens.next();
                     continue;
                 },
                 TokenKind::Bracket( BracketKind::CloseCurly ) => {
                     this.tokens.next();
                     match this.brackets.pop() {
-                        Some( _ ) => continue,
+                        Some( _ ) => {
+                            this.current_scope = match this.scopes[ this.current_scope ].parent {
+                                None => 0,
+                                Some( parent ) => parent,
+                            };
+                            continue;
+                        },
                         None => Err( (current.line, SyntaxError {
                             err_line: 0,
                             col: current.token.col,
@@ -1160,19 +1202,19 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
             for bracket in &this.brackets {
                 let mut found = false;
                 for line in &err_lines {
-                    if bracket.line.number == line.number {
+                    if bracket.position.line.number == line.number {
                         found = true;
                     }
                 }
 
                 if !found {
-                    err_lines.push( Cow::Borrowed( bracket.line ) );
+                    err_lines.push( Cow::Borrowed( bracket.position.line ) );
                 }
 
                 // there can only be open brackets at this point
                 errors.push( SyntaxError {
                     err_line: err_lines.len() - 1,
-                    col: bracket.token.col,
+                    col: bracket.position.token.col,
                     text: bracket.kind.to_string(),
                     msg: "stray bracket",
                     help_msg: "was not closed"
@@ -1189,27 +1231,36 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
     }
 }
 
-impl<'lexer, 'definitions> AST<'lexer> {
-    fn resolve( &'definitions self, name: &str ) -> Option<&'definitions Definition> {
-        for definition in &self.definitions {
-            if definition.name == name {
-                return Some( definition );
-            }
-        }
+impl<'lexer, 'definition> AST<'lexer> {
+    fn resolve_scoped( &'definition self, name: &str ) -> Option<&'definition Definition> {
+        let mut current_scope = self.current_scope;
 
-        return None;
+        loop {
+            let scope = &self.scopes[ current_scope ];
+            for definition in &scope.definitions {
+                if definition.name == name {
+                    return Some( definition );
+                }
+            }
+
+            current_scope = scope.parent?;
+        }
     }
 
-    fn resolve_mut( &'definitions mut self, name: &str ) -> Option<&'definitions mut Definition> {
-        for definition in &mut self.definitions {
-            if definition.name == name {
-                return Some( definition );
+    fn resolve_scoped_mut( &'definition mut self, name: &str ) -> Option<&'definition mut Definition> {
+        let mut current_scope = self.current_scope;
+
+        loop {
+            let scope = &self.scopes[ current_scope ];
+            for (i, definition) in scope.definitions.iter().enumerate() {
+                if definition.name == name {
+                    return Some( &mut self.scopes[ current_scope ].definitions[ i ] );
+                }
             }
+
+            current_scope = scope.parent?;
         }
-
-        return None;
     }
-
 
     fn semicolon( &mut self ) -> Result<(), (&'lexer Line, SyntaxError)> {
         let current = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected semicolon" )?.unwrap();
@@ -1282,14 +1333,14 @@ impl<'lexer, 'definitions> AST<'lexer> {
         let value = value?;
         self.semicolon()?;
 
-        return match self.resolve( &name ) {
+        return match self.resolve_scoped( &name ) {
             None => {
                 let value = match kind {
-                    DefinitionKind::Let | DefinitionKind::Var => value,
                     DefinitionKind::Const => Node::Literal( self.evaluate_node( &value ) ),
+                    DefinitionKind::Let | DefinitionKind::Var => value,
                 };
 
-                self.definitions.push( Definition { kind, name, value: Box::new( value ) } );
+                self.scopes[ self.current_scope ].definitions.push( Definition { kind, name, value: Box::new( value ) } );
                 Ok( () )
             },
             Some( _ ) => Err( (name_pos.line, SyntaxError {
@@ -1321,14 +1372,14 @@ impl<'lexer, 'definitions> AST<'lexer> {
         };
 
         let variable = match &name_pos.token.kind {
-            TokenKind::Identifier( name ) => match self.resolve_mut( &name ) {
+            TokenKind::Identifier( name ) => match self.resolve_scoped_mut( &name ) {
                 Some( identifier ) => identifier,
                 None => return Err( (name_pos.line, SyntaxError {
                     err_line: 0,
                     col: name_pos.token.col,
                     text: name_pos.token.kind.to_string(),
                     msg: "variable redefinition",
-                    help_msg: "was not previously defined"
+                    help_msg: "was not previously defined in this scope"
                 } ) ),
             },
             _ => unreachable!()
@@ -1383,13 +1434,13 @@ impl<'lexer, 'definitions> AST<'lexer> {
     // TODO disallow implicit conversions (str + i64, char + i64, str + char or str + str (maybe treat this as concatenation))
         // IDEA introduce casting operators
     // TODO implement negative numbers
-    fn factor( &mut self, expansion: IdentifierExpansion/* , typ: Option<Type> */ ) -> Result<Node, (&'lexer Line, SyntaxError)> {
+    fn factor( &mut self, expansion: IdentifierExpansion ) -> Result<Node, (&'lexer Line, SyntaxError)> {
         let current = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected expression" )?.unwrap();
         let result = match &current.token.kind {
             TokenKind::True => Ok( Node::Literal( Type::Bool { value: true } ) ),
             TokenKind::False => Ok( Node::Literal( Type::Bool { value: false } ) ),
             TokenKind::Literal( literal ) => Ok( Node::Literal( literal.clone() ) ),
-            TokenKind::Identifier( name ) => match self.resolve( name ) {
+            TokenKind::Identifier( name ) => match self.resolve_scoped( name ) {
                 Some( definition ) => match expansion {
                     IdentifierExpansion::Expand => Ok( *definition.value.clone() ),
                     IdentifierExpansion::Keep => Ok( Node::Identifier( name.clone() ) ),
@@ -1399,7 +1450,7 @@ impl<'lexer, 'definitions> AST<'lexer> {
                     col: current.token.col,
                     text: current.token.kind.to_string(),
                     msg: "variable not defined",
-                    help_msg: "was not previously defined"
+                    help_msg: "was not previously defined in this scope"
                 } ) ),
             },
             TokenKind::Bracket( BracketKind::OpenRound ) => {
@@ -1527,6 +1578,18 @@ impl<'lexer, 'definitions> AST<'lexer> {
 // After construction
 // NOTE only epxlicitly processing nodes that print values for now
 impl<'this> AST<'this> {
+    fn resolve( &'this self, name: &str ) -> &'this Definition {
+        for scope in &self.scopes {
+            for definition in &scope.definitions {
+                if definition.name == name {
+                    return definition;
+                }
+            }
+        }
+
+        unreachable!();
+    }
+
     fn evaluate_node( &self, node: &Node ) -> Type {
         return match node {
             Node::Literal( value ) => value.clone(),
@@ -1551,7 +1614,7 @@ impl<'this> AST<'this> {
                     OpKind::Compare => Type::I64 { value: lhs.cmp( &rhs ) as i64 },
                 }
             },
-            Node::Identifier( name ) => self.evaluate_node( &*self.resolve( name ).unwrap().value ),
+            Node::Identifier( name ) => self.evaluate_node( &*self.resolve( name ).value ),
             Node::Print( _ ) | Node::PrintLn( _ ) => unreachable!(),
         }
     }
@@ -1590,7 +1653,7 @@ impl<'this> AST<'this> {
 
                 let value = match &**argument {
                     Node::Literal( _ ) | Node::Expression{ .. } => &**argument,
-                    Node::Identifier( name ) => &*self.resolve( name ).unwrap().value,
+                    Node::Identifier( name ) => &*self.resolve( name ).value,
                     Node::Print( _ ) | Node::PrintLn( _ ) => unreachable!(),
                 };
 
@@ -1740,7 +1803,7 @@ impl<'this> AST<'this> {
                 asm.push_str( &format!( " ; {}", node ) );
                 asm.push_str( &format!( "{}\n\n", op_asm ) );
             },
-            Node::Identifier( name ) => self.compile_node( &*self.resolve( name ).unwrap().value, asm, strings ),
+            Node::Identifier( name ) => self.compile_node( &*self.resolve( name ).value, asm, strings ),
         }
     }
 
@@ -1779,14 +1842,14 @@ r#" stdout: equ 1
             let value = match node {
                 Node::Print( argument ) => match &**argument {
                     Node::Literal( _ ) | Node::Expression{ .. } => &**argument,
-                    Node::Identifier( name ) => &*self.resolve( name ).unwrap().value,
+                    Node::Identifier( name ) => &*self.resolve( name ).value,
                     Node::Print( _ ) | Node::PrintLn( _ ) => unreachable!(),
                 },
                 Node::PrintLn( argument ) => {
                     was_println = true;
                     match &**argument {
                         Node::Literal( _ ) | Node::Expression{ .. } => &**argument,
-                        Node::Identifier( name ) => &*self.resolve( name ).unwrap().value,
+                        Node::Identifier( name ) => &*self.resolve( name ).value,
                         Node::Print( _ ) | Node::PrintLn( _ ) => unreachable!(),
                     }
                 },
@@ -1916,7 +1979,7 @@ r" mov rdi, EXIT_SUCCESS
  syscall";
 
         let mut program_asm = String::new();
-        for node in self.nodes.iter() {
+        for node in &self.nodes {
             match node {
                 Node::Print( _ ) | Node::PrintLn( _ ) => self.compile_node( node, &mut program_asm, &strings ),
                 _ => continue,
@@ -1997,9 +2060,9 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().collect();
 
     // to quickly debug
-    // args.push( "interpret".to_string() );
+    args.push( "interpret".to_string() );
     // args.push( "build".to_string() );
-    args.push( "run".to_string() );
+    // args.push( "run".to_string() );
     args.push( "examples/main.blz".to_string() );
 
     if args.len() < 2 {

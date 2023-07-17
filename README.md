@@ -95,3 +95,40 @@ const lucky = ten + nine;
 println lucky;
 print 42;
 ```
+
+### Scopes
+
+They are enclosed by `{` and `}`, and contain a series of statements
+variables are only accessible in the scope they were defined in
+
+```blitz
+let ten = 10;
+print "ten = ";
+println ten;
+
+{
+    let nine = 9;
+    print "nine = ";
+    println nine;
+
+    {
+        let twentyone = nine + ten;
+        print "twentyone = ";
+        println twentyone;
+
+        print "nine in the inner scope = ";
+        println nine;
+    }
+
+    print "ten in the inner scope = ";
+    println ten;
+}
+
+print "ten in the inner scope = ";
+println ten;
+
+# this will result in an error because "nine" was not defined in this scope
+# print "nine in the inner scope = ";
+# println nine;
+
+```

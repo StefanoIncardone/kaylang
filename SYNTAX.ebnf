@@ -18,12 +18,15 @@ term = exponentiation, [("*" | "/"), exponentiation];
 math = term, [("+" | "-"), term];
 expression = math, [("==" | "!=" | ">" | ">=" | "<" | "<=" | "<=>"), math];
 
-program = [{
+statement =
     line_comment |
     (
         (("print" | "println"), expression) |
-        (("let" | "var" | "const"), identifier, "=", expression) |
+        (("const" | "let" | "var"), identifier, "=", expression) |
         (identifier, "=", expression),
         ';'
-    )
-}];
+    );
+
+scope = "{", [{statement}], "}";
+
+program = [{statement | scope}];
