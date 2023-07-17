@@ -1065,8 +1065,6 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
     type Error = SyntaxErrors<'lexer>;
 
     fn try_from( lexer: &'lexer Lexer ) -> Result<Self, Self::Error> {
-        let tokens = lexer.iter();
-
         let global_scope = Scope {
             parent: None,
             // start: tokens.sof(),
@@ -1075,7 +1073,7 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
         };
 
         let mut this = Self {
-            tokens,
+            tokens: lexer.iter(),
             scopes: vec![ global_scope ],
             current_scope: 0,
             nodes: Vec::new(),
@@ -1094,16 +1092,18 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
                     Err( err ) => Err( err ),
                 },
                 TokenKind::Print | TokenKind::PrintLn => this.print(),
-                TokenKind::Identifier( _ ) => match this.tokens.peek_next().bounded( &mut this.tokens, "" ) {
-                    Ok( Some( next ) ) => match next.token.kind {
+                TokenKind::Identifier( _ ) => match this.tokens.peek_next() {
+                    Some( next ) => match next.token.kind {
                         TokenKind::Equals => match this.variable_assignment() {
                             Ok( _ ) => continue,
-                            Err( err ) => Err( err ),
+                            Err( err ) => {
+                                this.tokens.next();
+                                Err( err )
+                            },
                         },
                         _ => this.expression( IdentifierExpansion::Keep ),
                     },
-                    Ok( None ) => continue,
-                    Err( _ ) => this.expression( IdentifierExpansion::Keep ),
+                    None => continue,
                 },
                 TokenKind::True | TokenKind::False
                 | TokenKind::Literal( _ )
@@ -1577,6 +1577,8 @@ impl<'lexer, 'definition> AST<'lexer> {
 
 // After construction
 // NOTE only epxlicitly processing nodes that print values for now
+// TODO move identifier resolution to here
+    // NOTE have identifiers contain their definition line and token
 impl<'this> AST<'this> {
     fn resolve( &'this self, name: &str ) -> &'this Definition {
         for scope in &self.scopes {
