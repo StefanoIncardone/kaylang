@@ -54,7 +54,7 @@ impl Into<i64> for Type {
 
 impl Len for Type {
     fn len( &self ) -> usize {
-        match self {
+        return match self {
             Self::I64 { value } => value.to_string().len(),
             Self::Char { value: _ } => 1 as usize,
             Self::Bool { value } => value.to_string().len(),
@@ -118,7 +118,7 @@ impl Display for OpKind {
 
 impl Len for OpKind {
     fn len( &self ) -> usize {
-        match self {
+        return match self {
             Self::Pow => 1,
             Self::Times => 1,
             Self::Divide => 1,
@@ -156,7 +156,7 @@ impl Display for DefinitionKind {
 
 impl Len for DefinitionKind {
     fn len( &self ) -> usize {
-        match self {
+        return match self {
             Self::Const => 5,
             Self::Let => 3,
             Self::Var => 3,
@@ -189,7 +189,7 @@ impl Display for BracketKind {
 
 impl Len for BracketKind {
     fn len( &self ) -> usize {
-        match self {
+        return match self {
             Self::OpenRound => 1,
             Self::CloseRound => 1,
             Self::OpenCurly => 1,
@@ -1062,6 +1062,7 @@ struct AST<'lexer> {
     brackets: Vec<Bracket<'lexer>>,
 }
 
+// Parsing tokens and building the AST
 impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
     type Error = SyntaxErrors<'lexer>;
 
@@ -1179,7 +1180,13 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
             };
 
             match statement_result {
-                Ok( statement ) => this.nodes.push( statement ),
+                Ok( statement ) => match statement {
+                    Node::PrintLn( argument ) => {
+                        this.nodes.push( Node::Print( argument ) );
+                        this.nodes.push( Node::Print( Box::new( Node::Literal( Type::Char { value: '\n' as u8 } ) ) ) );
+                    },
+                    _ => this.nodes.push( statement ),
+                },
                 Err( (err_line, mut err) ) => {
                     let mut found = false;
                     for line in &err_lines {
@@ -1232,6 +1239,7 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
     }
 }
 
+// Parsing tokens and building the AST
 impl<'lexer, 'definition> AST<'lexer> {
     fn resolve_scoped( &'definition self, name: &str ) -> Option<&'definition Definition> {
         let mut current_scope = self.current_scope;
@@ -1404,6 +1412,23 @@ impl<'lexer, 'definition> AST<'lexer> {
 
     fn print( &mut self ) -> Result<Node, (&'lexer Line, SyntaxError)> {
         let print_pos = self.tokens.current().unwrap();
+        match print_pos.token.kind {
+            TokenKind::PrintLn => match self.tokens.peek_next().bounded( &mut self.tokens, "expected expression or semicolon" ) {
+                Ok( argument ) => match argument {
+                    Some( position ) => match position.token.kind {
+                        TokenKind::SemiColon => {
+                            self.tokens.next();
+                            return Ok( Node::Print( Box::new( Node::Literal( Type::Char { value: '\n' as u8 } ) ) ) );
+                        },
+                        _ => (),
+                    },
+                    _ => (),
+                },
+                _ => (),
+            },
+            TokenKind::Print => (),
+            _ => unreachable!(),
+        }
 
         let argument_pos = self.tokens.next().bounded( &mut self.tokens, "expected print argument" )?.unwrap();
         let argument = match &argument_pos.token.kind {
@@ -1574,7 +1599,7 @@ impl<'lexer, 'definition> AST<'lexer> {
     }
 }
 
-// After construction
+// Interpreting or compiling the AST
 // NOTE only epxlicitly processing nodes that print values for now
 // TODO move identifier resolution to here
     // NOTE have identifiers contain their definition line and token
@@ -1626,11 +1651,8 @@ impl<'this, 'asm> AST<'this> {
         for node in &self.nodes {
             match node {
                 Node::Print( argument ) => self.evaluate_node( argument ).display(),
-                Node::PrintLn( argument ) => {
-                    self.evaluate_node( argument ).display();
-                    self.evaluate_node( &Node::Literal( Type::Char { value: '\n' as u8 } ) ).display();
-                }
-                _ => continue,
+                Node::Literal( _ ) | Node::Expression { .. } | Node::Identifier( _ ) => continue,
+                Node::PrintLn( _ ) => unreachable!(),
             }
         }
     }
@@ -1639,17 +1661,7 @@ impl<'this, 'asm> AST<'this> {
         // NOTE it is literally possible to copy paste the entire expression in the generated asm file (only if it doesn't include basic math expressions)
             // IDEA check if the expression contains non basic math expressions, if not just copy paste the literal expression
         match node {
-            Node::Print( _ ) | Node::PrintLn( _ ) => {
-                let mut was_println = false;
-                let argument = match node {
-                    Node::Print( argument ) => argument,
-                    Node::PrintLn( argument ) => {
-                        was_println = true;
-                        argument
-                    },
-                    _ => unreachable!(),
-                };
-
+            Node::Print( argument ) => {
                 let value = match &**argument {
                     Node::Literal( _ ) | Node::Expression{ .. } => &**argument,
                     Node::Identifier( name ) => &*self.resolve( name ).value,
@@ -1665,7 +1677,7 @@ impl<'this, 'asm> AST<'this> {
                         | OpKind::Greater | OpKind::GreaterOrEquals
                         | OpKind::Less | OpKind::LessOrEquals => &Type::Bool { value: false }
                     }
-                    Node::Print( _ ) | Node::PrintLn( _ ) | Node::Identifier( _ ) => unreachable!(),
+                    Node::Identifier( _ ) | Node::Print( _ ) | Node::PrintLn( _ ) => unreachable!(),
                 };
 
                 let print_asm = match value_type {
@@ -1702,15 +1714,6 @@ impl<'this, 'asm> AST<'this> {
                 asm.push_str( &format!( " ; {}\n", node ) );
                 self.compile_node( value, asm, strings, only_string_len );
                 asm.push_str( &format!( "{}\n\n", print_asm ) );
-
-                if was_println {
-                    self.compile_node(
-                        &Node::Print( Box::new( Node::Literal( Type::Char { value: '\n' as u8 } ) ) ),
-                        asm,
-                        strings,
-                        true
-                    );
-                }
             },
             Node::Literal( literal ) => match literal {
                 Type::I64 { value } => asm.push_str( &format!( " push {}\n", value ) ),
@@ -1761,13 +1764,13 @@ impl<'this, 'asm> AST<'this> {
                     OpKind::Equals | OpKind::NotEquals
                     | OpKind::Greater | OpKind::GreaterOrEquals
                     | OpKind::Less | OpKind::LessOrEquals => {
-                        let asm_op = match op {
-                            OpKind::Equals => "cmove",
-                            OpKind::NotEquals => "cmovne",
-                            OpKind::Greater => "cmovg",
-                            OpKind::GreaterOrEquals => "cmovge",
-                            OpKind::Less => "cmovl",
-                            OpKind::LessOrEquals => "cmovle",
+                        let cmov_kind = match op {
+                            OpKind::Equals => "e",
+                            OpKind::NotEquals => "ne",
+                            OpKind::Greater => "g",
+                            OpKind::GreaterOrEquals => "ge",
+                            OpKind::Less => "l",
+                            OpKind::LessOrEquals => "le",
                             _ => unreachable!(),
                         };
 
@@ -1777,22 +1780,22 @@ impl<'this, 'asm> AST<'this> {
                             \n mov rbx, true_str\
                             \n mov rax, false_str\
                             \n cmp rdi, rsi\
-                            \n {} rax, rbx\
+                            \n cmov{} rax, rbx\
                             \n mov rbx, true_str_len\
                             \n mov rdx, false_str_len\
-                            \n {} rdx, rbx\
+                            \n cmov{} rdx, rbx\
                             \n push rdx\
                             \n push rax",
-                            asm_op,
-                            asm_op
+                            cmov_kind,
+                            cmov_kind
                         )
                     },
 
                     OpKind::Compare =>
                         "\n pop rsi\
                         \n pop rdi\
-                        \n cmp rdi, rsi\
                         \n mov rax, LESS\
+                        \n cmp rdi, rsi\
                         \n mov rbx, EQUAL\
                         \n cmove rax, rbx\
                         \n mov rbx, GREATER\
@@ -1804,6 +1807,7 @@ impl<'this, 'asm> AST<'this> {
                 asm.push_str( &format!( "{}\n\n", op_asm ) );
             },
             Node::Identifier( name ) => self.compile_node( &*self.resolve( name ).value, asm, strings, only_string_len ),
+            Node::PrintLn( _ ) => unreachable!(),
         }
     }
 
@@ -1875,12 +1879,8 @@ r#" stdout: equ 1
                     Node::Identifier( name ) => &*self.resolve( name ).value,
                     Node::Print( _ ) | Node::PrintLn( _ ) => unreachable!(),
                 },
-                Node::PrintLn( argument ) => match &**argument {
-                    Node::Literal( _ ) | Node::Expression{ .. } => &**argument,
-                    Node::Identifier( name ) => &*self.resolve( name ).value,
-                    Node::Print( _ ) | Node::PrintLn( _ ) => unreachable!(),
-                },
-                _ => continue,
+                Node::Literal( _ ) | Node::Expression { .. } | Node::Identifier( _ ) => continue,
+                Node::PrintLn( _ ) => unreachable!(),
             };
 
             self.gather_strings( &mut rodata, value, &mut strings );
@@ -1994,8 +1994,9 @@ r" mov rdi, EXIT_SUCCESS
         let mut program_asm = String::new();
         for node in &self.nodes {
             match node {
-                Node::Print( _ ) | Node::PrintLn( _ ) => self.compile_node( node, &mut program_asm, &strings, false ),
-                _ => continue,
+                Node::Print( _ ) => self.compile_node( node, &mut program_asm, &strings, false ),
+                Node::Literal( _ ) | Node::Expression { .. } | Node::Identifier( _ ) => continue,
+                Node::PrintLn( _ ) => unreachable!(),
             }
         }
 
@@ -2040,16 +2041,16 @@ _start:
             return Ok( executable_file_path );
         }
 
-        fn run( &self, file_path: &str ) -> Result<(), ()> {
-            let executable_file_path = self.compile( &file_path )?;
-            println!( "{}: {}", RUNNING, executable_file_path.display() );
+    fn run( &self, file_path: &str ) -> Result<(), ()> {
+        let executable_file_path = self.compile( &file_path )?;
+        println!( "{}: {}", RUNNING, executable_file_path.display() );
 
-            let output = Command::new( format!( "{}", executable_file_path.display() ) ).output().unwrap();
-            print!( "{}", String::from_utf8_lossy( &output.stdout ) );
+        let output = Command::new( format!( "{}", executable_file_path.display() ) ).output().unwrap();
+        print!( "{}", String::from_utf8_lossy( &output.stdout ) );
 
-            return Ok( () );
-        }
+        return Ok( () );
     }
+}
 
 
 fn print_usage() {
@@ -2073,8 +2074,8 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().collect();
 
     // to quickly debug
-    args.push( "interpret".to_string() );
-    // args.push( "build".to_string() );
+    // args.push( "interpret".to_string() );
+    args.push( "build".to_string() );
     // args.push( "run".to_string() );
     args.push( "examples/main.blz".to_string() );
 

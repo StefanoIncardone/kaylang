@@ -101,6 +101,7 @@ const lucky = ten + nine;
 
 println lucky;
 print 42;
+println; # this will just print a newline
 ```
 
 ### Scopes

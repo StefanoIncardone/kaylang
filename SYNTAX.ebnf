@@ -1,32 +1,31 @@
-digit = "0".."9";
 valid_character = ? ASCII 32..126 ?;
+line_comment = "#", [{valid_character}];
 
+digit = "0".."9";
 number_literal = {digit};
-boolean_literal = "true" | "false";
 
-identifier = "_" | "A".."Z" | "a".."z", {"_" | "A".."Z" | "a".."z" | digit};
-line_comment = "#", {valid_character}, "\n";
+boolean_literal = "true" | "false";
 
 escape_character = "\\" | "\n" | "\t" | "\'" | '"' | '\"';
 character_literal = "'", (escape_character | valid_character), "'";
-string_literal = '"', {escape_character | valid_character}, '"';
+string_literal = '"', [{escape_character | valid_character}], '"';
+
+identifier = "_" | "A".."Z" | "a".."z", [{"_" | "A".."Z" | "a".."z" | digit}];
 
 (* from highest precedence to lowest *)
 factor = number_literal | identifier | character_literal | string_literal | boolean_literal | ("(", expression, ")");
 exponentiation = factor, ["^", factor];
-term = exponentiation, [("*" | "/"), exponentiation];
-math = term, [("+" | "-"), term];
+multiplication_or_division = exponentiation, [("*" | "/"), exponentiation];
+math = multiplication_or_division, [("+" | "-"), multiplication_or_division];
 expression = math, [("==" | "!=" | ">" | ">=" | "<" | "<=" | "<=>"), math];
 
 statement =
-    line_comment |
-    (
-        (("print" | "println"), expression) |
-        (("const" | "let" | "var"), identifier, "=", expression) |
-        (identifier, "=", expression),
-        ';'
-    );
+    ("print", expression)
+    | ("println", [expression])
+    | (("const" | "let" | "var"), identifier, "=", expression)
+    | (identifier, "=", expression),
+    ';';
 
-scope = "{", [{statement}], "}";
+scope = "{", [{line_comment | statement}], "}";
 
-program = [{statement | scope}];
+program = [{line_comment | statement | scope}];
