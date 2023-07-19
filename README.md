@@ -1,7 +1,6 @@
 # Blitz language
 
 Experimenting with programming languages and exploring how to create one.
-This language is inspired by many languages, with the most notable being [Rust](https://www.rust-lang.org/).
 
 
 ## Language Features
@@ -10,9 +9,9 @@ see the [full language syntax](SYNTAX.ebnf)
 
 ### Run modes
 
-- `build`: to compile the program down to a binary executable
-- `run`: to compile and run the compiled native assembly code
 - `interpret`: to interpret the program without compiling it
+- `build`: to compile the program down to a binary executable
+- `run`: to compile and run the generated binary executable
 
 ### UTF-8 support
 
@@ -20,37 +19,22 @@ only supporting ASCII (`[0, 127]`) characters for now
 
 ### Comments
 
-line comment `#...`: ignores everything until the end of the line
+line comments start with `#`: ignores everything until the end of the line
+
+### Integers
+
+Integers are 64 bit base 10 number literals.
 
 ### Booleans
 
 Boolean values are `true` and `false`, being functionally equivalent to `1` and `0` when used inside math expressions
 
-- boolean comparisons (evaluates to `1` or `0`):
-    - equals to: `==`
-    - not equals to: `!=`
-    - greater than: `>`
-    - greater or equals than: `>=`
-    - less than: `<`
-    - less or equals than: `<=`
-    - compared to: `<=>` (`-1` if less than, `0` if equals, `1` if greater)
-
-### Integers and Math Expressions
-
-Integers are 64 bit base 10 number literals.
-Math expressions follow the PEMDAS order of operations:
-
-- round brackets `(`, `)`: changing the order or operation
-- power `^`: exponentiation as a binary operator
-- times `*`: multiplication as a binary operator
-- divide `/`: floor division as a binary operator
-- plus `+`: addition as a binary operator
-- minus `-`: subtraction as a binary operator
-
 ### Characters
 
 Character literals are surrounded by `'`.
 They can also be used in math expression, being automatically converted to their ASCII code (temporary implicit conversion)
+
+These are the available escaped characters:
 
 ``` blitz
 '\\'; # backslash
@@ -68,6 +52,29 @@ String literals are surrounded by `"`.
 let lucky = "nineteen";
 println lucky;
 ```
+
+Note: when used in expressions the length gets used (waiting for proper type checking)
+
+```blitz
+print "len of \"lucky\" is "; println "lucky" + 0; # easy way to obtain the length of the string
+```
+
+### Expressions
+
+Expressions follow this order of operations (from highest to lowest):
+
+- round brackets `(`, `)`
+- power `^`: exponentiation as a binary operator
+- times `*` and divide `/`: multiplication and floor division as binary operators
+- plus `+` and minus `-`: addition and subtraction as binary operators
+- boolean comparisons (evaluates to `1` or `0`):
+    - equals to: `==`
+    - not equals to: `!=`
+    - greater than: `>`
+    - greater or equals than: `>=`
+    - less than: `<`
+    - less or equals than: `<=`
+    - compared to: `<=>` (`-1` if less than, `0` if equals, `1` if greater)
 
 ### Variables
 

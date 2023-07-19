@@ -2,6 +2,7 @@
     // IDEA read the src file line when printing errors instead of composing it from the tokens
         // IDEA have Token contain the absolute column in the source file, and when encountering errors read the corresponding line
 // TODO fix division by zero
+// TODO implement boolean operators for strings
 use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write}, fs::File, env, process::{ExitCode, Command}, fmt::Display, path::{Path, PathBuf}, iter::Peekable, str::Chars, borrow::Cow};
 
 mod color;
@@ -46,7 +47,7 @@ impl Into<i64> for Type {
             Self::I64 { value } => value.into(),
             Self::Char { value } => value.into(),
             Self::Bool { value } => value.into(),
-            Self::Str { text: _ } => unreachable!( "attempting to convert a Str to a integer" ),
+            Self::Str { text } => text.len() as i64,
         }
     }
 }
@@ -1467,9 +1468,7 @@ impl<'lexer, 'definition> AST<'lexer> {
                         let expression = self.expression( expansion )?;
                         let close_bracket_pos = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected closed parenthesis" )?.unwrap();
                         match close_bracket_pos.token.kind {
-                            TokenKind::Bracket( BracketKind::CloseRound ) => {
-                                Ok( expression )
-                            },
+                            TokenKind::Bracket( BracketKind::CloseRound ) => Ok( expression ),
                             _ => Err( (current.line, SyntaxError {
                                 err_line: 0,
                                 col: current.token.col,
@@ -1501,7 +1500,7 @@ impl<'lexer, 'definition> AST<'lexer> {
         let current_pos = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected expression or semicolon" )?.unwrap();
         let result = match current_pos.token.kind {
             TokenKind::Op( op ) => match ops.contains( &op ) {
-                true => Ok( Some( op.clone() ) ),
+                true => Ok( Some( op ) ),
                 false => Ok( None ),
             },
             TokenKind::Bracket( BracketKind::CloseRound ) | TokenKind::SemiColon => Ok( None ),
@@ -1579,7 +1578,7 @@ impl<'lexer, 'definition> AST<'lexer> {
 // NOTE only epxlicitly processing nodes that print values for now
 // TODO move identifier resolution to here
     // NOTE have identifiers contain their definition line and token
-impl<'this> AST<'this> {
+impl<'this, 'asm> AST<'this> {
     fn resolve( &'this self, name: &str ) -> &'this Definition {
         for scope in &self.scopes {
             for definition in &scope.definitions {
@@ -1629,16 +1628,14 @@ impl<'this> AST<'this> {
                 Node::Print( argument ) => self.evaluate_node( argument ).display(),
                 Node::PrintLn( argument ) => {
                     self.evaluate_node( argument ).display();
-
-                    let newline = Node::Literal( Type::Char { value: '\n' as u8 } );
-                    self.evaluate_node( &newline ).display();
+                    self.evaluate_node( &Node::Literal( Type::Char { value: '\n' as u8 } ) ).display();
                 }
                 _ => continue,
             }
         }
     }
 
-    fn compile_node( &'this self, node: &Node, asm: &mut String, strings: &Vec<(&'this Type, String, String)> ) {
+    fn compile_node( &self, node: &Node, asm: &mut String, strings: &Vec<(&Type, String, String)>, only_string_len: bool ) {
         // NOTE it is literally possible to copy paste the entire expression in the generated asm file (only if it doesn't include basic math expressions)
             // IDEA check if the expression contains non basic math expressions, if not just copy paste the literal expression
         match node {
@@ -1673,8 +1670,7 @@ impl<'this> AST<'this> {
 
                 let print_asm = match value_type {
                     Type::I64 { .. } =>
-                        "\n pop rax\
-                        \n mov rdi, rax\
+                        "\n pop rdi\
                         \n mov rsi, 10\
                         \n call int_toStr\
                         \n\
@@ -1690,28 +1686,30 @@ impl<'this> AST<'this> {
                         \n syscall\
                         \n pop rsi",
                     Type::Bool { .. } =>
-                        "\n pop rax\
+                        "\n pop rsi\
                         \n pop rdx\
                         \n mov rdi, stdout\
-                        \n mov rsi, rax\
                         \n mov rax, SYS_write\
                         \n syscall",
                     Type::Str { text: _ } =>
-                        "\n pop rax\
-                        \n pop rdx\
+                        "\n pop rdx\
+                        \n pop rsi\
                         \n mov rdi, stdout\
-                        \n mov rsi, rax\
                         \n mov rax, SYS_write\
                         \n syscall",
                 };
 
-                asm.push_str( &format!( " ; {}\n", value ) );
-                self.compile_node( value, asm, strings );
-                asm.push_str( &format!( "\n ; {}", node ) );
+                asm.push_str( &format!( " ; {}\n", node ) );
+                self.compile_node( value, asm, strings, only_string_len );
                 asm.push_str( &format!( "{}\n\n", print_asm ) );
 
                 if was_println {
-                    self.compile_node( &Node::Print( Box::new( Node::Literal( Type::Char { value: '\n' as u8 } ) ) ), asm, strings );
+                    self.compile_node(
+                        &Node::Print( Box::new( Node::Literal( Type::Char { value: '\n' as u8 } ) ) ),
+                        asm,
+                        strings,
+                        true
+                    );
                 }
             },
             Node::Literal( literal ) => match literal {
@@ -1719,20 +1717,19 @@ impl<'this> AST<'this> {
                 Type::Char { value } => asm.push_str( &format!( " push {}\n", value ) ),
                 Type::Bool { value } => asm.push_str( &format!( " push {}\n", value ) ),
                 string @ Type::Str { .. } => for (typ, tag, len_tag) in strings {
-                    if std::ptr::eq( string, *typ ) {
-                        asm.push_str( &format!(
-                            " push {}\
-                            \n push {}\n",
-                            len_tag,
-                            tag,
-                        ) );
+                    if string as *const _ == *typ as *const _  {
+                        if !only_string_len {
+                            asm.push_str( &format!( " push {}\n", tag ) );
+                        }
+
+                        asm.push_str( &format!( " push {}\n", len_tag ) );
                         break;
                     }
                 },
             },
             Node::Expression { lhs, op, rhs } => {
-                self.compile_node( lhs, asm, strings );
-                self.compile_node( rhs, asm, strings );
+                self.compile_node( lhs, asm, strings, true );
+                self.compile_node( rhs, asm, strings, true );
                 let op_asm = match op {
                     OpKind::Pow =>
                         "\n pop rsi\
@@ -1777,8 +1774,8 @@ impl<'this> AST<'this> {
                         format!(
                             "\n pop rsi\
                             \n pop rdi\
-                            \n mov rbx, true\
-                            \n mov rax, false\
+                            \n mov rbx, true_str\
+                            \n mov rax, false_str\
                             \n cmp rdi, rsi\
                             \n {} rax, rbx\
                             \n mov rbx, true_str_len\
@@ -1792,24 +1789,56 @@ impl<'this> AST<'this> {
                     },
 
                     OpKind::Compare =>
-                        "\n pop rsi
+                        "\n pop rsi\
                         \n pop rdi\
+                        \n cmp rdi, rsi\
                         \n mov rax, LESS\
                         \n mov rbx, EQUAL\
-                        \n mov rdx, GREATER\
-                        \n cmp rdi, rsi\
                         \n cmove rax, rbx\
-                        \n cmovg rax, rdx".to_string(),
+                        \n mov rbx, GREATER\
+                        \n cmovg rax, rbx\
+                        \n push rax".to_string(),
                 };
 
                 asm.push_str( &format!( " ; {}", node ) );
                 asm.push_str( &format!( "{}\n\n", op_asm ) );
             },
-            Node::Identifier( name ) => self.compile_node( &*self.resolve( name ).value, asm, strings ),
+            Node::Identifier( name ) => self.compile_node( &*self.resolve( name ).value, asm, strings, only_string_len ),
         }
     }
 
-    fn compile( &'this self, file_path: &str ) -> Result<PathBuf, ()> {
+    fn gather_strings( &'asm self, rodata: &mut String, node: &'this Node, strings: &mut Vec<(&'asm Type, String, String)> ) {
+        match node {
+            Node::Literal( string @ Type::Str { text } ) => {
+                let string_idx = strings.len();
+                let string_item = (string, format!( "str_{}", string_idx ), format!( "str_{}_len", string_idx ) );
+                let mut string_asm = String::with_capacity( string.len() + 2 );
+                string_asm.push( '`' );
+                for ch in text {
+                    string_asm.push( *ch as char );
+                }
+                string_asm.push( '`' );
+
+                rodata.push_str( &format!(
+                    "\n {}: db {}\
+                    \n {}: equ $ - {}\n",
+                    string_item.1, string_asm,
+                    string_item.2, string_item.1
+                ) );
+
+                strings.push( string_item );
+            },
+            Node::Literal( _ ) => (),
+            Node::Expression { lhs, op: _, rhs } => {
+                self.gather_strings( rodata, lhs, strings );
+                self.gather_strings( rodata, rhs, strings );
+            },
+            Node::Identifier( name ) => self.gather_strings( rodata, &self.resolve( &name ).value, strings ),
+            Node::Print( _ ) | Node::PrintLn( _ ) => unreachable!(),
+        }
+    }
+
+    fn compile( &'asm self, file_path: &str ) -> Result<PathBuf, ()> {
         let src_file_path = Path::new( file_path );
         println!( "{}: {}", BUILDING, src_file_path.display() );
 
@@ -1827,52 +1856,34 @@ r#" stdout: equ 1
  I64_MAX: equ ~I64_MIN
  INT_MAX_DIGITS: equ 64
 
- true: db "true", 0
- true_str_len: equ $ - true
+ true_str: db "true"
+ true_str_len: equ $ - true_str
 
- false: db "false", 0
- false_str_len: equ $ - false
+ false_str: db "false"
+ false_str_len: equ $ - false_str
 
  LESS: equ -1
  EQUAL: equ 0
  GREATER: equ 1
 "#.to_string();
 
-        let mut strings: Vec<(&'this Type, String, String)> = Vec::new();
-        for (i, node) in self.nodes.iter().enumerate() {
-            let mut was_println = false;
+        let mut strings: Vec<(&'asm Type, String, String)> = Vec::new();
+        for node in &self.nodes {
             let value = match node {
                 Node::Print( argument ) => match &**argument {
                     Node::Literal( _ ) | Node::Expression{ .. } => &**argument,
                     Node::Identifier( name ) => &*self.resolve( name ).value,
                     Node::Print( _ ) | Node::PrintLn( _ ) => unreachable!(),
                 },
-                Node::PrintLn( argument ) => {
-                    was_println = true;
-                    match &**argument {
-                        Node::Literal( _ ) | Node::Expression{ .. } => &**argument,
-                        Node::Identifier( name ) => &*self.resolve( name ).value,
-                        Node::Print( _ ) | Node::PrintLn( _ ) => unreachable!(),
-                    }
+                Node::PrintLn( argument ) => match &**argument {
+                    Node::Literal( _ ) | Node::Expression{ .. } => &**argument,
+                    Node::Identifier( name ) => &*self.resolve( name ).value,
+                    Node::Print( _ ) | Node::PrintLn( _ ) => unreachable!(),
                 },
                 _ => continue,
             };
 
-            match value {
-                Node::Literal( string @ Type::Str { .. } ) => {
-                    let string_item = (string, format!( "str_{}", i ), format!( "str_{}_len", i ) );
-                    let newline = if was_println { ", 0" } else { "" };
-                    rodata.push_str( &format!(
-                        "\n {}: db {}{}\
-                        \n {}: equ $ - {}\n",
-                        string_item.1, string, newline,
-                        string_item.2, string_item.1
-                    ) );
-
-                    strings.push( string_item );
-                },
-                _ => continue,
-            }
+            self.gather_strings( &mut rodata, value, &mut strings );
         }
 
         let data =
@@ -1983,7 +1994,7 @@ r" mov rdi, EXIT_SUCCESS
         let mut program_asm = String::new();
         for node in &self.nodes {
             match node {
-                Node::Print( _ ) | Node::PrintLn( _ ) => self.compile_node( node, &mut program_asm, &strings ),
+                Node::Print( _ ) | Node::PrintLn( _ ) => self.compile_node( node, &mut program_asm, &strings, false ),
                 _ => continue,
             }
         }
@@ -2009,9 +2020,9 @@ _start:
             asm_file.flush().unwrap();
 
             let nasm = Command::new( "nasm" )
-            .args( ["-felf64", "-gdwarf", asm_file_path.to_str().unwrap()] )
-            .output()
-            .expect( "failed to run nasm assembler" );
+                .args( ["-felf64", "-gdwarf", asm_file_path.to_str().unwrap()] )
+                .output()
+                .expect( "failed to run nasm assembler" );
 
             print!( "{}", String::from_utf8_lossy( &nasm.stdout ) );
             print!( "{}", String::from_utf8_lossy( &nasm.stderr ) );
@@ -2019,9 +2030,9 @@ _start:
             let obj_file_path = src_file_path.with_extension( "o" );
             let executable_file_path = src_file_path.with_extension( "" );
             let ld = Command::new( "ld" )
-            .args( [obj_file_path.to_str().unwrap(), "-o", executable_file_path.to_str().unwrap()] )
-            .output()
-            .expect( "failed to link" );
+                .args( [obj_file_path.to_str().unwrap(), "-o", executable_file_path.to_str().unwrap()] )
+                .output()
+                .expect( "failed to link" );
 
             print!( "{}", String::from_utf8_lossy( &ld.stdout ) );
             print!( "{}", String::from_utf8_lossy( &ld.stderr ) );
@@ -2048,12 +2059,12 @@ Blitzlang compiler, version {}
 Usage: blitz [Options] [Run mode] file.blz
 
 Options:
--h, --help              Display this message
+    -h, --help              Display this message
 
 Run mode:
-build     <file.blz>    Compile the program down to a binary executable
-run       <file.blz>    Compile and run the generated binary executable
-interpret <file.blz>    Run the program in interpret mode
+    interpret <file.blz>    Run the program in interpret mode
+    build     <file.blz>    Compile the program down to a binary executable
+    run       <file.blz>    Compile and run the generated binary executable
 ", env!( "CARGO_PKG_VERSION" ) );
 }
 
