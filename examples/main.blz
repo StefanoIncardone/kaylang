@@ -1,1 +1,4 @@
-println 'F';
+let twentyone = 9 + 10;
+if twentyone == 21 {
+    println "you stoopid";
+}
