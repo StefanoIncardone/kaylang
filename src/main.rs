@@ -1004,32 +1004,47 @@ impl<'lexer> BoundedPosition<'lexer> for Option<Position<'lexer>> {
 
 
 #[derive( Debug, Clone )]
-enum Node {
+enum ExpressionKind {
     Literal( Type ),
-    Expression{ lhs: Box<Node>, op: OpKind, rhs: Box<Node> },
+    Binary { lhs: Box<ExpressionKind>, op: OpKind, rhs: Box<ExpressionKind> },
     Identifier( String ),
+}
 
-    Print( Box<Node> ),
-    PrintLn( Box<Node> ),
+impl Display for ExpressionKind {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        match self {
+            Self::Literal( literal ) => write!( f, "{}", literal ),
+            Self::Binary { lhs, op, rhs } => write!( f, "({} {} {})", lhs, op, rhs ),
+            Self::Identifier( name ) => write!( f, "{}", name ),
+        }
+    }
+}
 
-    If{ condition: Box<Node>, nodes: Vec<Node> },
+
+#[derive( Debug, Clone )]
+enum Node {
+    Expression( ExpressionKind ),
+    Print( ExpressionKind ),
+    If { condition: ExpressionKind, nodes: Vec<Node> },
 }
 
 impl Display for Node {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
-            Self::Literal( literal ) => write!( f, "{}", literal ),
-            Self::Expression { lhs, op, rhs } => write!( f, "({} {} {})", lhs, op, rhs ),
-            Self::Identifier( name ) => write!( f, "{}", name ),
-
+            Self::Expression( expression ) => write!( f, "{}", expression ),
             Self::Print( node ) => write!( f, "print {}", node ),
-            Self::PrintLn( node ) => write!( f, "println {}", node ),
-
             Self::If { condition, .. } => write!( f, "if {}", condition ),
         }
     }
 }
 
+
+enum Statement {
+    Empty,
+    Stop,
+    Single( Node ),
+    Multiple( Vec<Node> ),
+}
 
 #[derive( Debug, Clone, Copy )]
 enum IdentifierExpansion {
@@ -1041,7 +1056,7 @@ enum IdentifierExpansion {
 struct Definition {
     kind: DefinitionKind,
     name: String,
-    value: Box<Node>,
+    value: ExpressionKind,
 }
 
 
@@ -1088,7 +1103,9 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
         };
 
         this.tokens.next(); // skipping the SOF token
-        this.parse( &mut errors );
+
+        let nodes = this.parse( &mut errors, None );
+        this.nodes.extend( nodes );
 
         if !this.brackets.is_empty() {
             for bracket in &this.brackets {
@@ -1125,283 +1142,30 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
 
 // Parsing tokens and building the AST
 impl<'lexer, 'definition> AST<'lexer> {
-    fn parse( &mut self, errors: &mut SyntaxErrors<'lexer> ) {
-        while let Some( current ) = self.tokens.current().or_next( &mut self.tokens ) {
-            let statement_result = match current.token.kind {
-                // NOTE definitions are planned to be reworked, so it's just temporary
-                TokenKind::Definition( _ ) => match self.variable_definition() {
-                    Ok( _ ) => continue, // skipping self node since it is already in the definitions
-                    Err( err ) => Err( err ),
-                },
-                TokenKind::If => self.iff( errors ),
-                TokenKind::Print | TokenKind::PrintLn => self.print(),
-                TokenKind::Identifier( _ ) => match self.tokens.peek_next() {
-                    Some( next ) => match next.token.kind {
-                        TokenKind::Equals => match self.variable_assignment() {
-                            Ok( _ ) => continue,
-                            Err( err ) => {
-                                self.tokens.next();
-                                Err( err )
-                            },
-                        },
-                        _ => self.expression( IdentifierExpansion::Keep, true ),
-                    },
-                    None => continue,
-                },
-                TokenKind::True | TokenKind::False
-                | TokenKind::Literal( _ )
-                | TokenKind::Bracket( BracketKind::OpenRound ) => self.expression( IdentifierExpansion::Keep, true ),
-                TokenKind::Bracket( BracketKind::CloseRound ) => {
-                    self.tokens.next();
-                    Err( (current.line, SyntaxError {
-                        err_line: 0,
-                        col: current.token.col,
-                        text: current.token.kind.to_string(),
-                        msg: "invalid expression",
-                        help_msg: "stray closed parenthesis"
-                    } ) )
-                },
-                TokenKind::Bracket( kind @ BracketKind::OpenCurly ) => {
-                    self.brackets.push( Bracket { position: current, kind } );
-                    self.scopes.push( Scope {
-                        parent: Some( self.current_scope ),
-                        definitions: Vec::new(),
-                    } );
-
-                    self.current_scope = self.scopes.len() - 1;
-                    self.tokens.next();
-                    continue;
-                },
-                TokenKind::Bracket( BracketKind::CloseCurly ) => {
-                    self.tokens.next();
-                    match self.brackets.pop() {
-                        Some( _ ) => {
-                            self.current_scope = match self.scopes[ self.current_scope ].parent {
-                                None => 0,
-                                Some( parent ) => parent,
-                            };
-                            continue;
-                        },
-                        None => Err( (current.line, SyntaxError {
-                            err_line: 0,
-                            col: current.token.col,
-                            text: current.token.kind.to_string(),
-                            msg: "stray bracket",
-                            help_msg: "was not opened before"
-                        }) ),
-                    }
-                },
-                TokenKind::Op( _ ) => {
-                    self.tokens.next();
-                    Err( (current.line, SyntaxError {
-                        err_line: 0,
-                        col: current.token.col,
-                        text: current.token.kind.to_string(),
-                        msg: "invalid expression",
-                        help_msg: "stray binary operator"
-                    } ) )
-                },
-                TokenKind::Equals => {
-                    self.tokens.next();
-                    Err( (current.line, SyntaxError {
-                        err_line: 0,
-                        col: current.token.col,
-                        text: current.token.kind.to_string(),
-                        msg: "invalid assignment",
-                        help_msg: "stray assignment"
-                    } ) )
-                },
-                TokenKind::Comment( _ ) | TokenKind::SemiColon | TokenKind::Empty | TokenKind::EOF => {
-                    self.tokens.next();
-                    continue;
-                },
-                TokenKind::SOF => unreachable!(),
-            };
-
-            match statement_result {
-                Ok( statement ) => match statement {
-                    Node::PrintLn( argument ) => {
-                        self.nodes.push( Node::Print( argument ) );
-                        self.nodes.push( Node::Print( Box::new( Node::Literal( Type::Char { value: '\n' as u8 } ) ) ) );
-                    },
-                    _ => self.nodes.push( statement ),
-                },
-                Err( (err_line, mut err) ) => {
-                    let mut found = false;
-                    for line in &errors.lines {
-                        if err_line.number == line.number {
-                            found = true;
-                            break;
-                        }
-                    }
-
-                    if !found {
-                        errors.lines.push( Cow::Borrowed( err_line ) );
-                    }
-
-                    err.err_line = errors.lines.len() - 1;
-                    errors.errors.push( err );
-                },
-            }
-        }
-    }
-
-    fn resolve_scoped( &'definition self, name: &str ) -> Option<&'definition Definition> {
-        let mut current_scope = self.current_scope;
-
-        loop {
-            let scope = &self.scopes[ current_scope ];
-            for definition in &scope.definitions {
-                if definition.name == name {
-                    return Some( definition );
-                }
-            }
-
-            current_scope = scope.parent?;
-        }
-    }
-
-    fn resolve_scoped_mut( &'definition mut self, name: &str ) -> Option<&'definition mut Definition> {
-        let mut current_scope = self.current_scope;
-
-        loop {
-            let scope = &self.scopes[ current_scope ];
-            for (i, definition) in scope.definitions.iter().enumerate() {
-                if definition.name == name {
-                    return Some( &mut self.scopes[ current_scope ].definitions[ i ] );
-                }
-            }
-
-            current_scope = scope.parent?;
-        }
-    }
-
-    // fn semicolon( &mut self ) -> Result<(), (&'lexer Line, SyntaxError)> {
-    //     let current = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected semicolon" )?.unwrap();
-    //     let result = match current.token.kind {
-    //         TokenKind::SemiColon => Ok( () ),
-    //         _ => {
-    //             let previous = self.tokens.peek_previous().bounded( &mut self.tokens, "expected semicolon" )?.unwrap();
-    //             Err( (previous.line, SyntaxError {
-    //                 err_line: 0,
-    //                 col: previous.token.col,
-    //                 text: previous.token.kind.to_string(),
-    //                 msg: "invalid expression",
-    //                 help_msg: "expected semicolon after this token"
-    //             } ) )
-    //         },
-    //     };
-
-    //     self.tokens.next();
-    //     return result;
-    // }
-
-
-    fn iff( &mut self, errors: &mut SyntaxErrors<'lexer> ) -> Result<Node, (&'lexer Line, SyntaxError)> {
-        let if_pos = self.tokens.current().unwrap();
-
-        let _condition_pos = self.tokens.next().bounded( &mut self.tokens, "expected boolean expression" )?.unwrap();
-        let condition_value = match self.expression( IdentifierExpansion::Keep, false )? {
-            Node::Identifier( name ) => self.resolve_scoped( &name ).unwrap().value.clone(),
-            condition => Box::new( condition ),
-        };
-
-        let condition = match &*condition_value {
-            Node::Literal( literal ) => match literal {
-                Type::Bool { .. } => Ok( condition_value ),
-                Type::Char { .. }
-                | Type::I64 { .. }
-                | Type::Str { .. } => Err( (if_pos.line, SyntaxError {
-                    err_line: 0,
-                    col: if_pos.token.col,
-                    text: if_pos.token.kind.to_string(),
-                    msg: "expected boolean expression",
-                    help_msg: "must be followed by a boolean expression",
-                } )),
-            },
-            Node::Expression { op, .. } => match op {
-                OpKind::Equals | OpKind::NotEquals
-                | OpKind::Greater | OpKind::GreaterOrEquals
-                | OpKind::Less | OpKind::LessOrEquals => Ok( condition_value ),
-                OpKind::Pow | OpKind::Times | OpKind::Divide
-                | OpKind::Plus | OpKind::Minus | OpKind::Compare => Err( (if_pos.line, SyntaxError {
-                    err_line: 0,
-                    col: if_pos.token.col,
-                    text: if_pos.token.kind.to_string(),
-                    msg: "expected boolean expression",
-                    help_msg: "must be followed by a boolean expression",
-                } )),
-            },
-            Node::Print( _ ) | Node::PrintLn( _ )
-            | Node::If { .. } => Err( (if_pos.line, SyntaxError {
-                err_line: 0,
-                col: if_pos.token.col,
-                text: if_pos.token.kind.to_string(),
-                msg: "expected boolean expression",
-                help_msg: "cannot be a keyword"
-            } )),
-            Node::Identifier( _ ) => unreachable!(),
-        };
-
-        let condition = condition?;
-
-        let initial_bracket_stack_size = self.brackets.len();
-        let open_curly_pos = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected curly bracket" )?.unwrap();
-        let open_curly = match open_curly_pos.token.kind {
-            TokenKind::Bracket( kind @ BracketKind::OpenCurly ) => {
-                self.brackets.push( Bracket { position: open_curly_pos, kind } );
-                self.scopes.push( Scope {
-                    parent: Some( self.current_scope ),
-                    definitions: Vec::new(),
-                } );
-
-                self.current_scope = self.scopes.len() - 1;
-                self.tokens.next();
-                Ok( () )
-            },
-            _ => Err( (open_curly_pos.line, SyntaxError {
-                err_line: 0,
-                col: open_curly_pos.token.col,
-                text: open_curly_pos.token.kind.to_string(),
-                msg: "expected block scope",
-                help_msg: "must be an opened curly bracket",
-            }) ),
-        };
-
-        let _ = open_curly?;
-
+    fn parse( &mut self, errors: &mut SyntaxErrors<'lexer>, initial_bracket_stack_len: Option<usize> ) -> Vec<Node> {
         let mut nodes: Vec<Node> = Vec::new();
+
         while let Some( current ) = self.tokens.current().or_next( &mut self.tokens ) {
             let statement_result = match current.token.kind {
-                // NOTE definitions are planned to be reworked, so it's just temporary
-                TokenKind::Definition( _ ) => match self.variable_definition() {
-                    Ok( _ ) => continue, // skipping self node since it is already in the definitions
-                    Err( err ) => Err( err ),
-                },
-                TokenKind::If => match self.iff( errors ) {
-                    Ok( _ ) => continue,
-                    Err( err ) => {
-                        self.tokens.next();
-                        Err( err )
-                    },
-                },
-                TokenKind::Print | TokenKind::PrintLn => self.print(),
+                TokenKind::Definition( _ ) => self.variable_definition(),
                 TokenKind::Identifier( _ ) => match self.tokens.peek_next() {
                     Some( next ) => match next.token.kind {
-                        TokenKind::Equals => match self.variable_assignment() {
-                            Ok( _ ) => continue,
-                            Err( err ) => {
-                                self.tokens.next();
-                                Err( err )
-                            },
+                        TokenKind::Equals => self.variable_assignment(),
+                        _ => match self.expression( IdentifierExpansion::Keep, true ) {
+                            Ok( expression ) => Ok( Statement::Single( Node::Expression( expression ) ) ),
+                            Err( err ) => Err( err ),
                         },
-                        _ => self.expression( IdentifierExpansion::Keep, true ),
                     },
-                    None => continue,
+                    None => Ok( Statement::Stop ),
                 },
+                TokenKind::Print | TokenKind::PrintLn => self.print(),
+                TokenKind::If => self.iff( errors ),
                 TokenKind::True | TokenKind::False
                 | TokenKind::Literal( _ )
-                | TokenKind::Bracket( BracketKind::OpenRound ) => self.expression( IdentifierExpansion::Keep, true ),
+                | TokenKind::Bracket( BracketKind::OpenRound ) => match self.expression( IdentifierExpansion::Keep, true ) {
+                    Ok( expression ) => Ok( Statement::Single( Node::Expression( expression ) ) ),
+                    Err( err ) => Err( err ),
+                },
                 TokenKind::Bracket( BracketKind::CloseRound ) => {
                     self.tokens.next();
                     Err( (current.line, SyntaxError {
@@ -1414,14 +1178,11 @@ impl<'lexer, 'definition> AST<'lexer> {
                 },
                 TokenKind::Bracket( kind @ BracketKind::OpenCurly ) => {
                     self.brackets.push( Bracket { position: current, kind } );
-                    self.scopes.push( Scope {
-                        parent: Some( self.current_scope ),
-                        definitions: Vec::new(),
-                    } );
+                    self.scopes.push( Scope { parent: Some( self.current_scope ), definitions: Vec::new() } );
 
                     self.current_scope = self.scopes.len() - 1;
                     self.tokens.next();
-                    continue;
+                    Ok( Statement::Empty )
                 },
                 TokenKind::Bracket( BracketKind::CloseCurly ) => {
                     self.tokens.next();
@@ -1432,9 +1193,12 @@ impl<'lexer, 'definition> AST<'lexer> {
                                 Some( parent ) => parent,
                             };
 
-                            match self.brackets.len() == initial_bracket_stack_size {
-                                true => break,
-                                false => continue,
+                            match initial_bracket_stack_len {
+                                Some( len ) => match self.brackets.len() == len {
+                                    true => Ok( Statement::Stop ),
+                                    false => Ok( Statement::Empty ),
+                                },
+                                None => Ok( Statement::Empty ),
                             }
                         },
                         None => Err( (current.line, SyntaxError {
@@ -1468,18 +1232,17 @@ impl<'lexer, 'definition> AST<'lexer> {
                 },
                 TokenKind::Comment( _ ) | TokenKind::SemiColon | TokenKind::Empty | TokenKind::EOF => {
                     self.tokens.next();
-                    continue;
+                    Ok( Statement::Empty )
                 },
                 TokenKind::SOF => unreachable!(),
             };
 
             match statement_result {
-                Ok( statement ) => match statement {
-                    Node::PrintLn( argument ) => {
-                        nodes.push( Node::Print( argument ) );
-                        nodes.push( Node::Print( Box::new( Node::Literal( Type::Char { value: '\n' as u8 } ) ) ) );
-                    },
-                    _ => nodes.push( statement ),
+                Ok( Statement::Empty ) => continue,
+                Ok( Statement::Stop ) => break,
+                Ok( Statement::Single( node ) ) => nodes.push( node ),
+                Ok( Statement::Multiple( multiple_nodes ) ) => for node in multiple_nodes {
+                    nodes.push( node );
                 },
                 Err( (err_line, mut err) ) => {
                     let mut found = false;
@@ -1500,11 +1263,42 @@ impl<'lexer, 'definition> AST<'lexer> {
             }
         }
 
-        return Ok( Node::If { condition, nodes } );
-
+        return nodes;
     }
 
-    fn variable_definition( &mut self ) -> Result<(), (&'lexer Line, SyntaxError)> {
+
+    fn resolve_scoped( &'definition self, name: &str ) -> Option<&'definition Definition> {
+        let mut current_scope = self.current_scope;
+
+        loop {
+            let scope = &self.scopes[ current_scope ];
+            for definition in &scope.definitions {
+                if definition.name == name {
+                    return Some( definition );
+                }
+            }
+
+            current_scope = scope.parent?;
+        }
+    }
+
+    fn resolve_scoped_mut( &'definition mut self, name: &str ) -> Option<&'definition mut Definition> {
+        let mut current_scope = self.current_scope;
+
+        loop {
+            let scope = &self.scopes[ current_scope ];
+            for (i, definition) in scope.definitions.iter().enumerate() {
+                if definition.name == name {
+                    return Some( &mut self.scopes[ current_scope ].definitions[ i ] );
+                }
+            }
+
+            current_scope = scope.parent?;
+        }
+    }
+
+
+    fn variable_definition( &mut self ) -> Result<Statement, (&'lexer Line, SyntaxError)> {
         let definition_pos = self.tokens.current().unwrap();
         let kind = match definition_pos.token.kind {
             TokenKind::Definition( kind ) => kind.clone(),
@@ -1556,12 +1350,12 @@ impl<'lexer, 'definition> AST<'lexer> {
         return match self.resolve_scoped( &name ) {
             None => {
                 let value = match kind {
-                    DefinitionKind::Const => Node::Literal( self.evaluate_node( &value ) ),
+                    DefinitionKind::Const => ExpressionKind::Literal( self.evaluate_expression( &value ) ),
                     DefinitionKind::Let | DefinitionKind::Var => value,
                 };
 
-                self.scopes[ self.current_scope ].definitions.push( Definition { kind, name, value: Box::new( value ) } );
-                Ok( () )
+                self.scopes[ self.current_scope ].definitions.push( Definition { kind, name, value } );
+                Ok( Statement::Empty )
             },
             Some( _ ) => Err( (name_pos.line, SyntaxError {
                 err_line: 0,
@@ -1573,7 +1367,7 @@ impl<'lexer, 'definition> AST<'lexer> {
         }
     }
 
-    fn variable_assignment( &mut self ) -> Result<(), (&'lexer Line, SyntaxError)> {
+    fn variable_assignment( &mut self ) -> Result<Statement, (&'lexer Line, SyntaxError)> {
         let name_pos = self.tokens.current().unwrap();
         let equals_pos = self.tokens.next().unwrap();
 
@@ -1618,20 +1412,18 @@ impl<'lexer, 'definition> AST<'lexer> {
             DefinitionKind::Var => value,
         };
 
-        let assignment = assignment?;
-
-        variable.value = Box::new( assignment );
-        return Ok( () );
+        variable.value = assignment?;
+        return Ok( Statement::Empty );
     }
 
 
-    fn print( &mut self ) -> Result<Node, (&'lexer Line, SyntaxError)> {
+    fn print( &mut self ) -> Result<Statement, (&'lexer Line, SyntaxError)> {
         let print_pos = self.tokens.current().unwrap();
         match print_pos.token.kind {
             TokenKind::PrintLn => match self.tokens.peek_next() {
                 Some( Position { token: &Token { kind: TokenKind::SemiColon, .. }, .. } ) => {
                     self.tokens.next();
-                    return Ok( Node::Print( Box::new( Node::Literal( Type::Char { value: '\n' as u8 } ) ) ) );
+                    return Ok( Statement::Single( Node::Print( ExpressionKind::Literal( Type::Char { value: '\n' as u8 } ) ) ) );
                 },
                 _ => (),
             },
@@ -1655,29 +1447,96 @@ impl<'lexer, 'definition> AST<'lexer> {
 
         let argument = argument?;
 
-        let print = match print_pos.token.kind {
-            TokenKind::Print => Node::Print( Box::new( argument ) ),
-            TokenKind::PrintLn => Node::PrintLn( Box::new( argument ) ),
+        return match print_pos.token.kind {
+            TokenKind::Print => Ok( Statement::Single( Node::Print( argument ) ) ),
+            TokenKind::PrintLn => Ok( Statement::Multiple( vec![
+                Node::Print( argument ),
+                Node::Print( ExpressionKind::Literal( Type::Char { value: '\n' as u8 } ) )
+            ] ) ),
             _ => unreachable!(),
         };
+    }
 
-        return Ok( print );
+
+    fn iff( &mut self, errors: &mut SyntaxErrors<'lexer> ) -> Result<Statement, (&'lexer Line, SyntaxError)> {
+        let if_pos = self.tokens.current().unwrap();
+
+        let _condition_pos = self.tokens.next().bounded( &mut self.tokens, "expected boolean expression" )?.unwrap();
+        let condition_value = match self.expression( IdentifierExpansion::Keep, false )? {
+            ExpressionKind::Identifier( name ) => self.resolve_scoped( &name ).unwrap().value.clone(),
+            condition => condition,
+        };
+
+        let condition = match &condition_value {
+            ExpressionKind::Literal( literal ) => match literal {
+                Type::Bool { .. } => Ok( condition_value ),
+                Type::Char { .. }
+                | Type::I64 { .. }
+                | Type::Str { .. } => Err( (if_pos.line, SyntaxError {
+                    err_line: 0,
+                    col: if_pos.token.col,
+                    text: if_pos.token.kind.to_string(),
+                    msg: "expected boolean expression",
+                    help_msg: "must be followed by a boolean expression",
+                } )),
+            },
+            ExpressionKind::Binary { op, .. } => match op {
+                OpKind::Equals | OpKind::NotEquals
+                | OpKind::Greater | OpKind::GreaterOrEquals
+                | OpKind::Less | OpKind::LessOrEquals => Ok( condition_value ),
+                OpKind::Pow | OpKind::Times | OpKind::Divide
+                | OpKind::Plus | OpKind::Minus | OpKind::Compare => Err( (if_pos.line, SyntaxError {
+                    err_line: 0,
+                    col: if_pos.token.col,
+                    text: if_pos.token.kind.to_string(),
+                    msg: "expected boolean expression",
+                    help_msg: "must be followed by a boolean expression",
+                } )),
+            },
+            ExpressionKind::Identifier( _ ) => unreachable!(),
+        };
+
+        let condition = condition?;
+
+        let initial_bracket_stack_len = self.brackets.len();
+        let open_curly_pos = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected curly bracket" )?.unwrap();
+        let open_curly = match open_curly_pos.token.kind {
+            TokenKind::Bracket( kind @ BracketKind::OpenCurly ) => {
+                self.brackets.push( Bracket { position: open_curly_pos, kind } );
+                self.scopes.push( Scope { parent: Some( self.current_scope ), definitions: Vec::new() } );
+
+                self.current_scope = self.scopes.len() - 1;
+                self.tokens.next();
+                Ok( () )
+            },
+            _ => Err( (open_curly_pos.line, SyntaxError {
+                err_line: 0,
+                col: open_curly_pos.token.col,
+                text: open_curly_pos.token.kind.to_string(),
+                msg: "expected block scope",
+                help_msg: "must be an opened curly bracket",
+            }) ),
+        };
+
+        let _ = open_curly?;
+
+        return Ok( Statement::Single( Node::If { condition, nodes: self.parse( errors, Some( initial_bracket_stack_len ) ) } ) );
     }
 
 
     // TODO disallow implicit conversions (str + i64, char + i64, str + char or str + str (maybe treat this as concatenation))
         // IDEA introduce casting operators
     // TODO implement negative numbers
-    fn factor( &mut self, expansion: IdentifierExpansion ) -> Result<Node, (&'lexer Line, SyntaxError)> {
+    fn factor( &mut self, expansion: IdentifierExpansion ) -> Result<ExpressionKind, (&'lexer Line, SyntaxError)> {
         let current = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected expression" )?.unwrap();
         let factor = match &current.token.kind {
-            TokenKind::True => Ok( Node::Literal( Type::Bool { value: true } ) ),
-            TokenKind::False => Ok( Node::Literal( Type::Bool { value: false } ) ),
-            TokenKind::Literal( literal ) => Ok( Node::Literal( literal.clone() ) ),
+            TokenKind::True => Ok( ExpressionKind::Literal( Type::Bool { value: true } ) ),
+            TokenKind::False => Ok( ExpressionKind::Literal( Type::Bool { value: false } ) ),
+            TokenKind::Literal( literal ) => Ok( ExpressionKind::Literal( literal.clone() ) ),
             TokenKind::Identifier( name ) => match self.resolve_scoped( name ) {
                 Some( definition ) => match expansion {
-                    IdentifierExpansion::Expand => Ok( *definition.value.clone() ),
-                    IdentifierExpansion::Keep => Ok( Node::Identifier( name.clone() ) ),
+                    IdentifierExpansion::Expand => Ok( definition.value.clone() ),
+                    IdentifierExpansion::Keep => Ok( ExpressionKind::Identifier( name.clone() ) ),
                 },
                 None => Err( (current.line, SyntaxError {
                     err_line: 0,
@@ -1746,40 +1605,40 @@ impl<'lexer, 'definition> AST<'lexer> {
         return Ok( operator );
     }
 
-    fn exponentiation( &mut self, expansion: IdentifierExpansion ) -> Result<Node, (&'lexer Line, SyntaxError)> {
+    fn exponentiation( &mut self, expansion: IdentifierExpansion ) -> Result<ExpressionKind, (&'lexer Line, SyntaxError)> {
         let mut lhs = self.factor( expansion )?;
 
         while let Some( op ) = self.operator( &[OpKind::Pow] )? {
             let rhs = self.factor( expansion )?;
-            lhs = Node::Expression { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+            lhs = ExpressionKind::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
     }
 
-    fn multiplication_or_division( &mut self, expansion: IdentifierExpansion ) -> Result<Node, (&'lexer Line, SyntaxError)> {
+    fn multiplication_or_division( &mut self, expansion: IdentifierExpansion ) -> Result<ExpressionKind, (&'lexer Line, SyntaxError)> {
         let mut lhs = self.exponentiation( expansion )?;
 
         while let Some( op ) = self.operator( &[OpKind::Times, OpKind::Divide] )? {
             let rhs = self.exponentiation( expansion )?;
-            lhs = Node::Expression { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+            lhs = ExpressionKind::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
     }
 
-    fn math( &mut self, expansion: IdentifierExpansion ) -> Result<Node, (&'lexer Line, SyntaxError)> {
+    fn math( &mut self, expansion: IdentifierExpansion ) -> Result<ExpressionKind, (&'lexer Line, SyntaxError)> {
         let mut lhs = self.multiplication_or_division( expansion )?;
 
         while let Some( op ) = self.operator( &[OpKind::Plus, OpKind::Minus] )? {
             let rhs = self.multiplication_or_division( expansion )?;
-            lhs = Node::Expression { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+            lhs = ExpressionKind::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
     }
 
-    fn expression( &mut self, expansion: IdentifierExpansion, expected_semicolon: bool ) -> Result<Node, (&'lexer Line, SyntaxError)> {
+    fn expression( &mut self, expansion: IdentifierExpansion, expected_semicolon: bool ) -> Result<ExpressionKind, (&'lexer Line, SyntaxError)> {
         let mut lhs = self.math( expansion )?;
 
         let ops = [
@@ -1791,7 +1650,7 @@ impl<'lexer, 'definition> AST<'lexer> {
 
         while let Some( op ) = self.operator( &ops )? {
             let rhs = self.math( expansion )?;
-            lhs = Node::Expression { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+            lhs = ExpressionKind::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
 
         let expression = match expected_semicolon {
@@ -1841,12 +1700,12 @@ impl AST<'_> {
 
 // Interpreting
 impl AST<'_> {
-    fn evaluate_node( &self, node: &Node ) -> Type {
-        return match node {
-            Node::Literal( literal ) => literal.clone(),
-            Node::Expression{ lhs, op, rhs } => {
-                let lhs: i64 = self.evaluate_node( lhs ).into();
-                let rhs: i64 = self.evaluate_node( rhs ).into();
+    fn evaluate_expression( &self, expression: &ExpressionKind ) -> Type {
+        return match expression {
+            ExpressionKind::Literal( literal ) => literal.clone(),
+            ExpressionKind::Binary { lhs, op, rhs } => {
+                let lhs: i64 = self.evaluate_expression( lhs ).into();
+                let rhs: i64 = self.evaluate_expression( rhs ).into();
 
                 match op {
                     OpKind::Plus => Type::I64 { value: lhs + rhs },
@@ -1865,24 +1724,21 @@ impl AST<'_> {
                     OpKind::Compare => Type::I64 { value: lhs.cmp( &rhs ) as i64 },
                 }
             },
-            Node::Identifier( name ) => self.evaluate_node( &*self.resolve( name ).value ),
-            Node::If { .. } |
-            Node::Print( _ ) | Node::PrintLn( _ ) => unreachable!(),
-        }
+            ExpressionKind::Identifier( name ) => self.evaluate_expression( &self.resolve( name ).value ),
+        };
     }
 
     fn interpret_nodes( &self, nodes: &Vec<Node> ) {
         for node in nodes {
             match node {
-                Node::Print( argument ) => self.evaluate_node( argument ).display(),
-                Node::Literal( _ ) | Node::Expression { .. } | Node::Identifier( _ ) => continue,
-                Node::If { condition, nodes: if_nodes } => match self.evaluate_node( condition ) {
+                Node::Print( argument ) => self.evaluate_expression( argument ).display(),
+                Node::Expression { .. } => continue,
+                Node::If { condition, nodes: if_nodes } => match self.evaluate_expression( condition ) {
                     Type::Bool { value } => if value {
                         self.interpret_nodes( &if_nodes );
                     },
                     Type::Char { .. } | Type::I64 { .. } | Type::Str { .. } => unreachable!(),
                 },
-                Node::PrintLn( _ ) => unreachable!(),
             }
         }
     }
@@ -1896,9 +1752,9 @@ impl AST<'_> {
 
 // Compiling
 impl<'this, 'asm> AST<'this> {
-    fn gather_strings( &'asm self, rodata: &mut String, node: &'this Node, strings: &mut Vec<(&'asm Type, String, String)> ) {
-        match node {
-            Node::Literal( string @ Type::Str { text } ) => {
+    fn gather_strings( &'asm self, rodata: &mut String, expression: &'this ExpressionKind, strings: &mut Vec<(&'asm Type, String, String)> ) {
+        match expression {
+            ExpressionKind::Literal( string @ Type::Str { text } ) => {
                 let string_idx = strings.len();
                 let string_item = (string, format!( "str_{}", string_idx ), format!( "str_{}_len", string_idx ) );
                 let mut string_asm = String::with_capacity( string.len() + 2 );
@@ -1917,30 +1773,27 @@ impl<'this, 'asm> AST<'this> {
 
                 strings.push( string_item );
             },
-            Node::Literal( _ ) => (),
-            Node::Expression { lhs, op: _, rhs } => {
+            ExpressionKind::Literal( _ ) => (),
+            ExpressionKind::Binary { lhs, op: _, rhs } => {
                 self.gather_strings( rodata, lhs, strings );
                 self.gather_strings( rodata, rhs, strings );
             },
-            Node::Identifier( name ) => self.gather_strings( rodata, &self.resolve( &name ).value, strings ),
-            Node::If { .. } | Node::Print( _ ) | Node::PrintLn( _ ) => unreachable!(),
+            ExpressionKind::Identifier( name )=> self.gather_strings( rodata, &self.resolve( &name ).value, strings ),
         }
     }
 
     fn gather_strings_nodes( &'asm self, rodata: &mut String, nodes: &'this Vec<Node>, strings: &mut Vec<(&'asm Type, String, String)> ) {
         for node in nodes {
             let value = match node {
-                Node::Print( argument ) => match &**argument {
-                    Node::Literal( _ ) | Node::Expression{ .. } => &**argument,
-                    Node::Identifier( name ) => &*self.resolve( name ).value,
-                    Node::If { .. } | Node::Print( _ ) | Node::PrintLn( _ ) => unreachable!(),
+                Node::Expression( expression ) => expression,
+                Node::Print( argument ) => match argument {
+                    ExpressionKind::Identifier( name ) => &self.resolve( name ).value,
+                    _ => argument,
                 },
                 Node::If { nodes: if_nodes, .. } => {
                     self.gather_strings_nodes( rodata, if_nodes, strings );
                     continue;
                 },
-                Node::Literal( _ ) | Node::Expression { .. } | Node::Identifier( _ ) => continue,
-                Node::PrintLn( _ ) => unreachable!(),
             };
 
             self.gather_strings( rodata, value, strings );
@@ -1950,73 +1803,70 @@ impl<'this, 'asm> AST<'this> {
     fn compile_nodes( &self, nodes: &Vec<Node>, asm: &mut String, strings: &Vec<(&Type, String, String)>, only_string_len: bool ) {
         for node in nodes {
             match node {
+                Node::Print( argument ) => {
+                    let value = match argument {
+                        ExpressionKind::Literal( _ ) | ExpressionKind::Binary { .. } => argument,
+                        ExpressionKind::Identifier( name ) => &self.resolve( name ).value,
+                    };
+
+                    let value_type = match value {
+                        ExpressionKind::Literal( literal ) => literal,
+                        ExpressionKind::Binary { op, .. } => match op {
+                            OpKind::Pow | OpKind::Times | OpKind::Divide
+                            | OpKind::Plus | OpKind::Minus | OpKind::Compare => &Type::I64 { value: 0 },
+                            OpKind::Equals | OpKind::NotEquals
+                            | OpKind::Greater | OpKind::GreaterOrEquals
+                            | OpKind::Less | OpKind::LessOrEquals => &Type::Bool { value: false }
+                        }
+                        ExpressionKind::Identifier( _ ) => unreachable!(),
+                    };
+
+                    let print_asm = match value_type {
+                        Type::I64 { .. } =>
+                            "\n pop rdi\
+                            \n mov rsi, 10\
+                            \n call int_toStr\
+                            \n\
+                            \n mov rdi, stdout\
+                            \n mov rsi, rax\
+                            \n mov rax, SYS_write\
+                            \n syscall",
+                        Type::Char { .. } =>
+                            "\n mov rdi, stdout\
+                            \n mov rsi, rsp\
+                            \n mov rdx, 1\
+                            \n mov rax, SYS_write\
+                            \n syscall\
+                            \n pop rsi",
+                        Type::Bool { .. } =>
+                            "\n pop rsi\
+                            \n pop rdx\
+                            \n mov rdi, stdout\
+                            \n mov rax, SYS_write\
+                            \n syscall",
+                        Type::Str { text: _ } =>
+                            "\n pop rdx\
+                            \n pop rsi\
+                            \n mov rdi, stdout\
+                            \n mov rax, SYS_write\
+                            \n syscall",
+                    };
+
+                    asm.push_str( &format!( " ; {}\n", node ) );
+                    self.compile_expression( value, asm, strings, only_string_len );
+                    asm.push_str( &format!( "{}\n\n", print_asm ) );
+                },
                 Node::If { nodes: if_nodes, .. } => self.compile_nodes( if_nodes, asm, strings, only_string_len ),
-                Node::Print( _ ) => self.compile_node( node, asm, strings, only_string_len ),
-                Node::Literal( _ ) | Node::Expression { .. } | Node::Identifier( _ ) => continue,
-                Node::PrintLn( _ ) => unreachable!(),
+                Node::Expression( _ ) => continue,
             }
         }
     }
 
-    fn compile_node( &self, node: &Node, asm: &mut String, strings: &Vec<(&Type, String, String)>, only_string_len: bool ) {
+    fn compile_expression( &self, expression: &ExpressionKind, asm: &mut String, strings: &Vec<(&Type, String, String)>, only_string_len: bool ) {
         // NOTE it is literally possible to copy paste the entire expression in the generated asm file (only if it doesn't include basic math expressions)
             // IDEA check if the expression contains non basic math expressions, if not just copy paste the literal expression
-        match node {
-            Node::Print( argument ) => {
-                let value = match &**argument {
-                    Node::Literal( _ ) | Node::Expression{ .. } => &**argument,
-                    Node::Identifier( name ) => &*self.resolve( name ).value,
-                    Node::If { .. } | Node::Print( _ ) | Node::PrintLn( _ ) => unreachable!(),
-                };
-
-                let value_type = match value {
-                    Node::Literal( literal ) => literal,
-                    Node::Expression { op, .. } => match op {
-                        OpKind::Pow | OpKind::Times | OpKind::Divide
-                        | OpKind::Plus | OpKind::Minus | OpKind::Compare => &Type::I64 { value: 0 },
-                        OpKind::Equals | OpKind::NotEquals
-                        | OpKind::Greater | OpKind::GreaterOrEquals
-                        | OpKind::Less | OpKind::LessOrEquals => &Type::Bool { value: false }
-                    }
-                    Node::If { .. } | Node::Identifier( _ ) | Node::Print( _ ) | Node::PrintLn( _ ) => unreachable!(),
-                };
-
-                let print_asm = match value_type {
-                    Type::I64 { .. } =>
-                        "\n pop rdi\
-                        \n mov rsi, 10\
-                        \n call int_toStr\
-                        \n\
-                        \n mov rdi, stdout\
-                        \n mov rsi, rax\
-                        \n mov rax, SYS_write\
-                        \n syscall",
-                    Type::Char { .. } =>
-                        "\n mov rdi, stdout\
-                        \n mov rsi, rsp\
-                        \n mov rdx, 1\
-                        \n mov rax, SYS_write\
-                        \n syscall\
-                        \n pop rsi",
-                    Type::Bool { .. } =>
-                        "\n pop rsi\
-                        \n pop rdx\
-                        \n mov rdi, stdout\
-                        \n mov rax, SYS_write\
-                        \n syscall",
-                    Type::Str { text: _ } =>
-                        "\n pop rdx\
-                        \n pop rsi\
-                        \n mov rdi, stdout\
-                        \n mov rax, SYS_write\
-                        \n syscall",
-                };
-
-                asm.push_str( &format!( " ; {}\n", node ) );
-                self.compile_node( value, asm, strings, only_string_len );
-                asm.push_str( &format!( "{}\n\n", print_asm ) );
-            },
-            Node::Literal( literal ) => match literal {
+        match expression {
+            ExpressionKind::Literal( literal ) => match literal {
                 Type::I64 { value } => asm.push_str( &format!( " push {}\n", value ) ),
                 Type::Char { value } => asm.push_str( &format!( " push {}\n", value ) ),
                 Type::Bool { value } => asm.push_str( &format!( " push {}\n", value ) ),
@@ -2031,9 +1881,9 @@ impl<'this, 'asm> AST<'this> {
                     }
                 },
             },
-            Node::Expression { lhs, op, rhs } => {
-                self.compile_node( lhs, asm, strings, true );
-                self.compile_node( rhs, asm, strings, true );
+            ExpressionKind::Binary { lhs, op, rhs } => {
+                self.compile_expression( lhs, asm, strings, true );
+                self.compile_expression( rhs, asm, strings, true );
                 let op_asm = match op {
                     OpKind::Pow =>
                         "\n pop rsi\
@@ -2104,12 +1954,10 @@ impl<'this, 'asm> AST<'this> {
                         \n push rax".to_string(),
                 };
 
-                asm.push_str( &format!( " ; {}", node ) );
+                asm.push_str( &format!( " ; {}", expression ) );
                 asm.push_str( &format!( "{}\n\n", op_asm ) );
             },
-            Node::Identifier( name ) => self.compile_node( &*self.resolve( name ).value, asm, strings, only_string_len ),
-            Node::If { condition, nodes } => todo!(),
-            Node::PrintLn( _ ) => unreachable!(),
+            ExpressionKind::Identifier( name ) => self.compile_expression( &self.resolve( name ).value, asm, strings, only_string_len ),
         }
     }
 
