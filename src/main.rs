@@ -1,4 +1,4 @@
-// TODO process entire statement for correctness and then report all the errors
+// TODO process entire statement for syntactical correctness and then report all the errors
     // IDEA read the src file line when printing errors instead of composing it from the tokens
         // IDEA have Token contain the absolute column in the source file, and when encountering errors read the corresponding line
 // TODO fix division by zero
@@ -333,30 +333,6 @@ impl Display for Line {
 }
 
 
-const ERROR: &'static str = colored!{
-    text: "Error",
-    foreground: Foreground::LightRed,
-    bold: true,
-};
-
-const INTERPRETING: &'static str = colored!{
-    text: "Interpreting",
-    foreground: Foreground::LightGreen,
-    bold: true,
-};
-
-const BUILDING: &'static str = colored!{
-    text: "Building",
-    foreground: Foreground::LightGreen,
-    bold: true,
-};
-
-const RUNNING: &'static str = colored!{
-    text: "Running",
-    foreground: Foreground::LightGreen,
-    bold: true,
-};
-
 // TODO implement NOTE, HINT, HELP in error messages
 #[derive( Debug, Clone )]
 struct SyntaxError {
@@ -434,7 +410,7 @@ impl Display for SyntaxErrors<'_> {
                 \n{}\
                 \n{} {}\
                 \n{} {:pointers_col$}{}\n",
-                ERROR, error_msg,
+                SyntaxError::ERROR, error_msg,
                 in_, self.file_path, line.number, error.col,
                 bar,
                 line_number_and_bar, line_text,
@@ -444,6 +420,14 @@ impl Display for SyntaxErrors<'_> {
 
         return Ok( () );
     }
+}
+
+impl SyntaxError {
+    const ERROR: &'static str = colored!{
+        text: "Error",
+        foreground: Foreground::LightRed,
+        bold: true,
+    };
 }
 
 
@@ -1022,10 +1006,23 @@ impl Display for ExpressionKind {
 
 
 #[derive( Debug, Clone )]
+struct If {
+    condition: ExpressionKind,
+    nodes: Vec<Node>,
+}
+
+impl Display for If {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        return write!( f, "{}", self.condition );
+    }
+}
+
+
+#[derive( Debug, Clone )]
 enum Node {
     Expression( ExpressionKind ),
     Print( ExpressionKind ),
-    If { condition: ExpressionKind, nodes: Vec<Node> },
+    If( If ),
 }
 
 impl Display for Node {
@@ -1033,7 +1030,7 @@ impl Display for Node {
         return match self {
             Self::Expression( expression ) => write!( f, "{}", expression ),
             Self::Print( node ) => write!( f, "print {}", node ),
-            Self::If { condition, .. } => write!( f, "if {}", condition ),
+            Self::If( iff ) => write!( f, "{}", iff ),
         }
     }
 }
@@ -1083,7 +1080,6 @@ struct AST<'lexer> {
     brackets: Vec<Bracket<'lexer>>,
 }
 
-// Parsing tokens and building the AST
 impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
     type Error = SyntaxErrors<'lexer>;
 
@@ -1140,7 +1136,6 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
     }
 }
 
-// Parsing tokens and building the AST
 impl<'lexer, 'definition> AST<'lexer> {
     fn parse( &mut self, errors: &mut SyntaxErrors<'lexer>, initial_bracket_stack_len: Option<usize> ) -> Vec<Node> {
         let mut nodes: Vec<Node> = Vec::new();
@@ -1266,6 +1261,18 @@ impl<'lexer, 'definition> AST<'lexer> {
         return nodes;
     }
 
+
+    fn resolve( &self, name: &str ) -> &Definition {
+        for scope in &self.scopes {
+            for definition in &scope.definitions {
+                if definition.name == name {
+                    return definition;
+                }
+            }
+        }
+
+        unreachable!();
+    }
 
     fn resolve_scoped( &'definition self, name: &str ) -> Option<&'definition Definition> {
         let mut current_scope = self.current_scope;
@@ -1520,7 +1527,8 @@ impl<'lexer, 'definition> AST<'lexer> {
 
         let _ = open_curly?;
 
-        return Ok( Statement::Single( Node::If { condition, nodes: self.parse( errors, Some( initial_bracket_stack_len ) ) } ) );
+        let iff = If { condition, nodes: self.parse( errors, Some( initial_bracket_stack_len ) ) };
+        return Ok( Statement::Single( Node::If( iff ) ) );
     }
 
 
@@ -1678,28 +1686,7 @@ impl<'lexer, 'definition> AST<'lexer> {
 
         return expression;
     }
-}
 
-impl AST<'_> {
-    fn resolve( &self, name: &str ) -> &Definition {
-        for scope in &self.scopes {
-            for definition in &scope.definitions {
-                if definition.name == name {
-                    return definition;
-                }
-            }
-        }
-
-        unreachable!();
-    }
-}
-
-// NOTE only epxlicitly processing nodes that print values for now
-// TODO move identifier resolution to here
-    // NOTE have identifiers contain their definition line and token
-
-// Interpreting
-impl AST<'_> {
     fn evaluate_expression( &self, expression: &ExpressionKind ) -> Type {
         return match expression {
             ExpressionKind::Literal( literal ) => literal.clone(),
@@ -1727,15 +1714,62 @@ impl AST<'_> {
             ExpressionKind::Identifier( name ) => self.evaluate_expression( &self.resolve( name ).value ),
         };
     }
+}
+
+
+// NOTE only epxlicitly processing nodes that print values for now
+// TODO move identifier resolution to here
+    // NOTE have identifiers contain their definition line and token
+
+#[derive( Debug )]
+struct Interpreter<'ast> {
+    ast: &'ast AST<'ast>,
+}
+
+// Interpreting
+impl<'ast> Interpreter<'ast> {
+    const INTERPRETING: &'static str = colored!{
+        text: "Interpreting",
+        foreground: Foreground::LightGreen,
+        bold: true,
+    };
+
+    fn evaluate_expression( &self, expression: &ExpressionKind ) -> Type {
+        return match expression {
+            ExpressionKind::Literal( literal ) => literal.clone(),
+            ExpressionKind::Binary { lhs, op, rhs } => {
+                let lhs: i64 = self.evaluate_expression( lhs ).into();
+                let rhs: i64 = self.evaluate_expression( rhs ).into();
+
+                match op {
+                    OpKind::Plus => Type::I64 { value: lhs + rhs },
+                    OpKind::Minus => Type::I64 { value: lhs - rhs },
+                    OpKind::Times => Type::I64 { value: lhs * rhs },
+                    OpKind::Divide => Type::I64 { value: lhs / rhs },
+                    OpKind::Pow => Type::I64 { value: lhs.pow( rhs as u32 ) },
+
+                    OpKind::Equals => Type::Bool { value: lhs == rhs },
+                    OpKind::NotEquals => Type::Bool { value: lhs != rhs },
+                    OpKind::Greater => Type::Bool { value: lhs > rhs },
+                    OpKind::GreaterOrEquals => Type::Bool { value: lhs >= rhs },
+                    OpKind::Less => Type::Bool { value: lhs < rhs },
+                    OpKind::LessOrEquals => Type::Bool { value: lhs <= rhs },
+
+                    OpKind::Compare => Type::I64 { value: lhs.cmp( &rhs ) as i64 },
+                }
+            },
+            ExpressionKind::Identifier( name ) => self.evaluate_expression( &self.ast.resolve( name ).value ),
+        };
+    }
 
     fn interpret_nodes( &self, nodes: &Vec<Node> ) {
         for node in nodes {
             match node {
                 Node::Print( argument ) => self.evaluate_expression( argument ).display(),
                 Node::Expression { .. } => continue,
-                Node::If { condition, nodes: if_nodes } => match self.evaluate_expression( condition ) {
+                Node::If( iff ) => match self.evaluate_expression( &iff.condition ) {
                     Type::Bool { value } => if value {
-                        self.interpret_nodes( &if_nodes );
+                        self.interpret_nodes( &iff.nodes );
                     },
                     Type::Char { .. } | Type::I64 { .. } | Type::Str { .. } => unreachable!(),
                 },
@@ -1744,19 +1778,84 @@ impl AST<'_> {
     }
 
     fn interpret( &self, file_path: &str ) {
-        println!( "{}: {}", INTERPRETING, file_path );
+        println!( "{}: {}", Interpreter::INTERPRETING, file_path );
 
-        self.interpret_nodes( &self.nodes );
+        self.interpret_nodes( &self.ast.nodes );
     }
 }
 
+
+#[derive( Debug )]
+struct StringTag<'ast> {
+    string: &'ast Type,
+    tag: String,
+    len_tag: String,
+}
+
+#[derive( Debug )]
+struct IfTag<'ast> {
+    iff: &'ast Node,
+    tag: String,
+    false_tag: String,
+}
+
+#[derive( Debug )]
+struct Compiler<'ast> {
+    ast: &'ast AST<'ast>,
+
+    strings: Vec<StringTag<'ast>>,
+    ifs: Vec<IfTag<'ast>>,
+}
+
 // Compiling
-impl<'this, 'asm> AST<'this> {
-    fn gather_strings( &'asm self, rodata: &mut String, expression: &'this ExpressionKind, strings: &mut Vec<(&'asm Type, String, String)> ) {
+impl<'ast> Compiler<'ast> {
+    const BUILDING: &'static str = colored!{
+        text: "Building",
+        foreground: Foreground::LightGreen,
+        bold: true,
+    };
+
+    const RUNNING: &'static str = colored!{
+        text: "Running",
+        foreground: Foreground::LightGreen,
+        bold: true,
+    };
+
+    fn gather_tags( &mut self, rodata: &mut String, nodes: &'ast Vec<Node> ) {
+        for node in nodes {
+            let value = match node {
+                Node::Expression( expression ) => expression,
+                Node::Print( argument ) => match argument {
+                    ExpressionKind::Identifier( name ) => &self.ast.resolve( name ).value,
+                    _ => argument,
+                },
+                Node::If( iff ) => {
+                    let if_idx = self.ifs.len();
+                    self.ifs.push( IfTag {
+                        iff: &node,
+                        tag: format!( "if_{}", if_idx ),
+                        false_tag: format!( "if_{}_false", if_idx )
+                    } );
+
+                    self.gather_tags( rodata, &iff.nodes );
+                    continue;
+                },
+            };
+
+            self.gather_strings( rodata, value );
+        }
+    }
+
+    fn gather_strings( &mut self, rodata: &mut String, expression: &'ast ExpressionKind ) {
         match expression {
             ExpressionKind::Literal( string @ Type::Str { text } ) => {
-                let string_idx = strings.len();
-                let string_item = (string, format!( "str_{}", string_idx ), format!( "str_{}_len", string_idx ) );
+                let string_idx = self.strings.len();
+                let string_tag = StringTag {
+                    string: &string,
+                    tag: format!( "str_{}", string_idx ),
+                    len_tag: format!( "str_{}_len", string_idx )
+                };
+
                 let mut string_asm = String::with_capacity( string.len() + 2 );
                 string_asm.push( '`' );
                 for ch in text {
@@ -1767,46 +1866,29 @@ impl<'this, 'asm> AST<'this> {
                 rodata.push_str( &format!(
                     "\n {}: db {}\
                     \n {}: equ $ - {}\n",
-                    string_item.1, string_asm,
-                    string_item.2, string_item.1
+                    string_tag.tag, string_asm,
+                    string_tag.len_tag, string_tag.tag
                 ) );
 
-                strings.push( string_item );
+                self.strings.push( string_tag );
             },
             ExpressionKind::Literal( _ ) => (),
             ExpressionKind::Binary { lhs, op: _, rhs } => {
-                self.gather_strings( rodata, lhs, strings );
-                self.gather_strings( rodata, rhs, strings );
+                self.gather_strings( rodata, lhs );
+                self.gather_strings( rodata, rhs );
             },
-            ExpressionKind::Identifier( name )=> self.gather_strings( rodata, &self.resolve( &name ).value, strings ),
+            ExpressionKind::Identifier( name ) => self.gather_strings( rodata, &self.ast.resolve( &name ).value ),
         }
     }
 
-    fn gather_strings_nodes( &'asm self, rodata: &mut String, nodes: &'this Vec<Node>, strings: &mut Vec<(&'asm Type, String, String)> ) {
-        for node in nodes {
-            let value = match node {
-                Node::Expression( expression ) => expression,
-                Node::Print( argument ) => match argument {
-                    ExpressionKind::Identifier( name ) => &self.resolve( name ).value,
-                    _ => argument,
-                },
-                Node::If { nodes: if_nodes, .. } => {
-                    self.gather_strings_nodes( rodata, if_nodes, strings );
-                    continue;
-                },
-            };
 
-            self.gather_strings( rodata, value, strings );
-        }
-    }
-
-    fn compile_nodes( &self, nodes: &Vec<Node>, asm: &mut String, strings: &Vec<(&Type, String, String)>, only_string_len: bool ) {
+    fn compile_nodes( &self, nodes: &Vec<Node>, asm: &mut String, only_string_len: bool ) {
         for node in nodes {
             match node {
                 Node::Print( argument ) => {
                     let value = match argument {
                         ExpressionKind::Literal( _ ) | ExpressionKind::Binary { .. } => argument,
-                        ExpressionKind::Identifier( name ) => &self.resolve( name ).value,
+                        ExpressionKind::Identifier( name ) => &self.ast.resolve( name ).value,
                     };
 
                     let value_type = match value {
@@ -1853,16 +1935,34 @@ impl<'this, 'asm> AST<'this> {
                     };
 
                     asm.push_str( &format!( " ; {}\n", node ) );
-                    self.compile_expression( value, asm, strings, only_string_len );
+                    self.compile_expression( value, asm, only_string_len, true );
                     asm.push_str( &format!( "{}\n\n", print_asm ) );
                 },
-                Node::If { nodes: if_nodes, .. } => self.compile_nodes( if_nodes, asm, strings, only_string_len ),
+                Node::If( iff ) => for if_tag in &self.ifs {
+                    if node as *const _ == if_tag.iff as *const _ {
+                        asm.push_str( &format!( "{}:\n", if_tag.tag ) );
+
+                        self.compile_expression( &iff.condition, asm, only_string_len, false );
+
+                        asm.push_str( &format!(
+                            "\n pop rax\
+                            \n pop rdx\
+                            \n cmp rax, 1\
+                            \n jne {}\n",
+                            if_tag.false_tag
+                        ) );
+
+                        self.compile_nodes( &iff.nodes, asm, only_string_len );
+
+                        asm.push_str( &format!( "{}:\n", if_tag.false_tag ) );
+                    }
+                }
                 Node::Expression( _ ) => continue,
             }
         }
     }
 
-    fn compile_expression( &self, expression: &ExpressionKind, asm: &mut String, strings: &Vec<(&Type, String, String)>, only_string_len: bool ) {
+    fn compile_expression( &self, expression: &ExpressionKind, asm: &mut String, only_string_len: bool, bool_to_str: bool ) {
         // NOTE it is literally possible to copy paste the entire expression in the generated asm file (only if it doesn't include basic math expressions)
             // IDEA check if the expression contains non basic math expressions, if not just copy paste the literal expression
         match expression {
@@ -1870,20 +1970,20 @@ impl<'this, 'asm> AST<'this> {
                 Type::I64 { value } => asm.push_str( &format!( " push {}\n", value ) ),
                 Type::Char { value } => asm.push_str( &format!( " push {}\n", value ) ),
                 Type::Bool { value } => asm.push_str( &format!( " push {}\n", value ) ),
-                string @ Type::Str { .. } => for (typ, tag, len_tag) in strings {
-                    if string as *const _ == *typ as *const _  {
+                Type::Str { .. } => for string_tag in &self.strings {
+                    if literal as *const _ == string_tag.string as *const _  {
                         if !only_string_len {
-                            asm.push_str( &format!( " push {}\n", tag ) );
+                            asm.push_str( &format!( " push {}\n", string_tag.tag ) );
                         }
 
-                        asm.push_str( &format!( " push {}\n", len_tag ) );
+                        asm.push_str( &format!( " push {}\n", string_tag.len_tag ) );
                         break;
                     }
                 },
             },
             ExpressionKind::Binary { lhs, op, rhs } => {
-                self.compile_expression( lhs, asm, strings, true );
-                self.compile_expression( rhs, asm, strings, true );
+                self.compile_expression( lhs, asm, true, bool_to_str );
+                self.compile_expression( rhs, asm, true, bool_to_str );
                 let op_asm = match op {
                     OpKind::Pow =>
                         "\n pop rsi\
@@ -1925,21 +2025,35 @@ impl<'this, 'asm> AST<'this> {
                             _ => unreachable!(),
                         };
 
-                        format!(
-                            "\n pop rsi\
-                            \n pop rdi\
-                            \n mov rbx, true_str\
-                            \n mov rax, false_str\
-                            \n cmp rdi, rsi\
-                            \n cmov{} rax, rbx\
-                            \n mov rbx, true_str_len\
-                            \n mov rdx, false_str_len\
-                            \n cmov{} rdx, rbx\
-                            \n push rdx\
-                            \n push rax",
-                            cmov_kind,
-                            cmov_kind
-                        )
+                        if bool_to_str {
+                            format!(
+                                "\n pop rsi\
+                                \n pop rdi\
+                                \n mov rbx, true_str\
+                                \n mov rax, false_str\
+                                \n cmp rdi, rsi\
+                                \n cmov{} rax, rbx\
+                                \n mov rbx, true_str_len\
+                                \n mov rdx, false_str_len\
+                                \n cmov{} rdx, rbx\
+                                \n push rdx\
+                                \n push rax",
+                                cmov_kind,
+                                cmov_kind
+                            )
+                        }
+                        else {
+                            format!(
+                                "\n pop rsi\
+                                \n pop rdi\
+                                \n mov rbx, 1\
+                                \n mov rax, 0\
+                                \n cmp rdi, rsi\
+                                \n cmov{} rax, rbx\
+                                \n push rax",
+                                cmov_kind
+                            )
+                        }
                     },
 
                     OpKind::Compare =>
@@ -1957,13 +2071,14 @@ impl<'this, 'asm> AST<'this> {
                 asm.push_str( &format!( " ; {}", expression ) );
                 asm.push_str( &format!( "{}\n\n", op_asm ) );
             },
-            ExpressionKind::Identifier( name ) => self.compile_expression( &self.resolve( name ).value, asm, strings, only_string_len ),
+            ExpressionKind::Identifier( name ) => self.compile_expression( &self.ast.resolve( name ).value, asm, only_string_len, bool_to_str ),
         }
     }
 
-    fn compile( &'asm self, file_path: &str ) -> Result<PathBuf, ()> {
+
+    fn compile( &mut self, file_path: &str ) -> Result<PathBuf, ()> {
         let src_file_path = Path::new( file_path );
-        println!( "{}: {}", BUILDING, src_file_path.display() );
+        println!( "{}: {}", Compiler::BUILDING, src_file_path.display() );
 
         let asm_file_path = src_file_path.with_extension( "asm" );
         let mut asm_file = BufWriter::new( File::create( &asm_file_path ).unwrap() );
@@ -1990,8 +2105,7 @@ r#" stdout: equ 1
  GREATER: equ 1
 "#.to_string();
 
-        let mut strings: Vec<(&'asm Type, String, String)> = Vec::new();
-        self.gather_strings_nodes( &mut rodata, &self.nodes, &mut strings );
+        self.gather_tags( &mut rodata, &self.ast.nodes );
 
         let data =
 r" int_str: times INT_MAX_DIGITS + 1 db 0
@@ -2099,7 +2213,7 @@ r" mov rdi, EXIT_SUCCESS
  syscall";
 
         let mut program_asm = String::new();
-        self.compile_nodes( &self.nodes, &mut program_asm, &strings, false );
+        self.compile_nodes( &self.ast.nodes, &mut program_asm, false );
 
         let program = format!(
 r"global _start
@@ -2141,13 +2255,11 @@ _start:
 
         return Ok( executable_file_path );
     }
-}
 
-// Running
-impl AST<'_> {
-    fn run( &self, file_path: &str ) -> Result<(), ()> {
+
+    fn run( &mut self, file_path: &str ) -> Result<(), ()> {
         let executable_file_path = self.compile( &file_path )?;
-        println!( "{}: {}", RUNNING, executable_file_path.display() );
+        println!( "{}: {}", Compiler::RUNNING, executable_file_path.display() );
 
         let output = Command::new( format!( "{}", executable_file_path.display() ) ).output().unwrap();
         print!( "{}", String::from_utf8_lossy( &output.stdout ) );
@@ -2179,7 +2291,7 @@ fn main() -> ExitCode {
 
     // to quickly debug
     // args.push( "build".to_string() );
-    // args.push( "run".to_string() );
+    args.push( "run".to_string() );
     args.push( "examples/main.blz".to_string() );
 
     if args.len() < 2 {
@@ -2204,7 +2316,7 @@ fn main() -> ExitCode {
             _ => match source_file_path {
                 None => source_file_path = Some( arg ),
                 Some( _ ) => {
-                    eprintln!( "{}: too many source file paths provided", ERROR );
+                    eprintln!( "{}: too many source file paths provided", SyntaxError::ERROR );
                     return ExitCode::FAILURE;
                 }
             },
@@ -2212,23 +2324,21 @@ fn main() -> ExitCode {
     }
 
     if !interpret_flag && !build_flag && !run_flag {
-        // eprintln!( "{}: no run mode command provided", ERROR );
-        // return ExitCode::FAILURE;
         interpret_flag = true;
     }
     else if interpret_flag && (build_flag || run_flag) {
-        eprintln!( "{}: cannot interpret and build/run at the same time", ERROR );
+        eprintln!( "{}: cannot interpret and build/run at the same time", SyntaxError::ERROR );
         return ExitCode::FAILURE;
     }
     else if build_flag && run_flag {
-        eprintln!( "{}: build and run commands cannot be used together", ERROR );
+        eprintln!( "{}: build and run commands cannot be used together", SyntaxError::ERROR );
         return ExitCode::FAILURE;
     }
 
     let source_file_path = match source_file_path {
         Some( path ) => path,
         None => {
-            eprintln!( "{}: no source file path provided", ERROR );
+            eprintln!( "{}: no source file path provided", SyntaxError::ERROR );
             return ExitCode::FAILURE;
         }
     };
@@ -2236,7 +2346,7 @@ fn main() -> ExitCode {
     let source_file = match File::open( &source_file_path ) {
         Ok( file ) => {
             if file.metadata().unwrap().is_dir() {
-                eprintln!( "{}: provided file was a directory", ERROR );
+                eprintln!( "{}: provided file was a directory", SyntaxError::ERROR );
                 return ExitCode::FAILURE;
             }
             else {
@@ -2249,7 +2359,7 @@ fn main() -> ExitCode {
                 _ => "unknown error",
             };
 
-            eprintln!( "{}: could not open file '{}'!\nCause: {}", ERROR, &source_file_path, cause );
+            eprintln!( "{}: could not open file '{}'!\nCause: {}", SyntaxError::ERROR, &source_file_path, cause );
             return ExitCode::FAILURE;
         },
     };
@@ -2277,13 +2387,18 @@ fn main() -> ExitCode {
     };
 
     if interpret_flag {
-        ast.interpret( &source_file_path );
+        let interpreter = Interpreter { ast: &ast };
+        interpreter.interpret( &source_file_path );
     }
-    else if build_flag {
-        let _ = ast.compile( &source_file_path );
-    }
-    else if run_flag {
-        let _ = ast.run( &source_file_path );
+    else {
+        let mut compiler = Compiler { ast: &ast, strings: Vec::new(), ifs: Vec::new() };
+
+        if build_flag {
+            let _ = compiler.compile( &source_file_path );
+        }
+        else if run_flag {
+            let _ = compiler.run( &source_file_path );
+        }
     }
 
     return ExitCode::SUCCESS;
