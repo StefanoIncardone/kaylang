@@ -26,6 +26,8 @@ statement =
     | (identifier, "=", expression),
     ';';
 
-scope = "{", [{line_comment | statement}], "}";
+scope = "{", [{line_comment | statement | scope}], "}";
 
-program = [{line_comment | statement | scope}];
+if = "if", expression, scope;
+
+program = [{line_comment | statement | scope | if}];

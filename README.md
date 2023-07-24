@@ -140,3 +140,14 @@ println ten;
 # println nine;
 
 ```
+
+### If statements
+
+Executes a block of code based on a condition
+
+```blitz
+let lucky = 42;
+if lucky == 19 { # will not execute since the condition is not true
+    println "well done!";
+}
+```

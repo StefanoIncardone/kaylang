@@ -1,4 +1,4 @@
-let twentyone = 9 + 10;
-if twentyone == 21 {
-    println "you stoopid";
+let lucky = 42;
+if lucky == 19 {
+    println "well done!";
 }
