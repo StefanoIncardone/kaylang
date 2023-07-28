@@ -91,7 +91,7 @@ impl Display for Colored {
         }
         else {
             codes.pop(); //remove the last ";"
-            return write!( f, "\x1b[{}m{}\x1b[0m", codes, self.text )
+            write!( f, "\x1b[{}m{}\x1b[0m", codes, self.text )
         }
     }
 }
@@ -169,7 +169,7 @@ macro_rules! positive_text {
     (true) => {";27"};
 }
 
-// TODO allow for arbitrary argument order
+// IDEA allow for arbitrary argument order
 #[macro_export]
 macro_rules! colored {
     () => {""};

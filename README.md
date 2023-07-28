@@ -145,9 +145,38 @@ println ten;
 
 Executes a block of code based on a condition
 
-```blitz
-let lucky = 42;
-if lucky == 19 { # will not execute since the condition is not true
-    println "well done!";
-}
-```
+- if statement:
+
+    ```blitz
+    let lucky = 42;
+    if lucky == 19 {
+        println "well done!";
+    }
+    ```
+
+- if-else statement:
+
+    ```blitz
+    let lucky = 42;
+    if lucky == 19 {
+        println "well done!";
+    }
+    else {
+        println "too bad!";
+    }
+    ```
+
+- if, else-if, else statement:
+
+    ```blitz
+    let lucky = 42;
+    if lucky == 19 {
+        println "well done!";
+    }
+    else if lucky == 42 {
+        println "awesome!";
+    }
+    else {
+        println "too bad!";
+    }
+    ```

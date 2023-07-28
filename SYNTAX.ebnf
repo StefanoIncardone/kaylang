@@ -28,6 +28,6 @@ statement =
 
 scope = "{", [{line_comment | statement | scope}], "}";
 
-if = "if", expression, scope;
+if = "if", expression, scope, [{"else", if}], ["else", scope];
 
 program = [{line_comment | statement | scope | if}];

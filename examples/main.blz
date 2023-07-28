@@ -1,4 +1,57 @@
-let lucky = 42;
-if lucky == 19 {
-    println "well done!";
+let one = 1;
+if one == 1 {
+    println 1;
+
+    let two = 21;
+    if two == 2 {
+        println 2;
+    }
+    else if two == 20 {
+        println 20;
+    }
+    else if two == 21 {
+        println 21;
+
+        let three = 4;
+        if three == 3 {
+            println 3;
+        }
+        else if three == 30 {
+            println 30;
+        }
+        else if three == 31 {
+            println 31;
+        }
+        else {
+            println "not 3";
+        }
+        println "after 3";
+    }
+    else {
+        println "not 2";
+
+        let four = 2;
+        if four == 4 {
+            println "4";
+        }
+        else if four == 40 {
+            println "40";
+        }
+        else {
+            println "not 4";
+        }
+        println "after 4";
+    }
+    println "after 2";
 }
+else if one == 10 {
+    println 10;
+
+}
+else if one == 11 {
+    println 11;
+}
+else {
+    println "not 1";
+}
+println "after 1";
