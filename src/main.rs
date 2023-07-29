@@ -1287,20 +1287,8 @@ impl<'lexer, 'definition> AST<'lexer> {
     }
 }
 
-// Resolution of identifiers
+// Resolution of identifiers during construction of AST
 impl<'lexer, 'definition> AST<'lexer> {
-    fn resolve( &self, name: &str ) -> &Definition {
-        for scope in &self.scopes {
-            for definition in &scope.definitions {
-                if definition.name == name {
-                    return definition;
-                }
-            }
-        }
-
-        unreachable!();
-    }
-
     fn resolve_scoped( &'definition self, name: &str ) -> Option<&'definition Definition> {
         let mut current_scope = self.current_scope;
 
@@ -1329,6 +1317,31 @@ impl<'lexer, 'definition> AST<'lexer> {
 
             current_scope = scope.parent?;
         }
+    }
+}
+
+// Resolution of identifiers after construction of AST: as all the identifiers need to be collected already
+impl<'lexer> AST<'lexer> {
+    fn resolve( &self, name: &str ) -> &Definition {
+        for scope in &self.scopes {
+            for definition in &scope.definitions {
+                if definition.name == name {
+                    return definition;
+                }
+            }
+        }
+
+        unreachable!();
+    }
+
+    fn extract( &'lexer self, expression: &'lexer ExpressionKind ) -> &'lexer ExpressionKind {
+        let mut expr = expression;
+        loop {
+            match expr {
+                ExpressionKind::Literal( .. ) | ExpressionKind::Binary { .. } => return expr,
+                ExpressionKind::Identifier( name ) => expr = &self.resolve( name ).value,
+            }
+        };
     }
 }
 
@@ -1669,13 +1682,10 @@ impl<'lexer> AST<'lexer> {
     fn if_block( &mut self, errors: &mut SyntaxErrors<'lexer>, initial_bracket_stack_len: usize ) -> Result<If, (&'lexer Line, SyntaxError)> {
         let if_pos = self.tokens.current().unwrap();
 
-        let _condition_pos = self.tokens.next().bounded( &mut self.tokens, "expected boolean expression" )?.unwrap();
-        let condition_value = match self.expression( IdentifierExpansion::Keep, false )? {
-            ExpressionKind::Identifier( name ) => self.resolve_scoped( &name ).unwrap().value.clone(),
-            condition => condition,
-        };
-
-        let condition = match &condition_value {
+        self.tokens.next().bounded( &mut self.tokens, "expected boolean expression" )?.unwrap();
+        let expression = self.expression( IdentifierExpansion::Keep, false )?;
+        let condition_value = self.extract( &expression );
+        let condition = match condition_value {
             ExpressionKind::Literal( literal ) => match literal {
                 Type::Bool { .. } => Ok( condition_value ),
                 Type::Char { .. }
@@ -1704,7 +1714,7 @@ impl<'lexer> AST<'lexer> {
             ExpressionKind::Identifier( _ ) => unreachable!(),
         };
 
-        let condition = condition?;
+        let condition = condition?.clone();
 
         let open_curly_pos = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected curly bracket" )?.unwrap();
         let open_curly = match open_curly_pos.token.kind {
@@ -1781,7 +1791,6 @@ struct Interpreter<'ast> {
     ast: &'ast AST<'ast>,
 }
 
-// Interpreting
 impl<'ast> Interpreter<'ast> {
     const INTERPRETING: &'static str = colored!{
         text: "Interpreting",
@@ -1791,7 +1800,8 @@ impl<'ast> Interpreter<'ast> {
 
 
     fn evaluate( ast: &AST, expression: &ExpressionKind ) -> Type {
-        return match expression {
+        return match ast.extract( expression ) {
+            // TODO avoid cloning of values
             ExpressionKind::Literal( literal ) => literal.clone(),
             ExpressionKind::Binary { lhs, op, rhs } => {
                 let lhs: i64 = Self::evaluate( ast, lhs ).into();
@@ -1814,7 +1824,7 @@ impl<'ast> Interpreter<'ast> {
                     OpKind::Compare => Type::I64 { value: lhs.cmp( &rhs ) as i64 },
                 }
             },
-            ExpressionKind::Identifier( name ) => Self::evaluate( ast, &ast.resolve( name ).value ),
+            ExpressionKind::Identifier( _ ) => unreachable!(),
         }
     }
 
@@ -1858,21 +1868,15 @@ impl<'ast> Interpreter<'ast> {
 
 
 #[derive( Debug )]
-struct StringTag<'ast> {
-    string: &'ast Type,
-    tag: String,
-    len_tag: String,
-}
-
-#[derive( Debug )]
 struct Compiler<'ast> {
     ast: &'ast AST<'ast>,
+    rodata: String,
+    asm: String,
 
-    strings: Vec<StringTag<'ast>>,
+    strings: Vec<&'ast Type>,
     if_tag: usize,
 }
 
-// Compiling
 impl<'ast> Compiler<'ast> {
     const BUILDING: &'static str = colored!{
         text: "Building",
@@ -1887,334 +1891,8 @@ impl<'ast> Compiler<'ast> {
     };
 
 
-    fn gather_tags( &mut self, rodata: &mut String, nodes: &'ast Vec<Node> ) {
-        for node in nodes {
-            let value = match node {
-                Node::Expression( expression ) => expression,
-                Node::Print( argument ) => match argument {
-                    ExpressionKind::Identifier( name ) => &self.ast.resolve( name ).value,
-                    _ => argument,
-                },
-                Node::If( iff ) => {
-                    self.gather_tags( rodata, &iff.nodes );
-
-                    if let Some( else_ifs ) = &iff.else_if {
-                        for else_if in else_ifs {
-                            self.gather_tags( rodata, &else_if.nodes );
-                        }
-                    }
-
-                    if let Some( els ) = &iff.els {
-                        self.gather_tags( rodata, els );
-                    }
-
-                    &iff.condition
-                },
-            };
-
-            self.gather_string_tags( rodata, value );
-        }
-    }
-
-    fn gather_string_tags( &mut self, rodata: &mut String, expression: &'ast ExpressionKind ) {
-        match expression {
-            ExpressionKind::Literal( string @ Type::Str { text } ) => {
-                let string_idx = self.strings.len();
-                let string_tag = StringTag {
-                    string: &string,
-                    tag: format!( "str_{}", string_idx ),
-                    len_tag: format!( "str_{}_len", string_idx )
-                };
-
-                let mut string_asm = String::with_capacity( string.len() + 2 );
-                string_asm.push( '`' );
-                for ch in text {
-                    string_asm.push( *ch as char );
-                }
-                string_asm.push( '`' );
-
-                rodata.push_str( &format!(
-                    "\n {}: db {}\
-                    \n {}: equ $ - {}\n",
-                    string_tag.tag, string_asm,
-                    string_tag.len_tag, string_tag.tag
-                ) );
-
-                self.strings.push( string_tag );
-            },
-            ExpressionKind::Literal( _ ) => (),
-            ExpressionKind::Binary { lhs, op: _, rhs } => {
-                self.gather_string_tags( rodata, lhs );
-                self.gather_string_tags( rodata, rhs );
-            },
-            // TODO check if this creates duplicate strings
-            ExpressionKind::Identifier( name ) => self.gather_string_tags( rodata, &self.ast.resolve( &name ).value ),
-        }
-    }
-
-
-    fn compile_nodes( &mut self, nodes: &Vec<Node>, asm: &mut String, only_string_len: bool ) {
-        for node in nodes {
-            match node {
-                Node::Print( argument ) => {
-                    let value = match argument {
-                        ExpressionKind::Literal( _ ) | ExpressionKind::Binary { .. } => argument,
-                        ExpressionKind::Identifier( name ) => &self.ast.resolve( name ).value,
-                    };
-
-                    let value_type = match value {
-                        ExpressionKind::Literal( literal ) => literal,
-                        ExpressionKind::Binary { op, .. } => match op {
-                            OpKind::Pow | OpKind::Times | OpKind::Divide
-                            | OpKind::Plus | OpKind::Minus | OpKind::Compare => &Type::I64 { value: 0 },
-                            OpKind::Equals | OpKind::NotEquals
-                            | OpKind::Greater | OpKind::GreaterOrEquals
-                            | OpKind::Less | OpKind::LessOrEquals => &Type::Bool { value: false },
-                        },
-                        ExpressionKind::Identifier( _ ) => unreachable!(),
-                    };
-
-                    let print_asm = match value_type {
-                        Type::I64 { .. } =>
-                            "\n pop rdi\
-                            \n mov rsi, 10\
-                            \n call int_toStr\
-                            \n\
-                            \n mov rdi, stdout\
-                            \n mov rsi, rax\
-                            \n mov rax, SYS_write\
-                            \n syscall",
-                        Type::Char { .. } =>
-                            "\n mov rdi, stdout\
-                            \n mov rsi, rsp\
-                            \n mov rdx, 1\
-                            \n mov rax, SYS_write\
-                            \n syscall\
-                            \n pop rsi",
-                        Type::Bool { .. } | Type::Str { .. } =>
-                            "\n pop rdx\
-                            \n pop rsi\
-                            \n mov rdi, stdout\
-                            \n mov rax, SYS_write\
-                            \n syscall",
-                    };
-
-                    asm.push_str( &format!( " ; {}\n", node ) );
-                    self.compile_expression( value, asm, only_string_len, true );
-                    asm.push_str( &format!( "{}\n\n", print_asm ) );
-                },
-                Node::If( iff ) => {
-                    let if_idx = self.if_tag;
-                    self.if_tag += 1;
-
-                    let (has_else_ifs, has_else) = (iff.else_if.is_some(), iff.els.is_some());
-
-                    // compiling the if branch
-                    let if_tag = format!( "if_{}", if_idx );
-                    let (if_false_tag, if_end_tag) = if has_else_ifs {
-                        (format!( "if_{}_else_if_0", if_idx ), Some( format!( "if_{}_end", if_idx ) ))
-                    }
-                    else if has_else {
-                        (format!( "if_{}_else", if_idx ), Some( format!( "if_{}_end", if_idx ) ))
-                    }
-                    else {
-                        (format!( "if_{}_end", if_idx ), None)
-                    };
-                    self.compile_if( &iff, &if_tag, &if_false_tag, &if_end_tag, asm );
-
-                    // compiling the else if branches
-                    if let Some( else_ifs ) = &iff.else_if {
-                        for (else_if_tag_idx, else_if) in else_ifs.iter().take( else_ifs.len() - 1 ).enumerate() {
-                            let else_if_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx );
-                            let else_if_false_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx + 1 );
-                            self.compile_if( &else_if, &else_if_tag, &else_if_false_tag, &if_end_tag, asm );
-                        }
-
-                        let else_if_tag = format!( "if_{}_else_if_{}", if_idx, else_ifs.len() - 1 );
-                        let else_if_false_tag = if has_else {
-                            format!( "if_{}_else", if_idx )
-                        }
-                        else {
-                            format!( "if_{}_end", if_idx )
-                        };
-                        self.compile_if( &else_ifs[ else_ifs.len() - 1 ], &else_if_tag, &else_if_false_tag, &if_end_tag, asm );
-                    }
-
-                    // compiling the else branch
-                    if let Some( els ) = &iff.els {
-                        asm.push_str( &format!( "if_{}_else:\n", if_idx ) );
-                        self.compile_nodes( els, asm, only_string_len );
-                    }
-
-                    asm.push_str( &format!( "if_{}_end:\n", if_idx ) );
-                },
-                Node::Expression( _ ) => continue,
-            }
-        }
-    }
-
-    fn compile_if(
-        &mut self,
-        iff: &If,
-        if_tag: &String,
-        if_false_tag: &String,
-        if_end_tag: &Option<String>,
-        asm: &mut String
-    ) {
-        asm.push_str( &format!( "{}:; {}\n", if_tag, iff ) );
-
-        let value = match &iff.condition {
-            ExpressionKind::Identifier( name ) => &self.ast.resolve( name ).value,
-            ExpressionKind::Literal( _ ) | ExpressionKind::Binary { .. } => &iff.condition,
-        };
-
-        match value {
-            ExpressionKind::Literal( literal ) => match literal {
-                Type::Bool { value } => asm.push_str( &format!(
-                    "\n mov rdi, {}\
-                    \n mov rsi, 1\
-                    \n cmp rdi, rsi\
-                    \n jne {}\n\n",
-                    *value as usize,
-                    if_false_tag
-                ) ),
-                Type::I64 { .. } | Type::Char { .. } | Type::Str { .. } => unreachable!(),
-            },
-            ExpressionKind::Binary { lhs, op, rhs } => {
-                self.compile_expression( lhs, asm, true, false );
-                self.compile_expression( rhs, asm, true, false );
-                let jmp_condition = match op {
-                    OpKind::Equals => "jne",
-                    OpKind::NotEquals => "je",
-                    OpKind::Greater => "jle",
-                    OpKind::GreaterOrEquals => "jl",
-                    OpKind::Less => "jge",
-                    OpKind::LessOrEquals => "jg",
-
-                    OpKind::Pow | OpKind::Times | OpKind::Divide
-                    | OpKind::Plus | OpKind::Minus
-                    | OpKind::Compare => unreachable!(),
-                };
-
-                asm.push_str( &format!(
-                    "\n pop rsi\
-                    \n pop rdi\
-                    \n cmp rdi, rsi\
-                    \n {} {}\n\n",
-                    jmp_condition, if_false_tag
-                ) );
-            },
-            ExpressionKind::Identifier( _ ) => unreachable!(),
-        }
-
-        self.compile_nodes( &iff.nodes, asm, false );
-        if let Some( tag ) = if_end_tag {
-            asm.push_str( &format!( " jmp {}\n\n", tag ) );
-        }
-    }
-
-    fn compile_expression( &self, expression: &ExpressionKind, asm: &mut String, only_string_len: bool, bool_to_str: bool ) {
-        match expression {
-            ExpressionKind::Literal( literal ) => match literal {
-                Type::I64 { value } => asm.push_str( &format!( " push {}\n", value ) ),
-                Type::Char { value } => asm.push_str( &format!( " push {}\n", value ) ),
-                Type::Bool { value } => match bool_to_str {
-                    true => {
-                        asm.push_str( &format!( " push {}_str\n", value ) );
-                        asm.push_str( &format!( " push {}_str_len\n", value ) );
-                    },
-                    false => asm.push_str( &format!( " push {}\n", *value as usize ) ),
-                },
-                // IDEA remove string tags and have this write to rodata and in asm when encountering strings
-                Type::Str { .. } => for string_tag in &self.strings {
-                    if literal as *const _ == string_tag.string as *const _ {
-                        if !only_string_len {
-                            asm.push_str( &format!( " push {}\n", string_tag.tag ) );
-                        }
-
-                        asm.push_str( &format!( " push {}\n", string_tag.len_tag ) );
-                        break;
-                    }
-                },
-            },
-            ExpressionKind::Binary { lhs, op, rhs } => {
-                self.compile_expression( lhs, asm, true, false );
-                self.compile_expression( rhs, asm, true, false );
-                let op_asm = match op {
-                    OpKind::Pow =>
-                        "\n pop rsi\
-                        \n pop rdi\
-                        \n call int_pow\
-                        \n push rax".to_string(),
-                    OpKind::Times =>
-                        "\n pop rax\
-                        \n pop rbx\
-                        \n imul rax, rbx\
-                        \n push rax".to_string(),
-                    OpKind::Divide =>
-                        "\n pop rbx\
-                        \n pop rax\
-                        \n xor rdx, rdx\
-                        \n idiv rbx\
-                        \n push rax".to_string(),
-                    OpKind::Plus =>
-                        "\n pop rax\
-                        \n pop rbx\
-                        \n add rax, rbx\
-                        \n push rax".to_string(),
-                    OpKind::Minus =>
-                        "\n pop rbx\
-                        \n pop rax\
-                        \n sub rax, rbx\
-                        \n push rax".to_string(),
-
-                    OpKind::Equals | OpKind::NotEquals
-                    | OpKind::Greater | OpKind::GreaterOrEquals
-                    | OpKind::Less | OpKind::LessOrEquals => {
-                        let cmov_condition = match op {
-                            OpKind::Equals => "cmove",
-                            OpKind::NotEquals => "cmovne",
-                            OpKind::Greater => "cmovg",
-                            OpKind::GreaterOrEquals => "cmovge",
-                            OpKind::Less => "cmovl",
-                            OpKind::LessOrEquals => "cmovle",
-                            _ => unreachable!(),
-                        };
-
-                        format!(
-                            "\n pop rsi\
-                            \n pop rdi\
-                            \n mov rbx, true_str\
-                            \n mov rax, false_str\
-                            \n cmp rdi, rsi\
-                            \n {} rax, rbx\
-                            \n mov rbx, true_str_len\
-                            \n mov rdx, false_str_len\
-                            \n {} rdx, rbx\
-                            \n push rax\
-                            \n push rdx",
-                            cmov_condition,
-                            cmov_condition
-                        )
-                    },
-
-                    OpKind::Compare =>
-                        "\n pop rsi\
-                        \n pop rdi\
-                        \n mov rax, LESS\
-                        \n cmp rdi, rsi\
-                        \n mov rbx, EQUAL\
-                        \n cmove rax, rbx\
-                        \n mov rbx, GREATER\
-                        \n cmovg rax, rbx\
-                        \n push rax".to_string(),
-                };
-
-                asm.push_str( &format!( " ; {}", expression ) );
-                asm.push_str( &format!( "{}\n\n", op_asm ) );
-            },
-            ExpressionKind::Identifier( name ) => self.compile_expression( &self.ast.resolve( name ).value, asm, only_string_len, bool_to_str ),
-        }
+    fn new( ast: &'ast AST ) -> Self {
+        return Compiler { ast, rodata: String::new(), asm: String::new(), strings: Vec::new(), if_tag: 0 };
     }
 
     fn compile( &mut self, file_path: &str ) -> Result<PathBuf, ()> {
@@ -2224,7 +1902,7 @@ impl<'ast> Compiler<'ast> {
         let asm_file_path = src_file_path.with_extension( "asm" );
         let mut asm_file = BufWriter::new( File::create( &asm_file_path ).unwrap() );
 
-        let mut rodata =
+        self.rodata.push_str(
 r#" stdout: equ 1
  SYS_write: equ 1
  SYS_exit: equ 60
@@ -2244,9 +1922,7 @@ r#" stdout: equ 1
  LESS: equ -1
  EQUAL: equ 0
  GREATER: equ 1
-"#.to_string();
-
-        self.gather_tags( &mut rodata, &self.ast.nodes );
+"# );
 
         let data =
 r" int_str: times INT_MAX_DIGITS + 1 db 0
@@ -2353,8 +2029,7 @@ r" mov rdi, EXIT_SUCCESS
  mov rax, SYS_exit
  syscall";
 
-        let mut program_asm = String::new();
-        self.compile_nodes( &self.ast.nodes, &mut program_asm, false );
+        self.compile_nodes( &self.ast.nodes, false );
 
         let program = format!(
 r"global _start
@@ -2381,9 +2056,9 @@ _start:
 {}
 
     ; debug check for stack imbalances
+    cmp r15, rsp
     mov rbx, imbalance
     mov rax, no_imbalance
-    cmp r15, rsp
     cmovne rax, rbx
     mov rbx, imbalance_len
     mov rdx, no_imbalance_len
@@ -2402,7 +2077,7 @@ _start:
 
     mov rsp, r15; restoring the stack
 
-{}", rodata, data, int_to_str, int_pow, program_asm, sys_exit );
+{}", self.rodata, data, int_to_str, int_pow, self.asm, sys_exit );
 
         asm_file.write_all( program.as_bytes() ).unwrap();
         asm_file.flush().unwrap();
@@ -2440,6 +2115,285 @@ _start:
     }
 }
 
+impl<'ast> Compiler<'ast> {
+    fn compile_nodes( &mut self, nodes: &'ast Vec<Node>, only_string_len: bool ) {
+        for node in nodes {
+            match node {
+                Node::Print( argument ) => {
+                    let mut arg = argument;
+                    let value = loop {
+                        match arg {
+                            ExpressionKind::Literal( literal ) => break literal,
+                            ExpressionKind::Binary { op, .. } => match op {
+                                OpKind::Pow | OpKind::Times | OpKind::Divide
+                                | OpKind::Plus | OpKind::Minus | OpKind::Compare => break &Type::I64 { value: 0 },
+                                OpKind::Equals | OpKind::NotEquals
+                                | OpKind::Greater | OpKind::GreaterOrEquals
+                                | OpKind::Less | OpKind::LessOrEquals => break &Type::Bool { value: false },
+                            },
+                            ExpressionKind::Identifier( name ) => arg = &self.ast.resolve( name ).value,
+                        }
+                    };
+
+                    let print_asm = match value {
+                        Type::I64 { .. } =>
+                            "\n pop rdi\
+                            \n mov rsi, 10\
+                            \n call int_toStr\
+                            \n\
+                            \n mov rdi, stdout\
+                            \n mov rsi, rax\
+                            \n mov rax, SYS_write\
+                            \n syscall",
+                        Type::Char { .. } =>
+                            "\n mov rdi, stdout\
+                            \n mov rsi, rsp\
+                            \n mov rdx, 1\
+                            \n mov rax, SYS_write\
+                            \n syscall\
+                            \n pop rsi",
+                        Type::Bool { .. } | Type::Str { .. } =>
+                            "\n pop rdx\
+                            \n pop rsi\
+                            \n mov rdi, stdout\
+                            \n mov rax, SYS_write\
+                            \n syscall",
+                    };
+
+                    self.asm.push_str( &format!( " ; {}\n", node ) );
+                    self.compile_expression( argument, only_string_len, true );
+                    self.asm.push_str( &format!( "{}\n\n", print_asm ) );
+                },
+                Node::If( iff ) => {
+                    let if_idx = self.if_tag;
+                    self.if_tag += 1;
+
+                    let (has_else_ifs, has_else) = (iff.else_if.is_some(), iff.els.is_some());
+
+                    // compiling the if branch
+                    let if_tag = format!( "if_{}", if_idx );
+                    let (if_false_tag, if_end_tag) = if has_else_ifs {
+                        (format!( "if_{}_else_if_0", if_idx ), Some( if_idx ))
+                    }
+                    else if has_else {
+                        (format!( "if_{}_else", if_idx ), Some( if_idx ))
+                    }
+                    else {
+                        (format!( "if_{}_end", if_idx ), None)
+                    };
+                    self.compile_if( &iff, &if_tag, &if_false_tag, if_end_tag );
+
+                    // compiling the else if branches
+                    if let Some( else_ifs ) = &iff.else_if {
+                        for (else_if_tag_idx, else_if) in else_ifs.iter().take( else_ifs.len() - 1 ).enumerate() {
+                            let else_if_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx );
+                            let else_if_false_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx + 1 );
+                            self.compile_if( &else_if, &else_if_tag, &else_if_false_tag, if_end_tag );
+                        }
+
+                        let else_if_tag = format!( "if_{}_else_if_{}", if_idx, else_ifs.len() - 1 );
+                        let else_if_false_tag = if has_else {
+                            format!( "if_{}_else", if_idx )
+                        }
+                        else {
+                            format!( "if_{}_end", if_idx )
+                        };
+                        self.compile_if( &else_ifs[ else_ifs.len() - 1 ], &else_if_tag, &else_if_false_tag, if_end_tag );
+                    }
+
+                    // compiling the else branch
+                    if let Some( els ) = &iff.els {
+                        self.asm.push_str( &format!( "if_{}_else:\n", if_idx ) );
+                        self.compile_nodes( els, only_string_len );
+                    }
+
+                    self.asm.push_str( &format!( "if_{}_end:\n", if_idx ) );
+                },
+                Node::Expression( _ ) => continue,
+            }
+        }
+    }
+
+    fn compile_expression( &mut self, expression: &'ast ExpressionKind, only_string_len: bool, bool_to_str: bool ) {
+        match expression {
+            ExpressionKind::Literal( literal ) => match literal {
+                Type::I64 { value } => self.asm.push_str( &format!( " push {}\n", value ) ),
+                Type::Char { value } => self.asm.push_str( &format!( " push {}\n", value ) ),
+                Type::Bool { value } => match bool_to_str {
+                    true => {
+                        self.asm.push_str( &format!( " push {}_str\n", value ) );
+                        self.asm.push_str( &format!( " push {}_str_len\n", value ) );
+                    },
+                    false => self.asm.push_str( &format!( " push {}\n", *value as usize ) ),
+                },
+                string @ Type::Str { text } => {
+                    let mut string_idx = 0;
+                    let mut string_already_encountered = false;
+                    for tag in &self.strings {
+                        if *tag as *const _ == string as *const _ {
+                            string_already_encountered = true;
+                            break;
+                        }
+                        string_idx += 1;
+                    }
+
+                    let tag = format!( "str_{}", string_idx );
+                    let len_tag = format!( "str_{}_len", string_idx );
+
+                    if !string_already_encountered {
+                        let mut string_asm = String::with_capacity( text.len() + 2 );
+                        string_asm.push( '`' );
+                        for ch in text {
+                            string_asm.extend( (*ch as char).escape_default() );
+                        }
+                        string_asm.push( '`' );
+
+                        self.rodata.push_str( &format!(
+                            "\n {}: db {}\
+                            \n {}: equ $ - {}\n",
+                            tag, string_asm,
+                            len_tag, tag
+                        ) );
+
+                        self.strings.push( &string );
+                    }
+
+                    if !only_string_len {
+                        self.asm.push_str( &format!( " push {}\n", tag ) );
+                    }
+
+                    self.asm.push_str( &format!( " push {}\n", len_tag ) );
+                },
+            },
+            ExpressionKind::Binary { lhs, op, rhs } => {
+                self.compile_expression( lhs, true, false );
+                self.compile_expression( rhs, true, false );
+                let op_asm = match op {
+                    OpKind::Pow =>
+                        "\n pop rsi\
+                        \n pop rdi\
+                        \n call int_pow\
+                        \n push rax".to_string(),
+                    OpKind::Times =>
+                        "\n pop rax\
+                        \n pop rbx\
+                        \n imul rax, rbx\
+                        \n push rax".to_string(),
+                    OpKind::Divide =>
+                        "\n pop rbx\
+                        \n pop rax\
+                        \n xor rdx, rdx\
+                        \n idiv rbx\
+                        \n push rax".to_string(),
+                    OpKind::Plus =>
+                        "\n pop rax\
+                        \n pop rbx\
+                        \n add rax, rbx\
+                        \n push rax".to_string(),
+                    OpKind::Minus =>
+                        "\n pop rbx\
+                        \n pop rax\
+                        \n sub rax, rbx\
+                        \n push rax".to_string(),
+
+                    OpKind::Equals | OpKind::NotEquals
+                    | OpKind::Greater | OpKind::GreaterOrEquals
+                    | OpKind::Less | OpKind::LessOrEquals => {
+                        let cmov_condition = match op {
+                            OpKind::Equals => "cmove",
+                            OpKind::NotEquals => "cmovne",
+                            OpKind::Greater => "cmovg",
+                            OpKind::GreaterOrEquals => "cmovge",
+                            OpKind::Less => "cmovl",
+                            OpKind::LessOrEquals => "cmovle",
+                            _ => unreachable!(),
+                        };
+
+                        format!(
+                            "\n pop rsi\
+                            \n pop rdi\
+                            \n cmp rdi, rsi\
+                            \n mov rbx, true_str\
+                            \n mov rax, false_str\
+                            \n {} rax, rbx\
+                            \n mov rbx, true_str_len\
+                            \n mov rdx, false_str_len\
+                            \n {} rdx, rbx\
+                            \n push rax\
+                            \n push rdx",
+                            cmov_condition,
+                            cmov_condition
+                        )
+                    },
+
+                    OpKind::Compare =>
+                        "\n pop rsi\
+                        \n pop rdi\
+                        \n cmp rdi, rsi\
+                        \n mov rax, LESS\
+                        \n mov rbx, EQUAL\
+                        \n cmove rax, rbx\
+                        \n mov rbx, GREATER\
+                        \n cmovg rax, rbx\
+                        \n push rax".to_string(),
+                };
+
+                self.asm.push_str( &format!( " ; {}", expression ) );
+                self.asm.push_str( &format!( "{}\n\n", op_asm ) );
+            },
+            ExpressionKind::Identifier( name ) => self.compile_expression( &self.ast.resolve( name ).value, only_string_len, bool_to_str ),
+        }
+    }
+
+    fn compile_if( &mut self, iff: &'ast If, if_tag: &String, if_false_tag: &String, if_end_tag_idx: Option<usize> ) {
+        self.asm.push_str( &format!( "{}:; {}\n", if_tag, iff ) );
+
+        match self.ast.extract( &iff.condition ) {
+            ExpressionKind::Literal( literal ) => match literal {
+                Type::Bool { value } => self.asm.push_str( &format!(
+                    "\n mov rdi, {}\
+                    \n mov rsi, 1\
+                    \n cmp rdi, rsi\
+                    \n jne {}\n\n",
+                    *value as usize,
+                    if_false_tag
+                ) ),
+                Type::I64 { .. } | Type::Char { .. } | Type::Str { .. } => unreachable!(),
+            },
+            ExpressionKind::Binary { lhs, op, rhs } => {
+                self.compile_expression( lhs, true, false );
+                self.compile_expression( rhs, true, false );
+                let jmp_condition = match op {
+                    OpKind::Equals => "jne",
+                    OpKind::NotEquals => "je",
+                    OpKind::Greater => "jle",
+                    OpKind::GreaterOrEquals => "jl",
+                    OpKind::Less => "jge",
+                    OpKind::LessOrEquals => "jg",
+
+                    OpKind::Pow | OpKind::Times | OpKind::Divide
+                    | OpKind::Plus | OpKind::Minus
+                    | OpKind::Compare => unreachable!(),
+                };
+
+                self.asm.push_str( &format!(
+                    "\n pop rsi\
+                    \n pop rdi\
+                    \n cmp rdi, rsi\
+                    \n {} {}\n\n",
+                    jmp_condition, if_false_tag
+                ) );
+            },
+            ExpressionKind::Identifier( _ ) => unreachable!(),
+        }
+
+        self.compile_nodes( &iff.nodes, false );
+        if let Some( idx ) = if_end_tag_idx {
+            self.asm.push_str( &format!( " jmp if_{}_end\n\n", idx ) );
+        }
+    }
+}
+
 
 fn print_usage() {
     println!( r"
@@ -2462,8 +2416,8 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().collect();
 
     // to quickly debug
-    // args.push( "build".to_string() );
-    args.push( "run".to_string() );
+    args.push( "build".to_string() );
+    // args.push( "run".to_string() );
     args.push( "examples/main.blz".to_string() );
 
     if args.len() < 2 {
@@ -2563,7 +2517,7 @@ fn main() -> ExitCode {
         interpreter.interpret( &source_file_path );
     }
     else {
-        let mut compiler = Compiler { ast: &ast, strings: Vec::new(), if_tag: 0 };
+        let mut compiler = Compiler::new( &ast );
 
         if build_flag {
             let _ = compiler.compile( &source_file_path );
