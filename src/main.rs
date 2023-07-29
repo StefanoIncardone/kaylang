@@ -17,14 +17,14 @@ trait Len {
 
 
 #[derive( Debug, Clone )]
-enum Type {
+enum Literal {
     I64 { value: i64 },
     Char { value: u8 }, // only supporting ASCII characters for now
     Bool { value: bool },
     Str { text: Vec<u8> },
 }
 
-impl Display for Type {
+impl Display for Literal {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
             Self::I64 { value } => write!( f, "{}", value ),
@@ -35,15 +35,13 @@ impl Display for Type {
                 for character in text {
                     write!( f, "{}", character.escape_ascii() )?;
                 }
-                write!( f, "\"" )?;
-
-                Ok( () )
+                write!( f, "\"" )
             },
         }
     }
 }
 
-impl Into<i64> for Type {
+impl Into<i64> for Literal {
     fn into( self ) -> i64 {
         return match self {
             Self::I64 { value } => value.into(),
@@ -54,7 +52,7 @@ impl Into<i64> for Type {
     }
 }
 
-impl Len for Type {
+impl Len for Literal {
     fn len( &self ) -> usize {
         return match self {
             Self::I64 { value } => value.to_string().len(),
@@ -65,7 +63,7 @@ impl Len for Type {
     }
 }
 
-impl Type {
+impl Literal {
     fn display( &self ) {
         match self {
             Self::I64 { value } => print!( "{}", value ),
@@ -80,7 +78,7 @@ impl Type {
 
 
 #[derive( Debug, Clone, Copy, PartialEq )]
-enum OpKind {
+enum Operator {
     Pow,
     Times,
     Divide,
@@ -97,7 +95,7 @@ enum OpKind {
     Compare,
 }
 
-impl Display for OpKind {
+impl Display for Operator {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
             Self::Pow => write!( f, "^" ),
@@ -118,7 +116,7 @@ impl Display for OpKind {
     }
 }
 
-impl Len for OpKind {
+impl Len for Operator {
     fn len( &self ) -> usize {
         return match self {
             Self::Pow => 1,
@@ -139,24 +137,23 @@ impl Len for OpKind {
 
 
 #[derive( Debug, Clone, Copy )]
-enum DefinitionKind {
-    // Fn,
+enum Mutability {
     Const,
     Let,
     Var,
 }
 
-impl Display for DefinitionKind {
+impl Display for Mutability {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
-            Self::Let => write!( f, "let" ),
             Self::Const => write!( f, "const" ),
+            Self::Let => write!( f, "let" ),
             Self::Var => write!( f, "var" ),
         }
     }
 }
 
-impl Len for DefinitionKind {
+impl Len for Mutability {
     fn len( &self ) -> usize {
         return match self {
             Self::Const => 5,
@@ -171,8 +168,6 @@ impl Len for DefinitionKind {
 enum BracketKind {
     OpenRound,
     CloseRound,
-    // OpenSquare,
-    // CloseSquare,
     OpenCurly,
     CloseCurly,
 
@@ -204,21 +199,20 @@ impl Len for BracketKind {
 #[derive( Debug, Clone )]
 enum TokenKind {
     // Whitespace
-    Comment( String ), // is used as a placeholder when encountering errors during lexing
+    Comment( String ), // is also used as a placeholder when encountering errors during lexing
 
     // Symbols
     Bracket( BracketKind ),
     Equals,
-    // Colon,
     SemiColon,
 
     // Identifiers
-    Literal( Type ),
+    Literal( Literal ),
     Identifier( String ),
-    Definition( DefinitionKind ),
+    Definition( Mutability ),
 
     // Operators
-    Op( OpKind ),
+    Op( Operator ),
 
     // Keywords
     Print, // temporary way of printing values
@@ -227,8 +221,6 @@ enum TokenKind {
     False,
     If,
     Else,
-    // Entry,
-    // Return,
 
     // Special
     Empty,
@@ -486,7 +478,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                         '=' => match Self::peek_next( &mut src ) {
                             Ok( Some( '=' ) ) => {
                                 let _ = Self::next( &mut src );
-                                Ok( TokenKind::Op( OpKind::Equals ) )
+                                Ok( TokenKind::Op( Operator::Equals ) )
                             },
                             _ => Ok( TokenKind::Equals ),
                         },
@@ -494,7 +486,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                             Ok( Some( '=' ) ) => {
                                 let _ = Self::next( &mut src );
 
-                                Ok( TokenKind::Op( OpKind::NotEquals ) )
+                                Ok( TokenKind::Op( Operator::NotEquals ) )
                             },
                             _ => Err( SyntaxError {
                                 err_line: err_lines.len(),
@@ -508,9 +500,9 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                             Ok( Some( '=' ) ) => {
                                 let _ = Self::next( &mut src );
 
-                                Ok( TokenKind::Op( OpKind::GreaterOrEquals ) )
+                                Ok( TokenKind::Op( Operator::GreaterOrEquals ) )
                             },
-                            _ => Ok( TokenKind::Op( OpKind::Greater ) ),
+                            _ => Ok( TokenKind::Op( Operator::Greater ) ),
                         },
                         '<' => match Self::peek_next( &mut src ) {
                             Ok( Some( '=' ) ) => {
@@ -520,20 +512,20 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                                     Ok( Some( '>' ) ) => {
                                         let _ = Self::next( &mut src );
 
-                                        Ok( TokenKind::Op( OpKind::Compare ) )
+                                        Ok( TokenKind::Op( Operator::Compare ) )
                                     },
                                     _ => {
-                                        Ok( TokenKind::Op( OpKind::LessOrEquals ) )
+                                        Ok( TokenKind::Op( Operator::LessOrEquals ) )
                                     },
                                 }
                             },
-                            _ => Ok( TokenKind::Op( OpKind::Less ) ),
+                            _ => Ok( TokenKind::Op( Operator::Less ) ),
                         },
-                        '^' => Ok( TokenKind::Op( OpKind::Pow ) ),
-                        '*' => Ok( TokenKind::Op( OpKind::Times ) ),
-                        '/' => Ok( TokenKind::Op( OpKind::Divide ) ),
-                        '+' => Ok( TokenKind::Op( OpKind::Plus ) ),
-                        '-' => Ok( TokenKind::Op( OpKind::Minus ) ),
+                        '^' => Ok( TokenKind::Op( Operator::Pow ) ),
+                        '*' => Ok( TokenKind::Op( Operator::Times ) ),
+                        '/' => Ok( TokenKind::Op( Operator::Divide ) ),
+                        '+' => Ok( TokenKind::Op( Operator::Plus ) ),
+                        '-' => Ok( TokenKind::Op( Operator::Minus ) ),
                         ';' => Ok( TokenKind::SemiColon ),
                         '\'' => {
                             token_text.push( ch );
@@ -548,7 +540,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                                 } ),
                                 Ok( value ) => match Self::next_char( &mut src, &mut token_text ) {
                                     Ok( next ) => match next {
-                                        b'\'' => Ok( TokenKind::Literal( Type::Char { value } ) ),
+                                        b'\'' => Ok( TokenKind::Literal( Literal::Char { value } ) ),
                                         _ => Err( SyntaxError {
                                             err_line: err_lines.len(),
                                             col,
@@ -563,7 +555,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                             }
                         },
                         '"' => match Self::parse_str( &mut src ) {
-                            Ok( text ) => Ok( TokenKind::Literal( Type::Str { text } ) ),
+                            Ok( text ) => Ok( TokenKind::Literal( Literal::Str { text } ) ),
                             Err( err ) => Err( err ),
                         },
                         '#' => {
@@ -590,7 +582,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
 
                             if is_digit {
                                 match token_text.parse() { // TODO create own number parsing function
-                                    Ok( value ) => Ok( TokenKind::Literal( Type::I64 { value } ) ),
+                                    Ok( value ) => Ok( TokenKind::Literal( Literal::I64 { value } ) ),
                                     Err( _ ) => Err( SyntaxError {
                                         err_line: err_lines.len(),
                                         col,
@@ -620,9 +612,9 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                             let kind = match token_text.as_str() {
                                 // "entry" => TokenKind::Entry,
                                 // "fn" => TokenKind::Fn,
-                                "const" => TokenKind::Definition( DefinitionKind::Const ),
-                                "let" => TokenKind::Definition( DefinitionKind::Let ),
-                                "var" => TokenKind::Definition( DefinitionKind::Var ),
+                                "const" => TokenKind::Definition( Mutability::Const ),
+                                "let" => TokenKind::Definition( Mutability::Let ),
+                                "var" => TokenKind::Definition( Mutability::Var ),
                                 "print" => TokenKind::Print,
                                 "println" => TokenKind::PrintLn,
                                 "true" => TokenKind::True,
@@ -996,13 +988,13 @@ impl<'lexer> BoundedPosition<'lexer> for Option<Position<'lexer>> {
 
 
 #[derive( Debug, Clone )]
-enum ExpressionKind {
-    Literal( Type ),
-    Binary { lhs: Box<ExpressionKind>, op: OpKind, rhs: Box<ExpressionKind> },
+enum Expression {
+    Literal( Literal ),
+    Binary { lhs: Box<Expression>, op: Operator, rhs: Box<Expression> },
     Identifier( String ),
 }
 
-impl Display for ExpressionKind {
+impl Display for Expression {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         match self {
             Self::Literal( literal ) => write!( f, "{}", literal ),
@@ -1015,7 +1007,7 @@ impl Display for ExpressionKind {
 
 #[derive( Debug, Clone )]
 struct If {
-    condition: ExpressionKind,
+    condition: Expression,
     nodes: Vec<Node>,
     else_if: Option<Vec<If>>,
     els: Option<Vec<Node>>,
@@ -1034,8 +1026,8 @@ impl Display for If {
 
 #[derive( Debug, Clone )]
 enum Node {
-    Expression( ExpressionKind ),
-    Print( ExpressionKind ),
+    Expression( Expression ),
+    Print( Expression ),
     If( If ),
 }
 
@@ -1057,7 +1049,13 @@ enum Statement {
     Multiple( Vec<Node> ),
 }
 
-#[derive( Debug, Clone, Copy )]
+#[derive( PartialEq, Clone, Copy )]
+enum ExpectedSemicolon {
+    Expect,
+    NoExpect,
+}
+
+#[derive( PartialEq, Clone, Copy )]
 enum IdentifierExpansion {
     Expand,
     Keep,
@@ -1065,9 +1063,9 @@ enum IdentifierExpansion {
 
 #[derive( Debug, Clone )]
 struct Definition {
-    kind: DefinitionKind,
+    mutability: Mutability,
     name: String,
-    value: ExpressionKind,
+    value: Expression,
 }
 
 
@@ -1161,7 +1159,7 @@ impl<'lexer, 'definition> AST<'lexer> {
                 TokenKind::Identifier( _ ) => match self.tokens.peek_next() {
                     Some( next ) => match next.token.kind {
                         TokenKind::Equals => self.variable_assignment(),
-                        _ => match self.expression( IdentifierExpansion::Keep, true ) {
+                        _ => match self.expression( IdentifierExpansion::Keep, ExpectedSemicolon::Expect ) {
                             Ok( expression ) => Ok( Statement::Single( Node::Expression( expression ) ) ),
                             Err( err ) => Err( err ),
                         },
@@ -1182,7 +1180,7 @@ impl<'lexer, 'definition> AST<'lexer> {
                 },
                 TokenKind::True | TokenKind::False
                 | TokenKind::Literal( _ )
-                | TokenKind::Bracket( BracketKind::OpenRound ) => match self.expression( IdentifierExpansion::Keep, true ) {
+                | TokenKind::Bracket( BracketKind::OpenRound ) => match self.expression( IdentifierExpansion::Keep, ExpectedSemicolon::Expect ) {
                     Ok( expression ) => Ok( Statement::Single( Node::Expression( expression ) ) ),
                     Err( err ) => Err( err ),
                 },
@@ -1334,12 +1332,12 @@ impl<'lexer> AST<'lexer> {
         unreachable!();
     }
 
-    fn extract( &'lexer self, expression: &'lexer ExpressionKind ) -> &'lexer ExpressionKind {
+    fn extract( &'lexer self, expression: &'lexer Expression ) -> &'lexer Expression {
         let mut expr = expression;
         loop {
             match expr {
-                ExpressionKind::Literal( .. ) | ExpressionKind::Binary { .. } => return expr,
-                ExpressionKind::Identifier( name ) => expr = &self.resolve( name ).value,
+                Expression::Literal( .. ) | Expression::Binary { .. } => return expr,
+                Expression::Identifier( name ) => expr = &self.resolve( name ).value,
             }
         };
     }
@@ -1350,16 +1348,16 @@ impl<'lexer> AST<'lexer> {
     // TODO disallow implicit conversions (str + i64, char + i64, str + char or str + str (maybe treat this as concatenation))
         // IDEA introduce casting operators
     // TODO implement negative numbers
-    fn factor( &mut self, expansion: IdentifierExpansion ) -> Result<ExpressionKind, (&'lexer Line, SyntaxError)> {
+    fn factor( &mut self, expansion: IdentifierExpansion ) -> Result<Expression, (&'lexer Line, SyntaxError)> {
         let current = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected expression" )?.unwrap();
         let factor = match &current.token.kind {
-            TokenKind::True => Ok( ExpressionKind::Literal( Type::Bool { value: true } ) ),
-            TokenKind::False => Ok( ExpressionKind::Literal( Type::Bool { value: false } ) ),
-            TokenKind::Literal( literal ) => Ok( ExpressionKind::Literal( literal.clone() ) ),
+            TokenKind::True => Ok( Expression::Literal( Literal::Bool { value: true } ) ),
+            TokenKind::False => Ok( Expression::Literal( Literal::Bool { value: false } ) ),
+            TokenKind::Literal( literal ) => Ok( Expression::Literal( literal.clone() ) ),
             TokenKind::Identifier( name ) => match self.resolve_scoped( name ) {
                 Some( definition ) => match expansion {
                     IdentifierExpansion::Expand => Ok( definition.value.clone() ),
-                    IdentifierExpansion::Keep => Ok( ExpressionKind::Identifier( name.clone() ) ),
+                    IdentifierExpansion::Keep => Ok( Expression::Identifier( name.clone() ) ),
                 },
                 None => Err( (current.line, SyntaxError {
                     err_line: 0,
@@ -1380,7 +1378,7 @@ impl<'lexer> AST<'lexer> {
                         help_msg: "empty expressions are not allowed"
                     }) ),
                     _ => {
-                        let expression = self.expression( expansion, false )?;
+                        let expression = self.expression( expansion, ExpectedSemicolon::NoExpect )?;
                         let close_bracket_pos = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected closed parenthesis" )?.unwrap();
                         match close_bracket_pos.token.kind {
                             TokenKind::Bracket( BracketKind::CloseRound ) => Ok( expression ),
@@ -1411,7 +1409,7 @@ impl<'lexer> AST<'lexer> {
     // FIX dealing with missing semicolons or missing operators
         // TODO move it outside the expression
         // IDEA create two versions of this function, one that checks for the closing semicolon, and one that doesn't
-    fn operator( &mut self, ops: &[OpKind] ) -> Result<Option<OpKind>, (&'lexer Line, SyntaxError)> {
+    fn operator( &mut self, ops: &[Operator] ) -> Result<Option<Operator>, (&'lexer Line, SyntaxError)> {
         let current_pos = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected expression or semicolon" )?.unwrap();
         let operator = match current_pos.token.kind {
             TokenKind::Op( op ) => match ops.contains( &op ) {
@@ -1428,56 +1426,56 @@ impl<'lexer> AST<'lexer> {
         return Ok( operator );
     }
 
-    fn exponentiation( &mut self, expansion: IdentifierExpansion ) -> Result<ExpressionKind, (&'lexer Line, SyntaxError)> {
+    fn exponentiation( &mut self, expansion: IdentifierExpansion ) -> Result<Expression, (&'lexer Line, SyntaxError)> {
         let mut lhs = self.factor( expansion )?;
 
-        while let Some( op ) = self.operator( &[OpKind::Pow] )? {
+        while let Some( op ) = self.operator( &[Operator::Pow] )? {
             let rhs = self.factor( expansion )?;
-            lhs = ExpressionKind::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
     }
 
-    fn multiplication_or_division( &mut self, expansion: IdentifierExpansion ) -> Result<ExpressionKind, (&'lexer Line, SyntaxError)> {
+    fn multiplication_or_division( &mut self, expansion: IdentifierExpansion ) -> Result<Expression, (&'lexer Line, SyntaxError)> {
         let mut lhs = self.exponentiation( expansion )?;
 
-        while let Some( op ) = self.operator( &[OpKind::Times, OpKind::Divide] )? {
+        while let Some( op ) = self.operator( &[Operator::Times, Operator::Divide] )? {
             let rhs = self.exponentiation( expansion )?;
-            lhs = ExpressionKind::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
     }
 
-    fn math( &mut self, expansion: IdentifierExpansion ) -> Result<ExpressionKind, (&'lexer Line, SyntaxError)> {
+    fn math( &mut self, expansion: IdentifierExpansion ) -> Result<Expression, (&'lexer Line, SyntaxError)> {
         let mut lhs = self.multiplication_or_division( expansion )?;
 
-        while let Some( op ) = self.operator( &[OpKind::Plus, OpKind::Minus] )? {
+        while let Some( op ) = self.operator( &[Operator::Plus, Operator::Minus] )? {
             let rhs = self.multiplication_or_division( expansion )?;
-            lhs = ExpressionKind::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
     }
 
-    fn expression( &mut self, expansion: IdentifierExpansion, expected_semicolon: bool ) -> Result<ExpressionKind, (&'lexer Line, SyntaxError)> {
+    fn expression( &mut self, expansion: IdentifierExpansion, expected_semicolon: ExpectedSemicolon ) -> Result<Expression, (&'lexer Line, SyntaxError)> {
         let mut lhs = self.math( expansion )?;
 
         let ops = [
-            OpKind::Equals, OpKind::NotEquals,
-            OpKind::Greater, OpKind::GreaterOrEquals,
-            OpKind::Less, OpKind::LessOrEquals,
-            OpKind::Compare
+            Operator::Equals, Operator::NotEquals,
+            Operator::Greater, Operator::GreaterOrEquals,
+            Operator::Less, Operator::LessOrEquals,
+            Operator::Compare
         ];
 
         while let Some( op ) = self.operator( &ops )? {
             let rhs = self.math( expansion )?;
-            lhs = ExpressionKind::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
 
         let expression = match expected_semicolon {
-            true => {
+            ExpectedSemicolon::Expect => {
                 let current = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected semicolon" )?.unwrap();
                 let expr = match current.token.kind {
                     TokenKind::SemiColon => Ok( lhs ),
@@ -1496,7 +1494,7 @@ impl<'lexer> AST<'lexer> {
                 self.tokens.next();
                 expr
             },
-            false => Ok( lhs ),
+            ExpectedSemicolon::NoExpect => Ok( lhs ),
         };
 
         return expression;
@@ -1540,7 +1538,7 @@ impl<'lexer> AST<'lexer> {
         let value = match value_pos.token.kind {
             TokenKind::True | TokenKind::False
             | TokenKind::Literal( _ ) | TokenKind::Identifier( _ )
-            | TokenKind::Bracket( BracketKind::OpenRound ) => self.expression( IdentifierExpansion::Keep, true ),
+            | TokenKind::Bracket( BracketKind::OpenRound ) => self.expression( IdentifierExpansion::Keep, ExpectedSemicolon::Expect ),
             _ => Err( (equals_pos.line, SyntaxError {
                 err_line: 0,
                 col: equals_pos.token.col,
@@ -1557,11 +1555,11 @@ impl<'lexer> AST<'lexer> {
         return match self.resolve_scoped( &name ) {
             None => {
                 let value = match kind {
-                    DefinitionKind::Const => ExpressionKind::Literal( Interpreter::evaluate( &self, &value ) ),
-                    DefinitionKind::Let | DefinitionKind::Var => value,
+                    Mutability::Const => Expression::Literal( Interpreter::evaluate( &self, &value ) ),
+                    Mutability::Let | Mutability::Var => value,
                 };
 
-                self.scopes[ self.current_scope ].definitions.push( Definition { kind, name, value } );
+                self.scopes[ self.current_scope ].definitions.push( Definition { mutability: kind, name, value } );
                 Ok( Statement::Empty )
             },
             Some( _ ) => Err( (name_pos.line, SyntaxError {
@@ -1582,7 +1580,7 @@ impl<'lexer> AST<'lexer> {
         let value = match value_pos.token.kind {
             TokenKind::True | TokenKind::False
             | TokenKind::Literal( _ ) | TokenKind::Identifier( _ )
-            | TokenKind::Bracket( BracketKind::OpenRound ) => self.expression( IdentifierExpansion::Expand, true ),
+            | TokenKind::Bracket( BracketKind::OpenRound ) => self.expression( IdentifierExpansion::Expand, ExpectedSemicolon::Expect ),
             _ => Err( (equals_pos.line, SyntaxError {
                 err_line: 0,
                 col: equals_pos.token.col,
@@ -1608,15 +1606,15 @@ impl<'lexer> AST<'lexer> {
 
         let variable = variable?;
 
-        let assignment = match variable.kind {
-            DefinitionKind::Let | DefinitionKind::Const => Err( (name_pos.line, SyntaxError {
+        let assignment = match variable.mutability {
+            Mutability::Let | Mutability::Const => Err( (name_pos.line, SyntaxError {
                 err_line: 0,
                 col: name_pos.token.col,
                 text: name_pos.token.kind.to_string(),
                 msg: "invalid assignment",
                 help_msg: "was defined as immutable"
             }) ),
-            DefinitionKind::Var => value,
+            Mutability::Var => value,
         };
 
         variable.value = assignment?;
@@ -1632,7 +1630,7 @@ impl<'lexer> AST<'lexer> {
             TokenKind::PrintLn => match self.tokens.peek_next() {
                 Some( Position { token: &Token { kind: TokenKind::SemiColon, .. }, .. } ) => {
                     self.tokens.next();
-                    return Ok( Statement::Single( Node::Print( ExpressionKind::Literal( Type::Char { value: '\n' as u8 } ) ) ) );
+                    return Ok( Statement::Single( Node::Print( Expression::Literal( Literal::Char { value: '\n' as u8 } ) ) ) );
                 },
                 _ => (),
             },
@@ -1644,7 +1642,7 @@ impl<'lexer> AST<'lexer> {
         let argument = match &argument_pos.token.kind {
             TokenKind::True | TokenKind::False
             | TokenKind::Literal( _ ) | TokenKind::Identifier( _ )
-            | TokenKind::Bracket( BracketKind::OpenRound ) => self.expression( IdentifierExpansion::Keep, true ),
+            | TokenKind::Bracket( BracketKind::OpenRound ) => self.expression( IdentifierExpansion::Keep, ExpectedSemicolon::Expect ),
             _ => Err( (argument_pos.line, SyntaxError {
                 err_line: 0,
                 col: argument_pos.token.col,
@@ -1660,7 +1658,7 @@ impl<'lexer> AST<'lexer> {
             TokenKind::Print => Ok( Statement::Single( Node::Print( argument ) ) ),
             TokenKind::PrintLn => Ok( Statement::Multiple( vec![
                 Node::Print( argument ),
-                Node::Print( ExpressionKind::Literal( Type::Char { value: '\n' as u8 } ) )
+                Node::Print( Expression::Literal( Literal::Char { value: '\n' as u8 } ) )
             ] ) ),
             _ => unreachable!(),
         };
@@ -1683,14 +1681,14 @@ impl<'lexer> AST<'lexer> {
         let if_pos = self.tokens.current().unwrap();
 
         self.tokens.next().bounded( &mut self.tokens, "expected boolean expression" )?.unwrap();
-        let expression = self.expression( IdentifierExpansion::Keep, false )?;
+        let expression = self.expression( IdentifierExpansion::Keep, ExpectedSemicolon::NoExpect )?;
         let condition_value = self.extract( &expression );
         let condition = match condition_value {
-            ExpressionKind::Literal( literal ) => match literal {
-                Type::Bool { .. } => Ok( condition_value ),
-                Type::Char { .. }
-                | Type::I64 { .. }
-                | Type::Str { .. } => Err( (if_pos.line, SyntaxError {
+            Expression::Literal( literal ) => match literal {
+                Literal::Bool { .. } => Ok( condition_value ),
+                Literal::Char { .. }
+                | Literal::I64 { .. }
+                | Literal::Str { .. } => Err( (if_pos.line, SyntaxError {
                     err_line: 0,
                     col: if_pos.token.col,
                     text: if_pos.token.kind.to_string(),
@@ -1698,12 +1696,12 @@ impl<'lexer> AST<'lexer> {
                     help_msg: "must be followed by a boolean expression",
                 }) ),
             },
-            ExpressionKind::Binary { op, .. } => match op {
-                OpKind::Equals | OpKind::NotEquals
-                | OpKind::Greater | OpKind::GreaterOrEquals
-                | OpKind::Less | OpKind::LessOrEquals => Ok( condition_value ),
-                OpKind::Pow | OpKind::Times | OpKind::Divide
-                | OpKind::Plus | OpKind::Minus | OpKind::Compare => Err( (if_pos.line, SyntaxError {
+            Expression::Binary { op, .. } => match op {
+                Operator::Equals | Operator::NotEquals
+                | Operator::Greater | Operator::GreaterOrEquals
+                | Operator::Less | Operator::LessOrEquals => Ok( condition_value ),
+                Operator::Pow | Operator::Times | Operator::Divide
+                | Operator::Plus | Operator::Minus | Operator::Compare => Err( (if_pos.line, SyntaxError {
                     err_line: 0,
                     col: if_pos.token.col,
                     text: if_pos.token.kind.to_string(),
@@ -1711,7 +1709,7 @@ impl<'lexer> AST<'lexer> {
                     help_msg: "must be followed by a boolean expression",
                 }) ),
             },
-            ExpressionKind::Identifier( _ ) => unreachable!(),
+            Expression::Identifier( _ ) => unreachable!(),
         };
 
         let condition = condition?.clone();
@@ -1799,32 +1797,32 @@ impl<'ast> Interpreter<'ast> {
     };
 
 
-    fn evaluate( ast: &AST, expression: &ExpressionKind ) -> Type {
+    fn evaluate( ast: &AST, expression: &Expression ) -> Literal {
         return match ast.extract( expression ) {
             // TODO avoid cloning of values
-            ExpressionKind::Literal( literal ) => literal.clone(),
-            ExpressionKind::Binary { lhs, op, rhs } => {
+            Expression::Literal( literal ) => literal.clone(),
+            Expression::Binary { lhs, op, rhs } => {
                 let lhs: i64 = Self::evaluate( ast, lhs ).into();
                 let rhs: i64 = Self::evaluate( ast, rhs ).into();
 
                 match op {
-                    OpKind::Plus => Type::I64 { value: lhs + rhs },
-                    OpKind::Minus => Type::I64 { value: lhs - rhs },
-                    OpKind::Times => Type::I64 { value: lhs * rhs },
-                    OpKind::Divide => Type::I64 { value: lhs / rhs },
-                    OpKind::Pow => Type::I64 { value: lhs.pow( rhs as u32 ) },
+                    Operator::Plus => Literal::I64 { value: lhs + rhs },
+                    Operator::Minus => Literal::I64 { value: lhs - rhs },
+                    Operator::Times => Literal::I64 { value: lhs * rhs },
+                    Operator::Divide => Literal::I64 { value: lhs / rhs },
+                    Operator::Pow => Literal::I64 { value: lhs.pow( rhs as u32 ) },
 
-                    OpKind::Equals => Type::Bool { value: lhs == rhs },
-                    OpKind::NotEquals => Type::Bool { value: lhs != rhs },
-                    OpKind::Greater => Type::Bool { value: lhs > rhs },
-                    OpKind::GreaterOrEquals => Type::Bool { value: lhs >= rhs },
-                    OpKind::Less => Type::Bool { value: lhs < rhs },
-                    OpKind::LessOrEquals => Type::Bool { value: lhs <= rhs },
+                    Operator::Equals => Literal::Bool { value: lhs == rhs },
+                    Operator::NotEquals => Literal::Bool { value: lhs != rhs },
+                    Operator::Greater => Literal::Bool { value: lhs > rhs },
+                    Operator::GreaterOrEquals => Literal::Bool { value: lhs >= rhs },
+                    Operator::Less => Literal::Bool { value: lhs < rhs },
+                    Operator::LessOrEquals => Literal::Bool { value: lhs <= rhs },
 
-                    OpKind::Compare => Type::I64 { value: lhs.cmp( &rhs ) as i64 },
+                    Operator::Compare => Literal::I64 { value: lhs.cmp( &rhs ) as i64 },
                 }
             },
-            ExpressionKind::Identifier( _ ) => unreachable!(),
+            Expression::Identifier( _ ) => unreachable!(),
         }
     }
 
@@ -1833,13 +1831,13 @@ impl<'ast> Interpreter<'ast> {
             match node {
                 Node::Print( argument ) => Self::evaluate( self.ast, argument ).display(),
                 Node::Expression { .. } => continue,
-                Node::If( iff ) => if let Type::Bool { value: true } = Self::evaluate( self.ast, &iff.condition ) {
+                Node::If( iff ) => if let Literal::Bool { value: true } = Self::evaluate( self.ast, &iff.condition ) {
                     self.interpret_nodes( &iff.nodes );
                 }
                 else if let Some( else_ifs ) = &iff.else_if {
                     let mut executed_else_if = false;
                     for else_if in else_ifs {
-                        if let Type::Bool { value: true } = Self::evaluate( self.ast, &else_if.condition ) {
+                        if let Literal::Bool { value: true } = Self::evaluate( self.ast, &else_if.condition ) {
                             self.interpret_nodes( &else_if.nodes );
                             executed_else_if = true;
                             break;
@@ -1867,13 +1865,25 @@ impl<'ast> Interpreter<'ast> {
 }
 
 
+#[derive( PartialEq, Clone, Copy )]
+enum StringTags {
+    OnlyLen,
+    Full,
+}
+
+#[derive( PartialEq, Clone, Copy )]
+enum BoolValues {
+    ToString,
+    ToInt,
+}
+
 #[derive( Debug )]
 struct Compiler<'ast> {
     ast: &'ast AST<'ast>,
     rodata: String,
     asm: String,
 
-    strings: Vec<&'ast Type>,
+    strings: Vec<&'ast Literal>,
     if_tag: usize,
 }
 
@@ -2029,7 +2039,7 @@ r" mov rdi, EXIT_SUCCESS
  mov rax, SYS_exit
  syscall";
 
-        self.compile_nodes( &self.ast.nodes, false );
+        self.compile_nodes( &self.ast.nodes, StringTags::Full );
 
         let program = format!(
 r"global _start
@@ -2116,27 +2126,27 @@ _start:
 }
 
 impl<'ast> Compiler<'ast> {
-    fn compile_nodes( &mut self, nodes: &'ast Vec<Node>, only_string_len: bool ) {
+    fn compile_nodes( &mut self, nodes: &'ast Vec<Node>, string_tags: StringTags ) {
         for node in nodes {
             match node {
                 Node::Print( argument ) => {
                     let mut arg = argument;
                     let value = loop {
                         match arg {
-                            ExpressionKind::Literal( literal ) => break literal,
-                            ExpressionKind::Binary { op, .. } => match op {
-                                OpKind::Pow | OpKind::Times | OpKind::Divide
-                                | OpKind::Plus | OpKind::Minus | OpKind::Compare => break &Type::I64 { value: 0 },
-                                OpKind::Equals | OpKind::NotEquals
-                                | OpKind::Greater | OpKind::GreaterOrEquals
-                                | OpKind::Less | OpKind::LessOrEquals => break &Type::Bool { value: false },
+                            Expression::Literal( literal ) => break literal,
+                            Expression::Binary { op, .. } => match op {
+                                Operator::Pow | Operator::Times | Operator::Divide
+                                | Operator::Plus | Operator::Minus | Operator::Compare => break &Literal::I64 { value: 0 },
+                                Operator::Equals | Operator::NotEquals
+                                | Operator::Greater | Operator::GreaterOrEquals
+                                | Operator::Less | Operator::LessOrEquals => break &Literal::Bool { value: false },
                             },
-                            ExpressionKind::Identifier( name ) => arg = &self.ast.resolve( name ).value,
+                            Expression::Identifier( name ) => arg = &self.ast.resolve( name ).value,
                         }
                     };
 
                     let print_asm = match value {
-                        Type::I64 { .. } =>
+                        Literal::I64 { .. } =>
                             "\n pop rdi\
                             \n mov rsi, 10\
                             \n call int_toStr\
@@ -2145,14 +2155,14 @@ impl<'ast> Compiler<'ast> {
                             \n mov rsi, rax\
                             \n mov rax, SYS_write\
                             \n syscall",
-                        Type::Char { .. } =>
+                        Literal::Char { .. } =>
                             "\n mov rdi, stdout\
                             \n mov rsi, rsp\
                             \n mov rdx, 1\
                             \n mov rax, SYS_write\
                             \n syscall\
                             \n pop rsi",
-                        Type::Bool { .. } | Type::Str { .. } =>
+                        Literal::Bool { .. } | Literal::Str { .. } =>
                             "\n pop rdx\
                             \n pop rsi\
                             \n mov rdi, stdout\
@@ -2161,7 +2171,7 @@ impl<'ast> Compiler<'ast> {
                     };
 
                     self.asm.push_str( &format!( " ; {}\n", node ) );
-                    self.compile_expression( argument, only_string_len, true );
+                    self.compile_expression( argument, string_tags, BoolValues::ToString );
                     self.asm.push_str( &format!( "{}\n\n", print_asm ) );
                 },
                 Node::If( iff ) => {
@@ -2204,7 +2214,7 @@ impl<'ast> Compiler<'ast> {
                     // compiling the else branch
                     if let Some( els ) = &iff.els {
                         self.asm.push_str( &format!( "if_{}_else:\n", if_idx ) );
-                        self.compile_nodes( els, only_string_len );
+                        self.compile_nodes( els, string_tags );
                     }
 
                     self.asm.push_str( &format!( "if_{}_end:\n", if_idx ) );
@@ -2214,19 +2224,19 @@ impl<'ast> Compiler<'ast> {
         }
     }
 
-    fn compile_expression( &mut self, expression: &'ast ExpressionKind, only_string_len: bool, bool_to_str: bool ) {
-        match expression {
-            ExpressionKind::Literal( literal ) => match literal {
-                Type::I64 { value } => self.asm.push_str( &format!( " push {}\n", value ) ),
-                Type::Char { value } => self.asm.push_str( &format!( " push {}\n", value ) ),
-                Type::Bool { value } => match bool_to_str {
-                    true => {
+    fn compile_expression( &mut self, expression: &'ast Expression, string_tags: StringTags, bool_values: BoolValues ) {
+        match self.ast.extract( expression ) {
+            Expression::Literal( literal ) => match literal {
+                Literal::I64 { value } => self.asm.push_str( &format!( " push {}\n", value ) ),
+                Literal::Char { value } => self.asm.push_str( &format!( " push {}\n", value ) ),
+                Literal::Bool { value } => match bool_values {
+                    BoolValues::ToString => {
                         self.asm.push_str( &format!( " push {}_str\n", value ) );
                         self.asm.push_str( &format!( " push {}_str_len\n", value ) );
                     },
-                    false => self.asm.push_str( &format!( " push {}\n", *value as usize ) ),
+                    BoolValues::ToInt => self.asm.push_str( &format!( " push {}\n", *value as usize ) ),
                 },
-                string @ Type::Str { text } => {
+                string @ Literal::Str { text } => {
                     let mut string_idx = 0;
                     let mut string_already_encountered = false;
                     for tag in &self.strings {
@@ -2258,54 +2268,54 @@ impl<'ast> Compiler<'ast> {
                         self.strings.push( &string );
                     }
 
-                    if !only_string_len {
+                    if let StringTags::Full = string_tags {
                         self.asm.push_str( &format!( " push {}\n", tag ) );
                     }
 
                     self.asm.push_str( &format!( " push {}\n", len_tag ) );
                 },
             },
-            ExpressionKind::Binary { lhs, op, rhs } => {
-                self.compile_expression( lhs, true, false );
-                self.compile_expression( rhs, true, false );
+            Expression::Binary { lhs, op, rhs } => {
+                self.compile_expression( lhs, StringTags::OnlyLen, BoolValues::ToInt );
+                self.compile_expression( rhs, StringTags::OnlyLen, BoolValues::ToInt );
                 let op_asm = match op {
-                    OpKind::Pow =>
+                    Operator::Pow =>
                         "\n pop rsi\
                         \n pop rdi\
                         \n call int_pow\
                         \n push rax".to_string(),
-                    OpKind::Times =>
+                    Operator::Times =>
                         "\n pop rax\
                         \n pop rbx\
                         \n imul rax, rbx\
                         \n push rax".to_string(),
-                    OpKind::Divide =>
+                    Operator::Divide =>
                         "\n pop rbx\
                         \n pop rax\
                         \n xor rdx, rdx\
                         \n idiv rbx\
                         \n push rax".to_string(),
-                    OpKind::Plus =>
+                    Operator::Plus =>
                         "\n pop rax\
                         \n pop rbx\
                         \n add rax, rbx\
                         \n push rax".to_string(),
-                    OpKind::Minus =>
+                    Operator::Minus =>
                         "\n pop rbx\
                         \n pop rax\
                         \n sub rax, rbx\
                         \n push rax".to_string(),
 
-                    OpKind::Equals | OpKind::NotEquals
-                    | OpKind::Greater | OpKind::GreaterOrEquals
-                    | OpKind::Less | OpKind::LessOrEquals => {
+                    Operator::Equals | Operator::NotEquals
+                    | Operator::Greater | Operator::GreaterOrEquals
+                    | Operator::Less | Operator::LessOrEquals => {
                         let cmov_condition = match op {
-                            OpKind::Equals => "cmove",
-                            OpKind::NotEquals => "cmovne",
-                            OpKind::Greater => "cmovg",
-                            OpKind::GreaterOrEquals => "cmovge",
-                            OpKind::Less => "cmovl",
-                            OpKind::LessOrEquals => "cmovle",
+                            Operator::Equals => "cmove",
+                            Operator::NotEquals => "cmovne",
+                            Operator::Greater => "cmovg",
+                            Operator::GreaterOrEquals => "cmovge",
+                            Operator::Less => "cmovl",
+                            Operator::LessOrEquals => "cmovle",
                             _ => unreachable!(),
                         };
 
@@ -2326,7 +2336,7 @@ impl<'ast> Compiler<'ast> {
                         )
                     },
 
-                    OpKind::Compare =>
+                    Operator::Compare =>
                         "\n pop rsi\
                         \n pop rdi\
                         \n cmp rdi, rsi\
@@ -2341,7 +2351,7 @@ impl<'ast> Compiler<'ast> {
                 self.asm.push_str( &format!( " ; {}", expression ) );
                 self.asm.push_str( &format!( "{}\n\n", op_asm ) );
             },
-            ExpressionKind::Identifier( name ) => self.compile_expression( &self.ast.resolve( name ).value, only_string_len, bool_to_str ),
+            Expression::Identifier( _ ) => unreachable!(),
         }
     }
 
@@ -2349,8 +2359,8 @@ impl<'ast> Compiler<'ast> {
         self.asm.push_str( &format!( "{}:; {}\n", if_tag, iff ) );
 
         match self.ast.extract( &iff.condition ) {
-            ExpressionKind::Literal( literal ) => match literal {
-                Type::Bool { value } => self.asm.push_str( &format!(
+            Expression::Literal( literal ) => match literal {
+                Literal::Bool { value } => self.asm.push_str( &format!(
                     "\n mov rdi, {}\
                     \n mov rsi, 1\
                     \n cmp rdi, rsi\
@@ -2358,22 +2368,22 @@ impl<'ast> Compiler<'ast> {
                     *value as usize,
                     if_false_tag
                 ) ),
-                Type::I64 { .. } | Type::Char { .. } | Type::Str { .. } => unreachable!(),
+                Literal::I64 { .. } | Literal::Char { .. } | Literal::Str { .. } => unreachable!(),
             },
-            ExpressionKind::Binary { lhs, op, rhs } => {
-                self.compile_expression( lhs, true, false );
-                self.compile_expression( rhs, true, false );
+            Expression::Binary { lhs, op, rhs } => {
+                self.compile_expression( lhs, StringTags::OnlyLen, BoolValues::ToInt );
+                self.compile_expression( rhs, StringTags::OnlyLen, BoolValues::ToInt );
                 let jmp_condition = match op {
-                    OpKind::Equals => "jne",
-                    OpKind::NotEquals => "je",
-                    OpKind::Greater => "jle",
-                    OpKind::GreaterOrEquals => "jl",
-                    OpKind::Less => "jge",
-                    OpKind::LessOrEquals => "jg",
+                    Operator::Equals => "jne",
+                    Operator::NotEquals => "je",
+                    Operator::Greater => "jle",
+                    Operator::GreaterOrEquals => "jl",
+                    Operator::Less => "jge",
+                    Operator::LessOrEquals => "jg",
 
-                    OpKind::Pow | OpKind::Times | OpKind::Divide
-                    | OpKind::Plus | OpKind::Minus
-                    | OpKind::Compare => unreachable!(),
+                    Operator::Pow | Operator::Times | Operator::Divide
+                    | Operator::Plus | Operator::Minus
+                    | Operator::Compare => unreachable!(),
                 };
 
                 self.asm.push_str( &format!(
@@ -2384,10 +2394,10 @@ impl<'ast> Compiler<'ast> {
                     jmp_condition, if_false_tag
                 ) );
             },
-            ExpressionKind::Identifier( _ ) => unreachable!(),
+            Expression::Identifier( _ ) => unreachable!(),
         }
 
-        self.compile_nodes( &iff.nodes, false );
+        self.compile_nodes( &iff.nodes, StringTags::Full );
         if let Some( idx ) = if_end_tag_idx {
             self.asm.push_str( &format!( " jmp if_{}_end\n\n", idx ) );
         }
