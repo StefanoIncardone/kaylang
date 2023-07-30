@@ -1009,12 +1009,6 @@ impl Display for Expression {
 struct If {
     condition: Expression,
     nodes: Vec<Node>,
-    else_if: Option<Vec<If>>,
-    els: Option<Vec<Node>>,
-
-    // IDEA refactor to this
-    // cases: Vec<(ExpressionKind, Vec<Node>)>,
-    // els: Option<Vec<Node>>,
 }
 
 impl Display for If {
@@ -1023,22 +1017,10 @@ impl Display for If {
     }
 }
 
-
 #[derive( Debug, Clone )]
-enum Node {
-    Expression( Expression ),
-    Print( Expression ),
-    If( If ),
-}
-
-impl Display for Node {
-    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        return match self {
-            Self::Expression( expression ) => write!( f, "{}", expression ),
-            Self::Print( node ) => write!( f, "print {}", node ),
-            Self::If( iff ) => write!( f, "{}", iff ),
-        }
-    }
+struct IfStatement {
+    ifs: Vec<If>,
+    els: Option<Vec<Node>>,
 }
 
 
@@ -1080,6 +1062,25 @@ struct Bracket<'lexer> {
     position: Position<'lexer>,
     kind: BracketKind,
 }
+
+
+#[derive( Debug, Clone )]
+enum Node {
+    Expression( Expression ),
+    Print( Expression ),
+    If( IfStatement ),
+}
+
+impl Display for Node {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        return match self {
+            Self::Expression( expression ) => write!( f, "{}", expression ),
+            Self::Print( node ) => write!( f, "print {}", node ),
+            Self::If( iff ) => write!( f, "{}", iff.ifs[ 0 ] ),
+        }
+    }
+}
+
 
 #[derive( Debug )]
 struct AST<'lexer> {
@@ -1149,7 +1150,7 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
 }
 
 // Parsing of tokens
-impl<'lexer, 'definition> AST<'lexer> {
+impl<'lexer> AST<'lexer> {
     fn parse( &mut self, errors: &mut SyntaxErrors<'lexer>, initial_bracket_stack_len: Option<usize> ) -> Vec<Node> {
         let mut nodes: Vec<Node> = Vec::new();
 
@@ -1167,7 +1168,7 @@ impl<'lexer, 'definition> AST<'lexer> {
                     None => Ok( Statement::Stop ),
                 },
                 TokenKind::Print | TokenKind::PrintLn => self.print(),
-                TokenKind::If => self.iff( errors ),
+                TokenKind::If => self.if_statement( errors ),
                 TokenKind::Else => {
                     self.tokens.next();
                     Err( (current.line, SyntaxError {
@@ -1332,14 +1333,19 @@ impl<'lexer> AST<'lexer> {
         unreachable!();
     }
 
-    fn extract( &'lexer self, expression: &'lexer Expression ) -> &'lexer Expression {
+    fn extract( &self, mut expression: Expression ) -> Expression {
+        while let Expression::Identifier( name ) = expression {
+            expression = self.resolve( &name ).value.clone();
+        }
+        return expression;
+    }
+
+    fn extract_ref( &'lexer self, expression: &'lexer Expression ) -> &'lexer Expression {
         let mut expr = expression;
-        loop {
-            match expr {
-                Expression::Literal( .. ) | Expression::Binary { .. } => return expr,
-                Expression::Identifier( name ) => expr = &self.resolve( name ).value,
-            }
-        };
+        while let Expression::Identifier( name ) = expr {
+            expr = &self.resolve( name ).value;
+        }
+        return expr;
     }
 }
 
@@ -1667,25 +1673,25 @@ impl<'lexer> AST<'lexer> {
 
 // Parsing of if statements
 impl<'lexer> AST<'lexer> {
-    fn iff( &mut self, errors: &mut SyntaxErrors<'lexer> ) -> Result<Statement, (&'lexer Line, SyntaxError)> {
+    fn if_statement( &mut self, errors: &mut SyntaxErrors<'lexer> ) -> Result<Statement, (&'lexer Line, SyntaxError)> {
         let initial_bracket_stack_len = self.brackets.len();
-        let mut iff = self.if_block( errors, initial_bracket_stack_len )?;
-
+        let iff = self.iff( errors, initial_bracket_stack_len )?;
+        let mut if_statement = IfStatement { ifs: vec![ iff ], els: None };
         let else_pos = self.tokens.current().or_next( &mut self.tokens );
-        self.els( errors, initial_bracket_stack_len, &mut iff, else_pos )?;
+        self.els( &mut if_statement, else_pos, errors, initial_bracket_stack_len )?;
 
-        return Ok( Statement::Single( Node::If( iff ) ) );
+        return Ok( Statement::Single( Node::If( if_statement ) ) );
     }
 
-    fn if_block( &mut self, errors: &mut SyntaxErrors<'lexer>, initial_bracket_stack_len: usize ) -> Result<If, (&'lexer Line, SyntaxError)> {
+    fn iff( &mut self, errors: &mut SyntaxErrors<'lexer>, initial_bracket_stack_len: usize ) -> Result<If, (&'lexer Line, SyntaxError)> {
         let if_pos = self.tokens.current().unwrap();
 
         self.tokens.next().bounded( &mut self.tokens, "expected boolean expression" )?.unwrap();
         let expression = self.expression( IdentifierExpansion::Keep, ExpectedSemicolon::NoExpect )?;
-        let condition_value = self.extract( &expression );
-        let condition = match condition_value {
+        let condition_expression = self.extract( expression );
+        let condition = match &condition_expression {
             Expression::Literal( literal ) => match literal {
-                Literal::Bool { .. } => Ok( condition_value ),
+                Literal::Bool { .. } => Ok( condition_expression ),
                 Literal::Char { .. }
                 | Literal::I64 { .. }
                 | Literal::Str { .. } => Err( (if_pos.line, SyntaxError {
@@ -1699,7 +1705,7 @@ impl<'lexer> AST<'lexer> {
             Expression::Binary { op, .. } => match op {
                 Operator::Equals | Operator::NotEquals
                 | Operator::Greater | Operator::GreaterOrEquals
-                | Operator::Less | Operator::LessOrEquals => Ok( condition_value ),
+                | Operator::Less | Operator::LessOrEquals => Ok( condition_expression ),
                 Operator::Pow | Operator::Times | Operator::Divide
                 | Operator::Plus | Operator::Minus | Operator::Compare => Err( (if_pos.line, SyntaxError {
                     err_line: 0,
@@ -1712,7 +1718,7 @@ impl<'lexer> AST<'lexer> {
             Expression::Identifier( _ ) => unreachable!(),
         };
 
-        let condition = condition?.clone();
+        let condition = condition?;
 
         let open_curly_pos = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected curly bracket" )?.unwrap();
         let open_curly = match open_curly_pos.token.kind {
@@ -1736,10 +1742,10 @@ impl<'lexer> AST<'lexer> {
         let _ = open_curly?;
 
         let nodes = self.parse( errors, Some( initial_bracket_stack_len ) );
-        return Ok( If { condition, nodes, else_if: None, els: None } );
+        return Ok( If { condition, nodes } );
     }
 
-    fn els( &mut self, errors: &mut SyntaxErrors<'lexer>, initial_bracket_stack_len: usize, iff: &mut If, else_pos: Option<Position<'lexer>> ) -> Result<(), (&'lexer Line, SyntaxError)>  {
+    fn els( &mut self, if_statement: &mut IfStatement, else_pos: Option<Position<'lexer>>, errors: &mut SyntaxErrors<'lexer>, initial_bracket_stack_len: usize ) -> Result<(), (&'lexer Line, SyntaxError)>  {
         match else_pos {
             None => (),
             Some( pos ) => if let TokenKind::Else = pos.token.kind {
@@ -1753,17 +1759,14 @@ impl<'lexer> AST<'lexer> {
                         self.tokens.next();
 
                         let els_nodes = self.parse( errors, Some( initial_bracket_stack_len ) );
-                        iff.els = Some( els_nodes );
+                        if_statement.els = Some( els_nodes );
                     },
                     TokenKind::If => {
-                        let else_if = self.if_block( errors, initial_bracket_stack_len )?;
-                        match iff.else_if {
-                            None => iff.else_if = Some( vec![ else_if ] ),
-                            Some( ref mut else_ifs ) => else_ifs.push( else_if ),
-                        }
+                        let else_if = self.iff( errors, initial_bracket_stack_len )?;
+                        if_statement.ifs.push( else_if );
 
                         let next_else_pos = self.tokens.current().or_next( &mut self.tokens );
-                        self.els( errors, initial_bracket_stack_len, iff, next_else_pos )?;
+                        self.els( if_statement, next_else_pos, errors, initial_bracket_stack_len )?;
                     },
                     _ => return Err( (pos.line, SyntaxError {
                         err_line: 0,
@@ -1798,7 +1801,7 @@ impl<'ast> Interpreter<'ast> {
 
 
     fn evaluate( ast: &AST, expression: &Expression ) -> Literal {
-        return match ast.extract( expression ) {
+        return match ast.extract_ref( expression ) {
             // TODO avoid cloning of values
             Expression::Literal( literal ) => literal.clone(),
             Expression::Binary { lhs, op, rhs } => {
@@ -1831,28 +1834,22 @@ impl<'ast> Interpreter<'ast> {
             match node {
                 Node::Print( argument ) => Self::evaluate( self.ast, argument ).display(),
                 Node::Expression { .. } => continue,
-                Node::If( iff ) => if let Literal::Bool { value: true } = Self::evaluate( self.ast, &iff.condition ) {
-                    self.interpret_nodes( &iff.nodes );
-                }
-                else if let Some( else_ifs ) = &iff.else_if {
+                Node::If( if_statement ) => {
                     let mut executed_else_if = false;
-                    for else_if in else_ifs {
-                        if let Literal::Bool { value: true } = Self::evaluate( self.ast, &else_if.condition ) {
-                            self.interpret_nodes( &else_if.nodes );
+                    for iff in &if_statement.ifs {
+                        if let Literal::Bool { value: true } = Self::evaluate( self.ast, &iff.condition ) {
+                            self.interpret_nodes( &iff.nodes );
                             executed_else_if = true;
                             break;
                         }
                     }
 
                     if !executed_else_if {
-                        if let Some( nodes ) = &iff.els {
+                        if let Some( nodes ) = &if_statement.els {
                             self.interpret_nodes( nodes );
                         }
                     }
-                }
-                else if let Some( nodes ) = &iff.els {
-                    self.interpret_nodes( nodes );
-                }
+                },
             }
         }
     }
@@ -1917,7 +1914,6 @@ r#" stdout: equ 1
  SYS_write: equ 1
  SYS_exit: equ 60
  EXIT_SUCCESS: equ 0
- newline: db 10
 
  I64_MIN: equ 1 << 63
  I64_MAX: equ ~I64_MIN
@@ -1931,16 +1927,30 @@ r#" stdout: equ 1
 
  LESS: equ -1
  EQUAL: equ 0
- GREATER: equ 1
-"# );
+ GREATER: equ 1"#
+);
 
-        let data =
-r" int_str: times INT_MAX_DIGITS + 1 db 0
+        self.compile_nodes( &self.ast.nodes, StringTags::Full );
+
+        let program = format!(
+r"global _start
+
+section .rodata
+    imbalance: db `stack imbalance`
+    imbalance_len: equ $ - imbalance
+
+    no_imbalance: db `no stack imbalance`
+    no_imbalance_len: equ $ - no_imbalance
+
+{}
+
+section .data
+ int_str: times INT_MAX_DIGITS + 1 db 0
  int_str_bufsize: equ $ - int_str
- int_str_len: equ int_str_bufsize - 1";
+ int_str_len: equ int_str_bufsize - 1
 
-        let int_to_str =
-r"int_toStr:
+section .text
+int_toStr:
  mov rsi, 10
 
  push rcx
@@ -1984,10 +1994,9 @@ r"int_toStr:
 
  mov rax, rcx
  pop rcx
- ret";
+ ret
 
-        let int_pow =
-r"int_pow:
+int_pow:
  cmp rsi, 1
  je .exponent_is_one
 
@@ -2032,33 +2041,7 @@ r"int_pow:
 
 .exponent_is_zero:
  mov rax, 1
- ret";
-
-        let sys_exit =
-r" mov rdi, EXIT_SUCCESS
- mov rax, SYS_exit
- syscall";
-
-        self.compile_nodes( &self.ast.nodes, StringTags::Full );
-
-        let program = format!(
-r"global _start
-
-section .rodata
-    imbalance: db `stack imbalance`
-    imbalance_len: equ $ - imbalance
-
-    no_imbalance: db `no stack imbalance`
-    no_imbalance_len: equ $ - no_imbalance
-
-{}
-section .data
-{}
-
-section .text
-{}
-
-{}
+ ret
 
 _start:
     mov r15, rsp; saving the current stack address
@@ -2087,7 +2070,11 @@ _start:
 
     mov rsp, r15; restoring the stack
 
-{}", self.rodata, data, int_to_str, int_pow, self.asm, sys_exit );
+ mov rdi, EXIT_SUCCESS
+ mov rax, SYS_exit
+ syscall",
+ self.rodata, self.asm
+);
 
         asm_file.write_all( program.as_bytes() ).unwrap();
         asm_file.flush().unwrap();
@@ -2174,11 +2161,11 @@ impl<'ast> Compiler<'ast> {
                     self.compile_expression( argument, string_tags, BoolValues::ToString );
                     self.asm.push_str( &format!( "{}\n\n", print_asm ) );
                 },
-                Node::If( iff ) => {
+                Node::If( if_statement ) => {
                     let if_idx = self.if_tag;
                     self.if_tag += 1;
 
-                    let (has_else_ifs, has_else) = (iff.else_if.is_some(), iff.els.is_some());
+                    let (has_else_ifs, has_else) = (if_statement.ifs.len() > 1, if_statement.els.is_some());
 
                     // compiling the if branch
                     let if_tag = format!( "if_{}", if_idx );
@@ -2191,28 +2178,28 @@ impl<'ast> Compiler<'ast> {
                     else {
                         (format!( "if_{}_end", if_idx ), None)
                     };
-                    self.compile_if( &iff, &if_tag, &if_false_tag, if_end_tag );
+                    self.compile_if( &if_statement.ifs[ 0 ], &if_tag, &if_false_tag, if_end_tag );
 
                     // compiling the else if branches
-                    if let Some( else_ifs ) = &iff.else_if {
-                        for (else_if_tag_idx, else_if) in else_ifs.iter().take( else_ifs.len() - 1 ).enumerate() {
+                    if has_else_ifs {
+                        for (else_if_tag_idx, else_if) in if_statement.ifs.iter().skip( 1 ).take( if_statement.ifs.len() - 1 ).enumerate() {
                             let else_if_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx );
                             let else_if_false_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx + 1 );
                             self.compile_if( &else_if, &else_if_tag, &else_if_false_tag, if_end_tag );
                         }
 
-                        let else_if_tag = format!( "if_{}_else_if_{}", if_idx, else_ifs.len() - 1 );
+                        let else_if_tag = format!( "if_{}_else_if_{}", if_idx, if_statement.ifs.len() - 1 );
                         let else_if_false_tag = if has_else {
                             format!( "if_{}_else", if_idx )
                         }
                         else {
                             format!( "if_{}_end", if_idx )
                         };
-                        self.compile_if( &else_ifs[ else_ifs.len() - 1 ], &else_if_tag, &else_if_false_tag, if_end_tag );
+                        self.compile_if( &if_statement.ifs[ if_statement.ifs.len() - 1 ], &else_if_tag, &else_if_false_tag, if_end_tag );
                     }
 
                     // compiling the else branch
-                    if let Some( els ) = &iff.els {
+                    if let Some( els ) = &if_statement.els {
                         self.asm.push_str( &format!( "if_{}_else:\n", if_idx ) );
                         self.compile_nodes( els, string_tags );
                     }
@@ -2225,7 +2212,7 @@ impl<'ast> Compiler<'ast> {
     }
 
     fn compile_expression( &mut self, expression: &'ast Expression, string_tags: StringTags, bool_values: BoolValues ) {
-        match self.ast.extract( expression ) {
+        match self.ast.extract_ref( expression ) {
             Expression::Literal( literal ) => match literal {
                 Literal::I64 { value } => self.asm.push_str( &format!( " push {}\n", value ) ),
                 Literal::Char { value } => self.asm.push_str( &format!( " push {}\n", value ) ),
@@ -2259,8 +2246,8 @@ impl<'ast> Compiler<'ast> {
                         string_asm.push( '`' );
 
                         self.rodata.push_str( &format!(
-                            "\n {}: db {}\
-                            \n {}: equ $ - {}\n",
+                            "\n\n {}: db {}\
+                            \n {}: equ $ - {}",
                             tag, string_asm,
                             len_tag, tag
                         ) );
@@ -2358,7 +2345,7 @@ impl<'ast> Compiler<'ast> {
     fn compile_if( &mut self, iff: &'ast If, if_tag: &String, if_false_tag: &String, if_end_tag_idx: Option<usize> ) {
         self.asm.push_str( &format!( "{}:; {}\n", if_tag, iff ) );
 
-        match self.ast.extract( &iff.condition ) {
+        match self.ast.extract_ref( &iff.condition ) {
             Expression::Literal( literal ) => match literal {
                 Literal::Bool { value } => self.asm.push_str( &format!(
                     "\n mov rdi, {}\
@@ -2426,7 +2413,7 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().collect();
 
     // to quickly debug
-    args.push( "build".to_string() );
+    // args.push( "build".to_string() );
     // args.push( "run".to_string() );
     args.push( "examples/main.blz".to_string() );
 
