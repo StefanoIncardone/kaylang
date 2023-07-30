@@ -138,7 +138,6 @@ impl Len for Operator {
 
 #[derive( Debug, Clone, Copy )]
 enum Mutability {
-    Const,
     Let,
     Var,
 }
@@ -146,7 +145,6 @@ enum Mutability {
 impl Display for Mutability {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
-            Self::Const => write!( f, "const" ),
             Self::Let => write!( f, "let" ),
             Self::Var => write!( f, "var" ),
         }
@@ -156,7 +154,6 @@ impl Display for Mutability {
 impl Len for Mutability {
     fn len( &self ) -> usize {
         return match self {
-            Self::Const => 5,
             Self::Let => 3,
             Self::Var => 3,
         }
@@ -329,7 +326,7 @@ impl Display for Line {
 
 
 // TODO implement NOTE, HINT, HELP in error messages
-#[derive( Debug, Clone )]
+#[derive( Debug )]
 struct SyntaxError {
     err_line: usize,
     col: usize,
@@ -610,9 +607,6 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                             }
 
                             let kind = match token_text.as_str() {
-                                // "entry" => TokenKind::Entry,
-                                // "fn" => TokenKind::Fn,
-                                "const" => TokenKind::Definition( Mutability::Const ),
                                 "let" => TokenKind::Definition( Mutability::Let ),
                                 "var" => TokenKind::Definition( Mutability::Var ),
                                 "print" => TokenKind::Print,
@@ -621,7 +615,6 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                                 "false" => TokenKind::False,
                                 "if" => TokenKind::If,
                                 "else" => TokenKind::Else,
-                                // "return" => TokenKind::Return,
                                 _ => TokenKind::Identifier( token_text.clone() ),
                             };
 
@@ -1005,7 +998,7 @@ impl Display for Expression {
 }
 
 
-#[derive( Debug, Clone )]
+#[derive( Debug )]
 struct If {
     condition: Expression,
     nodes: Vec<Node>,
@@ -1017,7 +1010,7 @@ impl Display for If {
     }
 }
 
-#[derive( Debug, Clone )]
+#[derive( Debug )]
 struct IfStatement {
     ifs: Vec<If>,
     els: Option<Vec<Node>>,
@@ -1043,7 +1036,7 @@ enum IdentifierExpansion {
     Keep,
 }
 
-#[derive( Debug, Clone )]
+#[derive( Debug )]
 struct Definition {
     mutability: Mutability,
     name: String,
@@ -1064,7 +1057,7 @@ struct Bracket<'lexer> {
 }
 
 
-#[derive( Debug, Clone )]
+#[derive( Debug )]
 enum Node {
     Expression( Expression ),
     Print( Expression ),
@@ -1562,11 +1555,6 @@ impl<'lexer> AST<'lexer> {
 
         return match self.resolve_scoped( &name ) {
             None => {
-                let value = match kind {
-                    Mutability::Const => Expression::Literal( Interpreter::evaluate( &self, &value ) ),
-                    Mutability::Let | Mutability::Var => value,
-                };
-
                 self.scopes[ self.current_scope ].definitions.push( Definition { mutability: kind, name, value } );
                 Ok( Statement::Empty )
             },
@@ -1615,7 +1603,7 @@ impl<'lexer> AST<'lexer> {
         let variable = variable?;
 
         let new_value = match variable.mutability {
-            Mutability::Let | Mutability::Const => Err( (name_pos.line, SyntaxError {
+            Mutability::Let => Err( (name_pos.line, SyntaxError {
                 err_line: 0,
                 col: name_pos.token.col,
                 text: name_pos.token.kind.to_string(),
