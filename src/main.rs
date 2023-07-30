@@ -1069,6 +1069,7 @@ enum Node {
     Expression( Expression ),
     Print( Expression ),
     If( IfStatement ),
+    Redefinition( String, Expression ),
 }
 
 impl Display for Node {
@@ -1077,6 +1078,7 @@ impl Display for Node {
             Self::Expression( expression ) => write!( f, "{}", expression ),
             Self::Print( node ) => write!( f, "print {}", node ),
             Self::If( iff ) => write!( f, "{}", iff.ifs[ 0 ] ),
+            Self::Redefinition( identifier, new_value ) => write!( f, "{} = {}", identifier, new_value ),
         }
     }
 }
@@ -1159,7 +1161,7 @@ impl<'lexer> AST<'lexer> {
                 TokenKind::Definition( _ ) => self.variable_definition(),
                 TokenKind::Identifier( _ ) => match self.tokens.peek_next() {
                     Some( next ) => match next.token.kind {
-                        TokenKind::Equals => self.variable_assignment(),
+                        TokenKind::Equals => self.variable_reassignment(),
                         _ => match self.expression( IdentifierExpansion::Keep, ExpectedSemicolon::Expect ) {
                             Ok( expression ) => Ok( Statement::Single( Node::Expression( expression ) ) ),
                             Err( err ) => Err( err ),
@@ -1303,20 +1305,20 @@ impl<'lexer, 'definition> AST<'lexer> {
         }
     }
 
-    fn resolve_scoped_mut( &'definition mut self, name: &str ) -> Option<&'definition mut Definition> {
-        let mut current_scope = self.current_scope;
+    // fn resolve_scoped_mut( &'definition mut self, name: &str ) -> Option<&'definition mut Definition> {
+    //     let mut current_scope = self.current_scope;
 
-        loop {
-            let scope = &self.scopes[ current_scope ];
-            for (i, definition) in scope.definitions.iter().enumerate() {
-                if definition.name == name {
-                    return Some( &mut self.scopes[ current_scope ].definitions[ i ] );
-                }
-            }
+    //     loop {
+    //         let scope = &self.scopes[ current_scope ];
+    //         for (i, definition) in scope.definitions.iter().enumerate() {
+    //             if definition.name == name {
+    //                 return Some( &mut self.scopes[ current_scope ].definitions[ i ] );
+    //             }
+    //         }
 
-            current_scope = scope.parent?;
-        }
-    }
+    //         current_scope = scope.parent?;
+    //     }
+    // }
 }
 
 // Resolution of identifiers after construction of AST: as all the identifiers need to be collected already
@@ -1578,7 +1580,7 @@ impl<'lexer> AST<'lexer> {
         }
     }
 
-    fn variable_assignment( &mut self ) -> Result<Statement, (&'lexer Line, SyntaxError)> {
+    fn variable_reassignment( &mut self ) -> Result<Statement, (&'lexer Line, SyntaxError)> {
         let name_pos = self.tokens.current().unwrap();
         let equals_pos = self.tokens.next().unwrap();
 
@@ -1597,7 +1599,7 @@ impl<'lexer> AST<'lexer> {
         };
 
         let variable = match &name_pos.token.kind {
-            TokenKind::Identifier( name ) => match self.resolve_scoped_mut( &name ) {
+            TokenKind::Identifier( name ) => match self.resolve_scoped( &name ) {
                 Some( identifier ) => Ok( identifier ),
                 None => Err( (name_pos.line, SyntaxError {
                     err_line: 0,
@@ -1612,7 +1614,7 @@ impl<'lexer> AST<'lexer> {
 
         let variable = variable?;
 
-        let assignment = match variable.mutability {
+        let new_value = match variable.mutability {
             Mutability::Let | Mutability::Const => Err( (name_pos.line, SyntaxError {
                 err_line: 0,
                 col: name_pos.token.col,
@@ -1623,8 +1625,7 @@ impl<'lexer> AST<'lexer> {
             Mutability::Var => value,
         };
 
-        variable.value = assignment?;
-        return Ok( Statement::Empty );
+        return Ok( Statement::Single( Node::Redefinition( name_pos.token.kind.to_string(), new_value? ) ) );
     }
 }
 
@@ -1850,6 +1851,7 @@ impl<'ast> Interpreter<'ast> {
                         }
                     }
                 },
+                Node::Redefinition( _, _ ) => todo!(),
             }
         }
     }
@@ -2207,6 +2209,7 @@ impl<'ast> Compiler<'ast> {
                     self.asm.push_str( &format!( "if_{}_end:\n", if_idx ) );
                 },
                 Node::Expression( _ ) => continue,
+                Node::Redefinition( _, _ ) => todo!(),
             }
         }
     }
