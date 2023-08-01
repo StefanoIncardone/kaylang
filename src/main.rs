@@ -1233,6 +1233,7 @@ impl Display for Node {
             Self::Expression( expression ) => write!( f, "{}", expression ),
             Self::Print( node ) => write!( f, "print {}", node ),
             Self::If( iff ) => write!( f, "{}", iff.ifs[ 0 ] ),
+
             Self::Assignment( name, value ) => write!( f, "{} = {}", name, value ),
             Self::Scope( _ ) => unreachable!(),
         }
@@ -1913,7 +1914,8 @@ impl Interpreter {
         // IDEA have a stack to remember the current node being processed in each scope
     fn interpret_scope( &mut self, scope: ScopeIdx ) {
         for node_idx in 0..self.scopes.scopes[ scope ].nodes.len() {
-            let node = &self.scopes.scopes[ scope ].nodes[ node_idx ];
+            // TODO find a way not to clone
+            let node = &self.scopes.scopes[ scope ].nodes[ node_idx ].clone();
             match node {
                 Node::Print( argument ) => self.scopes.evaluate( &argument ).display(),
                 Node::If( if_statement ) => {
@@ -2268,22 +2270,22 @@ impl Compiler {
                     // compiling the if branch
                     let if_tag = format!( "if_{}", if_idx );
                     let (if_false_tag, if_end_tag) = if has_else_ifs {
-                        (format!( "if_{}_else_if_0", if_idx ), Some( if_idx ))
+                        (format!( "if_{}_else_if_0", if_idx ), Some( format!( "if_{}_end", if_idx) ))
                     }
                     else if has_else {
-                        (format!( "if_{}_else", if_idx ), Some( if_idx ))
+                        (format!( "if_{}_else", if_idx ), Some( format!( "if_{}_end", if_idx) ))
                     }
                     else {
                         (format!( "if_{}_end", if_idx ), None)
                     };
-                    self.compile_if( &if_statement.ifs[ 0 ], &if_tag, &if_false_tag, if_end_tag );
+                    self.compile_if( &if_statement.ifs[ 0 ], &if_tag, &if_false_tag, &if_end_tag );
 
                     // compiling the else if branches
                     if has_else_ifs {
                         for (else_if_tag_idx, else_if) in if_statement.ifs.iter().skip( 1 ).take( if_statement.ifs.len() - 1 ).enumerate() {
                             let else_if_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx );
                             let else_if_false_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx + 1 );
-                            self.compile_if( &else_if, &else_if_tag, &else_if_false_tag, if_end_tag );
+                            self.compile_if( &else_if, &else_if_tag, &else_if_false_tag, &if_end_tag );
                         }
 
                         let else_if_tag = format!( "if_{}_else_if_{}", if_idx, if_statement.ifs.len() - 1 );
@@ -2293,7 +2295,7 @@ impl Compiler {
                         else {
                             format!( "if_{}_end", if_idx )
                         };
-                        self.compile_if( &if_statement.ifs[ if_statement.ifs.len() - 1 ], &else_if_tag, &else_if_false_tag, if_end_tag );
+                        self.compile_if( &if_statement.ifs[ if_statement.ifs.len() - 1 ], &else_if_tag, &else_if_false_tag, &if_end_tag );
                     }
 
                     // compiling the else branch
@@ -2448,7 +2450,7 @@ impl Compiler {
         }
     }
 
-    fn compile_if( &mut self, iff: &If, if_tag: &String, if_false_tag: &String, if_end_tag_idx: Option<usize> ) {
+    fn compile_if( &mut self, iff: &If, if_tag: &String, if_false_tag: &String, if_end_tag: &Option<String> ) {
         self.asm.push_str( &format!( "{}:; {}\n", if_tag, iff ) );
 
         match self.scopes.extract( &iff.condition ) {
@@ -2495,8 +2497,8 @@ impl Compiler {
         }
 
         self.compile_scope( iff.scope, StringTags::Full );
-        if let Some( idx ) = if_end_tag_idx {
-            self.asm.push_str( &format!( " jmp if_{}_end\n\n", idx ) );
+        if let Some( tag ) = if_end_tag {
+            self.asm.push_str( &format!( " jmp {}\n\n", tag ) );
         }
     }
 }
@@ -2513,7 +2515,7 @@ Options:
 
 Run mode:
     interpret <file.blz>    Interpret the source code (default if no run mode command is provided)
-    build     <file.blz>    Compile the source code down to a binary executable
+    compile   <file.blz>    Compile the source code down to a binary executable
     run       <file.blz>    Compile and run the generated binary executable
 ", env!( "CARGO_PKG_VERSION" ) );
 }
@@ -2523,7 +2525,7 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().collect();
 
     // to quickly debug
-    // args.push( "build".to_string() );
+    // args.push( "compile".to_string() );
     // args.push( "run".to_string() );
     args.push( "examples/main.blz".to_string() );
 
@@ -2544,7 +2546,7 @@ fn main() -> ExitCode {
                 return ExitCode::SUCCESS;
             },
             "interpret" => interpret_flag = true,
-            "build" => build_flag = true,
+            "compile" => build_flag = true,
             "run" => run_flag = true,
             _ => match source_file_path {
                 None => source_file_path = Some( arg ),
@@ -2624,7 +2626,13 @@ fn main() -> ExitCode {
         interpreter.interpret( &source_file_path );
     }
     else {
-        let mut compiler = Compiler { scopes: ast.scopes, rodata: String::new(), asm: String::new(), strings: Vec::new(), if_tag: 0 };
+        let mut compiler = Compiler {
+            scopes: ast.scopes,
+            rodata: String::new(),
+            asm: String::new(),
+            strings: Vec::new(),
+            if_tag: 0,
+        };
 
         if build_flag {
             let _ = compiler.compile( &source_file_path );

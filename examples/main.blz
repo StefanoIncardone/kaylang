@@ -1,5 +1,5 @@
-var twentyone = 9;
-twentyone += 10;
-if twentyone == 19 {
-    println "lucky";
+var counter = 0;
+while counter < 10 {
+    println counter;
+    counter += 1;
 }

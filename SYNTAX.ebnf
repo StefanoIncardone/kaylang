@@ -26,7 +26,7 @@ statement =
     | (identifier, "=", expression),
     ';';
 
-scope = "{", [{line_comment | statement | scope}], "}";
+scope = "{", [{line_comment | statement | scope | if}], "}";
 
 if = "if", expression, scope, [{"else", if}], ["else", scope];
 
