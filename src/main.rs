@@ -2513,7 +2513,7 @@ Options:
 
 Run mode:
     interpret <file.blz>    Interpret the source code (default if no run mode command is provided)
-    build     <file.blz>    Compile the source code down to a binary executable
+    compile   <file.blz>    Compile the source code down to a binary executable
     run       <file.blz>    Compile and run the generated binary executable
 ", env!( "CARGO_PKG_VERSION" ) );
 }
@@ -2523,7 +2523,7 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().collect();
 
     // to quickly debug
-    // args.push( "build".to_string() );
+    // args.push( "compile".to_string() );
     // args.push( "run".to_string() );
     args.push( "examples/main.blz".to_string() );
 
@@ -2544,7 +2544,7 @@ fn main() -> ExitCode {
                 return ExitCode::SUCCESS;
             },
             "interpret" => interpret_flag = true,
-            "build" => build_flag = true,
+            "compile" => build_flag = true,
             "run" => run_flag = true,
             _ => match source_file_path {
                 None => source_file_path = Some( arg ),

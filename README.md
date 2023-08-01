@@ -2,7 +2,6 @@
 
 Experimenting with programming languages and exploring how to create one.
 
-
 ## Language Features
 
 see the [full language syntax](SYNTAX.ebnf)
@@ -10,7 +9,7 @@ see the [full language syntax](SYNTAX.ebnf)
 ### Run modes
 
 - `interpret`: to interpret the program without compiling it
-- `build`: to compile the program down to a binary executable
+- `compile`: to compile the program down to a binary executable
 - `run`: to compile and run the generated binary executable
 
 ### UTF-8 support
@@ -19,7 +18,7 @@ only supporting ASCII (`[0, 127]`) characters for now
 
 ### Comments
 
-line comments start with `#`: ignores everything until the end of the line
+line comments start with `#` and ignore everything until the end of the line
 
 ### Integers
 
@@ -53,7 +52,7 @@ let lucky = "nineteen";
 println lucky;
 ```
 
-Note: when used in expressions the length gets used (waiting for proper type checking)
+Note: when used in expressions strings get converted to their length (waiting for proper type checking)
 
 ```blitz
 print "len of \"lucky\" is "; println "lucky" + 0; # easy way to obtain the length of the string
@@ -78,15 +77,15 @@ Expressions follow this order of operations (from highest to lowest):
 
 ### Variables
 
-Variable names can be any made of (but not starting with) numbers, underscores and letters
+Variable names can be made of (but not starting with) numbers, underscores and letters
+
+- `let`: immutable variable
+- `var`: mutable variable
 
 ``` blitz
 var ten = 5 * 2;
 let nine = 3 ^ 2;
 ```
-
-- `let`: immutable variable
-- `var`: mutable variable
 
 *op*_assign operators desugar to regular expressions
 
@@ -102,7 +101,7 @@ The only way to print values is using the temporary intrinsic `print` or `printl
 ``` blitz
 var ten = 5 * 2;
 let nine = 3 ^ 2;
-const lucky = ten + nine;
+let lucky = ten + nine;
 
 println lucky;
 print 42;

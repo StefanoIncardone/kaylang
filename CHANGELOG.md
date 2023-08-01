@@ -53,8 +53,8 @@ From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProj
 ### Strings
 
 - immutable strings are surrounded by `"`: `"hello world"`
-- mutable strings (like string builders) are surrounded by `` ` ``: `"hello world"`
-- unescaped strings are prefixed by a `u`: `u"\this wo\n't be escaped`
+- mutable strings (like string builders) are surrounded by `` ` ``: `` `hello world` ``
+- unescaped strings are prefixed by a `u`: `u"\this wo\n't be escaped"`
 - multiline strings are prefixed by a `m`:
     - lines will have newline characters appended to them unless they end in a `\`, which can be escaped using a `\\`
     - whitespace will be preserved (except before the closing quote) and leading whitespace is calculated based on the
@@ -68,7 +68,7 @@ From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProj
 ## 0.1
 
 - `interpret` to interpret the program without compiling it
-- `build` to compile the program down to a binary executable
+- `compile` to compile the program down to a binary executable
 - `run` to compile and run the compiled native assembly code
 - line comments: `#...`
 - integers, character literals, string literals, boolean values and variables
