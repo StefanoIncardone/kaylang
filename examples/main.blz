@@ -1,5 +1,5 @@
 var twentyone = 9;
-println twentyone;
-twentyone = twentyone + 10;
-twentyone = twentyone + 1;
-println twentyone;
+twentyone += 10;
+if twentyone == 19 {
+    println "lucky";
+}

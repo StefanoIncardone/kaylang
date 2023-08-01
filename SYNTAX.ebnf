@@ -22,7 +22,7 @@ expression = math, [("==" | "!=" | ">" | ">=" | "<" | "<=" | "<=>"), math];
 statement =
     ("print", expression)
     | ("println", [expression])
-    | (("const" | "let" | "var"), identifier, "=", expression)
+    | (("const" | "let" | "var"), identifier, ("=" | "^=" | "*=" | "/=" | "+=" | "-=" ), expression)
     | (identifier, "=", expression),
     ';';
 

@@ -81,13 +81,20 @@ impl Literal {
 
 #[derive( Debug, Clone, Copy, PartialEq )]
 enum Operator {
-    Pow,
-    Times,
-    Divide,
-    Plus,
-    Minus,
-
     Equals,
+
+    Pow,
+    PowEquals,
+    Times,
+    TimesEquals,
+    Divide,
+    DivideEquals,
+    Plus,
+    PlusEquals,
+    Minus,
+    MinusEquals,
+
+    EqualsEquals,
     NotEquals,
     Greater,
     GreaterOrEquals,
@@ -100,13 +107,20 @@ enum Operator {
 impl Display for Operator {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
-            Self::Pow => write!( f, "^" ),
-            Self::Times => write!( f, "*" ),
-            Self::Divide => write!( f, "/" ),
-            Self::Plus => write!( f, "+" ),
-            Self::Minus => write!( f, "-" ),
+            Self::Equals => write!( f, "=" ),
 
-            Self::Equals => write!( f, "==" ),
+            Self::Pow => write!( f, "^" ),
+            Self::PowEquals => write!( f, "^=" ),
+            Self::Times => write!( f, "*" ),
+            Self::TimesEquals => write!( f, "*=" ),
+            Self::Divide => write!( f, "/" ),
+            Self::DivideEquals => write!( f, "/=" ),
+            Self::Plus => write!( f, "+" ),
+            Self::PlusEquals => write!( f, "+=" ),
+            Self::Minus => write!( f, "-" ),
+            Self::MinusEquals => write!( f, "-=" ),
+
+            Self::EqualsEquals => write!( f, "==" ),
             Self::NotEquals => write!( f, "!=" ),
             Self::Greater => write!( f, ">" ),
             Self::GreaterOrEquals => write!( f, ">=" ),
@@ -121,12 +135,20 @@ impl Display for Operator {
 impl Len for Operator {
     fn len( &self ) -> usize {
         return match self {
+            Self::Equals => 1,
+
             Self::Pow => 1,
+            Self::PowEquals => 2,
             Self::Times => 1,
+            Self::TimesEquals => 2,
             Self::Divide => 1,
+            Self::DivideEquals => 2,
             Self::Plus => 1,
+            Self::PlusEquals => 2,
             Self::Minus => 1,
-            Self::Equals => 2,
+            Self::MinusEquals => 2,
+
+            Self::EqualsEquals => 2,
             Self::NotEquals => 2,
             Self::Greater => 1,
             Self::GreaterOrEquals => 2,
@@ -202,7 +224,6 @@ enum TokenKind {
 
     // Symbols
     Bracket( BracketKind ),
-    Equals,
     SemiColon,
 
     // Identifiers
@@ -233,7 +254,6 @@ impl Display for TokenKind {
             Self::Comment( text ) => write!( f, "{}", text ),
 
             Self::Bracket( bracket ) => write!( f, "{}", bracket ),
-            Self::Equals => write!( f, "=" ),
             Self::SemiColon => write!( f, ";" ),
 
             Self::Literal( literal ) => write!( f, "{}", literal ),
@@ -260,7 +280,6 @@ impl Len for TokenKind {
             Self::Comment( text ) => text.len(),
 
             Self::Bracket( bracket ) => bracket.len(),
-            Self::Equals => 1,
             Self::SemiColon => 1,
 
             Self::Literal( typ ) => typ.len(),
@@ -477,9 +496,9 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                         '=' => match Self::peek_next( &mut src ) {
                             Ok( Some( '=' ) ) => {
                                 let _ = Self::next( &mut src );
-                                Ok( TokenKind::Op( Operator::Equals ) )
+                                Ok( TokenKind::Op( Operator::EqualsEquals ) )
                             },
-                            _ => Ok( TokenKind::Equals ),
+                            _ => Ok( TokenKind::Op( Operator::Equals ) ),
                         },
                         '!' => match Self::peek_next( &mut src ) {
                             Ok( Some( '=' ) ) => {
@@ -520,11 +539,41 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                             },
                             _ => Ok( TokenKind::Op( Operator::Less ) ),
                         },
-                        '^' => Ok( TokenKind::Op( Operator::Pow ) ),
-                        '*' => Ok( TokenKind::Op( Operator::Times ) ),
-                        '/' => Ok( TokenKind::Op( Operator::Divide ) ),
-                        '+' => Ok( TokenKind::Op( Operator::Plus ) ),
-                        '-' => Ok( TokenKind::Op( Operator::Minus ) ),
+                        '^' => match Self::peek_next( &mut src ) {
+                            Ok( Some( '=' ) ) => {
+                                let _ = Self::next( &mut src );
+                                Ok( TokenKind::Op( Operator::PowEquals ) )
+                            },
+                            _ => Ok( TokenKind::Op( Operator::Pow ) ),
+                        },
+                        '*' => match Self::peek_next( &mut src ) {
+                            Ok( Some( '=' ) ) => {
+                                let _ = Self::next( &mut src );
+                                Ok( TokenKind::Op( Operator::TimesEquals ) )
+                            },
+                            _ => Ok( TokenKind::Op( Operator::Times ) ),
+                        },
+                        '/' => match Self::peek_next( &mut src ) {
+                            Ok( Some( '=' ) ) => {
+                                let _ = Self::next( &mut src );
+                                Ok( TokenKind::Op( Operator::DivideEquals ) )
+                            },
+                            _ => Ok( TokenKind::Op( Operator::Divide ) ),
+                        },
+                        '+' => match Self::peek_next( &mut src ) {
+                            Ok( Some( '=' ) ) => {
+                                let _ = Self::next( &mut src );
+                                Ok( TokenKind::Op( Operator::PlusEquals ) )
+                            },
+                            _ => Ok( TokenKind::Op( Operator::Plus ) ),
+                        },
+                        '-' => match Self::peek_next( &mut src ) {
+                            Ok( Some( '=' ) ) => {
+                                let _ = Self::next( &mut src );
+                                Ok( TokenKind::Op( Operator::MinusEquals ) )
+                            },
+                            _ => Ok( TokenKind::Op( Operator::Minus ) ),
+                        },
                         ';' => Ok( TokenKind::SemiColon ),
                         '\'' => {
                             token_text.push( ch );
@@ -1111,13 +1160,13 @@ impl<'this> Scopes {
                 let rhs: i64 = self.evaluate( &rhs ).into();
 
                 match op {
-                    Operator::Plus => Literal::I64 { value: lhs + rhs },
-                    Operator::Minus => Literal::I64 { value: lhs - rhs },
-                    Operator::Times => Literal::I64 { value: lhs * rhs },
-                    Operator::Divide => Literal::I64 { value: lhs / rhs },
-                    Operator::Pow => Literal::I64 { value: lhs.pow( rhs as u32 ) },
+                    Operator::Plus | Operator::PlusEquals =>        Literal::I64 { value: lhs + rhs },
+                    Operator::Minus | Operator::MinusEquals =>      Literal::I64 { value: lhs - rhs },
+                    Operator::Times | Operator::TimesEquals =>      Literal::I64 { value: lhs * rhs },
+                    Operator::Divide | Operator::DivideEquals =>    Literal::I64 { value: lhs / rhs },
+                    Operator::Pow | Operator::PowEquals =>          Literal::I64 { value: lhs.pow( rhs as u32 ) },
 
-                    Operator::Equals => Literal::Bool { value: lhs == rhs },
+                    Operator::EqualsEquals => Literal::Bool { value: lhs == rhs },
                     Operator::NotEquals => Literal::Bool { value: lhs != rhs },
                     Operator::Greater => Literal::Bool { value: lhs > rhs },
                     Operator::GreaterOrEquals => Literal::Bool { value: lhs >= rhs },
@@ -1125,6 +1174,8 @@ impl<'this> Scopes {
                     Operator::LessOrEquals => Literal::Bool { value: lhs <= rhs },
 
                     Operator::Compare => Literal::I64 { value: lhs.cmp( &rhs ) as i64 },
+
+                    Operator::Equals => unreachable!(),
                 }
             },
             Expression::Identifier( _ ) => unreachable!(),
@@ -1263,7 +1314,12 @@ impl<'lexer> AST<'lexer> {
                 TokenKind::Definition( _ ) => self.variable_definition(),
                 TokenKind::Identifier( _ ) => match self.tokens.peek_next() {
                     Some( next ) => match next.token.kind {
-                        TokenKind::Equals => self.variable_reassignment(),
+                        TokenKind::Op( Operator::Equals )
+                        | TokenKind::Op( Operator::PowEquals )
+                        | TokenKind::Op( Operator::TimesEquals )
+                        | TokenKind::Op( Operator::DivideEquals )
+                        | TokenKind::Op( Operator::PlusEquals )
+                        | TokenKind::Op( Operator::MinusEquals ) => self.variable_reassignment(),
                         _ => match self.expression( ExpectedSemicolon::Expect ) {
                             Ok( expression ) => Ok( Statement::Single( Node::Expression( expression ) ) ),
                             Err( err ) => Err( err ),
@@ -1332,6 +1388,16 @@ impl<'lexer> AST<'lexer> {
                         }) ),
                     }
                 },
+                TokenKind::Op( Operator::Equals ) => {
+                    self.tokens.next();
+                    Err( (current.line, SyntaxError {
+                        err_line: 0,
+                        col: current.token.col,
+                        text: current.token.kind.to_string(),
+                        msg: "invalid assignment",
+                        help_msg: "stray assignment"
+                    }) )
+                },
                 TokenKind::Op( _ ) => {
                     self.tokens.next();
                     Err( (current.line, SyntaxError {
@@ -1340,16 +1406,6 @@ impl<'lexer> AST<'lexer> {
                         text: current.token.kind.to_string(),
                         msg: "invalid expression",
                         help_msg: "stray binary operator"
-                    }) )
-                },
-                TokenKind::Equals => {
-                    self.tokens.next();
-                    Err( (current.line, SyntaxError {
-                        err_line: 0,
-                        col: current.token.col,
-                        text: current.token.kind.to_string(),
-                        msg: "invalid assignment",
-                        help_msg: "stray assignment"
                     }) )
                 },
                 TokenKind::Comment( _ ) | TokenKind::SemiColon | TokenKind::Empty | TokenKind::EOF => {
@@ -1504,7 +1560,7 @@ impl<'lexer> AST<'lexer> {
         let mut lhs = self.math()?;
 
         let ops = [
-            Operator::Equals, Operator::NotEquals,
+            Operator::EqualsEquals, Operator::NotEquals,
             Operator::Greater, Operator::GreaterOrEquals,
             Operator::Less, Operator::LessOrEquals,
             Operator::Compare
@@ -1565,7 +1621,7 @@ impl<'lexer> AST<'lexer> {
 
         let equals_pos = self.tokens.next().bounded( &mut self.tokens, "expected equals" )?.unwrap();
         let equals = match equals_pos.token.kind {
-            TokenKind::Equals => Ok( () ),
+            TokenKind::Op( Operator::Equals ) => Ok( () ),
             _ => Err( (name_pos.line, SyntaxError {
                 err_line: 0,
                 col: name_pos.token.col,
@@ -1610,19 +1666,42 @@ impl<'lexer> AST<'lexer> {
 
     fn variable_reassignment( &mut self ) -> Result<Statement, (&'lexer Line, SyntaxError)> {
         let name_pos = self.tokens.current().unwrap();
-        let equals_pos = self.tokens.next().unwrap();
+        let assignment_pos = self.tokens.next().unwrap();
+        let help_msg = match assignment_pos.token.kind {
+            TokenKind::Op( Operator::Equals ) => "expected expression after '='",
+            TokenKind::Op( Operator::PowEquals ) => "expected expression after '^='",
+            TokenKind::Op( Operator::TimesEquals ) => "expected expression after '*='",
+            TokenKind::Op( Operator::DivideEquals ) => "expected expression after '/='",
+            TokenKind::Op( Operator::PlusEquals ) => "expected expression after '+='",
+            TokenKind::Op( Operator::MinusEquals ) => "expected expression after '-='",
+            _ => unreachable!(),
+        };
 
         let value_pos = self.tokens.next().bounded( &mut self.tokens, "expected expression" )?.unwrap();
         let value = match value_pos.token.kind {
             TokenKind::True | TokenKind::False
             | TokenKind::Literal( _ ) | TokenKind::Identifier( _ )
-            | TokenKind::Bracket( BracketKind::OpenRound ) => self.expression( ExpectedSemicolon::Expect ),
-            _ => Err( (equals_pos.line, SyntaxError {
+            | TokenKind::Bracket( BracketKind::OpenRound ) => match self.expression( ExpectedSemicolon::Expect ) {
+                Ok( rhs ) => match &assignment_pos.token.kind {
+                    TokenKind::Op( Operator::Equals ) => Ok( rhs ),
+                    operator => {
+                        let lhs = Expression::Identifier( name_pos.token.kind.to_string() );
+                        let op = match operator {
+                            TokenKind::Op( op ) => *op,
+                            _ => unreachable!(),
+                        };
+
+                        Ok( Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) } )
+                    },
+                },
+                Err( err ) => Err( err ),
+            },
+            _ => Err( (assignment_pos.line, SyntaxError {
                 err_line: 0,
-                col: equals_pos.token.col,
-                text: equals_pos.token.kind.to_string(),
+                col: assignment_pos.token.col,
+                text: assignment_pos.token.kind.to_string(),
                 msg: "invalid assignment",
-                help_msg: "expected expression after '='"
+                help_msg
             }) ),
         };
 
@@ -1732,11 +1811,16 @@ impl<'lexer> AST<'lexer> {
                 }) ),
             },
             Expression::Binary { op, .. } => match op {
-                Operator::Equals | Operator::NotEquals
+                Operator::EqualsEquals | Operator::NotEquals
                 | Operator::Greater | Operator::GreaterOrEquals
                 | Operator::Less | Operator::LessOrEquals => Ok( condition_expression ),
-                Operator::Pow | Operator::Times | Operator::Divide
-                | Operator::Plus | Operator::Minus | Operator::Compare => Err( (if_pos.line, SyntaxError {
+                Operator::Equals
+                | Operator::Pow | Operator::PowEquals
+                | Operator::Times | Operator::TimesEquals
+                | Operator::Divide | Operator::DivideEquals
+                | Operator::Plus | Operator::PlusEquals
+                | Operator::Minus | Operator::MinusEquals
+                | Operator::Compare => Err( (if_pos.line, SyntaxError {
                     err_line: 0,
                     col: if_pos.token.col,
                     text: if_pos.token.kind.to_string(),
@@ -2128,11 +2212,16 @@ impl Compiler {
                         match arg {
                             Expression::Literal( literal ) => break literal,
                             Expression::Binary { op, .. } => match op {
-                                Operator::Pow | Operator::Times | Operator::Divide
-                                | Operator::Plus | Operator::Minus | Operator::Compare => break &Literal::I64 { value: 0 },
-                                Operator::Equals | Operator::NotEquals
+                                Operator::Pow | Operator::PowEquals
+                                | Operator::Times | Operator::TimesEquals
+                                | Operator::Divide | Operator::DivideEquals
+                                | Operator::Plus | Operator::PlusEquals
+                                | Operator::Minus | Operator::MinusEquals
+                                | Operator::Compare => break &Literal::I64 { value: 0 },
+                                Operator::EqualsEquals | Operator::NotEquals
                                 | Operator::Greater | Operator::GreaterOrEquals
                                 | Operator::Less | Operator::LessOrEquals => break &Literal::Bool { value: false },
+                                Operator::Equals => unreachable!(),
                             },
                             Expression::Identifier( name ) => arg = match &self.scopes.resolve( &name ).value {
                                 Some( e ) => e,
@@ -2281,34 +2370,34 @@ impl Compiler {
                 self.compile_expression( lhs, StringTags::OnlyLen, BoolValues::ToInt );
                 self.compile_expression( rhs, StringTags::OnlyLen, BoolValues::ToInt );
                 let op_asm = match op {
-                    Operator::Pow =>
+                    Operator::Pow | Operator::PowEquals =>
                         "\n pop rsi\
                         \n pop rdi\
                         \n call int_pow\
                         \n push rax".to_string(),
-                    Operator::Times =>
+                    Operator::Times | Operator::TimesEquals =>
                         "\n pop rax\
                         \n pop rbx\
                         \n imul rax, rbx\
                         \n push rax".to_string(),
-                    Operator::Divide =>
+                    Operator::Divide | Operator::DivideEquals =>
                         "\n pop rbx\
                         \n pop rax\
                         \n xor rdx, rdx\
                         \n idiv rbx\
                         \n push rax".to_string(),
-                    Operator::Plus =>
+                    Operator::Plus | Operator::PlusEquals =>
                         "\n pop rax\
                         \n pop rbx\
                         \n add rax, rbx\
                         \n push rax".to_string(),
-                    Operator::Minus =>
+                    Operator::Minus | Operator::MinusEquals =>
                         "\n pop rbx\
                         \n pop rax\
                         \n sub rax, rbx\
                         \n push rax".to_string(),
 
-                    Operator::Equals | Operator::NotEquals
+                    Operator::EqualsEquals | Operator::NotEquals
                     | Operator::Greater | Operator::GreaterOrEquals
                     | Operator::Less | Operator::LessOrEquals => {
                         let cmov_condition = match op {
@@ -2348,6 +2437,8 @@ impl Compiler {
                         \n mov rbx, GREATER\
                         \n cmovg rax, rbx\
                         \n push rax".to_string(),
+
+                    Operator::Equals => unreachable!(),
                 };
 
                 self.asm.push_str( &format!( " ; {}", expression ) );
@@ -2376,15 +2467,19 @@ impl Compiler {
                 self.compile_expression( &lhs, StringTags::OnlyLen, BoolValues::ToInt );
                 self.compile_expression( &rhs, StringTags::OnlyLen, BoolValues::ToInt );
                 let jmp_condition = match op {
-                    Operator::Equals => "jne",
+                    Operator::EqualsEquals => "jne",
                     Operator::NotEquals => "je",
                     Operator::Greater => "jle",
                     Operator::GreaterOrEquals => "jl",
                     Operator::Less => "jge",
                     Operator::LessOrEquals => "jg",
 
-                    Operator::Pow | Operator::Times | Operator::Divide
-                    | Operator::Plus | Operator::Minus
+                    Operator::Equals
+                    | Operator::Pow | Operator::PowEquals
+                    | Operator::Times | Operator::TimesEquals
+                    | Operator::Divide | Operator::DivideEquals
+                    | Operator::Plus | Operator::PlusEquals
+                    | Operator::Minus | Operator::MinusEquals
                     | Operator::Compare => unreachable!(),
                 };
 

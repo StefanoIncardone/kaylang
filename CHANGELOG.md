@@ -67,12 +67,12 @@ From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProj
 
 ## 0.1
 
+- `interpret` to interpret the program without compiling it
 - `build` to compile the program down to a binary executable
 - `run` to compile and run the compiled native assembly code
-- `interpret` to interpret the program without compiling it
 - line comments: `#...`
-- integers, character literals, string literals, boolean values and comparisons, variables
-- math expressions
+- integers, character literals, string literals, boolean values and variables
+- math expressions and comparisons
 - values can be printed using the `print` or `println` (printing a newline character afterwards) keywords
 - scopes, where variables are only accessible in the scope where they were defined
 - if, if else, if else-if else statements

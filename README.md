@@ -83,12 +83,17 @@ Variable names can be any made of (but not starting with) numbers, underscores a
 ``` blitz
 var ten = 5 * 2;
 let nine = 3 ^ 2;
-const nineteen = ten + nine;
 ```
 
-- `const`: compile time avaluated immutable variable
 - `let`: immutable variable
 - `var`: mutable variable
+
+*op*_assign operators desugar to regular expressions
+
+```blitz
+var twentyone = 9;
+twentyone += 10; # equivalent to `twentyone = twentyone + 10`
+```
 
 ### Printing
 
