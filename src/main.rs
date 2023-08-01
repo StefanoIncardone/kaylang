@@ -5,8 +5,6 @@
     // IDEA print crash error message
         // TODO implement a way to print file, line and column information in source code
 // TODO implement boolean operators for strings
-// TODO remove identifier expansion enum
-    // NOTE make it so that during AST building only the names of the identifiers are kept, and transformed to actual definition only during interpretation/compilation
 use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write}, fs::File, env, process::{ExitCode, Command}, fmt::Display, path::{Path, PathBuf}, iter::Peekable, str::Chars, borrow::Cow};
 
 mod color;
@@ -58,7 +56,7 @@ impl Len for Literal {
     fn len( &self ) -> usize {
         return match self {
             Self::I64 { value } => value.to_string().len(),
-            Self::Char { value: _ } => 1 as usize,
+            Self::Char { .. } => 1 as usize,
             Self::Bool { value } => value.to_string().len(),
             Self::Str { text } => text.len(),
         }
@@ -219,19 +217,16 @@ impl Len for BracketKind {
 
 #[derive( Debug, Clone )]
 enum TokenKind {
-    // Whitespace
-    Comment( String ), // is also used as a placeholder when encountering errors during lexing
+    // Whitespace, also used as a placeholder when encountering errors during lexing
+    Comment( String ),
 
-    // Symbols
     Bracket( BracketKind ),
     SemiColon,
 
-    // Identifiers
     Literal( Literal ),
     Identifier( String ),
     Definition( Mutability ),
 
-    // Operators
     Op( Operator ),
 
     // Keywords
@@ -483,7 +478,6 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                     Ok( None ) => break,
                     Err( err ) => Err( err ),
                     Ok( Some( ch ) ) => match ch {
-                        // TODO consume until not whitespace
                         // ignore whitespace
                         _ if ch.is_ascii_whitespace() => {
                             col += 1;
@@ -616,7 +610,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
 
                             Ok( TokenKind::Comment( token_text.clone() ) )
                         },
-                        '0'..='9' => { // TODO handle negative numbers
+                        '0'..='9' => {
                             token_text.push( ch );
 
                             let mut is_digit = true;
@@ -909,6 +903,14 @@ impl<'lexer> LexerIter<'lexer> {
         return Some( Position { line, token } );
     }
 
+    fn current_or_next( &mut self ) -> Option<Position<'lexer>> {
+        return self.current().or_next( self );
+    }
+
+    // fn current_or_previous( &mut self ) -> Option<Position<'lexer>> {
+    //     return self.current().or_previous( self );
+    // }
+
     fn next( &mut self ) -> Option<Position<'lexer>> {
         let line = self.lexer.lines.get( self.line )?;
         let (line, token) = if self.token + 1 < line.tokens.len() {
@@ -1153,7 +1155,6 @@ impl<'this> Scopes {
 
     fn evaluate( &self, expression: &Expression ) -> Literal {
         return match self.extract( expression ) {
-            // TODO avoid cloning of values
             Expression::Literal( literal ) => literal.clone(),
             Expression::Binary { lhs, op, rhs } => {
                 let lhs: i64 = self.evaluate( &lhs ).into();
@@ -1310,7 +1311,7 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
 // Parsing of tokens
 impl<'lexer> AST<'lexer> {
     fn parse( &mut self, errors: &mut SyntaxErrors<'lexer>, initial_bracket_stack_len: Option<usize> ) {
-        while let Some( current ) = self.tokens.current().or_next( &mut self.tokens ) {
+        while let Some( current ) = self.tokens.current_or_next() {
             let statement_result = match current.token.kind {
                 TokenKind::Definition( _ ) => self.variable_definition(),
                 TokenKind::Identifier( _ ) => match self.tokens.peek_next() {
@@ -1450,7 +1451,7 @@ impl<'lexer> AST<'lexer> {
         // IDEA introduce casting operators
     // TODO implement negative numbers
     fn factor( &mut self ) -> Result<Expression, (&'lexer Line, SyntaxError)> {
-        let current = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected expression" )?.unwrap();
+        let current = self.tokens.current_or_next().bounded( &mut self.tokens, "expected expression" )?.unwrap();
         let factor = match &current.token.kind {
             TokenKind::True => Ok( Expression::Literal( Literal::Bool { value: true } ) ),
             TokenKind::False => Ok( Expression::Literal( Literal::Bool { value: false } ) ),
@@ -1477,7 +1478,7 @@ impl<'lexer> AST<'lexer> {
                     }) ),
                     _ => {
                         let expression = self.expression( ExpectedSemicolon::NoExpect )?;
-                        let close_bracket_pos = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected closed parenthesis" )?.unwrap();
+                        let close_bracket_pos = self.tokens.current_or_next().bounded( &mut self.tokens, "expected closed parenthesis" )?.unwrap();
                         match close_bracket_pos.token.kind {
                             TokenKind::Bracket( BracketKind::CloseRound ) => Ok( expression ),
                             _ => Err( (current.line, SyntaxError {
@@ -1504,11 +1505,8 @@ impl<'lexer> AST<'lexer> {
         return factor;
     }
 
-    // FIX dealing with missing semicolons or missing operators
-        // TODO move it outside the expression
-        // IDEA create two versions of this function, one that checks for the closing semicolon, and one that doesn't
     fn operator( &mut self, ops: &[Operator] ) -> Result<Option<Operator>, (&'lexer Line, SyntaxError)> {
-        let current_pos = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected expression or semicolon" )?.unwrap();
+        let current_pos = self.tokens.current_or_next().bounded( &mut self.tokens, "expected expression or semicolon" )?.unwrap();
         let operator = match current_pos.token.kind {
             TokenKind::Op( op ) => match ops.contains( &op ) {
                 true => Some( op ),
@@ -1574,7 +1572,7 @@ impl<'lexer> AST<'lexer> {
 
         let expression = match expected_semicolon {
             ExpectedSemicolon::Expect => {
-                let current = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected semicolon" )?.unwrap();
+                let current = self.tokens.current_or_next().bounded( &mut self.tokens, "expected semicolon" )?.unwrap();
                 let expr = match current.token.kind {
                     TokenKind::SemiColon => Ok( lhs ),
                     _ => {
@@ -1786,7 +1784,7 @@ impl<'lexer> AST<'lexer> {
         let initial_bracket_stack_len = self.brackets.len();
         let iff = self.iff( errors, initial_bracket_stack_len )?;
         let mut if_statement = IfStatement { ifs: vec![ iff ], els: None };
-        let else_pos = self.tokens.current().or_next( &mut self.tokens );
+        let else_pos = self.tokens.current_or_next();
         self.els( &mut if_statement, else_pos, errors, initial_bracket_stack_len )?;
 
         return Ok( Statement::Single( Node::If( if_statement ) ) );
@@ -1834,7 +1832,7 @@ impl<'lexer> AST<'lexer> {
 
         let condition = condition?;
 
-        let open_curly_pos = self.tokens.current().or_next( &mut self.tokens ).bounded( &mut self.tokens, "expected curly bracket" )?.unwrap();
+        let open_curly_pos = self.tokens.current_or_next().bounded( &mut self.tokens, "expected curly bracket" )?.unwrap();
         let open_curly = match open_curly_pos.token.kind {
             TokenKind::Bracket( kind @ BracketKind::OpenCurly ) => {
                 self.brackets.push( Bracket { position: open_curly_pos, kind } );
@@ -1875,7 +1873,7 @@ impl<'lexer> AST<'lexer> {
                         let else_if = self.iff( errors, initial_bracket_stack_len )?;
                         if_statement.ifs.push( else_if );
 
-                        let next_else_pos = self.tokens.current().or_next( &mut self.tokens );
+                        let next_else_pos = self.tokens.current_or_next();
                         self.els( if_statement, next_else_pos, errors, initial_bracket_stack_len )?;
                     },
                     _ => return Err( (pos.line, SyntaxError {
@@ -2209,9 +2207,8 @@ impl Compiler {
             let node = &self.scopes.scopes[ scope ].nodes[ node_idx ].clone();
             match node {
                 Node::Print( argument ) => {
-                    let mut arg = argument;
-                    let value = loop {
-                        match arg {
+                    let print_kind = loop {
+                        match self.scopes.extract( argument ) {
                             Expression::Literal( literal ) => break literal,
                             Expression::Binary { op, .. } => match op {
                                 Operator::Pow | Operator::PowEquals
@@ -2219,20 +2216,17 @@ impl Compiler {
                                 | Operator::Divide | Operator::DivideEquals
                                 | Operator::Plus | Operator::PlusEquals
                                 | Operator::Minus | Operator::MinusEquals
-                                | Operator::Compare => break &Literal::I64 { value: 0 },
+                                | Operator::Compare => break Literal::I64 { value: 0 },
                                 Operator::EqualsEquals | Operator::NotEquals
                                 | Operator::Greater | Operator::GreaterOrEquals
-                                | Operator::Less | Operator::LessOrEquals => break &Literal::Bool { value: false },
+                                | Operator::Less | Operator::LessOrEquals => break Literal::Bool { value: false },
                                 Operator::Equals => unreachable!(),
                             },
-                            Expression::Identifier( name ) => arg = match &self.scopes.resolve( &name ).value {
-                                Some( e ) => e,
-                                None => unreachable!(),
-                            },
+                            Expression::Identifier( _ ) => unreachable!(),
                         }
                     };
 
-                    let print_asm = match value {
+                    let print_asm = match print_kind {
                         Literal::I64 { .. } =>
                             "\n pop rdi\
                             \n mov rsi, 10\
