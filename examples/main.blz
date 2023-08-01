@@ -1,7 +1,5 @@
-var one = 1;
-println one;
-
-one = one + 1;
-one = one + 1;
-one = one + 1;
-println one;
+var twentyone = 9;
+println twentyone;
+twentyone = twentyone + 10;
+twentyone = twentyone + 1;
+println twentyone;
