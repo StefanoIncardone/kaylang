@@ -26,8 +26,9 @@ statement =
     | (identifier, "=", expression),
     ';';
 
-scope = "{", [{line_comment | statement | scope | if}], "}";
+scope = "{", [{line_comment | statement | scope | if | while}], "}";
 
 if = "if", expression, scope, [{"else", if}], ["else", scope];
+while = "while", expression, scope;
 
-program = [{line_comment | statement | scope | if}];
+program = [{line_comment | statement | scope | if | while}];

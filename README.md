@@ -184,3 +184,15 @@ Executes a block of code based on a condition
         println "too bad!";
     }
     ```
+
+### While statements
+
+Executes a block until a condition is not satisfied
+
+```blitz
+var i = 0;
+while i < 10 {
+    println i;
+    i += 1;
+}
+```

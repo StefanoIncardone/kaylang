@@ -76,3 +76,4 @@ From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProj
 - values can be printed using the `print` or `println` (printing a newline character afterwards) keywords
 - scopes, where variables are only accessible in the scope where they were defined
 - if, if else, if else-if else statements
+- while statements
