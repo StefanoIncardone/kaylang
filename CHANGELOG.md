@@ -6,6 +6,10 @@
 
 From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProjects/bldaps_for/common/bldaps_under_inpext.htm#:~:text=Typical%20Fortran%20source%20files%20have,f.)
 
+### Odin inspired for loop
+
+From [Odin's for loop](https://odin-lang.org/docs/overview/#for-statement)
+
 ### Arbitrary number bases between 1 and 37
 
 | prefix | shorthand | postfix |  base   |         result          |
@@ -54,15 +58,16 @@ From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProj
 
 - immutable strings are surrounded by `"`: `"hello world"`
 - mutable strings (like string builders) are surrounded by `` ` ``: `` `hello world` ``
-- unescaped strings are prefixed by a `u`: `u"\this wo\n't be escaped"`
+    - mutability could be infered by the variable's mutability
+- raw strings are prefixed by a `r`: `r"\this wo\n't be escaped"`
 - multiline strings are prefixed by a `m`:
     - lines will have newline characters appended to them unless they end in a `\`, which can be escaped using a `\\`
     - whitespace will be preserved (except before the closing quote) and leading whitespace is calculated based on the
         position of the closing quote, or by the text furthest to the left.  
 - formatted strings are prefixed by a `f`: `f"the answer is {40 + 2}"`
 - options can appear in any order right before the opening quote, but only once:
-    - `fum"`, `fu"`, `um"` are valid
-    - `fuum`, `ff "`, `u "` are not valid
+    - `frm"`, `fr"`, `rm"` are valid
+    - `frrm`, `ff "`, `r "` are not valid
 
 
 ## 0.1
@@ -72,8 +77,8 @@ From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProj
 - `run` to compile and run the compiled native assembly code
 - line comments: `#...`
 - integers, character literals, string literals, boolean values and variables
-- math expressions and comparisons
+- math expressions, boolean comparisons, boolean expressions
 - values can be printed using the `print` or `println` (printing a newline character afterwards) keywords
 - scopes, where variables are only accessible in the scope where they were defined
 - if, if else, if else-if else statements
-- while statements
+- for statements

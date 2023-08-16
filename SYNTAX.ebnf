@@ -3,32 +3,32 @@ line_comment = "#", [{valid_character}];
 
 digit = "0".."9";
 number_literal = {digit};
-
 boolean_literal = "true" | "false";
 
 escape_character = "\\" | "\n" | "\t" | "\'" | '"' | '\"';
 character_literal = "'", (escape_character | valid_character), "'";
 string_literal = '"', [{escape_character | valid_character}], '"';
-
 identifier = "_" | "A".."Z" | "a".."z", [{"_" | "A".."Z" | "a".."z" | digit}];
 
 (* from highest precedence to lowest *)
 factor = number_literal | identifier | character_literal | string_literal | boolean_literal | ("(", expression, ")");
 exponentiation = factor, ["^", factor];
-multiplication_or_division = exponentiation, [("*" | "/"), exponentiation];
-math = multiplication_or_division, [("+" | "-"), multiplication_or_division];
-expression = math, [("==" | "!=" | ">" | ">=" | "<" | "<=" | "<=>"), math];
+multiplicative_expression = exponentiation, [("*" | "/" | "%"), exponentiation];
+additive_expression = multiplicative_expression, [("+" | "-"), multiplicative_expression];
+comparative_expression = additive_expression, [("==" | "!=" | ">" | ">=" | "<" | "<=" | "<=>"), additive_expression];
+boolean_comparative_expression = comparative_expression, ("==" | "!=" | ">" | ">=" | "<" | "<="), comparative_expression;
+boolean_expression = boolean_comparative_expression, ("and" | "or" | "xor"), boolean_comparative_expression;
+expression = comparative_expression | boolean_expression;
+
 
 statement =
-    ("print", expression)
+    expression
+    | ("print", expression)
     | ("println", [expression])
-    | (("const" | "let" | "var"), identifier, ("=" | "^=" | "*=" | "/=" | "+=" | "-=" ), expression)
-    | (identifier, "=", expression),
-    ';';
+    | (("let" | "var"), identifier, ("=" | "^=" | "*=" | "/=" | "%=" | "+=" | "-=" ), expression)
+    | (identifier, "=", expression)
+    | "if", expression, scope, [{"else if", expression, scope}], ["else", scope]
+    | "for", expression, scope;
 
-scope = "{", [{line_comment | statement | scope | if | while}], "}";
-
-if = "if", expression, scope, [{"else", if}], ["else", scope];
-while = "while", expression, scope;
-
-program = [{line_comment | statement | scope | if | while}];
+scope = "{", [{(line_comment | statement | scope), ";"}], [line_comment | statement | scope], "}";
+program = [{line_comment | statement | scope}];

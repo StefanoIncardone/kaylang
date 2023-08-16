@@ -30,33 +30,20 @@ Boolean values are `true` and `false`, being functionally equivalent to `1` and 
 
 ### Characters
 
-Character literals are surrounded by `'`.
+Character literals are surrounded by `'`: `'B'`
 They can also be used in math expression, being automatically converted to their ASCII code (temporary implicit conversion)
 
 These are the available escaped characters:
 
-``` blitz
-'\\'; # backslash
-'\n'; # newline
-'\t'; # tab
-'\''; # single quote
-'\"'; '"' # double quote
-```
+- backslash: `'\\'`
+- newline: `'\n'`
+- tab: `'\t'`
+- single quote: `'\''`
+- double quote: `'\"'`, `'"'`
 
 ### Strings
 
-String literals are surrounded by `"`.
-
-```blitz
-let lucky = "nineteen";
-println lucky;
-```
-
-Note: when used in expressions strings get converted to their length (waiting for proper type checking)
-
-```blitz
-print "len of \"lucky\" is "; println "lucky" + 0; # easy way to obtain the length of the string
-```
+String literals are surrounded by `"` and contain any number of regular or escaped characters: `"Hello\nWorld!"`
 
 ### Expressions
 
@@ -64,16 +51,28 @@ Expressions follow this order of operations (from highest to lowest):
 
 - round brackets `(`, `)`
 - power `^`: exponentiation as a binary operator
-- times `*` and divide `/`: multiplication and floor division as binary operators
+- times `*`, divide `/`, remainder `%`: multiplication, floor division and remainder as binary operators
 - plus `+` and minus `-`: addition and subtraction as binary operators
-- boolean comparisons (evaluates to `1` or `0`):
-    - equals to: `==`
-    - not equals to: `!=`
-    - greater than: `>`
-    - greater or equals than: `>=`
-    - less than: `<`
-    - less or equals than: `<=`
-    - compared to: `<=>` (`-1` if less than, `0` if equals, `1` if greater)
+- comparisons:
+    - comparison operator `<=>`: `-1` if less than, `0` if equals, `1` if greater
+    - boolean comparisons (evaluate to `1` or `0` when inside math expressions, otherwise to `true` and `false`):
+        - equals to: `==`
+        - not equals to: `!=`
+        - greater than: `>`
+        - greater or equals than: `>=`
+        - less than: `<`
+        - less or equals than: `<=`
+- boolean expressions (evaluates to `1` or `0` when inside match expressions):
+    - opearands must be boolean values, i.e.: `1 and 2` is not a valid boolean expression
+    - logical and: `and`
+    - logical or: `or`
+    - logical xor: `xor`
+
+Note: when using strings in expressions they get converted to their length (waiting for proper type checking)
+
+```blitz
+print "length of \"lucky\" is "; println "lucky" + 0; # easy way to obtain the length of the string
+```
 
 ### Variables
 
@@ -83,8 +82,8 @@ Variable names can be made of (but not starting with) numbers, underscores and l
 - `var`: mutable variable
 
 ``` blitz
-var ten = 5 * 2;
 let nine = 3 ^ 2;
+var ten = 5 * 2;
 ```
 
 *op*_assign operators desugar to regular expressions
@@ -96,7 +95,7 @@ twentyone += 10; # equivalent to `twentyone = twentyone + 10`
 
 ### Printing
 
-The only way to print values is using the temporary intrinsic `print` or `println` keywords
+The only way to print values is using the temporary intrinsics `print` or `println` keywords
 
 ``` blitz
 var ten = 5 * 2;
@@ -115,34 +114,26 @@ variables are only accessible in the scope they were defined in
 
 ```blitz
 let ten = 10;
-print "ten = ";
-println ten;
+print "ten = "; println ten;
 
 {
     let nine = 9;
-    print "nine = ";
-    println nine;
+    print "nine = "; println nine;
 
     {
         let twentyone = nine + ten;
-        print "twentyone = ";
-        println twentyone;
+        print "twentyone = "; println twentyone;
 
-        print "nine in the inner scope = ";
-        println nine;
+        print "nine in the inner scope = "; println nine;
     }
 
-    print "ten in the inner scope = ";
-    println ten;
+    print "ten in the inner scope = "; println ten;
 }
 
-print "ten in the inner scope = ";
-println ten;
+print "ten in the inner scope = "; println ten;
 
 # this will result in an error because "nine" was not defined in this scope
-# print "nine in the inner scope = ";
-# println nine;
-
+# print "nine in the inner scope = "; println nine;
 ```
 
 ### If statements
@@ -185,14 +176,55 @@ Executes a block of code based on a condition
     }
     ```
 
-### While statements
+### Loops
 
 Executes a block until a condition is not satisfied
 
 ```blitz
 var i = 0;
-while i < 10 {
+for i < 10 {
     println i;
     i += 1;
+}
+```
+
+#### break and continue statements
+
+They can be used to alter the normal flow of the program
+
+```blitz
+var i = 0;
+for i < 10 {
+    if i == 6 {
+        break;
+    }
+
+    println i;
+    i += 1;
+}
+```
+
+### Semicolons
+
+Semicolons are reguired after statements.
+
+```blitz
+print "Hello "; # required semicolon
+println "World!";
+
+```
+
+They are optional if they come before a closing curly bracket (i.e. the last statement before the end of a scope),
+to allow for cleaner code like this:
+
+```blitz
+var i = 0;
+for i < 100 {
+    if i % 15 == 0 { println "fizzbuz" }
+    else if i % 3 == 0 { println "fizz" }
+    else if i % 5 == 0 { println "buzz" }
+    else { println i }
+
+    i += 1; # this semicolon is also optional
 }
 ```

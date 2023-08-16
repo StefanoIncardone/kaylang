@@ -2,9 +2,16 @@
 
 /target
 
-# to only allow any file.blz in subdirectories we need to first reallow the directory and then the specific file
+# ignoring any non .blz file in subdirectories
 /examples/**
 !/examples/*.blz
+
+!/examples/fizzbuzz
+!/examples/fizzbuzz/*.blz
+
+!/examples/project_euler
+!/examples/project_euler/1
+!/examples/project_euler/1/*.blz
 
 /asm
 Makefile
