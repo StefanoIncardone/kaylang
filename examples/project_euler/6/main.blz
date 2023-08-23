@@ -1,0 +1,5 @@
+let NUMBERS_COUNT = 100;
+let sum_of_squares = NUMBERS_COUNT * (NUMBERS_COUNT + 1) * (2 * NUMBERS_COUNT + 1) / 6;
+let square_of_sum = ((NUMBERS_COUNT * (NUMBERS_COUNT + 1)) / 2) ^ 2;
+
+println square_of_sum - sum_of_squares;

@@ -1,0 +1,59 @@
+let TARGET_FACTOR_COUNT = 500;
+
+var triangle_number = 0;
+var number = 1;
+var total_factor_count = 1;
+for total_factor_count <= TARGET_FACTOR_COUNT {
+    total_factor_count = 1;
+
+    triangle_number += number;
+    var triangle_number_copy = triangle_number;
+
+    var prime_factor_count = 0;
+    var prime_factor = 2;
+    for true {
+        if triangle_number_copy % prime_factor == 0 {
+            triangle_number_copy /= prime_factor;
+            prime_factor_count += 1;
+        }
+        else {
+            total_factor_count *= prime_factor_count + 1;
+            prime_factor_count = 0;
+
+            var is_not_prime = true;
+            for is_not_prime {
+                is_not_prime = false;
+                prime_factor += 1;
+
+                for true {
+                    if prime_factor == 2 or prime_factor == 3 {
+                        break;
+                    }
+
+                    if prime_factor <= 1 or prime_factor % 2 == 0 or prime_factor % 3 == 0 {
+                        is_not_prime = true;
+                        break;
+                    }
+
+                    var divisor = 5;
+                    for divisor^2 <= prime_factor {
+                        if prime_factor % divisor == 0 or prime_factor % (divisor + 2) == 0 {
+                            is_not_prime = true;
+                            break;
+                        }
+
+                        divisor += 6;
+                    }
+
+                    break;
+                }
+            }
+
+            if prime_factor > triangle_number_copy { break }
+        }
+    }
+
+    number += 1;
+}
+
+print "first triangle number with over "; print TARGET_FACTOR_COUNT; print " factors is "; println triangle_number;

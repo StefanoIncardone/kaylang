@@ -10,8 +10,8 @@
 !/examples/fizzbuzz/*.blz
 
 !/examples/project_euler
-!/examples/project_euler/1
-!/examples/project_euler/1/*.blz
+!/examples/project_euler/*
+!/examples/project_euler/*/*.blz
 
 /asm
 Makefile

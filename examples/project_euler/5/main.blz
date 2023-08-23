@@ -1,0 +1,11 @@
+let high_divisor = 20;
+var number = 1;
+
+for true {
+    var divisor = 2;
+    for divisor <= high_divisor and number % divisor == 0 { divisor += 1 }
+    if divisor - 1 == high_divisor { break }
+    number += 1;
+}
+
+print "the smallest number to be evenly divisible by "; print high_divisor; print " is "; println number;

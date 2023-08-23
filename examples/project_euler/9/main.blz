@@ -1,0 +1,23 @@
+# highest value that garantees that a < b < c such that a + b + c == 1000
+let a_max = 1000 / 3;
+let b_max = 1000 / 2;
+
+var found = false;
+var a = 1;
+for a < a_max and found == false {
+    var b = a + 1;
+    for b < b_max {
+        let c = 1000 - b - a;
+        if a^2 + b^2 == c^2 {
+            print "found "; print a; print ", "; print b; print ", "; println c;
+            println a * b * c;
+
+            found = true;
+            break;
+        }
+
+        b += 1;
+    }
+
+    a += 1;
+}

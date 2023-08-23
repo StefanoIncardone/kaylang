@@ -6,9 +6,16 @@
 
 From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProjects/bldaps_for/common/bldaps_under_inpext.htm#:~:text=Typical%20Fortran%20source%20files%20have,f.)
 
-### Odin inspired for loop
+### Loops
 
-From [Odin's for loop](https://odin-lang.org/docs/overview/#for-statement)
+- loops similar to [Odin's for loops](https://odin-lang.org/docs/overview/#for-statement)
+- do-for loops, only for C-style while loops
+    - cannot be used with infinite loops
+    - cannot be used with C-style for loops
+
+### Once keyword
+
+- allow variables to be mutated only once
 
 ### Arbitrary number bases between 1 and 37
 
@@ -22,15 +29,41 @@ From [Odin's for loop](https://odin-lang.org/docs/overview/#for-statement)
 | 035_   |           |   b35   |         |         base 35         |
 | 037_   |           |   b37   |         |          error          |
 
+- shift operators for different number bases (i.e. shifting corresponds to multiplying/dividing by the number base)
+
+    ```blitz
+    let number_base_10: int = 123; # base 10
+    number_base_10 << 1; # 123 << 1 == 1230 (multiplying by 10, desugars to -> * 10)
+    number_base_10 >> 2; # 123 >> 2 == 1 (dividing by 10 two times, desugars to -> / (10 * 2))
+
+    let number_base_2: int = 0b1010; # base 2
+    number_base_2 << 1; # 1010 << 1 == 10100 (multiplying by 2, uses bit shifting)
+    number_base_2 >> 1; # 1010 >> 1 == 101 (dividing by 2, uses bit shifting)
+    ```
+
+- let the user specify the shift base
+
+    ```blitz
+    let number_base_10: int = 123; # base 10
+    number_base_10 <<b2 1; # 123 <<b2 1 == 246 (multiplying by 2, uses bit shifting)
+    number_base_10 >>b2 2; # 123 >>b2 2 == 30 (dividing by 2 two times, uses bit shifting)
+
+    let number_base_2: int = 0b1010; # base 2
+    number_base_2 <<b10 1; # 1010 <<b10 1 == 01100100 (multiplying by 10, desugars to -> * 10)
+    number_base_2 >>b10 1; # 1010 >>b10 1 == 1 (dividing by 10, desugars to -> / 10)
+    ```
+
 ### Unchecked/Checked
 
 - unchecked (+, -, /, ... ): overflow will wrap, division by zero will crash
-- checked (c+, c-, c/, ...): added code to check for overflows/division by zero
+- checked (++, --, //, ...):
+    - overflow/underflow may either crash or return both the result and the overflow of the addition
+    - division will return either the result or an error value
 - maybe have a compiler flag to use checked/unchecked operators
 
 ### Operators
 
-- Absolute value:
+- absolute value:
     - enclosed by a `|`
 
     ```blitz
@@ -38,7 +71,7 @@ From [Odin's for loop](https://odin-lang.org/docs/overview/#for-statement)
     |-19| == 19
     ```
 
-- Floor:
+- floor:
     - enclosed by `|\` and `/|`, and have to be written as a single token, so `| \` and `/ |` are not valid
 
     ```blitz
@@ -46,12 +79,33 @@ From [Odin's for loop](https://odin-lang.org/docs/overview/#for-statement)
     |\-19.3/| == -20
     ```
 
-- Ceil:
+- ceil:
     - enclosed by `|/` and `\|`, and have to be written as a single token, so `| /` and `\ |` are not valid
 
     ```blitz
     |/19.3\| == 20
     |/-19.3\| == -19
+    ```
+
+- is multiple of: `%%`
+
+    ```blitz
+    let number = 42;
+    if number %% 2 { # desugars to number % 2 == 0
+        println "even";
+    }
+    else {
+        println "odd";
+    }
+    ```
+
+- checking multiple values for equality
+
+    ```blitz
+    let n = 42;
+    if n == 19 or 21 or 42 { # desugars to n == 19 or n == 21 or n == 42
+        println "nice";
+    }
     ```
 
 ### Strings

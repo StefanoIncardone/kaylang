@@ -6,6 +6,8 @@
         // TODO implement a way to print file, line and column information in source code
 // TODO implement boolean operators for strings
 // IDEA optimize expression building by implementing associativity rules (ie. remove parenthesis around additions and subtractions)
+// TODO shortcircuit boolean operators
+// TODO find out why calculating 2^63 fails in interpretation mode
 use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write}, fs::File, env, process::{ExitCode, Command}, fmt::Display, path::{Path, PathBuf}, iter::Peekable, str::Chars, borrow::Cow, cmp::Ordering};
 
 mod color;
@@ -34,6 +36,7 @@ struct Str {
 
 #[derive( Debug, Clone )]
 enum Literal {
+    // TODO have different size integers and default to 32 bits for literals
     Int { value: isize },
     Char { value: u8 }, // only supporting ASCII characters for now
     Bool { value: bool },
@@ -1227,14 +1230,14 @@ struct Definition {
     typ: Type,
 }
 
-type ScopeIdx = usize;
-
 #[derive( Debug )]
 struct Scope {
     parent: Option<ScopeIdx>,
     definitions: Vec<Definition>,
     nodes: Vec<Node>,
 }
+
+type ScopeIdx = usize;
 
 #[derive( Debug )]
 struct Scopes {
@@ -1383,6 +1386,8 @@ struct Bracket<'lexer> {
 struct AST<'lexer> {
     tokens: LexerIter<'lexer>, // NOTE possibly remove this field
     scopes: Scopes,
+
+    // TODO move bracket matching to lexing stage
     brackets: Vec<Bracket<'lexer>>,
     for_depth: usize,
 }
@@ -2167,7 +2172,10 @@ impl<'ast> Interpreter<'ast> {
                 let rhs: isize = self.evaluate( &rhs ).into();
 
                 match op {
-                    Operator::Pow | Operator::PowEquals => Literal::Int { value: lhs.pow( rhs as u32 ) },
+                    Operator::Pow | Operator::PowEquals => match rhs {
+                        2 => Literal::Int { value: lhs * lhs },
+                        _ => Literal::Int { value: lhs.pow( rhs as u32 ) },
+                    },
                     Operator::Times | Operator::TimesEquals => Literal::Int { value: lhs * rhs },
                     Operator::Divide | Operator::DivideEquals => Literal::Int { value: lhs / rhs },
                     Operator::Remainder | Operator::RemainderEquals => Literal::Int { value: lhs % rhs },
@@ -2208,6 +2216,8 @@ impl<'ast> Interpreter<'ast> {
 
     fn interpret_scope( &mut self, scope: ScopeIdx ) {
         let current_scope = &self.ast.scopes.scopes[ scope ];
+        let mut defined_variables = 0;
+
         for node in  &current_scope.nodes {
             match node {
                 Node::Print( argument ) => self.evaluate( &argument ).display(),
@@ -2239,11 +2249,13 @@ impl<'ast> Interpreter<'ast> {
                         }
                     },
                 Node::Break | Node::Continue => unreachable!(),
-                Node::Definition( name, value ) =>
+                Node::Definition( name, value ) => {
+                    defined_variables += 1;
                     self.variables.push( InterpreterVariable {
                         name: name.clone(),
                         value: self.evaluate_expression( value )
-                    } ),
+                    } );
+                }
                 Node::Assignment( name, new_value ) => {
                     let value = self.evaluate_expression( new_value );
                     for variable in &mut self.variables {
@@ -2258,13 +2270,15 @@ impl<'ast> Interpreter<'ast> {
             }
         }
 
-        for _ in &current_scope.definitions {
+        for _ in 0..defined_variables {
             self.variables.pop();
         }
     }
 
     fn interpret_loop( &mut self, scope: ScopeIdx ) -> ControlFlowStatement {
         let current_scope = &self.ast.scopes.scopes[ scope ];
+        let mut defined_variables = 0;
+
         let control_flow = 'control_flow: {
             for node in  &current_scope.nodes {
                 let cf = match node {
@@ -2306,10 +2320,12 @@ impl<'ast> Interpreter<'ast> {
                     Node::Break => break 'control_flow ControlFlowStatement::Break,
                     Node::Continue => break 'control_flow ControlFlowStatement::Continue,
                     Node::Definition( name, value ) => {
+                        defined_variables += 1;
                         self.variables.push( InterpreterVariable {
                             name: name.clone(),
                             value: self.evaluate_expression( value )
                         } );
+
                         ControlFlowStatement::None
                     },
                     Node::Assignment( name, new_value ) => {
@@ -2320,6 +2336,7 @@ impl<'ast> Interpreter<'ast> {
                                 break;
                             }
                         }
+
                         ControlFlowStatement::None
                     },
                     Node::Scope( inner ) => self.interpret_loop( *inner ),
@@ -2329,13 +2346,13 @@ impl<'ast> Interpreter<'ast> {
                     },
                 };
 
-                if let ControlFlowStatement::None = cf {} else { break 'control_flow cf }
+                if let ControlFlowStatement::None = cf {} else { break 'control_flow cf; }
             }
 
             ControlFlowStatement::None
         };
 
-        for _ in &current_scope.definitions {
+        for _ in 0..defined_variables {
             self.variables.pop();
         }
 
@@ -2927,88 +2944,8 @@ impl<'ast> Compiler<'ast> {
                 },
                 Node::Break => self.asm += &format!( " jmp for_{}_end\n\n", self.for_idx_stack.last().unwrap() ),
                 Node::Continue => self.asm += &format!( " jmp for_{}\n\n", self.for_idx_stack.last().unwrap() ),
-                Node::Definition( name, value ) => {
-                    let variable = self.resolve( &name );
-                    let variable_typ = variable.typ;
-                    let variable_offset = variable.offset;
-                    self.asm += &format!( " ; {} = {}\n", name, value );
-
-                    match value {
-                        Expression::Literal( Literal::Int { value } ) =>
-                            self.asm += &format!( " mov qword [rbp + {}], {}\n\n", variable_offset, value ),
-                        Expression::Literal( Literal::Char { value } ) =>
-                            self.asm += &format!( " mov byte [rbp + {}], {}\n\n", variable_offset, value ),
-                        Expression::Literal( Literal::Bool { value } ) =>
-                            self.asm += &format!( " mov byte [rbp + {}], {}\n\n", variable_offset, value ),
-                        Expression::Literal( Literal::Str( string @ Str { .. } ) ) => {
-                            let string_label_idx = self.string_label_idx( string );
-                            let string_label = &self.strings[ string_label_idx ];
-
-                            self.asm += &format!(
-                                " mov qword [rbp + {}], {}\
-                                \n mov qword [rbp + {}], {}\n\n",
-                                variable_offset, string_label.label,
-                                variable_offset + 8, string_label.len_label
-                            );
-                        },
-                        Expression::Binary { .. } => {
-                            self.compile_expression( value );
-
-                            match variable_typ {
-                                Type::Int | Type::Str => self.asm += &format!( " mov [rbp + {}], rdi\n\n", variable_offset ),
-                                Type::Char | Type::Bool => self.asm += &format!( " mov [rbp + {}], dil\n\n", variable_offset ),
-                            }
-                        }
-                        Expression::Identifier( src_name, _ ) => {
-                            let src_variable = self.resolve( src_name );
-                            let src_variable_typ = src_variable.typ;
-                            let src_variable_offset = src_variable.offset;
-
-                            match src_variable_typ {
-                                Type::Int =>
-                                    self.asm += &format!(
-                                        " mov rax, [rbp + {}]\
-                                        \n mov qword [rbp + {}], rax\n\n",
-                                        src_variable_offset, variable_offset
-                                    ),
-                                Type::Char | Type::Bool =>
-                                    self.asm += &format!(
-                                        " mov rax, [rbp + {}]\
-                                        \n mov byte [rbp + {}], rax\n\n",
-                                        src_variable_offset, variable_offset
-                                    ),
-                                Type::Str =>
-                                    self.asm += &format!(
-                                        " mov rax, [rbp + {}]\
-                                        \n mov rdx, [rbp + {}]\
-                                        \n mov [rbp + {}], rax\
-                                        \n mov [rbp + {}], rdx\n\n",
-                                        src_variable_offset, variable_offset,
-                                        src_variable_offset + 8, variable_offset + 8
-                                    ),
-                            }
-                        },
-                    }
-                },
-                Node::Assignment( name, value ) => {
-                    let src_variable = self.resolve( name );
-                    let src_variable_typ = src_variable.typ;
-                    let src_variable_offset = src_variable.offset;
-
-                    self.compile_expression( value );
-
-                    match src_variable_typ {
-                        Type::Int | Type::Char | Type::Bool =>
-                            self.asm += &format!( " mov [rbp + {}], rdi\n\n", src_variable_offset ),
-                            Type::Str =>
-                            self.asm += &format!(
-                                " mov [rbp + {}], rsi\
-                                \n mov [rbp + {}], rdx\n\n",
-                                src_variable_offset,
-                                src_variable_offset + 8
-                            ),
-                    }
-                },
+                Node::Definition( name, value ) => self.compile_assignment( name, value ),
+                Node::Assignment( name, value ) => self.compile_assignment( name, value ),
                 Node::Scope( inner ) => self.compile_scope( *inner ),
                 Node::Expression( expression ) => self.compile_expression( expression ),
             }
@@ -3039,7 +2976,8 @@ impl<'ast> Compiler<'ast> {
                 let src_variable_offset = src_variable.offset;
 
                 match src_variable_typ {
-                    Type::Int | Type::Char | Type::Bool => self.asm += &format!( " mov rdi, [rbp + {}]\n", src_variable_offset ),
+                    Type::Int => self.asm += &format!( " mov rdi, [rbp + {}]\n", src_variable_offset ),
+                    Type::Char | Type::Bool => self.asm += &format!( " movzx rdi, byte [rbp + {}]\n", src_variable_offset ),
                     Type::Str =>
                         self.asm += &format!(
                             " mov rsi, [rbp + {}]\
@@ -3065,59 +3003,70 @@ impl<'ast> Compiler<'ast> {
                 self.asm += &format!( " mov {}, {}\n", dst, string_label.len_label );
             },
             // TODO find way to avoiding compiling the move to a support register if the rhs operand is a literal
-            // IDEA optimize increments
+                // IDEA optimize increments
+                // IDEA optimize checking for even values by testing the least significant bit (e.g. test rax, 1)
             Expression::Binary { lhs, op, rhs } => {
                 let (lhs_reg, rhs_reg, op_asm) = match op {
-                    Operator::Pow | Operator::PowEquals =>
-                        (Register::RDI, Register::RSI,
+                    Operator::Pow | Operator::PowEquals => match &**rhs {
+                        Expression::Literal( Literal::Int { value: 2 } ) => (Register::RDI, Register::RSI,
+                            " imul rdi, rdi\n"
+                        ),
+                        _ => (Register::RDI, Register::RSI,
                             " call int_pow\
                             \n mov rdi, rax\n"
                         ),
+                    },
                     Operator::Times | Operator::TimesEquals => (Register::RDI, Register::RSI, " imul rdi, rsi\n"),
                     Operator::Divide | Operator::DivideEquals =>
-                        (Register::RAX, Register::RSI,
-                            " xor rdx, rdx\
+                        (Register::RDI, Register::RSI,
+                            " mov rax, rdi\
+                            \n xor rdx, rdx\
                             \n idiv rsi\
                             \n mov rdi, rax\n"
                         ),
                     Operator::Remainder | Operator::RemainderEquals =>
-                        (Register::RAX, Register::RSI,
-                            " xor rdx, rdx\
+                        (Register::RDI, Register::RSI,
+                            " mov rax, rdi\
+                            \n xor rdx, rdx\
                             \n idiv rsi\
                             \n mov rdi, rdx\n"
                         ),
                     Operator::Plus | Operator::PlusEquals => (Register::RDI, Register::RSI, " add rdi, rsi\n"),
                     Operator::Minus | Operator::MinusEquals => (Register::RDI, Register::RSI, " sub rdi, rsi\n"),
-
-                    // TODO avoid using dil: clear rdi and move 1 to it
-                    Operator::EqualsEquals =>
+                    Operator::EqualsEquals => // IDEA ottimizzare controllo divisibilita per 2 o qui o durante l'operazione di resto
                         (Register::RDI, Register::RSI,
                             " cmp rdi, rsi\
+                            \n mov rdi, false\
                             \n sete dil\n"
                         ),
                     Operator::NotEquals =>
                         (Register::RDI, Register::RSI,
                             " cmp rdi, rsi\
+                            \n mov rdi, false\
                             \n setne dil\n"
                         ),
                     Operator::Greater =>
                         (Register::RDI, Register::RSI,
                             " cmp rdi, rsi\
+                            \n mov rdi, false\
                             \n setg dil\n"
                         ),
                     Operator::GreaterOrEquals =>
                         (Register::RDI, Register::RSI,
                             " cmp rdi, rsi\
+                            \n mov rdi, false\
                             \n setge dil\n"
                         ),
                     Operator::Less =>
                         (Register::RDI, Register::RSI,
                             " cmp rdi, rsi\
+                            \n mov rdi, false\
                             \n setl dil\n"
                         ),
                     Operator::LessOrEquals =>
                         (Register::RDI, Register::RSI,
                             " cmp rdi, rsi\
+                            \n mov rdi, false\
                             \n setle dil\n"
                         ),
 
@@ -3163,7 +3112,8 @@ impl<'ast> Compiler<'ast> {
                 let src_variable_offset = src_variable.offset;
 
                 match src_variable_typ {
-                    Type::Int | Type::Char | Type::Bool => self.asm += &format!( " mov {}, [rbp + {}]\n", dst, src_variable_offset ),
+                    Type::Int => self.asm += &format!( " mov {}, [rbp + {}]\n", dst, src_variable_offset ),
+                    Type::Char | Type::Bool => self.asm += &format!( " movzx {}, byte [rbp + {}]\n", dst, src_variable_offset ),
                     Type::Str => self.asm += &format!( " mov {}, [rbp + {}]\n", dst, src_variable_offset + 8 ),
                 }
             },
@@ -3206,9 +3156,9 @@ impl<'ast> Compiler<'ast> {
                     Operator::GreaterOrEquals => self.asm += &format!( " cmp rdi, rsi\n jl {}\n\n", if_false_tag ),
                     Operator::Less => self.asm += &format!( " cmp rdi, rsi\n jge {}\n\n", if_false_tag ),
                     Operator::LessOrEquals => self.asm += &format!( " cmp rdi, rsi\n jg {}\n\n", if_false_tag ),
-                    Operator::And => self.asm += &format!( " cmp rdi, true\n jne {}\n\n", if_false_tag ),
-                    Operator::Or => self.asm += &format!( " cmp rdi, true\n jne {}\n\n", if_false_tag ),
-                    Operator::Xor => self.asm += &format!( " cmp rdi, true\n jne {}\n\n", if_false_tag ),
+                    Operator::And => self.asm += &format!( " and rdi, rsi\n jz {}\n\n", if_false_tag ),
+                    Operator::Or => self.asm += &format!( " or rdi, rsi\n jz {}\n\n", if_false_tag ),
+                    Operator::Xor => self.asm += &format!( " xor rdi, rsi\n jz {}\n\n", if_false_tag ),
 
                     Operator::Pow | Operator::PowEquals
                     | Operator::Times | Operator::TimesEquals
@@ -3224,7 +3174,7 @@ impl<'ast> Compiler<'ast> {
                 let src_variable = self.resolve( src_name );
                 self.asm += &format!(
                     " mov dil, [rbp + {}]\
-                    \n cmp rdi, true\
+                    \n cmp dil, true\
                     \n jne {}\n\n",
                     src_variable.offset,
                     if_false_tag
@@ -3271,9 +3221,9 @@ impl<'ast> Compiler<'ast> {
                         Operator::GreaterOrEquals => self.asm += &format!( " cmp rdi, rsi\n jl {}\n\n", for_false_tag ),
                         Operator::Less => self.asm += &format!( " cmp rdi, rsi\n jge {}\n\n", for_false_tag ),
                         Operator::LessOrEquals => self.asm += &format!( " cmp rdi, rsi\n jg {}\n\n", for_false_tag ),
-                        Operator::And => self.asm += &format!( " cmp rdi, true\n jne {}\n\n", for_false_tag ),
-                        Operator::Or => self.asm += &format!( " cmp rdi, true\n jne {}\n\n", for_false_tag ),
-                        Operator::Xor => self.asm += &format!( " cmp rdi, true\n jne {}\n\n", for_false_tag ),
+                        Operator::And => self.asm += &format!( " and rdi, rsi\n jz {}\n\n", for_false_tag ),
+                        Operator::Or => self.asm += &format!( " or rdi, rsi\n jz {}\n\n", for_false_tag ),
+                        Operator::Xor => self.asm += &format!( " xor rdi, rsi\n jz {}\n\n", for_false_tag ),
 
                         Operator::Pow | Operator::PowEquals
                         | Operator::Times | Operator::TimesEquals
@@ -3289,7 +3239,7 @@ impl<'ast> Compiler<'ast> {
                     let src_variable = self.resolve( src_name );
                     self.asm += &format!(
                         " mov dil, [rbp + {}]\
-                        \n cmp rdi, true\
+                        \n cmp dil, true\
                         \n jne {}\n\n",
                         src_variable.offset,
                         for_false_tag
@@ -3299,6 +3249,75 @@ impl<'ast> Compiler<'ast> {
         }
 
         self.compile_scope( forr.scope );
+    }
+
+
+    fn compile_assignment( &mut self, name: &String, value: &'ast Expression ) {
+        let variable = self.resolve( name );
+        let variable_typ = variable.typ;
+        let variable_offset = variable.offset;
+        self.asm += &format!( " ; {} = {}\n", name, value );
+
+        match value {
+            Expression::Literal( Literal::Int { value } ) =>
+                self.asm += &format!(
+                    " mov rdi, {}\
+                    \n mov [rbp + {}], rdi\n\n",
+                    value, variable_offset
+                ),
+            Expression::Literal( Literal::Char { value } ) =>
+                self.asm += &format!( " mov byte [rbp + {}], {}\n\n", variable_offset, value ),
+            Expression::Literal( Literal::Bool { value } ) =>
+                self.asm += &format!( " mov byte [rbp + {}], {}\n\n", variable_offset, value ),
+            Expression::Literal( Literal::Str( string @ Str { .. } ) ) => {
+                let string_label_idx = self.string_label_idx( string );
+                let string_label = &self.strings[ string_label_idx ];
+
+                self.asm += &format!(
+                    " mov qword [rbp + {}], {}\
+                    \n mov qword [rbp + {}], {}\n\n",
+                    variable_offset, string_label.label,
+                    variable_offset + 8, string_label.len_label
+                );
+            },
+            Expression::Binary { .. } => {
+                self.compile_expression( value );
+
+                match variable_typ {
+                    Type::Int | Type::Str => self.asm += &format!( " mov [rbp + {}], rdi\n\n", variable_offset ),
+                    Type::Char | Type::Bool => self.asm += &format!( " mov [rbp + {}], dil\n\n", variable_offset ),
+                }
+            }
+            Expression::Identifier( src_name, _ ) => {
+                let src_variable = self.resolve( src_name );
+                let src_variable_typ = src_variable.typ;
+                let src_variable_offset = src_variable.offset;
+
+                match src_variable_typ {
+                    Type::Int =>
+                        self.asm += &format!(
+                            " mov rdi, [rbp + {}]\
+                            \n mov [rbp + {}], rdi\n\n",
+                            src_variable_offset, variable_offset
+                        ),
+                    Type::Char | Type::Bool =>
+                        self.asm += &format!(
+                            " movzx rdi, byte [rbp + {}]\
+                            \n mov [rbp + {}], rdi\n\n",
+                            src_variable_offset, variable_offset
+                        ),
+                    Type::Str =>
+                        self.asm += &format!(
+                            " mov rsi, [rbp + {}]\
+                            \n mov rdx, [rbp + {}]\
+                            \n mov [rbp + {}], rsi\
+                            \n mov [rbp + {}], rdx\n\n",
+                            src_variable_offset, variable_offset,
+                            src_variable_offset + 8, variable_offset + 8
+                        ),
+                }
+            },
+        }
     }
 }
 

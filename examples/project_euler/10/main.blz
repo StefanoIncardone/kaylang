@@ -1,0 +1,33 @@
+var sum = 0;
+var number = 1;
+for number < 2000000 {
+    var is_prime = true;
+    for true {
+        if number == 2 or number == 3 {
+            is_prime = true;
+            break;
+        }
+
+        if number <= 1 or number % 2 == 0 or number % 3 == 0 {
+            is_prime = false;
+            break;
+        }
+
+        var divisor = 5;
+        for divisor^2 <= number {
+            if number % divisor == 0 or number % (divisor + 2) == 0 {
+                is_prime = false;
+                break;
+            }
+
+            divisor += 6;
+        }
+
+        break;
+    }
+
+    sum += is_prime * number;
+    number += 1;
+}
+
+println sum;

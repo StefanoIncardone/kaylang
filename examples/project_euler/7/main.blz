@@ -1,0 +1,32 @@
+var current_prime = 0;
+
+var number = 2;
+for current_prime < 10001 {
+    var is_prime = true;
+    for true {
+        if number == 2 or number == 3 { break }
+
+        if number <= 1 or number % 2 == 0 or number % 3 == 0 {
+            is_prime = false;
+            break;
+        }
+
+        var divisor = 5;
+        for divisor^2 <= number {
+            if number % divisor == 0 or number % (divisor + 2) == 0 {
+                is_prime = false;
+                break;
+            }
+
+            divisor += 6;
+        }
+
+        break;
+    }
+
+    if is_prime { current_prime += 1 }
+
+    number += 1;
+}
+
+println number - 1;
