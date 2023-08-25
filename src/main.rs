@@ -1,13 +1,14 @@
 // TODO process entire statement for syntactical correctness and then report all the errors
     // IDEA read the src file line when printing errors instead of composing it from the tokens
         // IDEA have Token contain the absolute column in the source file, and when encountering errors read the corresponding line
-// TODO fix division by zero
+// TODO fix division by zero, rasing to a negative power
     // IDEA print crash error message
         // TODO implement a way to print file, line and column information in source code
 // TODO implement boolean operators for strings
 // IDEA optimize expression building by implementing associativity rules (ie. remove parenthesis around additions and subtractions)
 // TODO shortcircuit boolean operators
-// TODO find out why calculating 2^63 fails in interpretation mode
+// IDEA reintroduce "semicolon" function, taking out the semicolon checking out of the expression parsing
+// IDEA create Parser class that builds the AST, and then validate the AST afterwards
 use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write}, fs::File, env, process::{ExitCode, Command}, fmt::Display, path::{Path, PathBuf}, iter::Peekable, str::Chars, borrow::Cow, cmp::Ordering};
 
 mod color;
@@ -588,6 +589,16 @@ impl Display for SyntaxErrors<'_> {
 }
 
 
+type LineIdx = usize;
+type TokenIdx = usize;
+
+#[derive( Debug )]
+struct Bracket {
+    line_idx: LineIdx,
+    token_idx: TokenIdx,
+    kind: BracketKind,
+}
+
 #[derive( Debug )]
 struct Lexer {
     file_path: String,
@@ -605,6 +616,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
 
         let mut lines: Vec<Line> = Vec::new();
         let mut tokens: Vec<Token> = vec![ Token { col: 1, kind: TokenKind::SOF } ];
+        let mut brackets: Vec<Bracket> = Vec::new();
 
         let mut err_lines: Vec<Cow<Line>> = Vec::new();
         let mut errors: Vec<SyntaxError> = Vec::new();
@@ -641,10 +653,56 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
 
                             Ok( TokenKind::Comment( token_text.clone() ) )
                         },
-                        '(' => Ok( TokenKind::Bracket( BracketKind::OpenRound ) ),
-                        ')' => Ok( TokenKind::Bracket( BracketKind::CloseRound ) ),
-                        '{' => Ok( TokenKind::Bracket( BracketKind::OpenCurly ) ),
-                        '}' => Ok( TokenKind::Bracket( BracketKind::CloseCurly ) ),
+                        '(' => {
+                            let kind = BracketKind::OpenRound;
+                            brackets.push( Bracket { line_idx: lines.len(), token_idx: tokens.len(), kind } );
+                            Ok( TokenKind::Bracket( kind ) )
+                        },
+                        ')' => match brackets.pop() {
+                            Some( bracket ) => match bracket.kind {
+                                BracketKind::OpenRound => Ok( TokenKind::Bracket( BracketKind::CloseRound ) ),
+                                BracketKind::CloseCurly | BracketKind::CloseRound | BracketKind::OpenCurly =>
+                                    Err( (ch.to_string(), SyntaxError {
+                                        line_idx: lines.len(),
+                                        col,
+                                        len: ch.len_utf8(),
+                                        msg: Cow::Borrowed( "mismatched bracket" ),
+                                        help_msg: Cow::Borrowed( "closes the wrong bracket" )
+                                    }) )
+                            },
+                            None => Err( (ch.to_string(), SyntaxError {
+                                line_idx: lines.len(),
+                                col,
+                                len: ch.len_utf8(),
+                                msg: Cow::Borrowed( "stray bracket" ),
+                                help_msg: Cow::Borrowed( "was not opened before" )
+                            }) )
+                        },
+                        '{' => {
+                            let kind = BracketKind::OpenCurly;
+                            brackets.push( Bracket { line_idx: lines.len(), token_idx: tokens.len(), kind } );
+                            Ok( TokenKind::Bracket( kind ) )
+                        },
+                        '}' => match brackets.pop() {
+                            Some( bracket ) => match bracket.kind {
+                                BracketKind::OpenCurly => Ok( TokenKind::Bracket( BracketKind::CloseCurly ) ),
+                                BracketKind::CloseCurly | BracketKind::CloseRound | BracketKind::OpenRound =>
+                                    Err( (ch.to_string(), SyntaxError {
+                                        line_idx: 0,
+                                        col,
+                                        len: ch.len_utf8(),
+                                        msg: Cow::Borrowed( "mismatched bracket" ),
+                                        help_msg: Cow::Borrowed( "closes the wrong bracket" )
+                                    }) )
+                            },
+                            None => Err( (ch.to_string(), SyntaxError {
+                                line_idx: 0,
+                                col,
+                                len: ch.len_utf8(),
+                                msg: Cow::Borrowed( "stray bracket" ),
+                                help_msg: Cow::Borrowed( "was not opened before" )
+                            }) )
+                        },
                         ';' => Ok( TokenKind::SemiColon ),
                         '^' => match Self::peek_next( &mut src ) {
                             Ok( Some( '=' ) ) => {
@@ -701,7 +759,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                                 Ok( TokenKind::Op( Operator::NotEquals ) )
                             },
                             _ => Err( (ch.to_string(), SyntaxError {
-                                line_idx: err_lines.len(),
+                                line_idx: 0,
                                 col,
                                 len: ch.len_utf8(),
                                 msg: Cow::Borrowed( "unexpected character" ),
@@ -736,7 +794,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
 
                             match Self::parse_char( &mut src, &mut token_text ) {
                                 Ok( b'\'' ) if token_text.len() == 2 => Err( (token_text.clone(), SyntaxError {
-                                    line_idx: err_lines.len(),
+                                    line_idx: 0,
                                     col,
                                     len: token_text.len(),
                                     msg: Cow::Borrowed( "empty character literal" ),
@@ -746,7 +804,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                                     Ok( next ) => match next {
                                         b'\'' => Ok( TokenKind::Literal( Literal::Char { value } ) ),
                                         _ => Err( (token_text.clone(), SyntaxError {
-                                            line_idx: err_lines.len(),
+                                            line_idx: 0,
                                             col,
                                             len: token_text.len(),
                                             msg: Cow::Borrowed( "unclosed character literal" ),
@@ -778,7 +836,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                                 true => match token_text.parse() { // TODO create own number parsing function
                                     Ok( value ) => Ok( TokenKind::Literal( Literal::Int { value } ) ),
                                     Err( _ ) => Err( (token_text.clone(), SyntaxError {
-                                        line_idx: err_lines.len(),
+                                        line_idx: 0,
                                         col,
                                         len: token_text.len(),
                                         msg: Cow::Borrowed( "expected number literal" ),
@@ -786,7 +844,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                                     }) ),
                                 },
                                 false => Err( (token_text.clone(), SyntaxError {
-                                    line_idx: err_lines.len(),
+                                    line_idx: 0,
                                     col,
                                     len: token_text.len(),
                                     msg: Cow::Borrowed( "expected number literal" ),
@@ -822,7 +880,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                             Ok( kind )
                         },
                         _ => Err( (ch.to_string(), SyntaxError {
-                            line_idx: err_lines.len(),
+                            line_idx: 0,
                             col,
                             len: ch.len_utf8(),
                             msg: Cow::Borrowed( "unexpected character" ),
@@ -878,6 +936,33 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
 
             src_line_text.clear();
             tokens = Vec::new();
+        }
+
+        if !brackets.is_empty() {
+            for bracket in brackets {
+                let line = &lines[ bracket.line_idx ];
+
+                let mut found = false;
+                for err_line in &err_lines {
+                    if line.number == err_line.number {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if !found {
+                    err_lines.push( Cow::Owned( line.clone() ) );
+                }
+
+                // there can only be open brackets at this point
+                errors.push( SyntaxError {
+                    line_idx: err_lines.len() - 1,
+                    col: line.tokens[ bracket.token_idx ].col,
+                    len: bracket.kind.len(),
+                    msg: Cow::Borrowed( "stray bracket" ),
+                    help_msg: Cow::Borrowed( "was not closed" )
+                } );
+            }
         }
 
         return match errors.is_empty() {
@@ -1335,13 +1420,6 @@ enum Statement {
     Multiple( Vec<Node> ),
 }
 
-#[derive( PartialEq, Clone, Copy )]
-enum ExpectedSemicolon {
-    Expect,
-    NoExpect,
-}
-
-
 #[derive( Debug, Clone )]
 enum Node {
     Expression( Expression ),
@@ -1376,19 +1454,9 @@ impl Display for Node {
 
 
 #[derive( Debug )]
-struct Bracket<'lexer> {
-    position: Position<'lexer>,
-    kind: BracketKind,
-}
-
-// TODO create ASTBuilder struct that returns the AST, containing only the definitions and nodes of the global scope
-#[derive( Debug )]
 struct AST<'lexer> {
     tokens: LexerIter<'lexer>, // NOTE possibly remove this field
     scopes: Scopes,
-
-    // TODO move bracket matching to lexing stage
-    brackets: Vec<Bracket<'lexer>>,
     for_depth: usize,
 }
 
@@ -1399,7 +1467,6 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
         let mut this = Self {
             tokens: lexer.iter(),
             scopes: Scopes { scopes: Vec::new(), current: 0 },
-            brackets: Vec::new(),
             for_depth: 0,
         };
 
@@ -1409,32 +1476,7 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
             errors: Vec::new(),
         };
 
-        this.parse( &mut errors, None );
-
-        if !this.brackets.is_empty() {
-            for bracket in &this.brackets {
-                let mut found = false;
-                for line in &errors.lines {
-                    if bracket.position.line.number == line.number {
-                        found = true;
-                        break;
-                    }
-                }
-
-                if !found {
-                    errors.lines.push( Cow::Borrowed( bracket.position.line ) );
-                }
-
-                // there can only be open brackets at this point
-                errors.errors.push( SyntaxError {
-                    line_idx: errors.lines.len() - 1,
-                    col: bracket.position.token.col,
-                    len: bracket.kind.len(),
-                    msg: Cow::Borrowed( "stray bracket" ),
-                    help_msg: Cow::Borrowed( "was not closed" )
-                } );
-            }
-        }
+        this.parse_scope( &mut errors );
 
         return match errors.errors.is_empty() {
             true => Ok( this ),
@@ -1445,12 +1487,12 @@ impl<'lexer> TryFrom<&'lexer Lexer> for AST<'lexer> {
 
 // Parsing of tokens
 impl<'lexer> AST<'lexer> {
-    fn parse( &mut self, errors: &mut SyntaxErrors<'lexer>, initial_bracket_stack_len: Option<usize> ) {
+    fn parse_scope( &mut self, errors: &mut SyntaxErrors<'lexer> ) {
         while let Some( current ) = self.tokens.current_or_next() {
             let statement_result = match current.token.kind {
                 TokenKind::Literal( _ )
                 | TokenKind::Bracket( BracketKind::OpenRound )
-                | TokenKind::True | TokenKind::False => match self.expression( ExpectedSemicolon::Expect ) {
+                | TokenKind::True | TokenKind::False => match self.expression() {
                     Ok( expression ) => Ok( Statement::Single( Node::Expression( expression ) ) ),
                     Err( err ) => Err( err ),
                 },
@@ -1502,15 +1544,14 @@ impl<'lexer> AST<'lexer> {
                         | TokenKind::Op( Operator::DivideEquals )
                         | TokenKind::Op( Operator::PlusEquals )
                         | TokenKind::Op( Operator::MinusEquals ) => self.variable_reassignment(),
-                        _ => match self.expression( ExpectedSemicolon::Expect ) {
+                        _ => match self.expression() {
                             Ok( expression ) => Ok( Statement::Single( Node::Expression( expression ) ) ),
                             Err( err ) => Err( err ),
                         },
                     },
                     None => Ok( Statement::Stop ),
                 },
-                TokenKind::Bracket( kind @ BracketKind::OpenCurly ) => {
-                    self.brackets.push( Bracket { position: current, kind } );
+                TokenKind::Bracket( BracketKind::OpenCurly ) => {
                     self.scopes.create_and_add_to_current();
 
                     self.tokens.next();
@@ -1518,31 +1559,12 @@ impl<'lexer> AST<'lexer> {
                 },
                 TokenKind::Bracket( BracketKind::CloseCurly ) => {
                     self.tokens.next();
-                    match self.brackets.pop() {
-                        Some( _ ) => {
-                            self.scopes.current = match self.scopes.current().parent {
-                                None => 0,
-                                Some( parent ) => parent,
-                            };
+                    self.scopes.current = match self.scopes.current().parent {
+                        None => 0,
+                        Some( parent ) => parent,
+                    };
 
-                            if let Some( bracket_stack_len ) = initial_bracket_stack_len {
-                                match self.brackets.len() == bracket_stack_len {
-                                    true => Ok( Statement::Stop ),
-                                    false => Ok( Statement::Empty ),
-                                }
-                            }
-                            else {
-                                Ok( Statement::Empty )
-                            }
-                        },
-                        None => Err( (current.line, SyntaxError {
-                            line_idx: 0,
-                            col: current.token.col,
-                            len: current.token.kind.len(),
-                            msg: Cow::Borrowed( "stray bracket" ),
-                            help_msg: Cow::Borrowed( "was not opened before" )
-                        }) ),
-                    }
+                    Ok( Statement::Stop )
                 },
                 TokenKind::Bracket( BracketKind::CloseRound ) => {
                     self.tokens.next();
@@ -1653,7 +1675,8 @@ impl<'lexer> AST<'lexer> {
                         help_msg: Cow::Borrowed( "empty expressions are not allowed" )
                     }) ),
                     _ => {
-                        let expression = self.expression( ExpectedSemicolon::NoExpect )?;
+                        // TODO check if it is okay to remove the closed parenthesis check
+                        let expression = self.expression_no_semicolon()?;
                         let close_bracket_pos = self.tokens.current_or_next().bounded( &mut self.tokens, "expected closed parenthesis" )?.unwrap();
                         match close_bracket_pos.token.kind {
                             TokenKind::Bracket( BracketKind::CloseRound ) => Ok( expression ),
@@ -1681,13 +1704,8 @@ impl<'lexer> AST<'lexer> {
         return factor;
     }
 
-    fn operator( &mut self, ops: &[Operator], expected_semicolon: ExpectedSemicolon ) -> Result<Option<Operator>, ASTError<'lexer>> {
-        let expected_msg = match expected_semicolon {
-            ExpectedSemicolon::Expect => "expected expression or semicolon",
-            ExpectedSemicolon::NoExpect => "expected expression",
-        };
-
-        let current_pos = self.tokens.current_or_next().bounded( &mut self.tokens, expected_msg )?.unwrap();
+    fn operator( &mut self, ops: &[Operator] ) -> Result<Option<Operator>, ASTError<'lexer>> {
+        let current_pos = self.tokens.current_or_next().bounded( &mut self.tokens, "invalid expression" )?.unwrap();
         let operator = match current_pos.token.kind {
             TokenKind::Op( op ) => match ops.contains( &op ) {
                 true => Some( op ),
@@ -1706,7 +1724,7 @@ impl<'lexer> AST<'lexer> {
     fn exponentiation( &mut self ) -> Result<Expression, ASTError<'lexer>> {
         let mut lhs = self.factor()?;
 
-        while let Some( op ) = self.operator( &[Operator::Pow], ExpectedSemicolon::NoExpect )? {
+        while let Some( op ) = self.operator( &[Operator::Pow] )? {
             let rhs = self.factor()?;
             lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
@@ -1717,7 +1735,7 @@ impl<'lexer> AST<'lexer> {
     fn multiplicative_expression( &mut self ) -> Result<Expression, ASTError<'lexer>> {
         let mut lhs = self.exponentiation()?;
 
-        while let Some( op ) = self.operator( &[Operator::Times, Operator::Divide, Operator::Remainder], ExpectedSemicolon::NoExpect )? {
+        while let Some( op ) = self.operator( &[Operator::Times, Operator::Divide, Operator::Remainder] )? {
             let rhs = self.exponentiation()?;
             lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
@@ -1728,7 +1746,7 @@ impl<'lexer> AST<'lexer> {
     fn additive_expression( &mut self ) -> Result<Expression, ASTError<'lexer>> {
         let mut lhs = self.multiplicative_expression()?;
 
-        while let Some( op ) = self.operator( &[Operator::Plus, Operator::Minus], ExpectedSemicolon::NoExpect )? {
+        while let Some( op ) = self.operator( &[Operator::Plus, Operator::Minus] )? {
             let rhs = self.multiplicative_expression()?;
             lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
@@ -1746,7 +1764,7 @@ impl<'lexer> AST<'lexer> {
             Operator::Compare
         ];
 
-        while let Some( op ) = self.operator( &ops, ExpectedSemicolon::NoExpect )? {
+        while let Some( op ) = self.operator( &ops )? {
             let rhs = self.additive_expression()?;
             lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
@@ -1757,7 +1775,7 @@ impl<'lexer> AST<'lexer> {
     fn boolean_expression( &mut self ) -> Result<Expression, ASTError<'lexer>> {
         let mut lhs = self.comparative_expression()?;
 
-        while let Some( op ) = self.operator( &[Operator::And, Operator::Or, Operator::Xor], ExpectedSemicolon::NoExpect )? {
+        while let Some( op ) = self.operator( &[Operator::And, Operator::Or, Operator::Xor] )? {
             let op_pos = self.tokens.peek_previous().unwrap();
 
             if lhs.typ() != Type::Bool {
@@ -1787,37 +1805,34 @@ impl<'lexer> AST<'lexer> {
         return Ok( lhs );
     }
 
-    fn expression( &mut self, expected_semicolon: ExpectedSemicolon ) -> Result<Expression, ASTError<'lexer>> {
+    fn expression_no_semicolon( &mut self ) -> Result<Expression, ASTError<'lexer>> {
+        return self.boolean_expression();
+    }
+
+    fn expression( &mut self ) -> Result<Expression, ASTError<'lexer>> {
         let expression = self.boolean_expression()?;
-        return match expected_semicolon {
-            ExpectedSemicolon::Expect => {
-                let current = self.tokens.current_or_next().bounded( &mut self.tokens, "expected semicolon" )?.unwrap();
-                let expr = match current.token.kind {
-                    // semicolons are optional if found before a closing curly bracket
-                    // this allows the last statement before the end of a block not to have a semicolon
-                    TokenKind::Bracket( BracketKind::CloseCurly ) => Ok( expression ),
-                    TokenKind::SemiColon => {
-                        self.tokens.next();
-                        Ok( expression )
-                    },
-                    _ => {
-                        let previous = self.tokens.peek_previous().bounded( &mut self.tokens, "expected semicolon" )?.unwrap();
-                        self.tokens.next();
-
-                        Err( (previous.line, SyntaxError {
-                            line_idx: 0,
-                            col: previous.token.col,
-                            len: previous.token.kind.len(),
-                            msg: Cow::Borrowed( "invalid expression" ),
-                            help_msg: Cow::Borrowed( "expected an operator after this token to complete the expression, or a ';' to end the statement" )
-                        }) )
-                    },
-                };
-
-                expr
+        let current = self.tokens.current_or_next().bounded( &mut self.tokens, "expected semicolon" )?.unwrap();
+        return match current.token.kind {
+            // semicolons are optional if found before a closing curly bracket
+            // this allows the last statement before the end of a block not to have a semicolon
+            TokenKind::Bracket( BracketKind::CloseCurly ) => Ok( expression ),
+            TokenKind::SemiColon => {
+                self.tokens.next();
+                Ok( expression )
             },
-            ExpectedSemicolon::NoExpect => Ok( expression ),
-        };
+            _ => {
+                let previous = self.tokens.peek_previous().bounded( &mut self.tokens, "expected semicolon" )?.unwrap();
+                self.tokens.next();
+
+                Err( (previous.line, SyntaxError {
+                    line_idx: 0,
+                    col: previous.token.col,
+                    len: previous.token.kind.len(),
+                    msg: Cow::Borrowed( "invalid expression" ),
+                    help_msg: Cow::Borrowed( "expected an operator after this token to complete the expression, or a ';' to end the statement" )
+                }) )
+            },
+        }
     }
 }
 
@@ -1858,7 +1873,7 @@ impl<'lexer> AST<'lexer> {
         let value = match value_pos.token.kind {
             TokenKind::True | TokenKind::False
             | TokenKind::Literal( _ ) | TokenKind::Identifier( _ )
-            | TokenKind::Bracket( BracketKind::OpenRound ) => self.expression( ExpectedSemicolon::Expect ),
+            | TokenKind::Bracket( BracketKind::OpenRound ) => self.expression(),
             _ => Err( (equals_pos.line, SyntaxError {
                 line_idx: 0,
                 col: equals_pos.token.col,
@@ -1898,7 +1913,7 @@ impl<'lexer> AST<'lexer> {
         let new_value = match value_pos.token.kind {
             TokenKind::True | TokenKind::False
             | TokenKind::Literal( _ ) | TokenKind::Identifier( _ )
-            | TokenKind::Bracket( BracketKind::OpenRound ) => match self.expression( ExpectedSemicolon::Expect ) {
+            | TokenKind::Bracket( BracketKind::OpenRound ) => match self.expression() {
                 Ok( rhs ) => match &assignment_pos.token.kind {
                     TokenKind::Equals => Ok( rhs ),
                     operator => {
@@ -1995,7 +2010,7 @@ impl<'lexer> AST<'lexer> {
         let argument = match &argument_pos.token.kind {
             TokenKind::True | TokenKind::False
             | TokenKind::Literal( _ ) | TokenKind::Identifier( _ )
-            | TokenKind::Bracket( BracketKind::OpenRound ) => self.expression( ExpectedSemicolon::Expect ),
+            | TokenKind::Bracket( BracketKind::OpenRound ) => self.expression(),
             _ => Err( (argument_pos.line, SyntaxError {
                 line_idx: 0,
                 col: argument_pos.token.col,
@@ -2025,20 +2040,19 @@ impl<'lexer> AST<'lexer> {
 // Parsing of if statements
 impl<'lexer> AST<'lexer> {
     fn if_statement( &mut self, errors: &mut SyntaxErrors<'lexer> ) -> Result<Statement, ASTError<'lexer>> {
-        let initial_bracket_stack_len = Some( self.brackets.len() );
-        let iff = self.iff( errors, initial_bracket_stack_len )?;
+        let iff = self.iff( errors )?;
         let mut if_statement = IfStatement { ifs: vec![ iff ], els: None };
         let else_pos = self.tokens.current_or_next();
-        self.els( &mut if_statement, else_pos, errors, initial_bracket_stack_len )?;
+        self.els( &mut if_statement, else_pos, errors )?;
 
         return Ok( Statement::Single( Node::If( if_statement ) ) );
     }
 
-    fn iff( &mut self, errors: &mut SyntaxErrors<'lexer>, initial_bracket_stack_len: Option<usize> ) -> Result<If, ASTError<'lexer>> {
+    fn iff( &mut self, errors: &mut SyntaxErrors<'lexer> ) -> Result<If, ASTError<'lexer>> {
         let if_pos = self.tokens.current().unwrap();
 
         self.tokens.next().bounded( &mut self.tokens, "expected boolean expression" )?.unwrap();
-        let expression = self.expression( ExpectedSemicolon::NoExpect )?;
+        let expression = self.expression_no_semicolon()?;
         let condition = match &expression.typ() {
             Type::Bool => Ok( expression ),
             Type::Char | Type::Int | Type::Str => Err( (if_pos.line, SyntaxError {
@@ -2054,8 +2068,7 @@ impl<'lexer> AST<'lexer> {
 
         let open_curly_pos = self.tokens.current_or_next().bounded( &mut self.tokens, "expected curly bracket" )?.unwrap();
         let open_curly = match open_curly_pos.token.kind {
-            TokenKind::Bracket( kind @ BracketKind::OpenCurly ) => {
-                self.brackets.push( Bracket { position: open_curly_pos, kind } );
+            TokenKind::Bracket( BracketKind::OpenCurly ) => {
                 let scope = self.scopes.create();
                 self.tokens.next();
                 Ok( scope )
@@ -2074,30 +2087,29 @@ impl<'lexer> AST<'lexer> {
 
         let scope = open_curly?;
 
-        self.parse( errors, initial_bracket_stack_len );
+        self.parse_scope( errors );
         return Ok( If { condition, scope } );
     }
 
-    fn els( &mut self, if_statement: &mut IfStatement, else_pos: Option<Position<'lexer>>, errors: &mut SyntaxErrors<'lexer>, initial_bracket_stack_len: Option<usize> ) -> Result<(), ASTError<'lexer>> {
+    fn els( &mut self, if_statement: &mut IfStatement, else_pos: Option<Position<'lexer>>, errors: &mut SyntaxErrors<'lexer> ) -> Result<(), ASTError<'lexer>> {
         match else_pos {
             None => (),
             Some( pos ) => if let TokenKind::Else = pos.token.kind {
                 let if_or_block_pos = self.tokens.next().bounded( &mut self.tokens, "expected block or if statement after this token" )?.unwrap();
                 match if_or_block_pos.token.kind {
-                    TokenKind::Bracket( kind @ BracketKind::OpenCurly ) => {
-                        self.brackets.push( Bracket { position: if_or_block_pos, kind } );
+                    TokenKind::Bracket( BracketKind::OpenCurly ) => {
                         let els = self.scopes.create();
                         self.tokens.next();
 
-                        self.parse( errors, initial_bracket_stack_len );
+                        self.parse_scope( errors );
                         if_statement.els = Some( els );
                     },
                     TokenKind::If => {
-                        let else_if = self.iff( errors, initial_bracket_stack_len )?;
+                        let else_if = self.iff( errors )?;
                         if_statement.ifs.push( else_if );
 
                         let next_else_pos = self.tokens.current_or_next();
-                        self.els( if_statement, next_else_pos, errors, initial_bracket_stack_len )?;
+                        self.els( if_statement, next_else_pos, errors )?;
                     },
                     _ => return Err( (pos.line, SyntaxError {
                         line_idx: 0,
@@ -2118,7 +2130,7 @@ impl<'lexer> AST<'lexer> {
 impl<'lexer> AST<'lexer> {
     fn for_statement( &mut self, errors: &mut SyntaxErrors<'lexer> ) -> Result<Statement, ASTError<'lexer>> {
         self.for_depth += 1;
-        let iff = self.iff( errors, Some( self.brackets.len() ) );
+        let iff = self.iff( errors );
         self.for_depth -= 1;
 
         let iff = iff?;
@@ -3431,6 +3443,7 @@ fn main() -> ExitCode {
         },
     };
 
+    println!( "after lexing" );
     let ast: AST = match (&lexer).try_into() {
         Ok( ast ) => {
             // println!( "{:#?}", ast );
