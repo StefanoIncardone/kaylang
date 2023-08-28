@@ -111,7 +111,7 @@ impl Literal {
 }
 
 
-#[derive( Debug, PartialEq, Clone, Copy)]
+#[derive( Debug, PartialEq, Clone, Copy )]
 enum Type {
     Int,
     Char,
@@ -1672,6 +1672,12 @@ impl<'lexer> AST<'lexer> {
 
                     err.line_idx = errors.lines.len() - 1;
                     errors.errors.push( err );
+
+                    // NOTE only parsing until the first error until a fault tolerant parser is developed
+                    // this is because the first truly relevant error is the first one,
+                    // which in turn causes a ripple effect that propagates to the rest of the parsing, causing extra errors
+                    self.tokens.line = self.tokens.lexer.lines.len();
+                    break;
                 },
             }
         }
@@ -2273,6 +2279,22 @@ impl<'lexer> AST<'lexer> {
             post_statement: None,
             scope: iff.scope
         } ) ) );
+    }
+}
+
+
+struct Checker;
+
+impl Checker {
+    const CHECKING: &'static str = colored!{
+        text: "Checking",
+        foreground: Foreground::LightGreen,
+        bold: true,
+    };
+
+
+    fn check( file_path: &str ) {
+        println!( "{}: {}", Self::CHECKING, file_path );
     }
 }
 
@@ -3543,6 +3565,7 @@ Options:
     -h, --help              Display this message
 
 Run mode:
+    check     <file.blz>    Check the source code for correctness
     interpret <file.blz>    Interpret the source code (default if no run mode command is provided)
     compile   <file.blz>    Compile the source code down to a binary executable
     run       <file.blz>    Compile and run the generated binary executable
@@ -3551,7 +3574,7 @@ Run mode:
 
 // TODO implement SyntaxErrors to report cli mistakes
 fn main() -> ExitCode {
-    #[allow(unused_mut)]
+    #[allow( unused_mut )]
     let mut args: Vec<String> = env::args().collect();
 
     // to quickly debug
@@ -3564,6 +3587,7 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
+    let mut check_flag = false;
     let mut interpret_flag = false;
     let mut build_flag = false;
     let mut run_flag = false;
@@ -3577,6 +3601,7 @@ fn main() -> ExitCode {
                 print_usage();
                 return ExitCode::SUCCESS;
             },
+            "check" => check_flag = true,
             "interpret" => interpret_flag = true,
             "compile" => build_flag = true,
             "run" => run_flag = true,
@@ -3590,8 +3615,12 @@ fn main() -> ExitCode {
         }
     }
 
-    if !interpret_flag && !build_flag && !run_flag {
+
+    if !check_flag && !interpret_flag && !build_flag && !run_flag {
         interpret_flag = true;
+    }
+    else if check_flag {
+        // ignore all flags
     }
     else if interpret_flag && (build_flag || run_flag) {
         eprintln!( "{}: cannot interpret and build/run at the same time", SyntaxError::ERROR );
@@ -3631,6 +3660,10 @@ fn main() -> ExitCode {
         },
     };
 
+    if check_flag {
+        Checker::check( &source_file_path );
+    }
+
     let lexer: Lexer = match (source_file_path.as_str(), source_file).try_into() {
         Ok( lexer ) => {
             // println!( "{:#?}\n", lexer );
@@ -3653,7 +3686,10 @@ fn main() -> ExitCode {
         },
     };
 
-    if interpret_flag {
+    if check_flag {
+        // do nothing
+    }
+    else if interpret_flag {
         let mut interpreter = Interpreter { ast: &ast, variables: Vec::new() };
         interpreter.interpret( &source_file_path );
     }
