@@ -11,21 +11,26 @@ string_literal = '"', [{escape_character | valid_character}], '"';
 identifier = "_" | "A".."Z" | "a".."z", [{"_" | "A".."Z" | "a".."z" | digit}];
 
 (* from highest precedence to lowest *)
-factor = number_literal | identifier | character_literal | string_literal | boolean_literal | ("(", expression, ")");
-exponentiation = factor, ["^", factor];
+(* TODO fix representation of unary operators *)
+int_factor = ["-"], (number_literal | ? identifier to non boolean value ? | character_literal | string_literal | ("(", non_boolean_expression, ")"));
+boolean_factor = ["!"], ? identifier to boolean value ? | boolean_literal | ("(", boolean_expression, ")");
+
+factor = int_factor | boolean_factor;
+exponentiation = factor, ["**", factor];
 multiplicative_expression = exponentiation, [("*" | "/" | "%"), exponentiation];
 additive_expression = multiplicative_expression, [("+" | "-"), multiplicative_expression];
 comparative_expression = additive_expression, [("==" | "!=" | ">" | ">=" | "<" | "<=" | "<=>"), additive_expression];
 boolean_comparative_expression = comparative_expression, ("==" | "!=" | ">" | ">=" | "<" | "<="), comparative_expression;
-boolean_expression = boolean_comparative_expression, ("and" | "or" | "xor"), boolean_comparative_expression;
-expression = comparative_expression | boolean_expression;
+boolean_expression = boolean_comparative_expression, ("&&" | "||" | "^^"), boolean_comparative_expression;
+non_boolean_expression = additive_expression, [("<=>"), additive_expression];
+expression = comparative_expression | boolean_expression | non_boolean_expression;
 
 
 statement =
     expression
     | ("print", expression)
     | ("println", [expression])
-    | (("let" | "var"), identifier, ("=" | "^=" | "*=" | "/=" | "%=" | "+=" | "-=" ), expression)
+    | (("let" | "var"), identifier, ("=" | "**=" | "*=" | "/=" | "%=" | "+=" | "-=" ), expression)
     | (identifier, "=", expression)
     | "if", expression, scope, [{"else if", expression, scope}], ["else", scope]
     | "for", expression, scope;

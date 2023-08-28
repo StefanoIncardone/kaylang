@@ -2,20 +2,22 @@ let number = 600851475143;
 var largest_prime = 0;
 
 var factor = 1;
-for factor^2 <= number {
+for factor ** 2 <= number {
     if number % factor == 0 {
         var is_prime = true;
         for true {
-            if factor == 2 or factor == 3 { break }
+            if factor == 2 || factor == 3 {
+                break;
+            }
 
-            if factor <= 1 or factor % 2 == 0 or factor % 3 == 0 {
+            if factor <= 1 || factor % 2 == 0 || factor % 3 == 0 {
                 is_prime = false;
                 break;
             }
 
             var divisor = 5;
-            for divisor^2 <= factor {
-                if factor % divisor == 0 or factor % (divisor + 2) == 0 {
+            for divisor ** 2 <= factor {
+                if factor % divisor == 0 || factor % (divisor + 2) == 0 {
                     is_prime = false;
                     break;
                 }
@@ -26,7 +28,9 @@ for factor^2 <= number {
             break;
         }
 
-        if is_prime { largest_prime = factor }
+        if is_prime {
+            largest_prime = factor;
+        }
     }
 
     factor += 1;

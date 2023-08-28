@@ -3,19 +3,18 @@ var number = 1;
 for number < 2000000 {
     var is_prime = true;
     for true {
-        if number == 2 or number == 3 {
-            is_prime = true;
+        if number == 2 || number == 3 {
             break;
         }
 
-        if number <= 1 or number % 2 == 0 or number % 3 == 0 {
+        if number <= 1 || number % 2 == 0 || number % 3 == 0 {
             is_prime = false;
             break;
         }
 
         var divisor = 5;
-        for divisor^2 <= number {
-            if number % divisor == 0 or number % (divisor + 2) == 0 {
+        for divisor ** 2 <= number {
+            if number % divisor == 0 || number % (divisor + 2) == 0 {
                 is_prime = false;
                 break;
             }

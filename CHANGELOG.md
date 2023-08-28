@@ -99,12 +99,17 @@ From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProj
     }
     ```
 
-- checking multiple values for equality
+- boolean expressions chaining
 
     ```blitz
     let n = 42;
-    if n == 19 or 21 or 42 { # desugars to n == 19 or n == 21 or n == 42
+    # find apropriate syntax
+    if n == 19, 21, 42 || 71 < n <= 138 { # desugars to n == 19 || n == 21 || n == 42 || (71 < n && n <= 138)
         println "nice";
+    }
+
+    if n %% 2, 6, 14 { # desugars to n % 2 == 0 || n % 6 == 0 || n % 14 == 0
+        println "multiple of 2, 6 or 14";
     }
     ```
 

@@ -1,8 +1,6 @@
-var ciao = 0 - 1;
+var ciao = 0;
 for ciao < 5 {
-    ciao += 1;
-
-    var franco = 0 - 1;
+    var franco = -1;
     for franco < 3 {
         franco += 1;
         if franco == 2 {
@@ -12,25 +10,26 @@ for ciao < 5 {
         print "franco = "; println franco;
     }
 
+    ciao += 1;
+    print "ciao = "; println ciao;
+
     if ciao == 1 {
         continue;
     }
     else if ciao == 4 {
         break;
     }
-
-    print "ciao = "; println ciao;
 }
 
 println;
 println "after loop";
 
-var franco = 0 - 1;
+var franco = 0;
 for franco < 3 {
     franco += 1;
+    print "franco = "; println franco;
+
     if franco == 2 {
         continue;
     }
-
-    print "after loop franco = "; println franco;
 }

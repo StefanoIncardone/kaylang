@@ -47,10 +47,11 @@ String literals are surrounded by `"` and contain any number of regular or escap
 
 ### Expressions
 
-Expressions follow this order of operations (from highest to lowest):
+Expressions follow this order of operations (precedence from highest to lowest):
 
+- minus `-`, not `!`: integer negation and boolean inversion as unary operators
 - round brackets `(`, `)`
-- power `^`: exponentiation as a binary operator
+- power `**`: exponentiation as a binary operator
 - times `*`, divide `/`, remainder `%`: multiplication, floor division and remainder as binary operators
 - plus `+` and minus `-`: addition and subtraction as binary operators
 - comparisons:
@@ -64,9 +65,9 @@ Expressions follow this order of operations (from highest to lowest):
         - less or equals than: `<=`
 - boolean expressions (evaluates to `1` or `0` when inside match expressions):
     - opearands must be boolean values, i.e.: `1 and 2` is not a valid boolean expression
-    - logical and: `and`
-    - logical or: `or`
-    - logical xor: `xor`
+    - logical and: `&&`
+    - logical or: `||`
+    - logical xor: `^^`
 
 Note: when using strings in expressions they get converted to their length (waiting for proper type checking)
 
@@ -82,7 +83,7 @@ Variable names can be made of (but not starting with) numbers, underscores and l
 - `var`: mutable variable
 
 ``` blitz
-let nine = 3 ^ 2;
+let nine = 3 ** 2;
 var ten = 5 * 2;
 ```
 
@@ -99,7 +100,7 @@ The only way to print values is using the temporary intrinsics `print` or `print
 
 ``` blitz
 var ten = 5 * 2;
-let nine = 3 ^ 2;
+let nine = 3 ** 2;
 let lucky = ten + nine;
 
 println lucky;
