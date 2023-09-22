@@ -169,7 +169,6 @@ macro_rules! positive_text {
     (true) => {";27"};
 }
 
-// IDEA allow for arbitrary argument order
 #[macro_export]
 macro_rules! colored {
     () => {""};
@@ -197,6 +196,37 @@ macro_rules! colored {
             "m",
             $text,
             "\x1b[0m"
+        )
+    };
+}
+
+#[macro_export]
+macro_rules! colored_raw {
+    () => {""};
+    ($(text:)?$text: literal$(,)?) => {$text};
+    (
+        $(text:)?$text: literal,
+        $(foreground: Foreground::$fg: tt,)?
+        $(background: Background::$bg: tt,)?
+        $(bold: $b: ident,)?
+        $(underline: $u: ident,)?
+        $(no_underline: $nu: ident,)?
+        $(reverse_text: $rt: ident,)?
+        $(positive_text: $pt: ident,)?
+        $(,)?
+    ) => {
+        concat!(
+            r"\x1b[",
+            $(foreground!(Foreground::$fg), )?
+            $(background!(Background::$bg), )?
+            $(bold!($b), )?
+            $(underline!($u), )?
+            $(no_underline!($u), )?
+            $(reverse_text!($rt), )?
+            $(positive_text!($pt), )?
+            "m",
+            $text,
+            r"\x1b[0m"
         )
     };
 }

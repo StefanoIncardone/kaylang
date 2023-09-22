@@ -1,6 +1,5 @@
 // TODO fix division by zero, rasing to a negative power
     // TODO implement unsigned integers and force powers to only accept those as exponents
-        // IDEA handle undefined forms in some way
     // IDEA print crash error message
         // TODO implement a way to print file, line and column information in source code
 // TODO implement boolean operators for strings
@@ -11,7 +10,7 @@
     // IDEA create Parser class that builds the AST, and then validate the AST afterwards
         // IDEA read the src file line when printing errors instead of composing it from the tokens
             // IDEA have Token contain the absolute column in the source file, and when encountering errors read the corresponding line
-use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write}, fs::File, env, process::{ExitCode, Command}, fmt::Display, path::{Path, PathBuf}, iter::Peekable, str::Chars, borrow::Cow, cmp::Ordering};
+use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write}, fs::File, env::{self}, process::{ExitCode, Command}, fmt::Display, path::{Path, PathBuf}, iter::Peekable, str::Chars, borrow::Cow, cmp::Ordering};
 
 mod color;
 use crate::color::*;
@@ -482,6 +481,7 @@ impl Display for Line {
 }
 
 
+// TODO create different kinds of errors for different stages of compilation
 // TODO implement NOTE, HINT, HELP in error messages
 #[derive( Debug )]
 struct SyntaxError {
@@ -512,14 +512,14 @@ struct SyntaxErrors<'this> {
 
 impl Display for SyntaxErrors<'_> {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        let mut line_number = self.errors[ 0 ].line_idx;
-        let mut line = &self.lines[ line_number ];
+        let mut err_line_idx = self.errors[ 0 ].line_idx;
+        let mut line = &self.lines[ err_line_idx ];
         let mut line_text = line.to_string();
 
         for error in &self.errors {
-            if error.line_idx != line_number {
-                line_number = error.line_idx;
-                line = &self.lines[ line_number ];
+            if error.line_idx != err_line_idx {
+                err_line_idx = error.line_idx;
+                line = &self.lines[ err_line_idx ];
                 line_text = line.to_string();
             }
 
@@ -542,8 +542,8 @@ impl Display for SyntaxErrors<'_> {
             line_number_and_bar.text = format!( "{:>visualization_padding$}", line_number_and_bar );
             line_number_and_bar.foreground = Foreground::LightBlue;
 
-            let in_ = Colored {
-                text: format!( "{:>location_padding$}", "in" ),
+            let at = Colored {
+                text: format!( "{:>location_padding$}", "at" ),
                 foreground: Foreground::LightRed,
                 bold: true,
                 ..Default::default()
@@ -571,7 +571,7 @@ impl Display for SyntaxErrors<'_> {
                 \n{} {}\
                 \n{} {:pointers_col$}{}\n",
                 SyntaxError::ERROR, error_msg,
-                in_, self.file_path, line.number, error.col,
+                at, self.file_path, line.number, error.col,
                 bar,
                 line_number_and_bar, line_text,
                 bar, "", pointers_and_help_msg
@@ -583,20 +583,27 @@ impl Display for SyntaxErrors<'_> {
 }
 
 
-type LineIdx = usize;
-type TokenIdx = usize;
-
 #[derive( Debug )]
 struct Bracket {
-    line_idx: LineIdx,
-    token_idx: TokenIdx,
+    err_line_idx: usize,
+    col: usize,
     kind: BracketKind,
 }
+
 
 #[derive( Debug )]
 struct Lexer {
     file_path: String,
     lines: Vec<Line>,
+
+    row: usize,
+    col: usize,
+    abs_col: usize,
+
+    brackets: Vec<Bracket>,
+    src_lines: BufReader<File>,
+    src_line_text: String,
+    token_text: String,
 }
 
 impl<'program> TryFrom<(&'program str, File)> for Lexer {
@@ -608,25 +615,29 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
     fn try_from( src: (&'program str, File) ) -> Result<Self, Self::Error> {
         let (file_path, src_file) = (src.0, src.1);
 
-        let mut lines: Vec<Line> = Vec::new();
-        let mut tokens: Vec<Token> = vec![ Token { col: 1, kind: TokenKind::SOF } ];
-        let mut brackets: Vec<Bracket> = Vec::new();
+        let mut this = Self {
+            file_path: file_path.into(),
+            lines: Vec::new(),
+            row: 1,
+            col: 1,
+            abs_col: 1,
+            brackets: Vec::new(),
+            src_lines: BufReader::new( src_file ),
+            src_line_text: String::new(),
+            token_text: String::new()
+        };
 
-        let mut err_lines: Vec<Cow<Line>> = Vec::new();
+        let mut line = Line { number: this.row, tokens: vec![ Token { col: 1, kind: TokenKind::SOF } ] };
+
+        let mut error_lines: Vec<Cow<Line>> = Vec::new();
         let mut errors: Vec<SyntaxError> = Vec::new();
 
-        let mut src_lines = BufReader::new( src_file );
-        let mut src_line_text = String::new();
-        let mut token_text = String::new();
-
-        while let Ok( chars_read ) = src_lines.read_line( &mut src_line_text ) {
-            src_line_text = src_line_text.trim_end().to_string();
-            let trimmed_line_len = src_line_text.len();
+        while let Ok( chars_read ) = this.next_line() {
+            this.src_line_text = this.src_line_text.trim_end().to_string();
+            let trimmed_line_len = this.src_line_text.len();
 
             let mut line_contains_errors = false;
-            let mut col = 1;
-
-            let mut src = src_line_text.chars().peekable();
+            let mut src = this.src_line_text.chars().peekable();
             loop {
                 let token_info = match Self::next( &mut src ) {
                     Ok( None ) => break,
@@ -634,68 +645,75 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                     Ok( Some( ch ) ) => match ch {
                         // ignore whitespace
                         _ if ch.is_ascii_whitespace() => {
-                            col += 1;
+                            this.col += 1;
                             continue;
                         },
                         '#' => {
-                            token_text.push( ch );
+                            this.token_text.push( ch );
 
                             // consume the rest of the tokens in the current line
                             while let Some( next ) = src.next_if( |c| *c != '\n' ) {
-                                token_text.push( next );
+                                this.token_text.push( next );
                             }
 
-                            Ok( TokenKind::Comment( token_text.clone() ) )
+                            Ok( TokenKind::Comment( this.token_text.clone() ) )
                         },
                         '(' => {
                             let kind = BracketKind::OpenRound;
-                            brackets.push( Bracket { line_idx: lines.len(), token_idx: tokens.len(), kind } );
+                            this.brackets.push( Bracket { err_line_idx: this.row, col: this.col, kind } );
                             Ok( TokenKind::Bracket( kind ) )
                         },
-                        ')' => match brackets.pop() {
-                            Some( bracket ) => match bracket.kind {
-                                BracketKind::OpenRound => Ok( TokenKind::Bracket( BracketKind::CloseRound ) ),
-                                BracketKind::CloseCurly | BracketKind::CloseRound | BracketKind::OpenCurly =>
-                                    Err( (ch.to_string(), SyntaxError {
-                                        line_idx: lines.len(),
-                                        col,
-                                        len: ch.len_utf8(),
-                                        msg: Cow::Borrowed( "mismatched bracket" ),
-                                        help_msg: Cow::Borrowed( "closes the wrong bracket" )
-                                    }) )
+                        ')' => match this.brackets.pop() {
+                            Some( Bracket { kind: BracketKind::OpenRound, .. } ) => {
+                                Ok( TokenKind::Bracket( BracketKind::CloseRound ) )
                             },
-                            None => Err( (ch.to_string(), SyntaxError {
-                                line_idx: lines.len(),
-                                col,
-                                len: ch.len_utf8(),
-                                msg: Cow::Borrowed( "stray bracket" ),
-                                help_msg: Cow::Borrowed( "was not opened before" )
-                            }) )
-                        },
-                        '{' => {
-                            let kind = BracketKind::OpenCurly;
-                            brackets.push( Bracket { line_idx: lines.len(), token_idx: tokens.len(), kind } );
-                            Ok( TokenKind::Bracket( kind ) )
-                        },
-                        '}' => match brackets.pop() {
-                            Some( bracket ) => match bracket.kind {
-                                BracketKind::OpenCurly => Ok( TokenKind::Bracket( BracketKind::CloseCurly ) ),
-                                BracketKind::CloseCurly | BracketKind::CloseRound | BracketKind::OpenRound =>
-                                    Err( (ch.to_string(), SyntaxError {
-                                        line_idx: 0,
-                                        col,
-                                        len: ch.len_utf8(),
-                                        msg: Cow::Borrowed( "mismatched bracket" ),
-                                        help_msg: Cow::Borrowed( "closes the wrong bracket" )
-                                    }) )
+                            Some( Bracket { kind: BracketKind::CloseCurly | BracketKind::CloseRound, .. } ) =>
+                                Ok( TokenKind::Bracket( BracketKind::CloseRound ) ),
+                            Some( Bracket { kind: BracketKind::OpenCurly, col: bracket_col, .. } ) => {
+                                // todo!( "backtrack bracket stack to find unbalanced brackets, and add errors as needed" );
+                                Err( (ch.to_string(), SyntaxError {
+                                    line_idx: 0,
+                                    col: bracket_col,
+                                    len: ch.len_utf8(),
+                                    msg: Cow::Borrowed( "stray bracket" ),
+                                    help_msg: Cow::Borrowed( "was not closed" )
+                                }) )
                             },
                             None => Err( (ch.to_string(), SyntaxError {
                                 line_idx: 0,
-                                col,
+                                col: this.col,
                                 len: ch.len_utf8(),
                                 msg: Cow::Borrowed( "stray bracket" ),
-                                help_msg: Cow::Borrowed( "was not opened before" )
-                            }) )
+                                help_msg: Cow::Borrowed( "closes the wrong bracket or was not opened before" )
+                            }) ),
+                        },
+                        '{' => {
+                            let kind = BracketKind::OpenCurly;
+                            this.brackets.push( Bracket { err_line_idx: this.row, col: this.col, kind } );
+                            Ok( TokenKind::Bracket( kind ) )
+                        },
+                        '}' => match this.brackets.pop() {
+                            Some( Bracket { kind: BracketKind::OpenCurly, .. } ) =>
+                                Ok( TokenKind::Bracket( BracketKind::CloseCurly ) ),
+                            Some( Bracket { kind: BracketKind::CloseCurly | BracketKind::CloseRound, .. } ) =>
+                                Ok( TokenKind::Bracket( BracketKind::CloseCurly ) ),
+                            Some( Bracket { kind: BracketKind::OpenRound, col: bracket_col, .. } ) => {
+                                // todo!( "backtrack bracket stack to find unbalanced brackets, and add errors as needed" );
+                                Err( (ch.to_string(), SyntaxError {
+                                    line_idx: 0,
+                                    col: bracket_col,
+                                    len: ch.len_utf8(),
+                                    msg: Cow::Borrowed( "stray bracket" ),
+                                    help_msg: Cow::Borrowed( "was not closed" )
+                                }) )
+                            },
+                            None => Err( (ch.to_string(), SyntaxError {
+                                line_idx: 0,
+                                col: this.col,
+                                len: ch.len_utf8(),
+                                msg: Cow::Borrowed( "stray bracket" ),
+                                help_msg: Cow::Borrowed( "closes the wrong bracket or was not opened before" )
+                            }) ),
                         },
                         ';' => Ok( TokenKind::SemiColon ),
                         '*' => match Self::peek_next( &mut src ) {
@@ -786,7 +804,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                             },
                             _ => Err( (ch.to_string(), SyntaxError {
                                 line_idx: 0,
-                                col,
+                                col: this.col,
                                 len: ch.len_utf8(),
                                 msg: Cow::Borrowed( "unexpected character" ),
                                 help_msg: Cow::Borrowed( "unrecognized, did you mean '^^'?" )
@@ -799,7 +817,7 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                             },
                             _ => Err( (ch.to_string(), SyntaxError {
                                 line_idx: 0,
-                                col,
+                                col: this.col,
                                 len: ch.len_utf8(),
                                 msg: Cow::Borrowed( "unexpected character" ),
                                 help_msg: Cow::Borrowed( "unrecognized, did you mean '&&'?" )
@@ -812,30 +830,30 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                             },
                             _ => Err( (ch.to_string(), SyntaxError {
                                 line_idx: 0,
-                                col,
+                                col: this.col,
                                 len: ch.len_utf8(),
                                 msg: Cow::Borrowed( "unexpected character" ),
                                 help_msg: Cow::Borrowed( "unrecognized, did you mean '||'?" )
                             }) ),
                         },
                         '\'' => {
-                            token_text.push( ch );
+                            this.token_text.push( ch );
 
-                            match Self::parse_char( &mut src, &mut token_text ) {
-                                Ok( b'\'' ) if token_text.len() == 2 => Err( (token_text.clone(), SyntaxError {
+                            match Self::parse_char( &mut src, &mut this.token_text ) {
+                                Ok( b'\'' ) if this.token_text.len() == 2 => Err( (this.token_text.clone(), SyntaxError {
                                     line_idx: 0,
-                                    col,
-                                    len: token_text.len(),
+                                    col: this.col,
+                                    len: this.token_text.len(),
                                     msg: Cow::Borrowed( "empty character literal" ),
                                     help_msg: Cow::Borrowed( "must not be empty" )
                                 }) ),
-                                Ok( value ) => match Self::next_char( &mut src, &mut token_text ) {
+                                Ok( value ) => match Self::next_char( &mut src, &mut this.token_text ) {
                                     Ok( next ) => match next {
                                         b'\'' => Ok( TokenKind::Literal( Literal::Char { value } ) ),
-                                        _ => Err( (token_text.clone(), SyntaxError {
+                                        _ => Err( (this.token_text.clone(), SyntaxError {
                                             line_idx: 0,
-                                            col,
-                                            len: token_text.len(),
+                                            col: this.col,
+                                            len: this.token_text.len(),
                                             msg: Cow::Borrowed( "unclosed character literal" ),
                                             help_msg: Cow::Borrowed( "missing closing single quote" )
                                         }) ),
@@ -845,12 +863,9 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                                 Err( err ) => Err( err ),
                             }
                         },
-                        '"' => match Self::parse_str( &mut src ) {
-                            Ok( text ) => Ok( TokenKind::Literal( Literal::Str( Str { text } ) ) ),
-                            Err( err ) => Err( err ),
-                        },
+                        '"' => Self::parse_str( &mut src ),
                         '0'..='9' => {
-                            token_text.push( ch );
+                            this.token_text.push( ch );
 
                             let mut is_digit = true;
                             while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
@@ -858,37 +873,37 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                                     is_digit = false;
                                 }
 
-                                token_text.push( next );
+                                this.token_text.push( next );
                             }
 
                             match is_digit {
-                                true => match token_text.parse() { // TODO create own number parsing function
+                                true => match this.token_text.parse() { // TODO create own number parsing function
                                     Ok( value ) => Ok( TokenKind::Literal( Literal::Int { value } ) ),
-                                    Err( _ ) => Err( (token_text.clone(), SyntaxError {
+                                    Err( _ ) => Err( (this.token_text.clone(), SyntaxError {
                                         line_idx: 0,
-                                        col,
-                                        len: token_text.len(),
+                                        col: this.col,
+                                        len: this.token_text.len(),
                                         msg: Cow::Borrowed( "expected number literal" ),
                                         help_msg: Cow::Owned( format!( "overflows a 64 bit integer [{}, {}]", usize::MIN, usize::MAX ) )
                                     }) ),
                                 },
-                                false => Err( (token_text.clone(), SyntaxError {
+                                false => Err( (this.token_text.clone(), SyntaxError {
                                     line_idx: 0,
-                                    col,
-                                    len: token_text.len(),
+                                    col: this.col,
+                                    len: this.token_text.len(),
                                     msg: Cow::Borrowed( "expected number literal" ),
                                     help_msg: Cow::Borrowed( "not a number literal" )
                                 }) ),
                             }
                         },
                         'a'..='z' | 'A'..='Z' | '_'  => {
-                            token_text.push( ch );
+                            this.token_text.push( ch );
 
                             while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
-                                token_text.push( next );
+                                this.token_text.push( next );
                             }
 
-                            let kind = match token_text.as_str() {
+                            let kind = match this.token_text.as_str() {
                                 "let" => TokenKind::Definition( Mutability::Let ),
                                 "var" => TokenKind::Definition( Mutability::Var ),
                                 "print" => TokenKind::Print,
@@ -900,14 +915,14 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                                 "for" => TokenKind::For,
                                 "break" => TokenKind::Break,
                                 "continue" => TokenKind::Continue,
-                                _ => TokenKind::Identifier( token_text.clone() ),
+                                _ => TokenKind::Identifier( this.token_text.clone() ),
                             };
 
                             Ok( kind )
                         },
                         _ => Err( (ch.to_string(), SyntaxError {
                             line_idx: 0,
-                            col,
+                            col: this.col,
                             len: ch.len_utf8(),
                             msg: Cow::Borrowed( "unexpected character" ),
                             help_msg: Cow::Borrowed( "unrecognized" )
@@ -918,72 +933,69 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
                 let len = match token_info {
                     Ok( kind ) => {
                         let len = kind.len();
-                        tokens.push( Token { col, kind } );
+                        line.tokens.push( Token { col: this.col, kind } );
                         len
                     },
                     Err( (err_text, mut err) ) => {
                         line_contains_errors = true;
 
-                        err.line_idx = err_lines.len();
-                        err.col = col;
+                        err.line_idx = error_lines.len();
+                        err.col = this.col;
 
                         let len = err.len;
-                        tokens.push( Token { col, kind: TokenKind::Unexpected( err_text ) } );
+                        line.tokens.push( Token { col: this.col, kind: TokenKind::Unexpected( err_text ) } );
                         errors.push( err );
 
                         len
                     },
                 };
 
-                token_text.clear();
-                col += len;
+                this.token_text.clear();
+                this.col += len;
             }
 
             if trimmed_line_len == 0 {
-                tokens.push( Token { col, kind: TokenKind::Empty } );
+                line.tokens.push( Token { col: this.col, kind: TokenKind::Empty } );
             }
 
             let reached_eof = trimmed_line_len == chars_read;
             if reached_eof {
-                tokens.push( Token { col, kind: TokenKind::EOF } );
+                line.tokens.push( Token { col: this.col, kind: TokenKind::EOF } );
             }
 
-            let line = Line { number: lines.len() + 1, tokens };
             if line_contains_errors {
-                err_lines.push( Cow::Owned( line ) );
+                error_lines.push( Cow::Owned( line ) );
             }
             else {
-                lines.push( line );
+                this.lines.push( line );
             }
 
             if reached_eof {
                 break;
             }
 
-            src_line_text.clear();
-            tokens = Vec::new();
+            line = Line { number: this.row, tokens: Vec::new() };
         }
 
-        if !brackets.is_empty() {
-            for bracket in brackets {
-                let line = &lines[ bracket.line_idx ];
-
+        if !this.brackets.is_empty() {
+            for bracket in &this.brackets {
                 let mut found = false;
-                for err_line in &err_lines {
-                    if line.number == err_line.number {
+                for err_line in &error_lines {
+                    if bracket.err_line_idx == err_line.number {
                         found = true;
                         break;
                     }
                 }
 
                 if !found {
-                    err_lines.push( Cow::Owned( line.clone() ) );
+                    let line = &this.lines[ bracket.err_line_idx - 1 ];
+                    error_lines.push( Cow::Owned( line.clone() ) );
                 }
 
                 // there can only be open brackets at this point
                 errors.push( SyntaxError {
-                    line_idx: err_lines.len() - 1,
-                    col: line.tokens[ bracket.token_idx ].col,
+                    line_idx: error_lines.len() - 1,
+                    col: bracket.col,
                     len: bracket.kind.len(),
                     msg: Cow::Borrowed( "stray bracket" ),
                     help_msg: Cow::Borrowed( "was not closed" )
@@ -992,13 +1004,22 @@ impl<'program> TryFrom<(&'program str, File)> for Lexer {
         }
 
         return match errors.is_empty() {
-            true => Ok( Self { file_path: file_path.to_string(), lines } ),
-            false => Err( SyntaxErrors { file_path: file_path.to_string(), lines: err_lines, errors } ),
+            true => Ok( this ),
+            false => Err( SyntaxErrors { file_path: file_path.to_string(), lines: error_lines, errors } ),
         }
     }
 }
 
 impl Lexer {
+    fn next_line( &mut self ) -> Result<usize, std::io::Error> {
+        self.row += 1;
+        self.col = 1;
+        self.abs_col += 1;
+        self.token_text.clear();
+        self.src_line_text.clear();
+        return self.src_lines.read_line( &mut self.src_line_text );
+    }
+
     fn iter<'lexer>( &'lexer self ) -> LexerIter<'lexer> {
         LexerIter{ lexer: self, line: 0, token: 0 }
     }
@@ -1099,12 +1120,12 @@ impl Lexer {
         }
     }
 
-    fn parse_str( src: &mut Peekable<Chars> ) -> Result<Vec<u8>, LexerError> {
+    fn parse_str( src: &mut Peekable<Chars> ) -> Result<TokenKind, LexerError> {
         let mut text: Vec<u8> = Vec::new();
 
         loop {
             match Self::next_str_char( src, &mut text )? {
-                b'"' => return Ok( text ),
+                b'"' => return Ok( TokenKind::Literal( Literal::Str( Str { text } ) ) ),
                 b'\\' => match Self::next_str_char( src, &mut text )? {
                     b'\\' => text.push( b'\\' ),
                     b'n' => text.push( b'\n' ),
@@ -3616,11 +3637,11 @@ fn main() -> ExitCode {
     }
 
 
-    if !check_flag && !interpret_flag && !build_flag && !run_flag {
+    if !(check_flag || interpret_flag || build_flag || run_flag) {
         interpret_flag = true;
     }
     else if check_flag {
-        // ignore all flags
+        // ignore all other run mode flags
     }
     else if interpret_flag && (build_flag || run_flag) {
         eprintln!( "{}: cannot interpret and build/run at the same time", SyntaxError::ERROR );
@@ -3666,7 +3687,6 @@ fn main() -> ExitCode {
 
     let lexer: Lexer = match (source_file_path.as_str(), source_file).try_into() {
         Ok( lexer ) => {
-            // println!( "{:#?}\n", lexer );
             lexer
         },
         Err( errors ) => {
