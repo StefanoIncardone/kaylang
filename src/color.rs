@@ -65,10 +65,10 @@ impl Display for Colored {
         let mut codes = String::new();
 
         if self.foreground != Foreground::Default {
-            codes.push_str( &format!( "{};", self.foreground as u8 ) )
+            codes.push_str( &format!( "{};", self.foreground as u8 ) );
         }
         if self.background != Background::Default {
-            codes.push_str( &format!( "{};", self.background as u8 ) )
+            codes.push_str( &format!( "{};", self.background as u8 ) );
         }
         if self.bold {
             codes.push_str( "1;" );
