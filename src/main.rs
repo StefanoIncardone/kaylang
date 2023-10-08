@@ -434,8 +434,10 @@ struct Token {
 
 #[derive( Debug, Clone, Copy )]
 struct Line {
-    start: usize,
+    byte_start: usize,
     number: usize,
+    token_start_idx: usize,
+    token_end_idx: usize,
 }
 
 
@@ -443,7 +445,8 @@ struct Line {
 // TODO implement NOTE, HINT, HELP in error messages
 #[derive( Debug )]
 struct SyntaxError {
-    line: Line,
+    line_byte_start: usize,
+    line_number: usize,
     col: usize,
     len: usize,
     msg: Cow<'static, str>,
@@ -458,7 +461,7 @@ struct SyntaxErrors {
     errors: Vec<SyntaxError>,
 }
 
-impl  SyntaxErrors {
+impl SyntaxErrors {
     const ERROR: &'static str = colored!{
         text: "Error",
         foreground: Foreground::LightRed,
@@ -466,18 +469,18 @@ impl  SyntaxErrors {
     };
 
 
+    // TODO make this not mut
     fn display( &mut self ) {
-        let mut line = self.errors[ 0 ].line;
+        let mut line_start = self.errors[ 0 ].line_byte_start;
         let mut line_text = String::new();
-
-        let _ = self.src.src.seek( SeekFrom::Start( line.start as u64 ) );
+        let _ = self.src.src.seek( SeekFrom::Start( line_start as u64 ) );
         let _ = self.src.src.read_line( &mut line_text );
 
         for error in &self.errors {
-            if line.start != error.line.start {
-                line = error.line;
+            if line_start != error.line_byte_start {
+                line_start = error.line_byte_start;
                 line_text.clear();
-                let _ = self.src.src.seek( SeekFrom::Start( line.start as u64 ) );
+                let _ = self.src.src.seek( SeekFrom::Start( line_start as u64 ) );
                 let _ = self.src.src.read_line( &mut line_text );
             }
 
@@ -488,20 +491,17 @@ impl  SyntaxErrors {
                 ..Default::default()
             };
 
-            let mut line_number_and_bar = Colored {
-                text: format!( "{} |", line.number ),
+            let line_number_and_bar = Colored {
+                text: format!( "{} |", error.line_number ),
                 foreground: Foreground::LightBlue,
                 ..Default::default()
             };
 
             let visualization_padding = line_number_and_bar.text.len();
-            let location_padding = visualization_padding - 1;
-
-            line_number_and_bar.text = format!( "{:>visualization_padding$}", line_number_and_bar );
-            line_number_and_bar.foreground = Foreground::LightBlue;
+            let at_padding = visualization_padding - 1;
 
             let at = Colored {
-                text: format!( "{:>location_padding$}", "at" ),
+                text: format!( "{:>at_padding$}", "at" ),
                 foreground: Foreground::LightRed,
                 bold: true,
                 ..Default::default()
@@ -513,8 +513,7 @@ impl  SyntaxErrors {
                 ..Default::default()
             };
 
-            let error_col = error.col - line.start;
-            let pointers_col = error_col - 1;
+            let pointers_col = error.col - 1;
             let pointers_len = error.len;
 
             let pointers_and_help_msg = Colored {
@@ -530,7 +529,7 @@ impl  SyntaxErrors {
                 \n{} {}\
                 \n{} {:pointers_col$}{}\n",
                 SyntaxErrors::ERROR, error_msg,
-                at, self.src.path.display(), line.number, error_col,
+                at, self.src.path.display(), error.line_number, error.col,
                 bar,
                 line_number_and_bar, line_text.trim_end(),
                 bar, "", pointers_and_help_msg
@@ -542,7 +541,8 @@ impl  SyntaxErrors {
 
 #[derive( Debug )]
 struct Bracket {
-    line: Line,
+    line_byte_start: usize,
+    line_number: usize,
     col: usize,
     kind: BracketKind,
 }
@@ -553,11 +553,13 @@ struct Lexer {
     src: BlitzSrc,
 
     row: usize,
-    lines: Vec<Line>,
-    line_text: String,
-
     col: usize,
+    abs_col: usize,
+
+    lines: Vec<Line>,
     tokens: Vec<Token>,
+
+    line_text: String,
     token_text: String,
 }
 
@@ -570,341 +572,362 @@ impl TryFrom<BlitzSrc> for Lexer {
         let mut this = Self {
             src,
             row: 0,
+            col: 1,
+            abs_col: 0,
             lines: Vec::new(),
-            line_text: String::new(),
-            col: 0,
             tokens: vec![ Token { col: 1, kind: TokenKind::SOF } ],
+            line_text: String::new(),
             token_text: String::new()
         };
 
         let mut brackets: Vec<Bracket> = Vec::new();
         let mut errors: Vec<SyntaxError> = Vec::new();
 
+        let mut token_start_idx = 0;
         while let Ok( chars_read ) = this.next_line() {
-            let line = Line { start: this.col - 1, number: this.row };
+            let trimmed_line = this.line_text.trim_end();
 
-            this.line_text = this.line_text.trim_end().to_string();
-            let trimmed_line_len = this.line_text.len();
-
-            let mut src = this.line_text.chars().peekable();
-            loop {
-                let token_info = match Self::next( &mut src ) {
-                    Ok( None ) => break,
-                    Err( err ) => Err( err ),
-                    Ok( Some( ch ) ) => match ch {
-                        // ignore whitespace
-                        _ if ch.is_ascii_whitespace() => {
-                            this.col += 1;
-                            continue;
-                        },
-                        '#' => {
-                            this.token_text.push( ch );
-
-                            // consume the rest of the tokens in the current line
-                            while let Some( next ) = src.next_if( |c| *c != '\n' ) {
-                                this.token_text.push( next );
-                            }
-
-                            Ok( TokenKind::Comment( this.token_text.clone() ) )
-                        },
-                        '(' => {
-                            let kind = BracketKind::OpenRound;
-                            brackets.push( Bracket { line, col: this.col, kind } );
-                            Ok( TokenKind::Bracket( kind ) )
-                        },
-                        ')' => match brackets.pop() {
-                            Some( Bracket { kind: BracketKind::OpenRound, .. } ) =>
-                                Ok( TokenKind::Bracket( BracketKind::CloseRound ) ),
-                            Some( Bracket { kind: BracketKind::CloseCurly | BracketKind::CloseRound, .. } ) =>
-                                Ok( TokenKind::Bracket( BracketKind::CloseRound ) ),
-                            Some( Bracket { kind: BracketKind::OpenCurly, .. } ) => Err( (ch.to_string(), SyntaxError {
-                                line,
-                                col: 0,
-                                len: ch.len_utf8(),
-                                msg: Cow::Borrowed( "stray bracket" ),
-                                help_msg: Cow::Borrowed( "closes the wrong bracket" )
-                            }) ),
-                            None => Err( (ch.to_string(), SyntaxError {
-                                line,
-                                col: 0,
-                                len: ch.len_utf8(),
-                                msg: Cow::Borrowed( "stray bracket" ),
-                                help_msg: Cow::Borrowed( "was not opened before" )
-                            }) ),
-                        },
-                        '{' => {
-                            let kind = BracketKind::OpenCurly;
-                            brackets.push( Bracket { line, col: this.col, kind } );
-                            Ok( TokenKind::Bracket( kind ) )
-                        },
-                        '}' => match brackets.pop() {
-                            Some( Bracket { kind: BracketKind::OpenCurly, .. } ) =>
-                                Ok( TokenKind::Bracket( BracketKind::CloseCurly ) ),
-                            Some( Bracket { kind: BracketKind::CloseCurly | BracketKind::CloseRound, .. } ) =>
-                                Ok( TokenKind::Bracket( BracketKind::CloseCurly ) ),
-                            Some( Bracket { kind: BracketKind::OpenRound, .. } ) => Err( (ch.to_string(), SyntaxError {
-                                line,
-                                col: 0,
-                                len: ch.len_utf8(),
-                                msg: Cow::Borrowed( "stray bracket" ),
-                                help_msg: Cow::Borrowed( "closes the wrong bracket" )
-                            }) ),
-                            None => Err( (ch.to_string(), SyntaxError {
-                                line,
-                                col: 0,
-                                len: ch.len_utf8(),
-                                msg: Cow::Borrowed( "stray bracket" ),
-                                help_msg: Cow::Borrowed( "was not opened before" )
-                            }) ),
-                        },
-                        ';' => Ok( TokenKind::SemiColon ),
-                        '*' => match Self::peek_next( &mut src ) {
-                            Ok( Some( '*' ) ) => {
-                                let _ = Self::next( &mut src );
-
-                                match Self::peek_next( &mut src ) {
-                                    Ok( Some( '=' ) ) => {
-                                        let _ = Self::next( &mut src );
-                                        Ok( TokenKind::Op( Operator::PowEquals ) )
-                                    }
-                                    _ => Ok( TokenKind::Op( Operator::Pow ) ),
-                                }
-                            },
-                            Ok( Some( '=' ) ) => {
-                                let _ = Self::next( &mut src );
-                                Ok( TokenKind::Op( Operator::TimesEquals ) )
-                            },
-                            _ => Ok( TokenKind::Op( Operator::Times ) ),
-                        },
-                        '/' => match Self::peek_next( &mut src ) {
-                            Ok( Some( '=' ) ) => {
-                                let _ = Self::next( &mut src );
-                                Ok( TokenKind::Op( Operator::DivideEquals ) )
-                            },
-                            _ => Ok( TokenKind::Op( Operator::Divide ) ),
-                        },
-                        '%' => match Self::peek_next( &mut src ) {
-                            Ok( Some( '=' ) ) => {
-                                let _ = Self::next( &mut src );
-                                Ok( TokenKind::Op( Operator::RemainderEquals ) )
-                            },
-                            _ => Ok( TokenKind::Op( Operator::Remainder ) ),
-                        },
-                        '+' => match Self::peek_next( &mut src ) {
-                            Ok( Some( '=' ) ) => {
-                                let _ = Self::next( &mut src );
-                                Ok( TokenKind::Op( Operator::PlusEquals ) )
-                            },
-                            _ => Ok( TokenKind::Op( Operator::Plus ) ),
-                        },
-                        '-' => match Self::peek_next( &mut src ) {
-                            Ok( Some( '=' ) ) => {
-                                let _ = Self::next( &mut src );
-                                Ok( TokenKind::Op( Operator::MinusEquals ) )
-                            },
-                            _ => Ok( TokenKind::Op( Operator::Minus ) ),
-                        },
-                        '=' => match Self::peek_next( &mut src ) {
-                            Ok( Some( '=' ) ) => {
-                                let _ = Self::next( &mut src );
-                                Ok( TokenKind::Op( Operator::EqualsEquals ) )
-                            },
-                            _ => Ok( TokenKind::Equals ),
-                        },
-                        '!' => match Self::peek_next( &mut src ) {
-                            Ok( Some( '=' ) ) => {
-                                let _ = Self::next( &mut src );
-                                Ok( TokenKind::Op( Operator::NotEquals ) )
-                            },
-                            _ => Ok( TokenKind::Op( Operator::Not ) ),
-                        },
-                        '>' => match Self::peek_next( &mut src ) {
-                            Ok( Some( '=' ) ) => {
-                                let _ = Self::next( &mut src );
-                                Ok( TokenKind::Op( Operator::GreaterOrEquals ) )
-                            },
-                            _ => Ok( TokenKind::Op( Operator::Greater ) ),
-                        },
-                        '<' => match Self::peek_next( &mut src ) {
-                            Ok( Some( '=' ) ) => {
-                                let _ = Self::next( &mut src );
-
-                                match Self::peek_next( &mut src ) {
-                                    Ok( Some( '>' ) ) => {
-                                        let _ = Self::next( &mut src );
-                                        Ok( TokenKind::Op( Operator::Compare ) )
-                                    },
-                                    _ => Ok( TokenKind::Op( Operator::LessOrEquals ) ),
-                                }
-                            },
-                            _ => Ok( TokenKind::Op( Operator::Less ) ),
-                        },
-                        '^' => match Self::peek_next( &mut src ) {
-                            Ok( Some( '^' ) ) => {
-                                let _ = Self::next( &mut src );
-                                Ok( TokenKind::Op( Operator::Xor ) )
-                            },
-                            _ => Err( (ch.to_string(), SyntaxError {
-                                line,
-                                col: 0,
-                                len: ch.len_utf8(),
-                                msg: Cow::Borrowed( "unexpected character" ),
-                                help_msg: Cow::Borrowed( "unrecognized, did you mean '^^'?" )
-                            }) ),
-                        },
-                        '&' => match Self::peek_next( &mut src ) {
-                            Ok( Some( '&' ) ) => {
-                                let _ = Self::next( &mut src );
-                                Ok( TokenKind::Op( Operator::And ) )
-                            },
-                            _ => Err( (ch.to_string(), SyntaxError {
-                                line,
-                                col: 0,
-                                len: ch.len_utf8(),
-                                msg: Cow::Borrowed( "unexpected character" ),
-                                help_msg: Cow::Borrowed( "unrecognized, did you mean '&&'?" )
-                            }) ),
-                        },
-                        '|' => match Self::peek_next( &mut src ) {
-                            Ok( Some( '|' ) ) => {
-                                let _ = Self::next( &mut src );
-                                Ok( TokenKind::Op( Operator::Or ) )
-                            },
-                            _ => Err( (ch.to_string(), SyntaxError {
-                                line,
-                                col: 0,
-                                len: ch.len_utf8(),
-                                msg: Cow::Borrowed( "unexpected character" ),
-                                help_msg: Cow::Borrowed( "unrecognized, did you mean '||'?" )
-                            }) ),
-                        },
-                        '\'' => {
-                            this.token_text.push( ch );
-
-                            match Self::parse_char( &mut src, &mut this.token_text ) {
-                                Ok( b'\'' ) if this.token_text.len() == 2 => Err( (this.token_text.clone(), SyntaxError {
-                                    line,
-                                    col: 0,
-                                    len: this.token_text.len(),
-                                    msg: Cow::Borrowed( "empty character literal" ),
-                                    help_msg: Cow::Borrowed( "must not be empty" )
-                                }) ),
-                                Ok( value ) => match Self::next_char( &mut src, &mut this.token_text ) {
-                                    Ok( next ) => match next {
-                                        b'\'' => Ok( TokenKind::Literal( Literal::Char { value } ) ),
-                                        _ => Err( (this.token_text.clone(), SyntaxError {
-                                            line,
-                                            col: 0,
-                                            len: this.token_text.len(),
-                                            msg: Cow::Borrowed( "unclosed character literal" ),
-                                            help_msg: Cow::Borrowed( "missing closing single quote" )
-                                        }) ),
-                                    },
-                                    Err( err ) => Err( err ),
-                                },
-                                Err( err ) => Err( err ),
-                            }
-                        },
-                        '"' => Self::parse_str( &mut src ),
-                        '0'..='9' => {
-                            this.token_text.push( ch );
-
-                            let mut is_digit = true;
-                            while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
-                                if !next.is_ascii_digit() {
-                                    is_digit = false;
-                                }
-
-                                this.token_text.push( next );
-                            }
-
-                            match is_digit {
-                                true => match this.token_text.parse() { // TODO create own number parsing function
-                                    Ok( value ) => Ok( TokenKind::Literal( Literal::Int { value } ) ),
-                                    Err( _ ) => Err( (this.token_text.clone(), SyntaxError {
-                                        line,
-                                        col: 0,
-                                        len: this.token_text.len(),
-                                        msg: Cow::Borrowed( "expected number literal" ),
-                                        help_msg: Cow::Owned( format!( "overflows a 64 bit integer [{}, {}]", usize::MIN, usize::MAX ) )
-                                    }) ),
-                                },
-                                false => Err( (this.token_text.clone(), SyntaxError {
-                                    line,
-                                    col: 0,
-                                    len: this.token_text.len(),
-                                    msg: Cow::Borrowed( "expected number literal" ),
-                                    help_msg: Cow::Borrowed( "not a number literal" )
-                                }) ),
-                            }
-                        },
-                        'a'..='z' | 'A'..='Z' | '_'  => {
-                            this.token_text.push( ch );
-
-                            while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
-                                this.token_text.push( next );
-                            }
-
-                            let kind = match this.token_text.as_str() {
-                                "let" => TokenKind::Definition( Mutability::Let ),
-                                "var" => TokenKind::Definition( Mutability::Var ),
-                                "print" => TokenKind::Print,
-                                "println" => TokenKind::PrintLn,
-                                "true" => TokenKind::True,
-                                "false" => TokenKind::False,
-                                "if" => TokenKind::If,
-                                "else" => TokenKind::Else,
-                                "for" => TokenKind::For,
-                                "break" => TokenKind::Break,
-                                "continue" => TokenKind::Continue,
-                                _ => TokenKind::Identifier( this.token_text.clone() ),
-                            };
-
-                            Ok( kind )
-                        },
-                        _ => Err( (ch.to_string(), SyntaxError {
-                            line,
-                            col: 0,
-                            len: ch.len_utf8(),
-                            msg: Cow::Borrowed( "unexpected character" ),
-                            help_msg: Cow::Borrowed( "unrecognized" )
-                        }) ),
-                    },
-                };
-
-                match token_info {
-                    Ok( kind ) => this.tokens.push( Token { col: this.col, kind } ),
-                    Err( (err_text, mut err) ) => {
-                        err.col = this.col;
-                        this.tokens.push( Token { col: err.col, kind: TokenKind::Unexpected( err_text ) } );
-                        errors.push( err );
-                    },
-                }
-
-                this.token_text.clear();
-                this.col += this.tokens.last().unwrap().kind.len();
-            }
-
-            this.lines.push( line );
-            if trimmed_line_len == 0 {
+            if trimmed_line.len() == 0 {
                 this.tokens.push( Token { col: this.col, kind: TokenKind::Empty } );
             }
+            else {
+                let mut src = trimmed_line.chars().peekable();
+                loop {
+                    let token_info = match Self::next( &mut src ) {
+                        Ok( None ) => break,
+                        Err( err ) => Err( err ),
+                        Ok( Some( ch ) ) => match ch {
+                            // ignore whitespace
+                            '\t' | '\n' | '\x0C' | '\r' | ' ' => {
+                                this.col += 1;
+                                continue;
+                            },
+                            '#' => {
+                                this.token_text.push( ch );
 
-            let reached_eof = trimmed_line_len == chars_read;
-            if reached_eof {
-                this.tokens.push( Token { col: this.col, kind: TokenKind::EOF } );
+                                // consume the rest of the tokens in the current line
+                                while let Some( next ) = src.next_if( |c| *c != '\n' ) {
+                                    this.token_text.push( next );
+                                }
+
+                                Ok( TokenKind::Comment( this.token_text.clone() ) )
+                            },
+                            '(' => {
+                                let kind = BracketKind::OpenRound;
+                                brackets.push( Bracket { line_byte_start: this.abs_col, line_number: this.row, col: this.col, kind } );
+                                Ok( TokenKind::Bracket( kind ) )
+                            },
+                            ')' => match brackets.pop() {
+                                Some( Bracket { kind: BracketKind::OpenRound, .. } ) =>
+                                    Ok( TokenKind::Bracket( BracketKind::CloseRound ) ),
+                                Some( Bracket { kind: BracketKind::CloseCurly | BracketKind::CloseRound, .. } ) =>
+                                    Ok( TokenKind::Bracket( BracketKind::CloseRound ) ),
+                                Some( Bracket { kind: BracketKind::OpenCurly, .. } ) => Err( (ch.to_string(), SyntaxError {
+                                    line_byte_start: this.abs_col,
+                                    line_number: this.row,
+                                    col: 0,
+                                    len: ch.len_utf8(),
+                                    msg: "stray bracket".into(),
+                                    help_msg: "closes the wrong bracket".into()
+                                }) ),
+                                None => Err( (ch.to_string(), SyntaxError {
+                                    line_byte_start: this.abs_col,
+                                    line_number: this.row,
+                                    col: 0,
+                                    len: ch.len_utf8(),
+                                    msg: "stray bracket".into(),
+                                    help_msg: "was not opened before".into()
+                                }) ),
+                            },
+                            '{' => {
+                                let kind = BracketKind::OpenCurly;
+                                brackets.push( Bracket { line_byte_start: this.abs_col, line_number: this.row, col: this.col, kind } );
+                                Ok( TokenKind::Bracket( kind ) )
+                            },
+                            '}' => match brackets.pop() {
+                                Some( Bracket { kind: BracketKind::OpenCurly, .. } ) =>
+                                    Ok( TokenKind::Bracket( BracketKind::CloseCurly ) ),
+                                Some( Bracket { kind: BracketKind::CloseCurly | BracketKind::CloseRound, .. } ) =>
+                                    Ok( TokenKind::Bracket( BracketKind::CloseCurly ) ),
+                                Some( Bracket { kind: BracketKind::OpenRound, .. } ) => Err( (ch.to_string(), SyntaxError {
+                                    line_byte_start: this.abs_col,
+                                    line_number: this.row,
+                                    col: 0,
+                                    len: ch.len_utf8(),
+                                    msg: "stray bracket".into(),
+                                    help_msg: "closes the wrong bracket".into()
+                                }) ),
+                                None => Err( (ch.to_string(), SyntaxError {
+                                    line_byte_start: this.abs_col,
+                                    line_number: this.row,
+                                    col: 0,
+                                    len: ch.len_utf8(),
+                                    msg: "stray bracket".into(),
+                                    help_msg: "was not opened before".into()
+                                }) ),
+                            },
+                            ';' => Ok( TokenKind::SemiColon ),
+                            '*' => match Self::peek_next( &mut src ) {
+                                Ok( Some( '*' ) ) => {
+                                    let _ = Self::next( &mut src );
+
+                                    match Self::peek_next( &mut src ) {
+                                        Ok( Some( '=' ) ) => {
+                                            let _ = Self::next( &mut src );
+                                            Ok( TokenKind::Op( Operator::PowEquals ) )
+                                        }
+                                        _ => Ok( TokenKind::Op( Operator::Pow ) ),
+                                    }
+                                },
+                                Ok( Some( '=' ) ) => {
+                                    let _ = Self::next( &mut src );
+                                    Ok( TokenKind::Op( Operator::TimesEquals ) )
+                                },
+                                _ => Ok( TokenKind::Op( Operator::Times ) ),
+                            },
+                            '/' => match Self::peek_next( &mut src ) {
+                                Ok( Some( '=' ) ) => {
+                                    let _ = Self::next( &mut src );
+                                    Ok( TokenKind::Op( Operator::DivideEquals ) )
+                                },
+                                _ => Ok( TokenKind::Op( Operator::Divide ) ),
+                            },
+                            '%' => match Self::peek_next( &mut src ) {
+                                Ok( Some( '=' ) ) => {
+                                    let _ = Self::next( &mut src );
+                                    Ok( TokenKind::Op( Operator::RemainderEquals ) )
+                                },
+                                _ => Ok( TokenKind::Op( Operator::Remainder ) ),
+                            },
+                            '+' => match Self::peek_next( &mut src ) {
+                                Ok( Some( '=' ) ) => {
+                                    let _ = Self::next( &mut src );
+                                    Ok( TokenKind::Op( Operator::PlusEquals ) )
+                                },
+                                _ => Ok( TokenKind::Op( Operator::Plus ) ),
+                            },
+                            '-' => match Self::peek_next( &mut src ) {
+                                Ok( Some( '=' ) ) => {
+                                    let _ = Self::next( &mut src );
+                                    Ok( TokenKind::Op( Operator::MinusEquals ) )
+                                },
+                                _ => Ok( TokenKind::Op( Operator::Minus ) ),
+                            },
+                            '=' => match Self::peek_next( &mut src ) {
+                                Ok( Some( '=' ) ) => {
+                                    let _ = Self::next( &mut src );
+                                    Ok( TokenKind::Op( Operator::EqualsEquals ) )
+                                },
+                                _ => Ok( TokenKind::Equals ),
+                            },
+                            '!' => match Self::peek_next( &mut src ) {
+                                Ok( Some( '=' ) ) => {
+                                    let _ = Self::next( &mut src );
+                                    Ok( TokenKind::Op( Operator::NotEquals ) )
+                                },
+                                _ => Ok( TokenKind::Op( Operator::Not ) ),
+                            },
+                            '>' => match Self::peek_next( &mut src ) {
+                                Ok( Some( '=' ) ) => {
+                                    let _ = Self::next( &mut src );
+                                    Ok( TokenKind::Op( Operator::GreaterOrEquals ) )
+                                },
+                                _ => Ok( TokenKind::Op( Operator::Greater ) ),
+                            },
+                            '<' => match Self::peek_next( &mut src ) {
+                                Ok( Some( '=' ) ) => {
+                                    let _ = Self::next( &mut src );
+
+                                    match Self::peek_next( &mut src ) {
+                                        Ok( Some( '>' ) ) => {
+                                            let _ = Self::next( &mut src );
+                                            Ok( TokenKind::Op( Operator::Compare ) )
+                                        },
+                                        _ => Ok( TokenKind::Op( Operator::LessOrEquals ) ),
+                                    }
+                                },
+                                _ => Ok( TokenKind::Op( Operator::Less ) ),
+                            },
+                            '^' => match Self::peek_next( &mut src ) {
+                                Ok( Some( '^' ) ) => {
+                                    let _ = Self::next( &mut src );
+                                    Ok( TokenKind::Op( Operator::Xor ) )
+                                },
+                                _ => Err( (ch.to_string(), SyntaxError {
+                                    line_byte_start: this.abs_col,
+                                    line_number: this.row,
+                                    col: 0,
+                                    len: ch.len_utf8(),
+                                    msg: "unexpected character".into(),
+                                    help_msg: "unrecognized, did you mean '^^'?".into()
+                                }) ),
+                            },
+                            '&' => match Self::peek_next( &mut src ) {
+                                Ok( Some( '&' ) ) => {
+                                    let _ = Self::next( &mut src );
+                                    Ok( TokenKind::Op( Operator::And ) )
+                                },
+                                _ => Err( (ch.to_string(), SyntaxError {
+                                    line_byte_start: this.abs_col,
+                                    line_number: this.row,
+                                    col: 0,
+                                    len: ch.len_utf8(),
+                                    msg: "unexpected character".into(),
+                                    help_msg: "unrecognized, did you mean '&&'?".into()
+                                }) ),
+                            },
+                            '|' => match Self::peek_next( &mut src ) {
+                                Ok( Some( '|' ) ) => {
+                                    let _ = Self::next( &mut src );
+                                    Ok( TokenKind::Op( Operator::Or ) )
+                                },
+                                _ => Err( (ch.to_string(), SyntaxError {
+                                    line_byte_start: this.abs_col,
+                                    line_number: this.row,
+                                    col: 0,
+                                    len: ch.len_utf8(),
+                                    msg: "unexpected character".into(),
+                                    help_msg: "unrecognized, did you mean '||'?".into()
+                                }) ),
+                            },
+                            '\'' => {
+                                this.token_text.push( ch );
+
+                                match Self::parse_char( &mut src, &mut this.token_text ) {
+                                    Ok( b'\'' ) if this.token_text.len() == 2 => Err( (this.token_text.clone(), SyntaxError {
+                                        line_byte_start: this.abs_col,
+                                        line_number: this.row,
+                                        col: 0,
+                                        len: this.token_text.len(),
+                                        msg: "empty character literal".into(),
+                                        help_msg: "must not be empty".into()
+                                    }) ),
+                                    Ok( value ) => match Self::next_char( &mut src, &mut this.token_text ) {
+                                        Ok( next ) => match next {
+                                            b'\'' => Ok( TokenKind::Literal( Literal::Char { value } ) ),
+                                            _ => Err( (this.token_text.clone(), SyntaxError {
+                                                line_byte_start: this.abs_col,
+                                                line_number: this.row,
+                                                col: 0,
+                                                len: this.token_text.len(),
+                                                msg: "unclosed character literal".into(),
+                                                help_msg: "missing closing single quote".into()
+                                            }) ),
+                                        },
+                                        Err( err ) => Err( err ),
+                                    },
+                                    Err( err ) => Err( err ),
+                                }
+                            },
+                            '"' => Self::parse_str( &mut src ),
+                            '0'..='9' => {
+                                this.token_text.push( ch );
+
+                                let mut is_digit = true;
+                                while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
+                                    if !next.is_ascii_digit() {
+                                        is_digit = false;
+                                    }
+
+                                    this.token_text.push( next );
+                                }
+
+                                match is_digit {
+                                    true => match this.token_text.parse() { // TODO create own number parsing function
+                                        Ok( value ) => Ok( TokenKind::Literal( Literal::Int { value } ) ),
+                                        Err( _ ) => Err( (this.token_text.clone(), SyntaxError {
+                                            line_byte_start: this.abs_col,
+                                            line_number: this.row,
+                                            col: 0,
+                                            len: this.token_text.len(),
+                                            msg: "expected number literal".into(),
+                                            help_msg: format!( "overflows a {} bit integer [{}, {}]", isize::BITS, isize::MIN, isize::MAX  ).into()
+                                        }) ),
+                                    },
+                                    false => Err( (this.token_text.clone(), SyntaxError {
+                                        line_byte_start: this.abs_col,
+                                        line_number: this.row,
+                                        col: 0,
+                                        len: this.token_text.len(),
+                                        msg: "expected number literal".into(),
+                                        help_msg: "not a number literal".into()
+                                    }) ),
+                                }
+                            },
+                            'a'..='z' | 'A'..='Z' | '_'  => {
+                                this.token_text.push( ch );
+
+                                while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
+                                    this.token_text.push( next );
+                                }
+
+                                let kind = match this.token_text.as_str() {
+                                    "let" => TokenKind::Definition( Mutability::Let ),
+                                    "var" => TokenKind::Definition( Mutability::Var ),
+                                    "print" => TokenKind::Print,
+                                    "println" => TokenKind::PrintLn,
+                                    "true" => TokenKind::True,
+                                    "false" => TokenKind::False,
+                                    "if" => TokenKind::If,
+                                    "else" => TokenKind::Else,
+                                    "for" => TokenKind::For,
+                                    "break" => TokenKind::Break,
+                                    "continue" => TokenKind::Continue,
+                                    _ => TokenKind::Identifier( this.token_text.clone() ),
+                                };
+
+                                Ok( kind )
+                            },
+                            _ => Err( (ch.to_string(), SyntaxError {
+                                line_byte_start: this.abs_col,
+                                line_number: this.row,
+                                col: 0,
+                                len: ch.len_utf8(),
+                                msg: "unexpected character".into(),
+                                help_msg: "unrecognized".into()
+                            }) ),
+                        },
+                    };
+
+                    let token = match token_info {
+                        Ok( kind ) => Token { col: this.col, kind },
+                        Err( (err_text, mut err) ) => {
+                            err.col = this.col;
+                            errors.push( err );
+                            Token { col: this.col, kind: TokenKind::Unexpected( err_text ) }
+                        },
+                    };
+
+                    this.token_text.clear();
+                    this.col += token.kind.len();
+                    this.tokens.push( token );
+                }
+            }
+
+            let line = Line { byte_start: this.abs_col, number: this.row, token_start_idx, token_end_idx: this.tokens.len() - 1 };
+            token_start_idx = this.tokens.len();
+            this.abs_col += chars_read;
+            this.lines.push( line );
+
+            if chars_read == trimmed_line.len() {
                 break;
             }
         }
 
+        let last_line_idx = this.lines.len() - 1;
+        this.lines[ last_line_idx ].token_end_idx += 1; // accounting for the EOF
+        this.tokens.push( Token { col: this.col, kind: TokenKind::EOF } );
+
+        // FIX insert bracket related errors in the correct place, right now they appear at the end, out of order from the rest of the errors
         for bracket in brackets {
             // there can only be open brackets at this point
             errors.push( SyntaxError {
-                line: bracket.line,
+                line_byte_start: bracket.line_byte_start,
+                line_number: bracket.line_number,
                 col: bracket.col,
                 len: bracket.kind.len(),
-                msg: Cow::Borrowed( "stray bracket" ),
-                help_msg: Cow::Borrowed( "was not closed" )
+                msg: "stray bracket".into(),
+                help_msg: "was not closed".into()
             } );
         }
 
@@ -918,14 +941,14 @@ impl TryFrom<BlitzSrc> for Lexer {
 impl Lexer {
     fn next_line( &mut self ) -> Result<usize, std::io::Error> {
         self.row += 1;
-        self.col += 1;
+        self.col = 1;
         self.token_text.clear();
         self.line_text.clear();
         return self.src.src.read_line( &mut self.line_text );
     }
 
-    fn iter<'lexer>( &'lexer self ) -> LexerIter<'lexer> {
-        LexerIter{ lexer: self, line: 0, token: 0 }
+    fn iter<'lexer>( &'lexer self ) -> TokenCursor<'lexer> {
+        return TokenCursor { line: 0, lines: &self.lines, token: 0, tokens: &self.tokens };
     }
 
 
@@ -935,11 +958,12 @@ impl Lexer {
         return match src.next() {
             Some( next @ ..='\x7F' ) => Ok( Some( next ) ),
             Some( next ) => Err( (next.to_string(), SyntaxError {
-                line: Line { start: 0, number: 0 },
+                line_byte_start: 0,
+                line_number: 0,
                 col: 0,
                 len: next.len_utf8(),
-                msg: Cow::Borrowed( "unrecognized character" ),
-                help_msg: Cow::Borrowed( "not a valid ASCII character" )
+                msg: "unrecognized character".into(),
+                help_msg: "not a valid ASCII character".into()
             }) ),
             None => Ok( None ),
         }
@@ -949,11 +973,12 @@ impl Lexer {
         return match src.peek() {
             Some( next @ ..='\x7F' ) => Ok( Some( next ) ),
             Some( next ) => Err( (next.to_string(), SyntaxError {
-                line: Line { start: 0, number: 0 },
+                line_byte_start: 0,
+                line_number: 0,
                 col: 0,
                 len: next.len_utf8(),
-                msg: Cow::Borrowed( "unrecognized character" ),
-                help_msg: Cow::Borrowed( "not a valid ASCII character" )
+                msg: "unrecognized character".into(),
+                help_msg: "not a valid ASCII character".into()
             }) ),
             None => Ok( None ),
         }
@@ -963,11 +988,12 @@ impl Lexer {
     fn next_char( src: &mut Peekable<Chars>, token_text: &mut String ) -> Result<u8, LexerError> {
         return match Self::next( src )? {
             Some( '\n' ) | None => Err( (token_text.clone(), SyntaxError {
-                line: Line { start: 0, number: 0 },
+                line_byte_start: 0,
+                line_number: 0,
                 col: 0,
                 len: token_text.len(),
-                msg: Cow::Borrowed( "invalid character literal" ),
-                help_msg: Cow::Borrowed( "missing closing single quote" )
+                msg: "invalid character literal".into(),
+                help_msg: "missing closing single quote".into()
             }) ),
             Some( next ) => {
                 token_text.push( next );
@@ -976,8 +1002,8 @@ impl Lexer {
         }
     }
 
+    // FIX proper character tokenization
     fn parse_char( src: &mut Peekable<Chars>, token_text: &mut String ) -> Result<u8, LexerError> {
-        // IDEA treat character literals as just strings of lenght 1, reporting errors if over 1
         return match Self::next_char( src, token_text )? {
             b'\\' => match Self::next_char( src, token_text )? {
                 b'\\' => Ok( b'\\' ),
@@ -986,19 +1012,21 @@ impl Lexer {
                 b'\'' => Ok( b'\'' ),
                 b'"' => Ok( b'"' ),
                 _ => Err( (token_text.clone(), SyntaxError {
-                    line: Line { start: 0, number: 0 },
+                    line_byte_start: 0,
+                    line_number: 0,
                     col: 0,
                     len: token_text.len(),
-                    msg: Cow::Borrowed( "invalid escape character literal" ),
-                    help_msg: Cow::Borrowed( "check the documentation for a list of valid escape characters" )
+                    msg: "invalid escape character literal".into(),
+                    help_msg: "check the documentation for a list of valid escape characters".into()
                 }) ),
             },
             b'\x00'..=b'\x1F' | b'\x7F' => Err( (token_text.clone(), SyntaxError {
-                line: Line { start: 0, number: 0 },
+                line_byte_start: 0,
+                line_number: 0,
                 col: 0,
                 len: token_text.len(),
-                msg: Cow::Borrowed( "invalid character literal" ),
-                help_msg: Cow::Borrowed( "cannot be a control character" )
+                msg: "invalid character literal".into(),
+                help_msg: "cannot be a control character".into()
             }) ),
             next => Ok( next ),
         }
@@ -1009,21 +1037,22 @@ impl Lexer {
         return match Self::next( src )? {
             Some( ch ) => Ok( ch as u8 ),
             None => {
-                // TODO avoid cloning of text
-                let unclosed_string = format!( "\"{}", String::from_utf8( text.to_owned() ).unwrap() );
+                let unclosed_string = format!( "\"{}", String::from_utf8_lossy( &text ) );
                 let unclosed_string_len = unclosed_string.len();
 
                 Err( (unclosed_string, SyntaxError {
-                    line: Line { start: 0, number: 0 },
+                    line_byte_start: 0,
+                    line_number: 0,
                     col: 0,
                     len: unclosed_string_len,
-                    msg: Cow::Borrowed( "invalid string literal" ),
-                    help_msg: Cow::Borrowed( "missing closing double quote" )
+                    msg: "invalid string literal".into(),
+                    help_msg: "missing closing double quote".into()
                 }) )
             },
         }
     }
 
+    // FIX proper string tokenization
     fn parse_str( src: &mut Peekable<Chars> ) -> Result<TokenKind, LexerError> {
         let mut text: Vec<u8> = Vec::new();
 
@@ -1040,28 +1069,30 @@ impl Lexer {
                         text.push( b'\\' );
                         text.push( next );
 
-                        let unclosed_string = format!( "\"{}", String::from_utf8( text ).unwrap() );
+                        let unclosed_string = format!( "\"{}", String::from_utf8_lossy( &text ) );
                         let unclosed_string_len = unclosed_string.len();
 
                         return Err( (unclosed_string, SyntaxError {
-                            line: Line { start: 0, number: 0 },
+                            line_byte_start: 0,
+                            line_number: 0,
                             col: 0,
                             len: unclosed_string_len,
-                            msg: Cow::Borrowed( "invalid escape character" ),
-                            help_msg: Cow::Borrowed( "check the documentation for a list of valid escape characters" )
+                            msg: "invalid escape character".into(),
+                            help_msg: "check the documentation for a list of valid escape characters".into()
                         }) );
                     },
                 },
                 b'\x00'..=b'\x1F' | b'\x7F' => {
-                    let unclosed_string = format!( "\"{}", String::from_utf8( text ).unwrap() );
+                    let unclosed_string = format!( "\"{}", String::from_utf8_lossy( &text ) );
                     let unclosed_string_len = unclosed_string.len();
 
                     return Err( (unclosed_string, SyntaxError {
-                        line: Line { start: 0, number: 0 },
+                        line_byte_start: 0,
+                        line_number: 0,
                         col: 0,
                         len: unclosed_string_len,
-                        msg: Cow::Borrowed( "invalid string literal" ),
-                        help_msg: Cow::Borrowed( "contains a control character" )
+                        msg: "invalid string literal".into(),
+                        help_msg: "contains a control character".into()
                     }) );
                 },
                 other => text.push( other ),
@@ -1072,84 +1103,76 @@ impl Lexer {
 
 
 #[derive( Debug, Clone, Copy )]
-struct Position<'lexer> {
-    line: Line,
+struct TokenPosition<'lexer> {
+    line: &'lexer Line,
     token: &'lexer Token,
 }
 
 #[derive( Debug )]
-struct LexerIter<'lexer> {
-    lexer: &'lexer Lexer,
+struct TokenCursor<'lexer> {
     line: usize,
+    lines: &'lexer [Line],
+
     token: usize,
+    tokens: &'lexer [Token],
 }
 
-impl<'lexer> LexerIter<'lexer> {
-    fn current( &self ) -> Option<Position<'lexer>> {
-        let line = self.lexer.lines.get( self.line )?;
-        let token = self.lexer.tokens.get( self.token )?;
-
-        return Some( Position { line: *line, token } );
+// TODO implement methods that return only tokens or lines since lines are only really needed when reporting errors
+impl<'lexer> TokenCursor<'lexer> {
+    fn current( &self ) -> TokenPosition<'lexer> {
+        return TokenPosition{ line: &self.lines[ self.line ], token: &self.tokens[ self.token ] };
     }
 
-    fn current_or_next( &mut self ) -> Option<Position<'lexer>> {
-        return self.current().or_next( self );
+    fn current_or_next( &mut self ) -> Option<TokenPosition<'lexer>> {
+        return Some( self.current() ).or_next( self );
     }
 
-    fn next( &mut self ) -> Option<Position<'lexer>> {
-        let line = self.lexer.lines.get( self.line )?;
-        let (line, token) = if self.token + 1 < self.lexer.tokens.len() {
-            self.token += 1;
-            let token = self.lexer.tokens.get( self.token )?;
-
-            (line, token)
+    fn next( &mut self ) -> Option<TokenPosition<'lexer>> {
+        if self.token == self.tokens.len() - 1 {
+            return None;
         }
-        else {
+
+        self.token += 1;
+        let token = &self.tokens[ self.token ];
+
+        let mut line = &self.lines[ self.line ];
+        if self.token > line.token_end_idx {
             self.line += 1;
-            let line = self.lexer.lines.get( self.line )?;
-
-            self.token = 0;
-            let token = self.lexer.tokens.get( self.token )?;
-
-            (line, token)
-        };
-
-        return Some( Position { line: *line, token } ).or_next( self );
-    }
-
-    fn previous( &mut self ) -> Option<Position<'lexer>> {
-        let line = self.lexer.lines.get( self.line )?;
-        let (line, token) = if self.token > 0 {
-            self.token -= 1;
-            let token = self.lexer.tokens.get( self.token )?;
-
-            (line, token)
+            line = &self.lines[ self.line ];
         }
-        else {
+
+        return Some( TokenPosition { line, token } ).or_next( self );
+    }
+
+    fn previous( &mut self ) -> Option<TokenPosition<'lexer>> {
+        if self.token == 0 {
+            return None;
+        }
+
+        self.token -= 1;
+        let token = &self.tokens[ self.token ];
+
+        let mut line = &self.lines[ self.line ];
+        if self.token < line.token_start_idx {
             self.line -= 1;
-            let line = self.lexer.lines.get( self.line )?;
+            line = &self.lines[ self.line ];
+        }
 
-            self.token = self.lexer.tokens.len() - 1;
-            let token = self.lexer.tokens.get( self.token )?;
-
-            (line, token)
-        };
-
-        return Some( Position { line: *line, token } ).or_previous( self );
+        return Some( TokenPosition { line, token } ).or_previous( self );
     }
 
-    fn peek_next( &mut self ) -> Option<Position<'lexer>> {
+    fn peek_next( &mut self ) -> Option<TokenPosition<'lexer>> {
         let (starting_line, starting_token) = (self.line, self.token);
-        let position = self.next();
+        let next = self.next();
         (self.line, self.token) = (starting_line, starting_token);
-        return position;
+        return next;
     }
 
-    fn peek_previous( &mut self ) -> Option<Position<'lexer>> {
+    fn peek_previous( &mut self ) -> Option<TokenPosition<'lexer>> {
         let (starting_line, starting_token) = (self.line, self.token);
-        let position = self.previous();
+        let previous = self.previous();
         (self.line, self.token) = (starting_line, starting_token);
-        return position;
+        return previous;
     }
 }
 
@@ -1158,38 +1181,40 @@ trait BoundedPosition<'lexer> {
     type Error;
 
 
-    fn bounded( self, tokens: &mut LexerIter<'lexer>, err_msg: impl Into<String> ) -> Result<Self, Self::Error> where Self: Sized;
-    fn or_next( self, tokens: &mut LexerIter<'lexer> ) -> Self where Self: Sized;
-    fn or_previous( self, tokens: &mut LexerIter<'lexer> ) -> Self where Self: Sized;
+    fn bounded( self, tokens: &mut TokenCursor<'lexer>, err_msg: impl Into<String> ) -> Result<Self, Self::Error> where Self: Sized;
+    fn or_next( self, tokens: &mut TokenCursor<'lexer> ) -> Self where Self: Sized;
+    fn or_previous( self, tokens: &mut TokenCursor<'lexer> ) -> Self where Self: Sized;
 }
 
-impl<'lexer> BoundedPosition<'lexer> for Option<Position<'lexer>> {
+impl<'lexer> BoundedPosition<'lexer> for Option<TokenPosition<'lexer>> {
     type Error = SyntaxError;
 
 
-    fn bounded( self, tokens: &mut LexerIter<'lexer>, err_msg: impl Into<String> ) -> Result<Self, Self::Error> {
+    fn bounded( self, tokens: &mut TokenCursor<'lexer>, err_msg: impl Into<String> ) -> Result<Self, Self::Error> {
         return match self {
             Some( current ) => match current.token.kind {
                 TokenKind::EOF => {
                     // we are always sure that there is at least the SOF token before the EOF token, so we can safely unwrap
                     let previous = tokens.peek_previous().unwrap();
                     Err( SyntaxError {
-                        line: previous.line,
+                        line_byte_start: previous.line.byte_start,
+                        line_number: previous.line.number,
                         col: previous.token.col,
                         len: previous.token.kind.len(),
-                        msg: Cow::Owned( err_msg.into() ),
-                        help_msg: Cow::Borrowed( "file ended after here instead" )
+                        msg: err_msg.into().into(),
+                        help_msg: "file ended after here instead".into()
                     } )
                 },
                 TokenKind::SOF => {
                     // we are always sure that there is at least the EOF token after the SOF token, so we can safely unwrap
                     let next = tokens.peek_previous().unwrap();
                     Err( SyntaxError {
-                        line: next.line,
+                        line_byte_start: next.line.byte_start,
+                        line_number: next.line.number,
                         col: next.token.col,
                         len: next.token.kind.len(),
-                        msg: Cow::Owned( err_msg.into() ),
-                        help_msg: Cow::Borrowed( "file started before here instead" )
+                        msg: err_msg.into().into(),
+                        help_msg: "file started before here instead".into()
                     } )
                 },
                 _ => Ok( self ),
@@ -1198,14 +1223,14 @@ impl<'lexer> BoundedPosition<'lexer> for Option<Position<'lexer>> {
         }
     }
 
-    fn or_next( self, tokens: &mut LexerIter<'lexer> ) -> Self {
+    fn or_next( self, tokens: &mut TokenCursor<'lexer> ) -> Self {
         return match self?.token.kind {
             TokenKind::Comment( _ ) | TokenKind::Empty => tokens.next(),
             _ => self,
         }
     }
 
-    fn or_previous( self, tokens: &mut LexerIter<'lexer> ) -> Self {
+    fn or_previous( self, tokens: &mut TokenCursor<'lexer> ) -> Self {
         return match self?.token.kind {
             TokenKind::Comment( _ ) | TokenKind::Empty => tokens.previous(),
             _ => self,
@@ -1439,7 +1464,7 @@ impl TryFrom<Lexer> for AST {
 
 // Parsing of scopes
 impl<'lexer> AST {
-    fn parse_next( &mut self, tokens: &mut LexerIter<'lexer>, errors: &mut Vec<SyntaxError>, current: Position<'lexer> ) -> Result<Statement, SyntaxError> {
+    fn parse( &mut self, tokens: &mut TokenCursor<'lexer>, errors: &mut Vec<SyntaxError>, current: TokenPosition<'lexer> ) -> Result<Statement, SyntaxError> {
         return match current.token.kind {
             TokenKind::Literal( _ )
             | TokenKind::True | TokenKind::False
@@ -1469,11 +1494,12 @@ impl<'lexer> AST {
             TokenKind::Else => {
                 tokens.next();
                 Err( SyntaxError {
-                    line: current.line,
+                    line_byte_start: current.line.byte_start,
+                    line_number: current.line.number,
                     col: current.token.col,
                     len: current.token.kind.len(),
-                    msg: Cow::Borrowed( "invalid if statement" ),
-                    help_msg: Cow::Borrowed( "stray else block" )
+                    msg: "invalid if statement".into(),
+                    help_msg: "stray else block".into()
                 })
             },
             TokenKind::For => self.for_statement( tokens, errors ),
@@ -1481,11 +1507,12 @@ impl<'lexer> AST {
                 tokens.next();
                 match self.for_depth {
                     0 => Err( SyntaxError {
-                        line: current.line,
+                        line_byte_start: current.line.byte_start,
+                        line_number: current.line.number,
                         col: current.token.col,
                         len: current.token.kind.len(),
-                        msg: Cow::Borrowed( "invalid break statement" ),
-                        help_msg: Cow::Borrowed( "cannot be used outside of loops" )
+                        msg: "invalid break statement".into(),
+                        help_msg: "cannot be used outside of loops".into()
                     }),
                     _ => Ok( Statement::Single( Node::Break ) ),
                 }
@@ -1494,18 +1521,19 @@ impl<'lexer> AST {
                 tokens.next();
                 match self.for_depth {
                     0 => Err( SyntaxError {
-                        line: current.line,
+                        line_byte_start: current.line.byte_start,
+                        line_number: current.line.number,
                         col: current.token.col,
                         len: current.token.kind.len(),
-                        msg: Cow::Borrowed( "invalid continue statement" ),
-                        help_msg: Cow::Borrowed( "cannot be used outside of loops" )
+                        msg: "invalid continue statement".into(),
+                        help_msg: "cannot be used outside of loops".into()
                     }),
                     _ => Ok( Statement::Single( Node::Continue ) ),
                 }
             },
             TokenKind::Bracket( BracketKind::OpenCurly ) => {
-                tokens.next();
                 self.scopes.create_and_add_to_current();
+                tokens.next();
                 Ok( Statement::Empty )
             },
             TokenKind::Bracket( BracketKind::CloseCurly ) => {
@@ -1516,34 +1544,37 @@ impl<'lexer> AST {
             TokenKind::Bracket( BracketKind::CloseRound ) => {
                 tokens.next();
                 Err( SyntaxError {
-                    line: current.line,
+                    line_byte_start: current.line.byte_start,
+                    line_number: current.line.number,
                     col: current.token.col,
                     len: current.token.kind.len(),
-                    msg: Cow::Borrowed( "invalid expression" ),
-                    help_msg: Cow::Borrowed( "stray closed parenthesis" )
+                    msg: "invalid expression".into(),
+                    help_msg: "stray closed parenthesis".into()
                 })
             },
             TokenKind::Equals => {
                 tokens.next();
                 Err( SyntaxError {
-                    line: current.line,
+                    line_byte_start: current.line.byte_start,
+                    line_number: current.line.number,
                     col: current.token.col,
                     len: current.token.kind.len(),
-                    msg: Cow::Borrowed( "invalid assignment" ),
-                    help_msg: Cow::Borrowed( "stray assignment" )
+                    msg: "invalid assignment".into(),
+                    help_msg: "stray assignment".into()
                 })
             },
             TokenKind::Op( _ ) => {
                 tokens.next();
                 Err( SyntaxError {
-                    line: current.line,
+                    line_byte_start: current.line.byte_start,
+                    line_number: current.line.number,
                     col: current.token.col,
                     len: current.token.kind.len(),
-                    msg: Cow::Borrowed( "invalid expression" ),
-                    help_msg: Cow::Borrowed( "stray binary operator" )
+                    msg: "invalid expression".into(),
+                    help_msg: "stray binary operator".into()
                 })
             },
-            TokenKind::Comment( _ ) | TokenKind::SemiColon | TokenKind::Empty => {
+            TokenKind::SemiColon => {
                 tokens.next();
                 Ok( Statement::Empty )
             },
@@ -1558,13 +1589,13 @@ impl<'lexer> AST {
                 tokens.next();
                 Ok( Statement::Empty )
             },
-            TokenKind::Unexpected( _ ) => unreachable!(),
+            TokenKind::Comment( _ ) | TokenKind::Empty | TokenKind::Unexpected( _ ) => unreachable!(),
         }
     }
 
-    fn parse_scope( &mut self, tokens: &mut LexerIter<'lexer>, errors: &mut Vec<SyntaxError> ) {
+    fn parse_scope( &mut self, tokens: &mut TokenCursor<'lexer>, errors: &mut Vec<SyntaxError> ) {
         while let Some( current ) = tokens.current_or_next() {
-            let statement_result = self.parse_next( tokens, errors, current );
+            let statement_result = self.parse( tokens, errors, current );
 
             match statement_result {
                 Ok( Statement::Single( node ) ) => self.scopes.scopes[ self.scopes.current ].nodes.push( node ),
@@ -1580,7 +1611,7 @@ impl<'lexer> AST {
                     // NOTE only parsing until the first error until a fault tolerant parser is developed
                     // this is because the first truly relevant error is the first one,
                     // which in turn causes a ripple effect that propagates to the rest of the parsing, causing extra errors
-                    tokens.line = tokens.lexer.lines.len(); // as if we reached the end of the file
+                    tokens.line = tokens.lines.len(); // as if we reached the end of the file
                     break;
                 },
             }
@@ -1592,7 +1623,7 @@ impl<'lexer> AST {
 impl<'lexer> AST {
     // TODO disallow implicit conversions (str + i64, char + i64, str + char or str + str (maybe treat this as concatenation))
         // IDEA introduce casting operators
-    fn factor( &mut self, tokens: &mut LexerIter<'lexer> ) -> Result<Expression, SyntaxError> {
+    fn factor( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Expression, SyntaxError> {
         let current = tokens.current_or_next().bounded( tokens, "expected expression" )?.unwrap();
         let factor = match &current.token.kind {
             TokenKind::Literal( literal ) => Ok( Expression::Literal( literal.clone() ) ),
@@ -1601,22 +1632,24 @@ impl<'lexer> AST {
             TokenKind::Identifier( name ) => match self.scopes.resolve( name ) {
                 Some( definition ) => Ok( Expression::Identifier( name.clone(), definition.typ ) ),
                 None => Err( SyntaxError {
-                    line: current.line,
+                    line_byte_start: current.line.byte_start,
+                    line_number: current.line.number,
                     col: current.token.col,
                     len: current.token.kind.len(),
-                    msg: Cow::Borrowed( "variable not defined" ),
-                    help_msg: Cow::Borrowed( "was not previously defined in this scope" )
+                    msg: "variable not defined".into(),
+                    help_msg: "was not previously defined in this scope".into()
                 }),
             },
             TokenKind::Bracket( BracketKind::OpenRound ) => {
                 let expression_start_pos = tokens.next().bounded( tokens, "expected expression" )?.unwrap();
                 match expression_start_pos.token.kind {
                     TokenKind::Bracket( BracketKind::CloseRound ) => Err( SyntaxError {
-                        line: expression_start_pos.line,
+                        line_byte_start: expression_start_pos.line.byte_start,
+                        line_number: expression_start_pos.line.number,
                         col: expression_start_pos.token.col,
                         len: expression_start_pos.token.kind.len(),
-                        msg: Cow::Borrowed( "invalid expression" ),
-                        help_msg: Cow::Borrowed( "empty expressions are not allowed" )
+                        msg: "invalid expression".into(),
+                        help_msg: "empty expressions are not allowed".into()
                     }),
                     _ => {
                         let expression = self.expression_no_semicolon( tokens )?;
@@ -1624,11 +1657,12 @@ impl<'lexer> AST {
                         match close_bracket_pos.token.kind {
                             TokenKind::Bracket( BracketKind::CloseRound ) => Ok( expression ),
                             _ => Err( SyntaxError {
-                                line: current.line,
+                                line_byte_start: current.line.byte_start,
+                                line_number: current.line.number,
                                 col: current.token.col,
                                 len: current.token.kind.len(),
-                                msg: Cow::Borrowed( "invalid expression" ),
-                                help_msg: Cow::Borrowed( "unclosed parenthesis" )
+                                msg: "invalid expression".into(),
+                                help_msg: "unclosed parenthesis".into()
                             }),
                         }
                     }
@@ -1636,7 +1670,7 @@ impl<'lexer> AST {
             },
             TokenKind::Op( Operator::Minus ) => {
                 let mut should_be_negated = true;
-                while let Some( Position { token: Token { kind: TokenKind::Op( Operator::Minus ), .. }, .. } ) = tokens.next() {
+                while let Some( TokenPosition { token: Token { kind: TokenKind::Op( Operator::Minus ), .. }, .. } ) = tokens.next() {
                     should_be_negated = !should_be_negated;
                 }
 
@@ -1664,17 +1698,18 @@ impl<'lexer> AST {
                         false => Ok( operand ),
                     },
                     Type::Bool => Err( SyntaxError {
-                        line: current.line,
+                        line_byte_start: current.line.byte_start,
+                        line_number: current.line.number,
                         col: current.token.col,
                         len: current.token.kind.len(),
-                        msg: Cow::Borrowed( "invalid expression" ),
-                        help_msg: Cow::Borrowed( "cannot negate boolean value, use the 'not' operator instead" )
+                        msg: "invalid expression".into(),
+                        help_msg: "cannot negate boolean value, use the 'not' operator instead".into()
                     }),
                 }
             },
             TokenKind::Op( Operator::Not ) => {
                 let mut should_be_inverted = true;
-                while let Some( Position { token: Token { kind: TokenKind::Op( Operator::Not ), .. }, .. } ) = tokens.next() {
+                while let Some( TokenPosition { token: Token { kind: TokenKind::Op( Operator::Not ), .. }, .. } ) = tokens.next() {
                     should_be_inverted = !should_be_inverted;
                 }
 
@@ -1691,20 +1726,22 @@ impl<'lexer> AST {
                         false => Ok( operand ),
                     },
                     Type::Int | Type::Char | Type::Str => Err( SyntaxError {
-                        line: current.line,
+                        line_byte_start: current.line.byte_start,
+                        line_number: current.line.number,
                         col: current.token.col,
                         len: current.token.kind.len(),
-                        msg: Cow::Borrowed( "invalid expression" ),
-                        help_msg: Cow::Borrowed( "cannot invert non boolean value, use the '-' operator instead" )
+                        msg: "invalid expression".into(),
+                        help_msg: "cannot invert non boolean value, use the '-' operator instead".into()
                     }),
                 };
             },
             _ => Err( SyntaxError {
-                line: current.line,
+                line_byte_start: current.line.byte_start,
+                line_number: current.line.number,
                 col: current.token.col,
                 len: current.token.kind.len(),
-                msg: Cow::Borrowed( "invalid expression" ),
-                help_msg: Cow::Borrowed( "expected expression operand" )
+                msg: "invalid expression".into(),
+                help_msg: "expected expression operand".into()
             }),
         };
 
@@ -1712,7 +1749,7 @@ impl<'lexer> AST {
         return factor;
     }
 
-    fn operator( &mut self, tokens: &mut LexerIter<'lexer>, ops: &[Operator] ) -> Result<Option<Operator>, SyntaxError> {
+    fn operator( &mut self, tokens: &mut TokenCursor<'lexer>, ops: &[Operator] ) -> Result<Option<Operator>, SyntaxError> {
         let current_pos = tokens.current_or_next().bounded( tokens, "expected operator or semicolon" )?.unwrap();
         let operator = match current_pos.token.kind {
             TokenKind::Op( op ) => match ops.contains( &op ) {
@@ -1729,11 +1766,11 @@ impl<'lexer> AST {
     }
 
     // IDEA optimize expression building by implementing associativity rules (ie. remove parenthesis around additions and subtractions)
-    // TODO fix division by zero, rasing to a negative power
+    // FIX division by zero, raising to a negative power
     // TODO implement unsigned integers and force powers to only accept those as exponents
     // IDEA print crash error message
         // TODO implement a way to print file, line and column information in source code
-    fn exponentiation( &mut self, tokens: &mut LexerIter<'lexer> ) -> Result<Expression, SyntaxError> {
+    fn exponentiation( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Expression, SyntaxError> {
         let mut lhs = self.factor( tokens )?;
 
         while let Some( op ) = self.operator( tokens, &[Operator::Pow] )? {
@@ -1744,7 +1781,7 @@ impl<'lexer> AST {
         return Ok( lhs );
     }
 
-    fn multiplicative_expression( &mut self, tokens: &mut LexerIter<'lexer> ) -> Result<Expression, SyntaxError> {
+    fn multiplicative_expression( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Expression, SyntaxError> {
         let mut lhs = self.exponentiation( tokens )?;
 
         while let Some( op ) = self.operator( tokens, &[Operator::Times, Operator::Divide, Operator::Remainder] )? {
@@ -1755,7 +1792,7 @@ impl<'lexer> AST {
         return Ok( lhs );
     }
 
-    fn additive_expression( &mut self, tokens: &mut LexerIter<'lexer> ) -> Result<Expression, SyntaxError> {
+    fn additive_expression( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Expression, SyntaxError> {
         let mut lhs = self.multiplicative_expression( tokens )?;
 
         while let Some( op ) = self.operator( tokens, &[Operator::Plus, Operator::Minus] )? {
@@ -1766,7 +1803,7 @@ impl<'lexer> AST {
         return Ok( lhs );
     }
 
-    fn comparative_expression( &mut self, tokens: &mut LexerIter<'lexer> ) -> Result<Expression, SyntaxError> {
+    fn comparative_expression( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Expression, SyntaxError> {
         let mut lhs = self.additive_expression( tokens )?;
 
         let ops = [
@@ -1784,9 +1821,9 @@ impl<'lexer> AST {
         return Ok( lhs );
     }
 
-    // TODO shortcircuit boolean operators
+    // FIX shortcircuit boolean operators
     // TODO implement boolean operators for strings
-    fn boolean_expression( &mut self, tokens: &mut LexerIter<'lexer> ) -> Result<Expression, SyntaxError> {
+    fn boolean_expression( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Expression, SyntaxError> {
         let mut lhs = self.comparative_expression( tokens )?;
 
         while let Some( op ) = self.operator( tokens, &[Operator::And, Operator::Or, Operator::Xor] )? {
@@ -1794,22 +1831,24 @@ impl<'lexer> AST {
 
             if lhs.typ() != Type::Bool {
                 return Err( SyntaxError {
-                    line: op_pos.line,
+                    line_byte_start: op_pos.line.byte_start,
+                    line_number: op_pos.line.number,
                     col: op_pos.token.col,
                     len: op_pos.token.kind.len(),
-                    msg: Cow::Borrowed( "invalid boolean expression" ),
-                    help_msg: Cow::Borrowed( "must be preceded by a boolean expression" )
+                    msg: "invalid boolean expression".into(),
+                    help_msg: "must be preceded by a boolean expression".into()
                 });
             }
 
             let rhs = self.comparative_expression( tokens )?;
             if rhs.typ() != Type::Bool {
                 return Err( SyntaxError {
-                    line: op_pos.line,
+                    line_byte_start: op_pos.line.byte_start,
+                    line_number: op_pos.line.number,
                     col: op_pos.token.col,
                     len: op_pos.token.kind.len(),
-                    msg: Cow::Borrowed( "invalid boolean expression" ),
-                    help_msg: Cow::Borrowed( "must be followed by a boolean expression" )
+                    msg: "invalid boolean expression".into(),
+                    help_msg: "must be followed by a boolean expression".into()
                 });
             }
 
@@ -1819,17 +1858,18 @@ impl<'lexer> AST {
         return Ok( lhs );
     }
 
-    fn expression_no_semicolon( &mut self, tokens: &mut LexerIter<'lexer> ) -> Result<Expression, SyntaxError> {
+    fn expression_no_semicolon( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Expression, SyntaxError> {
         return self.boolean_expression( tokens );
     }
 
-    fn expression( &mut self, tokens: &mut LexerIter<'lexer> ) -> Result<Expression, SyntaxError> {
+    fn expression( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Expression, SyntaxError> {
         let expression = self.boolean_expression( tokens )?;
         let current = tokens.current_or_next().bounded( tokens, "expected semicolon" )?.unwrap();
         return match current.token.kind {
             // semicolons are optional if found before a closing curly bracket
             // this allows the last statement before the end of a block not to have a semicolon
             TokenKind::Bracket( BracketKind::CloseCurly ) => Ok( expression ),
+            // IDEA allow optional semicolons in chains of ifs-else ifs.else with single statements
             TokenKind::SemiColon => {
                 tokens.next();
                 Ok( expression )
@@ -1839,11 +1879,12 @@ impl<'lexer> AST {
                 tokens.next();
 
                 Err( SyntaxError {
-                    line: previous.line,
+                    line_byte_start: previous.line.byte_start,
+                    line_number: previous.line.number,
                     col: previous.token.col,
                     len: previous.token.kind.len(),
-                    msg: Cow::Borrowed( "invalid expression" ),
-                    help_msg: Cow::Borrowed( "expected an operator after this token to complete the expression, or a ';' to end the statement" )
+                    msg: "invalid expression".into(),
+                    help_msg: "expected an operator after this token to complete the expression, or a ';' to end the statement".into()
                 })
             },
         }
@@ -1852,8 +1893,8 @@ impl<'lexer> AST {
 
 // Parsing of variable definitions and assignments
 impl<'lexer> AST {
-    fn variable_definition( &mut self, tokens: &mut LexerIter<'lexer> ) -> Result<Statement, SyntaxError> {
-        let definition_pos = tokens.current().unwrap();
+    fn variable_definition( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Statement, SyntaxError> {
+        let definition_pos = tokens.current();
         let kind = match definition_pos.token.kind {
             TokenKind::Definition( kind ) => kind,
             _ => unreachable!(),
@@ -1863,11 +1904,12 @@ impl<'lexer> AST {
         let name = match &name_pos.token.kind {
             TokenKind::Identifier( name ) => Ok( name.clone() ),
             _ => Err( SyntaxError {
-                line: name_pos.line,
+                line_byte_start: name_pos.line.byte_start,
+                line_number: name_pos.line.number,
                 col: name_pos.token.col,
                 len: name_pos.token.kind.len(),
-                msg: Cow::Borrowed( "invalid assignment" ),
-                help_msg: Cow::Borrowed( "expected variable name" )
+                msg: "invalid assignment".into(),
+                help_msg: "expected variable name".into()
             }),
         };
 
@@ -1875,11 +1917,12 @@ impl<'lexer> AST {
         let equals = match equals_pos.token.kind {
             TokenKind::Equals => Ok( () ),
             _ => Err( SyntaxError {
-                line: name_pos.line,
+                line_byte_start: name_pos.line.byte_start,
+                line_number: name_pos.line.number,
                 col: name_pos.token.col,
                 len: name_pos.token.kind.len(),
-                msg: Cow::Borrowed( "invalid assignment" ),
-                help_msg: Cow::Borrowed( "expected '=' after variable name" )
+                msg: "invalid assignment".into(),
+                help_msg: "expected '=' after variable name".into()
             }),
         };
 
@@ -1890,11 +1933,12 @@ impl<'lexer> AST {
             | TokenKind::Bracket( BracketKind::OpenRound )
             | TokenKind::Op( Operator::Minus | Operator::Not ) => self.expression( tokens ),
             _ => Err( SyntaxError {
-                line: equals_pos.line,
+                line_byte_start: equals_pos.line.byte_start,
+                line_number: equals_pos.line.number,
                 col: equals_pos.token.col,
                 len: equals_pos.token.kind.len(),
-                msg: Cow::Borrowed( "invalid assignment" ),
-                help_msg: Cow::Borrowed( "expected expression after '='" )
+                msg: "invalid assignment".into(),
+                help_msg: "expected expression after '='".into()
             }),
         };
 
@@ -1909,17 +1953,18 @@ impl<'lexer> AST {
                 Ok( Statement::Single( Node::Definition( name, value ) ) )
             },
             Some( _ ) => Err( SyntaxError {
-                line: name_pos.line,
+                line_byte_start: name_pos.line.byte_start,
+                line_number: name_pos.line.number,
                 col: name_pos.token.col,
                 len: name_pos.token.kind.len(),
-                msg: Cow::Borrowed( "variable redefinition" ),
-                help_msg: Cow::Borrowed( "was previously defined" )
+                msg: "variable redefinition".into(),
+                help_msg: "was previously defined".into()
             }),
         }
     }
 
-    fn variable_reassignment( &mut self, tokens: &mut LexerIter<'lexer> ) -> Result<Statement, SyntaxError> {
-        let name_pos = tokens.current().unwrap();
+    fn variable_reassignment( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Statement, SyntaxError> {
+        let name_pos = tokens.current();
         let name = name_pos.token.kind.to_string();
         let assignment_pos = tokens.next().unwrap();
 
@@ -1945,11 +1990,12 @@ impl<'lexer> AST {
                 Err( err ) => Err( err ),
             },
             _ => Err( SyntaxError {
-                line: assignment_pos.line,
+                line_byte_start: assignment_pos.line.byte_start,
+                line_number: assignment_pos.line.number,
                 col: assignment_pos.token.col,
                 len: assignment_pos.token.kind.len(),
-                msg: Cow::Borrowed( "invalid assignment" ),
-                help_msg: Cow::Owned( format!( "expected expression after '{}'", assignment_pos.token.kind) )
+                msg: "invalid assignment".into(),
+                help_msg: format!( "expected expression after '{}'", assignment_pos.token.kind ).into()
             })
         };
 
@@ -1957,11 +2003,12 @@ impl<'lexer> AST {
             TokenKind::Identifier( name ) => match self.scopes.resolve_mut( &name ) {
                 Some( definition ) => Ok( definition ),
                 None => Err( SyntaxError {
-                    line: name_pos.line,
+                    line_byte_start: name_pos.line.byte_start,
+                    line_number: name_pos.line.number,
                     col: name_pos.token.col,
                     len: name_pos.token.kind.len(),
-                    msg: Cow::Borrowed( "variable redefinition" ),
-                    help_msg: Cow::Borrowed( "was not previously defined in this scope" )
+                    msg: "variable redefinition".into(),
+                    help_msg: "was not previously defined in this scope".into()
                 }),
             },
             _ => unreachable!(),
@@ -1971,11 +2018,12 @@ impl<'lexer> AST {
 
         let value = match variable.mutability {
             Mutability::Let => Err( SyntaxError {
-                line: name_pos.line,
+                line_byte_start: name_pos.line.byte_start,
+                line_number: name_pos.line.number,
                 col: name_pos.token.col,
                 len: name_pos.token.kind.len(),
-                msg: Cow::Borrowed( "invalid assignment" ),
-                help_msg: Cow::Borrowed( "was defined as immutable" )
+                msg: "invalid assignment".into(),
+                help_msg: "was defined as immutable".into()
             }),
             Mutability::Var => {
                 let new_value = new_value?;
@@ -1983,15 +2031,16 @@ impl<'lexer> AST {
 
                 if variable.typ != new_value_typ {
                     Err( SyntaxError {
-                        line: name_pos.line,
+                        line_byte_start: name_pos.line.byte_start,
+                        line_number: name_pos.line.number,
                         col: name_pos.token.col,
                         len: name_pos.token.kind.len(),
-                        msg: Cow::Borrowed( "mismatched types" ),
-                        help_msg: Cow::Owned( format!(
+                        msg: "mismatched types".into(),
+                        help_msg: format!(
                             "trying to assign an expression of type '{}' to a variable of type '{}'",
                             new_value_typ,
                             variable.typ
-                        ) )
+                         ).into()
                     })
                 }
                 else {
@@ -2006,11 +2055,11 @@ impl<'lexer> AST {
 
 // Parsing of print statements
 impl<'lexer> AST {
-    fn print( &mut self, tokens: &mut LexerIter<'lexer> ) -> Result<Statement, SyntaxError> {
-        let print_pos = tokens.current().unwrap();
+    fn print( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Statement, SyntaxError> {
+        let print_pos = tokens.current();
         match print_pos.token.kind {
             TokenKind::PrintLn => match tokens.peek_next() {
-                Some( Position { token: &Token { kind: TokenKind::SemiColon, .. }, .. } ) => {
+                Some( TokenPosition { token: &Token { kind: TokenKind::SemiColon, .. }, .. } ) => {
                     tokens.next();
                     let new_line = Literal::Char { value: '\n' as u8 };
                     let argument = Expression::Literal( new_line );
@@ -2029,11 +2078,12 @@ impl<'lexer> AST {
             | TokenKind::Bracket( BracketKind::OpenRound )
             | TokenKind::Op( Operator::Minus | Operator::Not ) => self.expression( tokens ),
             _ => Err( SyntaxError {
-                line: argument_pos.line,
+                line_byte_start: argument_pos.line.byte_start,
+                line_number: argument_pos.line.number,
                 col: argument_pos.token.col,
                 len: argument_pos.token.kind.len(),
-                msg: Cow::Borrowed( "invalid print argument" ),
-                help_msg: Cow::Borrowed( "expected an expression" )
+                msg: "invalid print argument".into(),
+                help_msg: "expected an expression".into()
             }),
         };
 
@@ -2056,7 +2106,7 @@ impl<'lexer> AST {
 
 // Parsing of if statements
 impl<'lexer> AST {
-    fn if_statement( &mut self, tokens: &mut LexerIter<'lexer>, errors: &mut Vec<SyntaxError> ) -> Result<Statement, SyntaxError> {
+    fn if_statement( &mut self, tokens: &mut TokenCursor<'lexer>, errors: &mut Vec<SyntaxError> ) -> Result<Statement, SyntaxError> {
         let iff = self.iff( tokens, errors )?;
         let mut if_statement = IfStatement { ifs: vec![ iff ], els: None };
         let else_pos = tokens.current_or_next();
@@ -2065,22 +2115,24 @@ impl<'lexer> AST {
         return Ok( Statement::Single( Node::If( if_statement ) ) );
     }
 
-    fn iff( &mut self, tokens: &mut LexerIter<'lexer>, errors: &mut Vec<SyntaxError> ) -> Result<If, SyntaxError> {
-        let if_pos = tokens.current().unwrap();
+    fn iff( &mut self, tokens: &mut TokenCursor<'lexer>, errors: &mut Vec<SyntaxError> ) -> Result<If, SyntaxError> {
+        let if_pos = tokens.current();
         tokens.next().bounded( tokens, "expected boolean expression" )?.unwrap();
 
         let expression = self.expression_no_semicolon( tokens )?;
         let condition = match &expression.typ() {
             Type::Bool => Ok( expression ),
             Type::Char | Type::Int | Type::Str => Err( SyntaxError {
-                line: if_pos.line,
+                line_byte_start: if_pos.line.byte_start,
+                line_number: if_pos.line.number,
                 col: if_pos.token.col,
                 len: if_pos.token.kind.len(),
-                msg: Cow::Borrowed( "expected boolean expression" ),
-                help_msg: Cow::Borrowed( "must be followed by a boolean expression", )
+                msg: "expected boolean expression".into(),
+                help_msg: "must be followed by a boolean expression".into()
             }),
         };
 
+        // TODO allow for single statement ifs using colons, (i.e. if x == 19: println 19;)
         let open_curly_pos = tokens.current_or_next().bounded( tokens, "expected curly bracket" )?.unwrap();
         let open_curly = match open_curly_pos.token.kind {
             TokenKind::Bracket( BracketKind::OpenCurly ) => {
@@ -2091,11 +2143,12 @@ impl<'lexer> AST {
             _ => {
                 let before_curly_bracket_pos = tokens.peek_previous().unwrap();
                 Err( SyntaxError {
-                    line: before_curly_bracket_pos.line,
+                    line_byte_start: before_curly_bracket_pos.line.byte_start,
+                    line_number: before_curly_bracket_pos.line.number,
                     col: before_curly_bracket_pos.token.col,
                     len: before_curly_bracket_pos.token.kind.len(),
-                    msg: Cow::Borrowed( "expected block scope" ),
-                    help_msg: Cow::Borrowed( "must be followed by an opened curly bracket", )
+                    msg: "expected block scope".into(),
+                    help_msg: "must be followed by an opened curly bracket".into()
                 })
             },
         };
@@ -2107,7 +2160,7 @@ impl<'lexer> AST {
         return Ok( If { condition, scope } );
     }
 
-    fn els( &mut self, if_statement: &mut IfStatement, else_pos: Option<Position<'lexer>>, tokens: &mut LexerIter<'lexer>, errors: &mut Vec<SyntaxError> ) -> Result<(), SyntaxError> {
+    fn els( &mut self, if_statement: &mut IfStatement, else_pos: Option<TokenPosition<'lexer>>, tokens: &mut TokenCursor<'lexer>, errors: &mut Vec<SyntaxError> ) -> Result<(), SyntaxError> {
         match else_pos {
             None => (),
             Some( pos ) => if let TokenKind::Else = pos.token.kind {
@@ -2128,11 +2181,12 @@ impl<'lexer> AST {
                         self.els( if_statement, next_else_pos, tokens, errors )?;
                     },
                     _ => return Err( SyntaxError {
-                        line: pos.line,
+                        line_byte_start: pos.line.byte_start,
+                        line_number: pos.line.number,
                         col: pos.token.col,
                         len: pos.token.kind.len(),
-                        msg: Cow::Borrowed( "invalid else statement" ),
-                        help_msg: Cow::Borrowed( "expected block of if statement after this token" )
+                        msg: "invalid else statement".into(),
+                        help_msg: "expected block of if statement after this token".into()
                     }),
                 }
             }
@@ -2144,7 +2198,7 @@ impl<'lexer> AST {
 
 // Parsing of for statements
 impl<'lexer> AST {
-    fn for_statement( &mut self, tokens: &mut LexerIter<'lexer>, errors: &mut Vec<SyntaxError> ) -> Result<Statement, SyntaxError> {
+    fn for_statement( &mut self, tokens: &mut TokenCursor<'lexer>, errors: &mut Vec<SyntaxError> ) -> Result<Statement, SyntaxError> {
         self.for_depth += 1;
         // let for_pos = self.tokens.current().unwrap();
 
@@ -3104,6 +3158,7 @@ impl<'ast> Compiler<'ast> {
             // TODO find way to avoiding compiling the move to a support register if the rhs operand is a literal
                 // IDEA optimize increments
                 // IDEA optimize checking for even values by testing the least significant bit (e.g. test rax, 1)
+            // IDEA optimize check for divisibility by 2 (i.e. even or odd)
             Expression::Binary { lhs, op, rhs } => {
                 let (lhs_reg, rhs_reg, op_asm) = match op {
                     Operator::Pow | Operator::PowEquals => match &**rhs {
@@ -3132,7 +3187,7 @@ impl<'ast> Compiler<'ast> {
                         ),
                     Operator::Plus | Operator::PlusEquals => (Register::RDI, Register::RSI, " add rdi, rsi\n"),
                     Operator::Minus | Operator::MinusEquals => (Register::RDI, Register::RSI, " sub rdi, rsi\n"),
-                    Operator::EqualsEquals => // IDEA ottimizzare controllo divisibilita per 2 o qui o durante l'operazione di resto
+                    Operator::EqualsEquals =>
                         (Register::RDI, Register::RSI,
                             " cmp rdi, rsi\
                             \n mov rdi, false\
@@ -3513,8 +3568,6 @@ impl BlitzSrc {
                 },
             Err( err ) => {
                 let kind = err.kind();
-
-                // TODO create own error messages and error class
                 Err( std::io::Error::new(
                     kind,
                     format!( "{}: could not open file '{}'\n{}: {}", SyntaxErrors::ERROR, path.display(), BlitzSrc::CAUSE, kind )
@@ -3525,7 +3578,7 @@ impl BlitzSrc {
 }
 
 
-// IDEA implement SyntaxErrors to report cli mistakes
+// IDEA adapt SyntaxErrors to report cli mistakes
 fn main() -> ExitCode {
     #[allow( unused_mut )]
     let mut args: Vec<String> = env::args().collect();
@@ -3547,8 +3600,8 @@ fn main() -> ExitCode {
 
     let mut source_file_path: Option<String> = None;
     let mut args_iter = args.into_iter();
-    args_iter.next();
-    for arg in args_iter { // skipping the name of this executable
+    args_iter.next(); // skipping the name of this executable
+    for arg in args_iter {
         match arg.as_str() {
             "-h" | "--help" => {
                 print_usage();
