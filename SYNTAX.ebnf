@@ -1,13 +1,14 @@
-valid_character = ? ASCII 32..126 ?;
-line_comment = "#", [{valid_character}];
+ASCII_character = ? ASCII 32..126 ?;
+UTF-8_character = ? U+0080.. ?;
+line_comment = "#", [{ASCII_character | UTF-8_character}];
 
 digit = "0".."9";
 number_literal = {digit};
 boolean_literal = "true" | "false";
 
 escape_character = "\\" | "\n" | "\t" | "\'" | '"' | '\"';
-character_literal = "'", (escape_character | valid_character), "'";
-string_literal = '"', [{escape_character | valid_character}], '"';
+character_literal = "'", (escape_character | ASCII_character), "'";
+string_literal = '"', [{escape_character | ASCII_character}], '"';
 identifier = "_" | "A".."Z" | "a".."z", [{"_" | "A".."Z" | "a".."z" | digit}];
 
 (* from highest precedence to lowest *)

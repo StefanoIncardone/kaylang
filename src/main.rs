@@ -1,4 +1,4 @@
-use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write, Seek, SeekFrom}, fs::File, env::{self}, process::{ExitCode, Command}, fmt::Display, path::{Path, PathBuf}, iter::Peekable, str::Chars, borrow::Cow, cmp::Ordering};
+use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write, Seek, SeekFrom}, fs::File, env::{self, Args}, process::{ExitCode, Command}, fmt::Display, path::{Path, PathBuf}, borrow::Cow, cmp::Ordering, num::IntErrorKind};
 
 mod color;
 use crate::color::*;
@@ -26,7 +26,7 @@ struct Str {
 
 #[derive( Debug, Clone )]
 enum Literal {
-    // TODO have different size integers and default to 32 bits for literals
+    // IDEA have different size integers and default to 32 bits for literals
     Int { value: isize },
     Char { value: u8 }, // only supporting ASCII characters for now
     Bool { value: bool },
@@ -65,7 +65,7 @@ impl Len for Literal {
     fn len( &self ) -> usize {
         return match self {
             Self::Int { value } => value.to_string().len(),
-            Self::Char { .. } => 1 as usize,
+            Self::Char { .. } => 1,
             Self::Bool { value } => value.to_string().len(),
             Self::Str( string ) => string.text.len() + 2,
         }
@@ -78,7 +78,7 @@ impl TypeOf for Literal {
             Self::Int { .. } => Type::Int,
             Self::Char { .. } => Type::Char,
             Self::Bool { .. } => Type::Bool,
-            Self::Str { .. } => Type::Str,
+            Self::Str( _ ) => Type::Str,
         }
     }
 }
@@ -109,10 +109,10 @@ enum Type {
 impl Display for Type {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
-            Type::Int => write!( f, "int" ),
-            Type::Char => write!( f, "char" ),
-            Type::Bool => write!( f, "bool" ),
-            Type::Str => write!( f, "str" ),
+            Self::Int => write!( f, "int" ),
+            Self::Char => write!( f, "char" ),
+            Self::Bool => write!( f, "bool" ),
+            Self::Str => write!( f, "str" ),
         }
     }
 }
@@ -120,7 +120,7 @@ impl Display for Type {
 impl Len for Type {
     fn len( &self ) -> usize {
         match self {
-            Self::Int => core::mem::size_of::<usize>(),
+            Self::Int => core::mem::size_of::<isize>(),
             Self::Char => core::mem::size_of::<u8>(),
             Self::Bool => core::mem::size_of::<bool>(),
             Self::Str => core::mem::size_of::<*const u8>() + core::mem::size_of::<usize>(),
@@ -357,6 +357,7 @@ enum TokenKind {
 
     // Special
     Empty,
+    // TODO remove these two tokens
     SOF, // start of file
     EOF, // end of file
 }
@@ -452,8 +453,6 @@ struct SyntaxError {
     msg: Cow<'static, str>,
     help_msg: Cow<'static, str>,
 }
-
-type LexerError = (String, SyntaxError);
 
 #[derive( Debug )]
 struct SyntaxErrors {
@@ -552,376 +551,102 @@ struct Bracket {
 struct Lexer {
     src: BlitzSrc,
 
-    row: usize,
+    line: usize,
+    line_byte_start: usize,
+    line_token_start_idx: usize,
     col: usize,
-    abs_col: usize,
+    token_start_col: usize,
 
     lines: Vec<Line>,
     tokens: Vec<Token>,
 
-    line_text: String,
+    line_bytes: Vec<u8>,
     token_text: String,
+
+    brackets: Vec<Bracket>,
+    errors: Vec<SyntaxError>,
 }
 
 impl TryFrom<BlitzSrc> for Lexer {
     type Error = SyntaxErrors;
 
 
-    // TODO make an character iterator similar to LexerIter
     fn try_from( src: BlitzSrc ) -> Result<Self, Self::Error> {
         let mut this = Self {
             src,
-            row: 0,
-            col: 1,
-            abs_col: 0,
+            line: 0,
+            line_byte_start: 0,
+            line_token_start_idx: 0,
+            col: 0,
+            token_start_col: 1,
             lines: Vec::new(),
             tokens: vec![ Token { col: 1, kind: TokenKind::SOF } ],
-            line_text: String::new(),
-            token_text: String::new()
+            line_bytes: Vec::new(),
+            token_text: String::new(),
+            brackets: Vec::new(),
+            errors: Vec::new(),
         };
 
-        let mut brackets: Vec<Bracket> = Vec::new();
-        let mut errors: Vec<SyntaxError> = Vec::new();
+        loop {
+            this.line_bytes.clear();
+            match this.src.src.read_until( b'\n', &mut this.line_bytes ) {
+                Ok( chars_read ) => {
+                    this.line += 1;
+                    this.col = 0;
+                    this.token_start_col = 1;
 
-        let mut token_start_idx = 0;
-        while let Ok( chars_read ) = this.next_line() {
-            let trimmed_line = this.line_text.trim_end();
+                    let mut line_len = this.line_bytes.len();
+                    if line_len == 0 {
+                        this.tokens.push( Token { col: 1, kind: TokenKind::Empty } );
+                    }
+                    else {
+                        while line_len > 0 && this.line_bytes[ line_len - 1 ].is_ascii_whitespace() {
+                            line_len -= 1;
+                        }
 
-            if trimmed_line.len() == 0 {
-                this.tokens.push( Token { col: this.col, kind: TokenKind::Empty } );
-            }
-            else {
-                let mut src = trimmed_line.chars().peekable();
-                loop {
-                    let token_info = match Self::next( &mut src ) {
-                        Ok( None ) => break,
-                        Err( err ) => Err( err ),
-                        Ok( Some( ch ) ) => match ch {
-                            // ignore whitespace
-                            '\t' | '\n' | '\x0C' | '\r' | ' ' => {
-                                this.col += 1;
-                                continue;
-                            },
-                            '#' => {
-                                this.token_text.push( ch );
-
-                                // consume the rest of the tokens in the current line
-                                while let Some( next ) = src.next_if( |c| *c != '\n' ) {
-                                    this.token_text.push( next );
+                        this.line_bytes.truncate( line_len );
+                        loop {
+                            let token = match this.tokeninze_next() {
+                                Ok( None ) => break,
+                                Ok( Some( kind ) ) => Token { col: this.token_start_col, kind },
+                                Err( err ) => {
+                                    this.errors.push( err );
+                                    Token { col: this.token_start_col, kind: TokenKind::Unexpected( this.token_text.clone() ) }
                                 }
+                            };
 
-                                Ok( TokenKind::Comment( this.token_text.clone() ) )
-                            },
-                            '(' => {
-                                let kind = BracketKind::OpenRound;
-                                brackets.push( Bracket { line_byte_start: this.abs_col, line_number: this.row, col: this.col, kind } );
-                                Ok( TokenKind::Bracket( kind ) )
-                            },
-                            ')' => match brackets.pop() {
-                                Some( Bracket { kind: BracketKind::OpenRound, .. } ) =>
-                                    Ok( TokenKind::Bracket( BracketKind::CloseRound ) ),
-                                Some( Bracket { kind: BracketKind::CloseCurly | BracketKind::CloseRound, .. } ) =>
-                                    Ok( TokenKind::Bracket( BracketKind::CloseRound ) ),
-                                Some( Bracket { kind: BracketKind::OpenCurly, .. } ) => Err( (ch.to_string(), SyntaxError {
-                                    line_byte_start: this.abs_col,
-                                    line_number: this.row,
-                                    col: 0,
-                                    len: ch.len_utf8(),
-                                    msg: "stray bracket".into(),
-                                    help_msg: "closes the wrong bracket".into()
-                                }) ),
-                                None => Err( (ch.to_string(), SyntaxError {
-                                    line_byte_start: this.abs_col,
-                                    line_number: this.row,
-                                    col: 0,
-                                    len: ch.len_utf8(),
-                                    msg: "stray bracket".into(),
-                                    help_msg: "was not opened before".into()
-                                }) ),
-                            },
-                            '{' => {
-                                let kind = BracketKind::OpenCurly;
-                                brackets.push( Bracket { line_byte_start: this.abs_col, line_number: this.row, col: this.col, kind } );
-                                Ok( TokenKind::Bracket( kind ) )
-                            },
-                            '}' => match brackets.pop() {
-                                Some( Bracket { kind: BracketKind::OpenCurly, .. } ) =>
-                                    Ok( TokenKind::Bracket( BracketKind::CloseCurly ) ),
-                                Some( Bracket { kind: BracketKind::CloseCurly | BracketKind::CloseRound, .. } ) =>
-                                    Ok( TokenKind::Bracket( BracketKind::CloseCurly ) ),
-                                Some( Bracket { kind: BracketKind::OpenRound, .. } ) => Err( (ch.to_string(), SyntaxError {
-                                    line_byte_start: this.abs_col,
-                                    line_number: this.row,
-                                    col: 0,
-                                    len: ch.len_utf8(),
-                                    msg: "stray bracket".into(),
-                                    help_msg: "closes the wrong bracket".into()
-                                }) ),
-                                None => Err( (ch.to_string(), SyntaxError {
-                                    line_byte_start: this.abs_col,
-                                    line_number: this.row,
-                                    col: 0,
-                                    len: ch.len_utf8(),
-                                    msg: "stray bracket".into(),
-                                    help_msg: "was not opened before".into()
-                                }) ),
-                            },
-                            ';' => Ok( TokenKind::SemiColon ),
-                            '*' => match Self::peek_next( &mut src ) {
-                                Ok( Some( '*' ) ) => {
-                                    let _ = Self::next( &mut src );
+                            this.tokens.push( token );
+                        }
+                    }
 
-                                    match Self::peek_next( &mut src ) {
-                                        Ok( Some( '=' ) ) => {
-                                            let _ = Self::next( &mut src );
-                                            Ok( TokenKind::Op( Operator::PowEquals ) )
-                                        }
-                                        _ => Ok( TokenKind::Op( Operator::Pow ) ),
-                                    }
-                                },
-                                Ok( Some( '=' ) ) => {
-                                    let _ = Self::next( &mut src );
-                                    Ok( TokenKind::Op( Operator::TimesEquals ) )
-                                },
-                                _ => Ok( TokenKind::Op( Operator::Times ) ),
-                            },
-                            '/' => match Self::peek_next( &mut src ) {
-                                Ok( Some( '=' ) ) => {
-                                    let _ = Self::next( &mut src );
-                                    Ok( TokenKind::Op( Operator::DivideEquals ) )
-                                },
-                                _ => Ok( TokenKind::Op( Operator::Divide ) ),
-                            },
-                            '%' => match Self::peek_next( &mut src ) {
-                                Ok( Some( '=' ) ) => {
-                                    let _ = Self::next( &mut src );
-                                    Ok( TokenKind::Op( Operator::RemainderEquals ) )
-                                },
-                                _ => Ok( TokenKind::Op( Operator::Remainder ) ),
-                            },
-                            '+' => match Self::peek_next( &mut src ) {
-                                Ok( Some( '=' ) ) => {
-                                    let _ = Self::next( &mut src );
-                                    Ok( TokenKind::Op( Operator::PlusEquals ) )
-                                },
-                                _ => Ok( TokenKind::Op( Operator::Plus ) ),
-                            },
-                            '-' => match Self::peek_next( &mut src ) {
-                                Ok( Some( '=' ) ) => {
-                                    let _ = Self::next( &mut src );
-                                    Ok( TokenKind::Op( Operator::MinusEquals ) )
-                                },
-                                _ => Ok( TokenKind::Op( Operator::Minus ) ),
-                            },
-                            '=' => match Self::peek_next( &mut src ) {
-                                Ok( Some( '=' ) ) => {
-                                    let _ = Self::next( &mut src );
-                                    Ok( TokenKind::Op( Operator::EqualsEquals ) )
-                                },
-                                _ => Ok( TokenKind::Equals ),
-                            },
-                            '!' => match Self::peek_next( &mut src ) {
-                                Ok( Some( '=' ) ) => {
-                                    let _ = Self::next( &mut src );
-                                    Ok( TokenKind::Op( Operator::NotEquals ) )
-                                },
-                                _ => Ok( TokenKind::Op( Operator::Not ) ),
-                            },
-                            '>' => match Self::peek_next( &mut src ) {
-                                Ok( Some( '=' ) ) => {
-                                    let _ = Self::next( &mut src );
-                                    Ok( TokenKind::Op( Operator::GreaterOrEquals ) )
-                                },
-                                _ => Ok( TokenKind::Op( Operator::Greater ) ),
-                            },
-                            '<' => match Self::peek_next( &mut src ) {
-                                Ok( Some( '=' ) ) => {
-                                    let _ = Self::next( &mut src );
+                    let reached_eof = chars_read == line_len;
+                    if reached_eof {
+                        this.tokens.push( Token { col: this.token_start_col, kind: TokenKind::EOF } );
+                    }
 
-                                    match Self::peek_next( &mut src ) {
-                                        Ok( Some( '>' ) ) => {
-                                            let _ = Self::next( &mut src );
-                                            Ok( TokenKind::Op( Operator::Compare ) )
-                                        },
-                                        _ => Ok( TokenKind::Op( Operator::LessOrEquals ) ),
-                                    }
-                                },
-                                _ => Ok( TokenKind::Op( Operator::Less ) ),
-                            },
-                            '^' => match Self::peek_next( &mut src ) {
-                                Ok( Some( '^' ) ) => {
-                                    let _ = Self::next( &mut src );
-                                    Ok( TokenKind::Op( Operator::Xor ) )
-                                },
-                                _ => Err( (ch.to_string(), SyntaxError {
-                                    line_byte_start: this.abs_col,
-                                    line_number: this.row,
-                                    col: 0,
-                                    len: ch.len_utf8(),
-                                    msg: "unexpected character".into(),
-                                    help_msg: "unrecognized, did you mean '^^'?".into()
-                                }) ),
-                            },
-                            '&' => match Self::peek_next( &mut src ) {
-                                Ok( Some( '&' ) ) => {
-                                    let _ = Self::next( &mut src );
-                                    Ok( TokenKind::Op( Operator::And ) )
-                                },
-                                _ => Err( (ch.to_string(), SyntaxError {
-                                    line_byte_start: this.abs_col,
-                                    line_number: this.row,
-                                    col: 0,
-                                    len: ch.len_utf8(),
-                                    msg: "unexpected character".into(),
-                                    help_msg: "unrecognized, did you mean '&&'?".into()
-                                }) ),
-                            },
-                            '|' => match Self::peek_next( &mut src ) {
-                                Ok( Some( '|' ) ) => {
-                                    let _ = Self::next( &mut src );
-                                    Ok( TokenKind::Op( Operator::Or ) )
-                                },
-                                _ => Err( (ch.to_string(), SyntaxError {
-                                    line_byte_start: this.abs_col,
-                                    line_number: this.row,
-                                    col: 0,
-                                    len: ch.len_utf8(),
-                                    msg: "unexpected character".into(),
-                                    help_msg: "unrecognized, did you mean '||'?".into()
-                                }) ),
-                            },
-                            '\'' => {
-                                this.token_text.push( ch );
-
-                                match Self::parse_char( &mut src, &mut this.token_text ) {
-                                    Ok( b'\'' ) if this.token_text.len() == 2 => Err( (this.token_text.clone(), SyntaxError {
-                                        line_byte_start: this.abs_col,
-                                        line_number: this.row,
-                                        col: 0,
-                                        len: this.token_text.len(),
-                                        msg: "empty character literal".into(),
-                                        help_msg: "must not be empty".into()
-                                    }) ),
-                                    Ok( value ) => match Self::next_char( &mut src, &mut this.token_text ) {
-                                        Ok( next ) => match next {
-                                            b'\'' => Ok( TokenKind::Literal( Literal::Char { value } ) ),
-                                            _ => Err( (this.token_text.clone(), SyntaxError {
-                                                line_byte_start: this.abs_col,
-                                                line_number: this.row,
-                                                col: 0,
-                                                len: this.token_text.len(),
-                                                msg: "unclosed character literal".into(),
-                                                help_msg: "missing closing single quote".into()
-                                            }) ),
-                                        },
-                                        Err( err ) => Err( err ),
-                                    },
-                                    Err( err ) => Err( err ),
-                                }
-                            },
-                            '"' => Self::parse_str( &mut src ),
-                            '0'..='9' => {
-                                this.token_text.push( ch );
-
-                                let mut is_digit = true;
-                                while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
-                                    if !next.is_ascii_digit() {
-                                        is_digit = false;
-                                    }
-
-                                    this.token_text.push( next );
-                                }
-
-                                match is_digit {
-                                    true => match this.token_text.parse() { // TODO create own number parsing function
-                                        Ok( value ) => Ok( TokenKind::Literal( Literal::Int { value } ) ),
-                                        Err( _ ) => Err( (this.token_text.clone(), SyntaxError {
-                                            line_byte_start: this.abs_col,
-                                            line_number: this.row,
-                                            col: 0,
-                                            len: this.token_text.len(),
-                                            msg: "expected number literal".into(),
-                                            help_msg: format!( "overflows a {} bit integer [{}, {}]", isize::BITS, isize::MIN, isize::MAX  ).into()
-                                        }) ),
-                                    },
-                                    false => Err( (this.token_text.clone(), SyntaxError {
-                                        line_byte_start: this.abs_col,
-                                        line_number: this.row,
-                                        col: 0,
-                                        len: this.token_text.len(),
-                                        msg: "expected number literal".into(),
-                                        help_msg: "not a number literal".into()
-                                    }) ),
-                                }
-                            },
-                            'a'..='z' | 'A'..='Z' | '_'  => {
-                                this.token_text.push( ch );
-
-                                while let Some( next ) = src.next_if( |c| matches!( c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' ) ) {
-                                    this.token_text.push( next );
-                                }
-
-                                let kind = match this.token_text.as_str() {
-                                    "let" => TokenKind::Definition( Mutability::Let ),
-                                    "var" => TokenKind::Definition( Mutability::Var ),
-                                    "print" => TokenKind::Print,
-                                    "println" => TokenKind::PrintLn,
-                                    "true" => TokenKind::True,
-                                    "false" => TokenKind::False,
-                                    "if" => TokenKind::If,
-                                    "else" => TokenKind::Else,
-                                    "for" => TokenKind::For,
-                                    "break" => TokenKind::Break,
-                                    "continue" => TokenKind::Continue,
-                                    _ => TokenKind::Identifier( this.token_text.clone() ),
-                                };
-
-                                Ok( kind )
-                            },
-                            _ => Err( (ch.to_string(), SyntaxError {
-                                line_byte_start: this.abs_col,
-                                line_number: this.row,
-                                col: 0,
-                                len: ch.len_utf8(),
-                                msg: "unexpected character".into(),
-                                help_msg: "unrecognized".into()
-                            }) ),
-                        },
+                    let line = Line {
+                        byte_start: this.line_byte_start,
+                        number: this.line,
+                        token_start_idx: this.line_token_start_idx,
+                        token_end_idx: this.tokens.len()
                     };
 
-                    let token = match token_info {
-                        Ok( kind ) => Token { col: this.col, kind },
-                        Err( (err_text, mut err) ) => {
-                            err.col = this.col;
-                            errors.push( err );
-                            Token { col: this.col, kind: TokenKind::Unexpected( err_text ) }
-                        },
-                    };
+                    this.line_token_start_idx = this.tokens.len();
+                    this.line_byte_start += chars_read;
+                    this.lines.push( line );
 
-                    this.token_text.clear();
-                    this.col += token.kind.len();
-                    this.tokens.push( token );
-                }
-            }
-
-            let line = Line { byte_start: this.abs_col, number: this.row, token_start_idx, token_end_idx: this.tokens.len() - 1 };
-            token_start_idx = this.tokens.len();
-            this.abs_col += chars_read;
-            this.lines.push( line );
-
-            if chars_read == trimmed_line.len() {
-                break;
+                    if reached_eof {
+                        break;
+                    }
+                },
+                Err( err ) => panic!( "Error: {}", err ),
             }
         }
 
-        let last_line_idx = this.lines.len() - 1;
-        this.lines[ last_line_idx ].token_end_idx += 1; // accounting for the EOF
-        this.tokens.push( Token { col: this.col, kind: TokenKind::EOF } );
-
         // FIX insert bracket related errors in the correct place, right now they appear at the end, out of order from the rest of the errors
-        for bracket in brackets {
+        for bracket in &this.brackets {
             // there can only be open brackets at this point
-            errors.push( SyntaxError {
+            this.errors.push( SyntaxError {
                 line_byte_start: bracket.line_byte_start,
                 line_number: bracket.line_number,
                 col: bracket.col,
@@ -931,171 +656,501 @@ impl TryFrom<BlitzSrc> for Lexer {
             } );
         }
 
-        return match errors.is_empty() {
+        return match this.errors.is_empty() {
             true => Ok( this ),
-            false => Err( SyntaxErrors { src: this.src, errors } ),
+            false => Err( SyntaxErrors { src: this.src, errors: this.errors } ),
         }
     }
 }
 
 impl Lexer {
-    fn next_line( &mut self ) -> Result<usize, std::io::Error> {
-        self.row += 1;
-        self.col = 1;
-        self.token_text.clear();
-        self.line_text.clear();
-        return self.src.src.read_line( &mut self.line_text );
-    }
-
     fn iter<'lexer>( &'lexer self ) -> TokenCursor<'lexer> {
         return TokenCursor { line: 0, lines: &self.lines, token: 0, tokens: &self.tokens };
     }
 
+    // FIX properly handle non ASCII characters
+        // IDEA only allow utf-8 characters in strings, characters and comments
+    fn next( &mut self ) -> Result<Option<u8>, SyntaxError> {
+        if self.col >= self.line_bytes.len() {
+            return Ok( None );
+        }
 
-    // FIX properly handle non ASCII codes in error messages
-        // IDEA only handle utf-8 characters in strings
-    fn next( src: &mut Peekable<Chars> ) -> Result<Option<char>, LexerError> {
-        return match src.next() {
-            Some( next @ ..='\x7F' ) => Ok( Some( next ) ),
-            Some( next ) => Err( (next.to_string(), SyntaxError {
-                line_byte_start: 0,
-                line_number: 0,
-                col: 0,
-                len: next.len_utf8(),
+        let next = self.line_bytes[ self.col ];
+        self.col += 1;
+        self.token_text.push( next as char );
+        return match next {
+            ..=b'\x7F' => Ok( Some( next ) ),
+            _ => Err( SyntaxError {
+                line_byte_start: self.line_byte_start,
+                line_number: self.line,
+                col: self.col,
+                len: 1,
                 msg: "unrecognized character".into(),
                 help_msg: "not a valid ASCII character".into()
-            }) ),
-            None => Ok( None ),
+            }),
         }
     }
 
-    fn peek_next<'src>( src: &'src mut Peekable<Chars> ) -> Result<Option<&'src char>, LexerError> {
-        return match src.peek() {
-            Some( next @ ..='\x7F' ) => Ok( Some( next ) ),
-            Some( next ) => Err( (next.to_string(), SyntaxError {
-                line_byte_start: 0,
-                line_number: 0,
-                col: 0,
-                len: next.len_utf8(),
+    fn peek_next<'src>( &'src self ) -> Result<Option<&'src u8>, SyntaxError> {
+        if self.col >= self.line_bytes.len() {
+            return Ok( None );
+        }
+
+        let next = &self.line_bytes[ self.col ];
+        return match next {
+            ..=b'\x7F' => Ok( Some( next ) ),
+            _ => Err( SyntaxError {
+                line_byte_start: self.line_byte_start,
+                line_number: self.line,
+                col: self.col,
+                len: 1,
                 msg: "unrecognized character".into(),
                 help_msg: "not a valid ASCII character".into()
-            }) ),
-            None => Ok( None ),
+            }),
         }
     }
 
-
-    fn next_char( src: &mut Peekable<Chars>, token_text: &mut String ) -> Result<u8, LexerError> {
-        return match Self::next( src )? {
-            Some( '\n' ) | None => Err( (token_text.clone(), SyntaxError {
-                line_byte_start: 0,
-                line_number: 0,
-                col: 0,
-                len: token_text.len(),
+    fn next_char( &mut self ) -> Result<u8, SyntaxError> {
+        return match self.next()? {
+            Some( b'\n' ) | None => Err( SyntaxError {
+                line_byte_start: self.line_byte_start,
+                line_number: self.line,
+                col: self.token_start_col,
+                len: self.token_text.len(),
                 msg: "invalid character literal".into(),
                 help_msg: "missing closing single quote".into()
-            }) ),
-            Some( next ) => {
-                token_text.push( next );
-                Ok( next as u8 )
-            },
+            }),
+            Some( next ) => Ok( next ),
         }
     }
 
-    // FIX proper character tokenization
-    fn parse_char( src: &mut Peekable<Chars>, token_text: &mut String ) -> Result<u8, LexerError> {
-        return match Self::next_char( src, token_text )? {
-            b'\\' => match Self::next_char( src, token_text )? {
-                b'\\' => Ok( b'\\' ),
-                b'n' => Ok( b'\n' ),
-                b't' => Ok( b'\t' ),
-                b'\'' => Ok( b'\'' ),
-                b'"' => Ok( b'"' ),
-                _ => Err( (token_text.clone(), SyntaxError {
-                    line_byte_start: 0,
-                    line_number: 0,
-                    col: 0,
-                    len: token_text.len(),
-                    msg: "invalid escape character literal".into(),
-                    help_msg: "check the documentation for a list of valid escape characters".into()
-                }) ),
-            },
-            b'\x00'..=b'\x1F' | b'\x7F' => Err( (token_text.clone(), SyntaxError {
-                line_byte_start: 0,
-                line_number: 0,
-                col: 0,
-                len: token_text.len(),
-                msg: "invalid character literal".into(),
-                help_msg: "cannot be a control character".into()
-            }) ),
-            next => Ok( next ),
+    fn next_str_char( &mut self ) -> Result<u8, SyntaxError> {
+        return match self.next()? {
+            Some( b'\n' ) | None => Err( SyntaxError {
+                line_byte_start: self.line_byte_start,
+                line_number: self.line,
+                col: self.token_start_col,
+                len: self.token_text.len(),
+                msg: "invalid string literal".into(),
+                help_msg: "missing closing double quote".into()
+            }),
+            Some( next ) => Ok( next ),
         }
     }
 
-
-    fn next_str_char( src: &mut Peekable<Chars>, text: &mut Vec<u8> ) -> Result<u8, LexerError> {
-        return match Self::next( src )? {
-            Some( ch ) => Ok( ch as u8 ),
-            None => {
-                let unclosed_string = format!( "\"{}", String::from_utf8_lossy( &text ) );
-                let unclosed_string_len = unclosed_string.len();
-
-                Err( (unclosed_string, SyntaxError {
-                    line_byte_start: 0,
-                    line_number: 0,
-                    col: 0,
-                    len: unclosed_string_len,
-                    msg: "invalid string literal".into(),
-                    help_msg: "missing closing double quote".into()
-                }) )
-            },
-        }
-    }
-
-    // FIX proper string tokenization
-    fn parse_str( src: &mut Peekable<Chars> ) -> Result<TokenKind, LexerError> {
-        let mut text: Vec<u8> = Vec::new();
-
+    fn tokeninze_next( &mut self ) -> Result<Option<TokenKind>, SyntaxError> {
+        // NOTE this loop is ever going to run just once, it's here just so we can use continue and break
         loop {
-            match Self::next_str_char( src, &mut text )? {
-                b'"' => return Ok( TokenKind::Literal( Literal::Str( Str { text } ) ) ),
-                b'\\' => match Self::next_str_char( src, &mut text )? {
-                    b'\\' => text.push( b'\\' ),
-                    b'n' => text.push( b'\n' ),
-                    b't' => text.push( b'\t' ),
-                    b'\'' => text.push( b'\'' ),
-                    b'"' => text.push( b'"' ),
-                    next => {
-                        text.push( b'\\' );
-                        text.push( next );
+            self.token_text.clear();
+            let next = match self.next()? {
+                None => return Ok( None ),
+                Some( ch ) => ch,
+            };
 
-                        let unclosed_string = format!( "\"{}", String::from_utf8_lossy( &text ) );
-                        let unclosed_string_len = unclosed_string.len();
+            self.token_start_col = self.col;
+            return match next {
+                // ignore whitespace
+                b'\t' | b'\x0C' | b'\r' | b' ' => continue,
+                b'a'..=b'z' | b'A'..=b'Z' | b'_'  => {
+                    let mut contains_non_ascii = false;
+                    loop {
+                        match self.peek_next() {
+                            Ok( Some( next @ (b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_') ) ) => {
+                                self.token_text.push( *next as char );
+                                self.col += 1;
+                            },
+                            Ok( Some( _ ) | None ) => break,
+                            Err( _ ) => {
+                                let next = self.line_bytes[ self.col ];
+                                self.token_text.push( next as char );
+                                contains_non_ascii = true;
+                            }
+                        }
+                    }
 
-                        return Err( (unclosed_string, SyntaxError {
-                            line_byte_start: 0,
-                            line_number: 0,
-                            col: 0,
-                            len: unclosed_string_len,
-                            msg: "invalid escape character".into(),
-                            help_msg: "check the documentation for a list of valid escape characters".into()
-                        }) );
+                    if contains_non_ascii {
+                        Err( SyntaxError {
+                            line_byte_start: self.line_byte_start,
+                            line_number: self.line,
+                            col: self.token_start_col,
+                            len: self.token_text.len(),
+                            msg: "invalid identifier".into(),
+                            help_msg: "contains non-ASCII characters".into()
+                        })
+                    }
+                    else {
+                        let identifier = match self.token_text.as_str() {
+                            "let" => TokenKind::Definition( Mutability::Let ),
+                            "var" => TokenKind::Definition( Mutability::Var ),
+                            "print" => TokenKind::Print,
+                            "println" => TokenKind::PrintLn,
+                            "true" => TokenKind::True,
+                            "false" => TokenKind::False,
+                            "if" => TokenKind::If,
+                            "else" => TokenKind::Else,
+                            "for" => TokenKind::For,
+                            "break" => TokenKind::Break,
+                            "continue" => TokenKind::Continue,
+                            _ => TokenKind::Identifier( self.token_text.clone() ),
+                        };
+
+                        Ok( Some( identifier ) )
+                    }
+                },
+                b'0'..=b'9' => {
+                    let mut contains_non_ascii = false;
+                    loop {
+                        match self.peek_next() {
+                            Ok( Some( next @ (b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_') ) ) => {
+                                self.token_text.push( *next as char );
+                                self.col += 1;
+                            },
+                            Ok( Some( _ ) | None ) => break,
+                            Err( _ ) => {
+                                let next = self.line_bytes[ self.col ];
+                                self.token_text.push( next as char );
+                                contains_non_ascii = true;
+                            }
+                        }
+                    }
+
+                    match self.token_text.parse() { // TODO create own number parsing function
+                        Ok( value ) => Ok( Some( TokenKind::Literal( Literal::Int { value } ) ) ),
+                        Err( err ) => match err.kind() {
+                            IntErrorKind::InvalidDigit =>
+                                if !contains_non_ascii {
+                                    Err( SyntaxError {
+                                        line_byte_start: self.line_byte_start,
+                                        line_number: self.line,
+                                        col: self.token_start_col,
+                                        len: self.token_text.len(),
+                                        msg: "invalid number literal".into(),
+                                        help_msg: "contains non-digit characters".into()
+                                    })
+                                }
+                                else {
+                                    Err( SyntaxError {
+                                        line_byte_start: self.line_byte_start,
+                                        line_number: self.line,
+                                        col: self.token_start_col,
+                                        len: self.token_text.len(),
+                                        msg: "invalid number literal".into(),
+                                        help_msg: "contains non-ASCII characters".into()
+                                    })
+                                },
+                            IntErrorKind::PosOverflow => Err( SyntaxError {
+                                line_byte_start: self.line_byte_start,
+                                line_number: self.line,
+                                col: self.token_start_col,
+                                len: self.token_text.len(),
+                                msg: "invalid number literal".into(),
+                                help_msg: format!( "overflows a {} bit signed integer (over {})", isize::BITS, isize::MAX ).into()
+                            }),
+                            IntErrorKind::NegOverflow => Err( SyntaxError {
+                                line_byte_start: self.line_byte_start,
+                                line_number: self.line,
+                                col: self.token_start_col,
+                                len: self.token_text.len(),
+                                msg: "invalid number literal".into(),
+                                help_msg: format!( "underflows a {} bit signed integer (under {})", isize::BITS, isize::MIN ).into()
+                            }),
+                            IntErrorKind::Empty | std::num::IntErrorKind::Zero => unreachable!(),
+                            _ => Err( SyntaxError {
+                                line_byte_start: self.line_byte_start,
+                                line_number: self.line,
+                                col: self.token_start_col,
+                                len: self.token_text.len(),
+                                msg: "invalid number literal".into(),
+                                help_msg: format!( "{}", err ).into()
+                            }),
+                        },
+                    }
+                },
+                b'#' => {
+                    self.col = self.line_bytes.len(); // consume the rest of the tokens in the current line
+                    let comment = String::from_utf8( self.line_bytes[ self.token_start_col - 1..self.line_bytes.len() ].to_vec() ).unwrap();
+                    Ok( Some( TokenKind::Comment( comment ) ) )
+                },
+                b'"' =>
+                    loop { // FIX proper string tokenization: return multiple errors
+                        match self.next_str_char()? {
+                            b'\\' => match self.next_str_char()? {
+                                b'\\'| b'n'| b't'| b'\''| b'"' => (),
+                                _ => break Err( SyntaxError {
+                                    line_byte_start: self.line_byte_start,
+                                    line_number: self.line,
+                                    col: self.token_start_col,
+                                    len: self.token_text.len(),
+                                    msg: "invalid string character".into(),
+                                    help_msg: "contains invalid escape characters, check the documentation for a list of valid escape characters".into()
+                                }),
+                            },
+                            b'\x00'..=b'\x1F' | b'\x7F' => break Err( SyntaxError {
+                                line_byte_start: self.line_byte_start,
+                                line_number: self.line,
+                                col: self.token_start_col,
+                                len: self.token_text.len(),
+                                msg: "invalid string literal".into(),
+                                help_msg: "contains a control character".into()
+                            }),
+                            b'"' => break Ok( Some(
+                                TokenKind::Literal(
+                                    Literal::Str(
+                                        Str { text: self.token_text.as_bytes()[ 1..self.token_text.len() - 1 ].to_vec() }
+                                    )
+                                )
+                            )),
+                            _ => (),
+                        }
                     },
-                },
-                b'\x00'..=b'\x1F' | b'\x7F' => {
-                    let unclosed_string = format!( "\"{}", String::from_utf8_lossy( &text ) );
-                    let unclosed_string_len = unclosed_string.len();
+                b'\'' => { // FIX proper character tokenization: return muliple errors
+                    let character = match self.next_char()? {
+                        b'\\' => match self.next_char()? {
+                            b'\\' => Ok( b'\\' ),
+                            b'n' => Ok( b'\n' ),
+                            b't' => Ok( b'\t' ),
+                            b'\'' => Ok( b'\'' ),
+                            b'"' => Ok( b'"' ),
+                            _ => Err( SyntaxError {
+                                line_byte_start: self.line_byte_start,
+                                line_number: self.line,
+                                col: self.token_start_col,
+                                len: self.token_text.len(),
+                                msg: "invalid character literal".into(),
+                                help_msg: "check the documentation for a list of valid escape characters".into()
+                            }),
+                        },
+                        b'\x00'..=b'\x1F' | b'\x7F' => Err( SyntaxError {
+                            line_byte_start: self.line_byte_start,
+                            line_number: self.line,
+                            col: self.token_start_col,
+                            len: self.token_text.len(),
+                            msg: "invalid character literal".into(),
+                            help_msg: "cannot be a control character".into()
+                        }),
+                        ch => Ok( ch ),
+                    };
 
-                    return Err( (unclosed_string, SyntaxError {
-                        line_byte_start: 0,
-                        line_number: 0,
-                        col: 0,
-                        len: unclosed_string_len,
-                        msg: "invalid string literal".into(),
-                        help_msg: "contains a control character".into()
-                    }) );
+                    match character {
+                        Ok( b'\'' ) => Err( SyntaxError {
+                            line_byte_start: self.line_byte_start,
+                            line_number: self.line,
+                            col: self.token_start_col,
+                            len: self.token_text.len(),
+                            msg: "invalid character literal".into(),
+                            help_msg: "must not be empty".into()
+                        }),
+                        Ok( ch ) => match self.next()? {
+                            Some( b'\'' ) => Ok( Some( TokenKind::Literal( Literal::Char { value: ch } ) ) ),
+                            Some( _ ) | None => Err( SyntaxError {
+                                line_byte_start: self.line_byte_start,
+                                line_number: self.line,
+                                col: self.token_start_col,
+                                len: self.token_text.len(),
+                                msg: "invalid character literal".into(),
+                                help_msg: "missing closing single quote".into()
+                            })
+                        },
+                        Err( err ) => Err( err )
+                    }
                 },
-                other => text.push( other ),
+                b'(' => {
+                    let kind = BracketKind::OpenRound;
+                    self.brackets.push( Bracket {
+                        line_byte_start: self.line_byte_start,
+                        line_number: self.line,
+                        col: self.token_start_col,
+                        kind
+                    } );
+                    Ok( Some( TokenKind::Bracket( kind ) ) )
+                },
+                b')' => match self.brackets.pop() {
+                    Some( Bracket { kind: BracketKind::OpenRound, .. } ) =>
+                        Ok( Some( TokenKind::Bracket( BracketKind::CloseRound ) ) ),
+                    Some( Bracket { kind: BracketKind::CloseCurly | BracketKind::CloseRound, .. } ) =>
+                        Ok( Some( TokenKind::Bracket( BracketKind::CloseRound ) ) ),
+                    Some( Bracket { kind: BracketKind::OpenCurly, .. } ) => Err( SyntaxError {
+                        line_byte_start: self.line_byte_start,
+                        line_number: self.line,
+                        col: self.token_start_col,
+                        len: 1,
+                        msg: "stray bracket".into(),
+                        help_msg: "closes the wrong bracket".into()
+                    }),
+                    None => Err( SyntaxError {
+                        line_byte_start: self.line_byte_start,
+                        line_number: self.line,
+                        col: self.token_start_col,
+                        len: 1,
+                        msg: "stray bracket".into(),
+                        help_msg: "was not opened before".into()
+                    }),
+                },
+                b'{' => {
+                    let kind = BracketKind::OpenCurly;
+                    self.brackets.push( Bracket {
+                        line_byte_start: self.line_byte_start,
+                        line_number: self.line,
+                        col: self.token_start_col,
+                        kind
+                    } );
+                    Ok( Some( TokenKind::Bracket( kind ) ) )
+                },
+                b'}' => match self.brackets.pop() {
+                    Some( Bracket { kind: BracketKind::OpenCurly, .. } ) =>
+                        Ok( Some( TokenKind::Bracket( BracketKind::CloseCurly ) ) ),
+                    Some( Bracket { kind: BracketKind::CloseCurly | BracketKind::CloseRound, .. } ) =>
+                        Ok( Some( TokenKind::Bracket( BracketKind::CloseCurly ) ) ),
+                    Some( Bracket { kind: BracketKind::OpenRound, .. } ) => Err( SyntaxError {
+                        line_byte_start: self.line_byte_start,
+                        line_number: self.line,
+                        col: self.token_start_col,
+                        len: 1,
+                        msg: "stray bracket".into(),
+                        help_msg: "closes the wrong bracket".into()
+                    }),
+                    None => Err( SyntaxError {
+                        line_byte_start: self.line_byte_start,
+                        line_number: self.line,
+                        col: self.token_start_col,
+                        len: 1,
+                        msg: "stray bracket".into(),
+                        help_msg: "was not opened before".into()
+                    }),
+                },
+                b';' => Ok( Some( TokenKind::SemiColon ) ),
+                b'*' => match self.peek_next()? {
+                    Some( b'*' ) => {
+                        let _ = self.next();
+
+                        match self.peek_next()? {
+                            Some( b'=' ) => {
+                                let _ = self.next();
+                                Ok( Some( TokenKind::Op( Operator::PowEquals ) ) )
+                            }
+                            _ => Ok( Some( TokenKind::Op( Operator::Pow ) ) ),
+                        }
+                    },
+                    Some( b'=' ) => {
+                        let _ = self.next();
+                        Ok( Some( TokenKind::Op( Operator::TimesEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::Times ) ) ),
+                },
+                b'/' => match self.peek_next()? {
+                    Some( b'=' ) => {
+                        let _ = self.next();
+                        Ok( Some( TokenKind::Op( Operator::DivideEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::Divide ) ) ),
+                },
+                b'%' => match self.peek_next()? {
+                    Some( b'=' ) => {
+                        let _ = self.next();
+                        Ok( Some( TokenKind::Op( Operator::RemainderEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::Remainder ) ) ),
+                },
+                b'+' => match self.peek_next()? {
+                    Some( b'=' ) => {
+                        let _ = self.next();
+                        Ok( Some( TokenKind::Op( Operator::PlusEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::Plus ) ) )
+                },
+                b'-' => match self.peek_next()? {
+                    Some( b'=' ) => {
+                        let _ = self.next();
+                        Ok( Some( TokenKind::Op( Operator::MinusEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::Minus ) ) ),
+                },
+                b'=' => match self.peek_next()? {
+                    Some( b'=' ) => {
+                        let _ = self.next();
+                        Ok( Some( TokenKind::Op( Operator::EqualsEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Equals ) ),
+                },
+                b'!' => match self.peek_next()? {
+                    Some( b'=' ) => {
+                        let _ = self.next();
+                        Ok( Some( TokenKind::Op( Operator::NotEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::Not ) ) ),
+                },
+                b'>' => match self.peek_next()? {
+                    Some( b'=' ) => {
+                        let _ = self.next();
+                        Ok( Some( TokenKind::Op( Operator::GreaterOrEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::Greater ) ) ),
+                },
+                b'<' => match self.peek_next()? {
+                    Some( b'=' ) => {
+                        let _ = self.next();
+
+                        match self.peek_next()? {
+                            Some( b'>' ) => {
+                                let _ = self.next();
+                                Ok( Some( TokenKind::Op( Operator::Compare ) ) )
+                            },
+                            _ => Ok( Some( TokenKind::Op( Operator::LessOrEquals ) ) ),
+                        }
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::Less ) ) ),
+                },
+                b'^' => match self.peek_next()? {
+                    Some( b'^' ) => {
+                        let _ = self.next();
+                        Ok( Some( TokenKind::Op( Operator::Xor ) ) )
+                    },
+                    _ => Err( SyntaxError {
+                        line_byte_start: self.line_byte_start,
+                        line_number: self.line,
+                        col: self.token_start_col,
+                        len: 1,
+                        msg: "unexpected character".into(),
+                        help_msg: "did you mean '^^'?".into()
+                    }),
+                },
+                b'&' => match self.peek_next()? {
+                    Some( b'&' ) => {
+                        let _ = self.next();
+                        Ok( Some( TokenKind::Op( Operator::And ) ) )
+                    },
+                    _ => Err( SyntaxError {
+                        line_byte_start: self.line_byte_start,
+                        line_number: self.line,
+                        col: self.token_start_col,
+                        len: 1,
+                        msg: "unexpected character".into(),
+                        help_msg: "did you mean '&&'?".into()
+                    }),
+                },
+                b'|' => match self.peek_next()? {
+                    Some( b'|' ) => {
+                        let _ = self.next();
+                        Ok( Some( TokenKind::Op( Operator::Or ) ) )
+                    },
+                    _ => Err( SyntaxError {
+                        line_byte_start: self.line_byte_start,
+                        line_number: self.line,
+                        col: self.token_start_col,
+                        len: 1,
+                        msg: "unexpected character".into(),
+                        help_msg: "did you mean '||'?".into()
+                    }),
+                },
+                b'\n' => unreachable!( "line text should have been trimmed already" ),
+                _ => Err( SyntaxError {
+                    line_byte_start: self.line_byte_start,
+                    line_number: self.line,
+                    col: self.token_start_col,
+                    len: 1,
+                    msg: "unexpected character".into(),
+                    help_msg: "unrecognized".into()
+                }),
             }
         }
     }
@@ -1394,8 +1449,9 @@ struct ForStatement {
 
 
 enum Statement {
-    Empty,
-    Stop,
+    // TODO remove Empty and Stop variants, and make methods return Option<Statement>
+    Empty, // NOTE this is going to be gone completely as it's just to signal to do nothing
+    Stop, // NOTE this is going to become the None variant
     Single( Node ),
     Multiple( Vec<Node> ),
 }
@@ -2058,14 +2114,11 @@ impl<'lexer> AST {
     fn print( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Statement, SyntaxError> {
         let print_pos = tokens.current();
         match print_pos.token.kind {
-            TokenKind::PrintLn => match tokens.peek_next() {
-                Some( TokenPosition { token: &Token { kind: TokenKind::SemiColon, .. }, .. } ) => {
-                    tokens.next();
-                    let new_line = Literal::Char { value: '\n' as u8 };
-                    let argument = Expression::Literal( new_line );
-                    return Ok( Statement::Single( Node::Print( argument ) ) );
-                },
-                _ => (),
+            TokenKind::PrintLn => if let Some( TokenPosition { token: &Token { kind: TokenKind::SemiColon, .. }, .. } ) = tokens.peek_next() {
+                tokens.next();
+                let new_line = Literal::Char { value: b'\n' };
+                let argument = Expression::Literal( new_line );
+                return Ok( Statement::Single( Node::Print( argument ) ) );
             },
             TokenKind::Print => (),
             _ => unreachable!(),
@@ -2092,7 +2145,7 @@ impl<'lexer> AST {
         return match print_pos.token.kind {
             TokenKind::Print => Ok( Statement::Single( Node::Print( argument ) ) ),
             TokenKind::PrintLn => {
-                let new_line = Literal::Char { value: '\n' as u8 };
+                let new_line = Literal::Char { value: b'\n' };
                 let println_argument = Expression::Literal( new_line );
                 Ok( Statement::Multiple( vec![
                     Node::Print( argument ),
@@ -2300,8 +2353,8 @@ impl<'ast> Interpreter<'ast> {
         return match expression {
             Expression::Literal( literal ) => literal.clone(),
             Expression::Binary { lhs, op, rhs } => {
-                let lhs: isize = self.evaluate( &lhs ).into();
-                let rhs: isize = self.evaluate( &rhs ).into();
+                let lhs: isize = self.evaluate( lhs ).into();
+                let rhs: isize = self.evaluate( rhs ).into();
 
                 match op {
                     Operator::Pow | Operator::PowEquals => match rhs {
@@ -2330,7 +2383,7 @@ impl<'ast> Interpreter<'ast> {
                     Operator::Not | Operator::Negate => unreachable!(),
                 }
             },
-            Expression::Identifier( name, _ ) => self.evaluate( &self.resolve( &name ).value ),
+            Expression::Identifier( name, _ ) => self.evaluate( &self.resolve( name ).value ),
             Expression::Unary { op, operand } => match op {
                 Operator::Negate => {
                     let value: isize = self.evaluate( operand ).into();
@@ -2365,7 +2418,7 @@ impl Interpreter<'_> {
 
         for node in  &current_scope.nodes {
             match node {
-                Node::Print( argument ) => self.evaluate( &argument ).display(),
+                Node::Print( argument ) => self.evaluate( argument ).display(),
                 Node::If( if_statement ) => 'iff: {
                     for iff in &if_statement.ifs {
                         if let Literal::Bool { value: true } = self.evaluate( &iff.condition ) {
@@ -2428,7 +2481,7 @@ impl Interpreter<'_> {
             for node in  &current_scope.nodes {
                 let cf = match node {
                     Node::Print( argument ) => {
-                        self.evaluate( &argument ).display();
+                        self.evaluate( argument ).display();
                         ControlFlowStatement::None
                     },
                     Node::If( if_statement ) => 'iff: {
@@ -2912,7 +2965,7 @@ _start:
     }
 
     fn run( &mut self, file_path: &str ) -> Result<(), ()> {
-        let executable_file_path = self.compile( &file_path )?;
+        let executable_file_path = self.compile( file_path )?;
         println!( "{}: {}", Compiler::RUNNING, executable_file_path.display() );
 
         let output = Command::new( format!( "{}", executable_file_path.display() ) ).output().unwrap();
@@ -2937,7 +2990,7 @@ impl<'ast> Compiler<'ast> {
     fn string_label_idx( &mut self, string: &'ast Str ) -> usize {
         let mut string_idx = 0;
         for string_label in &self.strings {
-            if string as *const _ == string_label.string as *const _ {
+            if std::ptr::eq( string, string_label.string ) {
                 return string_idx;
             }
             string_idx += 1;
@@ -3046,7 +3099,7 @@ impl<'ast> Compiler<'ast> {
                             let else_if_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx );
                             let else_if_false_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx + 1 );
 
-                            self.compile_if( &else_if, &else_if_tag, &else_if_false_tag );
+                            self.compile_if( else_if, &else_if_tag, &else_if_false_tag );
                             self.asm += &else_if_end_tag;
                             else_if_tag_idx += 1;
                         }
@@ -3556,16 +3609,13 @@ impl BlitzSrc {
 
     fn try_from( path: &Path ) -> Result<Self, std::io::Error> {
         return match File::open( path ) {
-            Ok( file ) =>
-                if file.metadata().unwrap().is_file() {
-                    Ok( Self { path: PathBuf::from( path ), src: BufReader::with_capacity( 1, file ) } )
-                }
-                else {
-                    Err( std::io::Error::new(
-                        ErrorKind::InvalidInput,
-                        format!( "{}: invalid path '{}'\n{}: is a directory", SyntaxErrors::ERROR, path.display(), BlitzSrc::CAUSE )
-                    ) )
-                },
+            Ok( file ) => match file.metadata().unwrap().is_file() {
+                true => Ok( Self { path: PathBuf::from( path ), src: BufReader::with_capacity( 1, file ) } ),
+                false => Err( std::io::Error::new(
+                    ErrorKind::InvalidInput,
+                    format!( "{}: invalid path '{}'\n{}: is a directory", SyntaxErrors::ERROR, path.display(), BlitzSrc::CAUSE )
+                ) ),
+            },
             Err( err ) => {
                 let kind = err.kind();
                 Err( std::io::Error::new(
@@ -3577,133 +3627,138 @@ impl BlitzSrc {
     }
 }
 
+struct Blitz;
+
+impl Blitz {
+    fn from( args: Args ) -> ExitCode {
+        // to quickly debug
+        // args.push( "compile".to_string() );
+        // args.push( "run".to_string() );
+        // args.push( "examples/main.blz".to_string() );
+
+        if args.len() < 2 {
+            print_usage();
+            return ExitCode::SUCCESS;
+        }
+
+        let mut check_flag = false;
+        let mut interpret_flag = false;
+        let mut build_flag = false;
+        let mut run_flag = false;
+
+        let mut source_file_path: Option<String> = None;
+        let mut args_iter = args.into_iter();
+        args_iter.next(); // skipping the name of this executable
+        for arg in args_iter {
+            match arg.as_str() {
+                "-h" | "--help" => {
+                    print_usage();
+                    return ExitCode::SUCCESS;
+                },
+                "check" => check_flag = true,
+                "interpret" => interpret_flag = true,
+                "compile" => build_flag = true,
+                "run" => run_flag = true,
+                _ => match source_file_path {
+                    None => source_file_path = Some( arg ),
+                    Some( _ ) => {
+                        eprintln!( "{}: too many source file paths provided", SyntaxErrors::ERROR );
+                        return ExitCode::FAILURE;
+                    },
+                },
+            }
+        }
+
+
+        if !(check_flag || interpret_flag || build_flag || run_flag) {
+            interpret_flag = true;
+        }
+        else if check_flag {
+            // ignore all other run mode flags
+        }
+        else if interpret_flag && (build_flag || run_flag) {
+            eprintln!( "{}: cannot interpret and build/run at the same time", SyntaxErrors::ERROR );
+            return ExitCode::FAILURE;
+        }
+        else if build_flag && run_flag {
+            eprintln!( "{}: build and run commands cannot be used together", SyntaxErrors::ERROR );
+            return ExitCode::FAILURE;
+        }
+
+        let source_file_path = match source_file_path {
+            Some( path ) => path,
+            None => {
+                eprintln!( "{}: no source file path provided", SyntaxErrors::ERROR );
+                return ExitCode::FAILURE;
+            },
+        };
+
+        let source_file = match BlitzSrc::try_from( Path::new( &source_file_path ) ) {
+            Ok( src ) => src,
+            Err( err ) => {
+                eprintln!( "{}", err );
+                return ExitCode::FAILURE;
+            },
+        };
+
+        if check_flag {
+            Checker::check( &source_file_path );
+        }
+
+        let lexer = match Lexer::try_from( source_file ) {
+            Ok( lexer ) => {
+                lexer
+            },
+            Err( mut errors ) => {
+                errors.display();
+                return ExitCode::FAILURE;
+            },
+        };
+
+        let ast = match AST::try_from( lexer ) {
+            Ok( ast ) => {
+                // println!( "{:#?}", ast );
+                ast
+            },
+            Err( mut errors ) => {
+                errors.display();
+                return ExitCode::FAILURE;
+            },
+        };
+
+        if check_flag {
+            // do nothing
+        }
+        else if interpret_flag {
+            let mut interpreter = Interpreter { ast: &ast, variables: Vec::new() };
+            interpreter.interpret( &source_file_path );
+        }
+        else {
+            let mut compiler = Compiler {
+                ast: &ast,
+                rodata: String::new(),
+                asm: String::new(),
+                variables: Vec::new(),
+                strings: Vec::new(),
+                if_idx: 0,
+                for_idx: 0,
+                for_idx_stack: Vec::new(),
+            };
+
+            if build_flag {
+                let _ = compiler.compile( &source_file_path );
+            }
+            else if run_flag {
+                let _ = compiler.run( &source_file_path );
+            }
+        }
+
+        return ExitCode::SUCCESS;
+    }
+}
+
 
 // IDEA adapt SyntaxErrors to report cli mistakes
 fn main() -> ExitCode {
-    #[allow( unused_mut )]
-    let mut args: Vec<String> = env::args().collect();
-
-    // to quickly debug
-    // args.push( "compile".to_string() );
-    // args.push( "run".to_string() );
-    // args.push( "examples/main.blz".to_string() );
-
-    if args.len() < 2 {
-        print_usage();
-        return ExitCode::SUCCESS;
-    }
-
-    let mut check_flag = false;
-    let mut interpret_flag = false;
-    let mut build_flag = false;
-    let mut run_flag = false;
-
-    let mut source_file_path: Option<String> = None;
-    let mut args_iter = args.into_iter();
-    args_iter.next(); // skipping the name of this executable
-    for arg in args_iter {
-        match arg.as_str() {
-            "-h" | "--help" => {
-                print_usage();
-                return ExitCode::SUCCESS;
-            },
-            "check" => check_flag = true,
-            "interpret" => interpret_flag = true,
-            "compile" => build_flag = true,
-            "run" => run_flag = true,
-            _ => match source_file_path {
-                None => source_file_path = Some( arg ),
-                Some( _ ) => {
-                    eprintln!( "{}: too many source file paths provided", SyntaxErrors::ERROR );
-                    return ExitCode::FAILURE;
-                },
-            },
-        }
-    }
-
-
-    if !(check_flag || interpret_flag || build_flag || run_flag) {
-        interpret_flag = true;
-    }
-    else if check_flag {
-        // ignore all other run mode flags
-    }
-    else if interpret_flag && (build_flag || run_flag) {
-        eprintln!( "{}: cannot interpret and build/run at the same time", SyntaxErrors::ERROR );
-        return ExitCode::FAILURE;
-    }
-    else if build_flag && run_flag {
-        eprintln!( "{}: build and run commands cannot be used together", SyntaxErrors::ERROR );
-        return ExitCode::FAILURE;
-    }
-
-    let source_file_path = match source_file_path {
-        Some( path ) => path,
-        None => {
-            eprintln!( "{}: no source file path provided", SyntaxErrors::ERROR );
-            return ExitCode::FAILURE;
-        },
-    };
-
-    let source_file = match BlitzSrc::try_from( Path::new( &source_file_path ) ) {
-        Ok( src ) => src,
-        Err( err ) => {
-            eprintln!( "{}", err );
-            return ExitCode::FAILURE;
-        },
-    };
-
-    if check_flag {
-        Checker::check( &source_file_path );
-    }
-
-    let lexer = match Lexer::try_from( source_file ) {
-        Ok( lexer ) => {
-            lexer
-        },
-        Err( mut errors ) => {
-            errors.display();
-            return ExitCode::FAILURE;
-        },
-    };
-
-    let ast = match AST::try_from( lexer ) {
-        Ok( ast ) => {
-            // println!( "{:#?}", ast );
-            ast
-        },
-        Err( mut errors ) => {
-            errors.display();
-            return ExitCode::FAILURE;
-        },
-    };
-
-    if check_flag {
-        // do nothing
-    }
-    else if interpret_flag {
-        let mut interpreter = Interpreter { ast: &ast, variables: Vec::new() };
-        interpreter.interpret( &source_file_path );
-    }
-    else {
-        let mut compiler = Compiler {
-            ast: &ast,
-            rodata: String::new(),
-            asm: String::new(),
-            variables: Vec::new(),
-            strings: Vec::new(),
-            if_idx: 0,
-            for_idx: 0,
-            for_idx_stack: Vec::new(),
-        };
-
-        if build_flag {
-            let _ = compiler.compile( &source_file_path );
-        }
-        else if run_flag {
-            let _ = compiler.run( &source_file_path );
-        }
-    }
-
-    return ExitCode::SUCCESS;
+    return Blitz::from( env::args() );
 }

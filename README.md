@@ -14,7 +14,7 @@ see the [full language syntax](SYNTAX.ebnf)
 
 ### UTF-8 support
 
-only supporting ASCII (`[0, 127]`) characters for now
+only supporting ASCII (`[32, 126]`) characters for now, UTF-8 characters are only supported in comments
 
 ### Comments
 
@@ -134,7 +134,7 @@ print "ten = "; println ten;
 print "ten in the inner scope = "; println ten;
 
 # this will result in an error because "nine" was not defined in this scope
-# print "nine in the inner scope = "; println nine;
+print "nine in the inner scope = "; println nine;
 ```
 
 ### If statements
@@ -212,7 +212,6 @@ Semicolons are reguired after statements.
 ```blitz
 print "Hello "; # required semicolon
 println "World!";
-
 ```
 
 They are optional if they come before a closing curly bracket (i.e. the last statement before the end of a scope),
