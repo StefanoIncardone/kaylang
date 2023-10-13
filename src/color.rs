@@ -65,25 +65,25 @@ impl Display for Colored {
         let mut codes = String::new();
 
         if self.foreground != Foreground::Default {
-            codes.push_str( &format!( "{};", self.foreground as u8 ) );
+            codes += &format!( "{};", self.foreground as u8 );
         }
         if self.background != Background::Default {
-            codes.push_str( &format!( "{};", self.background as u8 ) );
+            codes += &format!( "{};", self.background as u8 );
         }
         if self.bold {
-            codes.push_str( "1;" );
+            codes += "1;";
         }
         if self.underline {
-            codes.push_str( "4;" );
+            codes += "4;";
         }
         if self.no_underline {
-            codes.push_str( "24;" );
+            codes += "24;";
         }
         if self.reverse_text {
-            codes.push_str( "7;" );
+            codes += "7;";
         }
         if self.positive_text {
-            codes.push_str( "27;" );
+            codes += "27;";
         }
 
         return if codes.is_empty() {
