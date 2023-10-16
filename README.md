@@ -35,11 +35,13 @@ They can also be used in math expression, being automatically converted to their
 
 These are the available escaped characters:
 
-- backslash: `'\\'`
-- newline: `'\n'`
-- tab: `'\t'`
-- single quote: `'\''`
-- double quote: `'\"'`, `'"'`
+- backslash: `\\`
+- single quote: `\'`
+- double quote: `\"` or `"`
+- newline: `\n`
+- carriage return: `\r`
+- tab: `\t`
+- null character: `\0`
 
 ### Strings
 

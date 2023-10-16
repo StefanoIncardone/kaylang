@@ -6,7 +6,7 @@ digit = "0".."9";
 number_literal = {digit};
 boolean_literal = "true" | "false";
 
-escape_character = "\\" | "\n" | "\t" | "\'" | '"' | '\"';
+escape_character = "\\" | "\'" | '\"' | '"' | "\n" | "\r" | "\t" | "\0";
 character_literal = "'", (escape_character | ASCII_character), "'";
 string_literal = '"', [{escape_character | ASCII_character}], '"';
 identifier = "_" | "A".."Z" | "a".."z", [{"_" | "A".."Z" | "a".."z" | digit}];

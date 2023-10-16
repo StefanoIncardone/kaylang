@@ -27,18 +27,18 @@ struct Str {
 #[derive( Debug, Clone )]
 enum Literal {
     // IDEA have different size integers and default to 32 bits for literals
-    Int { value: isize },
-    Char { value: u8 }, // only supporting ASCII characters for now
-    Bool { value: bool },
+    Int( isize ),
+    Char( u8 ), // only supporting ASCII characters for now
+    Bool( bool ),
     Str( Str ),
 }
 
 impl Display for Literal {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
-            Self::Int { value } => write!( f, "{}", value ),
-            Self::Char { value } => write!( f, "'{}'", value.escape_ascii() ), // TODO create own escaping function
-            Self::Bool { value } => write!( f, "{}", value ),
+            Self::Int( value ) => write!( f, "{}", value ),
+            Self::Char( code ) => write!( f, "'{}'", code.escape_ascii() ), // TODO create own escaping function
+            Self::Bool( value ) => write!( f, "{}", value ),
             Self::Str( string ) => {
                 write!( f, "\"" )?;
                 for character in &string.text {
@@ -53,9 +53,9 @@ impl Display for Literal {
 impl Into<isize> for Literal {
     fn into( self ) -> isize {
         return match self {
-            Self::Int { value } => value.into(),
-            Self::Char { value } => value.into(),
-            Self::Bool { value } => value.into(),
+            Self::Int( value ) => value.into(),
+            Self::Char( code ) => code.into(),
+            Self::Bool( value ) => value.into(),
             Self::Str( string ) => string.text.len() as isize,
         }
     }
@@ -64,9 +64,9 @@ impl Into<isize> for Literal {
 impl Len for Literal {
     fn len( &self ) -> usize {
         return match self {
-            Self::Int { value } => value.to_string().len(),
-            Self::Char { .. } => 1,
-            Self::Bool { value } => value.to_string().len(),
+            Self::Int( value ) => value.to_string().len(),
+            Self::Char( _ ) => 1,
+            Self::Bool( value ) => value.to_string().len(),
             Self::Str( string ) => string.text.len() + 2,
         }
     }
@@ -86,9 +86,9 @@ impl TypeOf for Literal {
 impl Literal {
     fn display( &self ) {
         match self {
-            Self::Int { value } => print!( "{}", value ),
-            Self::Char { value } => print!( "{}", *value as char ),
-            Self::Bool { value } => print!( "{}", value ),
+            Self::Int( value ) => print!( "{}", value ),
+            Self::Char( code ) => print!( "{}", *code as char ),
+            Self::Bool( value ) => print!( "{}", value ),
             Self::Str( string ) =>
                 for character in &string.text {
                     print!( "{}", *character as char );
@@ -357,7 +357,6 @@ enum TokenKind {
 
     // Special
     Empty,
-    // TODO remove these two tokens
     SOF, // start of file
     EOF, // end of file
 }
@@ -435,8 +434,8 @@ struct Token {
 
 #[derive( Debug, Clone, Copy )]
 struct Line {
-    byte_start: usize,
     number: usize,
+    byte_start: usize,
     token_start_idx: usize,
     token_end_idx: usize,
 }
@@ -447,7 +446,7 @@ struct Line {
 #[derive( Debug )]
 struct SyntaxError {
     line_byte_start: usize,
-    line_number: usize,
+    line: usize,
     col: usize,
     len: usize,
     msg: Cow<'static, str>,
@@ -468,18 +467,17 @@ impl SyntaxErrors {
     };
 
 
-    // TODO make this not mut
     fn display( &mut self ) {
-        let mut line_start = self.errors[ 0 ].line_byte_start;
+        let mut line_byte_start = self.errors[ 0 ].line_byte_start;
         let mut line_text = String::new();
-        let _ = self.src.src.seek( SeekFrom::Start( line_start as u64 ) );
+        let _ = self.src.src.seek( SeekFrom::Start( line_byte_start as u64 ) );
         let _ = self.src.src.read_line( &mut line_text );
 
         for error in &self.errors {
-            if line_start != error.line_byte_start {
-                line_start = error.line_byte_start;
+            if line_byte_start != error.line_byte_start {
+                line_byte_start = error.line_byte_start;
                 line_text.clear();
-                let _ = self.src.src.seek( SeekFrom::Start( line_start as u64 ) );
+                let _ = self.src.src.seek( SeekFrom::Start( line_byte_start as u64 ) );
                 let _ = self.src.src.read_line( &mut line_text );
             }
 
@@ -491,7 +489,7 @@ impl SyntaxErrors {
             };
 
             let line_number_and_bar = Colored {
-                text: format!( "{} |", error.line_number ),
+                text: format!( "{} |", error.line ),
                 foreground: Foreground::LightBlue,
                 ..Default::default()
             };
@@ -528,7 +526,7 @@ impl SyntaxErrors {
                 \n{} {}\
                 \n{} {:pointers_col$}{}\n",
                 SyntaxErrors::ERROR, error_msg,
-                at, self.src.path.display(), error.line_number, error.col,
+                at, self.src.path.display(), error.line, error.col,
                 bar,
                 line_number_and_bar, line_text.trim_end(),
                 bar, "", pointers_and_help_msg
@@ -553,8 +551,7 @@ struct Lexer {
 
     line: usize,
     line_byte_start: usize,
-    line_token_start_idx: usize,
-    col: usize,
+    col: usize, // TODO add an absolute column for the bytes in the line, and have this as the token column
     token_start_col: usize,
 
     lines: Vec<Line>,
@@ -576,7 +573,6 @@ impl TryFrom<BlitzSrc> for Lexer {
             src,
             line: 0,
             line_byte_start: 0,
-            line_token_start_idx: 0,
             col: 0,
             token_start_col: 1,
             lines: Vec::new(),
@@ -585,6 +581,13 @@ impl TryFrom<BlitzSrc> for Lexer {
             token_text: String::new(),
             brackets: Vec::new(),
             errors: Vec::new(),
+        };
+
+        let mut line = Line {
+            number: 1,
+            byte_start: 0,
+            token_start_idx: 0,
+            token_end_idx: 0
         };
 
         loop {
@@ -596,14 +599,14 @@ impl TryFrom<BlitzSrc> for Lexer {
                     this.token_start_col = 1;
 
                     let mut line_len = this.line_bytes.len();
+                    while line_len > 0 && this.line_bytes[ line_len - 1 ].is_ascii_whitespace() {
+                        line_len -= 1;
+                    }
+
                     if line_len == 0 {
                         this.tokens.push( Token { col: 1, kind: TokenKind::Empty } );
                     }
                     else {
-                        while line_len > 0 && this.line_bytes[ line_len - 1 ].is_ascii_whitespace() {
-                            line_len -= 1;
-                        }
-
                         this.line_bytes.truncate( line_len );
                         loop {
                             let token = match this.tokeninze_next() {
@@ -611,7 +614,8 @@ impl TryFrom<BlitzSrc> for Lexer {
                                 Ok( Some( kind ) ) => Token { col: this.token_start_col, kind },
                                 Err( err ) => {
                                     this.errors.push( err );
-                                    Token { col: this.token_start_col, kind: TokenKind::Unexpected( this.token_text.clone() ) }
+                                    let unrecognized = this.token_text();
+                                    Token { col: this.token_start_col, kind: TokenKind::Unexpected( unrecognized ) }
                                 }
                             };
 
@@ -624,16 +628,13 @@ impl TryFrom<BlitzSrc> for Lexer {
                         this.tokens.push( Token { col: this.token_start_col, kind: TokenKind::EOF } );
                     }
 
-                    let line = Line {
-                        byte_start: this.line_byte_start,
-                        number: this.line,
-                        token_start_idx: this.line_token_start_idx,
-                        token_end_idx: this.tokens.len()
-                    };
-
-                    this.line_token_start_idx = this.tokens.len();
-                    this.line_byte_start += chars_read;
+                    line.token_end_idx = this.tokens.len() - 1;
                     this.lines.push( line );
+
+                    this.line_byte_start += chars_read;
+                    line.byte_start += chars_read;
+                    line.number += 1;
+                    line.token_start_idx = this.tokens.len();
 
                     if reached_eof {
                         break;
@@ -648,7 +649,7 @@ impl TryFrom<BlitzSrc> for Lexer {
             // there can only be open brackets at this point
             this.errors.push( SyntaxError {
                 line_byte_start: bracket.line_byte_start,
-                line_number: bracket.line_number,
+                line: bracket.line_number,
                 col: bracket.col,
                 len: bracket.kind.len(),
                 msg: "stray bracket".into(),
@@ -668,6 +669,14 @@ impl Lexer {
         return TokenCursor { line: 0, lines: &self.lines, token: 0, tokens: &self.tokens };
     }
 
+    fn gather_token_text( &mut self ) {
+        self.token_text = self.token_text();
+    }
+
+    fn token_text( &self ) -> String {
+        return String::from_utf8( self.line_bytes[ self.token_start_col - 1..self.col ].to_vec() ).unwrap();
+    }
+
     // FIX properly handle non ASCII characters
         // IDEA only allow utf-8 characters in strings, characters and comments
     fn next( &mut self ) -> Result<Option<u8>, SyntaxError> {
@@ -676,13 +685,13 @@ impl Lexer {
         }
 
         let next = self.line_bytes[ self.col ];
+        // self.token_text.push( next as char );
         self.col += 1;
-        self.token_text.push( next as char );
         return match next {
             ..=b'\x7F' => Ok( Some( next ) ),
             _ => Err( SyntaxError {
                 line_byte_start: self.line_byte_start,
-                line_number: self.line,
+                line: self.line,
                 col: self.col,
                 len: 1,
                 msg: "unrecognized character".into(),
@@ -701,7 +710,7 @@ impl Lexer {
             ..=b'\x7F' => Ok( Some( next ) ),
             _ => Err( SyntaxError {
                 line_byte_start: self.line_byte_start,
-                line_number: self.line,
+                line: self.line,
                 col: self.col,
                 len: 1,
                 msg: "unrecognized character".into(),
@@ -714,9 +723,9 @@ impl Lexer {
         return match self.next()? {
             Some( b'\n' ) | None => Err( SyntaxError {
                 line_byte_start: self.line_byte_start,
-                line_number: self.line,
+                line: self.line,
                 col: self.token_start_col,
-                len: self.token_text.len(),
+                len: self.col - self.token_start_col + 1,
                 msg: "invalid character literal".into(),
                 help_msg: "missing closing single quote".into()
             }),
@@ -728,9 +737,9 @@ impl Lexer {
         return match self.next()? {
             Some( b'\n' ) | None => Err( SyntaxError {
                 line_byte_start: self.line_byte_start,
-                line_number: self.line,
+                line: self.line,
                 col: self.token_start_col,
-                len: self.token_text.len(),
+                len: self.col - self.token_start_col + 1,
                 msg: "invalid string literal".into(),
                 help_msg: "missing closing double quote".into()
             }),
@@ -739,7 +748,7 @@ impl Lexer {
     }
 
     fn tokeninze_next( &mut self ) -> Result<Option<TokenKind>, SyntaxError> {
-        // NOTE this loop is ever going to run just once, it's here just so we can use continue and break
+        // this loop is ever going to run just once, it's here just so we can use continue and break
         loop {
             self.token_text.clear();
             let next = match self.next()? {
@@ -747,6 +756,7 @@ impl Lexer {
                 Some( ch ) => ch,
             };
 
+            // registering the token start column after getting the next character to maintain 1 indexing token columns
             self.token_start_col = self.col;
             return match next {
                 // ignore whitespace
@@ -754,31 +764,29 @@ impl Lexer {
                 b'a'..=b'z' | b'A'..=b'Z' | b'_'  => {
                     let mut contains_non_ascii = false;
                     loop {
-                        match self.peek_next() {
-                            Ok( Some( next @ (b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_') ) ) => {
-                                self.token_text.push( *next as char );
-                                self.col += 1;
+                        match self.next() {
+                            Ok( Some( b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_' ) ) => {},
+                            Ok( Some( _ ) ) => {
+                                self.col -= 1;
+                                break;
                             },
-                            Ok( Some( _ ) | None ) => break,
-                            Err( _ ) => {
-                                let next = self.line_bytes[ self.col ];
-                                self.token_text.push( next as char );
-                                contains_non_ascii = true;
-                            }
+                            Ok( None ) => break,
+                            Err( _ ) => contains_non_ascii = true,
                         }
                     }
 
                     if contains_non_ascii {
                         Err( SyntaxError {
                             line_byte_start: self.line_byte_start,
-                            line_number: self.line,
+                            line: self.line,
                             col: self.token_start_col,
-                            len: self.token_text.len(),
+                            len: self.col - self.token_start_col + 1,
                             msg: "invalid identifier".into(),
                             help_msg: "contains non-ASCII characters".into()
                         })
                     }
                     else {
+                        self.gather_token_text();
                         let identifier = match self.token_text.as_str() {
                             "let" => TokenKind::Definition( Mutability::Let ),
                             "var" => TokenKind::Definition( Mutability::Var ),
@@ -800,28 +808,26 @@ impl Lexer {
                 b'0'..=b'9' => {
                     let mut contains_non_ascii = false;
                     loop {
-                        match self.peek_next() {
-                            Ok( Some( next @ (b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_') ) ) => {
-                                self.token_text.push( *next as char );
-                                self.col += 1;
+                        match self.next() {
+                            Ok( Some( b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_') ) => {},
+                            Ok( Some( _ ) ) => {
+                                self.col -= 1;
+                                break;
                             },
-                            Ok( Some( _ ) | None ) => break,
-                            Err( _ ) => {
-                                let next = self.line_bytes[ self.col ];
-                                self.token_text.push( next as char );
-                                contains_non_ascii = true;
-                            }
+                            Ok( None ) => break,
+                            Err( _ ) => contains_non_ascii = true,
                         }
                     }
 
+                    self.gather_token_text();
                     match self.token_text.parse() { // TODO create own number parsing function
-                        Ok( value ) => Ok( Some( TokenKind::Literal( Literal::Int { value } ) ) ),
+                        Ok( value ) => Ok( Some( TokenKind::Literal( Literal::Int( value ) ) ) ),
                         Err( err ) => match err.kind() {
                             IntErrorKind::InvalidDigit =>
                                 if !contains_non_ascii {
                                     Err( SyntaxError {
                                         line_byte_start: self.line_byte_start,
-                                        line_number: self.line,
+                                        line: self.line,
                                         col: self.token_start_col,
                                         len: self.token_text.len(),
                                         msg: "invalid number literal".into(),
@@ -831,7 +837,7 @@ impl Lexer {
                                 else {
                                     Err( SyntaxError {
                                         line_byte_start: self.line_byte_start,
-                                        line_number: self.line,
+                                        line: self.line,
                                         col: self.token_start_col,
                                         len: self.token_text.len(),
                                         msg: "invalid number literal".into(),
@@ -840,7 +846,7 @@ impl Lexer {
                                 },
                             IntErrorKind::PosOverflow => Err( SyntaxError {
                                 line_byte_start: self.line_byte_start,
-                                line_number: self.line,
+                                line: self.line,
                                 col: self.token_start_col,
                                 len: self.token_text.len(),
                                 msg: "invalid number literal".into(),
@@ -848,7 +854,7 @@ impl Lexer {
                             }),
                             IntErrorKind::NegOverflow => Err( SyntaxError {
                                 line_byte_start: self.line_byte_start,
-                                line_number: self.line,
+                                line: self.line,
                                 col: self.token_start_col,
                                 len: self.token_text.len(),
                                 msg: "invalid number literal".into(),
@@ -857,7 +863,7 @@ impl Lexer {
                             IntErrorKind::Empty | std::num::IntErrorKind::Zero => unreachable!(),
                             _ => Err( SyntaxError {
                                 line_byte_start: self.line_byte_start,
-                                line_number: self.line,
+                                line: self.line,
                                 col: self.token_start_col,
                                 len: self.token_text.len(),
                                 msg: "invalid number literal".into(),
@@ -868,90 +874,111 @@ impl Lexer {
                 },
                 b'#' => {
                     self.col = self.line_bytes.len(); // consume the rest of the tokens in the current line
-                    let comment = String::from_utf8( self.line_bytes[ self.token_start_col - 1..self.line_bytes.len() ].to_vec() ).unwrap();
+                    let comment = self.token_text();
                     Ok( Some( TokenKind::Comment( comment ) ) )
                 },
-                b'"' =>
-                    loop { // FIX proper string tokenization: return multiple errors
-                        match self.next_str_char()? {
+                b'"' => {
+                    let mut errors: Vec<SyntaxError> = Vec::new();
+
+                    loop {
+                        let next = match self.next_str_char()? {
                             b'\\' => match self.next_str_char()? {
-                                b'\\'| b'n'| b't'| b'\''| b'"' => (),
-                                _ => break Err( SyntaxError {
+                                b'\\' => Ok( '\\' ),
+                                b'\'' => Ok( '\'' ),
+                                b'"' => Ok( '"' ),
+                                b'n' => Ok( '\n' ),
+                                b'r' => Ok( '\r' ),
+                                b't' => Ok( '\t' ),
+                                b'0' => Ok( '\0' ),
+                                _ => Err( SyntaxError {
                                     line_byte_start: self.line_byte_start,
-                                    line_number: self.line,
-                                    col: self.token_start_col,
-                                    len: self.token_text.len(),
+                                    line: self.line,
+                                    col: self.col,
+                                    len: 1,
                                     msg: "invalid string character".into(),
-                                    help_msg: "contains invalid escape characters, check the documentation for a list of valid escape characters".into()
+                                    help_msg: "unrecognized escape character".into()
                                 }),
                             },
-                            b'\x00'..=b'\x1F' | b'\x7F' => break Err( SyntaxError {
+                            b'\x00'..=b'\x1F' | b'\x7F' => Err( SyntaxError {
                                 line_byte_start: self.line_byte_start,
-                                line_number: self.line,
-                                col: self.token_start_col,
-                                len: self.token_text.len(),
+                                line: self.line,
+                                col: self.col,
+                                len: 1,
                                 msg: "invalid string literal".into(),
-                                help_msg: "contains a control character".into()
+                                help_msg: "cannot be a control character".into()
                             }),
-                            b'"' => break Ok( Some(
-                                TokenKind::Literal(
-                                    Literal::Str(
-                                        Str { text: self.token_text.as_bytes()[ 1..self.token_text.len() - 1 ].to_vec() }
-                                    )
-                                )
-                            )),
-                            _ => (),
+                            b'"' => break,
+                            other => Ok( other as char ),
+                        };
+
+                        match next {
+                            Ok( next_char ) => self.token_text.push( next_char ),
+                            Err( err ) => errors.push( err ),
                         }
-                    },
-                b'\'' => { // FIX proper character tokenization: return muliple errors
-                    let character = match self.next_char()? {
+                    }
+
+                    // after here there cannot be unclosed strings
+                    if errors.is_empty() {
+                        Ok( Some( TokenKind::Literal( Literal::Str( Str { text: self.token_text.clone().into_bytes() } ))))
+                    }
+                    else {
+                        // FIX add proper multiple error handling
+                        let last_error = errors.pop().unwrap();
+                        self.errors.extend( errors );
+                        Err( last_error )
+                    }
+                },
+                b'\'' => {
+                    let code = match self.next_char()? {
                         b'\\' => match self.next_char()? {
                             b'\\' => Ok( b'\\' ),
-                            b'n' => Ok( b'\n' ),
-                            b't' => Ok( b'\t' ),
                             b'\'' => Ok( b'\'' ),
                             b'"' => Ok( b'"' ),
+                            b'n' => Ok( b'\n' ),
+                            b'r' => Ok( b'\r' ),
+                            b't' => Ok( b'\t' ),
+                            b'0' => Ok( b'\0' ),
                             _ => Err( SyntaxError {
                                 line_byte_start: self.line_byte_start,
-                                line_number: self.line,
-                                col: self.token_start_col,
-                                len: self.token_text.len(),
+                                line: self.line,
+                                col: self.col,
+                                len: 1,
                                 msg: "invalid character literal".into(),
-                                help_msg: "check the documentation for a list of valid escape characters".into()
+                                help_msg: "unrecognized escape character".into()
                             }),
                         },
                         b'\x00'..=b'\x1F' | b'\x7F' => Err( SyntaxError {
                             line_byte_start: self.line_byte_start,
-                            line_number: self.line,
-                            col: self.token_start_col,
-                            len: self.token_text.len(),
+                            line: self.line,
+                            col: self.col,
+                            len: 1,
                             msg: "invalid character literal".into(),
                             help_msg: "cannot be a control character".into()
+                        }),
+                        b'\'' => break Err( SyntaxError {
+                            line_byte_start: self.line_byte_start,
+                            line: self.line,
+                            col: self.token_start_col,
+                            len: 2,
+                            msg: "invalid character literal".into(),
+                            help_msg: "must not be empty".into()
                         }),
                         ch => Ok( ch ),
                     };
 
-                    match character {
-                        Ok( b'\'' ) => Err( SyntaxError {
-                            line_byte_start: self.line_byte_start,
-                            line_number: self.line,
-                            col: self.token_start_col,
-                            len: self.token_text.len(),
-                            msg: "invalid character literal".into(),
-                            help_msg: "must not be empty".into()
-                        }),
-                        Ok( ch ) => match self.next()? {
-                            Some( b'\'' ) => Ok( Some( TokenKind::Literal( Literal::Char { value: ch } ) ) ),
-                            Some( _ ) | None => Err( SyntaxError {
-                                line_byte_start: self.line_byte_start,
-                                line_number: self.line,
-                                col: self.token_start_col,
-                                len: self.token_text.len(),
-                                msg: "invalid character literal".into(),
-                                help_msg: "missing closing single quote".into()
-                            })
+                    match self.peek_next()? {
+                        Some( b'\'' ) => {
+                            self.col += 1;
+                            Ok( Some( TokenKind::Literal( Literal::Char( code? ) ) ) )
                         },
-                        Err( err ) => Err( err )
+                        Some( _ ) | None => Err( SyntaxError {
+                            line_byte_start: self.line_byte_start,
+                            line: self.line,
+                            col: self.token_start_col,
+                            len: self.col - self.token_start_col + 1,
+                            msg: "invalid character literal".into(),
+                            help_msg: "missing closing single quote".into()
+                        })
                     }
                 },
                 b'(' => {
@@ -965,13 +992,11 @@ impl Lexer {
                     Ok( Some( TokenKind::Bracket( kind ) ) )
                 },
                 b')' => match self.brackets.pop() {
-                    Some( Bracket { kind: BracketKind::OpenRound, .. } ) =>
-                        Ok( Some( TokenKind::Bracket( BracketKind::CloseRound ) ) ),
-                    Some( Bracket { kind: BracketKind::CloseCurly | BracketKind::CloseRound, .. } ) =>
+                    Some( Bracket { kind: BracketKind::OpenRound | BracketKind::CloseCurly | BracketKind::CloseRound, .. } ) =>
                         Ok( Some( TokenKind::Bracket( BracketKind::CloseRound ) ) ),
                     Some( Bracket { kind: BracketKind::OpenCurly, .. } ) => Err( SyntaxError {
                         line_byte_start: self.line_byte_start,
-                        line_number: self.line,
+                        line: self.line,
                         col: self.token_start_col,
                         len: 1,
                         msg: "stray bracket".into(),
@@ -979,7 +1004,7 @@ impl Lexer {
                     }),
                     None => Err( SyntaxError {
                         line_byte_start: self.line_byte_start,
-                        line_number: self.line,
+                        line: self.line,
                         col: self.token_start_col,
                         len: 1,
                         msg: "stray bracket".into(),
@@ -997,13 +1022,11 @@ impl Lexer {
                     Ok( Some( TokenKind::Bracket( kind ) ) )
                 },
                 b'}' => match self.brackets.pop() {
-                    Some( Bracket { kind: BracketKind::OpenCurly, .. } ) =>
-                        Ok( Some( TokenKind::Bracket( BracketKind::CloseCurly ) ) ),
-                    Some( Bracket { kind: BracketKind::CloseCurly | BracketKind::CloseRound, .. } ) =>
+                    Some( Bracket { kind: BracketKind::OpenCurly | BracketKind::CloseCurly | BracketKind::CloseRound, .. } ) =>
                         Ok( Some( TokenKind::Bracket( BracketKind::CloseCurly ) ) ),
                     Some( Bracket { kind: BracketKind::OpenRound, .. } ) => Err( SyntaxError {
                         line_byte_start: self.line_byte_start,
-                        line_number: self.line,
+                        line: self.line,
                         col: self.token_start_col,
                         len: 1,
                         msg: "stray bracket".into(),
@@ -1011,7 +1034,7 @@ impl Lexer {
                     }),
                     None => Err( SyntaxError {
                         line_byte_start: self.line_byte_start,
-                        line_number: self.line,
+                        line: self.line,
                         col: self.token_start_col,
                         len: 1,
                         msg: "stray bracket".into(),
@@ -1021,78 +1044,76 @@ impl Lexer {
                 b';' => Ok( Some( TokenKind::SemiColon ) ),
                 b'*' => match self.peek_next()? {
                     Some( b'*' ) => {
-                        let _ = self.next();
-
+                        self.col += 1;
                         match self.peek_next()? {
                             Some( b'=' ) => {
-                                let _ = self.next();
+                                self.col += 1;
                                 Ok( Some( TokenKind::Op( Operator::PowEquals ) ) )
                             }
                             _ => Ok( Some( TokenKind::Op( Operator::Pow ) ) ),
                         }
                     },
                     Some( b'=' ) => {
-                        let _ = self.next();
+                        self.col += 1;
                         Ok( Some( TokenKind::Op( Operator::TimesEquals ) ) )
                     },
                     _ => Ok( Some( TokenKind::Op( Operator::Times ) ) ),
                 },
                 b'/' => match self.peek_next()? {
                     Some( b'=' ) => {
-                        let _ = self.next();
+                        self.col += 1;
                         Ok( Some( TokenKind::Op( Operator::DivideEquals ) ) )
                     },
                     _ => Ok( Some( TokenKind::Op( Operator::Divide ) ) ),
                 },
                 b'%' => match self.peek_next()? {
                     Some( b'=' ) => {
-                        let _ = self.next();
+                        self.col += 1;
                         Ok( Some( TokenKind::Op( Operator::RemainderEquals ) ) )
                     },
                     _ => Ok( Some( TokenKind::Op( Operator::Remainder ) ) ),
                 },
                 b'+' => match self.peek_next()? {
                     Some( b'=' ) => {
-                        let _ = self.next();
+                        self.col += 1;
                         Ok( Some( TokenKind::Op( Operator::PlusEquals ) ) )
                     },
                     _ => Ok( Some( TokenKind::Op( Operator::Plus ) ) )
                 },
                 b'-' => match self.peek_next()? {
                     Some( b'=' ) => {
-                        let _ = self.next();
+                        self.col += 1;
                         Ok( Some( TokenKind::Op( Operator::MinusEquals ) ) )
                     },
                     _ => Ok( Some( TokenKind::Op( Operator::Minus ) ) ),
                 },
                 b'=' => match self.peek_next()? {
                     Some( b'=' ) => {
-                        let _ = self.next();
+                        self.col += 1;
                         Ok( Some( TokenKind::Op( Operator::EqualsEquals ) ) )
                     },
                     _ => Ok( Some( TokenKind::Equals ) ),
                 },
                 b'!' => match self.peek_next()? {
                     Some( b'=' ) => {
-                        let _ = self.next();
+                        self.col += 1;
                         Ok( Some( TokenKind::Op( Operator::NotEquals ) ) )
                     },
                     _ => Ok( Some( TokenKind::Op( Operator::Not ) ) ),
                 },
                 b'>' => match self.peek_next()? {
                     Some( b'=' ) => {
-                        let _ = self.next();
+                        self.col += 1;
                         Ok( Some( TokenKind::Op( Operator::GreaterOrEquals ) ) )
                     },
                     _ => Ok( Some( TokenKind::Op( Operator::Greater ) ) ),
                 },
                 b'<' => match self.peek_next()? {
                     Some( b'=' ) => {
-                        let _ = self.next();
-
+                        self.col += 1;
                         match self.peek_next()? {
                             Some( b'>' ) => {
-                                let _ = self.next();
+                                self.col += 1;
                                 Ok( Some( TokenKind::Op( Operator::Compare ) ) )
                             },
                             _ => Ok( Some( TokenKind::Op( Operator::LessOrEquals ) ) ),
@@ -1102,12 +1123,12 @@ impl Lexer {
                 },
                 b'^' => match self.peek_next()? {
                     Some( b'^' ) => {
-                        let _ = self.next();
+                        self.col += 1;
                         Ok( Some( TokenKind::Op( Operator::Xor ) ) )
                     },
                     _ => Err( SyntaxError {
                         line_byte_start: self.line_byte_start,
-                        line_number: self.line,
+                        line: self.line,
                         col: self.token_start_col,
                         len: 1,
                         msg: "unexpected character".into(),
@@ -1116,12 +1137,12 @@ impl Lexer {
                 },
                 b'&' => match self.peek_next()? {
                     Some( b'&' ) => {
-                        let _ = self.next();
+                        self.col += 1;
                         Ok( Some( TokenKind::Op( Operator::And ) ) )
                     },
                     _ => Err( SyntaxError {
                         line_byte_start: self.line_byte_start,
-                        line_number: self.line,
+                        line: self.line,
                         col: self.token_start_col,
                         len: 1,
                         msg: "unexpected character".into(),
@@ -1130,12 +1151,12 @@ impl Lexer {
                 },
                 b'|' => match self.peek_next()? {
                     Some( b'|' ) => {
-                        let _ = self.next();
+                        self.col += 1;
                         Ok( Some( TokenKind::Op( Operator::Or ) ) )
                     },
                     _ => Err( SyntaxError {
                         line_byte_start: self.line_byte_start,
-                        line_number: self.line,
+                        line: self.line,
                         col: self.token_start_col,
                         len: 1,
                         msg: "unexpected character".into(),
@@ -1145,7 +1166,7 @@ impl Lexer {
                 b'\n' => unreachable!( "line text should have been trimmed already" ),
                 _ => Err( SyntaxError {
                     line_byte_start: self.line_byte_start,
-                    line_number: self.line,
+                    line: self.line,
                     col: self.token_start_col,
                     len: 1,
                     msg: "unexpected character".into(),
@@ -1174,6 +1195,7 @@ struct TokenCursor<'lexer> {
 
 // TODO implement methods that return only tokens or lines since lines are only really needed when reporting errors
 impl<'lexer> TokenCursor<'lexer> {
+    // NOTE consider making this return an Option when out of bounds (i.e. either on the SOF or the EOF token)
     fn current( &self ) -> TokenPosition<'lexer> {
         return TokenPosition{ line: &self.lines[ self.line ], token: &self.tokens[ self.token ] };
     }
@@ -1250,10 +1272,10 @@ impl<'lexer> BoundedPosition<'lexer> for Option<TokenPosition<'lexer>> {
             Some( current ) => match current.token.kind {
                 TokenKind::EOF => {
                     // we are always sure that there is at least the SOF token before the EOF token, so we can safely unwrap
-                    let previous = tokens.peek_previous().unwrap();
+                    let previous = unsafe{ tokens.peek_previous().unwrap_unchecked() };
                     Err( SyntaxError {
                         line_byte_start: previous.line.byte_start,
-                        line_number: previous.line.number,
+                        line: previous.line.number,
                         col: previous.token.col,
                         len: previous.token.kind.len(),
                         msg: err_msg.into().into(),
@@ -1262,10 +1284,10 @@ impl<'lexer> BoundedPosition<'lexer> for Option<TokenPosition<'lexer>> {
                 },
                 TokenKind::SOF => {
                     // we are always sure that there is at least the EOF token after the SOF token, so we can safely unwrap
-                    let next = tokens.peek_previous().unwrap();
+                    let next = unsafe{ tokens.peek_previous().unwrap_unchecked() };
                     Err( SyntaxError {
                         line_byte_start: next.line.byte_start,
-                        line_number: next.line.number,
+                        line: next.line.number,
                         col: next.token.col,
                         len: next.token.kind.len(),
                         msg: err_msg.into().into(),
@@ -1449,9 +1471,8 @@ struct ForStatement {
 
 
 enum Statement {
-    // TODO remove Empty and Stop variants, and make methods return Option<Statement>
-    Empty, // NOTE this is going to be gone completely as it's just to signal to do nothing
-    Stop, // NOTE this is going to become the None variant
+    Empty,
+    Stop,
     Single( Node ),
     Multiple( Vec<Node> ),
 }
@@ -1551,7 +1572,7 @@ impl<'lexer> AST {
                 tokens.next();
                 Err( SyntaxError {
                     line_byte_start: current.line.byte_start,
-                    line_number: current.line.number,
+                    line: current.line.number,
                     col: current.token.col,
                     len: current.token.kind.len(),
                     msg: "invalid if statement".into(),
@@ -1564,7 +1585,7 @@ impl<'lexer> AST {
                 match self.for_depth {
                     0 => Err( SyntaxError {
                         line_byte_start: current.line.byte_start,
-                        line_number: current.line.number,
+                        line: current.line.number,
                         col: current.token.col,
                         len: current.token.kind.len(),
                         msg: "invalid break statement".into(),
@@ -1578,7 +1599,7 @@ impl<'lexer> AST {
                 match self.for_depth {
                     0 => Err( SyntaxError {
                         line_byte_start: current.line.byte_start,
-                        line_number: current.line.number,
+                        line: current.line.number,
                         col: current.token.col,
                         len: current.token.kind.len(),
                         msg: "invalid continue statement".into(),
@@ -1601,7 +1622,7 @@ impl<'lexer> AST {
                 tokens.next();
                 Err( SyntaxError {
                     line_byte_start: current.line.byte_start,
-                    line_number: current.line.number,
+                    line: current.line.number,
                     col: current.token.col,
                     len: current.token.kind.len(),
                     msg: "invalid expression".into(),
@@ -1612,7 +1633,7 @@ impl<'lexer> AST {
                 tokens.next();
                 Err( SyntaxError {
                     line_byte_start: current.line.byte_start,
-                    line_number: current.line.number,
+                    line: current.line.number,
                     col: current.token.col,
                     len: current.token.kind.len(),
                     msg: "invalid assignment".into(),
@@ -1623,7 +1644,7 @@ impl<'lexer> AST {
                 tokens.next();
                 Err( SyntaxError {
                     line_byte_start: current.line.byte_start,
-                    line_number: current.line.number,
+                    line: current.line.number,
                     col: current.token.col,
                     len: current.token.kind.len(),
                     msg: "invalid expression".into(),
@@ -1683,13 +1704,13 @@ impl<'lexer> AST {
         let current = tokens.current_or_next().bounded( tokens, "expected expression" )?.unwrap();
         let factor = match &current.token.kind {
             TokenKind::Literal( literal ) => Ok( Expression::Literal( literal.clone() ) ),
-            TokenKind::True => Ok( Expression::Literal( Literal::Bool { value: true } ) ),
-            TokenKind::False => Ok( Expression::Literal( Literal::Bool { value: false } ) ),
+            TokenKind::True => Ok( Expression::Literal( Literal::Bool( true ) ) ),
+            TokenKind::False => Ok( Expression::Literal( Literal::Bool( false ) ) ),
             TokenKind::Identifier( name ) => match self.scopes.resolve( name ) {
                 Some( definition ) => Ok( Expression::Identifier( name.clone(), definition.typ ) ),
                 None => Err( SyntaxError {
                     line_byte_start: current.line.byte_start,
-                    line_number: current.line.number,
+                    line: current.line.number,
                     col: current.token.col,
                     len: current.token.kind.len(),
                     msg: "variable not defined".into(),
@@ -1701,7 +1722,7 @@ impl<'lexer> AST {
                 match expression_start_pos.token.kind {
                     TokenKind::Bracket( BracketKind::CloseRound ) => Err( SyntaxError {
                         line_byte_start: expression_start_pos.line.byte_start,
-                        line_number: expression_start_pos.line.number,
+                        line: expression_start_pos.line.number,
                         col: expression_start_pos.token.col,
                         len: expression_start_pos.token.kind.len(),
                         msg: "invalid expression".into(),
@@ -1714,7 +1735,7 @@ impl<'lexer> AST {
                             TokenKind::Bracket( BracketKind::CloseRound ) => Ok( expression ),
                             _ => Err( SyntaxError {
                                 line_byte_start: current.line.byte_start,
-                                line_number: current.line.number,
+                                line: current.line.number,
                                 col: current.token.col,
                                 len: current.token.kind.len(),
                                 msg: "invalid expression".into(),
@@ -1735,16 +1756,16 @@ impl<'lexer> AST {
                     Type::Int | Type::Char | Type::Str => match should_be_negated {
                         true => match operand {
                             Expression::Literal( ref mut literal ) => match literal {
-                                Literal::Int { ref mut value } => {
+                                Literal::Int( ref mut value ) => {
                                     *value = -*value;
                                     Ok( operand )
                                 },
-                                Literal::Char { value } => {
-                                    *literal = Literal::Int { value: -(*value as isize) };
+                                Literal::Char( code ) => {
+                                    *literal = Literal::Int( -(*code as isize) );
                                     Ok( operand )
                                 },
                                 Literal::Str( Str { text } ) => {
-                                    *literal = Literal::Int { value: -(text.len() as isize) };
+                                    *literal = Literal::Int( -(text.len() as isize) );
                                     Ok( operand )
                                 },
                                 Literal::Bool { .. } => unreachable!(),
@@ -1755,11 +1776,11 @@ impl<'lexer> AST {
                     },
                     Type::Bool => Err( SyntaxError {
                         line_byte_start: current.line.byte_start,
-                        line_number: current.line.number,
+                        line: current.line.number,
                         col: current.token.col,
                         len: current.token.kind.len(),
                         msg: "invalid expression".into(),
-                        help_msg: "cannot negate boolean value, use the 'not' operator instead".into()
+                        help_msg: "cannot negate boolean value, use the '!' operator instead".into()
                     }),
                 }
             },
@@ -1773,7 +1794,7 @@ impl<'lexer> AST {
                 return match operand.typ() {
                     Type::Bool => match should_be_inverted {
                         true => match operand {
-                            Expression::Literal( Literal::Bool { ref mut value } ) => {
+                            Expression::Literal( Literal::Bool( ref mut value ) ) => {
                                 *value = !*value;
                                 Ok( operand )
                             },
@@ -1783,7 +1804,7 @@ impl<'lexer> AST {
                     },
                     Type::Int | Type::Char | Type::Str => Err( SyntaxError {
                         line_byte_start: current.line.byte_start,
-                        line_number: current.line.number,
+                        line: current.line.number,
                         col: current.token.col,
                         len: current.token.kind.len(),
                         msg: "invalid expression".into(),
@@ -1793,7 +1814,7 @@ impl<'lexer> AST {
             },
             _ => Err( SyntaxError {
                 line_byte_start: current.line.byte_start,
-                line_number: current.line.number,
+                line: current.line.number,
                 col: current.token.col,
                 len: current.token.kind.len(),
                 msg: "invalid expression".into(),
@@ -1888,7 +1909,7 @@ impl<'lexer> AST {
             if lhs.typ() != Type::Bool {
                 return Err( SyntaxError {
                     line_byte_start: op_pos.line.byte_start,
-                    line_number: op_pos.line.number,
+                    line: op_pos.line.number,
                     col: op_pos.token.col,
                     len: op_pos.token.kind.len(),
                     msg: "invalid boolean expression".into(),
@@ -1900,7 +1921,7 @@ impl<'lexer> AST {
             if rhs.typ() != Type::Bool {
                 return Err( SyntaxError {
                     line_byte_start: op_pos.line.byte_start,
-                    line_number: op_pos.line.number,
+                    line: op_pos.line.number,
                     col: op_pos.token.col,
                     len: op_pos.token.kind.len(),
                     msg: "invalid boolean expression".into(),
@@ -1936,7 +1957,7 @@ impl<'lexer> AST {
 
                 Err( SyntaxError {
                     line_byte_start: previous.line.byte_start,
-                    line_number: previous.line.number,
+                    line: previous.line.number,
                     col: previous.token.col,
                     len: previous.token.kind.len(),
                     msg: "invalid expression".into(),
@@ -1961,7 +1982,7 @@ impl<'lexer> AST {
             TokenKind::Identifier( name ) => Ok( name.clone() ),
             _ => Err( SyntaxError {
                 line_byte_start: name_pos.line.byte_start,
-                line_number: name_pos.line.number,
+                line: name_pos.line.number,
                 col: name_pos.token.col,
                 len: name_pos.token.kind.len(),
                 msg: "invalid assignment".into(),
@@ -1974,7 +1995,7 @@ impl<'lexer> AST {
             TokenKind::Equals => Ok( () ),
             _ => Err( SyntaxError {
                 line_byte_start: name_pos.line.byte_start,
-                line_number: name_pos.line.number,
+                line: name_pos.line.number,
                 col: name_pos.token.col,
                 len: name_pos.token.kind.len(),
                 msg: "invalid assignment".into(),
@@ -1990,7 +2011,7 @@ impl<'lexer> AST {
             | TokenKind::Op( Operator::Minus | Operator::Not ) => self.expression( tokens ),
             _ => Err( SyntaxError {
                 line_byte_start: equals_pos.line.byte_start,
-                line_number: equals_pos.line.number,
+                line: equals_pos.line.number,
                 col: equals_pos.token.col,
                 len: equals_pos.token.kind.len(),
                 msg: "invalid assignment".into(),
@@ -2010,7 +2031,7 @@ impl<'lexer> AST {
             },
             Some( _ ) => Err( SyntaxError {
                 line_byte_start: name_pos.line.byte_start,
-                line_number: name_pos.line.number,
+                line: name_pos.line.number,
                 col: name_pos.token.col,
                 len: name_pos.token.kind.len(),
                 msg: "variable redefinition".into(),
@@ -2047,7 +2068,7 @@ impl<'lexer> AST {
             },
             _ => Err( SyntaxError {
                 line_byte_start: assignment_pos.line.byte_start,
-                line_number: assignment_pos.line.number,
+                line: assignment_pos.line.number,
                 col: assignment_pos.token.col,
                 len: assignment_pos.token.kind.len(),
                 msg: "invalid assignment".into(),
@@ -2060,7 +2081,7 @@ impl<'lexer> AST {
                 Some( definition ) => Ok( definition ),
                 None => Err( SyntaxError {
                     line_byte_start: name_pos.line.byte_start,
-                    line_number: name_pos.line.number,
+                    line: name_pos.line.number,
                     col: name_pos.token.col,
                     len: name_pos.token.kind.len(),
                     msg: "variable redefinition".into(),
@@ -2075,7 +2096,7 @@ impl<'lexer> AST {
         let value = match variable.mutability {
             Mutability::Let => Err( SyntaxError {
                 line_byte_start: name_pos.line.byte_start,
-                line_number: name_pos.line.number,
+                line: name_pos.line.number,
                 col: name_pos.token.col,
                 len: name_pos.token.kind.len(),
                 msg: "invalid assignment".into(),
@@ -2088,7 +2109,7 @@ impl<'lexer> AST {
                 if variable.typ != new_value_typ {
                     Err( SyntaxError {
                         line_byte_start: name_pos.line.byte_start,
-                        line_number: name_pos.line.number,
+                        line: name_pos.line.number,
                         col: name_pos.token.col,
                         len: name_pos.token.kind.len(),
                         msg: "mismatched types".into(),
@@ -2116,7 +2137,7 @@ impl<'lexer> AST {
         match print_pos.token.kind {
             TokenKind::PrintLn => if let Some( TokenPosition { token: &Token { kind: TokenKind::SemiColon, .. }, .. } ) = tokens.peek_next() {
                 tokens.next();
-                let new_line = Literal::Char { value: b'\n' };
+                let new_line = Literal::Char( b'\n' );
                 let argument = Expression::Literal( new_line );
                 return Ok( Statement::Single( Node::Print( argument ) ) );
             },
@@ -2132,7 +2153,7 @@ impl<'lexer> AST {
             | TokenKind::Op( Operator::Minus | Operator::Not ) => self.expression( tokens ),
             _ => Err( SyntaxError {
                 line_byte_start: argument_pos.line.byte_start,
-                line_number: argument_pos.line.number,
+                line: argument_pos.line.number,
                 col: argument_pos.token.col,
                 len: argument_pos.token.kind.len(),
                 msg: "invalid print argument".into(),
@@ -2145,7 +2166,7 @@ impl<'lexer> AST {
         return match print_pos.token.kind {
             TokenKind::Print => Ok( Statement::Single( Node::Print( argument ) ) ),
             TokenKind::PrintLn => {
-                let new_line = Literal::Char { value: b'\n' };
+                let new_line = Literal::Char( b'\n' );
                 let println_argument = Expression::Literal( new_line );
                 Ok( Statement::Multiple( vec![
                     Node::Print( argument ),
@@ -2177,7 +2198,7 @@ impl<'lexer> AST {
             Type::Bool => Ok( expression ),
             Type::Char | Type::Int | Type::Str => Err( SyntaxError {
                 line_byte_start: if_pos.line.byte_start,
-                line_number: if_pos.line.number,
+                line: if_pos.line.number,
                 col: if_pos.token.col,
                 len: if_pos.token.kind.len(),
                 msg: "expected boolean expression".into(),
@@ -2197,7 +2218,7 @@ impl<'lexer> AST {
                 let before_curly_bracket_pos = tokens.peek_previous().unwrap();
                 Err( SyntaxError {
                     line_byte_start: before_curly_bracket_pos.line.byte_start,
-                    line_number: before_curly_bracket_pos.line.number,
+                    line: before_curly_bracket_pos.line.number,
                     col: before_curly_bracket_pos.token.col,
                     len: before_curly_bracket_pos.token.kind.len(),
                     msg: "expected block scope".into(),
@@ -2235,7 +2256,7 @@ impl<'lexer> AST {
                     },
                     _ => return Err( SyntaxError {
                         line_byte_start: pos.line.byte_start,
-                        line_number: pos.line.number,
+                        line: pos.line.number,
                         col: pos.token.col,
                         len: pos.token.kind.len(),
                         msg: "invalid else statement".into(),
@@ -2358,27 +2379,27 @@ impl<'ast> Interpreter<'ast> {
 
                 match op {
                     Operator::Pow | Operator::PowEquals => match rhs {
-                        2 => Literal::Int { value: lhs * lhs },
-                        _ => Literal::Int { value: lhs.pow( rhs as u32 ) },
+                        2 => Literal::Int( lhs * lhs ),
+                        _ => Literal::Int( lhs.pow( rhs as u32 ) ),
                     },
-                    Operator::Times | Operator::TimesEquals => Literal::Int { value: lhs * rhs },
-                    Operator::Divide | Operator::DivideEquals => Literal::Int { value: lhs / rhs },
-                    Operator::Remainder | Operator::RemainderEquals => Literal::Int { value: lhs % rhs },
+                    Operator::Times | Operator::TimesEquals => Literal::Int( lhs * rhs ),
+                    Operator::Divide | Operator::DivideEquals => Literal::Int( lhs / rhs ),
+                    Operator::Remainder | Operator::RemainderEquals => Literal::Int( lhs % rhs ),
 
-                    Operator::Plus | Operator::PlusEquals => Literal::Int { value: lhs + rhs },
-                    Operator::Minus | Operator::MinusEquals => Literal::Int { value: lhs - rhs },
+                    Operator::Plus | Operator::PlusEquals => Literal::Int( lhs + rhs ),
+                    Operator::Minus | Operator::MinusEquals => Literal::Int( lhs - rhs ),
 
-                    Operator::EqualsEquals => Literal::Bool { value: lhs == rhs },
-                    Operator::NotEquals => Literal::Bool { value: lhs != rhs },
-                    Operator::Greater => Literal::Bool { value: lhs > rhs },
-                    Operator::GreaterOrEquals => Literal::Bool { value: lhs >= rhs },
-                    Operator::Less => Literal::Bool { value: lhs < rhs },
-                    Operator::LessOrEquals => Literal::Bool { value: lhs <= rhs },
-                    Operator::Compare => Literal::Int { value: lhs.cmp( &rhs ) as isize },
+                    Operator::EqualsEquals => Literal::Bool( lhs == rhs ),
+                    Operator::NotEquals => Literal::Bool( lhs != rhs ),
+                    Operator::Greater => Literal::Bool( lhs > rhs ),
+                    Operator::GreaterOrEquals => Literal::Bool( lhs >= rhs ),
+                    Operator::Less => Literal::Bool( lhs < rhs ),
+                    Operator::LessOrEquals => Literal::Bool( lhs <= rhs ),
+                    Operator::Compare => Literal::Int( lhs.cmp( &rhs ) as isize ),
 
-                    Operator::And => Literal::Bool { value: lhs == 1 && rhs == 1 },
-                    Operator::Or => Literal::Bool { value: lhs == 1 || rhs == 1 },
-                    Operator::Xor => Literal::Bool { value: (lhs != 1 && rhs == 1) || (lhs == 1 && rhs != 1) },
+                    Operator::And => Literal::Bool( lhs == 1 && rhs == 1 ),
+                    Operator::Or => Literal::Bool( lhs == 1 || rhs == 1 ),
+                    Operator::Xor => Literal::Bool( (lhs != 1 && rhs == 1) || (lhs == 1 && rhs != 1) ),
 
                     Operator::Not | Operator::Negate => unreachable!(),
                 }
@@ -2387,11 +2408,11 @@ impl<'ast> Interpreter<'ast> {
             Expression::Unary { op, operand } => match op {
                 Operator::Negate => {
                     let value: isize = self.evaluate( operand ).into();
-                    Literal::Int { value: -value }
+                    Literal::Int( -value )
                 },
                 Operator::Not => {
                     let value: isize = self.evaluate( operand ).into();
-                    Literal::Bool { value: value == 0 }
+                    Literal::Bool( value == 0 )
                 },
                 _ => unreachable!(),
             },
@@ -2421,7 +2442,7 @@ impl Interpreter<'_> {
                 Node::Print( argument ) => self.evaluate( argument ).display(),
                 Node::If( if_statement ) => 'iff: {
                     for iff in &if_statement.ifs {
-                        if let Literal::Bool { value: true } = self.evaluate( &iff.condition ) {
+                        if let Literal::Bool( true ) = self.evaluate( &iff.condition ) {
                             self.interpret_scope( iff.scope );
                             break 'iff;
                         }
@@ -2433,7 +2454,7 @@ impl Interpreter<'_> {
                 },
                 Node::For( forr ) =>
                     if let Some( condition ) = &forr.condition {
-                        while let Literal::Bool { value: true } = self.evaluate( condition ) {
+                        while let Literal::Bool( true ) = self.evaluate( condition ) {
                             if let ControlFlowStatement::Break = self.interpret_loop( forr.scope ) {
                                 break;
                             }
@@ -2486,7 +2507,7 @@ impl Interpreter<'_> {
                     },
                     Node::If( if_statement ) => 'iff: {
                         for iff in &if_statement.ifs {
-                            if let Literal::Bool { value: true } = self.evaluate( &iff.condition ) {
+                            if let Literal::Bool( true ) = self.evaluate( &iff.condition ) {
                                 break 'iff self.interpret_loop( iff.scope );
                             }
                         }
@@ -2499,7 +2520,7 @@ impl Interpreter<'_> {
                     },
                     Node::For( forr ) => {
                         if let Some( condition ) = &forr.condition {
-                            while let Literal::Bool { value: true } = self.evaluate( condition ) {
+                            while let Literal::Bool( true ) = self.evaluate( condition ) {
                                 if let ControlFlowStatement::Break = self.interpret_loop( forr.scope ) {
                                     break;
                                 }
@@ -3153,9 +3174,9 @@ impl<'ast> Compiler<'ast> {
 
     fn compile_expression( &mut self, expression: &'ast Expression ) {
         match expression {
-            Expression::Literal( Literal::Int { value } ) => self.asm += &format!( " mov rdi, {}\n", value ),
-            Expression::Literal( Literal::Char { value } ) => self.asm += &format!( " mov rdi, {}\n", value ),
-            Expression::Literal( Literal::Bool { value } ) => self.asm += &format!( " mov rdi, {}\n", value ),
+            Expression::Literal( Literal::Int( value ) ) => self.asm += &format!( " mov rdi, {}\n", value ),
+            Expression::Literal( Literal::Char( code ) ) => self.asm += &format!( " mov rdi, {}\n", code ),
+            Expression::Literal( Literal::Bool( value ) ) => self.asm += &format!( " mov rdi, {}\n", value ),
             Expression::Literal( Literal::Str( string ) ) => {
                 let string_label_idx = self.string_label_idx( string );
                 let string_label = &self.strings[ string_label_idx ];
@@ -3199,9 +3220,9 @@ impl<'ast> Compiler<'ast> {
     // IDEA make this return the place of where to find the result of the operation
     fn compile_expression_factor( &mut self, factor: &'ast Expression, dst: Register ) {
         match factor {
-            Expression::Literal( Literal::Int { value } ) => self.asm += &format!( " mov {}, {}\n", dst, value ),
-            Expression::Literal( Literal::Char { value } ) => self.asm += &format!( " mov {}, {}\n", dst, value ),
-            Expression::Literal( Literal::Bool { value } ) => self.asm += &format!( " mov {}, {}\n", dst, value ),
+            Expression::Literal( Literal::Int( value ) ) => self.asm += &format!( " mov {}, {}\n", dst, value ),
+            Expression::Literal( Literal::Char( code ) ) => self.asm += &format!( " mov {}, {}\n", dst, code ),
+            Expression::Literal( Literal::Bool( value ) ) => self.asm += &format!( " mov {}, {}\n", dst, value ),
             Expression::Literal( Literal::Str( string ) ) => {
                 let string_label_idx = self.string_label_idx( string );
                 let string_label = &self.strings[ string_label_idx ];
@@ -3215,7 +3236,7 @@ impl<'ast> Compiler<'ast> {
             Expression::Binary { lhs, op, rhs } => {
                 let (lhs_reg, rhs_reg, op_asm) = match op {
                     Operator::Pow | Operator::PowEquals => match &**rhs {
-                        Expression::Literal( Literal::Int { value: 2 } ) => (Register::RDI, Register::RSI,
+                        Expression::Literal( Literal::Int( 2 ) ) => (Register::RDI, Register::RSI,
                             " imul rdi, rdi\n"
                         ),
                         _ => (Register::RDI, Register::RSI,
@@ -3342,7 +3363,7 @@ impl<'ast> Compiler<'ast> {
         self.asm += &format!( "{}:; {}\n", if_tag, iff.condition );
 
         match &iff.condition {
-            Expression::Literal( Literal::Bool { value } ) =>
+            Expression::Literal( Literal::Bool( value ) ) =>
                 self.asm += &format!(
                     " mov dil, {}\
                     \n cmp dil, true\
@@ -3418,7 +3439,7 @@ impl<'ast> Compiler<'ast> {
             self.asm += &format!( "{}:; {}\n", for_tag, condition );
 
             match condition {
-                Expression::Literal( Literal::Bool { value } ) =>
+                Expression::Literal( Literal::Bool( value ) ) =>
                     self.asm += &format!(
                         " mov dil, {}\
                         \n cmp dil, true\
@@ -3498,15 +3519,15 @@ impl<'ast> Compiler<'ast> {
         self.asm += &format!( " ; {} = {}\n", name, new_value );
 
         match new_value {
-            Expression::Literal( Literal::Int { value } ) =>
+            Expression::Literal( Literal::Int( value ) ) =>
                 self.asm += &format!(
                     " mov rdi, {}\
                     \n mov [rbp + {}], rdi\n\n",
                     value, variable_offset
                 ),
-            Expression::Literal( Literal::Char { value } ) =>
-                self.asm += &format!( " mov byte [rbp + {}], {}\n\n", variable_offset, value ),
-            Expression::Literal( Literal::Bool { value } ) =>
+            Expression::Literal( Literal::Char( code ) ) =>
+                self.asm += &format!( " mov byte [rbp + {}], {}\n\n", variable_offset, code ),
+            Expression::Literal( Literal::Bool( value ) ) =>
                 self.asm += &format!( " mov byte [rbp + {}], {}\n\n", variable_offset, value ),
             Expression::Literal( Literal::Str( string @ Str { .. } ) ) => {
                 let string_label_idx = self.string_label_idx( string );
