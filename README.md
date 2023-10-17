@@ -1,7 +1,8 @@
 # Blitz language
 
 Experimenting with programming languages and exploring how to create one.
-`IMPORTANT`: The language could change at any moment for now
+
+**IMPORTANT**: The language could change at any moment for now
 
 ## Language Features
 
