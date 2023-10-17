@@ -551,7 +551,7 @@ struct Lexer {
 
     line: usize,
     line_byte_start: usize,
-    col: usize, // TODO add an absolute column for the bytes in the line, and have this as the token column
+    col: usize,
     token_start_col: usize,
 
     lines: Vec<Line>,
@@ -673,11 +673,14 @@ impl Lexer {
         self.token_text = self.token_text();
     }
 
+    // TODO move String related function to the Str struct
+    // TODO create own from_utf8 function
     fn token_text( &self ) -> String {
-        return String::from_utf8( self.line_bytes[ self.token_start_col - 1..self.col ].to_vec() ).unwrap();
+        return String::from_utf8_lossy( &self.line_bytes[ self.token_start_col - 1..self.col ] ).into();
     }
 
     // FIX properly handle non ASCII characters
+        // TODO add an absolute column for the bytes in the line
         // IDEA only allow utf-8 characters in strings, characters and comments
     fn next( &mut self ) -> Result<Option<u8>, SyntaxError> {
         if self.col >= self.line_bytes.len() {
@@ -685,7 +688,6 @@ impl Lexer {
         }
 
         let next = self.line_bytes[ self.col ];
-        // self.token_text.push( next as char );
         self.col += 1;
         return match next {
             ..=b'\x7F' => Ok( Some( next ) ),
@@ -1372,74 +1374,6 @@ struct Definition {
     typ: Type,
 }
 
-#[derive( Debug )]
-struct Scope {
-    parent: Option<ScopeIdx>,
-    definitions: Vec<Definition>,
-    nodes: Vec<Node>,
-}
-
-type ScopeIdx = usize;
-
-#[derive( Debug )]
-struct Scopes {
-    scopes: Vec<Scope>,
-    current: ScopeIdx,
-}
-
-// Creation of scopes during AST creation
-impl<'this> Scopes {
-    fn create_and_add_to_current( &mut self ) -> ScopeIdx {
-        let new_scope = self.scopes.len();
-        self.scopes.push( Scope { parent: Some( self.current ), definitions: Vec::new(), nodes: Vec::new() } );
-        self.scopes[ self.current ].nodes.push( Node::Scope( new_scope ) );
-        self.current = new_scope;
-        return self.current;
-    }
-
-    fn create( &mut self ) -> ScopeIdx {
-        self.scopes.push( Scope { parent: Some( self.current ), definitions: Vec::new(), nodes: Vec::new() } );
-        self.current = self.scopes.len() - 1;
-        return self.current;
-    }
-
-    fn current( &'this self ) -> &'this Scope {
-        return &self.scopes[ self.current ];
-    }
-}
-
-// Resolution of identifiers
-impl<'this> Scopes {
-    fn resolve( &'this self, name: &str ) -> Option<&'this Definition> {
-        let mut current_scope = self.current();
-
-        loop {
-            for definition in &current_scope.definitions {
-                if definition.name == name {
-                    return Some( definition );
-                }
-            }
-
-            current_scope = &self.scopes[ current_scope.parent? ];
-        }
-    }
-
-    fn resolve_mut( &'this mut self, name: &str ) -> Option<&'this mut Definition> {
-        let mut current_scope = self.current;
-
-        loop {
-            let scope = &self.scopes[ current_scope ];
-            for (i, definition) in scope.definitions.iter().enumerate() {
-                if definition.name == name {
-                    return Some( &mut self.scopes[ current_scope ].definitions[ i ] );
-                }
-            }
-
-            current_scope = scope.parent?;
-        }
-    }
-}
-
 
 #[derive( Debug, Clone )]
 struct If {
@@ -1509,11 +1443,22 @@ impl Display for Node {
     }
 }
 
+type ScopeIdx = usize;
+
+#[derive( Debug )]
+struct Scope {
+    parent: Option<ScopeIdx>,
+    definitions: Vec<Definition>,
+    nodes: Vec<Node>,
+}
+
+
 // TODO process entire statement for syntactical correctness and then report all the errors
     // IDEA create Parser class that builds the AST, and then validate the AST afterwards
 #[derive( Debug )]
 struct AST {
-    scopes: Scopes,
+    scopes: Vec<Scope>,
+    current_scope: ScopeIdx,
     for_depth: usize,
 }
 
@@ -1523,7 +1468,8 @@ impl TryFrom<Lexer> for AST {
 
     fn try_from( lexer: Lexer ) -> Result<Self, Self::Error> {
         let mut this = Self {
-            scopes: Scopes { scopes: Vec::new(), current: 0 },
+            scopes: Vec::new(),
+            current_scope: 0,
             for_depth: 0,
         };
 
@@ -1535,6 +1481,55 @@ impl TryFrom<Lexer> for AST {
         return match errors.is_empty() {
             true => Ok( this ),
             false => Err( SyntaxErrors { src: lexer.src, errors } ),
+        }
+    }
+}
+
+// Creation of scopes
+impl<'lexer> AST {
+    fn open_scope( &mut self ) -> ScopeIdx {
+        let new_scope = self.scopes.len();
+        self.scopes.push( Scope { parent: Some( self.current_scope ), definitions: Vec::new(), nodes: Vec::new() } );
+        self.scopes[ self.current_scope ].nodes.push( Node::Scope( new_scope ) );
+        self.current_scope = new_scope;
+        return self.current_scope;
+    }
+
+    fn create_scope( &mut self ) -> ScopeIdx {
+        self.scopes.push( Scope { parent: Some( self.current_scope ), definitions: Vec::new(), nodes: Vec::new() } );
+        self.current_scope = self.scopes.len() - 1;
+        return self.current_scope;
+    }
+}
+
+// Resolution of identifiers
+impl<'lexer> AST {
+    fn resolve( &'lexer self, name: &str ) -> Option<&'lexer Definition> {
+        let mut current_scope = &self.scopes[ self.current_scope ];
+
+        loop {
+            for definition in &current_scope.definitions {
+                if definition.name == name {
+                    return Some( definition );
+                }
+            }
+
+            current_scope = &self.scopes[ current_scope.parent? ];
+        }
+    }
+
+    fn resolve_mut( &'lexer mut self, name: &str ) -> Option<&'lexer mut Definition> {
+        let mut current_scope = self.current_scope;
+
+        loop {
+            let scope = &self.scopes[ current_scope ];
+            for (i, definition) in scope.definitions.iter().enumerate() {
+                if definition.name == name {
+                    return Some( &mut self.scopes[ current_scope ].definitions[ i ] );
+                }
+            }
+
+            current_scope = scope.parent?;
         }
     }
 }
@@ -1609,12 +1604,12 @@ impl<'lexer> AST {
                 }
             },
             TokenKind::Bracket( BracketKind::OpenCurly ) => {
-                self.scopes.create_and_add_to_current();
+                self.open_scope();
                 tokens.next();
                 Ok( Statement::Empty )
             },
             TokenKind::Bracket( BracketKind::CloseCurly ) => {
-                self.scopes.current = self.scopes.current().parent.unwrap_or( 0 );
+                self.current_scope = self.scopes[ self.current_scope ].parent.unwrap_or( 0 );
                 tokens.next();
                 Ok( Statement::Stop )
             },
@@ -1661,7 +1656,7 @@ impl<'lexer> AST {
             },
             TokenKind::SOF => {
                 let global_scope = Scope { parent: None, definitions: Vec::new(), nodes: Vec::new() };
-                self.scopes.scopes.push( global_scope );
+                self.scopes.push( global_scope );
 
                 tokens.next();
                 Ok( Statement::Empty )
@@ -1675,10 +1670,10 @@ impl<'lexer> AST {
             let statement_result = self.parse( tokens, errors, current );
 
             match statement_result {
-                Ok( Statement::Single( node ) ) => self.scopes.scopes[ self.scopes.current ].nodes.push( node ),
+                Ok( Statement::Single( node ) ) => self.scopes[ self.current_scope ].nodes.push( node ),
                 Ok( Statement::Multiple( multiple_nodes ) ) =>
                     for node in multiple_nodes {
-                        self.scopes.scopes[ self.scopes.current ].nodes.push( node );
+                        self.scopes[ self.current_scope ].nodes.push( node );
                     },
                 Ok( Statement::Empty ) => continue,
                 Ok( Statement::Stop ) => break,
@@ -1706,7 +1701,7 @@ impl<'lexer> AST {
             TokenKind::Literal( literal ) => Ok( Expression::Literal( literal.clone() ) ),
             TokenKind::True => Ok( Expression::Literal( Literal::Bool( true ) ) ),
             TokenKind::False => Ok( Expression::Literal( Literal::Bool( false ) ) ),
-            TokenKind::Identifier( name ) => match self.scopes.resolve( name ) {
+            TokenKind::Identifier( name ) => match self.resolve( name ) {
                 Some( definition ) => Ok( Expression::Identifier( name.clone(), definition.typ ) ),
                 None => Err( SyntaxError {
                     line_byte_start: current.line.byte_start,
@@ -2023,10 +2018,10 @@ impl<'lexer> AST {
         let _ = equals?;
         let value = value?;
 
-        return match self.scopes.resolve( &name ) {
+        return match self.resolve( &name ) {
             None => {
                 let definition = Definition { mutability: kind, name: name.clone(), typ: value.typ() };
-                self.scopes.scopes[ self.scopes.current ].definitions.push( definition );
+                self.scopes[ self.current_scope ].definitions.push( definition );
                 Ok( Statement::Single( Node::Definition( name, value ) ) )
             },
             Some( _ ) => Err( SyntaxError {
@@ -2077,7 +2072,7 @@ impl<'lexer> AST {
         };
 
         let variable = match &name_pos.token.kind {
-            TokenKind::Identifier( name ) => match self.scopes.resolve_mut( &name ) {
+            TokenKind::Identifier( name ) => match self.resolve_mut( &name ) {
                 Some( definition ) => Ok( definition ),
                 None => Err( SyntaxError {
                     line_byte_start: name_pos.line.byte_start,
@@ -2210,7 +2205,7 @@ impl<'lexer> AST {
         let open_curly_pos = tokens.current_or_next().bounded( tokens, "expected curly bracket" )?.unwrap();
         let open_curly = match open_curly_pos.token.kind {
             TokenKind::Bracket( BracketKind::OpenCurly ) => {
-                let scope = self.scopes.create();
+                let scope = self.create_scope();
                 tokens.next();
                 Ok( scope )
             },
@@ -2241,7 +2236,7 @@ impl<'lexer> AST {
                 let if_or_block_pos = tokens.next().bounded( tokens, "expected block or if statement after this token" )?.unwrap();
                 match if_or_block_pos.token.kind {
                     TokenKind::Bracket( BracketKind::OpenCurly ) => {
-                        let els = self.scopes.create();
+                        let els = self.create_scope();
                         tokens.next();
 
                         self.parse_scope( tokens, errors );
@@ -2434,7 +2429,7 @@ impl Interpreter<'_> {
 
 
     fn interpret_scope( &mut self, scope: ScopeIdx ) {
-        let current_scope = &self.ast.scopes.scopes[ scope ];
+        let current_scope = &self.ast.scopes[ scope ];
         let mut defined_variables = 0;
 
         for node in  &current_scope.nodes {
@@ -2495,7 +2490,7 @@ impl Interpreter<'_> {
     }
 
     fn interpret_loop( &mut self, scope: ScopeIdx ) -> ControlFlowStatement {
-        let current_scope = &self.ast.scopes.scopes[ scope ];
+        let current_scope = &self.ast.scopes[ scope ];
         let mut defined_variables = 0;
 
         let control_flow = 'control_flow: {
@@ -2782,7 +2777,7 @@ r#" stdout: equ 1
  GREATER: equ 1"#;
 
         let mut stack_size = 0;
-        for scope in &self.ast.scopes.scopes {
+        for scope in &self.ast.scopes {
             if scope.definitions.is_empty() {
                 continue;
             }
@@ -3042,7 +3037,7 @@ impl<'ast> Compiler<'ast> {
 // Compilation of nodes
 impl<'ast> Compiler<'ast> {
     fn compile_scope( &mut self, scope: usize ) {
-        for node in &self.ast.scopes.scopes[ scope ].nodes {
+        for node in &self.ast.scopes[ scope ].nodes {
             match node {
                 Node::Print( argument ) => {
                     self.asm += &format!( " ; {}\n", node );
