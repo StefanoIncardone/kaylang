@@ -14,45 +14,7 @@ From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProj
 
 ## Once keyword
 
-- allow variables to be mutated only once or in special places
-
-## Arbitrary number bases between 1 and 37
-
-| prefix | shorthand | postfix |  base   |         result          |
-| :----- | :-------: | :-----: | :-----: | :---------------------: |
-| 02_    |   0b/B    |   b2    | base 2  | two's complement binary |
-| 08_    |   0o/O    |   b8    | base 8  |          octal          |
-| 016_   |   0x/X    |   b16   | base 16 |           hex           |
-| 01_    |           |   b1    |         |          error          |
-| 04_    |           |   b4    |         |         base 4          |
-| 035_   |           |   b35   |         |         base 35         |
-| 037_   |           |   b37   |         |          error          |
-
-### shift operators for different number bases (i.e. shifting corresponds to multiplying/dividing by the number base)
-
-```blitz
-let number_base_10: int = 123; # base 10
-number_base_10 << 1; # 123 << 1 == 1230 (multiplying by 10, desugars to -> * 10)
-number_base_10 >> 2; # 123 >> 2 == 1 (dividing by 10 two times, desugars to -> / (10 * 2))
-
-let number_base_2: int = 0b1010; # base 2
-number_base_2 << 1; # 1010 << 1 == 10100 (multiplying by 2, uses bit shifting)
-number_base_2 >> 1; # 1010 >> 1 == 101 (dividing by 2, uses bit shifting)
-```
-
-**or maybe let the user specify the shift base**
-
-#### or maybe let the user specify the shift base
-
-```blitz
-let number_base_10: int = 123; # base 10
-number_base_10 <<b2 1; # 123 <<b2 1 == 246 (multiplying by 2, uses bit shifting)
-number_base_10 >>b2 2; # 123 >>b2 2 == 30 (dividing by 2 two times, uses bit shifting)
-
-let number_base_2: int = 0b1010; # base 2
-number_base_2 <<b10 1; # 1010 <<b10 1 == 01100100 (multiplying by 10, desugars to -> * 10)
-number_base_2 >>b10 1; # 1010 >>b10 1 == 1 (dividing by 10, desugars to -> / 10)
-```
+- allow variables to be mutated only `once` or in special places
 
 ## Unchecked/Checked
 
@@ -136,12 +98,24 @@ stack-allocated collection of a compile time known fixed amount of elements:
 # uninizialized arrays must specify their lengths and will contain garbage
 let codes: int[3];
 
+# initial capacity cannot be specified from variables
+let capacity = 19;
+let code: int[capacity]; # error
+
+# unless we introduce compile-time constants
+const capacity = 19;
+let code: int[capacity]; # works
+
 # initialized arrays could opt not to specify their lengths, it will get inferred where possible
 let codes: int[] = [1, 2, 3]; # will be of length 3
 
 # or (need to decide wether to keep these syntaxes and only allow to specify the type after the colon)
-let codes = int[1, 2 ,3];
-let codes = int[3][1, 2, 3];
+let codes = int[1, 2 ,3];                   # array of three elements with indexes 0, 1 and 2 initialized to 1, 2, 3
+let codes = int[6: 1, 2, 3];                # array of six elements with indexes 0, 1 and 2 initialized to 1, 2, 3
+let codes = int[6: 1 = 1, 3 = 2, 0 = 3];    # array of six elements with indexes 1, 3 and 0 initialized to 1, 2, 3
+
+# or
+let codes = int[6][1 = 1, 3 = 2, 0 = 3];    # array of six elements with indexes 1, 3 and 0 initialized to 1, 2, 3
 ```
 
 will borrow useful feature from C like indexed initialization:
@@ -158,7 +132,7 @@ let codes: int[19] = [
 and expand on them:
 
 ```blitz
-let codes: int[19] = [..=0] # every element will contain the value 0
+let codes: int[19] = [.. = 0] # every element will contain the value 0
 ```
 
 ## Dynamic array (Lists)
@@ -168,10 +142,15 @@ heap-allocated collections of a possibly unknown amount of elements:
 ```blitz
 # the question mark denotes a dynamic array, or a list
 # the initial capacity of the list will be set to some amount (e.g. 4/8/16) for performance
-let codes: int[?];
+let codes: int[..];
 
-# an option initial capacity can be specified
-let codes: int[?, 19];
+# an optional initial capacity can be specified
+let codes: int[..19]; # for consistency with initializing some members
+let codes: int[..19: 1 = 0, 3 = 5]; # for consistency with initializing some members in arrays
+
+# initial capacity can be specified from variables
+let capacity = 19;
+let code: int[..capacity]
 ```
 
 they can be manipulated in different ways (syntax yet to be dicided):
@@ -209,13 +188,16 @@ structs are just an aggregation of types:
 
 ```blitz
 struct RBG {
-    r: u8 = default,    # type specific default inizialization, which for u8 is 0
-    g: u8 = 255,        # explicit default initialization
-    b: u8,              # intentionally uninitialized member, may contain garbage
+    r: u8,          # type specific default inizialization, which for u8 is 0
+    g: u8 = 255,    # explicit default initialization
+    b: u8 = ?,          # intentionally uninitialized member, may contain garbage
         # optional trailing coma
 }
 
 let rgb = RGB { r = 255, g = 255, b = 255 };
+
+# will have r initialized to 0 and b initialized to possibly garbage values
+let rgb = RGB { g = 255 };
 
 # or infering the type of the composite type literal from the type annotation
 let rgb: RGB = { r = 255, g = 255, b = 255 };
@@ -320,7 +302,10 @@ collection of constant values:
 
 ```blitz
 enum Colors: u32 { # optional data type
-    RED = 0xff0000,
+    # default value for when converting from integers that don't match the actual enum value
+    # for example converting from 0x00ff00 will result in GREEN being chosen
+    # when converting from 0x00beef will result in RED being chosen
+    default RED = 0xff0000,
     GREEN = 0x00ff00,
     BLUE = 0x0000ff,
 }
@@ -338,24 +323,121 @@ union Statement {
 }
 ```
 
-## Possible types syntaxes
-
-| old                                                      | new                                                            |
-| :------------------------------------------------------- | :------------------------------------------------------------- |
-| `alias alias_type = other_type`                          | `type alias_type = other_type`                                 |
-| `type distinct_type = other_type`                        | `type distinct_type: other_type`                               |
-| `struct struct_name {...}`                               | `type struct_name {...}`                                       |
-| `enum enum_name {...}` <br> `enum enum_name: type {...}` | `type enum_name [...]` <br> `type enum_name: type [...]`       |
-| `union union_name {...}`                                 | `type union_name \|...\|` <br> or <br> `type union_name (...)` |
-
 ## tuples
 
-## multiple return types
+basically name-less structs:
 
-## nullable pointers, that are enforced to be checked before being dereferenced
+```blitz
+let red = (255, 0, 0);
+let r = red.0;
+let g = red.1;
+let b = red.2;
+```
+
+## multiple return types that need to be checked (implementable through unions)
+
+## Pointers
+
+pointers are going to come in different flavours (introducing `null` keyword):
+
+```blitz
+let answer = 42;
+
+let address: int*; # C-like pointer, basically just an integer with which you can do math and dereference
+let pointer: int^; # owned pointer, pointing to owned memory (will free the memory it owns when going out of scope or something)
+let reference: int&; # borrowed pointer, pointing to non-owned memory (will possibly support lifetimes)
+
+# avery pointer type can be created with the same syntax
+address = answer&;
+pointer = answer&;
+reference = answer&;
+address = &answer; # or like this
+```
+
+derefencing is going to come with some safety/unsafety features:
+
+```blitz
+let dereferenced: int;
+
+# checking for null is enforced by the compiler
+if address != null {
+    # after this point the compiler knows that "address" is not null and can safely dereference
+    dereferenced = address*;
+    dereferenced = *address; # or like this
+}
+# after this point the compiler can't guarantee that "address" is not null, so from now on it's again mandatory to check for null
+
+# or you can forcefully dereference, crashing in case of a null pointer
+dereferenced = address^;
+dereferenced = ^address; # or like this
+```
+
+non-nullable pointers:
+
+```blitz
+let non_nullable: int*!;
+let non_nullable: int^!;
+let non_nullable: int&!;
+```
+
+or have pointers be non-nullable by default and optionally mark them as nullable:
+
+```blitz
+let nullable: int*?;
+let nullable: int^?;
+let nullable: int&?;
+```
+
+## Optional types
+
+types that may or may not contain a value (introducing the `none` keyword):
+they are basically tagged unions (like Rust's Options)
+
+```blitz
+let option: int? = 42; # this will create a variable that has a value
+let option: int? = none; # this will create a variable that doesn't have a value
+
+let maybe: int?;
+
+# checking for none is enforced by the compiler
+if option != none {
+    # after this point the compiler knows that "option" is not none and can safely dereference
+    maybe = option*; # dereferencing like pointers;
+    maybe = *option; # dereferencing like pointers;
+}
+# after this point the compiler can't guarantee that "option" is not none, so from now on it's again mandatory to check for none
+
+# or you can forcefully dereference, crashing in case of a none
+maybe = option^;
+maybe = ^option; # or like this
+```
 
 ## no or close to no implicit conversions, or just where it makes sense (i.e. u8 -> u16, int -> float)
 
-## compile time constants and functions excution (e.g.: const i = 3;)
+## compile time constants and functions excution
 
-## experiment with no dynamic dispatch, use unions instead, which have to be checked (kinda like what Casey Muratori explained in ["Clean" Code, Horrible Performance](https://www.youtube.com/watch?v=tD5NrevFtbU))
+```blitz
+# decide on "compile-time" directives syntax (maybe convert comments to `//` or something else and use `#`)
+const answer = 40 + 2;
+#static let answer = 40 + 2;
+static answer = 40 + 2;
+static var answer = 40 + 2;
+answer := 40 + 2;
+answer: int := 40 + 2;
+
+run some_function();
+@run some_function();
+const some_function();
+static some_function();
+```
+
+## experiment with no dynamic dispatch
+
+use unions instead, which have to be checked (kinda like what Casey Muratori explained in
+["Clean" Code, Horrible Performance](https://www.youtube.com/watch?v=tD5NrevFtbU)).
+
+dynamically dispatched objects rely on interfaces/traits/concept (whatever name) stipulating that a type implements a
+specific function, so the compiler can basically inject the tagged union representing the polymorfic object and the
+check for for the type of the object by itself
+
+maybe optionally enable true dynamic dispatch on demand with v-tables and stuff
