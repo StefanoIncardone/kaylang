@@ -26,11 +26,8 @@ for total_factor_count <= TARGET_FACTOR_COUNT {
                 prime_factor += 1;
 
                 for true {
-                    if prime_factor == 2 || prime_factor == 3 {
-                        break;
-                    }
-
-                    if prime_factor <= 1 || prime_factor % 2 == 0 || prime_factor % 3 == 0 {
+                    if prime_factor == 2 || prime_factor == 3: break;
+                    else if prime_factor <= 1 || prime_factor % 2 == 0 || prime_factor % 3 == 0 {
                         is_not_prime = true;
                         break;
                     }
@@ -49,9 +46,7 @@ for total_factor_count <= TARGET_FACTOR_COUNT {
                 }
             }
 
-            if prime_factor > triangle_number_copy {
-                break;
-            }
+            if prime_factor > triangle_number_copy: break;
         }
     }
 

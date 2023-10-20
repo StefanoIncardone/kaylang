@@ -13,7 +13,7 @@ for number <= MAX_DIGIT_NUMBER {
 
     if current_digit_power_sum == number {
         digit_power_sum += current_digit_power_sum;
-        println number
+        println number;
     }
 
     number += 1;

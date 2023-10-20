@@ -3,11 +3,8 @@ var number = 1;
 for number < 2000000 {
     var is_prime = true;
     for true {
-        if number == 2 || number == 3 {
-            break;
-        }
-
-        if number <= 1 || number % 2 == 0 || number % 3 == 0 {
+        if number == 2 || number == 3: break;
+        else if number <= 1 || number % 2 == 0 || number % 3 == 0 {
             is_prime = false;
             break;
         }

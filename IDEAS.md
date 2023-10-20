@@ -343,40 +343,30 @@ pointers are going to come in different flavours (introducing `null` keyword):
 ```blitz
 let answer = 42;
 
-let address: int*; # C-like pointer, basically just an integer with which you can do math and dereference
-let pointer: int^; # owned pointer, pointing to owned memory (will free the memory it owns when going out of scope or something)
+let pointer: int*; # owned pointer, pointing to owned memory (will free the memory it owns when going out of scope or something)
 let reference: int&; # borrowed pointer, pointing to non-owned memory (will possibly support lifetimes)
 
 # avery pointer type can be created with the same syntax
-address = answer&;
-pointer = answer&;
-reference = answer&;
-address = &answer; # or like this
-```
+pointer = &answer;
+reference = &answer;
 
-derefencing is going to come with some safety/unsafety features:
-
-```blitz
 let dereferenced: int;
 
 # checking for null is enforced by the compiler
-if address != null {
-    # after this point the compiler knows that "address" is not null and can safely dereference
-    dereferenced = address*;
-    dereferenced = *address; # or like this
+if reference != null {
+    # after this point the compiler knows that "reference" is not null and can safely dereference
+    dereferenced = *reference;
 }
-# after this point the compiler can't guarantee that "address" is not null, so from now on it's again mandatory to check for null
+# after this point the compiler can't guarantee that "reference" is not null, so from now on it's again mandatory to check for null
 
-# or you can forcefully dereference, crashing in case of a null pointer
-dereferenced = address^;
-dereferenced = ^address; # or like this
+# or you can forcefully dereference (say for example if you for sure know the pointer is valid), crashing in case of a null pointer
+dereferenced = ^reference;
 ```
 
 non-nullable pointers:
 
 ```blitz
 let non_nullable: int*!;
-let non_nullable: int^!;
 let non_nullable: int&!;
 ```
 
@@ -384,7 +374,6 @@ or have pointers be non-nullable by default and optionally mark them as nullable
 
 ```blitz
 let nullable: int*?;
-let nullable: int^?;
 let nullable: int&?;
 ```
 

@@ -23,7 +23,6 @@ struct Str {
     text: Vec<u8>,
 }
 
-
 #[derive( Debug, Clone )]
 enum Literal {
     // IDEA have different size integers and default to 32 bits for literals
@@ -336,6 +335,7 @@ enum TokenKind {
     Unexpected( String ),
 
     Bracket( BracketKind ),
+    Colon,
     SemiColon,
     Equals,
     Op( Operator ),
@@ -369,6 +369,7 @@ impl Display for TokenKind {
 
             Self::Bracket( bracket ) => write!( f, "{}", bracket ),
             Self::Equals => write!( f, "=" ),
+            Self::Colon => write!( f, ":" ),
             Self::SemiColon => write!( f, ";" ),
 
             Self::Literal( literal ) => write!( f, "{}", literal ),
@@ -400,6 +401,7 @@ impl Len for TokenKind {
 
             Self::Bracket( bracket ) => bracket.len(),
             Self::Equals => 1,
+            Self::Colon => 1,
             Self::SemiColon => 1,
 
             Self::Literal( typ ) => typ.len(),
@@ -1043,6 +1045,7 @@ impl Lexer {
                         help_msg: "was not opened before".into()
                     }),
                 },
+                b':' => Ok( Some( TokenKind::Colon ) ),
                 b';' => Ok( Some( TokenKind::SemiColon ) ),
                 b'*' => match self.peek_next()? {
                     Some( b'*' ) => {
@@ -1197,17 +1200,15 @@ struct TokenCursor<'lexer> {
 
 // TODO implement methods that return only tokens or lines since lines are only really needed when reporting errors
 impl<'lexer> TokenCursor<'lexer> {
-    // NOTE consider making this return an Option when out of bounds (i.e. either on the SOF or the EOF token)
-    fn current( &self ) -> TokenPosition<'lexer> {
-        return TokenPosition{ line: &self.lines[ self.line ], token: &self.tokens[ self.token ] };
-    }
-
-    fn current_or_next( &mut self ) -> Option<TokenPosition<'lexer>> {
-        return Some( self.current() ).or_next( self );
+    fn current( &mut self ) -> Option<TokenPosition<'lexer>> {
+        if self.token >= self.tokens.len() || self.line >= self.lines.len() {
+            return None
+        }
+        return Some( TokenPosition{ line: &self.lines[ self.line ], token: &self.tokens[ self.token ] } ).or_next( self );
     }
 
     fn next( &mut self ) -> Option<TokenPosition<'lexer>> {
-        if self.token == self.tokens.len() - 1 {
+        if self.token >= self.tokens.len() - 1 {
             return None;
         }
 
@@ -1404,17 +1405,11 @@ struct ForStatement {
 }
 
 
-enum Statement {
-    Empty,
-    Stop,
-    Single( Node ),
-    Multiple( Vec<Node> ),
-}
-
 #[derive( Debug, Clone )]
 enum Node {
     Expression( Expression ),
     Print( Expression ),
+    Println( Expression ),
     If( IfStatement ),
     For( ForStatement ),
     Break,
@@ -1430,6 +1425,7 @@ impl Display for Node {
         return match self {
             Self::Expression( expression ) => write!( f, "{}", expression ),
             Self::Print( argument ) => write!( f, "print {}", argument ),
+            Self::Println( argument ) => write!( f, "println {}", argument ),
             Self::If( iff ) => write!( f, "{}", iff.ifs[ 0 ] ),
             Self::For( forr ) => match &forr.condition {
                 None => write!( f, "for" ),
@@ -1460,230 +1456,217 @@ struct AST {
     scopes: Vec<Scope>,
     current_scope: ScopeIdx,
     for_depth: usize,
+
+    errors: Vec<SyntaxError>,
 }
 
-// IDEA reintroduce "semicolon" function, taking out the semicolon checking out of the expression parsing
 impl TryFrom<Lexer> for AST {
     type Error = SyntaxErrors;
 
     fn try_from( lexer: Lexer ) -> Result<Self, Self::Error> {
+        let global_scope = Scope {
+            parent: None,
+            definitions: Vec::new(),
+            nodes: Vec::new()
+        };
+
         let mut this = Self {
-            scopes: Vec::new(),
+            scopes: vec![global_scope],
             current_scope: 0,
             for_depth: 0,
+            errors: Vec::new(),
         };
 
         let mut tokens = lexer.iter();
-        let mut errors: Vec<SyntaxError> = Vec::new();
+        tokens.next(); // skipping the SOF token
 
-        this.parse_scope( &mut tokens, &mut errors );
+        this.parse( &mut tokens, None );
 
-        return match errors.is_empty() {
+        return match this.errors.is_empty() {
             true => Ok( this ),
-            false => Err( SyntaxErrors { src: lexer.src, errors } ),
+            false => Err( SyntaxErrors { src: lexer.src, errors: this.errors } ),
         }
     }
 }
 
-// Creation of scopes
-impl<'lexer> AST {
+// scopes
+impl AST {
     fn open_scope( &mut self ) -> ScopeIdx {
         let new_scope = self.scopes.len();
-        self.scopes.push( Scope { parent: Some( self.current_scope ), definitions: Vec::new(), nodes: Vec::new() } );
+        let scope = Scope {
+            parent: Some( self.current_scope ),
+            definitions: Vec::new(),
+            nodes: Vec::new()
+        };
+        self.scopes.push( scope );
         self.scopes[ self.current_scope ].nodes.push( Node::Scope( new_scope ) );
         self.current_scope = new_scope;
         return self.current_scope;
     }
 
     fn create_scope( &mut self ) -> ScopeIdx {
-        self.scopes.push( Scope { parent: Some( self.current_scope ), definitions: Vec::new(), nodes: Vec::new() } );
+        let scope = Scope {
+            parent: Some( self.current_scope ),
+            definitions: Vec::new(),
+            nodes: Vec::new()
+        };
+        self.scopes.push( scope );
         self.current_scope = self.scopes.len() - 1;
         return self.current_scope;
     }
-}
 
-// Resolution of identifiers
-impl<'lexer> AST {
-    fn resolve( &'lexer self, name: &str ) -> Option<&'lexer Definition> {
-        let mut current_scope = &self.scopes[ self.current_scope ];
-
-        loop {
-            for definition in &current_scope.definitions {
-                if definition.name == name {
-                    return Some( definition );
+    fn parse( &mut self, tokens: &mut TokenCursor, terminator: Option<TokenKind> ) {
+        while let Some( current ) = tokens.current() {
+            if let Some( term ) = &terminator {
+                if std::mem::discriminant( &current.token.kind ) == std::mem::discriminant( &term ) {
+                    self.current_scope = self.scopes[ self.current_scope ].parent.unwrap_or( 0 );
+                    tokens.next();
+                    break;
                 }
             }
 
-            current_scope = &self.scopes[ current_scope.parent? ];
-        }
-    }
-
-    fn resolve_mut( &'lexer mut self, name: &str ) -> Option<&'lexer mut Definition> {
-        let mut current_scope = self.current_scope;
-
-        loop {
-            let scope = &self.scopes[ current_scope ];
-            for (i, definition) in scope.definitions.iter().enumerate() {
-                if definition.name == name {
-                    return Some( &mut self.scopes[ current_scope ].definitions[ i ] );
-                }
-            }
-
-            current_scope = scope.parent?;
-        }
-    }
-}
-
-// Parsing of scopes
-impl<'lexer> AST {
-    fn parse( &mut self, tokens: &mut TokenCursor<'lexer>, errors: &mut Vec<SyntaxError>, current: TokenPosition<'lexer> ) -> Result<Statement, SyntaxError> {
-        return match current.token.kind {
-            TokenKind::Literal( _ )
-            | TokenKind::True | TokenKind::False
-            | TokenKind::Bracket( BracketKind::OpenRound )
-            | TokenKind::Op( Operator::Minus | Operator::Not ) => match self.expression( tokens ) {
-                Ok( expression ) => Ok( Statement::Single( Node::Expression( expression ) ) ),
-                Err( err ) => Err( err ),
-            },
-            TokenKind::Definition( _ ) => self.variable_definition( tokens ),
-            TokenKind::Print | TokenKind::PrintLn => self.print( tokens ),
-            TokenKind::Identifier( _ ) => match tokens.peek_next() {
-                Some( next ) => match next.token.kind {
-                    TokenKind::Equals
-                    | TokenKind::Op( Operator::PowEquals )
-                    | TokenKind::Op( Operator::TimesEquals )
-                    | TokenKind::Op( Operator::DivideEquals )
-                    | TokenKind::Op( Operator::PlusEquals )
-                    | TokenKind::Op( Operator::MinusEquals ) => self.variable_reassignment( tokens ),
-                    _ => match self.expression( tokens ) {
-                        Ok( expression ) => Ok( Statement::Single( Node::Expression( expression ) ) ),
-                        Err( err ) => Err( err ),
-                    },
+            let statement = match current.token.kind {
+                TokenKind::Literal( _ )
+                | TokenKind::True | TokenKind::False
+                | TokenKind::Bracket( BracketKind::OpenRound )
+                | TokenKind::Op( Operator::Minus | Operator::Not ) => match self.expression( tokens ) {
+                    Ok( expr ) => Ok( Node::Expression( expr ) ),
+                    Err( err ) => Err( err ),
                 },
-                None => Ok( Statement::Stop ),
-            },
-            TokenKind::If => self.if_statement( tokens, errors ),
-            TokenKind::Else => {
-                tokens.next();
-                Err( SyntaxError {
-                    line_byte_start: current.line.byte_start,
-                    line: current.line.number,
-                    col: current.token.col,
-                    len: current.token.kind.len(),
-                    msg: "invalid if statement".into(),
-                    help_msg: "stray else block".into()
-                })
-            },
-            TokenKind::For => self.for_statement( tokens, errors ),
-            TokenKind::Break => {
-                tokens.next();
-                match self.for_depth {
-                    0 => Err( SyntaxError {
-                        line_byte_start: current.line.byte_start,
-                        line: current.line.number,
-                        col: current.token.col,
-                        len: current.token.kind.len(),
-                        msg: "invalid break statement".into(),
-                        help_msg: "cannot be used outside of loops".into()
-                    }),
-                    _ => Ok( Statement::Single( Node::Break ) ),
-                }
-            },
-            TokenKind::Continue => {
-                tokens.next();
-                match self.for_depth {
-                    0 => Err( SyntaxError {
-                        line_byte_start: current.line.byte_start,
-                        line: current.line.number,
-                        col: current.token.col,
-                        len: current.token.kind.len(),
-                        msg: "invalid continue statement".into(),
-                        help_msg: "cannot be used outside of loops".into()
-                    }),
-                    _ => Ok( Statement::Single( Node::Continue ) ),
-                }
-            },
-            TokenKind::Bracket( BracketKind::OpenCurly ) => {
-                self.open_scope();
-                tokens.next();
-                Ok( Statement::Empty )
-            },
-            TokenKind::Bracket( BracketKind::CloseCurly ) => {
-                self.current_scope = self.scopes[ self.current_scope ].parent.unwrap_or( 0 );
-                tokens.next();
-                Ok( Statement::Stop )
-            },
-            TokenKind::Bracket( BracketKind::CloseRound ) => {
-                tokens.next();
-                Err( SyntaxError {
-                    line_byte_start: current.line.byte_start,
-                    line: current.line.number,
-                    col: current.token.col,
-                    len: current.token.kind.len(),
-                    msg: "invalid expression".into(),
-                    help_msg: "stray closed parenthesis".into()
-                })
-            },
-            TokenKind::Equals => {
-                tokens.next();
-                Err( SyntaxError {
-                    line_byte_start: current.line.byte_start,
-                    line: current.line.number,
-                    col: current.token.col,
-                    len: current.token.kind.len(),
-                    msg: "invalid assignment".into(),
-                    help_msg: "stray assignment".into()
-                })
-            },
-            TokenKind::Op( _ ) => {
-                tokens.next();
-                Err( SyntaxError {
-                    line_byte_start: current.line.byte_start,
-                    line: current.line.number,
-                    col: current.token.col,
-                    len: current.token.kind.len(),
-                    msg: "invalid expression".into(),
-                    help_msg: "stray binary operator".into()
-                })
-            },
-            TokenKind::SemiColon => {
-                tokens.next();
-                Ok( Statement::Empty )
-            },
-            TokenKind::EOF => {
-                tokens.next();
-                Ok( Statement::Stop )
-            },
-            TokenKind::SOF => {
-                let global_scope = Scope { parent: None, definitions: Vec::new(), nodes: Vec::new() };
-                self.scopes.push( global_scope );
-
-                tokens.next();
-                Ok( Statement::Empty )
-            },
-            TokenKind::Comment( _ ) | TokenKind::Empty | TokenKind::Unexpected( _ ) => unreachable!(),
-        }
-    }
-
-    fn parse_scope( &mut self, tokens: &mut TokenCursor<'lexer>, errors: &mut Vec<SyntaxError> ) {
-        while let Some( current ) = tokens.current_or_next() {
-            let statement_result = self.parse( tokens, errors, current );
-
-            match statement_result {
-                Ok( Statement::Single( node ) ) => self.scopes[ self.current_scope ].nodes.push( node ),
-                Ok( Statement::Multiple( multiple_nodes ) ) =>
-                    for node in multiple_nodes {
-                        self.scopes[ self.current_scope ].nodes.push( node );
+                TokenKind::Definition( _ ) => self.variable_definition( tokens ),
+                TokenKind::Print | TokenKind::PrintLn => self.print( tokens ),
+                TokenKind::Identifier( _ ) => match tokens.peek_next() {
+                    Some( next ) => match next.token.kind {
+                        TokenKind::Equals
+                        | TokenKind::Op( Operator::PowEquals )
+                        | TokenKind::Op( Operator::TimesEquals )
+                        | TokenKind::Op( Operator::DivideEquals )
+                        | TokenKind::Op( Operator::PlusEquals )
+                        | TokenKind::Op( Operator::MinusEquals ) => self.variable_reassignment( tokens ),
+                        _ => match self.expression( tokens ) {
+                            Ok( expr ) => Ok( Node::Expression( expr ) ),
+                            Err( err ) => Err( err ),
+                        },
                     },
-                Ok( Statement::Empty ) => continue,
-                Ok( Statement::Stop ) => break,
+                    None => break,
+                },
+                TokenKind::If => self.if_statement( tokens ),
+                TokenKind::Else => {
+                    tokens.next();
+                    Err( SyntaxError {
+                        line_byte_start: current.line.byte_start,
+                        line: current.line.number,
+                        col: current.token.col,
+                        len: current.token.kind.len(),
+                        msg: "invalid if statement".into(),
+                        help_msg: "stray else block".into()
+                    })
+                },
+                TokenKind::For => self.for_statement( tokens ),
+                TokenKind::Break => {
+                    tokens.next();
+                    match self.for_depth {
+                        0 => Err( SyntaxError {
+                            line_byte_start: current.line.byte_start,
+                            line: current.line.number,
+                            col: current.token.col,
+                            len: current.token.kind.len(),
+                            msg: "invalid break statement".into(),
+                            help_msg: "cannot be used outside of loops".into()
+                        }),
+                        _ => Ok( Node::Break ),
+                    }
+                },
+                TokenKind::Continue => {
+                    tokens.next();
+                    match self.for_depth {
+                        0 => Err( SyntaxError {
+                            line_byte_start: current.line.byte_start,
+                            line: current.line.number,
+                            col: current.token.col,
+                            len: current.token.kind.len(),
+                            msg: "invalid continue statement".into(),
+                            help_msg: "cannot be used outside of loops".into()
+                        }),
+                        _ => Ok( Node::Continue ),
+                    }
+                },
+                TokenKind::Bracket( BracketKind::OpenCurly ) => {
+                    self.open_scope();
+                    tokens.next();
+                    continue;
+                },
+                TokenKind::Bracket( BracketKind::CloseCurly ) => {
+                    self.current_scope = self.scopes[ self.current_scope ].parent.unwrap_or( 0 );
+                    tokens.next();
+                    break;
+                },
+                TokenKind::Bracket( BracketKind::CloseRound ) => {
+                    tokens.next();
+                    Err( SyntaxError {
+                        line_byte_start: current.line.byte_start,
+                        line: current.line.number,
+                        col: current.token.col,
+                        len: current.token.kind.len(),
+                        msg: "invalid expression".into(),
+                        help_msg: "stray closed parenthesis".into()
+                    })
+                },
+                TokenKind::Colon => {
+                    tokens.next();
+                    Err( SyntaxError {
+                        line_byte_start: current.line.byte_start,
+                        line: current.line.number,
+                        col: current.token.col,
+                        len: current.token.kind.len(),
+                        msg: "invalid statement".into(),
+                        help_msg: "stray colon".into()
+                    })
+                },
+                TokenKind::Equals => {
+                    tokens.next();
+                    Err( SyntaxError {
+                        line_byte_start: current.line.byte_start,
+                        line: current.line.number,
+                        col: current.token.col,
+                        len: current.token.kind.len(),
+                        msg: "invalid assignment".into(),
+                        help_msg: "stray assignment".into()
+                    })
+                },
+                TokenKind::Op( _ ) => {
+                    tokens.next();
+                    Err( SyntaxError {
+                        line_byte_start: current.line.byte_start,
+                        line: current.line.number,
+                        col: current.token.col,
+                        len: current.token.kind.len(),
+                        msg: "invalid expression".into(),
+                        help_msg: "stray binary operator".into()
+                    })
+                },
+                TokenKind::SemiColon => {
+                    tokens.next();
+                    continue;
+                },
+                TokenKind::EOF => {
+                    tokens.next();
+                    break;
+                },
+                TokenKind::SOF | TokenKind::Comment( _ ) | TokenKind::Empty | TokenKind::Unexpected( _ ) => unreachable!(),
+            };
+
+            match statement {
+                Ok( node ) => self.scopes[ self.current_scope ].nodes.push( node ),
                 Err( err ) => {
-                    errors.push( err );
+                    self.errors.push( err );
 
                     // NOTE only parsing until the first error until a fault tolerant parser is developed
                     // this is because the first truly relevant error is the first one,
-                    // which in turn causes a ripple effect that propagates to the rest of the parsing, causing extra errors
+                    // which in turn causes a ripple effect that propagates to the rest of the parsing,
+                    // causing subsequent errors to be wrong
                     tokens.line = tokens.lines.len(); // as if we reached the end of the file
+                    tokens.token = tokens.tokens.len();
                     break;
                 },
             }
@@ -1691,12 +1674,34 @@ impl<'lexer> AST {
     }
 }
 
-// Parsing of Expressions
-impl<'lexer> AST {
+// semicolons
+impl AST {
+    fn semicolon( &mut self, tokens: &mut TokenCursor ) -> Result<(), SyntaxError> {
+        let semicolon = tokens.current().bounded( tokens, "expected semicolon" )?.unwrap();
+        return match &semicolon.token.kind {
+            // semicolons are optional if found before a closing curly bracket
+            TokenKind::Bracket( BracketKind::CloseCurly ) | TokenKind::SemiColon => Ok( () ),
+            _ => {
+                tokens.next();
+                Err( SyntaxError {
+                    line_byte_start: semicolon.line.byte_start,
+                    line: semicolon.line.number,
+                    col: semicolon.token.col,
+                    len: semicolon.token.kind.len(),
+                    msg: "invalid statement".into(),
+                    help_msg: "expected semicolon after this token".into(),
+                } )
+            }
+        }
+    }
+}
+
+// expressions
+impl AST {
     // TODO disallow implicit conversions (str + i64, char + i64, str + char or str + str (maybe treat this as concatenation))
         // IDEA introduce casting operators
-    fn factor( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Expression, SyntaxError> {
-        let current = tokens.current_or_next().bounded( tokens, "expected expression" )?.unwrap();
+    fn factor( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
+        let current = tokens.current().bounded( tokens, "expected expression" )?.unwrap();
         let factor = match &current.token.kind {
             TokenKind::Literal( literal ) => Ok( Expression::Literal( literal.clone() ) ),
             TokenKind::True => Ok( Expression::Literal( Literal::Bool( true ) ) ),
@@ -1724,8 +1729,8 @@ impl<'lexer> AST {
                         help_msg: "empty expressions are not allowed".into()
                     }),
                     _ => {
-                        let expression = self.expression_no_semicolon( tokens )?;
-                        let close_bracket_pos = tokens.current_or_next().bounded( tokens, "expected closed parenthesis" )?.unwrap();
+                        let expression = self.expression( tokens )?;
+                        let close_bracket_pos = tokens.current().bounded( tokens, "expected closed parenthesis" )?.unwrap();
                         match close_bracket_pos.token.kind {
                             TokenKind::Bracket( BracketKind::CloseRound ) => Ok( expression ),
                             _ => Err( SyntaxError {
@@ -1821,8 +1826,8 @@ impl<'lexer> AST {
         return factor;
     }
 
-    fn operator( &mut self, tokens: &mut TokenCursor<'lexer>, ops: &[Operator] ) -> Result<Option<Operator>, SyntaxError> {
-        let current_pos = tokens.current_or_next().bounded( tokens, "expected operator or semicolon" )?.unwrap();
+    fn operator( &mut self, tokens: &mut TokenCursor, ops: &[Operator] ) -> Result<Option<Operator>, SyntaxError> {
+        let current_pos = tokens.current().bounded( tokens, "expected operator or semicolon" )?.unwrap();
         let operator = match current_pos.token.kind {
             TokenKind::Op( op ) => match ops.contains( &op ) {
                 true => {
@@ -1842,7 +1847,7 @@ impl<'lexer> AST {
     // TODO implement unsigned integers and force powers to only accept those as exponents
     // IDEA print crash error message
         // TODO implement a way to print file, line and column information in source code
-    fn exponentiation( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Expression, SyntaxError> {
+    fn exponentiation( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
         let mut lhs = self.factor( tokens )?;
 
         while let Some( op ) = self.operator( tokens, &[Operator::Pow] )? {
@@ -1853,7 +1858,7 @@ impl<'lexer> AST {
         return Ok( lhs );
     }
 
-    fn multiplicative_expression( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Expression, SyntaxError> {
+    fn multiplicative_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
         let mut lhs = self.exponentiation( tokens )?;
 
         while let Some( op ) = self.operator( tokens, &[Operator::Times, Operator::Divide, Operator::Remainder] )? {
@@ -1864,7 +1869,7 @@ impl<'lexer> AST {
         return Ok( lhs );
     }
 
-    fn additive_expression( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Expression, SyntaxError> {
+    fn additive_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
         let mut lhs = self.multiplicative_expression( tokens )?;
 
         while let Some( op ) = self.operator( tokens, &[Operator::Plus, Operator::Minus] )? {
@@ -1875,7 +1880,7 @@ impl<'lexer> AST {
         return Ok( lhs );
     }
 
-    fn comparative_expression( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Expression, SyntaxError> {
+    fn comparative_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
         let mut lhs = self.additive_expression( tokens )?;
 
         let ops = [
@@ -1895,7 +1900,7 @@ impl<'lexer> AST {
 
     // FIX shortcircuit boolean operators
     // TODO implement boolean operators for strings
-    fn boolean_expression( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Expression, SyntaxError> {
+    fn boolean_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
         let mut lhs = self.comparative_expression( tokens )?;
 
         while let Some( op ) = self.operator( tokens, &[Operator::And, Operator::Or, Operator::Xor] )? {
@@ -1930,43 +1935,29 @@ impl<'lexer> AST {
         return Ok( lhs );
     }
 
-    fn expression_no_semicolon( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Expression, SyntaxError> {
+    fn expression( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
         return self.boolean_expression( tokens );
-    }
-
-    fn expression( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Expression, SyntaxError> {
-        let expression = self.boolean_expression( tokens )?;
-        let current = tokens.current_or_next().bounded( tokens, "expected semicolon" )?.unwrap();
-        return match current.token.kind {
-            // semicolons are optional if found before a closing curly bracket
-            // this allows the last statement before the end of a block not to have a semicolon
-            TokenKind::Bracket( BracketKind::CloseCurly ) => Ok( expression ),
-            // IDEA allow optional semicolons in chains of ifs-else ifs.else with single statements
-            TokenKind::SemiColon => {
-                tokens.next();
-                Ok( expression )
-            },
-            _ => {
-                let previous = tokens.peek_previous().bounded( tokens, "expected semicolon" )?.unwrap();
-                tokens.next();
-
-                Err( SyntaxError {
-                    line_byte_start: previous.line.byte_start,
-                    line: previous.line.number,
-                    col: previous.token.col,
-                    len: previous.token.kind.len(),
-                    msg: "invalid expression".into(),
-                    help_msg: "expected an operator after this token to complete the expression, or a ';' to end the statement".into()
-                })
-            },
-        }
     }
 }
 
-// Parsing of variable definitions and assignments
+// variable definitions and assignments
 impl<'lexer> AST {
-    fn variable_definition( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Statement, SyntaxError> {
-        let definition_pos = tokens.current();
+    fn resolve( &'lexer self, name: &str ) -> Option<&'lexer Definition> {
+        let mut current_scope = &self.scopes[ self.current_scope ];
+
+        loop {
+            for definition in &current_scope.definitions {
+                if definition.name == name {
+                    return Some( definition );
+                }
+            }
+
+            current_scope = &self.scopes[ current_scope.parent? ];
+        }
+    }
+
+    fn variable_definition( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
+        let definition_pos = tokens.current().unwrap();
         let kind = match definition_pos.token.kind {
             TokenKind::Definition( kind ) => kind,
             _ => unreachable!(),
@@ -2017,12 +2008,13 @@ impl<'lexer> AST {
         let name = name?;
         let _ = equals?;
         let value = value?;
+        self.semicolon( tokens )?;
 
         return match self.resolve( &name ) {
             None => {
                 let definition = Definition { mutability: kind, name: name.clone(), typ: value.typ() };
                 self.scopes[ self.current_scope ].definitions.push( definition );
-                Ok( Statement::Single( Node::Definition( name, value ) ) )
+                Ok( Node::Definition( name, value ) )
             },
             Some( _ ) => Err( SyntaxError {
                 line_byte_start: name_pos.line.byte_start,
@@ -2035,11 +2027,10 @@ impl<'lexer> AST {
         }
     }
 
-    fn variable_reassignment( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Statement, SyntaxError> {
-        let name_pos = tokens.current();
+    fn variable_reassignment( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
+        let name_pos = tokens.current().unwrap();
         let name = name_pos.token.kind.to_string();
         let assignment_pos = tokens.next().unwrap();
-
 
         let value_pos = tokens.next().bounded( tokens, "expected expression" )?.unwrap();
         let new_value = match value_pos.token.kind {
@@ -2049,15 +2040,11 @@ impl<'lexer> AST {
             | TokenKind::Op( Operator::Minus | Operator::Not ) => match self.expression( tokens ) {
                 Ok( rhs ) => match &assignment_pos.token.kind {
                     TokenKind::Equals => Ok( rhs ),
-                    operator => {
-                        let op = match operator {
-                            TokenKind::Op( op ) => *op,
-                            _ => unreachable!(),
-                        };
-
-                        let lhs = Expression::Identifier( name, op.typ() );
-                        Ok( Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) } )
+                    TokenKind::Op( op ) => {
+                        let lhs = Expression::Identifier( name.clone(), op.typ() );
+                        Ok( Expression::Binary { lhs: Box::new( lhs ), op: *op, rhs: Box::new( rhs ) } )
                     },
+                    _ => unreachable!(),
                 },
                 Err( err ) => Err( err ),
             },
@@ -2071,10 +2058,50 @@ impl<'lexer> AST {
             })
         };
 
-        let variable = match &name_pos.token.kind {
-            TokenKind::Identifier( name ) => match self.resolve_mut( &name ) {
-                Some( definition ) => Ok( definition ),
-                None => Err( SyntaxError {
+        self.semicolon( tokens )?;
+
+        let mut current_scope = &self.scopes[ self.current_scope ];
+        loop {
+            for definition in &current_scope.definitions {
+                if definition.name == name {
+                    return match definition.mutability {
+                        Mutability::Let => Err( SyntaxError {
+                            line_byte_start: name_pos.line.byte_start,
+                            line: name_pos.line.number,
+                            col: name_pos.token.col,
+                            len: name_pos.token.kind.len(),
+                            msg: "invalid assignment".into(),
+                            help_msg: "was defined as immutable".into()
+                        }),
+                        Mutability::Var => {
+                            let new_value = new_value?;
+                            let new_value_typ = new_value.typ();
+
+                            if definition.typ != new_value_typ {
+                                Err( SyntaxError {
+                                    line_byte_start: name_pos.line.byte_start,
+                                    line: name_pos.line.number,
+                                    col: name_pos.token.col,
+                                    len: name_pos.token.kind.len(),
+                                    msg: "mismatched types".into(),
+                                    help_msg: format!(
+                                        "trying to assign an expression of type '{}' to a variable of type '{}'",
+                                        new_value_typ,
+                                        definition.typ
+                                    ).into()
+                                })
+                            }
+                            else {
+                                Ok( Node::Assignment( name_pos.token.kind.to_string(), new_value ) )
+                            }
+                        },
+                    };
+                }
+            }
+
+            current_scope = match current_scope.parent {
+                Some( parent ) => &self.scopes[ parent ],
+                None => return Err( SyntaxError {
                     line_byte_start: name_pos.line.byte_start,
                     line: name_pos.line.number,
                     col: name_pos.token.col,
@@ -2082,59 +2109,19 @@ impl<'lexer> AST {
                     msg: "variable redefinition".into(),
                     help_msg: "was not previously defined in this scope".into()
                 }),
-            },
-            _ => unreachable!(),
-        };
-
-        let variable = variable?;
-
-        let value = match variable.mutability {
-            Mutability::Let => Err( SyntaxError {
-                line_byte_start: name_pos.line.byte_start,
-                line: name_pos.line.number,
-                col: name_pos.token.col,
-                len: name_pos.token.kind.len(),
-                msg: "invalid assignment".into(),
-                help_msg: "was defined as immutable".into()
-            }),
-            Mutability::Var => {
-                let new_value = new_value?;
-                let new_value_typ = new_value.typ();
-
-                if variable.typ != new_value_typ {
-                    Err( SyntaxError {
-                        line_byte_start: name_pos.line.byte_start,
-                        line: name_pos.line.number,
-                        col: name_pos.token.col,
-                        len: name_pos.token.kind.len(),
-                        msg: "mismatched types".into(),
-                        help_msg: format!(
-                            "trying to assign an expression of type '{}' to a variable of type '{}'",
-                            new_value_typ,
-                            variable.typ
-                         ).into()
-                    })
-                }
-                else {
-                    Ok( new_value )
-                }
-            },
-        };
-
-        return Ok( Statement::Single( Node::Assignment( name_pos.token.kind.to_string(), value? ) ) );
+            };
+        }
     }
 }
 
-// Parsing of print statements
-impl<'lexer> AST {
-    fn print( &mut self, tokens: &mut TokenCursor<'lexer> ) -> Result<Statement, SyntaxError> {
-        let print_pos = tokens.current();
+// print statements
+impl AST {
+    fn print( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
+        let print_pos = tokens.current().unwrap();
         match print_pos.token.kind {
             TokenKind::PrintLn => if let Some( TokenPosition { token: &Token { kind: TokenKind::SemiColon, .. }, .. } ) = tokens.peek_next() {
                 tokens.next();
-                let new_line = Literal::Char( b'\n' );
-                let argument = Expression::Literal( new_line );
-                return Ok( Statement::Single( Node::Print( argument ) ) );
+                return Ok( Node::Print( Expression::Literal( Literal::Char( b'\n' ) ) ) );
             },
             TokenKind::Print => (),
             _ => unreachable!(),
@@ -2157,38 +2144,31 @@ impl<'lexer> AST {
         };
 
         let argument = argument?;
+        self.semicolon( tokens )?;
 
         return match print_pos.token.kind {
-            TokenKind::Print => Ok( Statement::Single( Node::Print( argument ) ) ),
-            TokenKind::PrintLn => {
-                let new_line = Literal::Char( b'\n' );
-                let println_argument = Expression::Literal( new_line );
-                Ok( Statement::Multiple( vec![
-                    Node::Print( argument ),
-                    Node::Print( println_argument )
-                ] ) )
-            },
+            TokenKind::Print => Ok( Node::Print( argument ) ),
+            TokenKind::PrintLn => Ok( Node::Println( argument ) ),
             _ => unreachable!(),
-        };
+        }
     }
 }
 
-// Parsing of if statements
-impl<'lexer> AST {
-    fn if_statement( &mut self, tokens: &mut TokenCursor<'lexer>, errors: &mut Vec<SyntaxError> ) -> Result<Statement, SyntaxError> {
-        let iff = self.iff( tokens, errors )?;
+// if statements
+impl AST {
+    fn if_statement( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
+        let iff = self.iff( tokens )?;
         let mut if_statement = IfStatement { ifs: vec![ iff ], els: None };
-        let else_pos = tokens.current_or_next();
-        self.els( &mut if_statement, else_pos, tokens, errors )?;
+        self.els( &mut if_statement, tokens )?;
 
-        return Ok( Statement::Single( Node::If( if_statement ) ) );
+        return Ok( Node::If( if_statement ) );
     }
 
-    fn iff( &mut self, tokens: &mut TokenCursor<'lexer>, errors: &mut Vec<SyntaxError> ) -> Result<If, SyntaxError> {
-        let if_pos = tokens.current();
+    fn iff( &mut self, tokens: &mut TokenCursor ) -> Result<If, SyntaxError> {
+        let if_pos = tokens.current().unwrap();
         tokens.next().bounded( tokens, "expected boolean expression" )?.unwrap();
 
-        let expression = self.expression_no_semicolon( tokens )?;
+        let expression = self.expression( tokens )?;
         let condition = match &expression.typ() {
             Type::Bool => Ok( expression ),
             Type::Char | Type::Int | Type::Str => Err( SyntaxError {
@@ -2201,13 +2181,23 @@ impl<'lexer> AST {
             }),
         };
 
-        // TODO allow for single statement ifs using colons, (i.e. if x == 19: println 19;)
-        let open_curly_pos = tokens.current_or_next().bounded( tokens, "expected curly bracket" )?.unwrap();
-        let open_curly = match open_curly_pos.token.kind {
+        let block_or_statement_pos = tokens.current().bounded( tokens, "expected colon or curly bracket" )?.unwrap();
+        return match block_or_statement_pos.token.kind {
             TokenKind::Bracket( BracketKind::OpenCurly ) => {
                 let scope = self.create_scope();
                 tokens.next();
-                Ok( scope )
+
+                let condition = condition?;
+                self.parse( tokens, Some( TokenKind::Bracket( BracketKind::CloseCurly ) ) );
+                Ok( If { condition, scope } )
+            },
+            TokenKind::Colon => {
+                let scope = self.create_scope();
+                tokens.next();
+
+                let condition = condition?;
+                self.parse( tokens, Some( TokenKind::SemiColon ) );
+                Ok( If { condition, scope } )
             },
             _ => {
                 let before_curly_bracket_pos = tokens.peek_previous().unwrap();
@@ -2217,102 +2207,73 @@ impl<'lexer> AST {
                     col: before_curly_bracket_pos.token.col,
                     len: before_curly_bracket_pos.token.kind.len(),
                     msg: "expected block scope".into(),
-                    help_msg: "must be followed by an opened curly bracket".into()
+                    help_msg: "must be followed by an opened curly bracket or a colon".into()
                 })
             },
-        };
-
-        let condition = condition?;
-        let scope = open_curly?;
-
-        self.parse_scope( tokens, errors );
-        return Ok( If { condition, scope } );
+        }
     }
 
-    fn els( &mut self, if_statement: &mut IfStatement, else_pos: Option<TokenPosition<'lexer>>, tokens: &mut TokenCursor<'lexer>, errors: &mut Vec<SyntaxError> ) -> Result<(), SyntaxError> {
-        match else_pos {
-            None => (),
-            Some( pos ) => if let TokenKind::Else = pos.token.kind {
-                let if_or_block_pos = tokens.next().bounded( tokens, "expected block or if statement after this token" )?.unwrap();
-                match if_or_block_pos.token.kind {
-                    TokenKind::Bracket( BracketKind::OpenCurly ) => {
-                        let els = self.create_scope();
-                        tokens.next();
+    fn els( &mut self, if_statement: &mut IfStatement, tokens: &mut TokenCursor ) -> Result<(), SyntaxError> {
+        let els_pos = match tokens.current() {
+            Some( pos ) => pos,
+            None => return Ok( () )
+        };
 
-                        self.parse_scope( tokens, errors );
-                        if_statement.els = Some( els );
-                    },
-                    TokenKind::If => {
-                        let else_if = self.iff( tokens, errors )?;
-                        if_statement.ifs.push( else_if );
+        return if let TokenKind::Else = els_pos.token.kind {
+            let if_or_block_pos = tokens.next().bounded( tokens, "expected colon, block or if statement" )?.unwrap();
+            match if_or_block_pos.token.kind {
+                TokenKind::Bracket( BracketKind::OpenCurly ) => {
+                    let els = self.create_scope();
+                    tokens.next();
 
-                        let next_else_pos = tokens.current_or_next();
-                        self.els( if_statement, next_else_pos, tokens, errors )?;
-                    },
-                    _ => return Err( SyntaxError {
-                        line_byte_start: pos.line.byte_start,
-                        line: pos.line.number,
-                        col: pos.token.col,
-                        len: pos.token.kind.len(),
-                        msg: "invalid else statement".into(),
-                        help_msg: "expected block of if statement after this token".into()
-                    }),
-                }
+                    self.parse( tokens, Some( TokenKind::Bracket( BracketKind::CloseCurly ) ) );
+                    if_statement.els = Some( els );
+                    Ok( () )
+                },
+                TokenKind::Colon => {
+                    let els = self.create_scope();
+                    tokens.next();
+
+                    self.parse( tokens, Some( TokenKind::SemiColon ) );
+                    if_statement.els = Some( els );
+                    Ok( () )
+                },
+                TokenKind::If => {
+                    let else_if = self.iff( tokens )?;
+                    if_statement.ifs.push( else_if );
+
+                    self.els( if_statement, tokens )
+                },
+                _ => Err( SyntaxError {
+                    line_byte_start: els_pos.line.byte_start,
+                    line: els_pos.line.number,
+                    col: els_pos.token.col,
+                    len: els_pos.token.kind.len(),
+                    msg: "invalid else statement".into(),
+                    help_msg: "expected block of if statement after this token".into()
+                }),
             }
         }
-
-        return Ok( () );
+        else {
+            Ok( () )
+        }
     }
 }
 
-// Parsing of for statements
-impl<'lexer> AST {
-    fn for_statement( &mut self, tokens: &mut TokenCursor<'lexer>, errors: &mut Vec<SyntaxError> ) -> Result<Statement, SyntaxError> {
+// for statements
+impl AST {
+    fn for_statement( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
         self.for_depth += 1;
-        // let for_pos = self.tokens.current().unwrap();
-
-        // let mut pre_statement: Option<Box<Node>> = None;
-        // let mut condition: Option<Expression> = None;
-        // let mut post_statement: Option<Box<Node>> = None;
-
-        // let mut next_pos = self.tokens.next().bounded( &mut self.tokens, "expected for loop statments" )?.unwrap();
-        // let scope = match next_pos.token.kind {
-        //     TokenKind::Bracket( BracketKind::OpenCurly ) => {
-        //         let scope = self.scopes.create();
-        //         self.tokens.next();
-        //         Ok( scope )
-        //     },
-        //     _ =>
-        //     TokenKind::SemiColon => {
-        //         next_pos = self.tokens.next().bounded( &mut self.tokens, "expected for loop condition or semicolon" )?.unwrap();
-        //         match next_pos.token.kind {
-        //             TokenKind::SemiColon => {
-        //                 next_pos = self.tokens.next().bounded( &mut self.tokens, "expected for loop post statement or block" )?.unwrap();
-        //                 match next_pos.token.kind {
-        //                     TokenKind::Bracket( BracketKind::OpenCurly ) => {
-        //                         let scope = self.scopes.create();
-        //                         self.tokens.next();
-        //                         Ok( scope )
-        //                     },
-        //                     other => {
-
-        //                     }
-        //                 }
-        //             },
-        //         }
-        //     }
-        // };
-
-        let iff = self.iff( tokens, errors );
+        let iff = self.iff( tokens );
         self.for_depth -= 1;
 
         let iff = iff?;
-        return Ok( Statement::Single( Node::For( ForStatement {
+        return Ok( Node::For( ForStatement {
             pre_statement: None,
             condition: Some( iff.condition ),
             post_statement: None,
             scope: iff.scope
-        } ) ) );
+        } ) );
     }
 }
 
@@ -2346,6 +2307,7 @@ struct InterpreterVariable {
     value: Expression
 }
 
+// TODO ditch interpretation mode entirely
 #[derive( Debug )]
 struct Interpreter<'ast> {
     ast: &'ast AST,
@@ -2435,6 +2397,10 @@ impl Interpreter<'_> {
         for node in  &current_scope.nodes {
             match node {
                 Node::Print( argument ) => self.evaluate( argument ).display(),
+                Node::Println( argument ) => {
+                    self.evaluate( argument ).display();
+                    println!();
+                },
                 Node::If( if_statement ) => 'iff: {
                     for iff in &if_statement.ifs {
                         if let Literal::Bool( true ) = self.evaluate( &iff.condition ) {
@@ -2498,6 +2464,11 @@ impl Interpreter<'_> {
                 let cf = match node {
                     Node::Print( argument ) => {
                         self.evaluate( argument ).display();
+                        ControlFlowStatement::None
+                    },
+                    Node::Println( argument ) => {
+                        self.evaluate( argument ).display();
+                        println!();
                         ControlFlowStatement::None
                     },
                     Node::If( if_statement ) => 'iff: {
@@ -3077,6 +3048,54 @@ impl<'ast> Compiler<'ast> {
                             \n mov rax, SYS_write\
                             \n syscall\n\n",
                     }
+                },
+                Node::Println( argument ) => {
+                    self.asm += &format!( " ; {}\n", node );
+                    self.compile_expression( argument );
+
+                    match argument.typ() {
+                        Type::Int => self.asm +=
+                            " mov rsi, 10\
+                            \n call int_toStr\
+                            \n\
+                            \n mov rdi, stdout\
+                            \n mov rsi, rax\
+                            \n mov rax, SYS_write\
+                            \n syscall\n\n",
+                        Type::Char => self.asm +=
+                            " push rdi\
+                            \n mov rdi, stdout\
+                            \n mov rsi, rsp\
+                            \n mov rdx, 1\
+                            \n mov rax, SYS_write\
+                            \n syscall\
+                            \n pop rsi\n\n",
+                        Type::Bool => self.asm +=
+                            " cmp rdi, true\
+                            \n mov rsi, true_str\
+                            \n mov rdi, false_str\
+                            \n cmovne rsi, rdi\
+                            \n mov rdx, true_str_len\
+                            \n mov rdi, false_str_len\
+                            \n cmovne rdx, rdi\
+                            \n\
+                            \n mov rdi, stdout\
+                            \n mov rax, SYS_write\
+                            \n syscall\n\n",
+                        Type::Str => self.asm +=
+                            " mov rdi, stdout\
+                            \n mov rax, SYS_write\
+                            \n syscall\n\n",
+                    }
+
+                    self.asm +=
+                        " push 10\
+                        \n mov rdi, stdout\
+                        \n mov rsi, rsp\
+                        \n mov rdx, 1\
+                        \n mov rax, SYS_write\
+                        \n syscall\
+                        \n pop rsi\n\n"
                 },
                 // TODO simplify: avoid checking for the presence of the else/else-ifs branches too many times
                 Node::If( if_statement ) => {
