@@ -82,20 +82,6 @@ impl TypeOf for Literal {
     }
 }
 
-impl Literal {
-    fn display( &self ) {
-        match self {
-            Self::Int( value ) => print!( "{}", value ),
-            Self::Char( code ) => print!( "{}", *code as char ),
-            Self::Bool( value ) => print!( "{}", value ),
-            Self::Str( string ) =>
-                for character in &string.text {
-                    print!( "{}", *character as char );
-                },
-        }
-    }
-}
-
 
 #[derive( Debug, PartialEq, Clone, Copy )]
 enum Type {
@@ -303,7 +289,6 @@ enum BracketKind {
     CloseRound,
     OpenCurly,
     CloseCurly,
-
 }
 
 impl Display for BracketKind {
@@ -327,7 +312,6 @@ impl Len for BracketKind {
         }
     }
 }
-
 
 #[derive( Debug, Clone )]
 enum TokenKind {
@@ -357,8 +341,6 @@ enum TokenKind {
 
     // Special
     Empty,
-    SOF, // start of file
-    EOF, // end of file
 }
 
 impl Display for TokenKind {
@@ -388,7 +370,7 @@ impl Display for TokenKind {
             Self::Break => write!( f, "break" ),
             Self::Continue => write!( f, "continue" ),
 
-            Self::Empty | Self::SOF | Self::EOF => write!( f, "" ),
+            Self::Empty => write!( f, "" ),
         }
     }
 }
@@ -421,12 +403,9 @@ impl Len for TokenKind {
             Self::Continue => 8,
 
             Self::Empty => 1,
-            Self::SOF => 1,
-            Self::EOF => 1,
         }
     }
 }
-
 
 #[derive( Debug, Clone )]
 struct Token {
@@ -578,7 +557,7 @@ impl TryFrom<BlitzSrc> for Lexer {
             col: 0,
             token_start_col: 1,
             lines: Vec::new(),
-            tokens: vec![ Token { col: 1, kind: TokenKind::SOF } ],
+            tokens: Vec::new(),
             line_bytes: Vec::new(),
             token_text: String::new(),
             brackets: Vec::new(),
@@ -625,10 +604,6 @@ impl TryFrom<BlitzSrc> for Lexer {
                         }
                     }
 
-                    let reached_eof = chars_read == line_len;
-                    if reached_eof {
-                        this.tokens.push( Token { col: this.token_start_col, kind: TokenKind::EOF } );
-                    }
 
                     line.token_end_idx = this.tokens.len() - 1;
                     this.lines.push( line );
@@ -638,6 +613,7 @@ impl TryFrom<BlitzSrc> for Lexer {
                     line.number += 1;
                     line.token_start_idx = this.tokens.len();
 
+                    let reached_eof = chars_read == line_len;
                     if reached_eof {
                         break;
                     }
@@ -756,8 +732,8 @@ impl Lexer {
         loop {
             self.token_text.clear();
             let next = match self.next()? {
-                None => return Ok( None ),
                 Some( ch ) => ch,
+                None => return Ok( None ),
             };
 
             // registering the token start column after getting the next character to maintain 1 indexing token columns
@@ -1261,7 +1237,8 @@ trait BoundedPosition<'lexer> {
     type Error;
 
 
-    fn bounded( self, tokens: &mut TokenCursor<'lexer>, err_msg: impl Into<String> ) -> Result<Self, Self::Error> where Self: Sized;
+    fn bounded( self, tokens: &mut TokenCursor<'lexer>, err_msg: impl Into<String> ) -> Result<TokenPosition<'lexer>, Self::Error> where Self: Sized;
+    // NOTE no implementation for "bounded_previous" is needed since it is never actually needed during parsin
     fn or_next( self, tokens: &mut TokenCursor<'lexer> ) -> Self where Self: Sized;
     fn or_previous( self, tokens: &mut TokenCursor<'lexer> ) -> Self where Self: Sized;
 }
@@ -1270,36 +1247,21 @@ impl<'lexer> BoundedPosition<'lexer> for Option<TokenPosition<'lexer>> {
     type Error = SyntaxError;
 
 
-    fn bounded( self, tokens: &mut TokenCursor<'lexer>, err_msg: impl Into<String> ) -> Result<Self, Self::Error> {
+    fn bounded( self, tokens: &mut TokenCursor<'lexer>, err_msg: impl Into<String> ) -> Result<TokenPosition<'lexer>, Self::Error> {
         return match self {
-            Some( current ) => match current.token.kind {
-                TokenKind::EOF => {
-                    // we are always sure that there is at least the SOF token before the EOF token, so we can safely unwrap
-                    let previous = unsafe{ tokens.peek_previous().unwrap_unchecked() };
-                    Err( SyntaxError {
-                        line_byte_start: previous.line.byte_start,
-                        line: previous.line.number,
-                        col: previous.token.col,
-                        len: previous.token.kind.len(),
-                        msg: err_msg.into().into(),
-                        help_msg: "file ended after here instead".into()
-                    } )
-                },
-                TokenKind::SOF => {
-                    // we are always sure that there is at least the EOF token after the SOF token, so we can safely unwrap
-                    let next = unsafe{ tokens.peek_previous().unwrap_unchecked() };
-                    Err( SyntaxError {
-                        line_byte_start: next.line.byte_start,
-                        line: next.line.number,
-                        col: next.token.col,
-                        len: next.token.kind.len(),
-                        msg: err_msg.into().into(),
-                        help_msg: "file started before here instead".into()
-                    } )
-                },
-                _ => Ok( self ),
-            }
-            None => Ok( None ),
+            Some( position ) => Ok( position ),
+            None => {
+                // we are always sure that this function is never called without a previous token existing, so we can safely unwrap
+                let previous = unsafe{ tokens.peek_previous().unwrap_unchecked() };
+                Err( SyntaxError {
+                    line_byte_start: previous.line.byte_start,
+                    line: previous.line.number,
+                    col: previous.token.col,
+                    len: previous.token.kind.len(),
+                    msg: err_msg.into().into(),
+                    help_msg: "file ended after here instead".into()
+                } )
+            },
         }
     }
 
@@ -1368,18 +1330,19 @@ impl Precedence for Expression {
 }
 
 
-#[derive( Debug )]
-struct Definition {
+#[derive( Debug, Clone )]
+struct Variable {
     mutability: Mutability,
     name: String,
     typ: Type,
 }
 
 
+
 #[derive( Debug, Clone )]
 struct If {
     condition: Expression,
-    scope: ScopeIdx,
+    statement: Node,
 }
 
 impl Display for If {
@@ -1391,17 +1354,17 @@ impl Display for If {
 #[derive( Debug, Clone )]
 struct IfStatement {
     ifs: Vec<If>,
-    els: Option<ScopeIdx>,
+    els: Option<Box<Node>>,
 }
 
 
 #[allow( dead_code )]
 #[derive( Debug, Clone )]
 struct ForStatement {
-    pre_statement: Option<Box<Node>>,
+    pre: Option<Box<Node>>,
     condition: Option<Expression>,
-    post_statement: Option<Box<Node>>,
-    scope: ScopeIdx,
+    post: Option<Box<Node>>,
+    statement: Box<Node>,
 }
 
 
@@ -1409,7 +1372,7 @@ struct ForStatement {
 enum Node {
     Expression( Expression ),
     Print( Expression ),
-    Println( Expression ),
+    Println( Option<Expression> ),
     If( IfStatement ),
     For( ForStatement ),
     Break,
@@ -1417,7 +1380,7 @@ enum Node {
 
     Definition( String, Expression ),
     Assignment( String, Expression ),
-    Scope( ScopeIdx ),
+    Scope( usize ),
 }
 
 impl Display for Node {
@@ -1425,11 +1388,14 @@ impl Display for Node {
         return match self {
             Self::Expression( expression ) => write!( f, "{}", expression ),
             Self::Print( argument ) => write!( f, "print {}", argument ),
-            Self::Println( argument ) => write!( f, "println {}", argument ),
+            Self::Println( argument ) => match argument {
+                Some( arg ) => write!( f, "println {}", arg ),
+                None => write!( f, "println" ),
+            },
             Self::If( iff ) => write!( f, "{}", iff.ifs[ 0 ] ),
             Self::For( forr ) => match &forr.condition {
-                None => write!( f, "for" ),
                 Some( condition ) => write!( f, "for {}", condition ),
+                None => write!( f, "for" ),
             },
 
             Self::Break | Self::Continue
@@ -1439,22 +1405,21 @@ impl Display for Node {
     }
 }
 
-type ScopeIdx = usize;
 
-#[derive( Debug )]
+#[derive( Debug, Clone )]
 struct Scope {
-    parent: Option<ScopeIdx>,
-    definitions: Vec<Definition>,
+    parent: usize,
+    types: Vec<String>,
+    variables: Vec<Variable>,
     nodes: Vec<Node>,
 }
-
 
 // TODO process entire statement for syntactical correctness and then report all the errors
     // IDEA create Parser class that builds the AST, and then validate the AST afterwards
 #[derive( Debug )]
 struct AST {
     scopes: Vec<Scope>,
-    current_scope: ScopeIdx,
+    current_scope: usize,
     for_depth: usize,
 
     errors: Vec<SyntaxError>,
@@ -1464,23 +1429,25 @@ impl TryFrom<Lexer> for AST {
     type Error = SyntaxErrors;
 
     fn try_from( lexer: Lexer ) -> Result<Self, Self::Error> {
-        let global_scope = Scope {
-            parent: None,
-            definitions: Vec::new(),
-            nodes: Vec::new()
-        };
-
         let mut this = Self {
-            scopes: vec![global_scope],
+            scopes: vec![Scope {
+                parent: 0,
+                types: vec![
+                    Type::Int.to_string(),
+                    Type::Char.to_string(),
+                    Type::Bool.to_string(),
+                    Type::Str.to_string()
+                ],
+                variables: Vec::new(),
+                nodes: Vec::new(),
+            }],
             current_scope: 0,
             for_depth: 0,
             errors: Vec::new(),
         };
 
         let mut tokens = lexer.iter();
-        tokens.next(); // skipping the SOF token
-
-        this.parse( &mut tokens, None );
+        this.parse_scope( &mut tokens );
 
         return match this.errors.is_empty() {
             true => Ok( this ),
@@ -1491,66 +1458,43 @@ impl TryFrom<Lexer> for AST {
 
 // scopes
 impl AST {
-    fn open_scope( &mut self ) -> ScopeIdx {
-        let new_scope = self.scopes.len();
-        let scope = Scope {
-            parent: Some( self.current_scope ),
-            definitions: Vec::new(),
-            nodes: Vec::new()
-        };
-        self.scopes.push( scope );
-        self.scopes[ self.current_scope ].nodes.push( Node::Scope( new_scope ) );
-        self.current_scope = new_scope;
-        return self.current_scope;
-    }
+    fn parse_scope( &mut self, tokens: &mut TokenCursor ) {
+        loop {
+            match self.parse_single( tokens ) {
+                Ok( Some( node ) ) => self.scopes[ self.current_scope ].nodes.push( node ),
+                Ok( None ) => break,
+                Err( err ) => {
+                    self.errors.push( err );
 
-    fn create_scope( &mut self ) -> ScopeIdx {
-        let scope = Scope {
-            parent: Some( self.current_scope ),
-            definitions: Vec::new(),
-            nodes: Vec::new()
-        };
-        self.scopes.push( scope );
-        self.current_scope = self.scopes.len() - 1;
-        return self.current_scope;
-    }
+                    // consuming all remaining tokens until the end of the file
+                    tokens.line = tokens.lines.len();
+                    tokens.token = tokens.tokens.len();
 
-    fn parse( &mut self, tokens: &mut TokenCursor, terminator: Option<TokenKind> ) {
-        while let Some( current ) = tokens.current() {
-            if let Some( term ) = &terminator {
-                if std::mem::discriminant( &current.token.kind ) == std::mem::discriminant( &term ) {
-                    self.current_scope = self.scopes[ self.current_scope ].parent.unwrap_or( 0 );
-                    tokens.next();
+                    // NOTE only parsing until the first error until a fault tolerant parser is developed, this is
+                    // because the first truly relevant error is the first one, which in turn causes a ripple effect
+                    // that propagates to the rest of the parsing, causing subsequent errors to be wrong
                     break;
-                }
+                },
             }
+        }
+    }
 
-            let statement = match current.token.kind {
+    fn parse_single( &mut self, tokens: &mut TokenCursor ) -> Result<Option<Node>, SyntaxError> {
+        loop {
+            let current = match tokens.current() {
+                Some( position ) => position,
+                None => return Ok( None ),
+            };
+
+            return match current.token.kind {
                 TokenKind::Literal( _ )
                 | TokenKind::True | TokenKind::False
                 | TokenKind::Bracket( BracketKind::OpenRound )
-                | TokenKind::Op( Operator::Minus | Operator::Not ) => match self.expression( tokens ) {
-                    Ok( expr ) => Ok( Node::Expression( expr ) ),
-                    Err( err ) => Err( err ),
-                },
-                TokenKind::Definition( _ ) => self.variable_definition( tokens ),
-                TokenKind::Print | TokenKind::PrintLn => self.print( tokens ),
-                TokenKind::Identifier( _ ) => match tokens.peek_next() {
-                    Some( next ) => match next.token.kind {
-                        TokenKind::Equals
-                        | TokenKind::Op( Operator::PowEquals )
-                        | TokenKind::Op( Operator::TimesEquals )
-                        | TokenKind::Op( Operator::DivideEquals )
-                        | TokenKind::Op( Operator::PlusEquals )
-                        | TokenKind::Op( Operator::MinusEquals ) => self.variable_reassignment( tokens ),
-                        _ => match self.expression( tokens ) {
-                            Ok( expr ) => Ok( Node::Expression( expr ) ),
-                            Err( err ) => Err( err ),
-                        },
-                    },
-                    None => break,
-                },
-                TokenKind::If => self.if_statement( tokens ),
+                | TokenKind::Op( Operator::Minus | Operator::Not ) => Ok( Some( Node::Expression( self.expression( tokens )? ) ) ),
+                TokenKind::Definition( _ ) => Ok( Some( self.variable_definition( tokens )? ) ),
+                TokenKind::Print | TokenKind::PrintLn => Ok( Some( self.print( tokens )? ) ),
+                TokenKind::Identifier( _ ) => Ok( Some( self.variable_reassignment_or_expression( tokens )? ) ),
+                TokenKind::If => Ok( Some( self.if_statement( tokens )? ) ),
                 TokenKind::Else => {
                     tokens.next();
                     Err( SyntaxError {
@@ -1562,7 +1506,7 @@ impl AST {
                         help_msg: "stray else block".into()
                     })
                 },
-                TokenKind::For => self.for_statement( tokens ),
+                TokenKind::For => Ok( Some( self.for_statement( tokens )? ) ),
                 TokenKind::Break => {
                     tokens.next();
                     match self.for_depth {
@@ -1574,7 +1518,10 @@ impl AST {
                             msg: "invalid break statement".into(),
                             help_msg: "cannot be used outside of loops".into()
                         }),
-                        _ => Ok( Node::Break ),
+                        _ => {
+                            self.semicolon( tokens )?;
+                            Ok( Some( Node::Break ) )
+                        },
                     }
                 },
                 TokenKind::Continue => {
@@ -1588,18 +1535,30 @@ impl AST {
                             msg: "invalid continue statement".into(),
                             help_msg: "cannot be used outside of loops".into()
                         }),
-                        _ => Ok( Node::Continue ),
+                        _ => {
+                            self.semicolon( tokens )?;
+                            Ok( Some( Node::Continue ) )
+                        },
                     }
                 },
                 TokenKind::Bracket( BracketKind::OpenCurly ) => {
-                    self.open_scope();
+                    let new_scope = self.scopes.len();
+                    self.scopes.push( Scope {
+                        parent: self.current_scope,
+                        types: Vec::new(),
+                        variables: Vec::new(),
+                        nodes: Vec::new()
+                    } );
+                    self.current_scope = new_scope;
+
                     tokens.next();
-                    continue;
+                    self.parse_scope( tokens );
+                    Ok( Some( Node::Scope( new_scope ) ) )
                 },
                 TokenKind::Bracket( BracketKind::CloseCurly ) => {
-                    self.current_scope = self.scopes[ self.current_scope ].parent.unwrap_or( 0 );
+                    self.current_scope = self.scopes[ self.current_scope ].parent;
                     tokens.next();
-                    break;
+                    Ok( None )
                 },
                 TokenKind::Bracket( BracketKind::CloseRound ) => {
                     tokens.next();
@@ -1649,26 +1608,7 @@ impl AST {
                     tokens.next();
                     continue;
                 },
-                TokenKind::EOF => {
-                    tokens.next();
-                    break;
-                },
-                TokenKind::SOF | TokenKind::Comment( _ ) | TokenKind::Empty | TokenKind::Unexpected( _ ) => unreachable!(),
-            };
-
-            match statement {
-                Ok( node ) => self.scopes[ self.current_scope ].nodes.push( node ),
-                Err( err ) => {
-                    self.errors.push( err );
-
-                    // NOTE only parsing until the first error until a fault tolerant parser is developed
-                    // this is because the first truly relevant error is the first one,
-                    // which in turn causes a ripple effect that propagates to the rest of the parsing,
-                    // causing subsequent errors to be wrong
-                    tokens.line = tokens.lines.len(); // as if we reached the end of the file
-                    tokens.token = tokens.tokens.len();
-                    break;
-                },
+                TokenKind::Comment( _ ) | TokenKind::Empty | TokenKind::Unexpected( _ ) => unreachable!(),
             }
         }
     }
@@ -1677,10 +1617,14 @@ impl AST {
 // semicolons
 impl AST {
     fn semicolon( &mut self, tokens: &mut TokenCursor ) -> Result<(), SyntaxError> {
-        let semicolon = tokens.current().bounded( tokens, "expected semicolon" )?.unwrap();
+        let semicolon = tokens.current().bounded( tokens, "expected semicolon" )?;
         return match &semicolon.token.kind {
             // semicolons are optional if found before a closing curly bracket
-            TokenKind::Bracket( BracketKind::CloseCurly ) | TokenKind::SemiColon => Ok( () ),
+            TokenKind::Bracket( BracketKind::CloseCurly ) => Ok( () ),
+            TokenKind::SemiColon => {
+                tokens.next();
+                Ok( () )
+            },
             _ => {
                 tokens.next();
                 Err( SyntaxError {
@@ -1701,7 +1645,7 @@ impl AST {
     // TODO disallow implicit conversions (str + i64, char + i64, str + char or str + str (maybe treat this as concatenation))
         // IDEA introduce casting operators
     fn factor( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
-        let current = tokens.current().bounded( tokens, "expected expression" )?.unwrap();
+        let current = tokens.current().bounded( tokens, "expected expression" )?;
         let factor = match &current.token.kind {
             TokenKind::Literal( literal ) => Ok( Expression::Literal( literal.clone() ) ),
             TokenKind::True => Ok( Expression::Literal( Literal::Bool( true ) ) ),
@@ -1718,7 +1662,7 @@ impl AST {
                 }),
             },
             TokenKind::Bracket( BracketKind::OpenRound ) => {
-                let expression_start_pos = tokens.next().bounded( tokens, "expected expression" )?.unwrap();
+                let expression_start_pos = tokens.next().bounded( tokens, "expected expression" )?;
                 match expression_start_pos.token.kind {
                     TokenKind::Bracket( BracketKind::CloseRound ) => Err( SyntaxError {
                         line_byte_start: expression_start_pos.line.byte_start,
@@ -1730,7 +1674,7 @@ impl AST {
                     }),
                     _ => {
                         let expression = self.expression( tokens )?;
-                        let close_bracket_pos = tokens.current().bounded( tokens, "expected closed parenthesis" )?.unwrap();
+                        let close_bracket_pos = tokens.current().bounded( tokens, "expected closed parenthesis" )?;
                         match close_bracket_pos.token.kind {
                             TokenKind::Bracket( BracketKind::CloseRound ) => Ok( expression ),
                             _ => Err( SyntaxError {
@@ -1818,7 +1762,7 @@ impl AST {
                 col: current.token.col,
                 len: current.token.kind.len(),
                 msg: "invalid expression".into(),
-                help_msg: "expected expression operand".into()
+                help_msg: "expected expression operand after this token".into()
             }),
         };
 
@@ -1827,19 +1771,19 @@ impl AST {
     }
 
     fn operator( &mut self, tokens: &mut TokenCursor, ops: &[Operator] ) -> Result<Option<Operator>, SyntaxError> {
-        let current_pos = tokens.current().bounded( tokens, "expected operator or semicolon" )?.unwrap();
-        let operator = match current_pos.token.kind {
-            TokenKind::Op( op ) => match ops.contains( &op ) {
-                true => {
-                    tokens.next();
-                    Some( op )
-                },
-                false => None,
-            },
-            _ => None,
-        };
-
-        return Ok( operator );
+        let current_pos = tokens.current().bounded( tokens, "expected operator or semicolon" )?;
+        return if let TokenKind::Op( op ) = current_pos.token.kind {
+            if ops.contains( &op ) {
+                tokens.next();
+                Ok( Some( op ) )
+            }
+            else {
+                Ok( None )
+            }
+        }
+        else {
+            Ok( None )
+        }
     }
 
     // IDEA optimize expression building by implementing associativity rules (ie. remove parenthesis around additions and subtractions)
@@ -1942,17 +1886,43 @@ impl AST {
 
 // variable definitions and assignments
 impl<'lexer> AST {
-    fn resolve( &'lexer self, name: &str ) -> Option<&'lexer Definition> {
-        let mut current_scope = &self.scopes[ self.current_scope ];
-
+    fn resolve( &'lexer self, name: &str ) -> Option<&'lexer Variable> {
+        let mut current_scope = self.current_scope;
         loop {
-            for definition in &current_scope.definitions {
-                if definition.name == name {
-                    return Some( definition );
+            let scope = &self.scopes[ current_scope ];
+
+            for variable in &scope.variables {
+                if variable.name == name {
+                    return Some( variable );
                 }
             }
 
-            current_scope = &self.scopes[ current_scope.parent? ];
+            if current_scope == 0 && scope.parent == 0 {
+                return None;
+            }
+
+            current_scope = scope.parent;
+        }
+    }
+
+    fn resolve_mut( &'lexer mut self, name: &str ) -> Option<&'lexer mut Variable> {
+        let mut current_scope = self.current_scope;
+        loop {
+            let scope = &self.scopes[ current_scope ];
+
+            let mut current_variable = 0;
+            for variable in &scope.variables {
+                if variable.name == name {
+                    return Some( &mut self.scopes[ current_scope ].variables[ current_variable ] );
+                }
+                current_variable += 1;
+            }
+
+            if current_scope == 0 && scope.parent == 0 {
+                return None;
+            }
+
+            current_scope = scope.parent;
         }
     }
 
@@ -1963,7 +1933,7 @@ impl<'lexer> AST {
             _ => unreachable!(),
         };
 
-        let name_pos = tokens.next().bounded( tokens, "expected identifier" )?.unwrap();
+        let name_pos = tokens.next().bounded( tokens, "expected identifier" )?;
         let name = match &name_pos.token.kind {
             TokenKind::Identifier( name ) => Ok( name.clone() ),
             _ => Err( SyntaxError {
@@ -1976,7 +1946,7 @@ impl<'lexer> AST {
             }),
         };
 
-        let equals_pos = tokens.next().bounded( tokens, "expected equals" )?.unwrap();
+        let equals_pos = tokens.next().bounded( tokens, "expected equals" )?;
         let equals = match equals_pos.token.kind {
             TokenKind::Equals => Ok( () ),
             _ => Err( SyntaxError {
@@ -1989,21 +1959,8 @@ impl<'lexer> AST {
             }),
         };
 
-        let value_pos = tokens.next().bounded( tokens, "expected expression" )?.unwrap();
-        let value = match value_pos.token.kind {
-            TokenKind::Literal( _ ) | TokenKind::Identifier( _ )
-            | TokenKind::True | TokenKind::False
-            | TokenKind::Bracket( BracketKind::OpenRound )
-            | TokenKind::Op( Operator::Minus | Operator::Not ) => self.expression( tokens ),
-            _ => Err( SyntaxError {
-                line_byte_start: equals_pos.line.byte_start,
-                line: equals_pos.line.number,
-                col: equals_pos.token.col,
-                len: equals_pos.token.kind.len(),
-                msg: "invalid assignment".into(),
-                help_msg: "expected expression after '='".into()
-            }),
-        };
+        tokens.next().bounded( tokens, "expected expression" )?;
+        let value = self.expression( tokens );
 
         let name = name?;
         let _ = equals?;
@@ -2012,8 +1969,7 @@ impl<'lexer> AST {
 
         return match self.resolve( &name ) {
             None => {
-                let definition = Definition { mutability: kind, name: name.clone(), typ: value.typ() };
-                self.scopes[ self.current_scope ].definitions.push( definition );
+                self.scopes[ self.current_scope ].variables.push( Variable { mutability: kind, name: name.clone(), typ: value.typ() } );
                 Ok( Node::Definition( name, value ) )
             },
             Some( _ ) => Err( SyntaxError {
@@ -2027,89 +1983,79 @@ impl<'lexer> AST {
         }
     }
 
-    fn variable_reassignment( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
+    fn variable_reassignment_or_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
         let name_pos = tokens.current().unwrap();
-        let name = name_pos.token.kind.to_string();
-        let assignment_pos = tokens.next().unwrap();
+        let operator_pos = tokens.peek_next();
+        return match operator_pos {
+            Some( op_pos ) => match op_pos.token.kind {
+                TokenKind::Equals
+                | TokenKind::Op( Operator::PowEquals )
+                | TokenKind::Op( Operator::TimesEquals )
+                | TokenKind::Op( Operator::DivideEquals )
+                | TokenKind::Op( Operator::PlusEquals )
+                | TokenKind::Op( Operator::MinusEquals ) => {
+                    let name = name_pos.token.kind.to_string();
+                    tokens.next();
+                    tokens.next().bounded( tokens, "expected expression" )?;
+                    let rhs = self.expression( tokens )?;
 
-        let value_pos = tokens.next().bounded( tokens, "expected expression" )?.unwrap();
-        let new_value = match value_pos.token.kind {
-            TokenKind::Literal( _ ) | TokenKind::Identifier( _ )
-            | TokenKind::True | TokenKind::False
-            | TokenKind::Bracket( BracketKind::OpenRound )
-            | TokenKind::Op( Operator::Minus | Operator::Not ) => match self.expression( tokens ) {
-                Ok( rhs ) => match &assignment_pos.token.kind {
-                    TokenKind::Equals => Ok( rhs ),
-                    TokenKind::Op( op ) => {
-                        let lhs = Expression::Identifier( name.clone(), op.typ() );
-                        Ok( Expression::Binary { lhs: Box::new( lhs ), op: *op, rhs: Box::new( rhs ) } )
-                    },
-                    _ => unreachable!(),
-                },
-                Err( err ) => Err( err ),
-            },
-            _ => Err( SyntaxError {
-                line_byte_start: assignment_pos.line.byte_start,
-                line: assignment_pos.line.number,
-                col: assignment_pos.token.col,
-                len: assignment_pos.token.kind.len(),
-                msg: "invalid assignment".into(),
-                help_msg: format!( "expected expression after '{}'", assignment_pos.token.kind ).into()
-            })
-        };
+                    let new_value = match &op_pos.token.kind {
+                        TokenKind::Equals => Ok( rhs ),
+                        TokenKind::Op( op ) => {
+                            let lhs = Expression::Identifier( name.clone(), op.typ() );
+                            Ok( Expression::Binary { lhs: Box::new( lhs ), op: *op, rhs: Box::new( rhs ) } )
+                        },
+                        _ => unreachable!(),
+                    };
 
-        self.semicolon( tokens )?;
+                    self.semicolon( tokens )?;
 
-        let mut current_scope = &self.scopes[ self.current_scope ];
-        loop {
-            for definition in &current_scope.definitions {
-                if definition.name == name {
-                    return match definition.mutability {
-                        Mutability::Let => Err( SyntaxError {
+                    return match self.resolve_mut( &name ) {
+                        Some( var ) => match var.mutability {
+                            Mutability::Let => Err( SyntaxError {
+                                line_byte_start: name_pos.line.byte_start,
+                                line: name_pos.line.number,
+                                col: name_pos.token.col,
+                                len: name_pos.token.kind.len(),
+                                msg: "invalid assignment".into(),
+                                help_msg: "was defined as immutable".into()
+                            }),
+                            Mutability::Var => {
+                                let new_value = new_value?;
+                                let new_value_typ = new_value.typ();
+
+                                if var.typ != new_value_typ {
+                                    Err( SyntaxError {
+                                        line_byte_start: name_pos.line.byte_start,
+                                        line: name_pos.line.number,
+                                        col: name_pos.token.col,
+                                        len: name_pos.token.kind.len(),
+                                        msg: "mismatched types".into(),
+                                        help_msg: format!(
+                                            "trying to assign an expression of type '{}' to a variable of type '{}'",
+                                            new_value_typ,
+                                            var.typ
+                                        ).into()
+                                    })
+                                }
+                                else {
+                                    Ok( Node::Assignment( name_pos.token.kind.to_string(), new_value ) )
+                                }
+                            },
+                        },
+                        None => Err( SyntaxError {
                             line_byte_start: name_pos.line.byte_start,
                             line: name_pos.line.number,
                             col: name_pos.token.col,
                             len: name_pos.token.kind.len(),
-                            msg: "invalid assignment".into(),
-                            help_msg: "was defined as immutable".into()
-                        }),
-                        Mutability::Var => {
-                            let new_value = new_value?;
-                            let new_value_typ = new_value.typ();
-
-                            if definition.typ != new_value_typ {
-                                Err( SyntaxError {
-                                    line_byte_start: name_pos.line.byte_start,
-                                    line: name_pos.line.number,
-                                    col: name_pos.token.col,
-                                    len: name_pos.token.kind.len(),
-                                    msg: "mismatched types".into(),
-                                    help_msg: format!(
-                                        "trying to assign an expression of type '{}' to a variable of type '{}'",
-                                        new_value_typ,
-                                        definition.typ
-                                    ).into()
-                                })
-                            }
-                            else {
-                                Ok( Node::Assignment( name_pos.token.kind.to_string(), new_value ) )
-                            }
-                        },
-                    };
-                }
-            }
-
-            current_scope = match current_scope.parent {
-                Some( parent ) => &self.scopes[ parent ],
-                None => return Err( SyntaxError {
-                    line_byte_start: name_pos.line.byte_start,
-                    line: name_pos.line.number,
-                    col: name_pos.token.col,
-                    len: name_pos.token.kind.len(),
-                    msg: "variable redefinition".into(),
-                    help_msg: "was not previously defined in this scope".into()
-                }),
-            };
+                            msg: "variable redefinition".into(),
+                            help_msg: "was not previously defined in this scope".into()
+                        })
+                    }
+                },
+                _ => Ok( Node::Expression( self.expression( tokens )? ) ),
+            },
+            None => Ok( Node::Expression( self.expression( tokens )? ) ),
         }
     }
 }
@@ -2121,34 +2067,19 @@ impl AST {
         match print_pos.token.kind {
             TokenKind::PrintLn => if let Some( TokenPosition { token: &Token { kind: TokenKind::SemiColon, .. }, .. } ) = tokens.peek_next() {
                 tokens.next();
-                return Ok( Node::Print( Expression::Literal( Literal::Char( b'\n' ) ) ) );
+                return Ok( Node::Println( None ) );
             },
             TokenKind::Print => (),
             _ => unreachable!(),
         }
 
-        let argument_pos = tokens.next().bounded( tokens, "expected print argument or semicolon" )?.unwrap();
-        let argument = match &argument_pos.token.kind {
-            TokenKind::Literal( _ ) | TokenKind::Identifier( _ )
-            | TokenKind::True | TokenKind::False
-            | TokenKind::Bracket( BracketKind::OpenRound )
-            | TokenKind::Op( Operator::Minus | Operator::Not ) => self.expression( tokens ),
-            _ => Err( SyntaxError {
-                line_byte_start: argument_pos.line.byte_start,
-                line: argument_pos.line.number,
-                col: argument_pos.token.col,
-                len: argument_pos.token.kind.len(),
-                msg: "invalid print argument".into(),
-                help_msg: "expected an expression".into()
-            }),
-        };
-
-        let argument = argument?;
+        tokens.next().bounded( tokens, "expected expression" )?;
+        let argument = self.expression( tokens )?;
         self.semicolon( tokens )?;
 
         return match print_pos.token.kind {
             TokenKind::Print => Ok( Node::Print( argument ) ),
-            TokenKind::PrintLn => Ok( Node::Println( argument ) ),
+            TokenKind::PrintLn => Ok( Node::Println( Some( argument ) ) ),
             _ => unreachable!(),
         }
     }
@@ -2158,7 +2089,7 @@ impl AST {
 impl AST {
     fn if_statement( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
         let iff = self.iff( tokens )?;
-        let mut if_statement = IfStatement { ifs: vec![ iff ], els: None };
+        let mut if_statement = IfStatement { ifs: vec![iff], els: None };
         self.els( &mut if_statement, tokens )?;
 
         return Ok( Node::If( if_statement ) );
@@ -2166,7 +2097,7 @@ impl AST {
 
     fn iff( &mut self, tokens: &mut TokenCursor ) -> Result<If, SyntaxError> {
         let if_pos = tokens.current().unwrap();
-        tokens.next().bounded( tokens, "expected boolean expression" )?.unwrap();
+        tokens.next().bounded( tokens, "expected boolean expression" )?;
 
         let expression = self.expression( tokens )?;
         let condition = match &expression.typ() {
@@ -2181,23 +2112,28 @@ impl AST {
             }),
         };
 
-        let block_or_statement_pos = tokens.current().bounded( tokens, "expected colon or curly bracket" )?.unwrap();
+        let block_or_statement_pos = tokens.current().bounded( tokens, "expected colon or curly bracket" )?;
         return match block_or_statement_pos.token.kind {
             TokenKind::Bracket( BracketKind::OpenCurly ) => {
-                let scope = self.create_scope();
-                tokens.next();
-
                 let condition = condition?;
-                self.parse( tokens, Some( TokenKind::Bracket( BracketKind::CloseCurly ) ) );
-                Ok( If { condition, scope } )
+                let scope = self.parse_single( tokens )?.unwrap();
+                Ok( If { condition, statement: scope } )
             },
             TokenKind::Colon => {
-                let scope = self.create_scope();
-                tokens.next();
-
                 let condition = condition?;
-                self.parse( tokens, Some( TokenKind::SemiColon ) );
-                Ok( If { condition, scope } )
+                tokens.next().bounded( tokens, "expected statement" )?;
+                match self.parse_single( tokens )? {
+                    Some( statement ) => Ok( If { condition, statement } ),
+                    None => Err( SyntaxError {
+                        line_byte_start: block_or_statement_pos.line.byte_start,
+                        line: block_or_statement_pos.line.number,
+                        col: block_or_statement_pos.token.col,
+                        len: block_or_statement_pos.token.kind.len(),
+                        msg: "invalid else statement".into(),
+                        help_msg: "must be followed by a statement".into()
+                    })
+                }
+                // since we checked for the presence of a token after this point we can safely unwrap
             },
             _ => {
                 let before_curly_bracket_pos = tokens.peek_previous().unwrap();
@@ -2220,23 +2156,29 @@ impl AST {
         };
 
         return if let TokenKind::Else = els_pos.token.kind {
-            let if_or_block_pos = tokens.next().bounded( tokens, "expected colon, block or if statement" )?.unwrap();
+            let if_or_block_pos = tokens.next().bounded( tokens, "expected colon, block or if statement" )?;
             match if_or_block_pos.token.kind {
                 TokenKind::Bracket( BracketKind::OpenCurly ) => {
-                    let els = self.create_scope();
-                    tokens.next();
-
-                    self.parse( tokens, Some( TokenKind::Bracket( BracketKind::CloseCurly ) ) );
-                    if_statement.els = Some( els );
+                    let scope = self.parse_single( tokens )?.unwrap();
+                    if_statement.els = Some( Box::new( scope ) );
                     Ok( () )
                 },
                 TokenKind::Colon => {
-                    let els = self.create_scope();
-                    tokens.next();
-
-                    self.parse( tokens, Some( TokenKind::SemiColon ) );
-                    if_statement.els = Some( els );
-                    Ok( () )
+                    tokens.next().bounded( tokens, "expected statement" )?;
+                    match self.parse_single( tokens )? {
+                        Some( statement ) => {
+                            if_statement.els = Some( Box::new( statement ) );
+                            Ok( () )
+                        },
+                        None => Err( SyntaxError {
+                            line_byte_start: if_or_block_pos.line.byte_start,
+                            line: if_or_block_pos.line.number,
+                            col: if_or_block_pos.token.col,
+                            len: if_or_block_pos.token.kind.len(),
+                            msg: "invalid else statement".into(),
+                            help_msg: "must be followed by a statement".into()
+                        })
+                    }
                 },
                 TokenKind::If => {
                     let else_if = self.iff( tokens )?;
@@ -2269,10 +2211,10 @@ impl AST {
 
         let iff = iff?;
         return Ok( Node::For( ForStatement {
-            pre_statement: None,
+            pre: None,
             condition: Some( iff.condition ),
-            post_statement: None,
-            scope: iff.scope
+            post: None,
+            statement: Box::new( iff.statement )
         } ) );
     }
 }
@@ -2290,264 +2232,6 @@ impl Checker {
 
     fn check( file_path: &str ) {
         println!( "{}: {}", Self::CHECKING, file_path );
-    }
-}
-
-
-#[derive( Debug )]
-enum ControlFlowStatement {
-    None,
-    Break,
-    Continue,
-}
-
-#[derive( Debug )]
-struct InterpreterVariable {
-    name: String,
-    value: Expression
-}
-
-// TODO ditch interpretation mode entirely
-#[derive( Debug )]
-struct Interpreter<'ast> {
-    ast: &'ast AST,
-    variables: Vec<InterpreterVariable>,
-}
-
-// Resolution of identifiers and evaluation of nodes
-impl<'ast> Interpreter<'ast> {
-    fn resolve( &'ast self, name: &str ) -> &'ast InterpreterVariable {
-        for variable in &self.variables {
-            if variable.name == name {
-                return variable;
-            }
-        }
-
-        unreachable!();
-    }
-
-
-    fn evaluate( &self, expression: &Expression ) -> Literal {
-        return match expression {
-            Expression::Literal( literal ) => literal.clone(),
-            Expression::Binary { lhs, op, rhs } => {
-                let lhs: isize = self.evaluate( lhs ).into();
-                let rhs: isize = self.evaluate( rhs ).into();
-
-                match op {
-                    Operator::Pow | Operator::PowEquals => match rhs {
-                        2 => Literal::Int( lhs * lhs ),
-                        _ => Literal::Int( lhs.pow( rhs as u32 ) ),
-                    },
-                    Operator::Times | Operator::TimesEquals => Literal::Int( lhs * rhs ),
-                    Operator::Divide | Operator::DivideEquals => Literal::Int( lhs / rhs ),
-                    Operator::Remainder | Operator::RemainderEquals => Literal::Int( lhs % rhs ),
-
-                    Operator::Plus | Operator::PlusEquals => Literal::Int( lhs + rhs ),
-                    Operator::Minus | Operator::MinusEquals => Literal::Int( lhs - rhs ),
-
-                    Operator::EqualsEquals => Literal::Bool( lhs == rhs ),
-                    Operator::NotEquals => Literal::Bool( lhs != rhs ),
-                    Operator::Greater => Literal::Bool( lhs > rhs ),
-                    Operator::GreaterOrEquals => Literal::Bool( lhs >= rhs ),
-                    Operator::Less => Literal::Bool( lhs < rhs ),
-                    Operator::LessOrEquals => Literal::Bool( lhs <= rhs ),
-                    Operator::Compare => Literal::Int( lhs.cmp( &rhs ) as isize ),
-
-                    Operator::And => Literal::Bool( lhs == 1 && rhs == 1 ),
-                    Operator::Or => Literal::Bool( lhs == 1 || rhs == 1 ),
-                    Operator::Xor => Literal::Bool( (lhs != 1 && rhs == 1) || (lhs == 1 && rhs != 1) ),
-
-                    Operator::Not | Operator::Negate => unreachable!(),
-                }
-            },
-            Expression::Identifier( name, _ ) => self.evaluate( &self.resolve( name ).value ),
-            Expression::Unary { op, operand } => match op {
-                Operator::Negate => {
-                    let value: isize = self.evaluate( operand ).into();
-                    Literal::Int( -value )
-                },
-                Operator::Not => {
-                    let value: isize = self.evaluate( operand ).into();
-                    Literal::Bool( value == 0 )
-                },
-                _ => unreachable!(),
-            },
-        }
-    }
-
-    fn evaluate_expression( &self, expression: &Expression ) -> Expression {
-        return Expression::Literal( self.evaluate( expression ) );
-    }
-}
-
-// Interpretation of nodes
-impl Interpreter<'_> {
-    const INTERPRETING: &'static str = colored!{
-        text: "Interpreting",
-        foreground: Foreground::LightGreen,
-        bold: true,
-    };
-
-
-    fn interpret_scope( &mut self, scope: ScopeIdx ) {
-        let current_scope = &self.ast.scopes[ scope ];
-        let mut defined_variables = 0;
-
-        for node in  &current_scope.nodes {
-            match node {
-                Node::Print( argument ) => self.evaluate( argument ).display(),
-                Node::Println( argument ) => {
-                    self.evaluate( argument ).display();
-                    println!();
-                },
-                Node::If( if_statement ) => 'iff: {
-                    for iff in &if_statement.ifs {
-                        if let Literal::Bool( true ) = self.evaluate( &iff.condition ) {
-                            self.interpret_scope( iff.scope );
-                            break 'iff;
-                        }
-                    }
-
-                    if let Some( els ) = &if_statement.els {
-                        self.interpret_scope( *els );
-                    }
-                },
-                Node::For( forr ) =>
-                    if let Some( condition ) = &forr.condition {
-                        while let Literal::Bool( true ) = self.evaluate( condition ) {
-                            if let ControlFlowStatement::Break = self.interpret_loop( forr.scope ) {
-                                break;
-                            }
-                        }
-                    }
-                    else {
-                        loop {
-                            if let ControlFlowStatement::Break = self.interpret_loop( forr.scope ) {
-                                break;
-                            }
-                        }
-                    },
-                Node::Definition( name, value ) => {
-                    defined_variables += 1;
-                    self.variables.push( InterpreterVariable {
-                        name: name.clone(),
-                        value: self.evaluate_expression( value )
-                    } );
-                }
-                Node::Assignment( name, new_value ) => {
-                    let value = self.evaluate_expression( new_value );
-                    for variable in &mut self.variables {
-                        if variable.name == *name {
-                            variable.value = value;
-                            break;
-                        }
-                    }
-                },
-                Node::Scope( inner ) => self.interpret_scope( *inner ),
-                Node::Expression( expression ) => { self.evaluate( expression ); },
-                Node::Break | Node::Continue => unreachable!(),
-            }
-        }
-
-        for _ in 0..defined_variables {
-            self.variables.pop();
-        }
-    }
-
-    fn interpret_loop( &mut self, scope: ScopeIdx ) -> ControlFlowStatement {
-        let current_scope = &self.ast.scopes[ scope ];
-        let mut defined_variables = 0;
-
-        let control_flow = 'control_flow: {
-            for node in  &current_scope.nodes {
-                let cf = match node {
-                    Node::Print( argument ) => {
-                        self.evaluate( argument ).display();
-                        ControlFlowStatement::None
-                    },
-                    Node::Println( argument ) => {
-                        self.evaluate( argument ).display();
-                        println!();
-                        ControlFlowStatement::None
-                    },
-                    Node::If( if_statement ) => 'iff: {
-                        for iff in &if_statement.ifs {
-                            if let Literal::Bool( true ) = self.evaluate( &iff.condition ) {
-                                break 'iff self.interpret_loop( iff.scope );
-                            }
-                        }
-
-                        if let Some( els ) = &if_statement.els {
-                            break 'iff self.interpret_loop( *els );
-                        }
-
-                        ControlFlowStatement::None
-                    },
-                    Node::For( forr ) => {
-                        if let Some( condition ) = &forr.condition {
-                            while let Literal::Bool( true ) = self.evaluate( condition ) {
-                                if let ControlFlowStatement::Break = self.interpret_loop( forr.scope ) {
-                                    break;
-                                }
-                            }
-                        }
-                        else {
-                            loop {
-                                if let ControlFlowStatement::Break = self.interpret_loop( forr.scope ) {
-                                    break;
-                                }
-                            }
-                        }
-
-                        ControlFlowStatement::None
-                    },
-                    Node::Definition( name, value ) => {
-                        defined_variables += 1;
-                        self.variables.push( InterpreterVariable {
-                            name: name.clone(),
-                            value: self.evaluate_expression( value )
-                        } );
-
-                        ControlFlowStatement::None
-                    },
-                    Node::Assignment( name, new_value ) => {
-                        let value = self.evaluate_expression( new_value );
-                        for variable in &mut self.variables {
-                            if variable.name == *name {
-                                variable.value = value;
-                                break;
-                            }
-                        }
-
-                        ControlFlowStatement::None
-                    },
-                    Node::Scope( inner ) => self.interpret_loop( *inner ),
-                    Node::Expression( expression ) => {
-                        self.evaluate( expression );
-                        ControlFlowStatement::None
-                    },
-                    Node::Break => break 'control_flow ControlFlowStatement::Break,
-                    Node::Continue => break 'control_flow ControlFlowStatement::Continue,
-                };
-
-                if let ControlFlowStatement::None = cf {} else { break 'control_flow cf; }
-            }
-
-            ControlFlowStatement::None
-        };
-
-        for _ in 0..defined_variables {
-            self.variables.pop();
-        }
-
-        return control_flow;
-    }
-
-    fn interpret( &mut self, file_path: &str ) {
-        println!( "{}: {}", Self::INTERPRETING, file_path );
-
-        self.interpret_scope( 0 );
     }
 }
 
@@ -2731,9 +2415,9 @@ r#" stdout: equ 1
  SYS_exit: equ 60
  EXIT_SUCCESS: equ 0
 
- I64_MIN: equ 1 << 63
- I64_MAX: equ ~I64_MIN
- INT_MAX_DIGITS: equ 64
+ INT_MIN: equ 1 << 63
+ INT_MAX: equ ~INT_MIN
+ INT_BITS: equ 64
 
  true: equ 1
  true_str: db "true"
@@ -2745,16 +2429,14 @@ r#" stdout: equ 1
 
  LESS: equ -1
  EQUAL: equ 0
- GREATER: equ 1"#;
+ GREATER: equ 1
+
+ INT_STR_LEN: equ INT_BITS"#;
 
         let mut stack_size = 0;
+        let mut variables: Vec<(Type, Vec<&Variable>)> = Vec::new();
         for scope in &self.ast.scopes {
-            if scope.definitions.is_empty() {
-                continue;
-            }
-
-            let mut variables: Vec<(Type, Vec<&Definition>)> = Vec::new();
-            for definition in &scope.definitions {
+            for definition in &scope.variables {
                 let typ = definition.typ;
 
                 let mut type_already_encountered = false;
@@ -2767,7 +2449,7 @@ r#" stdout: equ 1
                 }
 
                 if !type_already_encountered {
-                    variables.push( (typ, vec![ definition ]) );
+                    variables.push( (typ, vec![definition]) );
                 }
             }
 
@@ -2824,16 +2506,14 @@ section .rodata
 {}
 
 section .data
- int_str: times INT_MAX_DIGITS + 1 db 0
- int_str_bufsize: equ $ - int_str
- int_str_len: equ int_str_bufsize - 1
+ int_str: times INT_STR_LEN db 0
 
 section .text
 int_toStr:
  push rcx
 
  mov rsi, 10
- mov rcx, (int_str + int_str_len) - 1
+ mov rcx, int_str + INT_STR_LEN - 1
 
  mov rax, rdi
  cmp rax, 0
@@ -2868,7 +2548,7 @@ int_toStr:
  mov byte [rcx], '-'
 
 .done:
- mov rdx, int_str + int_str_len
+ mov rdx, int_str + INT_STR_LEN
  sub rdx, rcx
 
  mov rax, rcx
@@ -3007,181 +2687,190 @@ impl<'ast> Compiler<'ast> {
 
 // Compilation of nodes
 impl<'ast> Compiler<'ast> {
-    fn compile_scope( &mut self, scope: usize ) {
-        for node in &self.ast.scopes[ scope ].nodes {
-            match node {
-                Node::Print( argument ) => {
-                    self.asm += &format!( " ; {}\n", node );
-                    self.compile_expression( argument );
+    fn compile_node( &mut self, node: &'ast Node ) {
+        match node {
+            Node::Print( argument ) => {
+                self.asm += &format!( " ; {}\n", node );
+                self.compile_expression( argument );
 
-                    match argument.typ() {
-                        Type::Int => self.asm +=
-                            " mov rsi, 10\
-                            \n call int_toStr\
-                            \n\
-                            \n mov rdi, stdout\
-                            \n mov rsi, rax\
-                            \n mov rax, SYS_write\
-                            \n syscall\n\n",
-                        Type::Char => self.asm +=
-                            " push rdi\
-                            \n mov rdi, stdout\
-                            \n mov rsi, rsp\
-                            \n mov rdx, 1\
-                            \n mov rax, SYS_write\
-                            \n syscall\
-                            \n pop rsi\n\n",
-                        Type::Bool => self.asm +=
-                            " cmp rdi, true\
-                            \n mov rsi, true_str\
-                            \n mov rdi, false_str\
-                            \n cmovne rsi, rdi\
-                            \n mov rdx, true_str_len\
-                            \n mov rdi, false_str_len\
-                            \n cmovne rdx, rdi\
-                            \n\
-                            \n mov rdi, stdout\
-                            \n mov rax, SYS_write\
-                            \n syscall\n\n",
-                        Type::Str => self.asm +=
-                            " mov rdi, stdout\
-                            \n mov rax, SYS_write\
-                            \n syscall\n\n",
-                    }
-                },
-                Node::Println( argument ) => {
-                    self.asm += &format!( " ; {}\n", node );
-                    self.compile_expression( argument );
-
-                    match argument.typ() {
-                        Type::Int => self.asm +=
-                            " mov rsi, 10\
-                            \n call int_toStr\
-                            \n\
-                            \n mov rdi, stdout\
-                            \n mov rsi, rax\
-                            \n mov rax, SYS_write\
-                            \n syscall\n\n",
-                        Type::Char => self.asm +=
-                            " push rdi\
-                            \n mov rdi, stdout\
-                            \n mov rsi, rsp\
-                            \n mov rdx, 1\
-                            \n mov rax, SYS_write\
-                            \n syscall\
-                            \n pop rsi\n\n",
-                        Type::Bool => self.asm +=
-                            " cmp rdi, true\
-                            \n mov rsi, true_str\
-                            \n mov rdi, false_str\
-                            \n cmovne rsi, rdi\
-                            \n mov rdx, true_str_len\
-                            \n mov rdi, false_str_len\
-                            \n cmovne rdx, rdi\
-                            \n\
-                            \n mov rdi, stdout\
-                            \n mov rax, SYS_write\
-                            \n syscall\n\n",
-                        Type::Str => self.asm +=
-                            " mov rdi, stdout\
-                            \n mov rax, SYS_write\
-                            \n syscall\n\n",
-                    }
-
-                    self.asm +=
-                        " push 10\
+                match argument.typ() {
+                    Type::Int => self.asm +=
+                        " mov rsi, 10\
+                        \n call int_toStr\
+                        \n\
+                        \n mov rdi, stdout\
+                        \n mov rsi, rax\
+                        \n mov rax, SYS_write\
+                        \n syscall\n\n",
+                    Type::Char => self.asm +=
+                        " push rdi\
                         \n mov rdi, stdout\
                         \n mov rsi, rsp\
                         \n mov rdx, 1\
                         \n mov rax, SYS_write\
                         \n syscall\
-                        \n pop rsi\n\n"
-                },
-                // TODO simplify: avoid checking for the presence of the else/else-ifs branches too many times
-                Node::If( if_statement ) => {
-                    let if_idx = self.if_idx;
-                    self.if_idx += 1;
+                        \n pop rsi\n\n",
+                    Type::Bool => self.asm +=
+                        " cmp rdi, true\
+                        \n mov rsi, true_str\
+                        \n mov rdi, false_str\
+                        \n cmovne rsi, rdi\
+                        \n mov rdx, true_str_len\
+                        \n mov rdi, false_str_len\
+                        \n cmovne rdx, rdi\
+                        \n\
+                        \n mov rdi, stdout\
+                        \n mov rax, SYS_write\
+                        \n syscall\n\n",
+                    Type::Str => self.asm +=
+                        " mov rdi, stdout\
+                        \n mov rax, SYS_write\
+                        \n syscall\n\n",
+                }
+            },
+            Node::Println( argument ) => {
+                self.asm += &format!( " ; {}\n", node );
+                if let Some( arg ) = argument {
+                    self.compile_expression( arg );
 
-                    let mut ifs = if_statement.ifs.iter();
-                    let iff = ifs.next().unwrap();
-
-                    let (has_else_ifs, has_else) = (if_statement.ifs.len() > 1, if_statement.els.is_some());
-
-                    // compiling the if branch
-                    let if_tag = format!( "if_{}", if_idx );
-                    let (if_false_tag, if_end_tag_idx) = if has_else_ifs {
-                        (format!( "if_{}_else_if_0", if_idx ), Some( if_idx ))
+                    match arg.typ() {
+                        Type::Int => self.asm +=
+                            " mov rsi, 10\
+                            \n call int_toStr\
+                            \n\
+                            \n mov rdi, stdout\
+                            \n mov rsi, rax\
+                            \n mov rax, SYS_write\
+                            \n syscall\n\n",
+                        Type::Char => self.asm +=
+                            " push rdi\
+                            \n mov rdi, stdout\
+                            \n mov rsi, rsp\
+                            \n mov rdx, 1\
+                            \n mov rax, SYS_write\
+                            \n syscall\
+                            \n pop rsi\n\n",
+                        Type::Bool => self.asm +=
+                            " cmp rdi, true\
+                            \n mov rsi, true_str\
+                            \n mov rdi, false_str\
+                            \n cmovne rsi, rdi\
+                            \n mov rdx, true_str_len\
+                            \n mov rdi, false_str_len\
+                            \n cmovne rdx, rdi\
+                            \n\
+                            \n mov rdi, stdout\
+                            \n mov rax, SYS_write\
+                            \n syscall\n\n",
+                        Type::Str => self.asm +=
+                            " mov rdi, stdout\
+                            \n mov rax, SYS_write\
+                            \n syscall\n\n",
                     }
-                    else if has_else {
-                        (format!( "if_{}_else", if_idx ), Some( if_idx ))
+                }
+
+                self.asm +=
+                    " push 10\
+                    \n mov rdi, stdout\
+                    \n mov rsi, rsp\
+                    \n mov rdx, 1\
+                    \n mov rax, SYS_write\
+                    \n syscall\
+                    \n pop rsi\n\n"
+            },
+            Node::If( if_statement ) => {
+                let if_idx = self.if_idx;
+                self.if_idx += 1;
+
+                let mut ifs = if_statement.ifs.iter();
+                let iff = ifs.next().unwrap();
+
+                let (has_else_ifs, has_else) = (if_statement.ifs.len() > 1, if_statement.els.is_some());
+
+                // compiling the if branch
+                let if_tag = format!( "if_{}", if_idx );
+                let (if_false_tag, if_end_tag_idx) = if has_else_ifs {
+                    (format!( "if_{}_else_if_0", if_idx ), Some( if_idx ))
+                }
+                else if has_else {
+                    (format!( "if_{}_else", if_idx ), Some( if_idx ))
+                }
+                else {
+                    (format!( "if_{}_end", if_idx ), None)
+                };
+
+                self.compile_if( iff, &if_tag, &if_false_tag );
+                if let Some( idx ) = if_end_tag_idx {
+                    self.asm += &format!( " jmp if_{}_end\n\n", idx );
+                }
+
+                // compiling the else if branches
+                if has_else_ifs {
+                    let last_else_if = ifs.next_back().unwrap();
+                    let else_if_end_tag = format!( " jmp if_{}_end\n\n", if_idx );
+                    let mut else_if_tag_idx = 0;
+
+                    for else_if in ifs {
+                        let else_if_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx );
+                        let else_if_false_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx + 1 );
+
+                        self.compile_if( else_if, &else_if_tag, &else_if_false_tag );
+                        self.asm += &else_if_end_tag;
+                        else_if_tag_idx += 1;
+                    }
+
+                    let else_if_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx );
+                    let else_if_false_tag = if has_else {
+                        format!( "if_{}_else", if_idx )
                     }
                     else {
-                        (format!( "if_{}_end", if_idx ), None)
+                        format!( "if_{}_end", if_idx )
                     };
 
-                    self.compile_if( iff, &if_tag, &if_false_tag );
-                    if let Some( idx ) = if_end_tag_idx {
-                        self.asm += &format!( " jmp if_{}_end\n\n", idx );
+                    self.compile_if( last_else_if, &else_if_tag, &else_if_false_tag );
+                    self.asm += &else_if_end_tag;
+                }
+
+                // compiling the else branch
+                if let Some( els ) = &if_statement.els {
+                    self.asm += &format!( "if_{}_else:\n", if_idx );
+                    match &**els {
+                        Node::Scope( scope ) => self.compile_scope( *scope ),
+                        other => self.compile_node( other ),
                     }
+                }
 
-                    // compiling the else if branches
-                    if has_else_ifs {
-                        let last_else_if = ifs.next_back().unwrap();
-                        let else_if_end_tag = format!( " jmp if_{}_end\n\n", if_idx );
-                        let mut else_if_tag_idx = 0;
+                self.asm += &format!( "if_{}_end:\n", if_idx );
+            },
+            Node::For( forr ) => {
+                let for_tag = format!( "for_{}", self.for_idx );
+                let for_end_tag = format!( "for_{}_end", self.for_idx );
 
-                        for else_if in ifs {
-                            let else_if_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx );
-                            let else_if_false_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx + 1 );
+                self.for_idx_stack.push( self.for_idx );
+                self.for_idx += 1;
+                self.compile_for( forr, &for_tag, &for_end_tag );
+                self.for_idx_stack.pop();
 
-                            self.compile_if( else_if, &else_if_tag, &else_if_false_tag );
-                            self.asm += &else_if_end_tag;
-                            else_if_tag_idx += 1;
-                        }
+                self.asm += &format!(
+                    " jmp {}\
+                    \n{}:\n\n",
+                    for_tag,
+                    for_end_tag
+                );
+            },
+            Node::Definition( name, value ) => self.compile_assignment( name, value ),
+            Node::Assignment( name, value ) => self.compile_assignment( name, value ),
+            Node::Scope( inner ) => self.compile_scope( *inner ),
+            Node::Expression( expression ) => self.compile_expression( expression ),
+            Node::Break => self.asm += &format!( " jmp for_{}_end\n\n", self.for_idx_stack.last().unwrap() ),
+            Node::Continue => self.asm += &format!( " jmp for_{}\n\n", self.for_idx_stack.last().unwrap() ),
+        }
+    }
 
-                        let else_if_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx );
-                        let else_if_false_tag = if has_else {
-                            format!( "if_{}_else", if_idx )
-                        }
-                        else {
-                            format!( "if_{}_end", if_idx )
-                        };
-
-                        self.compile_if( last_else_if, &else_if_tag, &else_if_false_tag );
-                        self.asm += &else_if_end_tag;
-                    }
-
-                    // compiling the else branch
-                    if let Some( els ) = if_statement.els {
-                        self.asm += &format!( "if_{}_else:\n", if_idx );
-                        self.compile_scope( els );
-                    }
-
-                    self.asm += &format!( "if_{}_end:\n", if_idx );
-                },
-                Node::For( forr ) => {
-                    let for_tag = format!( "for_{}", self.for_idx );
-                    let for_end_tag = format!( "for_{}_end", self.for_idx );
-
-                    self.for_idx_stack.push( self.for_idx );
-                    self.for_idx += 1;
-                    self.compile_for( forr, &for_tag, &for_end_tag );
-                    self.for_idx_stack.pop();
-
-                    self.asm += &format!(
-                        " jmp {}\
-                        \n{}:\n\n",
-                        for_tag,
-                        for_end_tag
-                    );
-                },
-                Node::Definition( name, value ) => self.compile_assignment( name, value ),
-                Node::Assignment( name, value ) => self.compile_assignment( name, value ),
-                Node::Scope( inner ) => self.compile_scope( *inner ),
-                Node::Expression( expression ) => self.compile_expression( expression ),
-                Node::Break => self.asm += &format!( " jmp for_{}_end\n\n", self.for_idx_stack.last().unwrap() ),
-                Node::Continue => self.asm += &format!( " jmp for_{}\n\n", self.for_idx_stack.last().unwrap() ),
-            }
+    fn compile_scope( &mut self, scope_idx: usize ) {
+        let scope = &self.ast.scopes[ scope_idx ];
+        for node in &scope.nodes {
+            self.compile_node( node );
         }
     }
 
@@ -3445,7 +3134,7 @@ impl<'ast> Compiler<'ast> {
             Expression::Literal( _ ) => unreachable!(),
         }
 
-        self.compile_scope( iff.scope );
+        self.compile_node( &iff.statement );
     }
 
     fn compile_for( &mut self, forr: &'ast ForStatement, for_tag: &String, for_false_tag: &String ) {
@@ -3522,7 +3211,7 @@ impl<'ast> Compiler<'ast> {
             }
         }
 
-        self.compile_scope( forr.scope );
+        self.compile_node( &forr.statement );
     }
 
 
@@ -3620,7 +3309,6 @@ Options:
 
 Run mode:
     check     <file.blz>    Check the source code for correctness
-    interpret <file.blz>    Interpret the source code (default if no run mode command is provided)
     compile   <file.blz>    Compile the source code down to a binary executable
     run       <file.blz>    Compile and run the generated binary executable
 ", env!( "CARGO_PKG_VERSION" ) );
@@ -3677,7 +3365,6 @@ impl Blitz {
         }
 
         let mut check_flag = false;
-        let mut interpret_flag = false;
         let mut build_flag = false;
         let mut run_flag = false;
 
@@ -3691,7 +3378,6 @@ impl Blitz {
                     return ExitCode::SUCCESS;
                 },
                 "check" => check_flag = true,
-                "interpret" => interpret_flag = true,
                 "compile" => build_flag = true,
                 "run" => run_flag = true,
                 _ => match source_file_path {
@@ -3705,15 +3391,11 @@ impl Blitz {
         }
 
 
-        if !(check_flag || interpret_flag || build_flag || run_flag) {
-            interpret_flag = true;
+        if !(check_flag || build_flag || run_flag) {
+            check_flag = true;
         }
         else if check_flag {
             // ignore all other run mode flags
-        }
-        else if interpret_flag && (build_flag || run_flag) {
-            eprintln!( "{}: cannot interpret and build/run at the same time", SyntaxErrors::ERROR );
-            return ExitCode::FAILURE;
         }
         else if build_flag && run_flag {
             eprintln!( "{}: build and run commands cannot be used together", SyntaxErrors::ERROR );
@@ -3752,7 +3434,7 @@ impl Blitz {
 
         let ast = match AST::try_from( lexer ) {
             Ok( ast ) => {
-                // println!( "{:#?}", ast );
+                println!( "{:#?}", ast );
                 ast
             },
             Err( mut errors ) => {
@@ -3763,10 +3445,6 @@ impl Blitz {
 
         if check_flag {
             // do nothing
-        }
-        else if interpret_flag {
-            let mut interpreter = Interpreter { ast: &ast, variables: Vec::new() };
-            interpreter.interpret( &source_file_path );
         }
         else {
             let mut compiler = Compiler {
@@ -3794,6 +3472,7 @@ impl Blitz {
 
 
 // IDEA adapt SyntaxErrors to report cli mistakes
+// TODO add option to specify output path
 fn main() -> ExitCode {
     return Blitz::from( env::args() );
 }

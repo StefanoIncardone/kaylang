@@ -1,5 +1,9 @@
 # Versions
 
+## 0.2
+
+- removed `interpret` mode
+
 ## 0.1
 
 - `interpret` to interpret the program without compiling it

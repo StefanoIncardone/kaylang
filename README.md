@@ -10,7 +10,6 @@ see the [full language syntax](SYNTAX.ebnf)
 
 ### Run modes
 
-- `interpret`: to interpret the program without compiling it
 - `compile`: to compile the program down to a binary executable
 - `run`: to compile and run the generated binary executable
 
@@ -95,7 +94,7 @@ var ten = 5 * 2;
 
 ```blitz
 var twentyone = 9;
-twentyone += 10; # equivalent to `twentyone = twentyone + 10`
+twentyone += 10; # equivalent to "twentyone = twentyone + 10;"
 ```
 
 ### Printing
@@ -181,6 +180,15 @@ Executes a block of code based on a condition
     }
     ```
 
+- single statement version:
+
+    ```blitz
+    let lucky = 42;
+    if lucky == 19: println "well done!";
+    else if lucky == 42: println "awesome!";
+    else: println "too bad!";
+    ```
+
 ### Loops
 
 Executes a block until a condition is not satisfied
@@ -193,6 +201,14 @@ for i < 10 {
 }
 ```
 
+can also make use of the single statement feature:
+
+```blitz
+var i = 0;
+for i < 10: i += 1;
+println i;
+```
+
 #### break and continue statements
 
 They can be used to alter the normal flow of the program
@@ -200,9 +216,7 @@ They can be used to alter the normal flow of the program
 ```blitz
 var i = 0;
 for i < 10 {
-    if i == 6 {
-        break;
-    }
+    if i == 6: break;
 
     println i;
     i += 1;

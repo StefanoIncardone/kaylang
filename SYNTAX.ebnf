@@ -12,11 +12,10 @@ string_literal = '"', [{escape_character | ASCII_character}], '"';
 identifier = "_" | "A".."Z" | "a".."z", [{"_" | "A".."Z" | "a".."z" | digit}];
 
 (* from highest precedence to lowest *)
-(* TODO fix representation of unary operators *)
 int_factor = ["-"], (number_literal | ? identifier to non boolean value ? | character_literal | string_literal | ("(", non_boolean_expression, ")"));
 boolean_factor = ["!"], ? identifier to boolean value ? | boolean_literal | ("(", boolean_expression, ")");
 
-factor = int_factor | boolean_factor;
+factor = int_factor | boolean_factor | character_literal | string_literal;
 exponentiation = factor, ["**", factor];
 multiplicative_expression = exponentiation, [("*" | "/" | "%"), exponentiation];
 additive_expression = multiplicative_expression, [("+" | "-"), multiplicative_expression];
@@ -26,15 +25,12 @@ boolean_expression = boolean_comparative_expression, ("&&" | "||" | "^^"), boole
 non_boolean_expression = additive_expression, [("<=>"), additive_expression];
 expression = comparative_expression | boolean_expression | non_boolean_expression;
 
+print = (("print", expression) | ("println", [expression])), ";";
+variable_declaration = ("let" | "var"), identifier, ("=" | "**=" | "*=" | "/=" | "%=" | "+=" | "-=" ), expression, ";";
+variable_reassignment = identifier, "=", expression, ";";
+if = "if", boolean_expression, ((":", statement, ";") | scope), [{"else", (if | (":", statement, ";") | scope)}];
+for = "for", boolean_expression, ((":", statement, ";") | scope);
 
-statement =
-    expression
-    | ("print", expression)
-    | ("println", [expression])
-    | (("let" | "var"), identifier, ("=" | "**=" | "*=" | "/=" | "%=" | "+=" | "-=" ), expression)
-    | (identifier, "=", expression)
-    | "if", expression, scope, [{"else if", expression, scope}], ["else", scope]
-    | "for", expression, scope;
-
-scope = "{", [{(line_comment | statement | scope), ";"}], [line_comment | statement | scope], "}";
+statement = expression | print | variable_declaration | variable_reassignment | if | for;
+scope = "{", [{line_comment | statement | scope}], "}";
 program = [{line_comment | statement | scope}];

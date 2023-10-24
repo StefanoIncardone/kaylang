@@ -4,4 +4,4 @@ version = 3
 
 [[package]]
 name = "blitzlang"
-version = "0.1.18"
+version = "0.2.0"
