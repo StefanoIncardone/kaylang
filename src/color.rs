@@ -174,14 +174,14 @@ macro_rules! colored {
     () => {""};
     ($(text:)?$text: literal$(,)?) => {$text};
     (
-        $(text:)?$text: literal,
-        $(foreground: Foreground::$fg: tt,)?
-        $(background: Background::$bg: tt,)?
-        $(bold: $b: ident,)?
-        $(underline: $u: ident,)?
-        $(no_underline: $nu: ident,)?
-        $(reverse_text: $rt: ident,)?
-        $(positive_text: $pt: ident,)?
+        $(text:)?$text: literal
+        $(, foreground: Foreground::$fg: tt)?
+        $(, background: Background::$bg: tt)?
+        $(, bold: $b: ident)?
+        $(, underline: $u: ident)?
+        $(, no_underline: $nu: ident)?
+        $(, reverse_text: $rt: ident)?
+        $(, positive_text: $pt: ident)?
         $(,)?
     ) => {
         concat!(
@@ -205,14 +205,14 @@ macro_rules! colored_raw {
     () => {""};
     ($(text:)?$text: literal$(,)?) => {$text};
     (
-        $(text:)?$text: literal,
-        $(foreground: Foreground::$fg: tt,)?
-        $(background: Background::$bg: tt,)?
-        $(bold: $b: ident,)?
-        $(underline: $u: ident,)?
-        $(no_underline: $nu: ident,)?
-        $(reverse_text: $rt: ident,)?
-        $(positive_text: $pt: ident,)?
+        $(text:)?$text: literal
+        $(, foreground: Foreground::$fg: tt)?
+        $(, background: Background::$bg: tt)?
+        $(, bold: $b: ident)?
+        $(, underline: $u: ident)?
+        $(, no_underline: $nu: ident)?
+        $(, reverse_text: $rt: ident)?
+        $(, positive_text: $pt: ident)?
         $(,)?
     ) => {
         concat!(
