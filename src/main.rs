@@ -1,7 +1,24 @@
-use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write, Seek, SeekFrom}, fs::File, env::{self, Args}, process::{ExitCode, Command}, fmt::Display, path::{Path, PathBuf}, borrow::Cow, cmp::Ordering, num::IntErrorKind};
+// TODO detect if running in tty or being piped and disable coloring
+use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write, Seek, SeekFrom}, fs::File, env::{self, Args}, process::{ExitCode, Command}, fmt::Display, path::{Path, PathBuf}, borrow::Cow, cmp::Ordering, num::IntErrorKind, time::Instant};
 
 mod color;
 use crate::color::*;
+
+
+static CHECKING:    ColoredStr = ColoredStr { text: " Checking", foreground: Foreground::LightGreen, background: Background::Default, flags: Flags::Bold };
+static COMPILING:   ColoredStr = ColoredStr { text: "Compiling", foreground: Foreground::LightGreen, background: Background::Default, flags: Flags::Bold };
+static RUNNING:     ColoredStr = ColoredStr { text: "  Running", foreground: Foreground::LightGreen, background: Background::Default, flags: Flags::Bold };
+static DONE:        ColoredStr = ColoredStr { text: "     Done", foreground: Foreground::LightGreen, background: Background::Default, flags: Flags::Bold };
+
+static ERROR:       ColoredStr = ColoredStr { text: "Error", foreground: Foreground::LightRed, background: Background::Default, flags: Flags::Bold };
+static CAUSE:       ColoredStr = ColoredStr { text: "Cause", foreground: Foreground::LightRed, background: Background::Default, flags: Flags::Bold };
+
+static VERSION:     ColoredStr = ColoredStr { text: env!( "CARGO_PKG_VERSION" ), foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
+static OPTIONS:     ColoredStr = ColoredStr { text: "Options",  foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
+static RUN_MODE:    ColoredStr = ColoredStr { text: "Run mode", foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
+#[allow(unused)]
+static OUTPUT:      ColoredStr = ColoredStr { text: "Output",   foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
+static MODE:        ColoredStr = ColoredStr { text: "mode",     foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
 
 
 trait Len {
@@ -434,86 +451,13 @@ struct SyntaxError {
     help_msg: Cow<'static, str>,
 }
 
+// TODO find a way to implement display for this
+    // NOTE reading from file requires &mut self, while the Display trait requires a &self,
+    // so the implementation of the "Display" trait is inlined for now
 #[derive( Debug )]
 struct SyntaxErrors {
     src: BlitzSrc,
     errors: Vec<SyntaxError>,
-}
-
-impl SyntaxErrors {
-    const ERROR: &'static str = colored!{
-        text: "Error",
-        foreground: Foreground::LightRed,
-        bold: true,
-    };
-
-
-    fn display( &mut self ) {
-        let mut line_byte_start = self.errors[ 0 ].line_byte_start;
-        let mut line_text = String::new();
-        let _ = self.src.src.seek( SeekFrom::Start( line_byte_start as u64 ) );
-        let _ = self.src.src.read_line( &mut line_text );
-
-        for error in &self.errors {
-            if line_byte_start != error.line_byte_start {
-                line_byte_start = error.line_byte_start;
-                line_text.clear();
-                let _ = self.src.src.seek( SeekFrom::Start( line_byte_start as u64 ) );
-                let _ = self.src.src.read_line( &mut line_text );
-            }
-
-            let error_msg = Colored {
-                text: error.msg.to_string(),
-                foreground: Foreground::White,
-                bold: true,
-                ..Default::default()
-            };
-
-            let line_number_and_bar = Colored {
-                text: format!( "{} |", error.line ),
-                foreground: Foreground::LightBlue,
-                ..Default::default()
-            };
-
-            let visualization_padding = line_number_and_bar.text.len();
-            let at_padding = visualization_padding - 1;
-
-            let at = Colored {
-                text: format!( "{:>at_padding$}", "at" ),
-                foreground: Foreground::LightRed,
-                bold: true,
-                ..Default::default()
-            };
-
-            let bar = Colored {
-                text: format!( "{:>visualization_padding$}", "|" ),
-                foreground: Foreground::LightBlue,
-                ..Default::default()
-            };
-
-            let pointers_col = error.col - 1;
-            let pointers_len = error.len;
-
-            let pointers_and_help_msg = Colored {
-                text: format!( "{:^>pointers_len$} {}", "", error.help_msg ),
-                foreground: Foreground::LightRed,
-                ..Default::default()
-            };
-
-            eprintln!(
-                "{}: {}\
-                \n{}: {}:{}:{}\
-                \n{}\
-                \n{} {}\
-                \n{} {:pointers_col$}{}\n",
-                SyntaxErrors::ERROR, error_msg,
-                at, self.src.path.display(), error.line, error.col,
-                bar,
-                line_number_and_bar, line_text.trim_end(),
-                bar, "", pointers_and_help_msg
-            );
-        }
-    }
 }
 
 
@@ -1338,7 +1282,6 @@ struct Variable {
 }
 
 
-
 #[derive( Debug, Clone )]
 struct If {
     condition: Expression,
@@ -1409,6 +1352,7 @@ impl Display for Node {
 #[derive( Debug, Clone )]
 struct Scope {
     parent: usize,
+    #[allow(dead_code)]
     types: Vec<String>,
     variables: Vec<Variable>,
     nodes: Vec<Node>,
@@ -2223,15 +2167,44 @@ impl AST {
 struct Checker;
 
 impl Checker {
-    const CHECKING: &'static str = colored!{
-        text: "Checking",
-        foreground: Foreground::LightGreen,
-        bold: true,
-    };
+    fn check( src: BlitzSrc, start_time: &Instant ) -> Result<AST, SyntaxErrors> {
+        print!( "{}: {}", CHECKING, src.path.display() );
+        let mut time_info = String::new();
 
+        let lexer = Lexer::try_from( src );
+        let lexing_time = start_time.elapsed();
+        let elapsed_lexing = Colored {
+            text: format!( "{}s", lexing_time.as_secs_f64() ),
+            foreground: Foreground::LightGray,
+            ..Default::default()
+        };
+        time_info.push_str( &format!( "lexing: {}", elapsed_lexing ) );
 
-    fn check( file_path: &str ) {
-        println!( "{}: {}", Self::CHECKING, file_path );
+        let lexer = match lexer {
+            Ok( lexer ) => lexer,
+            Err( err ) => {
+                println!( " ... in [{}]", time_info );
+                return Err( err );
+            },
+        };
+
+        let ast = AST::try_from( lexer );
+        let ast_time = start_time.elapsed() - lexing_time;
+        let elapsed_ast = Colored {
+            text: format!( "{}s", ast_time.as_secs_f64() ),
+            foreground: Foreground::LightGray,
+            ..Default::default()
+        };
+        time_info.push_str( &format!( ", parsing: {}", elapsed_ast ) );
+
+        let elapsed_total = Colored {
+            text: format!( "{}s", start_time.elapsed().as_secs_f64() ),
+            foreground: Foreground::LightGray,
+            ..Default::default()
+        };
+
+        println!( " ... in {} [{}]", elapsed_total, time_info );
+        return ast;
     }
 }
 
@@ -2373,6 +2346,10 @@ struct StringLabel<'ast> {
 
 #[derive( Debug )]
 struct Compiler<'ast> {
+    source_file_path: PathBuf,
+    #[allow(dead_code)]
+    output_folder_path: PathBuf,
+
     ast: &'ast AST,
 
     rodata: String,
@@ -2387,26 +2364,14 @@ struct Compiler<'ast> {
 }
 
 impl Compiler<'_> {
-    const BUILDING: &'static str = colored!{
-        text: "Building",
-        foreground: Foreground::LightGreen,
-        bold: true,
-    };
-
-    const RUNNING: &'static str = colored!{
-        text: "Running",
-        foreground: Foreground::LightGreen,
-        bold: true,
-    };
-
     const STACK_ALIGN: usize = core::mem::size_of::<usize>();
 
 
-    fn compile( &mut self, file_path: &str ) -> Result<PathBuf, ()> {
-        let src_file_path = Path::new( file_path );
-        println!( "{}: {}", Compiler::BUILDING, src_file_path.display() );
+    fn compile( &mut self, start_time: &Instant ) -> std::io::Result<PathBuf> {
+        print!( "{}: {}", COMPILING, self.source_file_path.display() );
+        let mut time_info = String::new();
 
-        let asm_file_path = src_file_path.with_extension( "asm" );
+        let asm_file_path = self.source_file_path.with_extension( "asm" );
         let mut asm_file = BufWriter::new( File::create( &asm_file_path ).unwrap() );
 
         self.rodata +=
@@ -2604,41 +2569,100 @@ _start:
  mov rdi, EXIT_SUCCESS
  mov rax, SYS_exit
  syscall",
- self.rodata, self.asm
-);
+            self.rodata, self.asm
+        );
 
         asm_file.write_all( program.as_bytes() ).unwrap();
         asm_file.flush().unwrap();
 
-        let nasm = Command::new( "nasm" )
-            .args( ["-felf64", "-gdwarf", asm_file_path.to_str().unwrap()] )
-            .output()
-            .expect( "failed to run nasm assembler" );
+        let asm_generation_time = start_time.elapsed();
+        let elapsed_asm_generation = Colored {
+            text: format!( "{}s", asm_generation_time.as_secs_f64() ),
+            foreground: Foreground::LightGray,
+            ..Default::default()
+        };
+        time_info.push_str( &format!( "asm generation: {}", elapsed_asm_generation ) );
 
-        print!( "{}", String::from_utf8_lossy( &nasm.stdout ) );
-        print!( "{}", String::from_utf8_lossy( &nasm.stderr ) );
+        match Command::new( "nasm" ).args( ["-felf64", "-gdwarf", asm_file_path.to_str().unwrap()] ).output() {
+            Ok( nasm_out ) => if !nasm_out.status.success() {
+                println!( " ... in [{}]", time_info );
+                return Err( std::io::Error::new(
+                    ErrorKind::InvalidData,
+                    format!( "{}: nasm assembler failed\n{}: {}", ERROR, CAUSE, String::from_utf8_lossy( &nasm_out.stderr ) )
+                ) );
+            },
+            Err( err ) => {
+                println!( " ... in [{}]", time_info );
+                return Err( std::io::Error::new(
+                    err.kind(),
+                    format!( "{}: could not create nasm assembler process\n{}: {}", ERROR, CAUSE, err )
+                ) );
+            },
+        }
 
-        let obj_file_path = src_file_path.with_extension( "o" );
-        let executable_file_path = src_file_path.with_extension( "" );
-        let ld = Command::new( "ld" )
-            .args( [obj_file_path.to_str().unwrap(), "-o", executable_file_path.to_str().unwrap()] )
-            .output()
-            .expect( "failed to link" );
+        let nasm_time = start_time.elapsed() - asm_generation_time;
+        let elapsed_nasm = Colored {
+            text: format!( "{}s", nasm_time.as_secs_f64() ),
+            foreground: Foreground::LightGray,
+            ..Default::default()
+        };
+        time_info.push_str( &format!( ", assembler: {}", elapsed_nasm ) );
 
-        print!( "{}", String::from_utf8_lossy( &ld.stdout ) );
-        print!( "{}", String::from_utf8_lossy( &ld.stderr ) );
+        let obj_file_path = self.source_file_path.with_extension( "o" );
+        let executable_file_path = self.source_file_path.with_extension( "" );
+
+        match Command::new( "ld" ).args( [obj_file_path.to_str().unwrap(), "-o", executable_file_path.to_str().unwrap()] ).output() {
+            Ok( ld_out ) => if !ld_out.status.success() {
+                println!( " ... in [{}]", time_info );
+                return Err( std::io::Error::new(
+                    ErrorKind::InvalidData,
+                    format!( "{}: ld linker failed\n{}: {}", ERROR, CAUSE, String::from_utf8_lossy( &ld_out.stderr ) )
+                ) );
+            },
+            Err( err ) => {
+                println!( " ... in [{}]", time_info );
+                return Err( std::io::Error::new(
+                    err.kind(),
+                    format!( "{}: could not create ld linker process\n{}: {}", ERROR, CAUSE, err )
+                ) );
+            },
+        };
+
+        let ld_time = start_time.elapsed() - nasm_time;
+        let elapsed_ld = Colored {
+            text: format!( "{}s", ld_time.as_secs_f64() ),
+            foreground: Foreground::LightGray,
+            ..Default::default()
+        };
+        time_info.push_str( &format!( ", linker: {}", elapsed_ld ) );
+
+        let elapsed_total = Colored {
+            text: format!( "{}s", start_time.elapsed().as_secs_f64() ),
+            foreground: Foreground::LightGray,
+            ..Default::default()
+        };
+
+        println!( " ... in {} [{}]", elapsed_total, time_info );
 
         return Ok( executable_file_path );
     }
 
-    fn run( &mut self, file_path: &str ) -> Result<(), ()> {
-        let executable_file_path = self.compile( file_path )?;
-        println!( "{}: {}", Compiler::RUNNING, executable_file_path.display() );
+    fn run( &mut self, executable_file_path: &Path ) -> std::io::Result<()> {
+        println!( "{}: {}", RUNNING, executable_file_path.display() );
 
-        let output = Command::new( format!( "{}", executable_file_path.display() ) ).output().unwrap();
-        print!( "{}", String::from_utf8_lossy( &output.stdout ) );
-
-        return Ok( () );
+        return match Command::new( executable_file_path.display().to_string() ).spawn() {
+            Ok( mut blitz ) => match blitz.wait() {
+                Ok( _status ) => Ok( () ),
+                Err( err ) => Err( std::io::Error::new(
+                    err.kind(),
+                    format!( "{}: could not run blitz executable", ERROR )
+                ) ),
+            },
+            Err( err ) => Err( std::io::Error::new(
+                err.kind(),
+                format!( "{}: could not create blitz executable process\n{}: {}", ERROR, CAUSE, err )
+            ) ),
+        }
     }
 }
 
@@ -3298,23 +3322,6 @@ impl<'ast> Compiler<'ast> {
 }
 
 
-fn print_usage() {
-    println!( r"
-Blitzlang compiler, version {}
-
-Usage: blitz [Options] [Run mode] file.blz
-
-Options:
-    -h, --help              Display this message
-
-Run mode:
-    check     <file.blz>    Check the source code for correctness
-    compile   <file.blz>    Compile the source code down to a binary executable
-    run       <file.blz>    Compile and run the generated binary executable
-", env!( "CARGO_PKG_VERSION" ) );
-}
-
-
 // IDEA make the source generic, eg: to be able to compile from strings instead of just files
 #[derive( Debug )]
 struct BlitzSrc {
@@ -3323,94 +3330,165 @@ struct BlitzSrc {
 }
 
 impl BlitzSrc {
-    const CAUSE: &'static str = colored!{
-        text: "Cause",
-        foreground: Foreground::LightRed,
-        bold: true,
-    };
-
-
-    fn try_from( path: &Path ) -> Result<Self, std::io::Error> {
+    fn try_from( path: &Path ) -> std::io::Result<Self> {
         return match File::open( path ) {
-            Ok( file ) => match file.metadata().unwrap().is_file() {
-                true => Ok( Self { path: PathBuf::from( path ), src: BufReader::with_capacity( 1, file ) } ),
-                false => Err( std::io::Error::new(
-                    ErrorKind::InvalidInput,
-                    format!( "{}: invalid path '{}'\n{}: is a directory", SyntaxErrors::ERROR, path.display(), BlitzSrc::CAUSE )
+            Ok( file ) => match file.metadata() {
+                Ok( metadata ) => match metadata.is_file() {
+                    true => Ok( Self { path: PathBuf::from( path ), src: BufReader::with_capacity( 1, file ) } ),
+                    false => Err( std::io::Error::new(
+                        ErrorKind::InvalidInput,
+                        format!( "{}: invalid path '{}'\n{}: expected a file but go a directory", ERROR, path.display(), CAUSE )
+                    ) ),
+                },
+                Err( err ) => Err( std::io::Error::new(
+                    err.kind(),
+                    format!( "{}: could not read metadata of '{}'\n{}: {}", ERROR, path.display(), CAUSE, err )
                 ) ),
             },
-            Err( err ) => {
-                let kind = err.kind();
-                Err( std::io::Error::new(
-                    kind,
-                    format!( "{}: could not open file '{}'\n{}: {}", SyntaxErrors::ERROR, path.display(), BlitzSrc::CAUSE, kind )
-                ) )
-            },
+            Err( err ) => Err( std::io::Error::new(
+                err.kind(),
+                format!( "{}: could not open '{}'\n{}: {}", ERROR, path.display(), CAUSE, err )
+            ) ),
         }
     }
+}
+
+
+enum RunModeKind {
+    Check,
+    Compile { output_path: PathBuf, run: bool },
+}
+
+struct RunMode {
+    src_path: PathBuf,
+    kind: RunModeKind,
 }
 
 struct Blitz;
 
 impl Blitz {
+    fn print_usage() {
+        Self::print_version();
+
+        println!( r"
+Usage: blitz [{OPTIONS}] [{RUN_MODE}]
+
+{OPTIONS}:
+    -h, --help            Display this message
+    -v, --version         Display the compile version
+    -c, --color <{MODE}>    Wether to display colored output ({MODE}: auto (default), never, always)
+
+{RUN_MODE}:
+    check   <file.blz>    Check the source code for correctness
+    compile <file.blz>    Compile the source code down to a binary executable
+    run     <file.blz>    Compile and run the generated binary executable
+"
+        );
+    }
+
+    fn print_version() {
+        println!( "\nBlitzlang compiler, version {}", VERSION );
+    }
+
     fn from( args: Args ) -> ExitCode {
+        color::auto();
+
+        #[allow(unused_mut)]
+        let mut args = args.collect::<Vec<String>>();
         // to quickly debug
-        // args.push( "compile".to_string() );
-        // args.push( "run".to_string() );
-        // args.push( "examples/main.blz".to_string() );
+        // args.push( "-o".to_string() );
+        // args.push( "examples/out".to_string() );
 
         if args.len() < 2 {
-            print_usage();
+            Self::print_usage();
             return ExitCode::SUCCESS;
         }
 
-        let mut check_flag = false;
-        let mut build_flag = false;
-        let mut run_flag = false;
+        let mut run_mode: Option<RunMode> = None;
 
-        let mut source_file_path: Option<String> = None;
-        let mut args_iter = args.into_iter();
+        let mut args_iter = args.into_iter().peekable();
         args_iter.next(); // skipping the name of this executable
-        for arg in args_iter {
+
+        while let Some( arg ) = args_iter.next() {
             match arg.as_str() {
                 "-h" | "--help" => {
-                    print_usage();
+                    Self::print_usage();
                     return ExitCode::SUCCESS;
                 },
-                "check" => check_flag = true,
-                "compile" => build_flag = true,
-                "run" => run_flag = true,
-                _ => match source_file_path {
-                    None => source_file_path = Some( arg ),
-                    Some( _ ) => {
-                        eprintln!( "{}: too many source file paths provided", SyntaxErrors::ERROR );
+                "-v" | "--version" => {
+                    Self::print_version();
+                    return ExitCode::SUCCESS;
+                },
+                "-c" | "--color" => match args_iter.next() {
+                    Some( mode ) => match mode.as_str() {
+                        "auto" => color::auto(),
+                        "always" => color::always(),
+                        "never" => color::never(),
+                        _ => {
+                            eprintln!( "{}: unrecognized color mode", ERROR );
+                            return ExitCode::FAILURE;
+                        },
+                    },
+                    None => {
+                        eprintln!( "{}: expected color mode", ERROR );
                         return ExitCode::FAILURE;
                     },
                 },
+                "check" => match args_iter.next() {
+                    Some( src_path ) => match run_mode {
+                        None => run_mode = Some( RunMode { src_path: src_path.into(), kind: RunModeKind::Check } ),
+                        Some( _ ) => {
+                            eprintln!( "{}: run mode already selected", ERROR );
+                            return ExitCode::FAILURE;
+                        },
+                    },
+                    None => {
+                        eprintln!( "{}: missing source file path for 'check' mode", ERROR );
+                        return ExitCode::FAILURE;
+                    },
+                },
+                "compile" | "run" => match args_iter.next() {
+                    Some( src_path ) => match run_mode {
+                        None => {
+                            let src_path: PathBuf = src_path.into();
+                            let output_path: PathBuf = ".".into();
+
+                            run_mode = match arg.as_str() {
+                                "compile" => Some( RunMode { src_path, kind: RunModeKind::Compile { output_path, run: false } } ),
+                                "run" => Some( RunMode { src_path, kind: RunModeKind::Compile { output_path, run: true } } ),
+                                _ => unreachable!(),
+                            };
+                        },
+                        Some( _ ) => {
+                            eprintln!( "{}: run mode already selected", ERROR );
+                            return ExitCode::FAILURE;
+                        },
+                    },
+                    None => {
+                        eprintln!( "{}: missing source file path for '{}' mode", ERROR, arg );
+                        return ExitCode::FAILURE;
+                    },
+                },
+                _ => {
+                    eprintln!( "{}: unrecognized option", ERROR );
+                    return ExitCode::FAILURE;
+                }
             }
         }
 
-
-        if !(check_flag || build_flag || run_flag) {
-            check_flag = true;
-        }
-        else if check_flag {
-            // ignore all other run mode flags
-        }
-        else if build_flag && run_flag {
-            eprintln!( "{}: build and run commands cannot be used together", SyntaxErrors::ERROR );
-            return ExitCode::FAILURE;
-        }
-
-        let source_file_path = match source_file_path {
-            Some( path ) => path,
+        let run_mode = match run_mode {
+            Some( mode ) => mode,
+            // None => {
+            //     eprintln!( "{}: at least one run mode needs to be specified", ERROR );
+            //     return ExitCode::FAILURE;
+            // },
             None => {
-                eprintln!( "{}: no source file path provided", SyntaxErrors::ERROR );
-                return ExitCode::FAILURE;
+                Self::print_usage();
+                return ExitCode::SUCCESS;
             },
         };
 
-        let source_file = match BlitzSrc::try_from( Path::new( &source_file_path ) ) {
+        let source_file = match BlitzSrc::try_from( Path::new( &run_mode.src_path ) ) {
             Ok( src ) => src,
             Err( err ) => {
                 eprintln!( "{}", err );
@@ -3418,58 +3496,128 @@ impl Blitz {
             },
         };
 
-        if check_flag {
-            Checker::check( &source_file_path );
-        }
-
-        let lexer = match Lexer::try_from( source_file ) {
-            Ok( lexer ) => {
-                lexer
-            },
-            Err( mut errors ) => {
-                errors.display();
-                return ExitCode::FAILURE;
-            },
-        };
-
-        let ast = match AST::try_from( lexer ) {
+        let start_time = Instant::now();
+        let ast = match Checker::check( source_file, &start_time ) {
             Ok( ast ) => {
-                println!( "{:#?}", ast );
                 ast
-            },
+            }
             Err( mut errors ) => {
-                errors.display();
+                let mut line_byte_start = errors.errors[ 0 ].line_byte_start;
+                let mut line_text = String::new();
+                let _ = errors.src.src.seek( SeekFrom::Start( line_byte_start as u64 ) );
+                let _ = errors.src.src.read_line( &mut line_text );
+
+                for error in &errors.errors {
+                    if line_byte_start != error.line_byte_start {
+                        line_byte_start = error.line_byte_start;
+                        line_text.clear();
+                        let _ = errors.src.src.seek( SeekFrom::Start( line_byte_start as u64 ) );
+                        let _ = errors.src.src.read_line( &mut line_text );
+                    }
+
+                    let error_msg = Colored {
+                        text: error.msg.to_string(),
+                        foreground: Foreground::White,
+                        flags: Flags::Bold,
+                        ..Default::default()
+                    };
+
+                    let line_number_and_bar = Colored {
+                        text: format!( "{} |", error.line ),
+                        foreground: Foreground::LightBlue,
+                        ..Default::default()
+                    };
+
+                    let visualization_padding = line_number_and_bar.text.len();
+                    let at_padding = visualization_padding - 1;
+
+                    let at = Colored {
+                        text: format!( "{:>at_padding$}", "at" ),
+                        foreground: Foreground::LightRed,
+                        flags: Flags::Bold,
+                        ..Default::default()
+                    };
+
+                    let bar = Colored {
+                        text: format!( "{:>visualization_padding$}", "|" ),
+                        foreground: Foreground::LightBlue,
+                        ..Default::default()
+                    };
+
+                    let pointers_col = error.col - 1;
+                    let pointers_len = error.len;
+
+                    let pointers_and_help_msg = Colored {
+                        text: format!( "{:^>pointers_len$} {}", "", error.help_msg ),
+                        foreground: Foreground::LightRed,
+                        ..Default::default()
+                    };
+
+                    eprintln!(
+                        "{}: {}\
+                        \n{}: {}:{}:{}\
+                        \n{}\
+                        \n{} {}\
+                        \n{} {:pointers_col$}{}\n",
+                        ERROR, error_msg,
+                        at, errors.src.path.display(), error.line, error.col,
+                        bar,
+                        line_number_and_bar, line_text.trim_end(),
+                        bar, "", pointers_and_help_msg
+                    );
+                }
+
                 return ExitCode::FAILURE;
-            },
+            }
         };
 
-        if check_flag {
-            // do nothing
-        }
-        else {
-            let mut compiler = Compiler {
-                ast: &ast,
-                rodata: String::new(),
-                asm: String::new(),
-                variables: Vec::new(),
-                strings: Vec::new(),
-                if_idx: 0,
-                for_idx: 0,
-                for_idx_stack: Vec::new(),
-            };
+        match &run_mode.kind {
+            RunModeKind::Check => (/* pass */),
+            RunModeKind::Compile { output_path, run } => {
+                let mut compiler = Compiler {
+                    source_file_path: run_mode.src_path.into(),
+                    output_folder_path: output_path.into(),
+                    ast: &ast,
+                    rodata: String::new(),
+                    asm: String::new(),
+                    variables: Vec::new(),
+                    strings: Vec::new(),
+                    if_idx: 0,
+                    for_idx: 0,
+                    for_idx_stack: Vec::new(),
+                };
 
-            if build_flag {
-                let _ = compiler.compile( &source_file_path );
-            }
-            else if run_flag {
-                let _ = compiler.run( &source_file_path );
+                let executable_path = match compiler.compile( &start_time ) {
+                    Ok( path ) => path,
+                    Err( err ) => {
+                        eprintln!( "{}", err );
+                        return ExitCode::FAILURE;
+                    },
+                };
+
+                let done_time = start_time.elapsed();
+                let elapsed_done = Colored {
+                    text: format!( "{}s", done_time.as_secs_f64() ),
+                    foreground: Foreground::LightGray,
+                    ..Default::default()
+                };
+                println!( "{}: ... in {}", DONE, elapsed_done );
+
+                if *run {
+                    match compiler.run( &executable_path ) {
+                        Ok( _ ) => (),
+                        Err( err ) => {
+                            eprintln!( "{}", err );
+                            return ExitCode::FAILURE;
+                        },
+                    }
+                }
             }
         }
 
         return ExitCode::SUCCESS;
     }
 }
-
 
 // IDEA adapt SyntaxErrors to report cli mistakes
 // TODO add option to specify output path
