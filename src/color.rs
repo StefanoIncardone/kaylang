@@ -1,4 +1,4 @@
-use std::{fmt::Display, io::IsTerminal};
+use std::{fmt::Display, io::IsTerminal, borrow::Cow};
 
 
 #[allow(dead_code)]
@@ -51,12 +51,12 @@ pub enum Background {
 #[repr(u8)]
 pub enum Flags {
     #[default]
-    Default         = 0b00000,
-    Bold            = 0b00001,
-    Underline       = 0b00010,
-    NoUnderline     = 0b00100,
-    ReverseText     = 0b01000,
-    PositiveText    = 0b10000,
+    Default         = 0b0000_0000,
+    Bold            = 0b0000_0001,
+    Underline       = 0b0000_0010,
+    NoUnderline     = 0b0000_0100,
+    ReverseText     = 0b0000_1000,
+    PositiveText    = 0b0001_0000,
 }
 
 impl Flags {
@@ -72,226 +72,91 @@ impl Flags {
 
 #[derive( Debug, Default )]
 pub struct Colored {
-    pub text: String,
+    pub text: Cow<'static, str>,
     pub foreground: Foreground,
     pub background: Background,
     pub flags: Flags,
 }
 
+
 impl Display for Colored {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        return unsafe { display( &self.text, self.foreground, self.background, self.flags, f ) };
+        return unsafe { display( self, f ) };
+    }
+}
+
+impl Colored {
+    fn no_color( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        return self.text.fmt( f );
+    }
+
+    fn color( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        let mut codes = String::with_capacity( 15 );
+
+        if self.foreground != Foreground::Default {
+            codes += &format!( "{};", self.foreground as u8 );
+        }
+        if self.background != Background::Default {
+            codes += &format!( "{};", self.background as u8 );
+        }
+        if self.flags.bold() {
+            codes += "1;";
+        }
+        if self.flags.underline() {
+            codes += "4;";
+        }
+        if self.flags.no_underline() {
+            codes += "24;";
+        }
+        if self.flags.reverse_text() {
+            codes += "7;";
+        }
+        if self.flags.positive_text() {
+            codes += "27;";
+        }
+
+        return if codes.is_empty() {
+            self.text.fmt( f )
+        }
+        else {
+            codes.pop(); //remove the last ";"
+
+            write!( f, "\x1b[{}m", codes )?;
+            self.text.fmt( f )?;
+            write!( f, "\x1b[0m" )
+        }
     }
 }
 
 
 #[allow(non_upper_case_globals)]
-static mut display: fn(&str, Foreground, Background, Flags, &mut std::fmt::Formatter<'_>) -> std::fmt::Result = color;
+static mut display: fn(&Colored, &mut std::fmt::Formatter<'_>) -> std::fmt::Result = Colored::color;
 
-fn no_color( text: &str, _foreground: Foreground, _background: Background, _flags: Flags, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-    return write!( f, "{}", text );
+#[derive( Debug, Default, Clone, Copy, PartialEq )]
+#[repr(u8)]
+pub enum Color {
+    #[default] Auto,
+    Always,
+    Never,
 }
 
-// TODO make it so that formatting options are applied to the string only, and not on the escape codes
-fn color( text: &str, foreground: Foreground, background: Background, flags: Flags, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-    let mut codes = String::with_capacity( 15 );
-
-    if foreground != Foreground::Default {
-        codes += &format!( "{};", foreground as u8 );
-    }
-    if background != Background::Default {
-        codes += &format!( "{};", background as u8 );
-    }
-    if flags.bold() {
-        codes += "1;";
-    }
-    if flags.underline() {
-        codes += "4;";
-    }
-    if flags.no_underline() {
-        codes += "24;";
-    }
-    if flags.reverse_text() {
-        codes += "7;";
-    }
-    if flags.positive_text() {
-        codes += "27;";
+impl Color {
+    pub fn set( &self ) {
+        unsafe { display = match self {
+            Self::Auto => if !std::io::stderr().is_terminal() { Colored::no_color } else { Colored::color },
+            Self::Always => Colored::color,
+            Self::Never => Colored::no_color,
+        } }
     }
 
-    return if codes.is_empty() {
-        write!( f, "{}", text )
+    // NOTE since printing version and help message are the only places where printing to stdoud is performed we are
+    // manually checking if stdout (overring stderr coloring modes) is in terminal mode until a way to separately print
+    // colored/non-colored output to stdout/stderr is found
+    pub fn set_stdout( &self ) {
+        unsafe { display = match self {
+            Self::Auto => if !std::io::stdout().is_terminal() { Colored::no_color } else { Colored::color },
+            Self::Always => Colored::color,
+            Self::Never => Colored::no_color,
+        } }
     }
-    else {
-        codes.pop(); //remove the last ";"
-        write!( f, "\x1b[{}m{}\x1b[0m", codes, text )
-    }
-}
-
-pub fn auto() {
-    unsafe {
-        display = if !std::io::stdout().is_terminal() || !std::io::stderr().is_terminal() {
-            no_color
-        }
-        else {
-            color
-        };
-    }
-}
-
-pub fn always() {
-    unsafe { display = color; }
-}
-
-pub fn never() {
-    unsafe { display = no_color; }
-}
-
-
-#[derive( Debug, Default )]
-pub struct ColoredStr {
-    pub text: &'static str,
-    pub foreground: Foreground,
-    pub background: Background,
-    pub flags: Flags,
-}
-
-impl Display for ColoredStr {
-    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        return unsafe { display( self.text, self.foreground, self.background, self.flags, f ) };
-    }
-}
-
-
-#[macro_export]
-macro_rules! foreground {
-    (Default) => {""};
-    (Black) => {"30"};
-    (Red) => {"31"};
-    (Green) => {"32"};
-    (Yellow) => {"33"};
-    (Blue) => {"34"};
-    (Magenta) => {"35"};
-    (Cyan) => {"36"};
-    (LightGray) => {"37"};
-    (DarkGray) => {"90"};
-    (LightRed) => {"91"};
-    (LightGreen) => {"92"};
-    (LightYellow) => {"93"};
-    (LightBlue) => {"94"};
-    (LightMagenta) => {"95"};
-    (LightCyan) => {"96"};
-    (White) => {"97"};
-}
-
-#[macro_export]
-macro_rules! background {
-    (Default) => {""};
-    (Black) => {";40"};
-    (DarkRed) => {";41"};
-    (DarkGreen) => {";42"};
-    (DarkYellow) => {";43"};
-    (DarkBlue) => {";44"};
-    (DarkMagenta) => {";45"};
-    (DarkCyan) => {";46"};
-    (DarkWhite) => {";47"};
-    (BrightBlack) => {";100"};
-    (BrightRed) => {";101"};
-    (BrightGreen) => {";102"};
-    (BrightYellow) => {";103"};
-    (BrightBlue) => {";104"};
-    (BrightMagenta) => {";105"};
-    (BrightCyan) => {";106"};
-    (White) => {";107"};
-}
-
-#[macro_export]
-macro_rules! bold {
-    (false) => {""};
-    (true) => {";1"};
-}
-
-#[macro_export]
-macro_rules! underline {
-    (false) => {""};
-    (true) => {";4"};
-}
-
-#[macro_export]
-macro_rules! no_underline {
-    (false) => {""};
-    (true) => {";24"};
-}
-
-#[macro_export]
-macro_rules! reverse_text {
-    (false) => {""};
-    (true) => {";7"};
-}
-
-#[macro_export]
-macro_rules! positive_text {
-    (false) => {""};
-    (true) => {";27"};
-}
-
-#[macro_export]
-macro_rules! colored {
-    () => {""};
-    ($(text:)?$text: literal$(,)?) => {$text};
-    (
-        $(text:)?$text: literal
-        $(, foreground: Foreground::$fg: tt)?
-        $(, background: Background::$bg: tt)?
-        $(, bold: $b: ident)?
-        $(, underline: $u: ident)?
-        $(, no_underline: $nu: ident)?
-        $(, reverse_text: $rt: ident)?
-        $(, positive_text: $pt: ident)?
-        $(,)?
-    ) => {
-        concat!(
-            "\x1b[",
-            $(foreground!($fg), )?
-            $(background!($bg), )?
-            $(bold!($b), )?
-            $(underline!($u), )?
-            $(no_underline!($u), )?
-            $(reverse_text!($rt), )?
-            $(positive_text!($pt), )?
-            "m",
-            $text,
-            "\x1b[0m"
-        )
-    };
-}
-
-#[macro_export]
-macro_rules! colored_raw {
-    () => {""};
-    ($(text:)?$text: literal$(,)?) => {$text};
-    (
-        $(text:)?$text: literal
-        $(, foreground: Foreground::$fg: tt)?
-        $(, background: Background::$bg: tt)?
-        $(, bold: $b: ident)?
-        $(, underline: $u: ident)?
-        $(, no_underline: $nu: ident)?
-        $(, reverse_text: $rt: ident)?
-        $(, positive_text: $pt: ident)?
-        $(,)?
-    ) => {
-        concat!(
-            r"\x1b[",
-            $(foreground!($fg), )?
-            $(background!($bg), )?
-            $(bold!($b), )?
-            $(underline!($u), )?
-            $(no_underline!($u), )?
-            $(reverse_text!($rt), )?
-            $(positive_text!($pt), )?
-            "m",
-            $text,
-            r"\x1b[0m"
-        )
-    };
 }

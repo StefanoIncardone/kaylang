@@ -6,12 +6,5 @@
 /examples/**
 !/examples/*.blz
 
-!/examples/fizzbuzz
-!/examples/fizzbuzz/*.blz
-
-!/examples/project_euler
-!/examples/project_euler/*
-!/examples/project_euler/*/*.blz
-
 /asm
 Makefile

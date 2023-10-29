@@ -5,20 +5,23 @@ mod color;
 use crate::color::*;
 
 
-static CHECKING:    ColoredStr = ColoredStr { text: " Checking", foreground: Foreground::LightGreen, background: Background::Default, flags: Flags::Bold };
-static COMPILING:   ColoredStr = ColoredStr { text: "Compiling", foreground: Foreground::LightGreen, background: Background::Default, flags: Flags::Bold };
-static RUNNING:     ColoredStr = ColoredStr { text: "  Running", foreground: Foreground::LightGreen, background: Background::Default, flags: Flags::Bold };
-static DONE:        ColoredStr = ColoredStr { text: "     Done", foreground: Foreground::LightGreen, background: Background::Default, flags: Flags::Bold };
+static CHECKING:    Colored = Colored { text: Cow::Borrowed( " Checking" ), foreground: Foreground::LightGreen, background: Background::Default, flags: Flags::Bold };
+static COMPILING:   Colored = Colored { text: Cow::Borrowed( "Compiling" ), foreground: Foreground::LightGreen, background: Background::Default, flags: Flags::Bold };
+static RUNNING:     Colored = Colored { text: Cow::Borrowed( "  Running" ), foreground: Foreground::LightGreen, background: Background::Default, flags: Flags::Bold };
+static DONE:        Colored = Colored { text: Cow::Borrowed( "     Done" ), foreground: Foreground::LightGreen, background: Background::Default, flags: Flags::Bold };
 
-static ERROR:       ColoredStr = ColoredStr { text: "Error", foreground: Foreground::LightRed, background: Background::Default, flags: Flags::Bold };
-static CAUSE:       ColoredStr = ColoredStr { text: "Cause", foreground: Foreground::LightRed, background: Background::Default, flags: Flags::Bold };
+static ERROR:       Colored = Colored { text: Cow::Borrowed( "Error" ), foreground: Foreground::LightRed, background: Background::Default, flags: Flags::Bold };
+static AT:          Colored = Colored { text: Cow::Borrowed( "at" ), foreground: Foreground::LightRed, background: Background::Default, flags: Flags::Bold };
+static BAR:         Colored = Colored { text: Cow::Borrowed( "|" ), foreground: Foreground::LightBlue, background: Background::Default, flags: Flags::Bold };
+static CAUSE:       Colored = Colored { text: Cow::Borrowed( "Cause" ), foreground: Foreground::LightRed, background: Background::Default, flags: Flags::Bold };
 
-static VERSION:     ColoredStr = ColoredStr { text: env!( "CARGO_PKG_VERSION" ), foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
-static OPTIONS:     ColoredStr = ColoredStr { text: "Options",  foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
-static RUN_MODE:    ColoredStr = ColoredStr { text: "Run mode", foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
-#[allow(unused)]
-static OUTPUT:      ColoredStr = ColoredStr { text: "Output",   foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
-static MODE:        ColoredStr = ColoredStr { text: "mode",     foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
+static VERSION:     Colored = Colored { text: Cow::Borrowed( env!( "CARGO_PKG_VERSION" ) ), foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
+static OPTIONS:     Colored = Colored { text: Cow::Borrowed( "Options" ),  foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
+static RUN_MODE:    Colored = Colored { text: Cow::Borrowed( "Run mode" ), foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
+static MODE:        Colored = Colored { text: Cow::Borrowed( "mode" ), foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
+static FILE:        Colored = Colored { text: Cow::Borrowed( "file" ), foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
+static PATH:        Colored = Colored { text: Cow::Borrowed( "path" ), foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
+static OUTPUT:      Colored = Colored { text: Cow::Borrowed( "Output" ),  foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
 
 
 trait Len {
@@ -2168,13 +2171,13 @@ struct Checker;
 
 impl Checker {
     fn check( src: BlitzSrc, start_time: &Instant ) -> Result<AST, SyntaxErrors> {
-        print!( "{}: {}", CHECKING, src.path.display() );
+        eprint!( "{}: {}", CHECKING, src.path.display() );
         let mut time_info = String::new();
 
         let lexer = Lexer::try_from( src );
         let lexing_time = start_time.elapsed();
         let elapsed_lexing = Colored {
-            text: format!( "{}s", lexing_time.as_secs_f64() ),
+            text: format!( "{}s", lexing_time.as_secs_f64() ).into(),
             foreground: Foreground::LightGray,
             ..Default::default()
         };
@@ -2183,7 +2186,7 @@ impl Checker {
         let lexer = match lexer {
             Ok( lexer ) => lexer,
             Err( err ) => {
-                println!( " ... in [{}]", time_info );
+                eprintln!( " ... in [{}]", time_info );
                 return Err( err );
             },
         };
@@ -2191,19 +2194,19 @@ impl Checker {
         let ast = AST::try_from( lexer );
         let ast_time = start_time.elapsed() - lexing_time;
         let elapsed_ast = Colored {
-            text: format!( "{}s", ast_time.as_secs_f64() ),
+            text: format!( "{}s", ast_time.as_secs_f64() ).into(),
             foreground: Foreground::LightGray,
             ..Default::default()
         };
         time_info.push_str( &format!( ", parsing: {}", elapsed_ast ) );
 
         let elapsed_total = Colored {
-            text: format!( "{}s", start_time.elapsed().as_secs_f64() ),
+            text: format!( "{}s", start_time.elapsed().as_secs_f64() ).into(),
             foreground: Foreground::LightGray,
             ..Default::default()
         };
 
-        println!( " ... in {} [{}]", elapsed_total, time_info );
+        eprintln!( " ... in {} [{}]", elapsed_total, time_info );
         return ast;
     }
 }
@@ -2346,9 +2349,8 @@ struct StringLabel<'ast> {
 
 #[derive( Debug )]
 struct Compiler<'ast> {
-    source_file_path: PathBuf,
-    #[allow(dead_code)]
-    output_folder_path: PathBuf,
+    src_path: PathBuf,
+    out_path: Option<PathBuf>,
 
     ast: &'ast AST,
 
@@ -2366,13 +2368,63 @@ struct Compiler<'ast> {
 impl Compiler<'_> {
     const STACK_ALIGN: usize = core::mem::size_of::<usize>();
 
-
+    // TODO canonicalize paths
     fn compile( &mut self, start_time: &Instant ) -> std::io::Result<PathBuf> {
-        print!( "{}: {}", COMPILING, self.source_file_path.display() );
+        eprint!( "{}: {}", COMPILING, self.src_path.display() );
         let mut time_info = String::new();
 
-        let asm_file_path = self.source_file_path.with_extension( "asm" );
-        let mut asm_file = BufWriter::new( File::create( &asm_file_path ).unwrap() );
+        let (asm_path, obj_path, exe_path) = if let Some( out_path ) = &self.out_path {
+            match std::fs::create_dir_all( &out_path ) {
+                Ok( _ ) => (),
+                Err( err ) if err.kind() == ErrorKind::AlreadyExists => (),
+                Err( err ) => {
+                    let out_creation_time = start_time.elapsed();
+                    let elapsed_out_creation = Colored {
+                        text: format!( "{}s", out_creation_time.as_secs_f64() ).into(),
+                        foreground: Foreground::LightGray,
+                        ..Default::default()
+                    };
+                    time_info.push_str( &format!( "asm generation: {}", elapsed_out_creation ) );
+
+                    eprintln!( " ... in [{}]", time_info );
+                    return Err( std::io::Error::new(
+                        err.kind(),
+                        format!( "{}: could not create output path '{}'\n{}: {}", ERROR, out_path.display(), CAUSE, err )
+                    ) );
+                }
+            }
+            // TODO proper error handling
+            (out_path.join( self.src_path.with_extension( "asm" ).file_name().unwrap() ),
+            out_path.join( self.src_path.with_extension( "o" ).file_name().unwrap() ),
+            out_path.join( self.src_path.with_extension( "" ).file_name().unwrap() ))
+        }
+        else {
+            // TODO proper error handling
+            (self.src_path.with_extension( "asm" ),
+            self.src_path.with_extension( "o" ),
+            self.src_path.with_extension( "" ))
+        };
+
+        let asm_file = match File::create( &asm_path ) {
+            Ok( file ) => file,
+            Err( err ) => {
+                let asm_file_opening_time = start_time.elapsed();
+                let elapsed_asm_file_opening = Colored {
+                    text: format!( "{}s", asm_file_opening_time.as_secs_f64() ).into(),
+                    foreground: Foreground::LightGray,
+                    ..Default::default()
+                };
+                time_info.push_str( &format!( "asm generation: {}", elapsed_asm_file_opening ) );
+
+                eprintln!( " ... in [{}]", time_info );
+                return Err( std::io::Error::new(
+                    err.kind(),
+                    format!( "{}: could not create file '{}'\n{}: {}", ERROR, asm_path.display(), CAUSE, err )
+                ) );
+            },
+        };
+
+        let mut asm_writer = BufWriter::new( asm_file );
 
         self.rodata +=
 r#" stdout: equ 1
@@ -2572,27 +2624,29 @@ _start:
             self.rodata, self.asm
         );
 
-        asm_file.write_all( program.as_bytes() ).unwrap();
-        asm_file.flush().unwrap();
+        // TODO add proper error handling
+        asm_writer.write_all( program.as_bytes() ).unwrap();
+        asm_writer.flush().unwrap();
 
         let asm_generation_time = start_time.elapsed();
         let elapsed_asm_generation = Colored {
-            text: format!( "{}s", asm_generation_time.as_secs_f64() ),
+            text: format!( "{}s", asm_generation_time.as_secs_f64() ).into(),
             foreground: Foreground::LightGray,
             ..Default::default()
         };
         time_info.push_str( &format!( "asm generation: {}", elapsed_asm_generation ) );
 
-        match Command::new( "nasm" ).args( ["-felf64", "-gdwarf", asm_file_path.to_str().unwrap()] ).output() {
+        let nasm_args = ["-felf64", "-gdwarf", asm_path.to_str().unwrap(), "-o", obj_path.to_str().unwrap()];
+        match Command::new( "nasm" ).args( nasm_args ).output() {
             Ok( nasm_out ) => if !nasm_out.status.success() {
-                println!( " ... in [{}]", time_info );
+                eprintln!( " ... in [{}]", time_info );
                 return Err( std::io::Error::new(
                     ErrorKind::InvalidData,
                     format!( "{}: nasm assembler failed\n{}: {}", ERROR, CAUSE, String::from_utf8_lossy( &nasm_out.stderr ) )
                 ) );
             },
             Err( err ) => {
-                println!( " ... in [{}]", time_info );
+                eprintln!( " ... in [{}]", time_info );
                 return Err( std::io::Error::new(
                     err.kind(),
                     format!( "{}: could not create nasm assembler process\n{}: {}", ERROR, CAUSE, err )
@@ -2602,25 +2656,23 @@ _start:
 
         let nasm_time = start_time.elapsed() - asm_generation_time;
         let elapsed_nasm = Colored {
-            text: format!( "{}s", nasm_time.as_secs_f64() ),
+            text: format!( "{}s", nasm_time.as_secs_f64() ).into(),
             foreground: Foreground::LightGray,
             ..Default::default()
         };
         time_info.push_str( &format!( ", assembler: {}", elapsed_nasm ) );
 
-        let obj_file_path = self.source_file_path.with_extension( "o" );
-        let executable_file_path = self.source_file_path.with_extension( "" );
-
-        match Command::new( "ld" ).args( [obj_file_path.to_str().unwrap(), "-o", executable_file_path.to_str().unwrap()] ).output() {
+        let ld_args = [obj_path.to_str().unwrap(), "-o", exe_path.to_str().unwrap()];
+        match Command::new( "ld" ).args( ld_args ).output() {
             Ok( ld_out ) => if !ld_out.status.success() {
-                println!( " ... in [{}]", time_info );
+                eprintln!( " ... in [{}]", time_info );
                 return Err( std::io::Error::new(
                     ErrorKind::InvalidData,
                     format!( "{}: ld linker failed\n{}: {}", ERROR, CAUSE, String::from_utf8_lossy( &ld_out.stderr ) )
                 ) );
             },
             Err( err ) => {
-                println!( " ... in [{}]", time_info );
+                eprintln!( " ... in [{}]", time_info );
                 return Err( std::io::Error::new(
                     err.kind(),
                     format!( "{}: could not create ld linker process\n{}: {}", ERROR, CAUSE, err )
@@ -2630,27 +2682,26 @@ _start:
 
         let ld_time = start_time.elapsed() - nasm_time;
         let elapsed_ld = Colored {
-            text: format!( "{}s", ld_time.as_secs_f64() ),
+            text: format!( "{}s", ld_time.as_secs_f64() ).into(),
             foreground: Foreground::LightGray,
             ..Default::default()
         };
         time_info.push_str( &format!( ", linker: {}", elapsed_ld ) );
 
         let elapsed_total = Colored {
-            text: format!( "{}s", start_time.elapsed().as_secs_f64() ),
+            text: format!( "{}s", start_time.elapsed().as_secs_f64() ).into(),
             foreground: Foreground::LightGray,
             ..Default::default()
         };
 
-        println!( " ... in {} [{}]", elapsed_total, time_info );
-
-        return Ok( executable_file_path );
+        eprintln!( " ... in {} [{}]", elapsed_total, time_info );
+        return Ok( exe_path );
     }
 
-    fn run( &mut self, executable_file_path: &Path ) -> std::io::Result<()> {
-        println!( "{}: {}", RUNNING, executable_file_path.display() );
+    fn run( &mut self, exe_path: &Path ) -> std::io::Result<()> {
+        eprintln!( "{}: {}", RUNNING, exe_path.display() );
 
-        return match Command::new( executable_file_path.display().to_string() ).spawn() {
+        return match Command::new( exe_path.display().to_string() ).spawn() {
             Ok( mut blitz ) => match blitz.wait() {
                 Ok( _status ) => Ok( () ),
                 Err( err ) => Err( std::io::Error::new(
@@ -3337,7 +3388,7 @@ impl BlitzSrc {
                     true => Ok( Self { path: PathBuf::from( path ), src: BufReader::with_capacity( 1, file ) } ),
                     false => Err( std::io::Error::new(
                         ErrorKind::InvalidInput,
-                        format!( "{}: invalid path '{}'\n{}: expected a file but go a directory", ERROR, path.display(), CAUSE )
+                        format!( "{}: invalid path '{}'\n{}: expected a file but got a directory", ERROR, path.display(), CAUSE )
                     ) ),
                 },
                 Err( err ) => Err( std::io::Error::new(
@@ -3356,7 +3407,7 @@ impl BlitzSrc {
 
 enum RunModeKind {
     Check,
-    Compile { output_path: PathBuf, run: bool },
+    Compile { out_path: Option<PathBuf>, run: bool },
 }
 
 struct RunMode {
@@ -3367,123 +3418,201 @@ struct RunMode {
 struct Blitz;
 
 impl Blitz {
-    fn print_usage() {
-        Self::print_version();
+    fn print_usage( color: Color ) {
+        Self::print_version( color );
 
         println!( r"
 Usage: blitz [{OPTIONS}] [{RUN_MODE}]
 
 {OPTIONS}:
     -h, --help            Display this message
-    -v, --version         Display the compile version
+    -v, --version         Display the compiler version
     -c, --color <{MODE}>    Wether to display colored output ({MODE}: auto (default), never, always)
 
 {RUN_MODE}:
-    check   <file.blz>    Check the source code for correctness
-    compile <file.blz>    Compile the source code down to a binary executable
-    run     <file.blz>    Compile and run the generated binary executable
+    check   <{FILE}>              Check the source code for correctness
+    compile <{FILE}> [{OUTPUT}]     Compile the source code down to an executable
+    run     <{FILE}> [{OUTPUT}]     Compile and run the generated executable
+
+{OUTPUT}:
+    -o, --output <{PATH}>       Folder to populate with compilation artifacts (default: '.')
 "
         );
     }
 
-    fn print_version() {
-        println!( "\nBlitzlang compiler, version {}", VERSION );
+    fn print_version( color: Color ) {
+        color.set_stdout();
+        println!( "Blitzlang compiler, version {}", VERSION );
     }
 
     fn from( args: Args ) -> ExitCode {
-        color::auto();
-
         #[allow(unused_mut)]
         let mut args = args.collect::<Vec<String>>();
+        let mut current_arg = 1; // starting at 1 to skip the name of this executable
         // to quickly debug
+        // args.push( "-c".to_string() );
+        // args.push( "never".to_string() );
+        // args.push( "-v".to_string() );
+        // args.push( "-h".to_string() );
+        // args.push( "run".to_string() );
+        // args.push( "examples/features_test.blz".to_string() );
         // args.push( "-o".to_string() );
         // args.push( "examples/out".to_string() );
+        // args.push( "compile".to_string() );
+        // args.push( "examples/features_test.blz".to_string() );
 
+
+        // looking for color modes flags
+        let mut color_mode: Option<Color> = None;
+
+        while current_arg < args.len() {
+            let arg = &args[ current_arg ];
+            if arg == "-c" || arg == "--color" {
+                if let Some( _ ) = color_mode {
+                    eprintln!( "{}: color mode already selected", ERROR );
+                    return ExitCode::FAILURE;
+                }
+
+                current_arg += 1;
+                if current_arg >= args.len() {
+                    eprintln!( "{}: expected color mode", ERROR );
+                    return ExitCode::FAILURE;
+                }
+
+                color_mode = match args[ current_arg ].as_str() {
+                    "auto" => Some( Color::Auto ),
+                    "always" => Some( Color::Always ),
+                    "never" => Some( Color::Never ),
+                    _ => {
+                        eprintln!( "{}: unrecognized color mode", ERROR );
+                        return ExitCode::FAILURE;
+                    },
+                };
+            }
+
+            current_arg += 1;
+        }
+
+        let color_mode = match color_mode {
+            Some( mode ) => mode,
+            None => Color::Auto,
+        };
+        color_mode.set();
+
+
+        // looking for help commands
+        // printing help message when no arguments were provided
         if args.len() < 2 {
-            Self::print_usage();
+            Self::print_usage( color_mode );
             return ExitCode::SUCCESS;
         }
 
+        current_arg = 1;
+        while current_arg < args.len() {
+            let arg = &args[ current_arg ];
+            if arg == "-h" || arg == "--help" {
+                Self::print_usage( color_mode );
+                return ExitCode::SUCCESS;
+            }
+
+            current_arg += 1;
+        }
+
+
+        // looking for version commands
+        current_arg = 1;
+        while current_arg < args.len() {
+            let arg = &args[ current_arg ];
+            if arg == "-v" || arg == "--version" {
+                Self::print_version( color_mode );
+                return ExitCode::SUCCESS;
+            }
+
+            current_arg += 1;
+        }
+
+
+        // looking for other commands
         let mut run_mode: Option<RunMode> = None;
 
-        let mut args_iter = args.into_iter().peekable();
-        args_iter.next(); // skipping the name of this executable
-
-        while let Some( arg ) = args_iter.next() {
+        current_arg = 1;
+        while current_arg < args.len() {
+            let arg = &args[ current_arg ];
             match arg.as_str() {
-                "-h" | "--help" => {
-                    Self::print_usage();
-                    return ExitCode::SUCCESS;
-                },
-                "-v" | "--version" => {
-                    Self::print_version();
-                    return ExitCode::SUCCESS;
-                },
-                "-c" | "--color" => match args_iter.next() {
-                    Some( mode ) => match mode.as_str() {
-                        "auto" => color::auto(),
-                        "always" => color::always(),
-                        "never" => color::never(),
-                        _ => {
-                            eprintln!( "{}: unrecognized color mode", ERROR );
-                            return ExitCode::FAILURE;
-                        },
-                    },
-                    None => {
-                        eprintln!( "{}: expected color mode", ERROR );
+                "check" | "compile" | "run" => {
+                    if let Some( _ ) = run_mode {
+                        eprintln!( "{}: run mode already selected", ERROR );
                         return ExitCode::FAILURE;
-                    },
-                },
-                "check" => match args_iter.next() {
-                    Some( src_path ) => match run_mode {
-                        None => run_mode = Some( RunMode { src_path: src_path.into(), kind: RunModeKind::Check } ),
-                        Some( _ ) => {
-                            eprintln!( "{}: run mode already selected", ERROR );
-                            return ExitCode::FAILURE;
-                        },
-                    },
-                    None => {
-                        eprintln!( "{}: missing source file path for 'check' mode", ERROR );
-                        return ExitCode::FAILURE;
-                    },
-                },
-                "compile" | "run" => match args_iter.next() {
-                    Some( src_path ) => match run_mode {
-                        None => {
-                            let src_path: PathBuf = src_path.into();
-                            let output_path: PathBuf = ".".into();
+                    }
 
-                            run_mode = match arg.as_str() {
-                                "compile" => Some( RunMode { src_path, kind: RunModeKind::Compile { output_path, run: false } } ),
-                                "run" => Some( RunMode { src_path, kind: RunModeKind::Compile { output_path, run: true } } ),
-                                _ => unreachable!(),
-                            };
-                        },
-                        Some( _ ) => {
-                            eprintln!( "{}: run mode already selected", ERROR );
-                            return ExitCode::FAILURE;
-                        },
-                    },
-                    None => {
+                    current_arg += 1;
+                    if current_arg >= args.len() {
                         eprintln!( "{}: missing source file path for '{}' mode", ERROR, arg );
                         return ExitCode::FAILURE;
-                    },
+                    }
+
+                    let src_path: PathBuf = args[ current_arg ].to_owned().into();
+
+                    run_mode = match arg.as_str() {
+                        "check" => Some( RunMode { src_path, kind: RunModeKind::Check } ),
+                        "compile" | "run" => {
+                            let mut output_path: Option<PathBuf> = None;
+
+                            current_arg += 1;
+                            if current_arg < args.len() {
+                                let out_arg = &args[ current_arg ];
+                                if out_arg == "-o" || out_arg == "--output" {
+                                    current_arg += 1;
+                                    if current_arg >= args.len() {
+                                        eprintln!( "{}: missing output folder path", ERROR );
+                                        return ExitCode::FAILURE;
+                                    }
+
+                                    output_path = Some( args[ current_arg ].to_owned().into() );
+                                }
+                            }
+
+                            match arg.as_str() {
+                                "compile" => Some( RunMode { src_path, kind: RunModeKind::Compile { out_path: output_path, run: false } } ),
+                                "run" => Some( RunMode { src_path, kind: RunModeKind::Compile { out_path: output_path, run: true } } ),
+                                _ => unreachable!(),
+                            }
+                        },
+                        _ => unreachable!(),
+                    };
                 },
+                "-h" | "--help" | "-v" | "--version" => (),
+                "-c" | "--color" => current_arg += 1,
+                "-o" | "--output" => {
+                    current_arg += 1;
+                    if current_arg < args.len() {
+                        let out_arg = &args[ current_arg ];
+                        if out_arg == "-o" || out_arg == "--output" {
+                            current_arg += 1;
+                            if current_arg >= args.len() {
+                                eprintln!( "{}: missing output folder path", ERROR );
+                                return ExitCode::FAILURE;
+                            }
+                        }
+                    }
+
+                    eprintln!( "{}: output folder option can only be used after a 'compile' or 'run' command", ERROR );
+                    return ExitCode::FAILURE;
+                }
                 _ => {
-                    eprintln!( "{}: unrecognized option", ERROR );
+                    eprintln!( "{}: unrecognized option '{}'", ERROR, arg );
                     return ExitCode::FAILURE;
                 }
             }
+
+            current_arg += 1;
         }
+
 
         let run_mode = match run_mode {
             Some( mode ) => mode,
-            // None => {
-            //     eprintln!( "{}: at least one run mode needs to be specified", ERROR );
-            //     return ExitCode::FAILURE;
-            // },
             None => {
-                Self::print_usage();
+                Self::print_usage( color_mode );
                 return ExitCode::SUCCESS;
             },
         };
@@ -3516,14 +3645,14 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
                     }
 
                     let error_msg = Colored {
-                        text: error.msg.to_string(),
+                        text: error.msg.to_string().into(),
                         foreground: Foreground::White,
                         flags: Flags::Bold,
                         ..Default::default()
                     };
 
                     let line_number_and_bar = Colored {
-                        text: format!( "{} |", error.line ),
+                        text: format!( "{} |", error.line ).into(),
                         foreground: Foreground::LightBlue,
                         ..Default::default()
                     };
@@ -3531,39 +3660,26 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
                     let visualization_padding = line_number_and_bar.text.len();
                     let at_padding = visualization_padding - 1;
 
-                    let at = Colored {
-                        text: format!( "{:>at_padding$}", "at" ),
-                        foreground: Foreground::LightRed,
-                        flags: Flags::Bold,
-                        ..Default::default()
-                    };
-
-                    let bar = Colored {
-                        text: format!( "{:>visualization_padding$}", "|" ),
-                        foreground: Foreground::LightBlue,
-                        ..Default::default()
-                    };
-
                     let pointers_col = error.col - 1;
                     let pointers_len = error.len;
 
                     let pointers_and_help_msg = Colored {
-                        text: format!( "{:^>pointers_len$} {}", "", error.help_msg ),
+                        text: format!( "{:^>pointers_len$} {}", "", error.help_msg ).into(),
                         foreground: Foreground::LightRed,
                         ..Default::default()
                     };
 
                     eprintln!(
                         "{}: {}\
-                        \n{}: {}:{}:{}\
-                        \n{}\
+                        \n{:>#at_padding$}: {}:{}:{}\
+                        \n{:>#visualization_padding$}\
                         \n{} {}\
-                        \n{} {:pointers_col$}{}\n",
+                        \n{:>#visualization_padding$} {:>pointers_col$}{}\n",
                         ERROR, error_msg,
-                        at, errors.src.path.display(), error.line, error.col,
-                        bar,
+                        AT, errors.src.path.display(), error.line, error.col,
+                        BAR,
                         line_number_and_bar, line_text.trim_end(),
-                        bar, "", pointers_and_help_msg
+                        BAR, "", pointers_and_help_msg
                     );
                 }
 
@@ -3572,11 +3688,11 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
         };
 
         match &run_mode.kind {
-            RunModeKind::Check => (/* pass */),
-            RunModeKind::Compile { output_path, run } => {
+            RunModeKind::Check => (/* do nothing */),
+            RunModeKind::Compile { out_path, run } => {
                 let mut compiler = Compiler {
-                    source_file_path: run_mode.src_path.into(),
-                    output_folder_path: output_path.into(),
+                    src_path: run_mode.src_path.into(),
+                    out_path: out_path.clone(),
                     ast: &ast,
                     rodata: String::new(),
                     asm: String::new(),
@@ -3597,11 +3713,11 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
 
                 let done_time = start_time.elapsed();
                 let elapsed_done = Colored {
-                    text: format!( "{}s", done_time.as_secs_f64() ),
+                    text: format!( "{}s", done_time.as_secs_f64() ).into(),
                     foreground: Foreground::LightGray,
                     ..Default::default()
                 };
-                println!( "{}: ... in {}", DONE, elapsed_done );
+                eprintln!( "{}: {} ... in {}", DONE, executable_path.display(), elapsed_done );
 
                 if *run {
                     match compiler.run( &executable_path ) {
