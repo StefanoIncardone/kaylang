@@ -187,10 +187,11 @@ type byte = u8;
 structs are just an aggregation of types:
 
 ```blitz
+# extend this initialization notation to variables as well
 struct RBG {
     r: u8,          # type specific default inizialization, which for u8 is 0
     g: u8 = 255,    # explicit default initialization
-    b: u8 = ?,          # intentionally uninitialized member, may contain garbage
+    b: u8 = ?,      # intentionally uninitialized member, may contain garbage
         # optional trailing coma
 }
 
@@ -207,6 +208,8 @@ let rgb = RGB { 255, 255, 255 };
 ```
 
 ### Inheritance
+
+(NOTE: convert `extends` keyword to `using`, and have it also represent inclusion of other modules/files)
 
 inheritance is just syntactic sugar, this allows for any extended type to be passed as "base" type only carrying
 the fields defined in the base type:
@@ -334,11 +337,11 @@ let g = red.1;
 let b = red.2;
 ```
 
-## multiple return types that need to be checked (implementable through unions)
+## multiple return types that need to be checked
 
 ## Pointers
 
-pointers are going to come in different flavours (introducing `null` keyword):
+pointers are going to come in different flavours (introducing `none` keyword):
 
 ```blitz
 let answer = 42;
@@ -352,37 +355,27 @@ reference = &answer;
 
 let dereferenced: int;
 
-# checking for null is enforced by the compiler
-if reference != null {
-    # after this point the compiler knows that "reference" is not null and can safely dereference
+# checking for none is enforced by the compiler
+if reference != none {
+    # after this point the compiler knows that "reference" is not none and can safely dereference
     dereferenced = *reference;
 }
-# after this point the compiler can't guarantee that "reference" is not null, so from now on it's again mandatory to check for null
+# after this point the compiler can't guarantee that "reference" is not none, so from now on it's again mandatory to check for null
 
 # or you can forcefully dereference (say for example if you for sure know the pointer is valid), crashing in case of a null pointer
 dereferenced = ^reference;
 ```
 
-non-nullable pointers:
-
-```blitz
-let non_nullable: int*!;
-let non_nullable: int&!;
-```
-
-or have pointers be non-nullable by default and optionally mark them as nullable:
-
-```blitz
-let nullable: int*?;
-let nullable: int&?;
-```
-
-## Optional types
+## Optional types (nullable pointers)
 
 types that may or may not contain a value (introducing the `none` keyword):
 they are basically tagged unions (like Rust's Options)
 
 ```blitz
+# nullable pointers are just "optional pointers" 
+let nullable: int*?;
+let nullable: int&?;
+
 let option: int? = 42; # this will create a variable that has a value
 let option: int? = none; # this will create a variable that doesn't have a value
 
@@ -400,6 +393,7 @@ if option != none {
 maybe = option^;
 maybe = ^option; # or like this
 ```
+
 
 ## no or close to no implicit conversions, or just where it makes sense (i.e. u8 -> u16, int -> float)
 

@@ -3,6 +3,7 @@
 ## 0.2
 
 - removed `interpret` mode
+- type hints
 
 ## 0.1
 

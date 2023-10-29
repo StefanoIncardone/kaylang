@@ -87,7 +87,8 @@ Variable names can be made of (but not starting with) numbers, underscores and l
 
 ``` blitz
 let nine = 3 ** 2;
-var ten = 5 * 2;
+let ten: int = 5 * 2; # optional type hint
+let twenty_one: ten = nine + ten; # twenty one is of the same type as "ten"
 ```
 
 *op*_assign operators desugar to regular expressions

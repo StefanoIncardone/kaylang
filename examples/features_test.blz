@@ -1,1 +1,5 @@
-println "Hello world"; # Hi 😁⚡
+var i = 19;
+var j: int = 42;
+var k: j = 47;
+
+println i; println j; println k;

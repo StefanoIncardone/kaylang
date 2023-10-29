@@ -1,4 +1,3 @@
-// TODO detect if running in tty or being piped and disable coloring
 use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write, Seek, SeekFrom, IsTerminal}, fs::File, env::{self, Args}, process::{ExitCode, Command}, fmt::Display, path::{Path, PathBuf}, borrow::Cow, cmp::Ordering, num::IntErrorKind, time::Instant};
 
 
@@ -166,7 +165,7 @@ impl Color {
         } }
     }
 
-    // NOTE since printing version and help message are the only places where printing to stdoud is performed we are
+    // since printing version and help message are the only places where printing to stdoud is performed we are
     // manually checking if stdout (overring stderr coloring modes) is in terminal mode until a way to separately print
     // colored/non-colored output to stdout/stderr is found
     pub fn set_stdout( &self ) {
@@ -1332,7 +1331,7 @@ trait BoundedPosition<'lexer> {
 
 
     fn bounded( self, tokens: &mut TokenCursor<'lexer>, err_msg: impl Into<String> ) -> Result<TokenPosition<'lexer>, Self::Error> where Self: Sized;
-    // NOTE no implementation for "bounded_previous" is needed since it is never actually needed during parsin
+    // no implementation for "bounded_previous" is provided since it is never actually needed during parsing
     fn or_next( self, tokens: &mut TokenCursor<'lexer> ) -> Self where Self: Sized;
     fn or_previous( self, tokens: &mut TokenCursor<'lexer> ) -> Self where Self: Sized;
 }
@@ -1496,8 +1495,7 @@ impl Display for Node {
 #[derive( Debug, Clone )]
 struct Scope {
     parent: usize,
-    #[allow(dead_code)]
-    types: Vec<String>,
+    types: Vec<Type>,
     variables: Vec<Variable>,
     nodes: Vec<Node>,
 }
@@ -1520,12 +1518,7 @@ impl TryFrom<Lexer> for AST {
         let mut this = Self {
             scopes: vec![Scope {
                 parent: 0,
-                types: vec![
-                    Type::Int.to_string(),
-                    Type::Char.to_string(),
-                    Type::Bool.to_string(),
-                    Type::Str.to_string()
-                ],
+                types: vec![Type::Int, Type::Char, Type::Bool, Type::Str],
                 variables: Vec::new(),
                 nodes: Vec::new(),
             }],
@@ -1558,7 +1551,7 @@ impl AST {
                     tokens.line = tokens.lines.len();
                     tokens.token = tokens.tokens.len();
 
-                    // NOTE only parsing until the first error until a fault tolerant parser is developed, this is
+                    // only parsing until the first error until a fault tolerant parser is developed, this is
                     // because the first truly relevant error is the first one, which in turn causes a ripple effect
                     // that propagates to the rest of the parsing, causing subsequent errors to be wrong
                     break;
@@ -1738,16 +1731,26 @@ impl AST {
             TokenKind::Literal( literal ) => Ok( Expression::Literal( literal.clone() ) ),
             TokenKind::True => Ok( Expression::Literal( Literal::Bool( true ) ) ),
             TokenKind::False => Ok( Expression::Literal( Literal::Bool( false ) ) ),
-            TokenKind::Identifier( name ) => match self.resolve( name ) {
-                Some( definition ) => Ok( Expression::Identifier( name.clone(), definition.typ ) ),
-                None => Err( SyntaxError {
+            TokenKind::Identifier( name ) => match self.resolve_type( name ) {
+                None => match self.resolve( name ) {
+                    Some( definition ) => Ok( Expression::Identifier( name.clone(), definition.typ ) ),
+                    None => Err( SyntaxError {
+                        line_byte_start: current.line.byte_start,
+                        line: current.line.number,
+                        col: current.token.col,
+                        len: current.token.kind.len(),
+                        msg: "variable not defined".into(),
+                        help_msg: "was not previously defined in this scope".into()
+                    }),
+                },
+                Some( _ ) => Err( SyntaxError {
                     line_byte_start: current.line.byte_start,
                     line: current.line.number,
                     col: current.token.col,
                     len: current.token.kind.len(),
-                    msg: "variable not defined".into(),
-                    help_msg: "was not previously defined in this scope".into()
-                }),
+                    msg: "invalid expression".into(),
+                    help_msg: "cannot be a type name".into()
+                } ),
             },
             TokenKind::Bracket( BracketKind::OpenRound ) => {
                 let expression_start_pos = tokens.next().bounded( tokens, "expected expression" )?;
@@ -1993,6 +1996,25 @@ impl<'lexer> AST {
         }
     }
 
+    fn resolve_type( &'lexer self, name: &str ) -> Option<&'lexer Type> {
+        let mut current_scope = self.current_scope;
+        loop {
+            let scope = &self.scopes[ current_scope ];
+
+            for typ in &scope.types {
+                if typ.to_string() == name {
+                    return Some( typ );
+                }
+            }
+
+            if current_scope == 0 && scope.parent == 0 {
+                return None;
+            }
+
+            current_scope = scope.parent;
+        }
+    }
+
     fn resolve_mut( &'lexer mut self, name: &str ) -> Option<&'lexer mut Variable> {
         let mut current_scope = self.current_scope;
         loop {
@@ -2023,7 +2045,17 @@ impl<'lexer> AST {
 
         let name_pos = tokens.next().bounded( tokens, "expected identifier" )?;
         let name = match &name_pos.token.kind {
-            TokenKind::Identifier( name ) => Ok( name.clone() ),
+            TokenKind::Identifier( name ) => match self.resolve_type( name ) {
+                None => Ok( name.clone() ),
+                Some( _ ) => Err( SyntaxError {
+                    line_byte_start: name_pos.line.byte_start,
+                    line: name_pos.line.number,
+                    col: name_pos.token.col,
+                    len: name_pos.token.kind.len(),
+                    msg: "invalid variable name".into(),
+                    help_msg: "cannot be a type name".into()
+                } ),
+            },
             _ => Err( SyntaxError {
                 line_byte_start: name_pos.line.byte_start,
                 line: name_pos.line.number,
@@ -2032,6 +2064,40 @@ impl<'lexer> AST {
                 msg: "invalid assignment".into(),
                 help_msg: "expected variable name".into()
             }),
+        };
+
+        let colon_pos = tokens.peek_next().bounded( tokens, "expected type hint or variable definition" )?;
+        let typ: Result<Option<(Type, TokenPosition<'_>)>, SyntaxError> = match &colon_pos.token.kind {
+            TokenKind::Colon => {
+                tokens.next();
+                let typ_pos = tokens.next().bounded( tokens, "expected type" )?;
+                match &typ_pos.token.kind {
+                    TokenKind::Identifier( type_name ) => match self.resolve_type( type_name ) {
+                        Some( typ ) => Ok( Some( (*typ, typ_pos) ) ),
+                        None => match self.resolve( type_name ) {
+                            Some( var ) => Ok( Some( (var.typ, typ_pos) ) ),
+                            None => Err( SyntaxError {
+                                line_byte_start: typ_pos.line.byte_start,
+                                line: typ_pos.line.number,
+                                col: typ_pos.token.col,
+                                len: typ_pos.token.kind.len(),
+                                msg: "invalid type hint".into(),
+                                help_msg: "was not previously defined".into()
+                            } )
+                        },
+                    },
+                    // TokenKind::Equals => Ok( None ), // NOTE debate wether to allow for declarations like "var i := 0;"
+                    _ => Err( SyntaxError {
+                        line_byte_start: colon_pos.line.byte_start,
+                        line: colon_pos.line.number,
+                        col: colon_pos.token.col,
+                        len: colon_pos.token.kind.len(),
+                        msg: "invalid type hint".into(),
+                        help_msg: "expected type name after here".into()
+                    } )
+                }
+            },
+            _ => Ok( None ),
         };
 
         let equals_pos = tokens.next().bounded( tokens, "expected equals" )?;
@@ -2051,14 +2117,31 @@ impl<'lexer> AST {
         let value = self.expression( tokens );
 
         let name = name?;
+        let typ = typ?;
         let _ = equals?;
         let value = value?;
         self.semicolon( tokens )?;
 
         return match self.resolve( &name ) {
-            None => {
-                self.scopes[ self.current_scope ].variables.push( Variable { mutability: kind, name: name.clone(), typ: value.typ() } );
-                Ok( Node::Definition( name, value ) )
+            None => match typ {
+                None => {
+                    self.scopes[ self.current_scope ].variables.push( Variable { mutability: kind, name: name.clone(), typ: value.typ() } );
+                    Ok( Node::Definition( name, value ) )
+                },
+                Some( (t, pos) ) => if t == value.typ() {
+                    self.scopes[ self.current_scope ].variables.push( Variable { mutability: kind, name: name.clone(), typ: value.typ() } );
+                    Ok( Node::Definition( name, value ) )
+                }
+                else {
+                    Err( SyntaxError {
+                        line_byte_start: pos.line.byte_start,
+                        line: pos.line.number,
+                        col: pos.token.col,
+                        len: pos.token.kind.len(),
+                        msg: "invalid definition".into(),
+                        help_msg: format!( "declared type of '{}' doesn't match expression of type '{}'", t, value.typ() ).into()
+                    })
+                },
             },
             Some( _ ) => Err( SyntaxError {
                 line_byte_start: name_pos.line.byte_start,
@@ -2073,32 +2156,36 @@ impl<'lexer> AST {
 
     fn variable_reassignment_or_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
         let name_pos = tokens.current().unwrap();
-        let operator_pos = tokens.peek_next();
-        return match operator_pos {
-            Some( op_pos ) => match op_pos.token.kind {
-                TokenKind::Equals
-                | TokenKind::Op( Operator::PowEquals )
-                | TokenKind::Op( Operator::TimesEquals )
-                | TokenKind::Op( Operator::DivideEquals )
-                | TokenKind::Op( Operator::PlusEquals )
-                | TokenKind::Op( Operator::MinusEquals ) => {
-                    let name = name_pos.token.kind.to_string();
-                    tokens.next();
-                    tokens.next().bounded( tokens, "expected expression" )?;
-                    let rhs = self.expression( tokens )?;
+        let op_pos = match tokens.peek_next() {
+            Some( pos ) => pos,
+            None => return Ok( Node::Expression( self.expression( tokens )? ) ),
+        };
 
-                    let new_value = match &op_pos.token.kind {
-                        TokenKind::Equals => Ok( rhs ),
-                        TokenKind::Op( op ) => {
-                            let lhs = Expression::Identifier( name.clone(), op.typ() );
-                            Ok( Expression::Binary { lhs: Box::new( lhs ), op: *op, rhs: Box::new( rhs ) } )
-                        },
-                        _ => unreachable!(),
-                    };
+        return match op_pos.token.kind {
+            TokenKind::Equals
+            | TokenKind::Op( Operator::PowEquals )
+            | TokenKind::Op( Operator::TimesEquals )
+            | TokenKind::Op( Operator::DivideEquals )
+            | TokenKind::Op( Operator::PlusEquals )
+            | TokenKind::Op( Operator::MinusEquals ) => {
+                tokens.next();
+                tokens.next().bounded( tokens, "expected expression" )?;
 
-                    self.semicolon( tokens )?;
+                let name = name_pos.token.kind.to_string();
+                let rhs = self.expression( tokens )?;
+                let new_value = match &op_pos.token.kind {
+                    TokenKind::Equals => Ok( rhs ),
+                    TokenKind::Op( op ) => {
+                        let lhs = Expression::Identifier( name.clone(), op.typ() );
+                        Ok( Expression::Binary { lhs: Box::new( lhs ), op: *op, rhs: Box::new( rhs ) } )
+                    },
+                    _ => unreachable!(),
+                };
 
-                    return match self.resolve_mut( &name ) {
+                self.semicolon( tokens )?;
+
+                match self.resolve_type( &name ) {
+                    None => match self.resolve_mut( &name ) {
                         Some( var ) => match var.mutability {
                             Mutability::Let => Err( SyntaxError {
                                 line_byte_start: name_pos.line.byte_start,
@@ -2139,11 +2226,18 @@ impl<'lexer> AST {
                             msg: "variable redefinition".into(),
                             help_msg: "was not previously defined in this scope".into()
                         })
-                    }
-                },
-                _ => Ok( Node::Expression( self.expression( tokens )? ) ),
+                    },
+                    Some( _ ) => Err( SyntaxError {
+                        line_byte_start: name_pos.line.byte_start,
+                        line: name_pos.line.number,
+                        col: name_pos.token.col,
+                        len: name_pos.token.kind.len(),
+                        msg: "invalid assignment".into(),
+                        help_msg: "cannot be a type name".into()
+                    }),
+                }
             },
-            None => Ok( Node::Expression( self.expression( tokens )? ) ),
+            _ => Ok( Node::Expression( self.expression( tokens )? ) ),
         }
     }
 }
@@ -2871,7 +2965,7 @@ _start:
     fn run( &mut self, exe_path: &Path ) -> std::io::Result<()> {
         eprintln!( "{}: {}", RUNNING, exe_path.display() );
 
-        return match Command::new( exe_path.display().to_string() ).spawn() {
+        return match Command::new( Path::new( "." ).join( exe_path ).display().to_string() ).spawn() {
             Ok( mut blitz ) => match blitz.wait() {
                 Ok( _status ) => Ok( () ),
                 Err( err ) => Err( std::io::Error::new(
