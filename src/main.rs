@@ -1,8 +1,5 @@
 // TODO detect if running in tty or being piped and disable coloring
-use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write, Seek, SeekFrom}, fs::File, env::{self, Args}, process::{ExitCode, Command}, fmt::Display, path::{Path, PathBuf}, borrow::Cow, cmp::Ordering, num::IntErrorKind, time::Instant};
-
-mod color;
-use crate::color::*;
+use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write, Seek, SeekFrom, IsTerminal}, fs::File, env::{self, Args}, process::{ExitCode, Command}, fmt::Display, path::{Path, PathBuf}, borrow::Cow, cmp::Ordering, num::IntErrorKind, time::Instant};
 
 
 static CHECKING:    Colored = Colored { text: Cow::Borrowed( " Checking" ), foreground: Foreground::LightGreen, background: Background::Default, flags: Flags::Bold };
@@ -22,6 +19,164 @@ static MODE:        Colored = Colored { text: Cow::Borrowed( "mode" ), foregroun
 static FILE:        Colored = Colored { text: Cow::Borrowed( "file" ), foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
 static PATH:        Colored = Colored { text: Cow::Borrowed( "path" ), foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
 static OUTPUT:      Colored = Colored { text: Cow::Borrowed( "Output" ),  foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
+
+
+#[allow(dead_code)]
+#[derive( Debug, Default, Clone, Copy, PartialEq )]
+#[repr(u8)]
+pub enum Foreground {
+    #[default] Default = 0,
+    Black = 30,
+    Red = 31,
+    Green = 32,
+    Yellow = 33,
+    Blue = 34,
+    Magenta = 35,
+    Cyan = 36,
+    LightGray = 37,
+    DarkGray = 90,
+    LightRed = 91,
+    LightGreen = 92,
+    LightYellow = 93,
+    LightBlue = 94,
+    LightMagenta = 95,
+    LightCyan = 96,
+    White = 97,
+}
+
+#[allow(dead_code)]
+#[derive( Debug, Default, Clone, Copy, PartialEq )]
+#[repr(u8)]
+pub enum Background {
+    #[default] Default = 0,
+    Black = 40,
+    DarkRed = 41,
+    DarkGreen = 42,
+    DarkYellow = 43,
+    DarkBlue = 44,
+    DarkMagenta = 45,
+    DarkCyan = 46,
+    DarkWhite = 47,
+    BrightBlack = 100,
+    BrightRed = 101,
+    BrightGreen = 102,
+    BrightYellow = 103,
+    BrightBlue = 104,
+    BrightMagenta = 105,
+    BrightCyan = 106,
+    White = 107,
+}
+
+#[derive( Debug, Default, Clone, Copy, PartialEq )]
+#[repr(u8)]
+pub enum Flags {
+    #[default]
+    Default         = 0b0000_0000,
+    Bold            = 0b0000_0001,
+    Underline       = 0b0000_0010,
+    NoUnderline     = 0b0000_0100,
+    ReverseText     = 0b0000_1000,
+    PositiveText    = 0b0001_0000,
+}
+
+impl Flags {
+    fn is( &self, flag: Flags ) -> bool { return *self as u8 & flag as u8 != 0; }
+
+    fn bold( &self )            -> bool { return self.is( Flags::Bold ); }
+    fn underline( &self )       -> bool { return self.is( Flags::Underline ); }
+    fn no_underline( &self )    -> bool { return self.is( Flags::NoUnderline ); }
+    fn reverse_text( &self )    -> bool { return self.is( Flags::ReverseText ); }
+    fn positive_text( &self )   -> bool { return self.is( Flags::PositiveText ); }
+}
+
+#[derive( Debug, Default )]
+pub struct Colored {
+    pub text: Cow<'static, str>,
+    pub foreground: Foreground,
+    pub background: Background,
+    pub flags: Flags,
+}
+
+impl Display for Colored {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        return unsafe { display( self, f ) };
+    }
+}
+
+impl Colored {
+    fn no_color( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        return self.text.fmt( f );
+    }
+
+    fn color( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        let mut codes = String::with_capacity( 15 );
+
+        if self.foreground != Foreground::Default {
+            codes += &format!( "{};", self.foreground as u8 );
+        }
+        if self.background != Background::Default {
+            codes += &format!( "{};", self.background as u8 );
+        }
+        if self.flags.bold() {
+            codes += "1;";
+        }
+        if self.flags.underline() {
+            codes += "4;";
+        }
+        if self.flags.no_underline() {
+            codes += "24;";
+        }
+        if self.flags.reverse_text() {
+            codes += "7;";
+        }
+        if self.flags.positive_text() {
+            codes += "27;";
+        }
+
+        return if codes.is_empty() {
+            self.text.fmt( f )
+        }
+        else {
+            codes.pop(); //remove the last ";"
+
+            write!( f, "\x1b[{}m", codes )?;
+            self.text.fmt( f )?;
+            write!( f, "\x1b[0m" )
+        }
+    }
+}
+
+#[allow(non_upper_case_globals)]
+static mut display: fn(&Colored, &mut std::fmt::Formatter<'_>) -> std::fmt::Result = Colored::color;
+
+#[derive( Debug, Default, Clone, Copy, PartialEq )]
+#[repr(u8)]
+pub enum Color {
+    #[default] Auto,
+    Always,
+    Never,
+}
+
+impl Color {
+    pub fn set( &self ) {
+        unsafe { display = match self {
+            Self::Auto => if !std::io::stderr().is_terminal() { Colored::no_color } else { Colored::color },
+            Self::Always => Colored::color,
+            Self::Never => Colored::no_color,
+        } }
+    }
+
+    // NOTE since printing version and help message are the only places where printing to stdoud is performed we are
+    // manually checking if stdout (overring stderr coloring modes) is in terminal mode until a way to separately print
+    // colored/non-colored output to stdout/stderr is found
+    pub fn set_stdout( &self ) {
+        unsafe { display = match self {
+            Self::Auto => if !std::io::stdout().is_terminal() { Colored::no_color } else { Colored::color },
+            Self::Always => Colored::color,
+            Self::Never => Colored::no_color,
+        } }
+    }
+}
 
 
 trait Len {
@@ -102,7 +257,6 @@ impl TypeOf for Literal {
     }
 }
 
-
 #[derive( Debug, PartialEq, Clone, Copy )]
 enum Type {
     Int,
@@ -132,7 +286,6 @@ impl Len for Type {
         }
     }
 }
-
 
 #[derive( Debug, Clone, Copy, PartialEq )]
 enum Operator {
@@ -277,7 +430,6 @@ impl Precedence for Operator {
     }
 }
 
-
 #[derive( Debug, Clone, Copy )]
 enum Mutability {
     Let,
@@ -301,7 +453,6 @@ impl Len for Mutability {
         }
     }
 }
-
 
 #[derive( Debug, Clone, Copy )]
 enum BracketKind {
@@ -441,7 +592,6 @@ struct Line {
     token_end_idx: usize,
 }
 
-
 // TODO create different kinds of errors for different stages of compilation
 // TODO implement NOTE, HINT, HELP in error messages
 #[derive( Debug )]
@@ -463,7 +613,6 @@ struct SyntaxErrors {
     errors: Vec<SyntaxError>,
 }
 
-
 #[derive( Debug )]
 struct Bracket {
     line_byte_start: usize,
@@ -471,7 +620,6 @@ struct Bracket {
     col: usize,
     kind: BracketKind,
 }
-
 
 #[derive( Debug )]
 struct Lexer {
@@ -1179,7 +1327,6 @@ impl<'lexer> TokenCursor<'lexer> {
     }
 }
 
-
 trait BoundedPosition<'lexer> {
     type Error;
 
@@ -1226,7 +1373,6 @@ impl<'lexer> BoundedPosition<'lexer> for Option<TokenPosition<'lexer>> {
         }
     }
 }
-
 
 #[derive( Debug, Clone )]
 enum Expression {
@@ -1276,14 +1422,12 @@ impl Precedence for Expression {
     }
 }
 
-
 #[derive( Debug, Clone )]
 struct Variable {
     mutability: Mutability,
     name: String,
     typ: Type,
 }
-
 
 #[derive( Debug, Clone )]
 struct If {
@@ -1303,7 +1447,6 @@ struct IfStatement {
     els: Option<Box<Node>>,
 }
 
-
 #[allow( dead_code )]
 #[derive( Debug, Clone )]
 struct ForStatement {
@@ -1312,7 +1455,6 @@ struct ForStatement {
     post: Option<Box<Node>>,
     statement: Box<Node>,
 }
-
 
 #[derive( Debug, Clone )]
 enum Node {
@@ -1350,7 +1492,6 @@ impl Display for Node {
         }
     }
 }
-
 
 #[derive( Debug, Clone )]
 struct Scope {
@@ -2332,7 +2473,6 @@ enum MovKind {
     Multiple( Vec<Mov> ),
 }
 
-
 #[derive( Debug )]
 struct CompilerVariable {
     name: String,
@@ -2365,10 +2505,10 @@ struct Compiler<'ast> {
     for_idx_stack: Vec<usize>,
 }
 
+// generation of compilation artifacts (.asm, .o, executable)
 impl Compiler<'_> {
     const STACK_ALIGN: usize = core::mem::size_of::<usize>();
 
-    // TODO canonicalize paths
     fn compile( &mut self, start_time: &Instant ) -> std::io::Result<PathBuf> {
         eprint!( "{}: {}", COMPILING, self.src_path.display() );
         let mut time_info = String::new();
@@ -2393,13 +2533,12 @@ impl Compiler<'_> {
                     ) );
                 }
             }
-            // TODO proper error handling
+
             (out_path.join( self.src_path.with_extension( "asm" ).file_name().unwrap() ),
             out_path.join( self.src_path.with_extension( "o" ).file_name().unwrap() ),
             out_path.join( self.src_path.with_extension( "" ).file_name().unwrap() ))
         }
         else {
-            // TODO proper error handling
             (self.src_path.with_extension( "asm" ),
             self.src_path.with_extension( "o" ),
             self.src_path.with_extension( "" ))
@@ -2624,9 +2763,37 @@ _start:
             self.rodata, self.asm
         );
 
-        // TODO add proper error handling
-        asm_writer.write_all( program.as_bytes() ).unwrap();
-        asm_writer.flush().unwrap();
+        if let Err( err ) = asm_writer.write_all( program.as_bytes() ) {
+            let asm_writing_time = start_time.elapsed();
+            let elapsed_asm_writing = Colored {
+                text: format!( "{}s", asm_writing_time.as_secs_f64() ).into(),
+                foreground: Foreground::LightGray,
+                ..Default::default()
+            };
+            time_info.push_str( &format!( "asm generation: {}", elapsed_asm_writing ) );
+
+            eprintln!( " ... in [{}]", time_info );
+            return Err( std::io::Error::new(
+                err.kind(),
+                format!( "{}: writing assembly file failed\n{}: {}", ERROR, CAUSE, err )
+            ) );
+        }
+
+        if let Err( err ) = asm_writer.flush() {
+            let asm_flushin_time = start_time.elapsed();
+            let elapsed_asm_flushin = Colored {
+                text: format!( "{}s", asm_flushin_time.as_secs_f64() ).into(),
+                foreground: Foreground::LightGray,
+                ..Default::default()
+            };
+            time_info.push_str( &format!( "asm generation: {}", elapsed_asm_flushin ) );
+
+            eprintln!( " ... in [{}]", time_info );
+            return Err( std::io::Error::new(
+                err.kind(),
+                format!( "{}: writing assembly file failed\n{}: {}", ERROR, CAUSE, err )
+            ) );
+        }
 
         let asm_generation_time = start_time.elapsed();
         let elapsed_asm_generation = Colored {
@@ -2635,6 +2802,7 @@ _start:
             ..Default::default()
         };
         time_info.push_str( &format!( "asm generation: {}", elapsed_asm_generation ) );
+
 
         let nasm_args = ["-felf64", "-gdwarf", asm_path.to_str().unwrap(), "-o", obj_path.to_str().unwrap()];
         match Command::new( "nasm" ).args( nasm_args ).output() {
@@ -2662,6 +2830,7 @@ _start:
         };
         time_info.push_str( &format!( ", assembler: {}", elapsed_nasm ) );
 
+
         let ld_args = [obj_path.to_str().unwrap(), "-o", exe_path.to_str().unwrap()];
         match Command::new( "ld" ).args( ld_args ).output() {
             Ok( ld_out ) => if !ld_out.status.success() {
@@ -2688,6 +2857,7 @@ _start:
         };
         time_info.push_str( &format!( ", linker: {}", elapsed_ld ) );
 
+
         let elapsed_total = Colored {
             text: format!( "{}s", start_time.elapsed().as_secs_f64() ).into(),
             foreground: Foreground::LightGray,
@@ -2706,7 +2876,7 @@ _start:
                 Ok( _status ) => Ok( () ),
                 Err( err ) => Err( std::io::Error::new(
                     err.kind(),
-                    format!( "{}: could not run blitz executable", ERROR )
+                    format!( "{}: could not run blitz executable\n{}: {}", ERROR, CAUSE, err )
                 ) ),
             },
             Err( err ) => Err( std::io::Error::new(
@@ -3404,7 +3574,6 @@ impl BlitzSrc {
     }
 }
 
-
 enum RunModeKind {
     Check,
     Compile { out_path: Option<PathBuf>, run: bool },
@@ -3435,8 +3604,7 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
     run     <{FILE}> [{OUTPUT}]     Compile and run the generated executable
 
 {OUTPUT}:
-    -o, --output <{PATH}>       Folder to populate with compilation artifacts (default: '.')
-"
+    -o, --output <{PATH}>       Folder to populate with compilation artifacts (.asm, .o, executable) (default: '.')"
         );
     }
 
@@ -3735,8 +3903,8 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
     }
 }
 
+
 // IDEA adapt SyntaxErrors to report cli mistakes
-// TODO add option to specify output path
 fn main() -> ExitCode {
     return Blitz::from( env::args() );
 }
