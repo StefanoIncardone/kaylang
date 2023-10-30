@@ -25,9 +25,13 @@ boolean_expression = boolean_comparative_expression, ("&&" | "||" | "^^"), boole
 non_boolean_expression = additive_expression, [("<=>"), additive_expression];
 expression = comparative_expression | boolean_expression | non_boolean_expression;
 
+variable_declaration = ("let" | "var"), identifier, (
+    (":", identifier)                       (* type-specific default initialization *)
+    (* | (":", identifier, "=", "?")           ( explicitly uninitialized ) *)
+    | ([":", identifier], "=", expression)  (* regular declaration (explicit/inferred type)*)
+    ), ";";
+variable_reassignment = identifier, ("=" | "**=" | "*=" | "/=" | "%=" | "+=" | "-=" ), expression, ";";
 print = (("print", expression) | ("println", [expression])), ";";
-variable_declaration = ("let" | "var"), identifier, [":", identifier], ("=" | "**=" | "*=" | "/=" | "%=" | "+=" | "-=" ), expression, ";";
-variable_reassignment = identifier, "=", expression, ";";
 if = "if", boolean_expression, ((":", statement, ";") | scope), [{"else", (if | (":", statement, ";") | scope)}];
 for = "for", boolean_expression, ((":", statement, ";") | scope);
 

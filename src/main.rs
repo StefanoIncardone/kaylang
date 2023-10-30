@@ -204,6 +204,7 @@ enum Literal {
     Char( u8 ), // only supporting ASCII characters for now
     Bool( bool ),
     Str( Str ),
+    Uninitialized( Type ),
 }
 
 impl Display for Literal {
@@ -219,6 +220,7 @@ impl Display for Literal {
                 }
                 write!( f, "\"" )
             },
+            Self::Uninitialized( _ ) => write!( f, "?" ),
         }
     }
 }
@@ -230,6 +232,7 @@ impl Into<isize> for Literal {
             Self::Char( code ) => code.into(),
             Self::Bool( value ) => value.into(),
             Self::Str( string ) => string.text.len() as isize,
+            Self::Uninitialized( _ ) => panic!( "cannot get the int value of an uninitialized value")
         }
     }
 }
@@ -241,6 +244,7 @@ impl Len for Literal {
             Self::Char( _ ) => 1,
             Self::Bool( value ) => value.to_string().len(),
             Self::Str( string ) => string.text.len() + 2,
+            Self::Uninitialized( typ ) => typ.len(),
         }
     }
 }
@@ -252,10 +256,12 @@ impl TypeOf for Literal {
             Self::Char { .. } => Type::Char,
             Self::Bool { .. } => Type::Bool,
             Self::Str( _ ) => Type::Str,
+            Self::Uninitialized( typ ) => *typ,
         }
     }
 }
 
+// TODO implement unsigned integers
 #[derive( Debug, PartialEq, Clone, Copy )]
 enum Type {
     Int,
@@ -282,6 +288,17 @@ impl Len for Type {
             Self::Char => core::mem::size_of::<u8>(),
             Self::Bool => core::mem::size_of::<bool>(),
             Self::Str => core::mem::size_of::<*const u8>() + core::mem::size_of::<usize>(),
+        }
+    }
+}
+
+impl Type {
+    fn default( &self ) -> Literal {
+        match self {
+            Self::Bool => Literal::Bool( false ),
+            Self::Char => Literal::Char( 0 ),
+            Self::Int => Literal::Int( 0 ),
+            Self::Str => Literal::Str( Str { text: Vec::new() } ),
         }
     }
 }
@@ -492,6 +509,8 @@ enum TokenKind {
     Colon,
     SemiColon,
     Equals,
+    #[allow(dead_code)]
+    QuestionMark,
     Op( Operator ),
 
     Literal( Literal ),
@@ -523,6 +542,7 @@ impl Display for TokenKind {
             Self::Equals => write!( f, "=" ),
             Self::Colon => write!( f, ":" ),
             Self::SemiColon => write!( f, ";" ),
+            Self::QuestionMark => write!( f, "?" ),
 
             Self::Literal( literal ) => write!( f, "{}", literal ),
             Self::Identifier( name ) => write!( f, "{}", name ),
@@ -555,6 +575,7 @@ impl Len for TokenKind {
             Self::Equals => 1,
             Self::Colon => 1,
             Self::SemiColon => 1,
+            Self::QuestionMark => 1,
 
             Self::Literal( typ ) => typ.len(),
             Self::Identifier( name ) => name.len(),
@@ -697,7 +718,6 @@ impl TryFrom<BlitzSrc> for Lexer {
                             this.tokens.push( token );
                         }
                     }
-
 
                     line.token_end_idx = this.tokens.len() - 1;
                     this.lines.push( line );
@@ -941,7 +961,7 @@ impl Lexer {
                                 col: self.token_start_col,
                                 len: self.token_text.len(),
                                 msg: "invalid number literal".into(),
-                                help_msg: format!( "{}", err ).into()
+                                help_msg: err.to_string().into()
                             }),
                         },
                     }
@@ -1239,7 +1259,8 @@ impl Lexer {
                     }),
                 },
                 b'\n' => unreachable!( "line text should have been trimmed already" ),
-                _ => Err( SyntaxError {
+                // disabling explicit uninitialization until we have proper uninitialization checking
+                b'?' | _ => Err( SyntaxError {
                     line_byte_start: self.line_byte_start,
                     line: self.line,
                     col: self.token_start_col,
@@ -1426,6 +1447,7 @@ struct Variable {
     mutability: Mutability,
     name: String,
     typ: Type,
+    initialized: bool,
 }
 
 #[derive( Debug, Clone )]
@@ -1457,6 +1479,8 @@ struct ForStatement {
 
 #[derive( Debug, Clone )]
 enum Node {
+    // TODO introduce an Empty/Semicolon/(whatever) variant to denote the end of the statement in cases where we found a semicolon
+
     Expression( Expression ),
     Print( Expression ),
     Println( Option<Expression> ),
@@ -1544,16 +1568,15 @@ impl AST {
             match self.parse_single( tokens ) {
                 Ok( Some( node ) ) => self.scopes[ self.current_scope ].nodes.push( node ),
                 Ok( None ) => break,
+                // only parsing until the first error until a fault tolerant parser is developed, this is
+                // because the first truly relevant error is the first one, which in turn causes a ripple effect
+                // that propagates to the rest of the parsing, causing subsequent errors to be wrong
                 Err( err ) => {
                     self.errors.push( err );
 
                     // consuming all remaining tokens until the end of the file
                     tokens.line = tokens.lines.len();
                     tokens.token = tokens.tokens.len();
-
-                    // only parsing until the first error until a fault tolerant parser is developed, this is
-                    // because the first truly relevant error is the first one, which in turn causes a ripple effect
-                    // that propagates to the rest of the parsing, causing subsequent errors to be wrong
                     break;
                 },
             }
@@ -1674,6 +1697,17 @@ impl AST {
                         help_msg: "stray assignment".into()
                     })
                 },
+                TokenKind::QuestionMark => {
+                    tokens.next();
+                    Err( SyntaxError {
+                        line_byte_start: current.line.byte_start,
+                        line: current.line.number,
+                        col: current.token.col,
+                        len: current.token.kind.len(),
+                        msg: "invalid explicit uninitialization".into(),
+                        help_msg: "stray uninitialized value".into()
+                    })
+                },
                 TokenKind::Op( _ ) => {
                     tokens.next();
                     Err( SyntaxError {
@@ -1726,14 +1760,25 @@ impl AST {
     // TODO disallow implicit conversions (str + i64, char + i64, str + char or str + str (maybe treat this as concatenation))
         // IDEA introduce casting operators
     fn factor( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
+        let previous = tokens.peek_previous().unwrap();
         let current = tokens.current().bounded( tokens, "expected expression" )?;
         let factor = match &current.token.kind {
             TokenKind::Literal( literal ) => Ok( Expression::Literal( literal.clone() ) ),
             TokenKind::True => Ok( Expression::Literal( Literal::Bool( true ) ) ),
             TokenKind::False => Ok( Expression::Literal( Literal::Bool( false ) ) ),
             TokenKind::Identifier( name ) => match self.resolve_type( name ) {
-                None => match self.resolve( name ) {
-                    Some( definition ) => Ok( Expression::Identifier( name.clone(), definition.typ ) ),
+                None => match self.resolve_variable( name ) {
+                    Some( variable ) => match variable.initialized {
+                        true => Ok( Expression::Identifier( name.clone(), variable.typ ) ),
+                        false => Err( SyntaxError {
+                            line_byte_start: current.line.byte_start,
+                            line: current.line.number,
+                            col: current.token.col,
+                            len: current.token.kind.len(),
+                            msg: "variable not initialized".into(),
+                            help_msg: "was not previously initialized".into()
+                        }),
+                    },
                     None => Err( SyntaxError {
                         line_byte_start: current.line.byte_start,
                         line: current.line.number,
@@ -1781,42 +1826,44 @@ impl AST {
                 }
             },
             TokenKind::Op( Operator::Minus ) => {
-                let mut should_be_negated = true;
+                let mut sign: isize = -1;
                 while let Some( TokenPosition { token: Token { kind: TokenKind::Op( Operator::Minus ), .. }, .. } ) = tokens.next() {
-                    should_be_negated = !should_be_negated;
+                    sign *= -1;
                 }
 
                 let mut operand = self.factor( tokens )?;
-                return match operand.typ() {
-                    Type::Int | Type::Char | Type::Str => match should_be_negated {
-                        true => match operand {
-                            Expression::Literal( ref mut literal ) => match literal {
-                                Literal::Int( ref mut value ) => {
-                                    *value = -*value;
-                                    Ok( operand )
-                                },
-                                Literal::Char( code ) => {
-                                    *literal = Literal::Int( -(*code as isize) );
-                                    Ok( operand )
-                                },
-                                Literal::Str( Str { text } ) => {
-                                    *literal = Literal::Int( -(text.len() as isize) );
-                                    Ok( operand )
-                                },
-                                Literal::Bool { .. } => unreachable!(),
-                            },
-                            _ => Ok( Expression::Unary { op: Operator::Negate, operand: Box::new( operand ) } )
-                        }
-                        false => Ok( operand ),
-                    },
-                    Type::Bool => Err( SyntaxError {
-                        line_byte_start: current.line.byte_start,
-                        line: current.line.number,
-                        col: current.token.col,
-                        len: current.token.kind.len(),
-                        msg: "invalid expression".into(),
-                        help_msg: "cannot negate boolean value, use the '!' operator instead".into()
-                    }),
+                return match operand {
+                    Expression::Literal( ref mut literal ) => match literal {
+                        Literal::Int( ref mut value ) => {
+                            *value = *value * sign;
+                            Ok( operand )
+                        },
+                        Literal::Char( code ) => {
+                            *literal = Literal::Int( (*code as isize) * sign );
+                            Ok( operand )
+                        },
+                        Literal::Str( Str { text } ) => {
+                            *literal = Literal::Int( (text.len() as isize) * sign );
+                            Ok( operand )
+                        },
+                        Literal::Bool( _ ) => Err( SyntaxError {
+                            line_byte_start: current.line.byte_start,
+                            line: current.line.number,
+                            col: current.token.col,
+                            len: current.token.kind.len(),
+                            msg: "invalid expression".into(),
+                            help_msg: "cannot negate boolean value, use the '!' operator instead".into()
+                        } ),
+                        Literal::Uninitialized( _ ) => Err( SyntaxError {
+                            line_byte_start: current.line.byte_start,
+                            line: current.line.number,
+                            col: current.token.col,
+                            len: current.token.kind.len(),
+                            msg: "variable not initialized".into(),
+                            help_msg: "was not previously initialized".into()
+                        } ),
+                    }
+                    _ => Ok( Expression::Unary { op: Operator::Negate, operand: Box::new( operand ) } ),
                 }
             },
             TokenKind::Op( Operator::Not ) => {
@@ -1826,32 +1873,58 @@ impl AST {
                 }
 
                 let mut operand = self.factor( tokens )?;
-                return match operand.typ() {
-                    Type::Bool => match should_be_inverted {
-                        true => match operand {
-                            Expression::Literal( Literal::Bool( ref mut value ) ) => {
+                return match operand {
+                    Expression::Literal( ref mut literal ) => match literal {
+                        Literal::Bool( ref mut value ) => {
+                            if should_be_inverted {
                                 *value = !*value;
-                                Ok( operand )
-                            },
-                            _ => Ok( Expression::Unary { op: Operator::Not, operand: Box::new( operand ) } ),
+                            }
+                            Ok( operand )
                         },
-                        false => Ok( operand ),
-                    },
-                    Type::Int | Type::Char | Type::Str => Err( SyntaxError {
-                        line_byte_start: current.line.byte_start,
-                        line: current.line.number,
-                        col: current.token.col,
-                        len: current.token.kind.len(),
-                        msg: "invalid expression".into(),
-                        help_msg: "cannot invert non boolean value, use the '-' operator instead".into()
-                    }),
-                };
+                        Literal::Int( _ ) | Literal::Char( _ ) | Literal::Str( Str { .. } ) => Err( SyntaxError {
+                            line_byte_start: current.line.byte_start,
+                            line: current.line.number,
+                            col: current.token.col,
+                            len: current.token.kind.len(),
+                            msg: "invalid expression".into(),
+                            help_msg: "cannot invert non boolean value, use the '-' operator instead".into()
+                        } ),
+                        Literal::Uninitialized( _ ) => Err( SyntaxError {
+                            line_byte_start: current.line.byte_start,
+                            line: current.line.number,
+                            col: current.token.col,
+                            len: current.token.kind.len(),
+                            msg: "variable not initialized".into(),
+                            help_msg: "was not previously initialized".into()
+                        } ),
+                    }
+                    _ => Ok( Expression::Unary { op: Operator::Not, operand: Box::new( operand ) } ),
+                }
             },
+            TokenKind::Definition( _ )
+            | TokenKind::Print | TokenKind::PrintLn
+            | TokenKind::If | TokenKind::Else
+            | TokenKind::For | TokenKind::Break | TokenKind::Continue => Err( SyntaxError {
+                line_byte_start: previous.line.byte_start,
+                line: previous.line.number,
+                col: previous.token.col,
+                len: previous.token.kind.len(),
+                msg: "invalid expression".into(),
+                help_msg: "cannot be followed by a keyword".into()
+            }),
+            TokenKind::QuestionMark => Err( SyntaxError {
+                line_byte_start: previous.line.byte_start,
+                line: previous.line.number,
+                col: previous.token.col,
+                len: previous.token.kind.len(),
+                msg: "invalid expression".into(),
+                help_msg: "uninitialized values cannot be used inside expressions".into()
+            }),
             _ => Err( SyntaxError {
-                line_byte_start: current.line.byte_start,
-                line: current.line.number,
-                col: current.token.col,
-                len: current.token.kind.len(),
+                line_byte_start: previous.line.byte_start,
+                line: previous.line.number,
+                col: previous.token.col,
+                len: previous.token.kind.len(),
                 msg: "invalid expression".into(),
                 help_msg: "expected expression operand after this token".into()
             }),
@@ -1863,23 +1936,20 @@ impl AST {
 
     fn operator( &mut self, tokens: &mut TokenCursor, ops: &[Operator] ) -> Result<Option<Operator>, SyntaxError> {
         let current_pos = tokens.current().bounded( tokens, "expected operator or semicolon" )?;
-        return if let TokenKind::Op( op ) = current_pos.token.kind {
-            if ops.contains( &op ) {
-                tokens.next();
-                Ok( Some( op ) )
-            }
-            else {
-                Ok( None )
-            }
-        }
-        else {
-            Ok( None )
+        return match current_pos.token.kind {
+            TokenKind::Op( op ) => match ops.contains( &op ) {
+                true => {
+                    tokens.next();
+                    Ok( Some( op ) )
+                },
+                false => Ok( None ),
+            },
+            _ => Ok( None ),
         }
     }
 
     // IDEA optimize expression building by implementing associativity rules (ie. remove parenthesis around additions and subtractions)
     // FIX division by zero, raising to a negative power
-    // TODO implement unsigned integers and force powers to only accept those as exponents
     // IDEA print crash error message
         // TODO implement a way to print file, line and column information in source code
     fn exponentiation( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
@@ -1933,7 +2003,6 @@ impl AST {
         return Ok( lhs );
     }
 
-    // FIX shortcircuit boolean operators
     // TODO implement boolean operators for strings
     fn boolean_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
         let mut lhs = self.comparative_expression( tokens )?;
@@ -1977,7 +2046,7 @@ impl AST {
 
 // variable definitions and assignments
 impl<'lexer> AST {
-    fn resolve( &'lexer self, name: &str ) -> Option<&'lexer Variable> {
+    fn resolve_variable( &'lexer self, name: &str ) -> Option<&'lexer Variable> {
         let mut current_scope = self.current_scope;
         loop {
             let scope = &self.scopes[ current_scope ];
@@ -1986,6 +2055,27 @@ impl<'lexer> AST {
                 if variable.name == name {
                     return Some( variable );
                 }
+            }
+
+            if current_scope == 0 && scope.parent == 0 {
+                return None;
+            }
+
+            current_scope = scope.parent;
+        }
+    }
+
+    fn resolve_variable_mut( &'lexer mut self, name: &str ) -> Option<&'lexer mut Variable> {
+        let mut current_scope = self.current_scope;
+        loop {
+            let scope = &self.scopes[ current_scope ];
+
+            let mut current_variable = 0;
+            for variable in &scope.variables {
+                if variable.name == name {
+                    return Some( &mut self.scopes[ current_scope ].variables[ current_variable ] );
+                }
+                current_variable += 1;
             }
 
             if current_scope == 0 && scope.parent == 0 {
@@ -2015,30 +2105,10 @@ impl<'lexer> AST {
         }
     }
 
-    fn resolve_mut( &'lexer mut self, name: &str ) -> Option<&'lexer mut Variable> {
-        let mut current_scope = self.current_scope;
-        loop {
-            let scope = &self.scopes[ current_scope ];
-
-            let mut current_variable = 0;
-            for variable in &scope.variables {
-                if variable.name == name {
-                    return Some( &mut self.scopes[ current_scope ].variables[ current_variable ] );
-                }
-                current_variable += 1;
-            }
-
-            if current_scope == 0 && scope.parent == 0 {
-                return None;
-            }
-
-            current_scope = scope.parent;
-        }
-    }
 
     fn variable_definition( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
         let definition_pos = tokens.current().unwrap();
-        let kind = match definition_pos.token.kind {
+        let mutability = match definition_pos.token.kind {
             TokenKind::Definition( kind ) => kind,
             _ => unreachable!(),
         };
@@ -2066,22 +2136,22 @@ impl<'lexer> AST {
             }),
         };
 
-        let colon_pos = tokens.peek_next().bounded( tokens, "expected type hint or variable definition" )?;
-        let typ: Result<Option<(Type, TokenPosition<'_>)>, SyntaxError> = match &colon_pos.token.kind {
+        let colon_pos = tokens.peek_next().bounded( tokens, "expected type annotation or variable definition" )?;
+        let annotation = match &colon_pos.token.kind {
             TokenKind::Colon => {
                 tokens.next();
-                let typ_pos = tokens.next().bounded( tokens, "expected type" )?;
-                match &typ_pos.token.kind {
+                let annotation_pos = tokens.next().bounded( tokens, "expected type" )?;
+                match &annotation_pos.token.kind {
                     TokenKind::Identifier( type_name ) => match self.resolve_type( type_name ) {
-                        Some( typ ) => Ok( Some( (*typ, typ_pos) ) ),
-                        None => match self.resolve( type_name ) {
-                            Some( var ) => Ok( Some( (var.typ, typ_pos) ) ),
+                        Some( typ ) => Ok( Some( (*typ, annotation_pos) ) ),
+                        None => match self.resolve_variable( type_name ) {
+                            Some( var ) => Ok( Some( (var.typ, annotation_pos) ) ),
                             None => Err( SyntaxError {
-                                line_byte_start: typ_pos.line.byte_start,
-                                line: typ_pos.line.number,
-                                col: typ_pos.token.col,
-                                len: typ_pos.token.kind.len(),
-                                msg: "invalid type hint".into(),
+                                line_byte_start: annotation_pos.line.byte_start,
+                                line: annotation_pos.line.number,
+                                col: annotation_pos.token.col,
+                                len: annotation_pos.token.kind.len(),
+                                msg: "invalid type annotation".into(),
                                 help_msg: "was not previously defined".into()
                             } )
                         },
@@ -2092,7 +2162,7 @@ impl<'lexer> AST {
                         line: colon_pos.line.number,
                         col: colon_pos.token.col,
                         len: colon_pos.token.kind.len(),
-                        msg: "invalid type hint".into(),
+                        msg: "invalid type annotation".into(),
                         help_msg: "expected type name after here".into()
                     } )
                 }
@@ -2100,144 +2170,184 @@ impl<'lexer> AST {
             _ => Ok( None ),
         };
 
-        let equals_pos = tokens.next().bounded( tokens, "expected equals" )?;
-        let equals = match equals_pos.token.kind {
-            TokenKind::Equals => Ok( () ),
+        let equals_or_semicolon_pos = tokens.next().bounded( tokens, "expected equals" )?;
+        let mut initialized = true;
+        let expression = match equals_or_semicolon_pos.token.kind {
+            TokenKind::Equals => {
+                let expression_start = tokens.next().bounded( tokens, "expected expression" )?;
+                match expression_start.token.kind {
+                    TokenKind::QuestionMark => {
+                        initialized = false;
+                        tokens.next();
+                        Ok( Some( Expression::Literal( Literal::Uninitialized( Type::Int /* placeholder */ ) ) ) )
+                    },
+                    _ => match self.expression( tokens ) {
+                        Ok( expr ) => Ok( Some( expr ) ),
+                        Err( err ) => Err( err ),
+                    }
+                }
+            },
+            TokenKind::SemiColon => Ok( None ),
             _ => Err( SyntaxError {
                 line_byte_start: name_pos.line.byte_start,
                 line: name_pos.line.number,
                 col: name_pos.token.col,
                 len: name_pos.token.kind.len(),
                 msg: "invalid assignment".into(),
-                help_msg: "expected '=' after variable name".into()
+                help_msg: "expected '=' or ';' after the variable name".into()
             }),
         };
 
-        tokens.next().bounded( tokens, "expected expression" )?;
-        let value = self.expression( tokens );
-
         let name = name?;
-        let typ = typ?;
-        let _ = equals?;
-        let value = value?;
+        let annotation = annotation?;
+        let expression = expression?;
         self.semicolon( tokens )?;
 
-        return match self.resolve( &name ) {
-            None => match typ {
-                None => {
-                    self.scopes[ self.current_scope ].variables.push( Variable { mutability: kind, name: name.clone(), typ: value.typ() } );
-                    Ok( Node::Definition( name, value ) )
-                },
-                Some( (t, pos) ) => if t == value.typ() {
-                    self.scopes[ self.current_scope ].variables.push( Variable { mutability: kind, name: name.clone(), typ: value.typ() } );
-                    Ok( Node::Definition( name, value ) )
-                }
-                else {
-                    Err( SyntaxError {
-                        line_byte_start: pos.line.byte_start,
-                        line: pos.line.number,
-                        col: pos.token.col,
-                        len: pos.token.kind.len(),
-                        msg: "invalid definition".into(),
-                        help_msg: format!( "declared type of '{}' doesn't match expression of type '{}'", t, value.typ() ).into()
-                    })
-                },
-            },
-            Some( _ ) => Err( SyntaxError {
+        if let Some( _ ) = self.resolve_variable( &name ) {
+            return Err( SyntaxError {
                 line_byte_start: name_pos.line.byte_start,
                 line: name_pos.line.number,
                 col: name_pos.token.col,
                 len: name_pos.token.kind.len(),
                 msg: "variable redefinition".into(),
                 help_msg: "was previously defined".into()
-            }),
+            } );
+        }
+
+        return match expression {
+            Some( mut value ) => match annotation {
+                Some( (typ, pos) ) => {
+                    if typ != value.typ() {
+                        return Err( SyntaxError {
+                            line_byte_start: pos.line.byte_start,
+                            line: pos.line.number,
+                            col: pos.token.col,
+                            len: pos.token.kind.len(),
+                            msg: "invalid definition".into(),
+                            help_msg: format!( "declared type of '{}' doesn't match expression of type '{}'", typ, value.typ() ).into()
+                        })
+                    }
+
+                    if let Expression::Literal( Literal::Uninitialized( ref mut uninitialized_type ) ) = value {
+                        *uninitialized_type = typ;
+                    }
+
+                    self.scopes[ self.current_scope ].variables.push( Variable { mutability, name: name.clone(), typ, initialized } );
+                    Ok( Node::Definition( name, value ) )
+                },
+                None => match value {
+                    Expression::Literal( Literal::Uninitialized( _ ) ) => Err( SyntaxError {
+                        line_byte_start: name_pos.line.byte_start,
+                        line: name_pos.line.number,
+                        col: name_pos.token.col,
+                        len: name_pos.token.kind.len(),
+                        msg: "invalid definition".into(),
+                        help_msg: "expected type annotation after here to infer the type of the variable".into()
+                    }),
+                    _ => {
+                        self.scopes[ self.current_scope ].variables.push( Variable { mutability, name: name.clone(), typ: value.typ(), initialized } );
+                        Ok( Node::Definition( name, value ) )
+                    }
+                },
+            },
+            None => match annotation {
+                Some( (typ, _) ) => {
+                    self.scopes[ self.current_scope ].variables.push( Variable { mutability, name: name.clone(), typ, initialized } );
+                    Ok( Node::Definition( name, Expression::Literal( typ.default() ) ) )
+                },
+                None => Err( SyntaxError {
+                    line_byte_start: name_pos.line.byte_start,
+                    line: name_pos.line.number,
+                    col: name_pos.token.col,
+                    len: name_pos.token.kind.len(),
+                    msg: "invalid definition".into(),
+                    help_msg: "expected type annotation or value after here to infer the type of the variable".into()
+                }),
+            },
         }
     }
 
     fn variable_reassignment_or_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
         let name_pos = tokens.current().unwrap();
         let op_pos = match tokens.peek_next() {
-            Some( pos ) => pos,
+            Some( pos ) => match pos.token.kind {
+                TokenKind::Equals
+                | TokenKind::Op( Operator::PowEquals )
+                | TokenKind::Op( Operator::TimesEquals )
+                | TokenKind::Op( Operator::DivideEquals )
+                | TokenKind::Op( Operator::PlusEquals )
+                | TokenKind::Op( Operator::MinusEquals ) => pos,
+                _ => return Ok( Node::Expression( self.expression( tokens )? ) ),
+            },
             None => return Ok( Node::Expression( self.expression( tokens )? ) ),
         };
 
-        return match op_pos.token.kind {
-            TokenKind::Equals
-            | TokenKind::Op( Operator::PowEquals )
-            | TokenKind::Op( Operator::TimesEquals )
-            | TokenKind::Op( Operator::DivideEquals )
-            | TokenKind::Op( Operator::PlusEquals )
-            | TokenKind::Op( Operator::MinusEquals ) => {
-                tokens.next();
-                tokens.next().bounded( tokens, "expected expression" )?;
+        tokens.next();
+        tokens.next().bounded( tokens, "expected expression" )?;
 
-                let name = name_pos.token.kind.to_string();
-                let rhs = self.expression( tokens )?;
-                let new_value = match &op_pos.token.kind {
-                    TokenKind::Equals => Ok( rhs ),
-                    TokenKind::Op( op ) => {
-                        let lhs = Expression::Identifier( name.clone(), op.typ() );
-                        Ok( Expression::Binary { lhs: Box::new( lhs ), op: *op, rhs: Box::new( rhs ) } )
-                    },
-                    _ => unreachable!(),
-                };
+        let name = name_pos.token.kind.to_string();
+        let rhs = self.expression( tokens )?;
+        let value = match &op_pos.token.kind {
+            TokenKind::Equals => Ok( rhs ),
+            TokenKind::Op( op ) => {
+                let lhs = Expression::Identifier( name.clone(), op.typ() );
+                Ok( Expression::Binary { lhs: Box::new( lhs ), op: *op, rhs: Box::new( rhs ) } )
+            },
+            _ => unreachable!(),
+        };
 
-                self.semicolon( tokens )?;
+        self.semicolon( tokens )?;
 
-                match self.resolve_type( &name ) {
-                    None => match self.resolve_mut( &name ) {
-                        Some( var ) => match var.mutability {
-                            Mutability::Let => Err( SyntaxError {
-                                line_byte_start: name_pos.line.byte_start,
-                                line: name_pos.line.number,
-                                col: name_pos.token.col,
-                                len: name_pos.token.kind.len(),
-                                msg: "invalid assignment".into(),
-                                help_msg: "was defined as immutable".into()
-                            }),
-                            Mutability::Var => {
-                                let new_value = new_value?;
-                                let new_value_typ = new_value.typ();
+        if let Some( _ ) = self.resolve_type( &name ) {
+            return Err( SyntaxError {
+                line_byte_start: name_pos.line.byte_start,
+                line: name_pos.line.number,
+                col: name_pos.token.col,
+                len: name_pos.token.kind.len(),
+                msg: "invalid assignment".into(),
+                help_msg: "cannot be a type name".into()
+            } )
+        }
 
-                                if var.typ != new_value_typ {
-                                    Err( SyntaxError {
-                                        line_byte_start: name_pos.line.byte_start,
-                                        line: name_pos.line.number,
-                                        col: name_pos.token.col,
-                                        len: name_pos.token.kind.len(),
-                                        msg: "mismatched types".into(),
-                                        help_msg: format!(
-                                            "trying to assign an expression of type '{}' to a variable of type '{}'",
-                                            new_value_typ,
-                                            var.typ
-                                        ).into()
-                                    })
-                                }
-                                else {
-                                    Ok( Node::Assignment( name_pos.token.kind.to_string(), new_value ) )
-                                }
-                            },
-                        },
-                        None => Err( SyntaxError {
-                            line_byte_start: name_pos.line.byte_start,
-                            line: name_pos.line.number,
-                            col: name_pos.token.col,
-                            len: name_pos.token.kind.len(),
-                            msg: "variable redefinition".into(),
-                            help_msg: "was not previously defined in this scope".into()
-                        })
-                    },
-                    Some( _ ) => Err( SyntaxError {
+        match self.resolve_variable_mut( &name ) {
+            Some( Variable { mutability: Mutability::Let, .. } ) => Err( SyntaxError {
+                line_byte_start: name_pos.line.byte_start,
+                line: name_pos.line.number,
+                col: name_pos.token.col,
+                len: name_pos.token.kind.len(),
+                msg: "invalid assignment".into(),
+                help_msg: "was defined as immutable".into()
+            }),
+            Some( var ) => {
+                let value = value?;
+                let value_typ = value.typ();
+
+                if var.typ != value_typ {
+                    return Err( SyntaxError {
                         line_byte_start: name_pos.line.byte_start,
                         line: name_pos.line.number,
                         col: name_pos.token.col,
                         len: name_pos.token.kind.len(),
-                        msg: "invalid assignment".into(),
-                        help_msg: "cannot be a type name".into()
-                    }),
+                        msg: "mismatched types".into(),
+                        help_msg: format!(
+                            "trying to assign an expression of type '{}' to a variable of type '{}'",
+                            value_typ,
+                            var.typ,
+                        ).into()
+                    });
                 }
+
+                var.initialized = true;
+                Ok( Node::Assignment( name_pos.token.kind.to_string(), value ) )
             },
-            _ => Ok( Node::Expression( self.expression( tokens )? ) ),
+            None => Err( SyntaxError {
+                line_byte_start: name_pos.line.byte_start,
+                line: name_pos.line.number,
+                col: name_pos.token.col,
+                len: name_pos.token.kind.len(),
+                msg: "variable redefinition".into(),
+                help_msg: "was not previously defined in this scope".into()
+            }),
         }
     }
 }
@@ -2333,53 +2443,51 @@ impl AST {
 
     fn els( &mut self, if_statement: &mut IfStatement, tokens: &mut TokenCursor ) -> Result<(), SyntaxError> {
         let els_pos = match tokens.current() {
-            Some( pos ) => pos,
+            Some( pos ) => match pos.token.kind {
+                TokenKind::Else => return Ok( () ),
+                _ => pos,
+            },
             None => return Ok( () )
         };
 
-        return if let TokenKind::Else = els_pos.token.kind {
-            let if_or_block_pos = tokens.next().bounded( tokens, "expected colon, block or if statement" )?;
-            match if_or_block_pos.token.kind {
-                TokenKind::Bracket( BracketKind::OpenCurly ) => {
-                    let scope = self.parse_single( tokens )?.unwrap();
-                    if_statement.els = Some( Box::new( scope ) );
-                    Ok( () )
-                },
-                TokenKind::Colon => {
-                    tokens.next().bounded( tokens, "expected statement" )?;
-                    match self.parse_single( tokens )? {
-                        Some( statement ) => {
-                            if_statement.els = Some( Box::new( statement ) );
-                            Ok( () )
-                        },
-                        None => Err( SyntaxError {
-                            line_byte_start: if_or_block_pos.line.byte_start,
-                            line: if_or_block_pos.line.number,
-                            col: if_or_block_pos.token.col,
-                            len: if_or_block_pos.token.kind.len(),
-                            msg: "invalid else statement".into(),
-                            help_msg: "must be followed by a statement".into()
-                        })
-                    }
-                },
-                TokenKind::If => {
-                    let else_if = self.iff( tokens )?;
-                    if_statement.ifs.push( else_if );
+        let if_or_block_pos = tokens.next().bounded( tokens, "expected colon, block or if statement" )?;
+        return match if_or_block_pos.token.kind {
+            TokenKind::Bracket( BracketKind::OpenCurly ) => {
+                let scope = self.parse_single( tokens )?.unwrap();
+                if_statement.els = Some( Box::new( scope ) );
+                Ok( () )
+            },
+            TokenKind::Colon => {
+                tokens.next().bounded( tokens, "expected statement" )?;
+                match self.parse_single( tokens )? {
+                    Some( statement ) => {
+                        if_statement.els = Some( Box::new( statement ) );
+                        Ok( () )
+                    },
+                    None => Err( SyntaxError {
+                        line_byte_start: if_or_block_pos.line.byte_start,
+                        line: if_or_block_pos.line.number,
+                        col: if_or_block_pos.token.col,
+                        len: if_or_block_pos.token.kind.len(),
+                        msg: "invalid else statement".into(),
+                        help_msg: "must be followed by a statement".into()
+                    })
+                }
+            },
+            TokenKind::If => {
+                let else_if = self.iff( tokens )?;
+                if_statement.ifs.push( else_if );
 
-                    self.els( if_statement, tokens )
-                },
-                _ => Err( SyntaxError {
-                    line_byte_start: els_pos.line.byte_start,
-                    line: els_pos.line.number,
-                    col: els_pos.token.col,
-                    len: els_pos.token.kind.len(),
-                    msg: "invalid else statement".into(),
-                    help_msg: "expected block of if statement after this token".into()
-                }),
-            }
-        }
-        else {
-            Ok( () )
+                self.els( if_statement, tokens )
+            },
+            _ => Err( SyntaxError {
+                line_byte_start: els_pos.line.byte_start,
+                line: els_pos.line.number,
+                col: els_pos.token.col,
+                len: els_pos.token.kind.len(),
+                msg: "invalid else statement".into(),
+                help_msg: "expected block of if statement after this token".into()
+            }),
         }
     }
 }
@@ -2686,20 +2794,20 @@ r#" stdout: equ 1
         let mut stack_size = 0;
         let mut variables: Vec<(Type, Vec<&Variable>)> = Vec::new();
         for scope in &self.ast.scopes {
-            for definition in &scope.variables {
-                let typ = definition.typ;
+            for variable in &scope.variables {
+                let typ = &variable.typ;
 
                 let mut type_already_encountered = false;
-                for variable in &mut variables {
-                    if typ == variable.0 {
-                        variable.1.push( definition );
+                for var_info in &mut variables {
+                    if *typ == var_info.0 {
+                        var_info.1.push( variable );
                         type_already_encountered = true;
                         break;
                     }
                 }
 
                 if !type_already_encountered {
-                    variables.push( (typ, vec![definition]) );
+                    variables.push( (variable.typ, vec![variable]) );
                 }
             }
 
@@ -3230,10 +3338,11 @@ impl<'ast> Compiler<'ast> {
                     string_label.len_label
                 );
             },
+            Expression::Literal( Literal::Uninitialized( _ ) ) => unreachable!(),
             Expression::Binary { .. } => self.compile_expression_factor( expression, Register::RDI ),
             Expression::Identifier( src_name, _ ) => {
                 let src_variable = self.resolve( src_name );
-                let src_variable_typ = src_variable.typ;
+                let src_variable_typ = &src_variable.typ;
                 let src_variable_offset = src_variable.offset;
 
                 match src_variable_typ {
@@ -3271,6 +3380,7 @@ impl<'ast> Compiler<'ast> {
 
                 self.asm += &format!( " mov {}, {}\n", dst, string_label.len_label );
             },
+            Expression::Literal( Literal::Uninitialized( _ ) ) => unreachable!(),
             // TODO find way to avoiding compiling the move to a support register if the rhs operand is a literal
                 // IDEA optimize increments
                 // IDEA optimize checking for even values by testing the least significant bit (e.g. test rax, 1)
@@ -3350,6 +3460,7 @@ impl<'ast> Compiler<'ast> {
                             \n cmovg rdi, rdx\n"
                         ),
 
+                    // FIX shortcircuit boolean operators
                     Operator::And => (Register::RDI, Register::RSI, " and rdi, rsi\n"),
                     Operator::Or => (Register::RDI, Register::RSI, " or rdi, rsi\n" ),
                     Operator::Xor => (Register::RDI, Register::RSI, " xor rdi, rsi\n" ),
@@ -3582,6 +3693,8 @@ impl<'ast> Compiler<'ast> {
                     variable_offset + 8, string_label.len_label
                 );
             },
+            /* leave blank, possibility to get garbage values */
+            Expression::Literal( Literal::Uninitialized( _ ) ) => self.asm += "\n",
             Expression::Binary { .. } => {
                 self.compile_expression( new_value );
 

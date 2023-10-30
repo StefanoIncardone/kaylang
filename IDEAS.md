@@ -187,12 +187,11 @@ type byte = u8;
 structs are just an aggregation of types:
 
 ```blitz
-# extend this initialization notation to variables as well
 struct RBG {
     r: u8,          # type specific default inizialization, which for u8 is 0
     g: u8 = 255,    # explicit default initialization
     b: u8 = ?,      # intentionally uninitialized member, may contain garbage
-        # optional trailing coma
+            # optional trailing coma
 }
 
 let rgb = RGB { r = 255, g = 255, b = 255 };
@@ -368,8 +367,8 @@ dereferenced = ^reference;
 
 ## Optional types (nullable pointers)
 
-types that may or may not contain a value (introducing the `none` keyword):
-they are basically tagged unions (like Rust's Options)
+types that may or may not contain a value (introducing the `none` keyword/value):
+they are basically tagged unions in the case of non-pointer variables (like Rust's Options)
 
 ```blitz
 # nullable pointers are just "optional pointers" 

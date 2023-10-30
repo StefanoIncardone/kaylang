@@ -75,7 +75,7 @@ Expressions follow this order of operations (precedence from highest to lowest):
 Note: when using strings in expressions they get converted to their length (waiting for proper type checking)
 
 ```blitz
-print "length of \"lucky\" is "; println "lucky" + 0; # easy way to obtain the length of the string
+print "length of \"lucky\" is "; println "lucky" + 0;   # easy way to obtain the length of the string
 ```
 
 ### Variables
@@ -85,17 +85,26 @@ Variable names can be made of (but not starting with) numbers, underscores and l
 - `let`: immutable variable
 - `var`: mutable variable
 
-``` blitz
-let nine = 3 ** 2;
-let ten: int = 5 * 2; # optional type hint
-let twenty_one: ten = nine + ten; # twenty one is of the same type as "ten"
-```
-
-*op*_assign operators desugar to regular expressions
+*op*_assign operators desugar to regular expressions:
 
 ```blitz
 var twentyone = 9;
-twentyone += 10; # equivalent to "twentyone = twentyone + 10;"
+twentyone += 10;    # equivalent to "twentyone = twentyone + 10;"
+```
+
+type annotations:
+
+``` blitz
+let ten: int = 5 * 2;               # explicit type annotation
+let nine = 3 ** 2;                  # implicit type annotation lets the compiler infer the type, which will be int in this case
+let twenty_one: ten = nine + ten;   # twenty one is of the same type as "ten"
+```
+
+default values:
+
+``` blitz
+let error;      # will result in an error asking for an explicit type annotation
+let zero: int;  # will have the default value for a variable of type int, which is 0
 ```
 
 ### Printing
