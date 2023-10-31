@@ -205,7 +205,7 @@ Executes a block until a condition is not satisfied
 
 ```blitz
 var i = 0;
-for i < 10 {
+loop i < 10 {
     println i;
     i += 1;
 }
@@ -215,7 +215,7 @@ can also make use of the single statement feature:
 
 ```blitz
 var i = 0;
-for i < 10: i += 1;
+loop i < 10: i += 1;
 println i;
 ```
 
@@ -225,7 +225,7 @@ They can be used to alter the normal flow of the program
 
 ```blitz
 var i = 0;
-for i < 10 {
+loop i < 10 {
     if i == 6: break;
 
     println i;
@@ -247,7 +247,7 @@ to allow for cleaner code like this:
 
 ```blitz
 var i = 0;
-for i < 100 {
+loop i < 100 {
     if i % 15 == 0 { println "fizzbuz" }
     else if i % 3 == 0 { println "fizz" }
     else if i % 5 == 0 { println "buzz" }

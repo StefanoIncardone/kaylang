@@ -1,5 +1,4 @@
-var i: int = ?;
-for i < 10 {
-    println i;
-    i += 1;
-}
+var i: int;
+loop false:;
+
+println i;

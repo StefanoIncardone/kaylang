@@ -1,9 +1,9 @@
 var max_chain_length = 1;
 var number = 2;
-for number < 1000000 {
+loop number < 1000000 {
     var chain_length = 1;
     var number_copy = number;
-    for number_copy > 1 {
+    loop number_copy > 1 {
         if number_copy % 2 == 0: number_copy /= 2;
         else: number_copy = 3 * number_copy + 1;
 

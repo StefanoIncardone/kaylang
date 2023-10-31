@@ -1,9 +1,9 @@
 let high_divisor = 15;
 
 var number = 1;
-for true {
+loop true {
     var divisor = 2;
-    for divisor <= high_divisor && number % divisor == 0: divisor += 1;
+    loop divisor <= high_divisor && number % divisor == 0: divisor += 1;
     if divisor - 1 == high_divisor: break;
     number += 1;
 }

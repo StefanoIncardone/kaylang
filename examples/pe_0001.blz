@@ -1,8 +1,8 @@
 var sum = 0;
 
 var number = 1;
-for number < 1000 {
-    sum += number * (number % 3 == 0 || number % 5 == 0);
+loop number < 1000 {
+    sum += (number % 3 == 0 || number % 5 == 0) * number;
     number += 1;
 }
 

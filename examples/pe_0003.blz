@@ -2,18 +2,14 @@ let number = 600851475143;
 var largest_prime = 0;
 
 var factor = 1;
-for factor ** 2 <= number {
+loop factor ** 2 <= number {
     if number % factor == 0 {
         var is_prime = true;
-        for true {
-            if factor == 2 || factor == 3: break;
-            else if factor <= 1 || factor % 2 == 0 || factor % 3 == 0 {
-                is_prime = false;
-                break;
-            }
-
+        if factor == 2 || factor == 3: is_prime = true;
+        else if factor <= 1 || factor % 2 == 0 || factor % 3 == 0: is_prime = false;
+        else {
             var divisor = 5;
-            for divisor ** 2 <= factor {
+            loop divisor ** 2 <= factor {
                 if factor % divisor == 0 || factor % (divisor + 2) == 0 {
                     is_prime = false;
                     break;
@@ -21,8 +17,6 @@ for factor ** 2 <= number {
 
                 divisor += 6;
             }
-
-            break;
         }
 
         if is_prime: largest_prime = factor;

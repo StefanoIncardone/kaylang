@@ -524,7 +524,7 @@ enum TokenKind {
     False,
     If,
     Else,
-    For,
+    Loop,
     Break,
     Continue,
 
@@ -556,7 +556,7 @@ impl Display for TokenKind {
             Self::False => write!( f, "false" ),
             Self::If => write!( f, "if" ),
             Self::Else => write!( f, "else" ),
-            Self::For => write!( f, "for" ),
+            Self::Loop => write!( f, "loop" ),
             Self::Break => write!( f, "break" ),
             Self::Continue => write!( f, "continue" ),
 
@@ -589,7 +589,7 @@ impl Len for TokenKind {
             Self::False => 5,
             Self::If => 2,
             Self::Else => 4,
-            Self::For => 3,
+            Self::Loop => 4,
             Self::Break => 5,
             Self::Continue => 8,
 
@@ -890,7 +890,7 @@ impl Lexer {
                             "false" => TokenKind::False,
                             "if" => TokenKind::If,
                             "else" => TokenKind::Else,
-                            "for" => TokenKind::For,
+                            "loop" => TokenKind::Loop,
                             "break" => TokenKind::Break,
                             "continue" => TokenKind::Continue,
                             _ => TokenKind::Identifier( self.token_text.clone() ),
@@ -1451,26 +1451,26 @@ struct Variable {
 }
 
 #[derive( Debug, Clone )]
-struct If {
+struct IfStatement {
     condition: Expression,
     statement: Node,
 }
 
-impl Display for If {
+impl Display for IfStatement {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return write!( f, "if {}", self.condition );
     }
 }
 
 #[derive( Debug, Clone )]
-struct IfStatement {
-    ifs: Vec<If>,
+struct If {
+    ifs: Vec<IfStatement>,
     els: Option<Box<Node>>,
 }
 
 #[allow( dead_code )]
 #[derive( Debug, Clone )]
-struct ForStatement {
+struct Loop {
     pre: Option<Box<Node>>,
     condition: Option<Expression>,
     post: Option<Box<Node>>,
@@ -1484,8 +1484,8 @@ enum Node {
     Expression( Expression ),
     Print( Expression ),
     Println( Option<Expression> ),
-    If( IfStatement ),
-    For( ForStatement ),
+    If( If ),
+    Loop( Loop ),
     Break,
     Continue,
 
@@ -1504,9 +1504,9 @@ impl Display for Node {
                 None => write!( f, "println" ),
             },
             Self::If( iff ) => write!( f, "{}", iff.ifs[ 0 ] ),
-            Self::For( forr ) => match &forr.condition {
-                Some( condition ) => write!( f, "for {}", condition ),
-                None => write!( f, "for" ),
+            Self::Loop( looop ) => match &looop.condition {
+                Some( condition ) => write!( f, "loop {}", condition ),
+                None => write!( f, "loop" ),
             },
 
             Self::Empty
@@ -1531,7 +1531,7 @@ struct Scope {
 struct AST {
     scopes: Vec<Scope>,
     current_scope: usize,
-    for_depth: usize,
+    loop_depth: usize,
 
     errors: Vec<SyntaxError>,
 }
@@ -1548,7 +1548,7 @@ impl TryFrom<Lexer> for AST {
                 nodes: Vec::new(),
             }],
             current_scope: 0,
-            for_depth: 0,
+            loop_depth: 0,
             errors: Vec::new(),
         };
 
@@ -1611,10 +1611,10 @@ impl AST {
                     help_msg: "stray else block".into()
                 })
             },
-            TokenKind::For => Ok( Some( self.for_statement( tokens )? ) ),
+            TokenKind::Loop => Ok( Some( self.loop_statement( tokens )? ) ),
             TokenKind::Break => {
                 tokens.next();
-                match self.for_depth {
+                match self.loop_depth {
                     0 => Err( SyntaxError {
                         line_byte_start: current.line.byte_start,
                         line: current.line.number,
@@ -1631,7 +1631,7 @@ impl AST {
             },
             TokenKind::Continue => {
                 tokens.next();
-                match self.for_depth {
+                match self.loop_depth {
                     0 => Err( SyntaxError {
                         line_byte_start: current.line.byte_start,
                         line: current.line.number,
@@ -1904,7 +1904,7 @@ impl AST {
             TokenKind::Definition( _ )
             | TokenKind::Print | TokenKind::PrintLn
             | TokenKind::If | TokenKind::Else
-            | TokenKind::For | TokenKind::Break | TokenKind::Continue => Err( SyntaxError {
+            | TokenKind::Loop | TokenKind::Break | TokenKind::Continue => Err( SyntaxError {
                 line_byte_start: previous.line.byte_start,
                 line: previous.line.number,
                 col: previous.token.col,
@@ -2381,13 +2381,13 @@ impl AST {
 impl AST {
     fn if_statement( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
         let iff = self.iff( tokens )?;
-        let mut if_statement = IfStatement { ifs: vec![iff], els: None };
+        let mut if_statement = If { ifs: vec![iff], els: None };
         self.els( &mut if_statement, tokens )?;
 
         return Ok( Node::If( if_statement ) );
     }
 
-    fn iff( &mut self, tokens: &mut TokenCursor ) -> Result<If, SyntaxError> {
+    fn iff( &mut self, tokens: &mut TokenCursor ) -> Result<IfStatement, SyntaxError> {
         let if_pos = tokens.current().unwrap();
         tokens.next().bounded( tokens, "expected boolean expression" )?;
 
@@ -2409,13 +2409,13 @@ impl AST {
             TokenKind::Bracket( BracketKind::OpenCurly ) => {
                 let condition = condition?;
                 let scope = self.parse_single( tokens )?.unwrap();
-                Ok( If { condition, statement: scope } )
+                Ok( IfStatement { condition, statement: scope } )
             },
             TokenKind::Colon => {
                 let condition = condition?;
                 tokens.next().bounded( tokens, "expected statement" )?;
                 match self.parse_single( tokens )? {
-                    Some( statement ) => Ok( If { condition, statement } ),
+                    Some( statement ) => Ok( IfStatement { condition, statement } ),
                     None => Err( SyntaxError {
                         line_byte_start: block_or_statement_pos.line.byte_start,
                         line: block_or_statement_pos.line.number,
@@ -2441,7 +2441,7 @@ impl AST {
         }
     }
 
-    fn els( &mut self, if_statement: &mut IfStatement, tokens: &mut TokenCursor ) -> Result<(), SyntaxError> {
+    fn els( &mut self, if_statement: &mut If, tokens: &mut TokenCursor ) -> Result<(), SyntaxError> {
         let els_pos = match tokens.current() {
             Some( pos ) => match pos.token.kind {
                 TokenKind::Else => pos,
@@ -2494,13 +2494,13 @@ impl AST {
 
 // for statements
 impl AST {
-    fn for_statement( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
-        self.for_depth += 1;
+    fn loop_statement( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
+        self.loop_depth += 1;
         let iff = self.iff( tokens );
-        self.for_depth -= 1;
+        self.loop_depth -= 1;
 
         let iff = iff?;
-        return Ok( Node::For( ForStatement {
+        return Ok( Node::Loop( Loop {
             pre: None,
             condition: Some( iff.condition ),
             post: None,
@@ -2703,8 +2703,8 @@ struct Compiler<'ast> {
     strings: Vec<StringLabel<'ast>>,
 
     if_idx: usize,
-    for_idx: usize,
-    for_idx_stack: Vec<usize>,
+    loop_idx: usize,
+    loop_idx_stack: Vec<usize>,
 }
 
 // generation of compilation artifacts (.asm, .o, executable)
@@ -3289,28 +3289,28 @@ impl<'ast> Compiler<'ast> {
 
                 self.asm += &format!( "if_{}_end:\n", if_idx );
             },
-            Node::For( forr ) => {
-                let for_tag = format!( "for_{}", self.for_idx );
-                let for_end_tag = format!( "for_{}_end", self.for_idx );
+            Node::Loop( looop ) => {
+                let loop_tag = format!( "loop_{}", self.loop_idx );
+                let loop_end_tag = format!( "loop_{}_end", self.loop_idx );
 
-                self.for_idx_stack.push( self.for_idx );
-                self.for_idx += 1;
-                self.compile_for( forr, &for_tag, &for_end_tag );
-                self.for_idx_stack.pop();
+                self.loop_idx_stack.push( self.loop_idx );
+                self.loop_idx += 1;
+                self.compile_loop( looop, &loop_tag, &loop_end_tag );
+                self.loop_idx_stack.pop();
 
                 self.asm += &format!(
                     " jmp {}\
                     \n{}:\n\n",
-                    for_tag,
-                    for_end_tag
+                    loop_tag,
+                    loop_end_tag
                 );
             },
             Node::Definition( name, value ) => self.compile_assignment( name, value ),
             Node::Assignment( name, value ) => self.compile_assignment( name, value ),
             Node::Scope( inner ) => self.compile_scope( *inner ),
             Node::Expression( expression ) => self.compile_expression( expression ),
-            Node::Break => self.asm += &format!( " jmp for_{}_end\n\n", self.for_idx_stack.last().unwrap() ),
-            Node::Continue => self.asm += &format!( " jmp for_{}\n\n", self.for_idx_stack.last().unwrap() ),
+            Node::Break => self.asm += &format!( " jmp loop_{}_end\n\n", self.loop_idx_stack.last().unwrap() ),
+            Node::Continue => self.asm += &format!( " jmp loop_{}\n\n", self.loop_idx_stack.last().unwrap() ),
             Node::Empty => (/* do nothing */),
         }
     }
@@ -3513,7 +3513,7 @@ impl<'ast> Compiler<'ast> {
     }
 
 
-    fn compile_if( &mut self, iff: &'ast If, if_tag: &String, if_false_tag: &String ) {
+    fn compile_if( &mut self, iff: &'ast IfStatement, if_tag: &String, if_false_tag: &String ) {
         self.asm += &format!( "{}:; {}\n", if_tag, iff.condition );
 
         match &iff.condition {
@@ -3588,9 +3588,9 @@ impl<'ast> Compiler<'ast> {
         self.compile_node( &iff.statement );
     }
 
-    fn compile_for( &mut self, forr: &'ast ForStatement, for_tag: &String, for_false_tag: &String ) {
-        if let Some( condition ) = &forr.condition {
-            self.asm += &format!( "{}:; {}\n", for_tag, condition );
+    fn compile_loop( &mut self, looop: &'ast Loop, loop_tag: &String, loop_false_tag: &String ) {
+        if let Some( condition ) = &looop.condition {
+            self.asm += &format!( "{}:; {}\n", loop_tag, condition );
 
             match condition {
                 Expression::Literal( Literal::Bool( value ) ) =>
@@ -3599,7 +3599,7 @@ impl<'ast> Compiler<'ast> {
                         \n cmp dil, true\
                         \n jne {}\n\n",
                         *value as usize,
-                        for_false_tag
+                        loop_false_tag
                     ),
                 Expression::Binary { lhs, op, rhs } => {
                     match &**rhs {
@@ -3617,15 +3617,15 @@ impl<'ast> Compiler<'ast> {
                     }
 
                     match op {
-                        Operator::EqualsEquals => self.asm += &format!( " cmp rdi, rsi\n jne {}\n\n", for_false_tag ),
-                        Operator::NotEquals => self.asm += &format!( " cmp rdi, rsi\n je {}\n\n", for_false_tag ),
-                        Operator::Greater => self.asm += &format!( " cmp rdi, rsi\n jle {}\n\n", for_false_tag ),
-                        Operator::GreaterOrEquals => self.asm += &format!( " cmp rdi, rsi\n jl {}\n\n", for_false_tag ),
-                        Operator::Less => self.asm += &format!( " cmp rdi, rsi\n jge {}\n\n", for_false_tag ),
-                        Operator::LessOrEquals => self.asm += &format!( " cmp rdi, rsi\n jg {}\n\n", for_false_tag ),
-                        Operator::And => self.asm += &format!( " and rdi, rsi\n jz {}\n\n", for_false_tag ),
-                        Operator::Or => self.asm += &format!( " or rdi, rsi\n jz {}\n\n", for_false_tag ),
-                        Operator::Xor => self.asm += &format!( " xor rdi, rsi\n jz {}\n\n", for_false_tag ),
+                        Operator::EqualsEquals => self.asm += &format!( " cmp rdi, rsi\n jne {}\n\n", loop_false_tag ),
+                        Operator::NotEquals => self.asm += &format!( " cmp rdi, rsi\n je {}\n\n", loop_false_tag ),
+                        Operator::Greater => self.asm += &format!( " cmp rdi, rsi\n jle {}\n\n", loop_false_tag ),
+                        Operator::GreaterOrEquals => self.asm += &format!( " cmp rdi, rsi\n jl {}\n\n", loop_false_tag ),
+                        Operator::Less => self.asm += &format!( " cmp rdi, rsi\n jge {}\n\n", loop_false_tag ),
+                        Operator::LessOrEquals => self.asm += &format!( " cmp rdi, rsi\n jg {}\n\n", loop_false_tag ),
+                        Operator::And => self.asm += &format!( " and rdi, rsi\n jz {}\n\n", loop_false_tag ),
+                        Operator::Or => self.asm += &format!( " or rdi, rsi\n jz {}\n\n", loop_false_tag ),
+                        Operator::Xor => self.asm += &format!( " xor rdi, rsi\n jz {}\n\n", loop_false_tag ),
 
                         Operator::Pow | Operator::PowEquals
                         | Operator::Times | Operator::TimesEquals
@@ -3645,7 +3645,7 @@ impl<'ast> Compiler<'ast> {
                         \n cmp dil, true\
                         \n jne {}\n\n",
                         src_variable.offset,
-                        for_false_tag
+                        loop_false_tag
                     )
                 },
                 Expression::Unary { operand, .. } => {
@@ -3655,14 +3655,14 @@ impl<'ast> Compiler<'ast> {
                     self.asm += &format!(
                         " xor dil, 1\
                         \n jz {}\n\n",
-                        for_false_tag
+                        loop_false_tag
                     );
                 },
                 Expression::Literal( _ ) => unreachable!(),
             }
         }
 
-        self.compile_node( &forr.statement );
+        self.compile_node( &looop.statement );
     }
 
 
@@ -4075,8 +4075,8 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
                     variables: Vec::new(),
                     strings: Vec::new(),
                     if_idx: 0,
-                    for_idx: 0,
-                    for_idx_stack: Vec::new(),
+                    loop_idx: 0,
+                    loop_idx_stack: Vec::new(),
                 };
 
                 let executable_path = match compiler.compile( &start_time ) {

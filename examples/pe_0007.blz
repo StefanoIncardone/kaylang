@@ -1,17 +1,13 @@
 var current_prime = 0;
 
 var number = 2;
-for current_prime < 10001 {
+loop current_prime < 10001 {
     var is_prime = true;
-    for true {
-        if number == 2 || number == 3: break;
-        else if number <= 1 || number % 2 == 0 || number % 3 == 0 {
-            is_prime = false;
-            break;
-        }
-
+    if number == 2 || number == 3: is_prime = true;
+    else if number <= 1 || number % 2 == 0 || number % 3 == 0: is_prime = false;
+    else {
         var divisor = 5;
-        for divisor ** 2 <= number {
+        loop divisor ** 2 <= number {
             if number % divisor == 0 || number % (divisor + 2) == 0 {
                 is_prime = false;
                 break;
@@ -19,8 +15,6 @@ for current_prime < 10001 {
 
             divisor += 6;
         }
-
-        break;
     }
 
     current_prime += is_prime;

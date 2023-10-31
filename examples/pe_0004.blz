@@ -5,16 +5,16 @@ let MAX_NUMBER = 10 ** MAX_DIGITS - 1;
 var max_palindrome = 0;
 
 var lhs = MAX_NUMBER;
-for lhs > MIN_NUMBER {
+loop lhs > MIN_NUMBER {
     if max_palindrome > lhs * MAX_NUMBER: break;
 
     var rhs = MAX_NUMBER;
-    for rhs > MIN_NUMBER {
+    loop rhs > MIN_NUMBER {
         var target = lhs * rhs;
         var reversed_target = 0;
 
         var target_copy = target;
-        for target_copy > 0 {
+        loop target_copy > 0 {
             reversed_target = 10 * reversed_target + target_copy % 10;
             target_copy /= 10;
         }

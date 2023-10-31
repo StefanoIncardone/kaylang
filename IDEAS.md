@@ -9,7 +9,7 @@ From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProj
 ## Loops
 
 - loops similar to [Odin's for loops](https://odin-lang.org/docs/overview/#for-statement)
-- do-for loops, only for C-style while loops
+- do-loop loops, only for C-style while loops
     - cannot be used with infinite loops or with C-style for loops
 
 ## Once keyword
@@ -420,6 +420,6 @@ use unions instead, which have to be checked (kinda like what Casey Muratori exp
 
 dynamically dispatched objects rely on interfaces/traits/concept (whatever name) stipulating that a type implements a
 specific function, so the compiler can basically inject the tagged union representing the polymorfic object and the
-check for for the type of the object by itself
+check for the type of the object by itself
 
 maybe optionally enable true dynamic dispatch on demand with v-tables and stuff

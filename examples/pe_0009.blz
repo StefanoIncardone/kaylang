@@ -4,9 +4,9 @@ let b_max = 1000 / 2;
 
 var found = false;
 var a = 1;
-for a < a_max && !found {
+loop a < a_max && !found {
     var b = a + 1;
-    for b < b_max {
+    loop b < b_max {
         let c = 1000 - b - a;
         if a**2 + b**2 == c**2 {
             print "found "; print a; print ", "; print b; print ", "; println c;

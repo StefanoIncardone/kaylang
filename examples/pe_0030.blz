@@ -3,10 +3,10 @@ let MAX_DIGIT_NUMBER = 10 ** (DIGITS_COUNT + 1);
 
 var digit_power_sum = 0;
 var number = 2;
-for number <= MAX_DIGIT_NUMBER {
+loop number <= MAX_DIGIT_NUMBER {
     var current_digit_power_sum = 0;
     var number_copy = number;
-    for number_copy > 0 {
+    loop number_copy > 0 {
         current_digit_power_sum += (number_copy % 10) ** DIGITS_COUNT;
         number_copy /= 10;
     }

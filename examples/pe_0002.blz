@@ -4,8 +4,8 @@ var fib_previous = 0;
 var fib_current = 1;
 
 var evens_sum = 0;
-for fib_current < FOUR_MILLIONS {
-    evens_sum += fib_current * (fib_current % 2 == 0);
+loop fib_current < FOUR_MILLIONS {
+    evens_sum += (fib_current % 2 == 0) * fib_current;
 
     var fib_next = fib_previous + fib_current;
     fib_previous = fib_current;

@@ -33,8 +33,8 @@ variable_declaration = ("let" | "var"), identifier, (
 variable_reassignment = identifier, ("=" | "**=" | "*=" | "/=" | "%=" | "+=" | "-=" ), expression, ";";
 print = (("print", expression) | ("println", [expression])), ";";
 if = "if", boolean_expression, ((":", statement, ";") | scope), [{"else", (if | (":", statement, ";") | scope)}];
-for = "for", boolean_expression, ((":", statement, ";") | scope);
+loop = "loop", boolean_expression, ((":", statement, ";") | scope);
 
-statement = expression | print | variable_declaration | variable_reassignment | if | for;
+statement = expression | print | variable_declaration | variable_reassignment | if | loop;
 scope = "{", [{line_comment | statement | scope}], "}";
 program = [{line_comment | statement | scope}];

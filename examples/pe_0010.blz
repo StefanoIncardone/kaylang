@@ -1,16 +1,12 @@
 var sum = 0;
 var number = 1;
-for number < 2000000 {
+loop number < 2000000 {
     var is_prime = true;
-    for true {
-        if number == 2 || number == 3: break;
-        else if number <= 1 || number % 2 == 0 || number % 3 == 0 {
-            is_prime = false;
-            break;
-        }
-
+    if number == 2 || number == 3: is_prime = true;
+    else if number <= 1 || number % 2 == 0 || number % 3 == 0: is_prime = false;
+    else {
         var divisor = 5;
-        for divisor ** 2 <= number {
+        loop divisor ** 2 <= number {
             if number % divisor == 0 || number % (divisor + 2) == 0 {
                 is_prime = false;
                 break;
@@ -18,8 +14,6 @@ for number < 2000000 {
 
             divisor += 6;
         }
-
-        break;
     }
 
     sum += is_prime * number;

@@ -3,7 +3,7 @@ let TARGET_FACTOR_COUNT = 500;
 var triangle_number = 0;
 var number = 1;
 var total_factor_count = 1;
-for total_factor_count <= TARGET_FACTOR_COUNT {
+loop total_factor_count <= TARGET_FACTOR_COUNT {
     total_factor_count = 1;
 
     triangle_number += number;
@@ -11,43 +11,37 @@ for total_factor_count <= TARGET_FACTOR_COUNT {
 
     var prime_factor_count = 0;
     var prime_factor = 2;
-    for true {
+    loop true {
         if triangle_number_copy % prime_factor == 0 {
             triangle_number_copy /= prime_factor;
             prime_factor_count += 1;
+            continue;
         }
-        else {
-            total_factor_count *= prime_factor_count + 1;
-            prime_factor_count = 0;
 
-            var is_not_prime = true;
-            for is_not_prime {
-                is_not_prime = false;
-                prime_factor += 1;
+        total_factor_count *= prime_factor_count + 1;
+        prime_factor_count = 0;
 
-                for true {
-                    if prime_factor == 2 || prime_factor == 3: break;
-                    else if prime_factor <= 1 || prime_factor % 2 == 0 || prime_factor % 3 == 0 {
-                        is_not_prime = true;
+        var is_prime = false;
+        loop !is_prime {
+            is_prime = true;
+            prime_factor += 1;
+
+            if prime_factor == 2 || prime_factor == 3: break;
+            else if prime_factor <= 1 || prime_factor % 2 == 0 || prime_factor % 3 == 0: break;
+            else {
+                var divisor = 5;
+                loop divisor ** 2 <= prime_factor {
+                    if prime_factor % divisor == 0 || prime_factor % (divisor + 2) == 0 {
+                        is_prime = false;
                         break;
                     }
 
-                    var divisor = 5;
-                    for divisor ** 2 <= prime_factor {
-                        if prime_factor % divisor == 0 || prime_factor % (divisor + 2) == 0 {
-                            is_not_prime = true;
-                            break;
-                        }
-
-                        divisor += 6;
-                    }
-
-                    break;
+                    divisor += 6;
                 }
             }
-
-            if prime_factor > triangle_number_copy: break;
         }
+
+        if prime_factor > triangle_number_copy: break;
     }
 
     number += 1;

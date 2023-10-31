@@ -5,6 +5,7 @@
 - removed `interpret` mode
 - type annotations
 - default values
+- `for` kewyord renamed to `loop`
 
 ## 0.1
 
