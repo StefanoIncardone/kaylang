@@ -1479,7 +1479,7 @@ struct ForStatement {
 
 #[derive( Debug, Clone )]
 enum Node {
-    // TODO introduce an Empty/Semicolon/(whatever) variant to denote the end of the statement in cases where we found a semicolon
+    Empty,
 
     Expression( Expression ),
     Print( Expression ),
@@ -1509,7 +1509,8 @@ impl Display for Node {
                 None => write!( f, "for" ),
             },
 
-            Self::Break | Self::Continue
+            Self::Empty
+            | Self::Break | Self::Continue
             | Self::Definition( _, _ ) | Self::Assignment( _, _ )
             | Self::Scope( _ ) => unreachable!(),
         }
@@ -1566,6 +1567,7 @@ impl AST {
     fn parse_scope( &mut self, tokens: &mut TokenCursor ) {
         loop {
             match self.parse_single( tokens ) {
+                Ok( Some( Node::Empty ) ) => continue,
                 Ok( Some( node ) ) => self.scopes[ self.current_scope ].nodes.push( node ),
                 Ok( None ) => break,
                 // only parsing until the first error until a fault tolerant parser is developed, this is
@@ -1584,147 +1586,145 @@ impl AST {
     }
 
     fn parse_single( &mut self, tokens: &mut TokenCursor ) -> Result<Option<Node>, SyntaxError> {
-        loop {
-            let current = match tokens.current() {
-                Some( position ) => position,
-                None => return Ok( None ),
-            };
+        let current = match tokens.current() {
+            Some( position ) => position,
+            None => return Ok( None ),
+        };
 
-            return match current.token.kind {
-                TokenKind::Literal( _ )
-                | TokenKind::True | TokenKind::False
-                | TokenKind::Bracket( BracketKind::OpenRound )
-                | TokenKind::Op( Operator::Minus | Operator::Not ) => Ok( Some( Node::Expression( self.expression( tokens )? ) ) ),
-                TokenKind::Definition( _ ) => Ok( Some( self.variable_definition( tokens )? ) ),
-                TokenKind::Print | TokenKind::PrintLn => Ok( Some( self.print( tokens )? ) ),
-                TokenKind::Identifier( _ ) => Ok( Some( self.variable_reassignment_or_expression( tokens )? ) ),
-                TokenKind::If => Ok( Some( self.if_statement( tokens )? ) ),
-                TokenKind::Else => {
-                    tokens.next();
-                    Err( SyntaxError {
+        return match current.token.kind {
+            TokenKind::Literal( _ )
+            | TokenKind::True | TokenKind::False
+            | TokenKind::Bracket( BracketKind::OpenRound )
+            | TokenKind::Op( Operator::Minus | Operator::Not ) => Ok( Some( Node::Expression( self.expression( tokens )? ) ) ),
+            TokenKind::Definition( _ ) => Ok( Some( self.variable_definition( tokens )? ) ),
+            TokenKind::Print | TokenKind::PrintLn => Ok( Some( self.print( tokens )? ) ),
+            TokenKind::Identifier( _ ) => Ok( Some( self.variable_reassignment_or_expression( tokens )? ) ),
+            TokenKind::If => Ok( Some( self.if_statement( tokens )? ) ),
+            TokenKind::Else => {
+                tokens.next();
+                Err( SyntaxError {
+                    line_byte_start: current.line.byte_start,
+                    line: current.line.number,
+                    col: current.token.col,
+                    len: current.token.kind.len(),
+                    msg: "invalid if statement".into(),
+                    help_msg: "stray else block".into()
+                })
+            },
+            TokenKind::For => Ok( Some( self.for_statement( tokens )? ) ),
+            TokenKind::Break => {
+                tokens.next();
+                match self.for_depth {
+                    0 => Err( SyntaxError {
                         line_byte_start: current.line.byte_start,
                         line: current.line.number,
                         col: current.token.col,
                         len: current.token.kind.len(),
-                        msg: "invalid if statement".into(),
-                        help_msg: "stray else block".into()
-                    })
-                },
-                TokenKind::For => Ok( Some( self.for_statement( tokens )? ) ),
-                TokenKind::Break => {
-                    tokens.next();
-                    match self.for_depth {
-                        0 => Err( SyntaxError {
-                            line_byte_start: current.line.byte_start,
-                            line: current.line.number,
-                            col: current.token.col,
-                            len: current.token.kind.len(),
-                            msg: "invalid break statement".into(),
-                            help_msg: "cannot be used outside of loops".into()
-                        }),
-                        _ => {
-                            self.semicolon( tokens )?;
-                            Ok( Some( Node::Break ) )
-                        },
-                    }
-                },
-                TokenKind::Continue => {
-                    tokens.next();
-                    match self.for_depth {
-                        0 => Err( SyntaxError {
-                            line_byte_start: current.line.byte_start,
-                            line: current.line.number,
-                            col: current.token.col,
-                            len: current.token.kind.len(),
-                            msg: "invalid continue statement".into(),
-                            help_msg: "cannot be used outside of loops".into()
-                        }),
-                        _ => {
-                            self.semicolon( tokens )?;
-                            Ok( Some( Node::Continue ) )
-                        },
-                    }
-                },
-                TokenKind::Bracket( BracketKind::OpenCurly ) => {
-                    let new_scope = self.scopes.len();
-                    self.scopes.push( Scope {
-                        parent: self.current_scope,
-                        types: Vec::new(),
-                        variables: Vec::new(),
-                        nodes: Vec::new()
-                    } );
-                    self.current_scope = new_scope;
+                        msg: "invalid break statement".into(),
+                        help_msg: "cannot be used outside of loops".into()
+                    }),
+                    _ => {
+                        self.semicolon( tokens )?;
+                        Ok( Some( Node::Break ) )
+                    },
+                }
+            },
+            TokenKind::Continue => {
+                tokens.next();
+                match self.for_depth {
+                    0 => Err( SyntaxError {
+                        line_byte_start: current.line.byte_start,
+                        line: current.line.number,
+                        col: current.token.col,
+                        len: current.token.kind.len(),
+                        msg: "invalid continue statement".into(),
+                        help_msg: "cannot be used outside of loops".into()
+                    }),
+                    _ => {
+                        self.semicolon( tokens )?;
+                        Ok( Some( Node::Continue ) )
+                    },
+                }
+            },
+            TokenKind::Bracket( BracketKind::OpenCurly ) => {
+                let new_scope = self.scopes.len();
+                self.scopes.push( Scope {
+                    parent: self.current_scope,
+                    types: Vec::new(),
+                    variables: Vec::new(),
+                    nodes: Vec::new()
+                } );
+                self.current_scope = new_scope;
 
-                    tokens.next();
-                    self.parse_scope( tokens );
-                    Ok( Some( Node::Scope( new_scope ) ) )
-                },
-                TokenKind::Bracket( BracketKind::CloseCurly ) => {
-                    self.current_scope = self.scopes[ self.current_scope ].parent;
-                    tokens.next();
-                    Ok( None )
-                },
-                TokenKind::Bracket( BracketKind::CloseRound ) => {
-                    tokens.next();
-                    Err( SyntaxError {
-                        line_byte_start: current.line.byte_start,
-                        line: current.line.number,
-                        col: current.token.col,
-                        len: current.token.kind.len(),
-                        msg: "invalid expression".into(),
-                        help_msg: "stray closed parenthesis".into()
-                    })
-                },
-                TokenKind::Colon => {
-                    tokens.next();
-                    Err( SyntaxError {
-                        line_byte_start: current.line.byte_start,
-                        line: current.line.number,
-                        col: current.token.col,
-                        len: current.token.kind.len(),
-                        msg: "invalid statement".into(),
-                        help_msg: "stray colon".into()
-                    })
-                },
-                TokenKind::Equals => {
-                    tokens.next();
-                    Err( SyntaxError {
-                        line_byte_start: current.line.byte_start,
-                        line: current.line.number,
-                        col: current.token.col,
-                        len: current.token.kind.len(),
-                        msg: "invalid assignment".into(),
-                        help_msg: "stray assignment".into()
-                    })
-                },
-                TokenKind::QuestionMark => {
-                    tokens.next();
-                    Err( SyntaxError {
-                        line_byte_start: current.line.byte_start,
-                        line: current.line.number,
-                        col: current.token.col,
-                        len: current.token.kind.len(),
-                        msg: "invalid explicit uninitialization".into(),
-                        help_msg: "stray uninitialized value".into()
-                    })
-                },
-                TokenKind::Op( _ ) => {
-                    tokens.next();
-                    Err( SyntaxError {
-                        line_byte_start: current.line.byte_start,
-                        line: current.line.number,
-                        col: current.token.col,
-                        len: current.token.kind.len(),
-                        msg: "invalid expression".into(),
-                        help_msg: "stray binary operator".into()
-                    })
-                },
-                TokenKind::SemiColon => {
-                    tokens.next();
-                    continue;
-                },
-                TokenKind::Comment( _ ) | TokenKind::Empty | TokenKind::Unexpected( _ ) => unreachable!(),
-            }
+                tokens.next();
+                self.parse_scope( tokens );
+                Ok( Some( Node::Scope( new_scope ) ) )
+            },
+            TokenKind::Bracket( BracketKind::CloseCurly ) => {
+                self.current_scope = self.scopes[ self.current_scope ].parent;
+                tokens.next();
+                Ok( None )
+            },
+            TokenKind::Bracket( BracketKind::CloseRound ) => {
+                tokens.next();
+                Err( SyntaxError {
+                    line_byte_start: current.line.byte_start,
+                    line: current.line.number,
+                    col: current.token.col,
+                    len: current.token.kind.len(),
+                    msg: "invalid expression".into(),
+                    help_msg: "stray closed parenthesis".into()
+                })
+            },
+            TokenKind::Colon => {
+                tokens.next();
+                Err( SyntaxError {
+                    line_byte_start: current.line.byte_start,
+                    line: current.line.number,
+                    col: current.token.col,
+                    len: current.token.kind.len(),
+                    msg: "invalid statement".into(),
+                    help_msg: "stray colon".into()
+                })
+            },
+            TokenKind::Equals => {
+                tokens.next();
+                Err( SyntaxError {
+                    line_byte_start: current.line.byte_start,
+                    line: current.line.number,
+                    col: current.token.col,
+                    len: current.token.kind.len(),
+                    msg: "invalid assignment".into(),
+                    help_msg: "stray assignment".into()
+                })
+            },
+            TokenKind::QuestionMark => {
+                tokens.next();
+                Err( SyntaxError {
+                    line_byte_start: current.line.byte_start,
+                    line: current.line.number,
+                    col: current.token.col,
+                    len: current.token.kind.len(),
+                    msg: "invalid explicit uninitialization".into(),
+                    help_msg: "stray uninitialized value".into()
+                })
+            },
+            TokenKind::Op( _ ) => {
+                tokens.next();
+                Err( SyntaxError {
+                    line_byte_start: current.line.byte_start,
+                    line: current.line.number,
+                    col: current.token.col,
+                    len: current.token.kind.len(),
+                    msg: "invalid expression".into(),
+                    help_msg: "stray binary operator".into()
+                })
+            },
+            TokenKind::SemiColon => {
+                tokens.next();
+                Ok( Some( Node::Empty ) )
+            },
+            TokenKind::Comment( _ ) | TokenKind::Empty | TokenKind::Unexpected( _ ) => unreachable!(),
         }
     }
 }
@@ -2444,8 +2444,8 @@ impl AST {
     fn els( &mut self, if_statement: &mut IfStatement, tokens: &mut TokenCursor ) -> Result<(), SyntaxError> {
         let els_pos = match tokens.current() {
             Some( pos ) => match pos.token.kind {
-                TokenKind::Else => return Ok( () ),
-                _ => pos,
+                TokenKind::Else => pos,
+                _ => return Ok( () ),
             },
             None => return Ok( () )
         };
@@ -3311,6 +3311,7 @@ impl<'ast> Compiler<'ast> {
             Node::Expression( expression ) => self.compile_expression( expression ),
             Node::Break => self.asm += &format!( " jmp for_{}_end\n\n", self.for_idx_stack.last().unwrap() ),
             Node::Continue => self.asm += &format!( " jmp for_{}\n\n", self.for_idx_stack.last().unwrap() ),
+            Node::Empty => (/* do nothing */),
         }
     }
 
