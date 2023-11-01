@@ -1584,7 +1584,7 @@ impl TryFrom<Lexer> for AST {
 impl AST {
     fn parse_scope( &mut self, tokens: &mut TokenCursor ) {
         loop {
-            match self.parse_single( tokens ) {
+            match self.parse_single_any( tokens ) {
                 Ok( Some( Node::Empty ) ) => continue,
                 Ok( Some( node ) ) => self.scopes[ self.current_scope ].nodes.push( node ),
                 Ok( None ) => break,
@@ -1603,7 +1603,7 @@ impl AST {
         }
     }
 
-    fn parse_single( &mut self, tokens: &mut TokenCursor ) -> Result<Option<Node>, SyntaxError> {
+    fn parse_single_statement( &mut self, tokens: &mut TokenCursor ) -> Result<Option<Node>, SyntaxError> {
         let current = match tokens.current() {
             Some( position ) => position,
             None => return Ok( None ),
@@ -1629,17 +1629,6 @@ impl AST {
                     help_msg: "stray else block".into()
                 })
             },
-            // TokenKind::Do => {
-            //     tokens.next();
-            //     Err( SyntaxError {
-            //         line_byte_start: current.line.byte_start,
-            //         line: current.line.number,
-            //         col: current.token.col,
-            //         len: current.token.kind.len(),
-            //         msg: "invalid statement".into(),
-            //         help_msg: "stray do statement".into()
-            //     })
-            // },
             TokenKind::Do | TokenKind::Loop => Ok( Some( self.loop_statement( tokens )? ) ),
             TokenKind::Break => {
                 tokens.next();
@@ -1676,23 +1665,26 @@ impl AST {
                 }
             },
             TokenKind::Bracket( BracketKind::OpenCurly ) => {
-                let new_scope = self.scopes.len();
-                self.scopes.push( Scope {
-                    parent: self.current_scope,
-                    types: Vec::new(),
-                    variables: Vec::new(),
-                    nodes: Vec::new()
-                } );
-                self.current_scope = new_scope;
-
                 tokens.next();
-                self.parse_scope( tokens );
-                Ok( Some( Node::Scope( new_scope ) ) )
+                Err( SyntaxError {
+                    line_byte_start: current.line.byte_start,
+                    line: current.line.number,
+                    col: current.token.col,
+                    len: current.token.kind.len(),
+                    msg: "invalid statement".into(),
+                    help_msg: "blocks are not allowed in this context".into()
+                })
             },
             TokenKind::Bracket( BracketKind::CloseCurly ) => {
-                self.current_scope = self.scopes[ self.current_scope ].parent;
                 tokens.next();
-                Ok( None )
+                Err( SyntaxError {
+                    line_byte_start: current.line.byte_start,
+                    line: current.line.number,
+                    col: current.token.col,
+                    len: current.token.kind.len(),
+                    msg: "invalid statement".into(),
+                    help_msg: "stray closed curly bracket".into()
+                })
             },
             TokenKind::Bracket( BracketKind::CloseRound ) => {
                 tokens.next();
@@ -1754,6 +1746,36 @@ impl AST {
                 Ok( Some( Node::Empty ) )
             },
             TokenKind::Comment( _ ) | TokenKind::Empty | TokenKind::Unexpected( _ ) => unreachable!(),
+        }
+    }
+
+    fn parse_single_any( &mut self, tokens: &mut TokenCursor ) -> Result<Option<Node>, SyntaxError> {
+        let current = match tokens.current() {
+            Some( position ) => position,
+            None => return Ok( None ),
+        };
+
+        return match current.token.kind {
+            TokenKind::Bracket( BracketKind::OpenCurly ) => {
+                let new_scope = self.scopes.len();
+                self.scopes.push( Scope {
+                    parent: self.current_scope,
+                    types: Vec::new(),
+                    variables: Vec::new(),
+                    nodes: Vec::new()
+                } );
+                self.current_scope = new_scope;
+
+                tokens.next();
+                self.parse_scope( tokens );
+                Ok( Some( Node::Scope( new_scope ) ) )
+            },
+            TokenKind::Bracket( BracketKind::CloseCurly ) => {
+                self.current_scope = self.scopes[ self.current_scope ].parent;
+                tokens.next();
+                Ok( None )
+            },
+            _ => self.parse_single_statement( tokens ),
         }
     }
 }
@@ -2437,13 +2459,13 @@ impl AST {
         return match block_or_statement_pos.token.kind {
             TokenKind::Bracket( BracketKind::OpenCurly ) => {
                 let condition = condition?;
-                let scope = self.parse_single( tokens )?.unwrap();
+                let scope = self.parse_single_any( tokens )?.unwrap();
                 Ok( IfStatement { condition, statement: scope } )
             },
             TokenKind::Do => {
                 let condition = condition?;
                 tokens.next().bounded( tokens, "expected statement" )?;
-                match self.parse_single( tokens )? {
+                match self.parse_single_statement( tokens )? {
                     Some( statement ) => Ok( IfStatement { condition, statement } ),
                     None => Err( SyntaxError {
                         line_byte_start: block_or_statement_pos.line.byte_start,
@@ -2482,13 +2504,13 @@ impl AST {
         let if_or_block_pos = tokens.next().bounded( tokens, "expected do, block or if statement" )?;
         return match if_or_block_pos.token.kind {
             TokenKind::Bracket( BracketKind::OpenCurly ) => {
-                let scope = self.parse_single( tokens )?.unwrap();
+                let scope = self.parse_single_any( tokens )?.unwrap();
                 if_statement.els = Some( Box::new( scope ) );
                 Ok( () )
             },
             TokenKind::Do => {
                 tokens.next().bounded( tokens, "expected statement" )?;
-                match self.parse_single( tokens )? {
+                match self.parse_single_statement( tokens )? {
                     Some( statement ) => {
                         if_statement.els = Some( Box::new( statement ) );
                         Ok( () )
