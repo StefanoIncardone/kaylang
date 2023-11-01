@@ -194,9 +194,9 @@ Executes a block of code based on a condition
 
     ```blitz
     let lucky = 42;
-    if lucky == 19: println "well done!";
-    else if lucky == 42: println "awesome!";
-    else: println "too bad!";
+    if lucky == 19 do println "well done!";
+    else if lucky == 42 do println "awesome!";
+    else do println "too bad!";
     ```
 
 ### Loops
@@ -215,7 +215,7 @@ can also make use of the single statement feature:
 
 ```blitz
 var i = 0;
-loop i < 10: i += 1;
+loop i < 10 do i += 1;
 println i;
 ```
 
@@ -226,7 +226,7 @@ They can be used to alter the normal flow of the program
 ```blitz
 var i = 0;
 loop i < 10 {
-    if i == 6: break;
+    if i == 6 do break;
 
     println i;
     i += 1;

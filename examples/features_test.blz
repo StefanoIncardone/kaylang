@@ -1,4 +1,5 @@
 var i: int;
-loop false:;
-
-println i;
+loop i < 10 {
+    println i;
+    i += 1;
+}

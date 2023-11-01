@@ -6,7 +6,7 @@ var max_palindrome = 0;
 
 var lhs = MAX_NUMBER;
 loop lhs > MIN_NUMBER {
-    if max_palindrome > lhs * MAX_NUMBER: break;
+    if max_palindrome > lhs * MAX_NUMBER do break;
 
     var rhs = MAX_NUMBER;
     loop rhs > MIN_NUMBER {
@@ -19,7 +19,7 @@ loop lhs > MIN_NUMBER {
             target_copy /= 10;
         }
 
-        if target == reversed_target && target > max_palindrome: max_palindrome = target;
+        if target == reversed_target && target > max_palindrome do max_palindrome = target;
 
         rhs -= 1;
     }

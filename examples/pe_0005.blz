@@ -3,8 +3,8 @@ let high_divisor = 15;
 var number = 1;
 loop true {
     var divisor = 2;
-    loop divisor <= high_divisor && number % divisor == 0: divisor += 1;
-    if divisor - 1 == high_divisor: break;
+    loop divisor <= high_divisor && number % divisor == 0 do divisor += 1;
+    if divisor - 1 == high_divisor do break;
     number += 1;
 }
 

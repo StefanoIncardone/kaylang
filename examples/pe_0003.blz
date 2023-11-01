@@ -5,8 +5,8 @@ var factor = 1;
 loop factor ** 2 <= number {
     if number % factor == 0 {
         var is_prime = true;
-        if factor == 2 || factor == 3: is_prime = true;
-        else if factor <= 1 || factor % 2 == 0 || factor % 3 == 0: is_prime = false;
+        if factor == 2 || factor == 3 do is_prime = true;
+        else if factor <= 1 || factor % 2 == 0 || factor % 3 == 0 do is_prime = false;
         else {
             var divisor = 5;
             loop divisor ** 2 <= factor {
@@ -19,7 +19,7 @@ loop factor ** 2 <= number {
             }
         }
 
-        if is_prime: largest_prime = factor;
+        if is_prime do largest_prime = factor;
     }
 
     factor += 1;

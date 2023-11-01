@@ -522,6 +522,7 @@ enum TokenKind {
     PrintLn, // temporary way of printing values followed by a newline
     True,
     False,
+    Do,
     If,
     Else,
     Loop,
@@ -554,6 +555,7 @@ impl Display for TokenKind {
             Self::PrintLn => write!( f, "println" ),
             Self::True => write!( f, "true" ),
             Self::False => write!( f, "false" ),
+            Self::Do => write!( f, "do" ),
             Self::If => write!( f, "if" ),
             Self::Else => write!( f, "else" ),
             Self::Loop => write!( f, "loop" ),
@@ -587,6 +589,7 @@ impl Len for TokenKind {
             Self::PrintLn => 7,
             Self::True => 4,
             Self::False => 5,
+            Self::Do => 2,
             Self::If => 2,
             Self::Else => 4,
             Self::Loop => 4,
@@ -888,6 +891,7 @@ impl Lexer {
                             "println" => TokenKind::PrintLn,
                             "true" => TokenKind::True,
                             "false" => TokenKind::False,
+                            "do" => TokenKind::Do,
                             "if" => TokenKind::If,
                             "else" => TokenKind::Else,
                             "loop" => TokenKind::Loop,
@@ -1683,8 +1687,19 @@ impl AST {
                     line: current.line.number,
                     col: current.token.col,
                     len: current.token.kind.len(),
-                    msg: "invalid statement".into(),
+                    msg: "invalid type annotation".into(),
                     help_msg: "stray colon".into()
+                })
+            },
+            TokenKind::Do => {
+                tokens.next();
+                Err( SyntaxError {
+                    line_byte_start: current.line.byte_start,
+                    line: current.line.number,
+                    col: current.token.col,
+                    len: current.token.kind.len(),
+                    msg: "invalid statement".into(),
+                    help_msg: "stray do statement".into()
                 })
             },
             TokenKind::Equals => {
@@ -2404,14 +2419,14 @@ impl AST {
             }),
         };
 
-        let block_or_statement_pos = tokens.current().bounded( tokens, "expected colon or curly bracket" )?;
+        let block_or_statement_pos = tokens.current().bounded( tokens, "expected do or block" )?;
         return match block_or_statement_pos.token.kind {
             TokenKind::Bracket( BracketKind::OpenCurly ) => {
                 let condition = condition?;
                 let scope = self.parse_single( tokens )?.unwrap();
                 Ok( IfStatement { condition, statement: scope } )
             },
-            TokenKind::Colon => {
+            TokenKind::Do => {
                 let condition = condition?;
                 tokens.next().bounded( tokens, "expected statement" )?;
                 match self.parse_single( tokens )? {
@@ -2421,7 +2436,7 @@ impl AST {
                         line: block_or_statement_pos.line.number,
                         col: block_or_statement_pos.token.col,
                         len: block_or_statement_pos.token.kind.len(),
-                        msg: "invalid else statement".into(),
+                        msg: "invalid if statement".into(),
                         help_msg: "must be followed by a statement".into()
                     })
                 }
@@ -2434,8 +2449,8 @@ impl AST {
                     line: before_curly_bracket_pos.line.number,
                     col: before_curly_bracket_pos.token.col,
                     len: before_curly_bracket_pos.token.kind.len(),
-                    msg: "expected block scope".into(),
-                    help_msg: "must be followed by an opened curly bracket or a colon".into()
+                    msg: "invalid if statement".into(),
+                    help_msg: "must be followed by a do or a block".into()
                 })
             },
         }
@@ -2450,14 +2465,14 @@ impl AST {
             None => return Ok( () )
         };
 
-        let if_or_block_pos = tokens.next().bounded( tokens, "expected colon, block or if statement" )?;
+        let if_or_block_pos = tokens.next().bounded( tokens, "expected do, block or if statement" )?;
         return match if_or_block_pos.token.kind {
             TokenKind::Bracket( BracketKind::OpenCurly ) => {
                 let scope = self.parse_single( tokens )?.unwrap();
                 if_statement.els = Some( Box::new( scope ) );
                 Ok( () )
             },
-            TokenKind::Colon => {
+            TokenKind::Do => {
                 tokens.next().bounded( tokens, "expected statement" )?;
                 match self.parse_single( tokens )? {
                     Some( statement ) => {
@@ -2486,7 +2501,7 @@ impl AST {
                 col: els_pos.token.col,
                 len: els_pos.token.kind.len(),
                 msg: "invalid else statement".into(),
-                help_msg: "expected block of if statement after this token".into()
+                help_msg: "must be followed by a do, a block or an if statement".into()
             }),
         }
     }
@@ -3821,9 +3836,7 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
         println!( "Blitzlang compiler, version {}", VERSION );
     }
 
-    fn from( args: Args ) -> ExitCode {
-        #[allow(unused_mut)]
-        let mut args = args.collect::<Vec<String>>();
+    fn from_vec( #[allow(unused_mut)] mut args: Vec<String> ) -> Result<(), ExitCode> {
         let mut current_arg = 1; // starting at 1 to skip the name of this executable
         // to quickly debug
         // args.push( "-c".to_string() );
@@ -3846,13 +3859,13 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
             if arg == "-c" || arg == "--color" {
                 if let Some( _ ) = color_mode {
                     eprintln!( "{}: color mode already selected", ERROR );
-                    return ExitCode::FAILURE;
+                    return Err( ExitCode::FAILURE );
                 }
 
                 current_arg += 1;
                 if current_arg >= args.len() {
                     eprintln!( "{}: expected color mode", ERROR );
-                    return ExitCode::FAILURE;
+                    return Err( ExitCode::FAILURE );
                 }
 
                 color_mode = match args[ current_arg ].as_str() {
@@ -3861,7 +3874,7 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
                     "never" => Some( Color::Never ),
                     _ => {
                         eprintln!( "{}: unrecognized color mode", ERROR );
-                        return ExitCode::FAILURE;
+                        return Err( ExitCode::FAILURE );
                     },
                 };
             }
@@ -3880,7 +3893,7 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
         // printing help message when no arguments were provided
         if args.len() < 2 {
             Self::print_usage( color_mode );
-            return ExitCode::SUCCESS;
+            return Ok( () );
         }
 
         current_arg = 1;
@@ -3888,7 +3901,7 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
             let arg = &args[ current_arg ];
             if arg == "-h" || arg == "--help" {
                 Self::print_usage( color_mode );
-                return ExitCode::SUCCESS;
+                return Ok( () );
             }
 
             current_arg += 1;
@@ -3901,7 +3914,7 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
             let arg = &args[ current_arg ];
             if arg == "-v" || arg == "--version" {
                 Self::print_version( color_mode );
-                return ExitCode::SUCCESS;
+                return Ok( () );
             }
 
             current_arg += 1;
@@ -3918,13 +3931,13 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
                 "check" | "compile" | "run" => {
                     if let Some( _ ) = run_mode {
                         eprintln!( "{}: run mode already selected", ERROR );
-                        return ExitCode::FAILURE;
+                        return Err( ExitCode::FAILURE );
                     }
 
                     current_arg += 1;
                     if current_arg >= args.len() {
                         eprintln!( "{}: missing source file path for '{}' mode", ERROR, arg );
-                        return ExitCode::FAILURE;
+                        return Err( ExitCode::FAILURE );
                     }
 
                     let src_path: PathBuf = args[ current_arg ].to_owned().into();
@@ -3941,7 +3954,7 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
                                     current_arg += 1;
                                     if current_arg >= args.len() {
                                         eprintln!( "{}: missing output folder path", ERROR );
-                                        return ExitCode::FAILURE;
+                                        return Err( ExitCode::FAILURE );
                                     }
 
                                     output_path = Some( args[ current_arg ].to_owned().into() );
@@ -3967,17 +3980,17 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
                             current_arg += 1;
                             if current_arg >= args.len() {
                                 eprintln!( "{}: missing output folder path", ERROR );
-                                return ExitCode::FAILURE;
+                                return Err( ExitCode::FAILURE );
                             }
                         }
                     }
 
                     eprintln!( "{}: output folder option can only be used after a 'compile' or 'run' command", ERROR );
-                    return ExitCode::FAILURE;
+                    return Err( ExitCode::FAILURE );
                 }
                 _ => {
                     eprintln!( "{}: unrecognized option '{}'", ERROR, arg );
-                    return ExitCode::FAILURE;
+                    return Err( ExitCode::FAILURE );
                 }
             }
 
@@ -3989,7 +4002,7 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
             Some( mode ) => mode,
             None => {
                 Self::print_usage( color_mode );
-                return ExitCode::SUCCESS;
+                return Ok( () );
             },
         };
 
@@ -3997,7 +4010,7 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
             Ok( src ) => src,
             Err( err ) => {
                 eprintln!( "{}", err );
-                return ExitCode::FAILURE;
+                return Err( ExitCode::FAILURE );
             },
         };
 
@@ -4059,7 +4072,7 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
                     );
                 }
 
-                return ExitCode::FAILURE;
+                return Err( ExitCode::FAILURE );
             }
         };
 
@@ -4083,7 +4096,7 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
                     Ok( path ) => path,
                     Err( err ) => {
                         eprintln!( "{}", err );
-                        return ExitCode::FAILURE;
+                        return Err( ExitCode::FAILURE );
                     },
                 };
 
@@ -4100,19 +4113,49 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
                         Ok( _ ) => (),
                         Err( err ) => {
                             eprintln!( "{}", err );
-                            return ExitCode::FAILURE;
+                            return Err( ExitCode::FAILURE );
                         },
                     }
                 }
             }
         }
 
-        return ExitCode::SUCCESS;
+        return Ok( () );
+    }
+
+    fn from_args( args: Args ) -> Result<(), ExitCode> {
+        return Self::from_vec( args.collect() );
     }
 }
 
 
 // IDEA adapt SyntaxErrors to report cli mistakes
+// IDEA add compiler flag to compile all blz files in directory
 fn main() -> ExitCode {
-    return Blitz::from( env::args() );
+    return match Blitz::from_args( env::args() ) {
+        Ok( () ) => ExitCode::SUCCESS,
+        Err( code ) => ExitCode::from( code ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{path::Path, process::ExitCode};
+
+    use crate::Blitz;
+
+    #[test]
+    fn project_eulers() -> Result<(), ExitCode> {
+        for src_file in Path::new( "./examples" ).read_dir().unwrap() {
+            let src_file_path = src_file.unwrap().path();
+            if let Some( extension ) = src_file_path.extension() {
+                if extension == "blz" {
+                    let args = vec!["".to_string(), "check".to_string(), src_file_path.display().to_string() ];
+                    Blitz::from_vec( args )?;
+                }
+            }
+        }
+
+        return Ok( () );
+    }
 }
