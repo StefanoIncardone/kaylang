@@ -1,5 +1,6 @@
 var i: int;
-loop i < 10 {
-    println i;
+do loop false {
     i += 1;
 }
+
+println i;

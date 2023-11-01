@@ -11,7 +11,7 @@ loop total_factor_count <= TARGET_FACTOR_COUNT {
 
     var prime_factor_count = 0;
     var prime_factor = 2;
-    loop true {
+    do loop prime_factor <= triangle_number_copy {
         if triangle_number_copy % prime_factor == 0 {
             triangle_number_copy /= prime_factor;
             prime_factor_count += 1;
@@ -40,8 +40,6 @@ loop total_factor_count <= TARGET_FACTOR_COUNT {
                 }
             }
         }
-
-        if prime_factor > triangle_number_copy do break;
     }
 
     number += 1;

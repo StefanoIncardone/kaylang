@@ -6,6 +6,7 @@
 - type annotations
 - default values
 - `for` kewyord renamed to `loop`
+- `do-loop`: C-style `do-while` loop
 - single statement ifs and loops must be followed by the `do` keyword instead of a colon
 
 ## 0.1

@@ -219,6 +219,18 @@ loop i < 10 do i += 1;
 println i;
 ```
 
+C-style do-while loop can be used to let the body/statement of the loop to run at least once:
+
+```blitz
+var i = 0;
+loop false do i += 1;
+println i; # will print 0 since the increment inside the loop was never executed
+
+var j = 0;
+do loop false do j += 1;
+println j; # will print 1 since the increment inside the loop was executed at least once
+```
+
 #### break and continue statements
 
 They can be used to alter the normal flow of the program

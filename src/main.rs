@@ -1472,13 +1472,30 @@ struct If {
     els: Option<Box<Node>>,
 }
 
+#[derive( Debug, Clone )]
+enum LoopCondition {
+    Infinite,
+    Pre( Expression ),
+    Post( Expression )
+}
+
 #[allow( dead_code )]
 #[derive( Debug, Clone )]
 struct Loop {
     pre: Option<Box<Node>>,
-    condition: Option<Expression>,
+    condition: LoopCondition,
     post: Option<Box<Node>>,
     statement: Box<Node>,
+}
+
+impl Display for Loop {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        return match &self.condition {
+            LoopCondition::Infinite => write!( f, "loop" ),
+            LoopCondition::Pre( condition ) => write!( f, "loop {}", condition ),
+            LoopCondition::Post( condition ) => write!( f, "do loop {}", condition ),
+        }
+    }
 }
 
 #[derive( Debug, Clone )]
@@ -1508,10 +1525,7 @@ impl Display for Node {
                 None => write!( f, "println" ),
             },
             Self::If( iff ) => write!( f, "{}", iff.ifs[ 0 ] ),
-            Self::Loop( looop ) => match &looop.condition {
-                Some( condition ) => write!( f, "loop {}", condition ),
-                None => write!( f, "loop" ),
-            },
+            Self::Loop( looop ) => write!( f, "{}", looop ),
 
             Self::Empty
             | Self::Break | Self::Continue
@@ -1615,7 +1629,18 @@ impl AST {
                     help_msg: "stray else block".into()
                 })
             },
-            TokenKind::Loop => Ok( Some( self.loop_statement( tokens )? ) ),
+            // TokenKind::Do => {
+            //     tokens.next();
+            //     Err( SyntaxError {
+            //         line_byte_start: current.line.byte_start,
+            //         line: current.line.number,
+            //         col: current.token.col,
+            //         len: current.token.kind.len(),
+            //         msg: "invalid statement".into(),
+            //         help_msg: "stray do statement".into()
+            //     })
+            // },
+            TokenKind::Do | TokenKind::Loop => Ok( Some( self.loop_statement( tokens )? ) ),
             TokenKind::Break => {
                 tokens.next();
                 match self.loop_depth {
@@ -1689,17 +1714,6 @@ impl AST {
                     len: current.token.kind.len(),
                     msg: "invalid type annotation".into(),
                     help_msg: "stray colon".into()
-                })
-            },
-            TokenKind::Do => {
-                tokens.next();
-                Err( SyntaxError {
-                    line_byte_start: current.line.byte_start,
-                    line: current.line.number,
-                    col: current.token.col,
-                    len: current.token.kind.len(),
-                    msg: "invalid statement".into(),
-                    help_msg: "stray do statement".into()
                 })
             },
             TokenKind::Equals => {
@@ -2511,13 +2525,28 @@ impl AST {
 impl AST {
     fn loop_statement( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
         self.loop_depth += 1;
+        let do_or_loop_pos = tokens.current().unwrap();
+        let is_do_loop = match do_or_loop_pos.token.kind {
+            TokenKind::Do => {
+                tokens.next().bounded( tokens, "expected loop statement" )?;
+                true
+            }
+            TokenKind::Loop => false,
+            _ => unreachable!(),
+        };
+
         let iff = self.iff( tokens );
         self.loop_depth -= 1;
 
         let iff = iff?;
+        let condition = match is_do_loop {
+            true => LoopCondition::Post( iff.condition ),
+            false => LoopCondition::Pre( iff.condition ),
+        };
+
         return Ok( Node::Loop( Loop {
             pre: None,
-            condition: Some( iff.condition ),
+            condition,
             post: None,
             statement: Box::new( iff.statement )
         } ) );
@@ -2862,7 +2891,7 @@ r#" stdout: equ 1
             );
         }
 
-        self.compile_scope( 0 );
+        self.scope( 0 );
 
         if stack_size > 0 {
             self.asm += &format!(
@@ -3149,11 +3178,11 @@ impl<'ast> Compiler<'ast> {
 
 // Compilation of nodes
 impl<'ast> Compiler<'ast> {
-    fn compile_node( &mut self, node: &'ast Node ) {
+    fn node( &mut self, node: &'ast Node ) {
         match node {
             Node::Print( argument ) => {
                 self.asm += &format!( " ; {}\n", node );
-                self.compile_expression( argument );
+                self.expression( argument );
 
                 match argument.typ() {
                     Type::Int => self.asm +=
@@ -3193,7 +3222,7 @@ impl<'ast> Compiler<'ast> {
             Node::Println( argument ) => {
                 self.asm += &format!( " ; {}\n", node );
                 if let Some( arg ) = argument {
-                    self.compile_expression( arg );
+                    self.expression( arg );
 
                     match arg.typ() {
                         Type::Int => self.asm +=
@@ -3261,7 +3290,7 @@ impl<'ast> Compiler<'ast> {
                     (format!( "if_{}_end", if_idx ), None)
                 };
 
-                self.compile_if( iff, &if_tag, &if_false_tag );
+                self.iff( iff, &if_tag, &if_false_tag );
                 if let Some( idx ) = if_end_tag_idx {
                     self.asm += &format!( " jmp if_{}_end\n\n", idx );
                 }
@@ -3276,7 +3305,7 @@ impl<'ast> Compiler<'ast> {
                         let else_if_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx );
                         let else_if_false_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx + 1 );
 
-                        self.compile_if( else_if, &else_if_tag, &else_if_false_tag );
+                        self.iff( else_if, &else_if_tag, &else_if_false_tag );
                         self.asm += &else_if_end_tag;
                         else_if_tag_idx += 1;
                     }
@@ -3289,7 +3318,7 @@ impl<'ast> Compiler<'ast> {
                         format!( "if_{}_end", if_idx )
                     };
 
-                    self.compile_if( last_else_if, &else_if_tag, &else_if_false_tag );
+                    self.iff( last_else_if, &else_if_tag, &else_if_false_tag );
                     self.asm += &else_if_end_tag;
                 }
 
@@ -3297,8 +3326,8 @@ impl<'ast> Compiler<'ast> {
                 if let Some( els ) = &if_statement.els {
                     self.asm += &format!( "if_{}_else:\n", if_idx );
                     match &**els {
-                        Node::Scope( scope ) => self.compile_scope( *scope ),
-                        other => self.compile_node( other ),
+                        Node::Scope( scope ) => self.scope( *scope ),
+                        other => self.node( other ),
                     }
                 }
 
@@ -3310,7 +3339,7 @@ impl<'ast> Compiler<'ast> {
 
                 self.loop_idx_stack.push( self.loop_idx );
                 self.loop_idx += 1;
-                self.compile_loop( looop, &loop_tag, &loop_end_tag );
+                self.looop( looop, &loop_tag, &loop_end_tag );
                 self.loop_idx_stack.pop();
 
                 self.asm += &format!(
@@ -3320,25 +3349,25 @@ impl<'ast> Compiler<'ast> {
                     loop_end_tag
                 );
             },
-            Node::Definition( name, value ) => self.compile_assignment( name, value ),
-            Node::Assignment( name, value ) => self.compile_assignment( name, value ),
-            Node::Scope( inner ) => self.compile_scope( *inner ),
-            Node::Expression( expression ) => self.compile_expression( expression ),
+            Node::Definition( name, value ) => self.assignment( name, value ),
+            Node::Assignment( name, value ) => self.assignment( name, value ),
+            Node::Scope( inner ) => self.scope( *inner ),
+            Node::Expression( expression ) => self.expression( expression ),
             Node::Break => self.asm += &format!( " jmp loop_{}_end\n\n", self.loop_idx_stack.last().unwrap() ),
             Node::Continue => self.asm += &format!( " jmp loop_{}\n\n", self.loop_idx_stack.last().unwrap() ),
             Node::Empty => (/* do nothing */),
         }
     }
 
-    fn compile_scope( &mut self, scope_idx: usize ) {
+    fn scope( &mut self, scope_idx: usize ) {
         let scope = &self.ast.scopes[ scope_idx ];
         for node in &scope.nodes {
-            self.compile_node( node );
+            self.node( node );
         }
     }
 
 
-    fn compile_expression( &mut self, expression: &'ast Expression ) {
+    fn expression( &mut self, expression: &'ast Expression ) {
         match expression {
             Expression::Literal( Literal::Int( value ) ) => self.asm += &format!( " mov rdi, {}\n", value ),
             Expression::Literal( Literal::Char( code ) ) => self.asm += &format!( " mov rdi, {}\n", code ),
@@ -3355,7 +3384,7 @@ impl<'ast> Compiler<'ast> {
                 );
             },
             Expression::Literal( Literal::Uninitialized( _ ) ) => unreachable!(),
-            Expression::Binary { .. } => self.compile_expression_factor( expression, Register::RDI ),
+            Expression::Binary { .. } => self.expression_factor( expression, Register::RDI ),
             Expression::Identifier( src_name, _ ) => {
                 let src_variable = self.resolve( src_name );
                 let src_variable_typ = &src_variable.typ;
@@ -3374,7 +3403,7 @@ impl<'ast> Compiler<'ast> {
                 }
             },
             Expression::Unary { op, operand } => {
-                self.compile_expression( operand );
+                self.expression( operand );
                 match op {
                     Operator::Negate => self.asm += " neg rdi\n",
                     Operator::Not => self.asm += " xor dil, 1\n",
@@ -3385,7 +3414,7 @@ impl<'ast> Compiler<'ast> {
     }
 
     // IDEA make this return the place of where to find the result of the operation
-    fn compile_expression_factor( &mut self, factor: &'ast Expression, dst: Register ) {
+    fn expression_factor( &mut self, factor: &'ast Expression, dst: Register ) {
         match factor {
             Expression::Literal( Literal::Int( value ) ) => self.asm += &format!( " mov {}, {}\n", dst, value ),
             Expression::Literal( Literal::Char( code ) ) => self.asm += &format!( " mov {}, {}\n", dst, code ),
@@ -3486,9 +3515,9 @@ impl<'ast> Compiler<'ast> {
 
                 match &**rhs {
                     Expression::Binary { .. } | Expression::Unary { .. } => {
-                        self.compile_expression_factor( lhs, lhs_reg );
+                        self.expression_factor( lhs, lhs_reg );
                         self.asm += " push rdi\n\n";
-                        self.compile_expression_factor( rhs, rhs_reg );
+                        self.expression_factor( rhs, rhs_reg );
 
                         self.asm += &format!(
                             " mov {}, rdi\
@@ -3498,8 +3527,8 @@ impl<'ast> Compiler<'ast> {
                         );
                     },
                     _ => {
-                        self.compile_expression_factor( lhs, lhs_reg );
-                        self.compile_expression_factor( rhs, rhs_reg );
+                        self.expression_factor( lhs, lhs_reg );
+                        self.expression_factor( rhs, rhs_reg );
                     }
                 }
 
@@ -3517,7 +3546,7 @@ impl<'ast> Compiler<'ast> {
                 }
             },
             Expression::Unary { op, operand } => {
-                self.compile_expression( operand );
+                self.expression( operand );
                 match op {
                     Operator::Negate => self.asm += " neg rdi\n",
                     Operator::Not => self.asm += " xor dil, 1\n",
@@ -3528,43 +3557,81 @@ impl<'ast> Compiler<'ast> {
     }
 
 
-    fn compile_if( &mut self, iff: &'ast IfStatement, if_tag: &String, if_false_tag: &String ) {
-        self.asm += &format!( "{}:; {}\n", if_tag, iff.condition );
+    fn iff( &mut self, iff: &'ast IfStatement, tag: &String, false_tag: &String ) {
+        self.asm += &format!( "{}:; {}\n", tag, iff.condition );
+        self.condition( &iff.condition, false_tag );
+        self.node( &iff.statement );
+    }
 
-        match &iff.condition {
+    fn looop( &mut self, looop: &'ast Loop, tag: &String, false_tag: &String ) {
+        self.asm += &format!( "{}:; {}\n", tag, looop );
+        match &looop.condition {
+            LoopCondition::Pre( condition ) => {
+                self.condition( condition, false_tag );
+                self.node( &looop.statement );
+            },
+            LoopCondition::Post( condition ) => {
+                /*
+                // NOTE by inverting the jmp instruction and jumping to the start of the loop we can avoid compiling an extra jmp instruction
+                a situation like this is present:
+                    mov rdi, [rbp + 0]
+                    mov rsi, 10
+                    cmp rdi, rsi
+                    jge loop_0_end
+
+                    jmp loop_0
+                    loop_0_end:
+
+                what we actually want:
+                    mov rdi, [rbp + 0]
+                    mov rsi, 10
+                    cmp rdi, rsi
+                    jl loop_0
+
+                    loop_0_end:
+                 */
+                self.node( &looop.statement );
+                self.condition( condition, false_tag );
+            }
+            LoopCondition::Infinite => self.node( &looop.statement ),
+        }
+    }
+
+    fn condition( &mut self, condition: &'ast Expression, false_tag: &String ) {
+        match condition {
             Expression::Literal( Literal::Bool( value ) ) =>
                 self.asm += &format!(
                     " mov dil, {}\
                     \n cmp dil, true\
                     \n jne {}\n\n",
                     *value as usize,
-                    if_false_tag
+                    false_tag
                 ),
             Expression::Binary { lhs, op, rhs } => {
                 match &**rhs {
                     Expression::Binary { .. } | Expression::Unary { .. }=> {
-                        self.compile_expression_factor( lhs, Register::RDI );
+                        self.expression_factor( lhs, Register::RDI );
                         self.asm += " push rdi\n\n";
-                        self.compile_expression_factor( rhs, Register::RSI );
+                        self.expression_factor( rhs, Register::RSI );
 
                         self.asm += " mov rsi, rdi\n pop rdi\n";
                     },
                     _ => {
-                        self.compile_expression_factor( lhs, Register::RDI );
-                        self.compile_expression_factor( rhs, Register::RSI );
+                        self.expression_factor( lhs, Register::RDI );
+                        self.expression_factor( rhs, Register::RSI );
                     }
                 }
 
                 match op {
-                    Operator::EqualsEquals => self.asm += &format!( " cmp rdi, rsi\n jne {}\n\n", if_false_tag ),
-                    Operator::NotEquals => self.asm += &format!( " cmp rdi, rsi\n je {}\n\n", if_false_tag ),
-                    Operator::Greater => self.asm += &format!( " cmp rdi, rsi\n jle {}\n\n", if_false_tag ),
-                    Operator::GreaterOrEquals => self.asm += &format!( " cmp rdi, rsi\n jl {}\n\n", if_false_tag ),
-                    Operator::Less => self.asm += &format!( " cmp rdi, rsi\n jge {}\n\n", if_false_tag ),
-                    Operator::LessOrEquals => self.asm += &format!( " cmp rdi, rsi\n jg {}\n\n", if_false_tag ),
-                    Operator::And => self.asm += &format!( " and rdi, rsi\n jz {}\n\n", if_false_tag ),
-                    Operator::Or => self.asm += &format!( " or rdi, rsi\n jz {}\n\n", if_false_tag ),
-                    Operator::Xor => self.asm += &format!( " xor rdi, rsi\n jz {}\n\n", if_false_tag ),
+                    Operator::EqualsEquals => self.asm += &format!( " cmp rdi, rsi\n jne {}\n\n", false_tag ),
+                    Operator::NotEquals => self.asm += &format!( " cmp rdi, rsi\n je {}\n\n", false_tag ),
+                    Operator::Greater => self.asm += &format!( " cmp rdi, rsi\n jle {}\n\n", false_tag ),
+                    Operator::GreaterOrEquals => self.asm += &format!( " cmp rdi, rsi\n jl {}\n\n", false_tag ),
+                    Operator::Less => self.asm += &format!( " cmp rdi, rsi\n jge {}\n\n", false_tag ),
+                    Operator::LessOrEquals => self.asm += &format!( " cmp rdi, rsi\n jg {}\n\n", false_tag ),
+                    Operator::And => self.asm += &format!( " and rdi, rsi\n jz {}\n\n", false_tag ),
+                    Operator::Or => self.asm += &format!( " or rdi, rsi\n jz {}\n\n", false_tag ),
+                    Operator::Xor => self.asm += &format!( " xor rdi, rsi\n jz {}\n\n", false_tag ),
 
                     Operator::Pow | Operator::PowEquals
                     | Operator::Times | Operator::TimesEquals
@@ -3584,104 +3651,25 @@ impl<'ast> Compiler<'ast> {
                     \n cmp dil, true\
                     \n jne {}\n\n",
                     src_variable.offset,
-                    if_false_tag
+                    false_tag
                 )
             },
             Expression::Unary { operand, .. } => {
-                self.compile_expression( operand );
+                self.expression( operand );
 
                 // we can only have boolean expressions at this point, so it's safe to ignore the integer negation case
                 self.asm += &format!(
                     " xor dil, 1\
                     \n jz {}\n\n",
-                    if_false_tag
+                    false_tag
                 );
             },
             Expression::Literal( _ ) => unreachable!(),
         }
-
-        self.compile_node( &iff.statement );
-    }
-
-    fn compile_loop( &mut self, looop: &'ast Loop, loop_tag: &String, loop_false_tag: &String ) {
-        if let Some( condition ) = &looop.condition {
-            self.asm += &format!( "{}:; {}\n", loop_tag, condition );
-
-            match condition {
-                Expression::Literal( Literal::Bool( value ) ) =>
-                    self.asm += &format!(
-                        " mov dil, {}\
-                        \n cmp dil, true\
-                        \n jne {}\n\n",
-                        *value as usize,
-                        loop_false_tag
-                    ),
-                Expression::Binary { lhs, op, rhs } => {
-                    match &**rhs {
-                        Expression::Binary { .. } | Expression::Unary { .. } => {
-                            self.compile_expression_factor( lhs, Register::RDI );
-                            self.asm += " push rdi\n\n";
-                            self.compile_expression_factor( rhs, Register::RSI );
-
-                            self.asm += " mov rsi, rdi\n pop rdi\n";
-                        },
-                        _ => {
-                            self.compile_expression_factor( lhs, Register::RDI );
-                            self.compile_expression_factor( rhs, Register::RSI );
-                        }
-                    }
-
-                    match op {
-                        Operator::EqualsEquals => self.asm += &format!( " cmp rdi, rsi\n jne {}\n\n", loop_false_tag ),
-                        Operator::NotEquals => self.asm += &format!( " cmp rdi, rsi\n je {}\n\n", loop_false_tag ),
-                        Operator::Greater => self.asm += &format!( " cmp rdi, rsi\n jle {}\n\n", loop_false_tag ),
-                        Operator::GreaterOrEquals => self.asm += &format!( " cmp rdi, rsi\n jl {}\n\n", loop_false_tag ),
-                        Operator::Less => self.asm += &format!( " cmp rdi, rsi\n jge {}\n\n", loop_false_tag ),
-                        Operator::LessOrEquals => self.asm += &format!( " cmp rdi, rsi\n jg {}\n\n", loop_false_tag ),
-                        Operator::And => self.asm += &format!( " and rdi, rsi\n jz {}\n\n", loop_false_tag ),
-                        Operator::Or => self.asm += &format!( " or rdi, rsi\n jz {}\n\n", loop_false_tag ),
-                        Operator::Xor => self.asm += &format!( " xor rdi, rsi\n jz {}\n\n", loop_false_tag ),
-
-                        Operator::Pow | Operator::PowEquals
-                        | Operator::Times | Operator::TimesEquals
-                        | Operator::Divide | Operator::DivideEquals
-                        | Operator::Remainder | Operator::RemainderEquals
-                        | Operator::Plus | Operator::PlusEquals
-                        | Operator::Minus | Operator::MinusEquals
-                        | Operator::Compare
-                        | Operator::Not | Operator::Negate => unreachable!(),
-                    };
-
-                },
-                Expression::Identifier( src_name, _ ) => {
-                    let src_variable = self.resolve( src_name );
-                    self.asm += &format!(
-                        " mov dil, [rbp + {}]\
-                        \n cmp dil, true\
-                        \n jne {}\n\n",
-                        src_variable.offset,
-                        loop_false_tag
-                    )
-                },
-                Expression::Unary { operand, .. } => {
-                    self.compile_expression( operand );
-
-                    // we can only have boolean expressions at this point, so it's safe to ignore the integer negation case
-                    self.asm += &format!(
-                        " xor dil, 1\
-                        \n jz {}\n\n",
-                        loop_false_tag
-                    );
-                },
-                Expression::Literal( _ ) => unreachable!(),
-            }
-        }
-
-        self.compile_node( &looop.statement );
     }
 
 
-    fn compile_assignment( &mut self, name: &String, new_value: &'ast Expression ) {
+    fn assignment( &mut self, name: &String, new_value: &'ast Expression ) {
         let variable = self.resolve( name );
         let variable_typ = variable.typ;
         let variable_offset = variable.offset;
@@ -3712,7 +3700,7 @@ impl<'ast> Compiler<'ast> {
             /* leave blank, possibility to get garbage values */
             Expression::Literal( Literal::Uninitialized( _ ) ) => self.asm += "\n",
             Expression::Binary { .. } => {
-                self.compile_expression( new_value );
+                self.expression( new_value );
 
                 match variable_typ {
                     Type::Int | Type::Str => self.asm += &format!( " mov [rbp + {}], rdi\n\n", variable_offset ),
@@ -3749,7 +3737,7 @@ impl<'ast> Compiler<'ast> {
                 }
             },
             Expression::Unary { op, operand } => {
-                self.compile_expression( operand );
+                self.expression( operand );
                 match op {
                     Operator::Negate => self.asm += " neg rdi\n",
                     Operator::Not => self.asm += " xor dil, 1\n",
