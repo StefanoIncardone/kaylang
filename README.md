@@ -253,18 +253,3 @@ Semicolons are reguired after statements.
 print "Hello "; # required semicolon
 println "World!";
 ```
-
-They are optional if they come before a closing curly bracket (i.e. the last statement before the end of a scope),
-to allow for cleaner code like this:
-
-```blitz
-var i = 0;
-loop i < 100 {
-    if i % 15 == 0 { println "fizzbuz" }
-    else if i % 3 == 0 { println "fizz" }
-    else if i % 5 == 0 { println "buzz" }
-    else { println i }
-
-    i += 1; # this semicolon is also optional
-}
-```

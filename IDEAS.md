@@ -413,6 +413,32 @@ const some_function();
 static some_function();
 ```
 
+## switch statements
+
+```blitz
+let answer = 0;
+
+# regular if
+if answer == 19      do println "lucky";
+else if answer == 21 do println "you stoopid";
+else if answer == 42 do println "that's the right answer";
+else                 do println "too bad";
+
+# switch statement
+if answer
+case 19 do println "lucky";
+case 21 do println "you stoopid";
+case 42 do println "that's the right answer";
+else    do println "too bad";
+```
+
+## pass/none/whatever equivalent to doing nothing (python's pass)
+
+let answer = 0;
+if answer == 1 do println "in branch 1";
+else if answer > 1 do pass;
+else if answer > 1 none; # or like this, explicit no do keyword required (to differentiate from none being a value)
+
 ## experiment with no dynamic dispatch
 
 use unions instead, which have to be checked (kinda like what Casey Muratori explained in

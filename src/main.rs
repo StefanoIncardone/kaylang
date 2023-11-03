@@ -1295,6 +1295,8 @@ struct TokenCursor<'lexer> {
 
 // TODO implement methods that return only tokens or lines since lines are only really needed when reporting errors
 impl<'lexer> TokenCursor<'lexer> {
+    // TODO remove this method and make the next/previous methods return their current position and then move (i.e. like a normal iterator)
+        // NOTE its goint to be required to pass a position object around instead of calling current when needed
     fn current( &mut self ) -> Option<TokenPosition<'lexer>> {
         if self.token >= self.tokens.len() || self.line >= self.lines.len() {
             return None
@@ -1304,6 +1306,7 @@ impl<'lexer> TokenCursor<'lexer> {
 
     fn next( &mut self ) -> Option<TokenPosition<'lexer>> {
         if self.token >= self.tokens.len() - 1 {
+            self.token += 1;
             return None;
         }
 
@@ -1500,7 +1503,7 @@ impl Display for Loop {
 
 #[derive( Debug, Clone )]
 enum Node {
-    Empty,
+    Semicolon,
 
     Expression( Expression ),
     Print( Expression ),
@@ -1527,7 +1530,7 @@ impl Display for Node {
             Self::If( iff ) => write!( f, "{}", iff.ifs[ 0 ] ),
             Self::Loop( looop ) => write!( f, "{}", looop ),
 
-            Self::Empty
+            Self::Semicolon
             | Self::Break | Self::Continue
             | Self::Definition( _, _ ) | Self::Assignment( _, _ )
             | Self::Scope( _ ) => unreachable!(),
@@ -1585,8 +1588,30 @@ impl AST {
     fn parse_scope( &mut self, tokens: &mut TokenCursor ) {
         loop {
             match self.parse_single_any( tokens ) {
-                Ok( Some( Node::Empty ) ) => continue,
-                Ok( Some( node ) ) => self.scopes[ self.current_scope ].nodes.push( node ),
+                Ok( Some( node ) ) => {
+                    match node {
+                        // skip to the next token after a semicolon
+                        Node::Semicolon => continue,
+
+                        // check to see if a terminating semicolon is present
+                        Node::Definition( _, _ ) | Node::Assignment( _, _ )
+                        | Node::Expression( _ )
+                        | Node::Break | Node::Continue
+                        | Node::Print( _ ) | Node::Println( _ ) =>
+                            if let Err( err ) = self.semicolon( tokens ) {
+                                self.errors.push( err );
+
+                                tokens.line = tokens.lines.len();
+                                tokens.token = tokens.tokens.len();
+                                break;
+                            },
+
+                        // no need to check for a terminating semicolon
+                        Node::If( _ ) | Node::Loop( _ ) | Node::Scope( _ ) => (),
+                    }
+
+                    self.scopes[ self.current_scope ].nodes.push( node );
+                },
                 Ok( None ) => break,
                 // only parsing until the first error until a fault tolerant parser is developed, this is
                 // because the first truly relevant error is the first one, which in turn causes a ripple effect
@@ -1617,7 +1642,7 @@ impl AST {
             TokenKind::Definition( _ ) => Ok( Some( self.variable_definition( tokens )? ) ),
             TokenKind::Print | TokenKind::PrintLn => Ok( Some( self.print( tokens )? ) ),
             TokenKind::Identifier( _ ) => Ok( Some( self.variable_reassignment_or_expression( tokens )? ) ),
-            TokenKind::If => Ok( Some( self.if_statement( tokens )? ) ),
+            TokenKind::If => Ok( Some( self.iff( tokens )? ) ),
             TokenKind::Else => {
                 tokens.next();
                 Err( SyntaxError {
@@ -1629,7 +1654,15 @@ impl AST {
                     help_msg: "stray else block".into()
                 })
             },
-            TokenKind::Do | TokenKind::Loop => Ok( Some( self.loop_statement( tokens )? ) ),
+            TokenKind::Do | TokenKind::Loop => {
+                self.loop_depth += 1;
+                let looop_statement = self.loop_statement( tokens );
+                self.loop_depth -= 1;
+                match looop_statement {
+                    Ok( looop ) => Ok( Some( looop ) ),
+                    Err( err ) => Err( err ),
+                }
+            },
             TokenKind::Break => {
                 tokens.next();
                 match self.loop_depth {
@@ -1641,10 +1674,7 @@ impl AST {
                         msg: "invalid break statement".into(),
                         help_msg: "cannot be used outside of loops".into()
                     }),
-                    _ => {
-                        self.semicolon( tokens )?;
-                        Ok( Some( Node::Break ) )
-                    },
+                    _ => Ok( Some( Node::Break ) ),
                 }
             },
             TokenKind::Continue => {
@@ -1658,10 +1688,7 @@ impl AST {
                         msg: "invalid continue statement".into(),
                         help_msg: "cannot be used outside of loops".into()
                     }),
-                    _ => {
-                        self.semicolon( tokens )?;
-                        Ok( Some( Node::Continue ) )
-                    },
+                    _ => Ok( Some( Node::Continue ) ),
                 }
             },
             TokenKind::Bracket( BracketKind::OpenCurly ) => {
@@ -1743,7 +1770,7 @@ impl AST {
             },
             TokenKind::SemiColon => {
                 tokens.next();
-                Ok( Some( Node::Empty ) )
+                Ok( Some( Node::Semicolon ) )
             },
             TokenKind::Comment( _ ) | TokenKind::Empty | TokenKind::Unexpected( _ ) => unreachable!(),
         }
@@ -1785,19 +1812,17 @@ impl AST {
     fn semicolon( &mut self, tokens: &mut TokenCursor ) -> Result<(), SyntaxError> {
         let semicolon = tokens.current().bounded( tokens, "expected semicolon" )?;
         return match &semicolon.token.kind {
-            // semicolons are optional if found before a closing curly bracket
-            TokenKind::Bracket( BracketKind::CloseCurly ) => Ok( () ),
             TokenKind::SemiColon => {
                 tokens.next();
                 Ok( () )
             },
             _ => {
-                tokens.next();
+                let previous = tokens.peek_previous().unwrap();
                 Err( SyntaxError {
-                    line_byte_start: semicolon.line.byte_start,
-                    line: semicolon.line.number,
-                    col: semicolon.token.col,
-                    len: semicolon.token.kind.len(),
+                    line_byte_start: previous.line.byte_start,
+                    line: previous.line.number,
+                    col: previous.token.col,
+                    len: previous.token.kind.len(),
                     msg: "invalid statement".into(),
                     help_msg: "expected semicolon after this token".into(),
                 } )
@@ -2252,7 +2277,6 @@ impl<'lexer> AST {
         let name = name?;
         let annotation = annotation?;
         let expression = expression?;
-        self.semicolon( tokens )?;
 
         if let Some( _ ) = self.resolve_variable( &name ) {
             return Err( SyntaxError {
@@ -2347,8 +2371,6 @@ impl<'lexer> AST {
             _ => unreachable!(),
         };
 
-        self.semicolon( tokens )?;
-
         if let Some( _ ) = self.resolve_type( &name ) {
             return Err( SyntaxError {
                 line_byte_start: name_pos.line.byte_start,
@@ -2418,7 +2440,6 @@ impl AST {
 
         tokens.next().bounded( tokens, "expected expression" )?;
         let argument = self.expression( tokens )?;
-        self.semicolon( tokens )?;
 
         return match print_pos.token.kind {
             TokenKind::Print => Ok( Node::Print( argument ) ),
@@ -2430,123 +2451,118 @@ impl AST {
 
 // if statements
 impl AST {
-    fn if_statement( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
-        let iff = self.iff( tokens )?;
-        let mut if_statement = If { ifs: vec![iff], els: None };
-        self.els( &mut if_statement, tokens )?;
+    fn iff( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
+        let mut if_statement = If { ifs: Vec::new(), els: None };
+
+        'iff: while let Some( if_pos ) = tokens.current() {
+            tokens.next().bounded( tokens, "expected boolean expression" )?;
+
+            let expression = self.expression( tokens )?;
+            let condition = match &expression.typ() {
+                Type::Bool => Ok( expression ),
+                Type::Char | Type::Int | Type::Str => Err( SyntaxError {
+                    line_byte_start: if_pos.line.byte_start,
+                    line: if_pos.line.number,
+                    col: if_pos.token.col,
+                    len: if_pos.token.kind.len(),
+                    msg: "expected boolean expression".into(),
+                    help_msg: "must be followed by a boolean expression".into()
+                }),
+            };
+
+            let condition = condition?;
+            let after_condition_pos = tokens.current().bounded( tokens, "expected do or block" )?;
+            let iff = match after_condition_pos.token.kind {
+                TokenKind::Bracket( BracketKind::OpenCurly ) => {
+                    let scope = self.parse_single_any( tokens )?.unwrap();
+                    Ok( IfStatement { condition, statement: scope } )
+                },
+                TokenKind::Do => {
+                    tokens.next().bounded( tokens, "expected statement" )?;
+                    match self.parse_single_statement( tokens )? {
+                        Some( statement ) => {
+                            self.semicolon( tokens )?;
+                            Ok( IfStatement { condition, statement } )
+                        },
+                        None => Err( SyntaxError {
+                            line_byte_start: after_condition_pos.line.byte_start,
+                            line: after_condition_pos.line.number,
+                            col: after_condition_pos.token.col,
+                            len: after_condition_pos.token.kind.len(),
+                            msg: "invalid if statement".into(),
+                            help_msg: "must be followed by a statement".into()
+                        })
+                    }
+                },
+                _ => {
+                    let before_curly_bracket_pos = tokens.peek_previous().unwrap();
+                    Err( SyntaxError {
+                        line_byte_start: before_curly_bracket_pos.line.byte_start,
+                        line: before_curly_bracket_pos.line.number,
+                        col: before_curly_bracket_pos.token.col,
+                        len: before_curly_bracket_pos.token.kind.len(),
+                        msg: "invalid if statement".into(),
+                        help_msg: "must be followed by a do or a block".into()
+                    })
+                },
+            };
+
+            if_statement.ifs.push( iff? );
+
+            while let Some( else_pos ) = tokens.current() {
+                match else_pos.token.kind {
+                    TokenKind::Else => (),
+                    _ => break 'iff,
+                }
+
+                // we are now inside an else branch
+                let after_else_pos = tokens.next().bounded( tokens, "expected do, block or if statement" )?;
+                let else_if = match after_else_pos.token.kind {
+                    TokenKind::Bracket( BracketKind::OpenCurly ) => {
+                        let scope = self.parse_single_any( tokens )?.unwrap();
+                        if_statement.els = Some( Box::new( scope ) );
+                        break 'iff;
+                    },
+                    TokenKind::Do => {
+                        tokens.next().bounded( tokens, "expected statement" )?;
+                        match self.parse_single_statement( tokens )? {
+                            Some( statement ) => {
+                                self.semicolon( tokens )?;
+                                if_statement.els = Some( Box::new( statement ) );
+                                break 'iff;
+                            },
+                            None => Err( SyntaxError {
+                                line_byte_start: after_else_pos.line.byte_start,
+                                line: after_else_pos.line.number,
+                                col: after_else_pos.token.col,
+                                len: after_else_pos.token.kind.len(),
+                                msg: "invalid else statement".into(),
+                                help_msg: "must be followed by a statement".into()
+                            })
+                        }
+                    },
+                    TokenKind::If => break,
+                    _ => Err( SyntaxError {
+                        line_byte_start: else_pos.line.byte_start,
+                        line: else_pos.line.number,
+                        col: else_pos.token.col,
+                        len: else_pos.token.kind.len(),
+                        msg: "invalid else statement".into(),
+                        help_msg: "must be followed by a do, a block or an if statement".into()
+                    }),
+                };
+
+                else_if?;
+            }
+        }
 
         return Ok( Node::If( if_statement ) );
-    }
-
-    fn iff( &mut self, tokens: &mut TokenCursor ) -> Result<IfStatement, SyntaxError> {
-        let if_pos = tokens.current().unwrap();
-        tokens.next().bounded( tokens, "expected boolean expression" )?;
-
-        let expression = self.expression( tokens )?;
-        let condition = match &expression.typ() {
-            Type::Bool => Ok( expression ),
-            Type::Char | Type::Int | Type::Str => Err( SyntaxError {
-                line_byte_start: if_pos.line.byte_start,
-                line: if_pos.line.number,
-                col: if_pos.token.col,
-                len: if_pos.token.kind.len(),
-                msg: "expected boolean expression".into(),
-                help_msg: "must be followed by a boolean expression".into()
-            }),
-        };
-
-        let block_or_statement_pos = tokens.current().bounded( tokens, "expected do or block" )?;
-        return match block_or_statement_pos.token.kind {
-            TokenKind::Bracket( BracketKind::OpenCurly ) => {
-                let condition = condition?;
-                let scope = self.parse_single_any( tokens )?.unwrap();
-                Ok( IfStatement { condition, statement: scope } )
-            },
-            TokenKind::Do => {
-                let condition = condition?;
-                tokens.next().bounded( tokens, "expected statement" )?;
-                match self.parse_single_statement( tokens )? {
-                    Some( statement ) => Ok( IfStatement { condition, statement } ),
-                    None => Err( SyntaxError {
-                        line_byte_start: block_or_statement_pos.line.byte_start,
-                        line: block_or_statement_pos.line.number,
-                        col: block_or_statement_pos.token.col,
-                        len: block_or_statement_pos.token.kind.len(),
-                        msg: "invalid if statement".into(),
-                        help_msg: "must be followed by a statement".into()
-                    })
-                }
-                // since we checked for the presence of a token after this point we can safely unwrap
-            },
-            _ => {
-                let before_curly_bracket_pos = tokens.peek_previous().unwrap();
-                Err( SyntaxError {
-                    line_byte_start: before_curly_bracket_pos.line.byte_start,
-                    line: before_curly_bracket_pos.line.number,
-                    col: before_curly_bracket_pos.token.col,
-                    len: before_curly_bracket_pos.token.kind.len(),
-                    msg: "invalid if statement".into(),
-                    help_msg: "must be followed by a do or a block".into()
-                })
-            },
-        }
-    }
-
-    fn els( &mut self, if_statement: &mut If, tokens: &mut TokenCursor ) -> Result<(), SyntaxError> {
-        let els_pos = match tokens.current() {
-            Some( pos ) => match pos.token.kind {
-                TokenKind::Else => pos,
-                _ => return Ok( () ),
-            },
-            None => return Ok( () )
-        };
-
-        let if_or_block_pos = tokens.next().bounded( tokens, "expected do, block or if statement" )?;
-        return match if_or_block_pos.token.kind {
-            TokenKind::Bracket( BracketKind::OpenCurly ) => {
-                let scope = self.parse_single_any( tokens )?.unwrap();
-                if_statement.els = Some( Box::new( scope ) );
-                Ok( () )
-            },
-            TokenKind::Do => {
-                tokens.next().bounded( tokens, "expected statement" )?;
-                match self.parse_single_statement( tokens )? {
-                    Some( statement ) => {
-                        if_statement.els = Some( Box::new( statement ) );
-                        Ok( () )
-                    },
-                    None => Err( SyntaxError {
-                        line_byte_start: if_or_block_pos.line.byte_start,
-                        line: if_or_block_pos.line.number,
-                        col: if_or_block_pos.token.col,
-                        len: if_or_block_pos.token.kind.len(),
-                        msg: "invalid else statement".into(),
-                        help_msg: "must be followed by a statement".into()
-                    })
-                }
-            },
-            TokenKind::If => {
-                let else_if = self.iff( tokens )?;
-                if_statement.ifs.push( else_if );
-
-                self.els( if_statement, tokens )
-            },
-            _ => Err( SyntaxError {
-                line_byte_start: els_pos.line.byte_start,
-                line: els_pos.line.number,
-                col: els_pos.token.col,
-                len: els_pos.token.kind.len(),
-                msg: "invalid else statement".into(),
-                help_msg: "must be followed by a do, a block or an if statement".into()
-            }),
-        }
     }
 }
 
 // for statements
 impl AST {
     fn loop_statement( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
-        self.loop_depth += 1;
         let do_or_loop_pos = tokens.current().unwrap();
         let is_do_loop = match do_or_loop_pos.token.kind {
             TokenKind::Do => {
@@ -2557,20 +2573,70 @@ impl AST {
             _ => unreachable!(),
         };
 
-        let iff = self.iff( tokens );
-        self.loop_depth -= 1;
+        let loop_pos = tokens.current().unwrap();
+        tokens.next().bounded( tokens, "expected boolean expression" )?;
 
-        let iff = iff?;
+        let expression = self.expression( tokens )?;
+        let condition = match &expression.typ() {
+            Type::Bool => Ok( expression ),
+            Type::Char | Type::Int | Type::Str => Err( SyntaxError {
+                line_byte_start: loop_pos.line.byte_start,
+                line: loop_pos.line.number,
+                col: loop_pos.token.col,
+                len: loop_pos.token.kind.len(),
+                msg: "expected boolean expression".into(),
+                help_msg: "must be followed by a boolean expression".into()
+            }),
+        };
+        let condition = condition?;
+
+        let after_condition_pos = tokens.current().bounded( tokens, "expected do or block" )?;
+        let statement = match after_condition_pos.token.kind {
+            TokenKind::Bracket( BracketKind::OpenCurly ) => {
+                let scope = self.parse_single_any( tokens )?.unwrap();
+                Ok( scope )
+            },
+            TokenKind::Do => {
+                tokens.next().bounded( tokens, "expected statement" )?;
+                match self.parse_single_statement( tokens )? {
+                    Some( statement ) => {
+                        self.semicolon( tokens )?;
+                        Ok( statement )
+                    },
+                    None => Err( SyntaxError {
+                        line_byte_start: after_condition_pos.line.byte_start,
+                        line: after_condition_pos.line.number,
+                        col: after_condition_pos.token.col,
+                        len: after_condition_pos.token.kind.len(),
+                        msg: "invalid for statement".into(),
+                        help_msg: "must be followed by a statement".into()
+                    })
+                }
+            },
+            _ => {
+                let before_curly_bracket_pos = tokens.peek_previous().unwrap();
+                Err( SyntaxError {
+                    line_byte_start: before_curly_bracket_pos.line.byte_start,
+                    line: before_curly_bracket_pos.line.number,
+                    col: before_curly_bracket_pos.token.col,
+                    len: before_curly_bracket_pos.token.kind.len(),
+                    msg: "invalid for statement".into(),
+                    help_msg: "must be followed by a do or a block".into()
+                })
+            },
+        };
+
+        let statement = statement?;
         let condition = match is_do_loop {
-            true => LoopCondition::Post( iff.condition ),
-            false => LoopCondition::Pre( iff.condition ),
+            true => LoopCondition::Post( condition ),
+            false => LoopCondition::Pre( condition ),
         };
 
         return Ok( Node::Loop( Loop {
             pre: None,
             condition,
             post: None,
-            statement: Box::new( iff.statement )
+            statement: Box::new( statement )
         } ) );
     }
 }
@@ -3377,7 +3443,7 @@ impl<'ast> Compiler<'ast> {
             Node::Expression( expression ) => self.expression( expression ),
             Node::Break => self.asm += &format!( " jmp loop_{}_end\n\n", self.loop_idx_stack.last().unwrap() ),
             Node::Continue => self.asm += &format!( " jmp loop_{}\n\n", self.loop_idx_stack.last().unwrap() ),
-            Node::Empty => (/* do nothing */),
+            Node::Semicolon => (/* do nothing */),
         }
     }
 
@@ -4027,6 +4093,7 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
         let start_time = Instant::now();
         let ast = match Checker::check( source_file, &start_time ) {
             Ok( ast ) => {
+                // println!( "{:#?}", ast );
                 ast
             }
             Err( mut errors ) => {
