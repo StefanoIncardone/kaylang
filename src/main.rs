@@ -1,29 +1,42 @@
-use std::{io::{BufReader, BufRead, ErrorKind, BufWriter, Write, Seek, SeekFrom, IsTerminal}, fs::File, env::{self, Args}, process::{ExitCode, Command}, fmt::Display, path::{Path, PathBuf}, borrow::Cow, cmp::Ordering, num::IntErrorKind, time::Instant};
+use std::{
+    io::{BufReader, BufRead, ErrorKind, BufWriter, Write, Seek, SeekFrom, IsTerminal},
+    fs::File,
+    env::{self, Args},
+    process::{ExitCode, Command},
+    fmt::Display,
+    path::{Path, PathBuf},
+    borrow::Cow,
+    cmp::Ordering,
+    num::IntErrorKind,
+    time::Instant,
+};
 
 
-static CHECKING:    Colored = Colored { text: Cow::Borrowed( " Checking" ), foreground: Foreground::LightGreen, background: Background::Default, flags: Flags::Bold };
-static COMPILING:   Colored = Colored { text: Cow::Borrowed( "Compiling" ), foreground: Foreground::LightGreen, background: Background::Default, flags: Flags::Bold };
-static RUNNING:     Colored = Colored { text: Cow::Borrowed( "  Running" ), foreground: Foreground::LightGreen, background: Background::Default, flags: Flags::Bold };
-static DONE:        Colored = Colored { text: Cow::Borrowed( "     Done" ), foreground: Foreground::LightGreen, background: Background::Default, flags: Flags::Bold };
+static CHECKING:  Colored = Colored { text: Cow::Borrowed( " Checking" ),                 fg: Fg::LightGreen, bg: Bg::Default, flags: Flags::Bold };
+static COMPILING: Colored = Colored { text: Cow::Borrowed( "Compiling" ),                 fg: Fg::LightGreen, bg: Bg::Default, flags: Flags::Bold };
+static RUNNING:   Colored = Colored { text: Cow::Borrowed( "  Running" ),                 fg: Fg::LightGreen, bg: Bg::Default, flags: Flags::Bold };
+static DONE:      Colored = Colored { text: Cow::Borrowed( "     Done" ),                 fg: Fg::LightGreen, bg: Bg::Default, flags: Flags::Bold };
 
-static ERROR:       Colored = Colored { text: Cow::Borrowed( "Error" ), foreground: Foreground::LightRed, background: Background::Default, flags: Flags::Bold };
-static AT:          Colored = Colored { text: Cow::Borrowed( "at" ), foreground: Foreground::LightRed, background: Background::Default, flags: Flags::Bold };
-static BAR:         Colored = Colored { text: Cow::Borrowed( "|" ), foreground: Foreground::LightBlue, background: Background::Default, flags: Flags::Bold };
-static CAUSE:       Colored = Colored { text: Cow::Borrowed( "Cause" ), foreground: Foreground::LightRed, background: Background::Default, flags: Flags::Bold };
+static ERROR:     Colored = Colored { text: Cow::Borrowed( "Error" ),                     fg: Fg::LightRed,   bg: Bg::Default, flags: Flags::Bold };
+static AT:        Colored = Colored { text: Cow::Borrowed( "at" ),                        fg: Fg::LightRed,   bg: Bg::Default, flags: Flags::Bold };
+static BAR:       Colored = Colored { text: Cow::Borrowed( "|" ),                         fg: Fg::LightBlue,  bg: Bg::Default, flags: Flags::Bold };
 
-static VERSION:     Colored = Colored { text: Cow::Borrowed( env!( "CARGO_PKG_VERSION" ) ), foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
-static OPTIONS:     Colored = Colored { text: Cow::Borrowed( "Options" ),  foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
-static RUN_MODE:    Colored = Colored { text: Cow::Borrowed( "Run mode" ), foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
-static MODE:        Colored = Colored { text: Cow::Borrowed( "mode" ), foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
-static FILE:        Colored = Colored { text: Cow::Borrowed( "file" ), foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
-static PATH:        Colored = Colored { text: Cow::Borrowed( "path" ), foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
-static OUTPUT:      Colored = Colored { text: Cow::Borrowed( "Output" ),  foreground: Foreground::LightGray, background: Background::Default, flags: Flags::Bold };
+static CAUSE:     Colored = Colored { text: Cow::Borrowed( "Cause" ),                     fg: Fg::LightRed,   bg: Bg::Default, flags: Flags::Bold };
+
+static VERSION:   Colored = Colored { text: Cow::Borrowed( env!( "CARGO_PKG_VERSION" ) ), fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
+static OPTIONS:   Colored = Colored { text: Cow::Borrowed( "Options" ),                   fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
+static RUN_MODE:  Colored = Colored { text: Cow::Borrowed( "Run mode" ),                  fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
+static MODE:      Colored = Colored { text: Cow::Borrowed( "mode" ),                      fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
+static FILE:      Colored = Colored { text: Cow::Borrowed( "file" ),                      fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
+static PATH:      Colored = Colored { text: Cow::Borrowed( "path" ),                      fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
+static OUTPUT:    Colored = Colored { text: Cow::Borrowed( "Output" ),                    fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
 
 
-#[allow(dead_code)]
+
+#[allow( dead_code )]
 #[derive( Debug, Default, Clone, Copy, PartialEq )]
-#[repr(u8)]
-pub enum Foreground {
+#[repr( u8 )]
+pub enum Fg {
     #[default] Default = 0,
     Black = 30,
     Red = 31,
@@ -43,10 +56,10 @@ pub enum Foreground {
     White = 97,
 }
 
-#[allow(dead_code)]
+#[allow( dead_code )]
 #[derive( Debug, Default, Clone, Copy, PartialEq )]
-#[repr(u8)]
-pub enum Background {
+#[repr( u8 )]
+pub enum Bg {
     #[default] Default = 0,
     Black = 40,
     DarkRed = 41,
@@ -67,7 +80,7 @@ pub enum Background {
 }
 
 #[derive( Debug, Default, Clone, Copy, PartialEq )]
-#[repr(u8)]
+#[repr( u8 )]
 pub enum Flags {
     #[default]
     Default         = 0b0000_0000,
@@ -91,8 +104,8 @@ impl Flags {
 #[derive( Debug, Default )]
 pub struct Colored {
     pub text: Cow<'static, str>,
-    pub foreground: Foreground,
-    pub background: Background,
+    pub fg: Fg,
+    pub bg: Bg,
     pub flags: Flags,
 }
 
@@ -110,11 +123,11 @@ impl Colored {
     fn color( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         let mut codes = String::with_capacity( 15 );
 
-        if self.foreground != Foreground::Default {
-            codes += &format!( "{};", self.foreground as u8 );
+        if self.fg != Fg::Default {
+            codes += &format!( "{};", self.fg as u8 );
         }
-        if self.background != Background::Default {
-            codes += &format!( "{};", self.background as u8 );
+        if self.bg != Bg::Default {
+            codes += &format!( "{};", self.bg as u8 );
         }
         if self.flags.bold() {
             codes += "1;";
@@ -145,11 +158,11 @@ impl Colored {
     }
 }
 
-#[allow(non_upper_case_globals)]
+#[allow( non_upper_case_globals )]
 static mut display: fn(&Colored, &mut std::fmt::Formatter<'_>) -> std::fmt::Result = Colored::color;
 
 #[derive( Debug, Default, Clone, Copy, PartialEq )]
-#[repr(u8)]
+#[repr( u8 )]
 pub enum Color {
     #[default] Auto,
     Always,
@@ -232,7 +245,7 @@ impl Into<isize> for Literal {
             Self::Char( code ) => code.into(),
             Self::Bool( value ) => value.into(),
             Self::Str( string ) => string.text.len() as isize,
-            Self::Uninitialized( _ ) => panic!( "cannot get the int value of an uninitialized value")
+            Self::Uninitialized( _ ) => panic!( "cannot get the int value of an uninitialized value"),
         }
     }
 }
@@ -332,7 +345,7 @@ enum Operator {
     And,
     Or,
     Not,
-    Xor
+    Xor,
 }
 
 impl Display for Operator {
@@ -509,7 +522,7 @@ enum TokenKind {
     Colon,
     SemiColon,
     Equals,
-    #[allow(dead_code)]
+    #[allow( dead_code )]
     QuestionMark,
     Op( Operator ),
 
@@ -686,7 +699,7 @@ impl TryFrom<Src> for Lexer {
             number: 1,
             byte_start: 0,
             token_start_idx: 0,
-            token_end_idx: 0
+            token_end_idx: 0,
         };
 
         loop {
@@ -739,7 +752,8 @@ impl TryFrom<Src> for Lexer {
             }
         }
 
-        // FIX insert bracket related errors in the correct place, right now they appear at the end, out of order from the rest of the errors
+        // FIX insert bracket related errors in the correct place, right now they appear at the end, out of order from
+        // the rest of the errors
         for bracket in &this.brackets {
             // there can only be open brackets at this point
             this.errors.push( SyntaxError {
@@ -748,7 +762,7 @@ impl TryFrom<Src> for Lexer {
                 col: bracket.col,
                 len: bracket.kind.len(),
                 msg: "stray bracket".into(),
-                help_msg: "was not closed".into()
+                help_msg: "was not closed".into(),
             } );
         }
 
@@ -792,8 +806,8 @@ impl Lexer {
                 col: self.col,
                 len: 1,
                 msg: "unrecognized character".into(),
-                help_msg: "not a valid ASCII character".into()
-            }),
+                help_msg: "not a valid ASCII character".into(),
+            } ),
         }
     }
 
@@ -811,8 +825,8 @@ impl Lexer {
                 col: self.col,
                 len: 1,
                 msg: "unrecognized character".into(),
-                help_msg: "not a valid ASCII character".into()
-            }),
+                help_msg: "not a valid ASCII character".into(),
+            } ),
         }
     }
 
@@ -824,8 +838,8 @@ impl Lexer {
                 col: self.token_start_col,
                 len: self.col - self.token_start_col + 1,
                 msg: "invalid character literal".into(),
-                help_msg: "missing closing single quote".into()
-            }),
+                help_msg: "missing closing single quote".into(),
+            } ),
             Some( next ) => Ok( next ),
         }
     }
@@ -838,8 +852,8 @@ impl Lexer {
                 col: self.token_start_col,
                 len: self.col - self.token_start_col + 1,
                 msg: "invalid string literal".into(),
-                help_msg: "missing closing double quote".into()
-            }),
+                help_msg: "missing closing double quote".into(),
+            } ),
             Some( next ) => Ok( next ),
         }
     }
@@ -879,8 +893,8 @@ impl Lexer {
                             col: self.token_start_col,
                             len: self.col - self.token_start_col + 1,
                             msg: "invalid identifier".into(),
-                            help_msg: "contains non-ASCII characters".into()
-                        })
+                            help_msg: "contains non-ASCII characters".into(),
+                        } )
                     }
                     else {
                         self.gather_token_text();
@@ -929,8 +943,8 @@ impl Lexer {
                                         col: self.token_start_col,
                                         len: self.token_text.len(),
                                         msg: "invalid number literal".into(),
-                                        help_msg: "contains non-digit characters".into()
-                                    })
+                                        help_msg: "contains non-digit characters".into(),
+                                    } )
                                 }
                                 else {
                                     Err( SyntaxError {
@@ -939,8 +953,8 @@ impl Lexer {
                                         col: self.token_start_col,
                                         len: self.token_text.len(),
                                         msg: "invalid number literal".into(),
-                                        help_msg: "contains non-ASCII characters".into()
-                                    })
+                                        help_msg: "contains non-ASCII characters".into(),
+                                    } )
                                 },
                             IntErrorKind::PosOverflow => Err( SyntaxError {
                                 line_byte_start: self.line_byte_start,
@@ -948,16 +962,22 @@ impl Lexer {
                                 col: self.token_start_col,
                                 len: self.token_text.len(),
                                 msg: "invalid number literal".into(),
-                                help_msg: format!( "overflows a {} bit signed integer (over {})", isize::BITS, isize::MAX ).into()
-                            }),
+                                help_msg: format!(
+                                    "overflows a {} bit signed integer (over {})",
+                                    isize::BITS, isize::MAX
+                                ).into(),
+                            } ),
                             IntErrorKind::NegOverflow => Err( SyntaxError {
                                 line_byte_start: self.line_byte_start,
                                 line: self.line,
                                 col: self.token_start_col,
                                 len: self.token_text.len(),
                                 msg: "invalid number literal".into(),
-                                help_msg: format!( "underflows a {} bit signed integer (under {})", isize::BITS, isize::MIN ).into()
-                            }),
+                                help_msg: format!(
+                                    "underflows a {} bit signed integer (under {})",
+                                    isize::BITS, isize::MIN
+                                ).into(),
+                            } ),
                             IntErrorKind::Empty | std::num::IntErrorKind::Zero => unreachable!(),
                             _ => Err( SyntaxError {
                                 line_byte_start: self.line_byte_start,
@@ -965,8 +985,8 @@ impl Lexer {
                                 col: self.token_start_col,
                                 len: self.token_text.len(),
                                 msg: "invalid number literal".into(),
-                                help_msg: err.to_string().into()
-                            }),
+                                help_msg: err.to_string().into(),
+                            } ),
                         },
                     }
                 },
@@ -994,8 +1014,8 @@ impl Lexer {
                                     col: self.col,
                                     len: 1,
                                     msg: "invalid string character".into(),
-                                    help_msg: "unrecognized escape character".into()
-                                }),
+                                    help_msg: "unrecognized escape character".into(),
+                                } ),
                             },
                             b'\x00'..=b'\x1F' | b'\x7F' => Err( SyntaxError {
                                 line_byte_start: self.line_byte_start,
@@ -1003,8 +1023,8 @@ impl Lexer {
                                 col: self.col,
                                 len: 1,
                                 msg: "invalid string literal".into(),
-                                help_msg: "cannot be a control character".into()
-                            }),
+                                help_msg: "cannot be a control character".into(),
+                            } ),
                             b'"' => break,
                             other => Ok( other as char ),
                         };
@@ -1017,7 +1037,9 @@ impl Lexer {
 
                     // after here there cannot be unclosed strings
                     if errors.is_empty() {
-                        Ok( Some( TokenKind::Literal( Literal::Str( Str { text: self.token_text.clone().into_bytes() } ))))
+                        Ok( Some(
+                            TokenKind::Literal( Literal::Str( Str { text: self.token_text.clone().into_bytes() } ) )
+                        ) )
                     }
                     else {
                         // FIX add proper multiple error handling
@@ -1042,8 +1064,8 @@ impl Lexer {
                                 col: self.col,
                                 len: 1,
                                 msg: "invalid character literal".into(),
-                                help_msg: "unrecognized escape character".into()
-                            }),
+                                help_msg: "unrecognized escape character".into(),
+                            } ),
                         },
                         b'\x00'..=b'\x1F' | b'\x7F' => Err( SyntaxError {
                             line_byte_start: self.line_byte_start,
@@ -1051,16 +1073,16 @@ impl Lexer {
                             col: self.col,
                             len: 1,
                             msg: "invalid character literal".into(),
-                            help_msg: "cannot be a control character".into()
-                        }),
+                            help_msg: "cannot be a control character".into(),
+                        } ),
                         b'\'' => break Err( SyntaxError {
                             line_byte_start: self.line_byte_start,
                             line: self.line,
                             col: self.token_start_col,
                             len: 2,
                             msg: "invalid character literal".into(),
-                            help_msg: "must not be empty".into()
-                        }),
+                            help_msg: "must not be empty".into(),
+                        } ),
                         ch => Ok( ch ),
                     };
 
@@ -1075,8 +1097,8 @@ impl Lexer {
                             col: self.token_start_col,
                             len: self.col - self.token_start_col + 1,
                             msg: "invalid character literal".into(),
-                            help_msg: "missing closing single quote".into()
-                        })
+                            help_msg: "missing closing single quote".into(),
+                        } )
                     }
                 },
                 b'(' => {
@@ -1085,29 +1107,31 @@ impl Lexer {
                         line_byte_start: self.line_byte_start,
                         line_number: self.line,
                         col: self.token_start_col,
-                        kind
+                        kind,
                     } );
                     Ok( Some( TokenKind::Bracket( kind ) ) )
                 },
                 b')' => match self.brackets.pop() {
-                    Some( Bracket { kind: BracketKind::OpenRound | BracketKind::CloseCurly | BracketKind::CloseRound, .. } ) =>
-                        Ok( Some( TokenKind::Bracket( BracketKind::CloseRound ) ) ),
-                    Some( Bracket { kind: BracketKind::OpenCurly, .. } ) => Err( SyntaxError {
-                        line_byte_start: self.line_byte_start,
-                        line: self.line,
-                        col: self.token_start_col,
-                        len: 1,
-                        msg: "stray bracket".into(),
-                        help_msg: "closes the wrong bracket".into()
-                    }),
+                    Some( bracket ) => match bracket.kind {
+                        BracketKind::OpenRound | BracketKind::CloseCurly | BracketKind::CloseRound =>
+                            Ok( Some( TokenKind::Bracket( BracketKind::CloseRound ) ) ),
+                        BracketKind::OpenCurly => Err( SyntaxError {
+                            line_byte_start: self.line_byte_start,
+                            line: self.line,
+                            col: self.token_start_col,
+                            len: 1,
+                            msg: "stray bracket".into(),
+                            help_msg: "closes the wrong bracket".into(),
+                        } ),
+                    },
                     None => Err( SyntaxError {
                         line_byte_start: self.line_byte_start,
                         line: self.line,
                         col: self.token_start_col,
                         len: 1,
                         msg: "stray bracket".into(),
-                        help_msg: "was not opened before".into()
-                    }),
+                        help_msg: "was not opened before".into(),
+                    } ),
                 },
                 b'{' => {
                     let kind = BracketKind::OpenCurly;
@@ -1115,29 +1139,31 @@ impl Lexer {
                         line_byte_start: self.line_byte_start,
                         line_number: self.line,
                         col: self.token_start_col,
-                        kind
+                        kind,
                     } );
                     Ok( Some( TokenKind::Bracket( kind ) ) )
                 },
                 b'}' => match self.brackets.pop() {
-                    Some( Bracket { kind: BracketKind::OpenCurly | BracketKind::CloseCurly | BracketKind::CloseRound, .. } ) =>
-                        Ok( Some( TokenKind::Bracket( BracketKind::CloseCurly ) ) ),
-                    Some( Bracket { kind: BracketKind::OpenRound, .. } ) => Err( SyntaxError {
-                        line_byte_start: self.line_byte_start,
-                        line: self.line,
-                        col: self.token_start_col,
-                        len: 1,
-                        msg: "stray bracket".into(),
-                        help_msg: "closes the wrong bracket".into()
-                    }),
+                    Some( bracket ) => match bracket.kind {
+                        BracketKind::OpenCurly | BracketKind::CloseCurly | BracketKind::CloseRound =>
+                            Ok( Some( TokenKind::Bracket( BracketKind::CloseCurly ) ) ),
+                        BracketKind::OpenRound => Err( SyntaxError {
+                            line_byte_start: self.line_byte_start,
+                            line: self.line,
+                            col: self.token_start_col,
+                            len: 1,
+                            msg: "stray bracket".into(),
+                            help_msg: "closes the wrong bracket".into(),
+                        } ),
+                    },
                     None => Err( SyntaxError {
                         line_byte_start: self.line_byte_start,
                         line: self.line,
                         col: self.token_start_col,
                         len: 1,
                         msg: "stray bracket".into(),
-                        help_msg: "was not opened before".into()
-                    }),
+                        help_msg: "was not opened before".into(),
+                    } ),
                 },
                 b':' => Ok( Some( TokenKind::Colon ) ),
                 b';' => Ok( Some( TokenKind::SemiColon ) ),
@@ -1231,8 +1257,8 @@ impl Lexer {
                         col: self.token_start_col,
                         len: 1,
                         msg: "unexpected character".into(),
-                        help_msg: "did you mean '^^'?".into()
-                    }),
+                        help_msg: "did you mean '^^'?".into(),
+                    } ),
                 },
                 b'&' => match self.peek_next()? {
                     Some( b'&' ) => {
@@ -1245,8 +1271,8 @@ impl Lexer {
                         col: self.token_start_col,
                         len: 1,
                         msg: "unexpected character".into(),
-                        help_msg: "did you mean '&&'?".into()
-                    }),
+                        help_msg: "did you mean '&&'?".into(),
+                    } ),
                 },
                 b'|' => match self.peek_next()? {
                     Some( b'|' ) => {
@@ -1259,8 +1285,8 @@ impl Lexer {
                         col: self.token_start_col,
                         len: 1,
                         msg: "unexpected character".into(),
-                        help_msg: "did you mean '||'?".into()
-                    }),
+                        help_msg: "did you mean '||'?".into(),
+                    } ),
                 },
                 b'\n' => unreachable!( "line text should have been trimmed already" ),
                 // disabling explicit uninitialization until we have proper uninitialization checking
@@ -1270,8 +1296,8 @@ impl Lexer {
                     col: self.token_start_col,
                     len: 1,
                     msg: "unexpected character".into(),
-                    help_msg: "unrecognized".into()
-                }),
+                    help_msg: "unrecognized".into(),
+                } ),
             }
         }
     }
@@ -1301,7 +1327,11 @@ impl<'lexer> TokenCursor<'lexer> {
         if self.token >= self.tokens.len() || self.line >= self.lines.len() {
             return None
         }
-        return Some( TokenPosition{ line: &self.lines[ self.line ], token: &self.tokens[ self.token ] } ).or_next( self );
+
+        return Some( TokenPosition {
+            line: &self.lines[ self.line ],
+            token: &self.tokens[ self.token ]
+        } ).or_next( self );
     }
 
     fn next( &mut self ) -> Option<TokenPosition<'lexer>> {
@@ -1358,7 +1388,11 @@ trait BoundedPosition<'lexer> {
     type Error;
 
 
-    fn bounded( self, tokens: &mut TokenCursor<'lexer>, err_msg: impl Into<String> ) -> Result<TokenPosition<'lexer>, Self::Error> where Self: Sized;
+    fn bounded(
+        self,
+        tokens: &mut TokenCursor<'lexer>,
+        err_msg: impl Into<String>
+    ) -> Result<TokenPosition<'lexer>, Self::Error> where Self: Sized;
     // no implementation for "bounded_previous" is provided since it is never actually needed during parsing
     fn or_next( self, tokens: &mut TokenCursor<'lexer> ) -> Self where Self: Sized;
     fn or_previous( self, tokens: &mut TokenCursor<'lexer> ) -> Self where Self: Sized;
@@ -1368,11 +1402,15 @@ impl<'lexer> BoundedPosition<'lexer> for Option<TokenPosition<'lexer>> {
     type Error = SyntaxError;
 
 
-    fn bounded( self, tokens: &mut TokenCursor<'lexer>, err_msg: impl Into<String> ) -> Result<TokenPosition<'lexer>, Self::Error> {
+    fn bounded(
+        self,
+        tokens: &mut TokenCursor<'lexer>,
+        err_msg: impl Into<String>
+    ) -> Result<TokenPosition<'lexer>, Self::Error> {
         return match self {
             Some( position ) => Ok( position ),
             None => {
-                // we are always sure that this function is never called without a previous token existing, so we can safely unwrap
+                // this function is never called without a previous token existing, so we can safely unwrap
                 let previous = unsafe{ tokens.peek_previous().unwrap_unchecked() };
                 Err( SyntaxError {
                     line_byte_start: previous.line.byte_start,
@@ -1380,7 +1418,7 @@ impl<'lexer> BoundedPosition<'lexer> for Option<TokenPosition<'lexer>> {
                     col: previous.token.col,
                     len: previous.token.kind.len(),
                     msg: err_msg.into().into(),
-                    help_msg: "file ended after here instead".into()
+                    help_msg: "file ended after here instead".into(),
                 } )
             },
         }
@@ -1413,11 +1451,7 @@ impl Display for Expression {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
             Self::Literal( literal ) => write!( f, "{}", literal ),
-            Self::Unary { op, operand } => match op {
-                Operator::Negate => write!( f, "-{}", operand ),
-                Operator::Not => write!( f, "not {}", operand ),
-                _ => unreachable!(),
-            },
+            Self::Unary { op, operand } => write!( f, "{}{}", op, operand ),
             Self::Binary { lhs, op, rhs } => write!( f, "({} {} {})", lhs, op, rhs ),
             Self::Identifier( name, _ ) => write!( f, "{}", name ),
         }
@@ -1551,7 +1585,7 @@ struct Scope {
 #[derive( Debug )]
 struct AST {
     scopes: Vec<Scope>,
-    current_scope: usize,
+    scope: usize,
     loop_depth: usize,
 
     errors: Vec<SyntaxError>,
@@ -1568,7 +1602,7 @@ impl TryFrom<Lexer> for AST {
                 variables: Vec::new(),
                 nodes: Vec::new(),
             }],
-            current_scope: 0,
+            scope: 0,
             loop_depth: 0,
             errors: Vec::new(),
         };
@@ -1610,12 +1644,12 @@ impl AST {
                         Node::If( _ ) | Node::Loop( _ ) | Node::Scope( _ ) => (),
                     }
 
-                    self.scopes[ self.current_scope ].nodes.push( node );
+                    self.scopes[ self.scope ].nodes.push( node );
                 },
                 Ok( None ) => break,
-                // only parsing until the first error until a fault tolerant parser is developed, this is
-                // because the first truly relevant error is the first one, which in turn causes a ripple effect
-                // that propagates to the rest of the parsing, causing subsequent errors to be wrong
+                // only parsing until the first error until a fault tolerant parser is developed, this is because the
+                // first truly relevant error is the first one, which in turn causes a ripple effect that propagates to
+                // the rest of the parsing, causing subsequent errors to be wrong
                 Err( err ) => {
                     self.errors.push( err );
 
@@ -1651,8 +1685,8 @@ impl AST {
                     col: current.token.col,
                     len: current.token.kind.len(),
                     msg: "invalid if statement".into(),
-                    help_msg: "stray else block".into()
-                })
+                    help_msg: "stray else block".into(),
+                } )
             },
             TokenKind::Do | TokenKind::Loop => {
                 self.loop_depth += 1;
@@ -1672,8 +1706,8 @@ impl AST {
                         col: current.token.col,
                         len: current.token.kind.len(),
                         msg: "invalid break statement".into(),
-                        help_msg: "cannot be used outside of loops".into()
-                    }),
+                        help_msg: "cannot be used outside of loops".into(),
+                    } ),
                     _ => Ok( Some( Node::Break ) ),
                 }
             },
@@ -1686,8 +1720,8 @@ impl AST {
                         col: current.token.col,
                         len: current.token.kind.len(),
                         msg: "invalid continue statement".into(),
-                        help_msg: "cannot be used outside of loops".into()
-                    }),
+                        help_msg: "cannot be used outside of loops".into(),
+                    } ),
                     _ => Ok( Some( Node::Continue ) ),
                 }
             },
@@ -1699,8 +1733,8 @@ impl AST {
                     col: current.token.col,
                     len: current.token.kind.len(),
                     msg: "invalid statement".into(),
-                    help_msg: "blocks are not allowed in this context".into()
-                })
+                    help_msg: "blocks are not allowed in this context".into(),
+                } )
             },
             TokenKind::Bracket( BracketKind::CloseCurly ) => {
                 tokens.next();
@@ -1710,8 +1744,8 @@ impl AST {
                     col: current.token.col,
                     len: current.token.kind.len(),
                     msg: "invalid statement".into(),
-                    help_msg: "stray closed curly bracket".into()
-                })
+                    help_msg: "stray closed curly bracket".into(),
+                } )
             },
             TokenKind::Bracket( BracketKind::CloseRound ) => {
                 tokens.next();
@@ -1721,8 +1755,8 @@ impl AST {
                     col: current.token.col,
                     len: current.token.kind.len(),
                     msg: "invalid expression".into(),
-                    help_msg: "stray closed parenthesis".into()
-                })
+                    help_msg: "stray closed parenthesis".into(),
+                } )
             },
             TokenKind::Colon => {
                 tokens.next();
@@ -1732,8 +1766,8 @@ impl AST {
                     col: current.token.col,
                     len: current.token.kind.len(),
                     msg: "invalid type annotation".into(),
-                    help_msg: "stray colon".into()
-                })
+                    help_msg: "stray colon".into(),
+                } )
             },
             TokenKind::Equals => {
                 tokens.next();
@@ -1743,8 +1777,8 @@ impl AST {
                     col: current.token.col,
                     len: current.token.kind.len(),
                     msg: "invalid assignment".into(),
-                    help_msg: "stray assignment".into()
-                })
+                    help_msg: "stray assignment".into(),
+                } )
             },
             TokenKind::QuestionMark => {
                 tokens.next();
@@ -1754,8 +1788,8 @@ impl AST {
                     col: current.token.col,
                     len: current.token.kind.len(),
                     msg: "invalid explicit uninitialization".into(),
-                    help_msg: "stray uninitialized value".into()
-                })
+                    help_msg: "stray uninitialized value".into(),
+                } )
             },
             TokenKind::Op( _ ) => {
                 tokens.next();
@@ -1765,8 +1799,8 @@ impl AST {
                     col: current.token.col,
                     len: current.token.kind.len(),
                     msg: "invalid expression".into(),
-                    help_msg: "stray binary operator".into()
-                })
+                    help_msg: "stray binary operator".into(),
+                } )
             },
             TokenKind::SemiColon => {
                 tokens.next();
@@ -1786,19 +1820,19 @@ impl AST {
             TokenKind::Bracket( BracketKind::OpenCurly ) => {
                 let new_scope = self.scopes.len();
                 self.scopes.push( Scope {
-                    parent: self.current_scope,
+                    parent: self.scope,
                     types: Vec::new(),
                     variables: Vec::new(),
-                    nodes: Vec::new()
+                    nodes: Vec::new(),
                 } );
-                self.current_scope = new_scope;
+                self.scope = new_scope;
 
                 tokens.next();
                 self.parse_scope( tokens );
                 Ok( Some( Node::Scope( new_scope ) ) )
             },
             TokenKind::Bracket( BracketKind::CloseCurly ) => {
-                self.current_scope = self.scopes[ self.current_scope ].parent;
+                self.scope = self.scopes[ self.scope ].parent;
                 tokens.next();
                 Ok( None )
             },
@@ -1817,7 +1851,8 @@ impl AST {
                 Ok( () )
             },
             _ => {
-                let previous = tokens.peek_previous().unwrap();
+                // this function is never called without a previous token existing, so we can safely unwrap
+                let previous = unsafe{ tokens.peek_previous().unwrap_unchecked() };
                 Err( SyntaxError {
                     line_byte_start: previous.line.byte_start,
                     line: previous.line.number,
@@ -1844,25 +1879,28 @@ impl AST {
             TokenKind::False => Ok( Expression::Literal( Literal::Bool( false ) ) ),
             TokenKind::Identifier( name ) => match self.resolve_type( name ) {
                 None => match self.resolve_variable( name ) {
-                    Some( variable ) => match variable.initialized {
-                        true => Ok( Expression::Identifier( name.clone(), variable.typ ) ),
-                        false => Err( SyntaxError {
-                            line_byte_start: current.line.byte_start,
-                            line: current.line.number,
-                            col: current.token.col,
-                            len: current.token.kind.len(),
-                            msg: "variable not initialized".into(),
-                            help_msg: "was not previously initialized".into()
-                        }),
-                    },
+                    Some( variable ) =>
+                        if variable.initialized {
+                            Ok( Expression::Identifier( name.clone(), variable.typ ) )
+                        }
+                        else {
+                            Err( SyntaxError {
+                                line_byte_start: current.line.byte_start,
+                                line: current.line.number,
+                                col: current.token.col,
+                                len: current.token.kind.len(),
+                                msg: "variable not initialized".into(),
+                                help_msg: "was not previously initialized".into(),
+                            } )
+                        },
                     None => Err( SyntaxError {
                         line_byte_start: current.line.byte_start,
                         line: current.line.number,
                         col: current.token.col,
                         len: current.token.kind.len(),
                         msg: "variable not defined".into(),
-                        help_msg: "was not previously defined in this scope".into()
-                    }),
+                        help_msg: "was not previously defined in this scope".into(),
+                    } ),
                 },
                 Some( _ ) => Err( SyntaxError {
                     line_byte_start: current.line.byte_start,
@@ -1870,7 +1908,7 @@ impl AST {
                     col: current.token.col,
                     len: current.token.kind.len(),
                     msg: "invalid expression".into(),
-                    help_msg: "cannot be a type name".into()
+                    help_msg: "cannot be a type name".into(),
                 } ),
             },
             TokenKind::Bracket( BracketKind::OpenRound ) => {
@@ -1882,8 +1920,8 @@ impl AST {
                         col: expression_start_pos.token.col,
                         len: expression_start_pos.token.kind.len(),
                         msg: "invalid expression".into(),
-                        help_msg: "empty expressions are not allowed".into()
-                    }),
+                        help_msg: "empty expressions are not allowed".into(),
+                    } ),
                     _ => {
                         let expression = self.expression( tokens )?;
                         let close_bracket_pos = tokens.current().bounded( tokens, "expected closed parenthesis" )?;
@@ -1895,8 +1933,8 @@ impl AST {
                                 col: current.token.col,
                                 len: current.token.kind.len(),
                                 msg: "invalid expression".into(),
-                                help_msg: "unclosed parenthesis".into()
-                            }),
+                                help_msg: "unclosed parenthesis".into(),
+                            } ),
                         }
                     }
                 }
@@ -1928,7 +1966,7 @@ impl AST {
                             col: current.token.col,
                             len: current.token.kind.len(),
                             msg: "invalid expression".into(),
-                            help_msg: "cannot negate boolean value, use the '!' operator instead".into()
+                            help_msg: "cannot negate boolean value, use the '!' operator instead".into(),
                         } ),
                         Literal::Uninitialized( _ ) => Err( SyntaxError {
                             line_byte_start: current.line.byte_start,
@@ -1936,7 +1974,7 @@ impl AST {
                             col: current.token.col,
                             len: current.token.kind.len(),
                             msg: "variable not initialized".into(),
-                            help_msg: "was not previously initialized".into()
+                            help_msg: "was not previously initialized".into(),
                         } ),
                     }
                     _ => Ok( Expression::Unary { op: Operator::Negate, operand: Box::new( operand ) } ),
@@ -1963,7 +2001,7 @@ impl AST {
                             col: current.token.col,
                             len: current.token.kind.len(),
                             msg: "invalid expression".into(),
-                            help_msg: "cannot invert non boolean value, use the '-' operator instead".into()
+                            help_msg: "cannot invert non boolean value, use the '-' operator instead".into(),
                         } ),
                         Literal::Uninitialized( _ ) => Err( SyntaxError {
                             line_byte_start: current.line.byte_start,
@@ -1971,7 +2009,7 @@ impl AST {
                             col: current.token.col,
                             len: current.token.kind.len(),
                             msg: "variable not initialized".into(),
-                            help_msg: "was not previously initialized".into()
+                            help_msg: "was not previously initialized".into(),
                         } ),
                     }
                     _ => Ok( Expression::Unary { op: Operator::Not, operand: Box::new( operand ) } ),
@@ -1986,24 +2024,24 @@ impl AST {
                 col: previous.token.col,
                 len: previous.token.kind.len(),
                 msg: "invalid expression".into(),
-                help_msg: "cannot be followed by a keyword".into()
-            }),
+                help_msg: "cannot be followed by a keyword".into(),
+            } ),
             TokenKind::QuestionMark => Err( SyntaxError {
                 line_byte_start: previous.line.byte_start,
                 line: previous.line.number,
                 col: previous.token.col,
                 len: previous.token.kind.len(),
                 msg: "invalid expression".into(),
-                help_msg: "uninitialized values cannot be used inside expressions".into()
-            }),
+                help_msg: "uninitialized values cannot be used inside expressions".into(),
+            } ),
             _ => Err( SyntaxError {
                 line_byte_start: previous.line.byte_start,
                 line: previous.line.number,
                 col: previous.token.col,
                 len: previous.token.kind.len(),
                 msg: "invalid expression".into(),
-                help_msg: "expected expression operand after this token".into()
-            }),
+                help_msg: "expected expression operand after this token".into(),
+            } ),
         };
 
         tokens.next();
@@ -2013,18 +2051,19 @@ impl AST {
     fn operator( &mut self, tokens: &mut TokenCursor, ops: &[Operator] ) -> Result<Option<Operator>, SyntaxError> {
         let current_pos = tokens.current().bounded( tokens, "expected operator or semicolon" )?;
         return match current_pos.token.kind {
-            TokenKind::Op( op ) => match ops.contains( &op ) {
-                true => {
+            TokenKind::Op( op ) =>
+                if ops.contains( &op ) {
                     tokens.next();
                     Ok( Some( op ) )
+                }
+                else {
+                    Ok( None )
                 },
-                false => Ok( None ),
-            },
             _ => Ok( None ),
         }
     }
 
-    // IDEA optimize expression building by implementing associativity rules (ie. remove parenthesis around additions and subtractions)
+    // IDEA optimize expression building by implementing associativity rules
     // FIX division by zero, raising to a negative power
     // IDEA print crash error message
         // TODO implement a way to print file, line and column information in source code
@@ -2093,8 +2132,8 @@ impl AST {
                     col: op_pos.token.col,
                     len: op_pos.token.kind.len(),
                     msg: "invalid boolean expression".into(),
-                    help_msg: "must be preceded by a boolean expression".into()
-                });
+                    help_msg: "must be preceded by a boolean expression".into(),
+                } );
             }
 
             let rhs = self.comparative_expression( tokens )?;
@@ -2105,8 +2144,8 @@ impl AST {
                     col: op_pos.token.col,
                     len: op_pos.token.kind.len(),
                     msg: "invalid boolean expression".into(),
-                    help_msg: "must be followed by a boolean expression".into()
-                });
+                    help_msg: "must be followed by a boolean expression".into(),
+                } );
             }
 
             lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
@@ -2123,7 +2162,7 @@ impl AST {
 // variable definitions and assignments
 impl<'lexer> AST {
     fn resolve_variable( &'lexer self, name: &str ) -> Option<&'lexer Variable> {
-        let mut current_scope = self.current_scope;
+        let mut current_scope = self.scope;
         loop {
             let scope = &self.scopes[ current_scope ];
 
@@ -2142,7 +2181,7 @@ impl<'lexer> AST {
     }
 
     fn resolve_variable_mut( &'lexer mut self, name: &str ) -> Option<&'lexer mut Variable> {
-        let mut current_scope = self.current_scope;
+        let mut current_scope = self.scope;
         loop {
             let scope = &self.scopes[ current_scope ];
 
@@ -2163,7 +2202,7 @@ impl<'lexer> AST {
     }
 
     fn resolve_type( &'lexer self, name: &str ) -> Option<&'lexer Type> {
-        let mut current_scope = self.current_scope;
+        let mut current_scope = self.scope;
         loop {
             let scope = &self.scopes[ current_scope ];
 
@@ -2199,7 +2238,7 @@ impl<'lexer> AST {
                     col: name_pos.token.col,
                     len: name_pos.token.kind.len(),
                     msg: "invalid variable name".into(),
-                    help_msg: "cannot be a type name".into()
+                    help_msg: "cannot be a type name".into(),
                 } ),
             },
             _ => Err( SyntaxError {
@@ -2208,8 +2247,8 @@ impl<'lexer> AST {
                 col: name_pos.token.col,
                 len: name_pos.token.kind.len(),
                 msg: "invalid assignment".into(),
-                help_msg: "expected variable name".into()
-            }),
+                help_msg: "expected variable name".into(),
+            } ),
         };
 
         let colon_pos = tokens.peek_next().bounded( tokens, "expected type annotation or variable definition" )?;
@@ -2228,18 +2267,17 @@ impl<'lexer> AST {
                                 col: annotation_pos.token.col,
                                 len: annotation_pos.token.kind.len(),
                                 msg: "invalid type annotation".into(),
-                                help_msg: "was not previously defined".into()
+                                help_msg: "was not previously defined".into(),
                             } )
                         },
                     },
-                    // TokenKind::Equals => Ok( None ), // NOTE debate wether to allow for declarations like "var i := 0;"
                     _ => Err( SyntaxError {
                         line_byte_start: colon_pos.line.byte_start,
                         line: colon_pos.line.number,
                         col: colon_pos.token.col,
                         len: colon_pos.token.kind.len(),
                         msg: "invalid type annotation".into(),
-                        help_msg: "expected type name after here".into()
+                        help_msg: "expected type name after here".into(),
                     } )
                 }
             },
@@ -2270,8 +2308,8 @@ impl<'lexer> AST {
                 col: name_pos.token.col,
                 len: name_pos.token.kind.len(),
                 msg: "invalid assignment".into(),
-                help_msg: "expected '=' or ';' after the variable name".into()
-            }),
+                help_msg: "expected '=' or ';' after the variable name".into(),
+            } ),
         };
 
         let name = name?;
@@ -2285,7 +2323,7 @@ impl<'lexer> AST {
                 col: name_pos.token.col,
                 len: name_pos.token.kind.len(),
                 msg: "variable redefinition".into(),
-                help_msg: "was previously defined".into()
+                help_msg: "was previously defined".into(),
             } );
         }
 
@@ -2299,15 +2337,24 @@ impl<'lexer> AST {
                             col: pos.token.col,
                             len: pos.token.kind.len(),
                             msg: "invalid definition".into(),
-                            help_msg: format!( "declared type of '{}' doesn't match expression of type '{}'", typ, value.typ() ).into()
-                        })
+                            help_msg: format!(
+                                "declared type of '{}' doesn't match expression of type '{}'",
+                                typ, value.typ()
+                            ).into(),
+                        } );
                     }
 
                     if let Expression::Literal( Literal::Uninitialized( ref mut uninitialized_type ) ) = value {
                         *uninitialized_type = typ;
                     }
 
-                    self.scopes[ self.current_scope ].variables.push( Variable { mutability, name: name.clone(), typ, initialized } );
+                    self.scopes[ self.scope ].variables.push( Variable {
+                        mutability,
+                        name: name.clone(),
+                        typ,
+                        initialized
+                    } );
+
                     Ok( Node::Definition( name, value ) )
                 },
                 None => match value {
@@ -2317,17 +2364,29 @@ impl<'lexer> AST {
                         col: name_pos.token.col,
                         len: name_pos.token.kind.len(),
                         msg: "invalid definition".into(),
-                        help_msg: "expected type annotation after here to infer the type of the variable".into()
-                    }),
+                        help_msg: "expected type annotation after here to infer the type of the variable".into(),
+                    } ),
                     _ => {
-                        self.scopes[ self.current_scope ].variables.push( Variable { mutability, name: name.clone(), typ: value.typ(), initialized } );
+                        self.scopes[ self.scope ].variables.push( Variable {
+                            mutability,
+                            name: name.clone(),
+                            typ: value.typ(),
+                            initialized
+                        } );
+
                         Ok( Node::Definition( name, value ) )
                     }
                 },
             },
             None => match annotation {
                 Some( (typ, _) ) => {
-                    self.scopes[ self.current_scope ].variables.push( Variable { mutability, name: name.clone(), typ, initialized } );
+                    self.scopes[ self.scope ].variables.push( Variable {
+                        mutability,
+                        name: name.clone(),
+                        typ,
+                        initialized
+                    } );
+
                     Ok( Node::Definition( name, Expression::Literal( typ.default() ) ) )
                 },
                 None => Err( SyntaxError {
@@ -2336,7 +2395,7 @@ impl<'lexer> AST {
                     col: name_pos.token.col,
                     len: name_pos.token.kind.len(),
                     msg: "invalid definition".into(),
-                    help_msg: "expected type annotation or value after here to infer the type of the variable".into()
+                    help_msg: "expected type annotation or value after here to infer the type of the variable".into(),
                 }),
             },
         }
@@ -2378,40 +2437,42 @@ impl<'lexer> AST {
                 col: name_pos.token.col,
                 len: name_pos.token.kind.len(),
                 msg: "invalid assignment".into(),
-                help_msg: "cannot be a type name".into()
-            } )
+                help_msg: "cannot be a type name".into(),
+            } );
         }
 
         match self.resolve_variable_mut( &name ) {
-            Some( Variable { mutability: Mutability::Let, .. } ) => Err( SyntaxError {
-                line_byte_start: name_pos.line.byte_start,
-                line: name_pos.line.number,
-                col: name_pos.token.col,
-                len: name_pos.token.kind.len(),
-                msg: "invalid assignment".into(),
-                help_msg: "was defined as immutable".into()
-            }),
-            Some( var ) => {
-                let value = value?;
-                let value_typ = value.typ();
+            Some( var ) => match var.mutability {
+                Mutability::Let => Err( SyntaxError {
+                    line_byte_start: name_pos.line.byte_start,
+                    line: name_pos.line.number,
+                    col: name_pos.token.col,
+                    len: name_pos.token.kind.len(),
+                    msg: "invalid assignment".into(),
+                    help_msg: "was defined as immutable".into(),
+                } ),
+                Mutability::Var => {
+                    let value = value?;
+                    let value_typ = value.typ();
 
-                if var.typ != value_typ {
-                    return Err( SyntaxError {
-                        line_byte_start: name_pos.line.byte_start,
-                        line: name_pos.line.number,
-                        col: name_pos.token.col,
-                        len: name_pos.token.kind.len(),
-                        msg: "mismatched types".into(),
-                        help_msg: format!(
-                            "trying to assign an expression of type '{}' to a variable of type '{}'",
-                            value_typ,
-                            var.typ,
-                        ).into()
-                    });
-                }
+                    if var.typ != value_typ {
+                        return Err( SyntaxError {
+                            line_byte_start: name_pos.line.byte_start,
+                            line: name_pos.line.number,
+                            col: name_pos.token.col,
+                            len: name_pos.token.kind.len(),
+                            msg: "mismatched types".into(),
+                            help_msg: format!(
+                                "trying to assign an expression of type '{}' to a variable of type '{}'",
+                                value_typ,
+                                var.typ,
+                            ).into(),
+                        } );
+                    }
 
-                var.initialized = true;
-                Ok( Node::Assignment( name_pos.token.kind.to_string(), value ) )
+                    var.initialized = true;
+                    Ok( Node::Assignment( name_pos.token.kind.to_string(), value ) )
+                },
             },
             None => Err( SyntaxError {
                 line_byte_start: name_pos.line.byte_start,
@@ -2419,7 +2480,7 @@ impl<'lexer> AST {
                 col: name_pos.token.col,
                 len: name_pos.token.kind.len(),
                 msg: "variable redefinition".into(),
-                help_msg: "was not previously defined in this scope".into()
+                help_msg: "was not previously defined in this scope".into(),
             }),
         }
     }
@@ -2429,13 +2490,11 @@ impl<'lexer> AST {
 impl AST {
     fn print( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
         let print_pos = tokens.current().unwrap();
-        match print_pos.token.kind {
-            TokenKind::PrintLn => if let Some( TokenPosition { token: &Token { kind: TokenKind::SemiColon, .. }, .. } ) = tokens.peek_next() {
+        if let TokenKind::PrintLn = print_pos.token.kind {
+            if let Some( TokenPosition { token: &Token { kind: TokenKind::SemiColon, .. }, .. } ) = tokens.peek_next() {
                 tokens.next();
                 return Ok( Node::Println( None ) );
-            },
-            TokenKind::Print => (),
-            _ => unreachable!(),
+            }
         }
 
         tokens.next().bounded( tokens, "expected expression" )?;
@@ -2466,8 +2525,8 @@ impl AST {
                     col: if_pos.token.col,
                     len: if_pos.token.kind.len(),
                     msg: "expected boolean expression".into(),
-                    help_msg: "must be followed by a boolean expression".into()
-                }),
+                    help_msg: "must be followed by a boolean expression".into(),
+                } ),
             };
 
             let condition = condition?;
@@ -2490,8 +2549,8 @@ impl AST {
                             col: after_condition_pos.token.col,
                             len: after_condition_pos.token.kind.len(),
                             msg: "invalid if statement".into(),
-                            help_msg: "must be followed by a statement".into()
-                        })
+                            help_msg: "must be followed by a statement".into(),
+                        } )
                     }
                 },
                 _ => {
@@ -2502,8 +2561,8 @@ impl AST {
                         col: before_curly_bracket_pos.token.col,
                         len: before_curly_bracket_pos.token.kind.len(),
                         msg: "invalid if statement".into(),
-                        help_msg: "must be followed by a do or a block".into()
-                    })
+                        help_msg: "must be followed by a do or a block".into(),
+                    } )
                 },
             };
 
@@ -2537,8 +2596,8 @@ impl AST {
                                 col: after_else_pos.token.col,
                                 len: after_else_pos.token.kind.len(),
                                 msg: "invalid else statement".into(),
-                                help_msg: "must be followed by a statement".into()
-                            })
+                                help_msg: "must be followed by a statement".into(),
+                            } )
                         }
                     },
                     TokenKind::If => break,
@@ -2548,8 +2607,8 @@ impl AST {
                         col: else_pos.token.col,
                         len: else_pos.token.kind.len(),
                         msg: "invalid else statement".into(),
-                        help_msg: "must be followed by a do, a block or an if statement".into()
-                    }),
+                        help_msg: "must be followed by a do, a block or an if statement".into(),
+                    } ),
                 };
 
                 else_if?;
@@ -2564,13 +2623,12 @@ impl AST {
 impl AST {
     fn loop_statement( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
         let do_or_loop_pos = tokens.current().unwrap();
-        let is_do_loop = match do_or_loop_pos.token.kind {
-            TokenKind::Do => {
-                tokens.next().bounded( tokens, "expected loop statement" )?;
-                true
-            }
-            TokenKind::Loop => false,
-            _ => unreachable!(),
+        let is_do_loop = if let TokenKind::Do = do_or_loop_pos.token.kind {
+            tokens.next().bounded( tokens, "expected loop statement" )?;
+            true
+        }
+        else {
+            false
         };
 
         let loop_pos = tokens.current().unwrap();
@@ -2585,8 +2643,8 @@ impl AST {
                 col: loop_pos.token.col,
                 len: loop_pos.token.kind.len(),
                 msg: "expected boolean expression".into(),
-                help_msg: "must be followed by a boolean expression".into()
-            }),
+                help_msg: "must be followed by a boolean expression".into(),
+            } ),
         };
         let condition = condition?;
 
@@ -2609,8 +2667,8 @@ impl AST {
                         col: after_condition_pos.token.col,
                         len: after_condition_pos.token.kind.len(),
                         msg: "invalid for statement".into(),
-                        help_msg: "must be followed by a statement".into()
-                    })
+                        help_msg: "must be followed by a statement".into(),
+                    } ),
                 }
             },
             _ => {
@@ -2621,16 +2679,13 @@ impl AST {
                     col: before_curly_bracket_pos.token.col,
                     len: before_curly_bracket_pos.token.kind.len(),
                     msg: "invalid for statement".into(),
-                    help_msg: "must be followed by a do or a block".into()
-                })
+                    help_msg: "must be followed by a do or a block".into(),
+                } )
             },
         };
 
         let statement = statement?;
-        let condition = match is_do_loop {
-            true => LoopCondition::Post( condition ),
-            false => LoopCondition::Pre( condition ),
-        };
+        let condition = if is_do_loop { LoopCondition::Post( condition ) } else { LoopCondition::Pre( condition ) };
 
         return Ok( Node::Loop( Loop {
             pre: None,
@@ -2653,7 +2708,7 @@ impl Checker {
         let lexing_time = start_time.elapsed();
         let elapsed_lexing = Colored {
             text: format!( "{}s", lexing_time.as_secs_f64() ).into(),
-            foreground: Foreground::LightGray,
+            fg: Fg::LightGray,
             ..Default::default()
         };
         time_info.push_str( &format!( "lexing: {}", elapsed_lexing ) );
@@ -2670,14 +2725,14 @@ impl Checker {
         let ast_time = start_time.elapsed() - lexing_time;
         let elapsed_ast = Colored {
             text: format!( "{}s", ast_time.as_secs_f64() ).into(),
-            foreground: Foreground::LightGray,
+            fg: Fg::LightGray,
             ..Default::default()
         };
         time_info.push_str( &format!( ", parsing: {}", elapsed_ast ) );
 
         let elapsed_total = Colored {
             text: format!( "{}s", start_time.elapsed().as_secs_f64() ).into(),
-            foreground: Foreground::LightGray,
+            fg: Fg::LightGray,
             ..Default::default()
         };
 
@@ -2687,6 +2742,7 @@ impl Checker {
 }
 
 
+// TODO introduce intermediate representation
 #[allow( dead_code )]
 #[derive( Debug, PartialEq, Clone, Copy )]
 enum Register {
@@ -2705,7 +2761,7 @@ enum Register {
     R12,
     R13,
     R14,
-    R15
+    R15,
 }
 
 impl Display for Register {
@@ -2796,7 +2852,7 @@ impl Display for MovSrc {
 
 #[allow( dead_code )]
 struct Mov {
-    // instruction: Instruction, // TODO introduce instruction
+    // instruction: Instruction,
     dst: MovDst,
     src: MovSrc,
 }
@@ -2855,7 +2911,7 @@ impl Compiler<'_> {
                     let out_creation_time = start_time.elapsed();
                     let elapsed_out_creation = Colored {
                         text: format!( "{}s", out_creation_time.as_secs_f64() ).into(),
-                        foreground: Foreground::LightGray,
+                        fg: Fg::LightGray,
                         ..Default::default()
                     };
                     time_info.push_str( &format!( "asm generation: {}", elapsed_out_creation ) );
@@ -2884,7 +2940,7 @@ impl Compiler<'_> {
                 let asm_file_opening_time = start_time.elapsed();
                 let elapsed_asm_file_opening = Colored {
                     text: format!( "{}s", asm_file_opening_time.as_secs_f64() ).into(),
-                    foreground: Foreground::LightGray,
+                    fg: Fg::LightGray,
                     ..Default::default()
                 };
                 time_info.push_str( &format!( "asm generation: {}", elapsed_asm_file_opening ) );
@@ -3101,7 +3157,7 @@ _start:
             let asm_writing_time = start_time.elapsed();
             let elapsed_asm_writing = Colored {
                 text: format!( "{}s", asm_writing_time.as_secs_f64() ).into(),
-                foreground: Foreground::LightGray,
+                fg: Fg::LightGray,
                 ..Default::default()
             };
             time_info.push_str( &format!( "asm generation: {}", elapsed_asm_writing ) );
@@ -3117,7 +3173,7 @@ _start:
             let asm_flushin_time = start_time.elapsed();
             let elapsed_asm_flushin = Colored {
                 text: format!( "{}s", asm_flushin_time.as_secs_f64() ).into(),
-                foreground: Foreground::LightGray,
+                fg: Fg::LightGray,
                 ..Default::default()
             };
             time_info.push_str( &format!( "asm generation: {}", elapsed_asm_flushin ) );
@@ -3132,7 +3188,7 @@ _start:
         let asm_generation_time = start_time.elapsed();
         let elapsed_asm_generation = Colored {
             text: format!( "{}s", asm_generation_time.as_secs_f64() ).into(),
-            foreground: Foreground::LightGray,
+            fg: Fg::LightGray,
             ..Default::default()
         };
         time_info.push_str( &format!( "asm generation: {}", elapsed_asm_generation ) );
@@ -3159,7 +3215,7 @@ _start:
         let nasm_time = start_time.elapsed() - asm_generation_time;
         let elapsed_nasm = Colored {
             text: format!( "{}s", nasm_time.as_secs_f64() ).into(),
-            foreground: Foreground::LightGray,
+            fg: Fg::LightGray,
             ..Default::default()
         };
         time_info.push_str( &format!( ", assembler: {}", elapsed_nasm ) );
@@ -3186,7 +3242,7 @@ _start:
         let ld_time = start_time.elapsed() - nasm_time;
         let elapsed_ld = Colored {
             text: format!( "{}s", ld_time.as_secs_f64() ).into(),
-            foreground: Foreground::LightGray,
+            fg: Fg::LightGray,
             ..Default::default()
         };
         time_info.push_str( &format!( ", linker: {}", elapsed_ld ) );
@@ -3194,7 +3250,7 @@ _start:
 
         let elapsed_total = Colored {
             text: format!( "{}s", start_time.elapsed().as_secs_f64() ).into(),
-            foreground: Foreground::LightGray,
+            fg: Fg::LightGray,
             ..Default::default()
         };
 
@@ -3355,7 +3411,7 @@ impl<'ast> Compiler<'ast> {
                     \n mov rdx, 1\
                     \n mov rax, SYS_write\
                     \n syscall\
-                    \n pop rsi\n\n"
+                    \n pop rsi\n\n";
             },
             Node::If( if_statement ) => {
                 let if_idx = self.if_idx;
@@ -3495,7 +3551,7 @@ impl<'ast> Compiler<'ast> {
                 match op {
                     Operator::Negate => self.asm += " neg rdi\n",
                     Operator::Not => self.asm += " xor dil, 1\n",
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 }
             },
         }
@@ -3912,7 +3968,7 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
         println!( "Kaylang compiler, version {}", VERSION );
     }
 
-    fn from_vec( #[allow(unused_mut)] mut args: Vec<String> ) -> Result<(), ExitCode> {
+    fn from_vec( #[allow( unused_mut )] mut args: Vec<String> ) -> Result<(), ExitCode> {
         let mut current_arg = 1; // starting at 1 to skip the name of this executable
         // to quickly debug
         // args.push( "-c".to_string() );
@@ -4112,14 +4168,14 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
 
                     let error_msg = Colored {
                         text: error.msg.to_string().into(),
-                        foreground: Foreground::White,
+                        fg: Fg::White,
                         flags: Flags::Bold,
                         ..Default::default()
                     };
 
                     let line_number_and_bar = Colored {
                         text: format!( "{} |", error.line ).into(),
-                        foreground: Foreground::LightBlue,
+                        fg: Fg::LightBlue,
                         ..Default::default()
                     };
 
@@ -4131,7 +4187,7 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
 
                     let pointers_and_help_msg = Colored {
                         text: format!( "{:^>pointers_len$} {}", "", error.help_msg ).into(),
-                        foreground: Foreground::LightRed,
+                        fg: Fg::LightRed,
                         ..Default::default()
                     };
 
@@ -4180,7 +4236,7 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
                 let done_time = start_time.elapsed();
                 let elapsed_done = Colored {
                     text: format!( "{}s", done_time.as_secs_f64() ).into(),
-                    foreground: Foreground::LightGray,
+                    fg: Fg::LightGray,
                     ..Default::default()
                 };
                 eprintln!( "{}: {} ... in {}", DONE, executable_path.display(), elapsed_done );
@@ -4215,7 +4271,7 @@ fn main() -> ExitCode {
     }
 }
 
-#[cfg(test)]
+#[cfg( test )]
 mod tests {
     use std::{path::Path, process::ExitCode};
 
