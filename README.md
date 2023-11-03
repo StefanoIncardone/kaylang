@@ -10,6 +10,7 @@ see the [full language syntax](SYNTAX.ebnf)
 
 ### Run modes
 
+- `check`: to check the source code for correctness
 - `compile`: to compile the program down to a binary executable
 - `run`: to compile and run the generated binary executable
 
