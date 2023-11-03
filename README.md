@@ -1,4 +1,4 @@
-# Blitz language
+# Kay language
 
 Experimenting with programming languages and exploring how to create one.
 
@@ -74,7 +74,7 @@ Expressions follow this order of operations (precedence from highest to lowest):
 
 Note: when using strings in expressions they get converted to their length (waiting for proper type checking)
 
-```blitz
+```kay
 print "length of \"lucky\" is "; println "lucky" + 0;   # easy way to obtain the length of the string
 ```
 
@@ -87,14 +87,14 @@ Variable names can be made of (but not starting with) numbers, underscores and l
 
 *op*_assign operators desugar to regular expressions:
 
-```blitz
+```kay
 var twentyone = 9;
 twentyone += 10;    # equivalent to "twentyone = twentyone + 10;"
 ```
 
 type annotations:
 
-``` blitz
+``` kay
 let ten: int = 5 * 2;               # explicit type annotation
 let nine = 3 ** 2;                  # implicit type annotation lets the compiler infer the type, which will be int in this case
 let twenty_one: ten = nine + ten;   # twenty one is of the same type as "ten"
@@ -102,7 +102,7 @@ let twenty_one: ten = nine + ten;   # twenty one is of the same type as "ten"
 
 default values:
 
-``` blitz
+``` kay
 let error;      # will result in an error asking for an explicit type annotation
 let zero: int;  # will have the default value for a variable of type int, which is 0
 ```
@@ -111,7 +111,7 @@ let zero: int;  # will have the default value for a variable of type int, which 
 
 The only way to print values is using the temporary intrinsics `print` or `println` keywords
 
-``` blitz
+``` kay
 var ten = 5 * 2;
 let nine = 3 ** 2;
 let lucky = ten + nine;
@@ -126,7 +126,7 @@ println; # this will just print a newline
 They are enclosed by `{` and `}`, and contain a series of statements
 variables are only accessible in the scope they were defined in
 
-```blitz
+```kay
 let ten = 10;
 print "ten = "; println ten;
 
@@ -156,7 +156,7 @@ Executes a block of code based on a condition
 
 - if statement:
 
-    ```blitz
+    ```kay
     let lucky = 42;
     if lucky == 19 {
         println "well done!";
@@ -165,7 +165,7 @@ Executes a block of code based on a condition
 
 - if-else statement:
 
-    ```blitz
+    ```kay
     let lucky = 42;
     if lucky == 19 {
         println "well done!";
@@ -177,7 +177,7 @@ Executes a block of code based on a condition
 
 - if, else-if, else statement:
 
-    ```blitz
+    ```kay
     let lucky = 42;
     if lucky == 19 {
         println "well done!";
@@ -192,7 +192,7 @@ Executes a block of code based on a condition
 
 - single statement version:
 
-    ```blitz
+    ```kay
     let lucky = 42;
     if lucky == 19 do println "well done!";
     else if lucky == 42 do println "awesome!";
@@ -203,7 +203,7 @@ Executes a block of code based on a condition
 
 Executes a block until a condition is not satisfied
 
-```blitz
+```kay
 var i = 0;
 loop i < 10 {
     println i;
@@ -213,7 +213,7 @@ loop i < 10 {
 
 can also make use of the single statement feature:
 
-```blitz
+```kay
 var i = 0;
 loop i < 10 do i += 1;
 println i;
@@ -221,7 +221,7 @@ println i;
 
 C-style do-while loop can be used to let the body/statement of the loop to run at least once:
 
-```blitz
+```kay
 var i = 0;
 loop false do i += 1;
 println i; # will print 0 since the increment inside the loop was never executed
@@ -235,7 +235,7 @@ println j; # will print 1 since the increment inside the loop was executed at le
 
 They can be used to alter the normal flow of the program
 
-```blitz
+```kay
 var i = 0;
 loop i < 10 {
     if i == 6 do break;
@@ -249,7 +249,7 @@ loop i < 10 {
 
 Semicolons are reguired after statements.
 
-```blitz
+```kay
 print "Hello "; # required semicolon
 println "World!";
 ```

@@ -3,5 +3,5 @@
 version = 3
 
 [[package]]
-name = "blitzlang"
-version = "0.3.2"
+name = "kaylang"
+version = "0.4.0"

@@ -30,28 +30,28 @@ have them as built-in operators or just implement them as functions
 
 - absolute value, enclosed by a `|`:
 
-    ```blitz
+    ```kay
     |19| == 19
     |-19| == 19
     ```
 
 - floor, enclosed by `|\` and `/|`, and have to be written as a single token, so `| \` and `/ |` are not valid
 
-    ```blitz
+    ```kay
     |\19.3/| == 19
     |\-19.3/| == -20
     ```
 
 - ceil, enclosed by `|/` and `\|`, and have to be written as a single token, so `| /` and `\ |` are not valid
 
-    ```blitz
+    ```kay
     |/19.3\| == 20
     |/-19.3\| == -19
     ```
 
 - is multiple of: `%%`
 
-    ```blitz
+    ```kay
     let number = 42;
     if number %% 2 { # desugars to number % 2 == 0
         println "even";
@@ -63,7 +63,7 @@ have them as built-in operators or just implement them as functions
 
 - boolean expressions chaining
 
-    ```blitz
+    ```kay
     let n = 42;
     # find apropriate syntax
     if n == 19, 21, 42 || 71 < n <= 138 { # desugars to n == 19 || n == 21 || n == 42 || (71 < n && n <= 138)
@@ -94,7 +94,7 @@ have them as built-in operators or just implement them as functions
 
 stack-allocated collection of a compile time known fixed amount of elements:
 
-```blitz
+```kay
 # uninizialized arrays must specify their lengths and will contain garbage
 let codes: int[3];
 
@@ -120,7 +120,7 @@ let codes = int[6][1 = 1, 3 = 2, 0 = 3];    # array of six elements with indexes
 
 will borrow useful feature from C like indexed initialization:
 
-```blitz
+```kay
 let codes: int[19] = [
     2 = 5, # element at index 2 will contain the value 5
     0 = 9,
@@ -131,7 +131,7 @@ let codes: int[19] = [
 
 and expand on them:
 
-```blitz
+```kay
 let codes: int[19] = [.. = 0] # every element will contain the value 0
 ```
 
@@ -139,7 +139,7 @@ let codes: int[19] = [.. = 0] # every element will contain the value 0
 
 heap-allocated collections of a possibly unknown amount of elements:
 
-```blitz
+```kay
 # the question mark denotes a dynamic array, or a list
 # the initial capacity of the list will be set to some amount (e.g. 4/8/16) for performance
 let codes: int[..];
@@ -157,7 +157,7 @@ they can be manipulated in different ways (syntax yet to be dicided):
 (need to decide if these will give an error if the specified index is out of bounds,
 maybe have unchecked and checked versions)
 
-```blitz
+```kay
 codes.append( 3 ); # adding an element to the end
 codes.pop();
 
@@ -170,7 +170,7 @@ codes.remove( 3 ); # removing at index 3
 
 ability to create type aliases, which are just alternative names to existing types
 
-```blitz
+```kay
 alias byte = u8;
 ```
 
@@ -178,7 +178,7 @@ alias byte = u8;
 
 ability to create distinct types, which are considered entirely different types:
 
-```blitz
+```kay
 type byte = u8;
 ```
 
@@ -186,7 +186,7 @@ type byte = u8;
 
 structs are just an aggregation of types:
 
-```blitz
+```kay
 struct RBG {
     r: u8,          # type specific default inizialization, which for u8 is 0
     g: u8 = 255,    # explicit default initialization
@@ -213,7 +213,7 @@ let rgb = RGB { 255, 255, 255 };
 inheritance is just syntactic sugar, this allows for any extended type to be passed as "base" type only carrying
 the fields defined in the base type:
 
-```blitz
+```kay
 struct RGBA_unnamed {
     extends RGB,
     a: u8
@@ -272,7 +272,7 @@ let rgba = RGBA_named { rgb, a = 255 };
 
 if we have a function defined for the "base" struct only the "base" part of the struct will be passed:
 
-```blitz
+```kay
 # so this
 function_for_RGB( rgba );
 
@@ -282,7 +282,7 @@ function_for_RGB( rgba.rgb );
 
 if we dont explicity extend inside a struct it's going to result in an error
 
-```blitz
+```kay
 struct RGB {
     r: u8,
     g: u8,
@@ -302,7 +302,7 @@ function_for_RGB( rgba ); # doesn't work
 
 collection of constant values:
 
-```blitz
+```kay
 enum Colors: u32 { # optional data type
     # default value for when converting from integers that don't match the actual enum value
     # for example converting from 0x00ff00 will result in GREEN being chosen
@@ -317,7 +317,7 @@ enum Colors: u32 { # optional data type
 
 Rust-like collection of variants:
 
-```blitz
+```kay
 union Statement {
     Empty,
     Single( Node ),
@@ -329,7 +329,7 @@ union Statement {
 
 basically name-less structs:
 
-```blitz
+```kay
 let red = (255, 0, 0);
 let r = red.0;
 let g = red.1;
@@ -342,7 +342,7 @@ let b = red.2;
 
 pointers are going to come in different flavours (introducing `none` keyword):
 
-```blitz
+```kay
 let answer = 42;
 
 let pointer: int*; # owned pointer, pointing to owned memory (will free the memory it owns when going out of scope or something)
@@ -370,7 +370,7 @@ dereferenced = ^reference;
 types that may or may not contain a value (introducing the `none` keyword/value):
 they are basically tagged unions in the case of non-pointer variables (like Rust's Options)
 
-```blitz
+```kay
 # nullable pointers are just "optional pointers" 
 let nullable: int*?;
 let nullable: int&?;
@@ -398,7 +398,7 @@ maybe = ^option; # or like this
 
 ## compile time constants and functions excution
 
-```blitz
+```kay
 # decide on "compile-time" directives syntax (maybe convert comments to `//` or something else and use `#`)
 const answer = 40 + 2;
 #static let answer = 40 + 2;
@@ -415,7 +415,7 @@ static some_function();
 
 ## switch statements
 
-```blitz
+```kay
 let answer = 0;
 
 # regular if

@@ -1,5 +1,9 @@
 # Versions
 
+## 0.4
+
+- renamed language to `kay`
+
 ## 0.3
 
 ### 0.3.2

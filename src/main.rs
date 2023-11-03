@@ -632,7 +632,7 @@ struct SyntaxError {
     // so the implementation of the "Display" trait is inlined for now
 #[derive( Debug )]
 struct SyntaxErrors {
-    src: BlitzSrc,
+    src: Src,
     errors: Vec<SyntaxError>,
 }
 
@@ -646,7 +646,7 @@ struct Bracket {
 
 #[derive( Debug )]
 struct Lexer {
-    src: BlitzSrc,
+    src: Src,
 
     line: usize,
     line_byte_start: usize,
@@ -663,11 +663,11 @@ struct Lexer {
     errors: Vec<SyntaxError>,
 }
 
-impl TryFrom<BlitzSrc> for Lexer {
+impl TryFrom<Src> for Lexer {
     type Error = SyntaxErrors;
 
 
-    fn try_from( src: BlitzSrc ) -> Result<Self, Self::Error> {
+    fn try_from( src: Src ) -> Result<Self, Self::Error> {
         let mut this = Self {
             src,
             line: 0,
@@ -2645,7 +2645,7 @@ impl AST {
 struct Checker;
 
 impl Checker {
-    fn check( src: BlitzSrc, start_time: &Instant ) -> Result<AST, SyntaxErrors> {
+    fn check( src: Src, start_time: &Instant ) -> Result<AST, SyntaxErrors> {
         eprint!( "{}: {}", CHECKING, src.path.display() );
         let mut time_info = String::new();
 
@@ -3206,16 +3206,16 @@ _start:
         eprintln!( "{}: {}", RUNNING, exe_path.display() );
 
         return match Command::new( Path::new( "." ).join( exe_path ).display().to_string() ).spawn() {
-            Ok( mut blitz ) => match blitz.wait() {
+            Ok( mut executable ) => match executable.wait() {
                 Ok( _status ) => Ok( () ),
                 Err( err ) => Err( std::io::Error::new(
                     err.kind(),
-                    format!( "{}: could not run blitz executable\n{}: {}", ERROR, CAUSE, err )
+                    format!( "{}: could not run executable\n{}: {}", ERROR, CAUSE, err )
                 ) ),
             },
             Err( err ) => Err( std::io::Error::new(
                 err.kind(),
-                format!( "{}: could not create blitz executable process\n{}: {}", ERROR, CAUSE, err )
+                format!( "{}: could not create executable process\n{}: {}", ERROR, CAUSE, err )
             ) ),
         }
     }
@@ -3844,12 +3844,12 @@ impl<'ast> Compiler<'ast> {
 
 // IDEA make the source generic, eg: to be able to compile from strings instead of just files
 #[derive( Debug )]
-struct BlitzSrc {
+struct Src {
     path: PathBuf,
     src: BufReader<File>,
 }
 
-impl BlitzSrc {
+impl Src {
     fn try_from( path: &Path ) -> std::io::Result<Self> {
         return match File::open( path ) {
             Ok( file ) => match file.metadata() {
@@ -3883,14 +3883,14 @@ struct RunMode {
     kind: RunModeKind,
 }
 
-struct Blitz;
+struct Kay;
 
-impl Blitz {
+impl Kay {
     fn print_usage( color: Color ) {
         Self::print_version( color );
 
         println!( r"
-Usage: blitz [{OPTIONS}] [{RUN_MODE}]
+Usage: kay [{OPTIONS}] [{RUN_MODE}]
 
 {OPTIONS}:
     -h, --help            Display this message
@@ -3909,7 +3909,7 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
 
     fn print_version( color: Color ) {
         color.set_stdout();
-        println!( "Blitzlang compiler, version {}", VERSION );
+        println!( "Kaylang compiler, version {}", VERSION );
     }
 
     fn from_vec( #[allow(unused_mut)] mut args: Vec<String> ) -> Result<(), ExitCode> {
@@ -4082,7 +4082,7 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
             },
         };
 
-        let source_file = match BlitzSrc::try_from( Path::new( &run_mode.src_path ) ) {
+        let source_file = match Src::try_from( Path::new( &run_mode.src_path ) ) {
             Ok( src ) => src,
             Err( err ) => {
                 eprintln!( "{}", err );
@@ -4209,7 +4209,7 @@ Usage: blitz [{OPTIONS}] [{RUN_MODE}]
 // IDEA adapt SyntaxErrors to report cli mistakes
 // IDEA add compiler flag to compile all blz files in directory
 fn main() -> ExitCode {
-    return match Blitz::from_args( env::args() ) {
+    return match Kay::from_args( env::args() ) {
         Ok( () ) => ExitCode::SUCCESS,
         Err( code ) => ExitCode::from( code ),
     }
@@ -4219,7 +4219,7 @@ fn main() -> ExitCode {
 mod tests {
     use std::{path::Path, process::ExitCode};
 
-    use crate::Blitz;
+    use crate::Kay;
 
     #[test]
     fn project_eulers() -> Result<(), ExitCode> {
@@ -4228,7 +4228,7 @@ mod tests {
             if let Some( extension ) = src_file_path.extension() {
                 if extension == "blz" {
                     let args = vec!["".to_string(), "check".to_string(), src_file_path.display().to_string() ];
-                    Blitz::from_vec( args )?;
+                    Kay::from_vec( args )?;
                 }
             }
         }
