@@ -6,30 +6,28 @@ use std::{
     fmt::Display,
     path::{Path, PathBuf},
     borrow::Cow,
-    cmp::Ordering,
     num::IntErrorKind,
     time::Instant,
 };
 
 
-static CHECKING:  Colored = Colored { text: Cow::Borrowed( " Checking" ),                 fg: Fg::LightGreen, bg: Bg::Default, flags: Flags::Bold };
-static COMPILING: Colored = Colored { text: Cow::Borrowed( "Compiling" ),                 fg: Fg::LightGreen, bg: Bg::Default, flags: Flags::Bold };
-static RUNNING:   Colored = Colored { text: Cow::Borrowed( "  Running" ),                 fg: Fg::LightGreen, bg: Bg::Default, flags: Flags::Bold };
-static DONE:      Colored = Colored { text: Cow::Borrowed( "     Done" ),                 fg: Fg::LightGreen, bg: Bg::Default, flags: Flags::Bold };
+static CHECKING:     Colored = Colored { text: Cow::Borrowed( "    Checking" ),              fg: Fg::LightGreen, bg: Bg::Default, flags: Flags::Bold };
+static COMPILING:    Colored = Colored { text: Cow::Borrowed( "   Compiling" ),              fg: Fg::LightGreen, bg: Bg::Default, flags: Flags::Bold };
+static RUNNING:      Colored = Colored { text: Cow::Borrowed( "     Running" ),              fg: Fg::LightGreen, bg: Bg::Default, flags: Flags::Bold };
+static DONE:         Colored = Colored { text: Cow::Borrowed( "        Done" ),              fg: Fg::LightGreen, bg: Bg::Default, flags: Flags::Bold };
 
-static ERROR:     Colored = Colored { text: Cow::Borrowed( "Error" ),                     fg: Fg::LightRed,   bg: Bg::Default, flags: Flags::Bold };
-static AT:        Colored = Colored { text: Cow::Borrowed( "at" ),                        fg: Fg::LightRed,   bg: Bg::Default, flags: Flags::Bold };
-static BAR:       Colored = Colored { text: Cow::Borrowed( "|" ),                         fg: Fg::LightBlue,  bg: Bg::Default, flags: Flags::Bold };
+static ERROR:        Colored = Colored { text: Cow::Borrowed( "Error" ),                     fg: Fg::LightRed,   bg: Bg::Default, flags: Flags::Bold };
+static CAUSE:        Colored = Colored { text: Cow::Borrowed( "Cause" ),                     fg: Fg::LightRed,   bg: Bg::Default, flags: Flags::Bold };
+static AT:           Colored = Colored { text: Cow::Borrowed( "at" ),                        fg: Fg::LightRed,   bg: Bg::Default, flags: Flags::Bold };
+static BAR:          Colored = Colored { text: Cow::Borrowed( "|" ),                         fg: Fg::LightBlue,  bg: Bg::Default, flags: Flags::Bold };
 
-static CAUSE:     Colored = Colored { text: Cow::Borrowed( "Cause" ),                     fg: Fg::LightRed,   bg: Bg::Default, flags: Flags::Bold };
-
-static VERSION:   Colored = Colored { text: Cow::Borrowed( env!( "CARGO_PKG_VERSION" ) ), fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
-static OPTIONS:   Colored = Colored { text: Cow::Borrowed( "Options" ),                   fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
-static RUN_MODE:  Colored = Colored { text: Cow::Borrowed( "Run mode" ),                  fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
-static MODE:      Colored = Colored { text: Cow::Borrowed( "mode" ),                      fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
-static FILE:      Colored = Colored { text: Cow::Borrowed( "file" ),                      fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
-static PATH:      Colored = Colored { text: Cow::Borrowed( "path" ),                      fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
-static OUTPUT:    Colored = Colored { text: Cow::Borrowed( "Output" ),                    fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
+static VERSION:      Colored = Colored { text: Cow::Borrowed( env!( "CARGO_PKG_VERSION" ) ), fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
+static OPTIONS:      Colored = Colored { text: Cow::Borrowed( "Options" ),                   fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
+static RUN_MODE:     Colored = Colored { text: Cow::Borrowed( "Run mode" ),                  fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
+static MODE:         Colored = Colored { text: Cow::Borrowed( "mode" ),                      fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
+static FILE:         Colored = Colored { text: Cow::Borrowed( "file" ),                      fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
+static PATH:         Colored = Colored { text: Cow::Borrowed( "path" ),                      fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
+static OUTPUT:       Colored = Colored { text: Cow::Borrowed( "Output" ),                    fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
 
 
 
@@ -172,20 +170,32 @@ pub enum Color {
 impl Color {
     pub fn set( &self ) {
         unsafe { display = match self {
-            Self::Auto => if !std::io::stderr().is_terminal() { Colored::no_color } else { Colored::color },
+            Self::Auto   =>
+                if !std::io::stderr().is_terminal() {
+                    Colored::no_color
+                }
+                else {
+                    Colored::color
+                },
             Self::Always => Colored::color,
-            Self::Never => Colored::no_color,
+            Self::Never  => Colored::no_color,
         } }
     }
 
-    // since printing version and help message are the only places where printing to stdoud is performed we are
-    // manually checking if stdout (overring stderr coloring modes) is in terminal mode until a way to separately print
-    // colored/non-colored output to stdout/stderr is found
+    // since printing version and help message are the only places where printing to stdoud is
+    // performed we are manually checking if stdout (overring stderr coloring modes) is in terminal
+    // mode until a way to separately print colored/non-colored output to stdout/stderr is found
     pub fn set_stdout( &self ) {
         unsafe { display = match self {
-            Self::Auto => if !std::io::stdout().is_terminal() { Colored::no_color } else { Colored::color },
+            Self::Auto   =>
+                if !std::io::stdout().is_terminal() {
+                    Colored::no_color
+                }
+                else {
+                    Colored::color
+                },
             Self::Always => Colored::color,
-            Self::Never => Colored::no_color,
+            Self::Never  => Colored::no_color,
         } }
     }
 }
@@ -199,11 +209,6 @@ trait TypeOf {
     fn typ( &self ) -> Type;
 }
 
-trait Precedence {
-    fn precedence( &self ) -> usize;
-    fn precedence_over( &self, other: &Self ) -> Ordering;
-}
-
 
 #[derive( Debug, Clone )]
 struct Str {
@@ -212,8 +217,7 @@ struct Str {
 
 #[derive( Debug, Clone )]
 enum Literal {
-    // IDEA have different size integers and default to 32 bits for literals
-    Int( isize ),
+    Int( isize ), // IDEA have different size integers and default to 32 bits for literals
     Char( u8 ), // only supporting ASCII characters for now
     Bool( bool ),
     Str( Str ),
@@ -223,10 +227,11 @@ enum Literal {
 impl Display for Literal {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
-            Self::Int( value ) => write!( f, "{}", value ),
-            Self::Char( code ) => write!( f, "'{}'", code.escape_ascii() ), // TODO create own escaping function
-            Self::Bool( value ) => write!( f, "{}", value ),
-            Self::Str( string ) => {
+            Self::Int( value )       => write!( f, "{}", value ),
+            // TODO create own escaping function
+            Self::Char( code )       => write!( f, "'{}'", code.escape_ascii() ),
+            Self::Bool( value )      => write!( f, "{}", value ),
+            Self::Str( string )      => {
                 write!( f, "\"" )?;
                 for character in &string.text {
                     write!( f, "{}", character.escape_ascii() )?;
@@ -241,10 +246,10 @@ impl Display for Literal {
 impl Into<isize> for Literal {
     fn into( self ) -> isize {
         return match self {
-            Self::Int( value ) => value.into(),
-            Self::Char( code ) => code.into(),
-            Self::Bool( value ) => value.into(),
-            Self::Str( string ) => string.text.len() as isize,
+            Self::Int( value )       => value.into(),
+            Self::Char( code )       => code.into(),
+            Self::Bool( value )      => value.into(),
+            Self::Str( string )      => string.text.len() as isize,
             Self::Uninitialized( _ ) => panic!( "cannot get the int value of an uninitialized value"),
         }
     }
@@ -253,10 +258,10 @@ impl Into<isize> for Literal {
 impl Len for Literal {
     fn len( &self ) -> usize {
         return match self {
-            Self::Int( value ) => value.to_string().len(),
-            Self::Char( _ ) => 1,
-            Self::Bool( value ) => value.to_string().len(),
-            Self::Str( string ) => string.text.len() + 2,
+            Self::Int( value )         => value.to_string().len(),
+            Self::Char( _ )            => 1,
+            Self::Bool( value )        => value.to_string().len(),
+            Self::Str( string )        => string.text.len() + 2,
             Self::Uninitialized( typ ) => typ.len(),
         }
     }
@@ -265,10 +270,10 @@ impl Len for Literal {
 impl TypeOf for Literal {
     fn typ( &self ) -> Type {
         return match self {
-            Self::Int { .. } => Type::Int,
-            Self::Char { .. } => Type::Char,
-            Self::Bool { .. } => Type::Bool,
-            Self::Str( _ ) => Type::Str,
+            Self::Int { .. }           => Type::Int,
+            Self::Char { .. }          => Type::Char,
+            Self::Bool { .. }          => Type::Bool,
+            Self::Str( _ )             => Type::Str,
             Self::Uninitialized( typ ) => *typ,
         }
     }
@@ -286,10 +291,10 @@ enum Type {
 impl Display for Type {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
-            Self::Int => write!( f, "int" ),
+            Self::Int  => write!( f, "int" ),
             Self::Char => write!( f, "char" ),
             Self::Bool => write!( f, "bool" ),
-            Self::Str => write!( f, "str" ),
+            Self::Str  => write!( f, "str" ),
         }
     }
 }
@@ -297,10 +302,10 @@ impl Display for Type {
 impl Len for Type {
     fn len( &self ) -> usize {
         match self {
-            Self::Int => core::mem::size_of::<isize>(),
+            Self::Int  => core::mem::size_of::<isize>(),
             Self::Char => core::mem::size_of::<u8>(),
             Self::Bool => core::mem::size_of::<bool>(),
-            Self::Str => core::mem::size_of::<*const u8>() + core::mem::size_of::<usize>(),
+            Self::Str  => core::mem::size_of::<*const u8>() + core::mem::size_of::<usize>(),
         }
     }
 }
@@ -310,29 +315,44 @@ impl Type {
         match self {
             Self::Bool => Literal::Bool( false ),
             Self::Char => Literal::Char( 0 ),
-            Self::Int => Literal::Int( 0 ),
-            Self::Str => Literal::Str( Str { text: Vec::new() } ),
+            Self::Int  => Literal::Int( 0 ),
+            Self::Str  => Literal::Str( Str { text: Vec::new() } ),
         }
     }
 }
 
 #[derive( Debug, Clone, Copy, PartialEq )]
 enum Operator {
+    // unary operators
+    Not,
+
+    // binary operators
     Pow,
     PowEquals,
-
     Times,
     TimesEquals,
     Divide,
     DivideEquals,
     Remainder,
     RemainderEquals,
-
     Plus,
     PlusEquals,
     Minus,
-    Negate,
     MinusEquals,
+
+    LeftShift,
+    LeftShiftEquals,
+    RightShift,
+    RightShiftEquals,
+
+    BitAnd,
+    BitAndEquals,
+    BitXor,
+    BitXorEquals,
+    BitOr,
+    BitOrEquals,
+
+    Compare,
 
     EqualsEquals,
     NotEquals,
@@ -340,43 +360,60 @@ enum Operator {
     GreaterOrEquals,
     Less,
     LessOrEquals,
-    Compare,
 
     And,
+    AndEquals,
+    // NOTE temporarily disabling xor operators until we have a flat/chained expression type
+    // such that    [operand, op, operand, op, operand, op, operand]
+    // instead of   [[[operand, op, operand] op, operand], op, operand]
+    // Xor,
+    // XorEquals,
     Or,
-    Not,
-    Xor,
+    OrEquals,
 }
 
 impl Display for Operator {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
-            Self::Pow => write!( f, "**" ),
-            Self::PowEquals => write!( f, "**=" ),
-            Self::Times => write!( f, "*" ),
-            Self::TimesEquals => write!( f, "*=" ),
-            Self::Divide => write!( f, "/" ),
-            Self::DivideEquals => write!( f, "/=" ),
-            Self::Remainder => write!( f, "%" ),
-            Self::RemainderEquals => write!( f, "%=" ),
+            Self::Not              => write!( f, "!" ),
 
-            Self::Plus => write!( f, "+" ),
-            Self::PlusEquals => write!( f, "+=" ),
-            Self::Minus | Self::Negate => write!( f, "-" ),
-            Self::MinusEquals => write!( f, "-=" ),
+            Self::Pow              => write!( f, "**" ),
+            Self::PowEquals        => write!( f, "**=" ),
+            Self::Times            => write!( f, "*" ),
+            Self::TimesEquals      => write!( f, "*=" ),
+            Self::Divide           => write!( f, "/" ),
+            Self::DivideEquals     => write!( f, "/=" ),
+            Self::Remainder        => write!( f, "%" ),
+            Self::RemainderEquals  => write!( f, "%=" ),
+            Self::Plus             => write!( f, "+" ),
+            Self::PlusEquals       => write!( f, "+=" ),
+            Self::Minus            => write!( f, "-" ),
+            Self::MinusEquals      => write!( f, "-=" ),
 
-            Self::EqualsEquals => write!( f, "==" ),
-            Self::NotEquals => write!( f, "!=" ),
-            Self::Greater => write!( f, ">" ),
-            Self::GreaterOrEquals => write!( f, ">=" ),
-            Self::Less => write!( f, "<" ),
-            Self::LessOrEquals => write!( f, "<=" ),
-            Self::Compare => write!( f, "<=>" ),
+            Self::And              => write!( f, "&&" ),
+            Self::AndEquals        => write!( f, "&&=" ),
+            Self::BitAnd           => write!( f, "&" ),
+            Self::BitAndEquals     => write!( f, "&=" ),
+            Self::Or               => write!( f, "||" ),
+            Self::OrEquals         => write!( f, "||=" ),
+            Self::BitOr            => write!( f, "|" ),
+            Self::BitOrEquals      => write!( f, "|=" ),
+            // Self::Xor              => write!( f, "^^" ),
+            // Self::XorEquals        => write!( f, "^^=" ),
+            Self::BitXor           => write!( f, "^" ),
+            Self::BitXorEquals     => write!( f, "^=" ),
+            Self::LeftShift        => write!( f, "<<" ),
+            Self::LeftShiftEquals  => write!( f, "<<=" ),
+            Self::RightShift       => write!( f, ">>" ),
+            Self::RightShiftEquals => write!( f, ">>=" ),
 
-            Self::And => write!( f, "&&" ),
-            Self::Or => write!( f, "||" ),
-            Self::Not => write!( f, "!" ),
-            Self::Xor => write!( f, "^^" ),
+            Self::EqualsEquals     => write!( f, "==" ),
+            Self::NotEquals        => write!( f, "!=" ),
+            Self::Greater          => write!( f, ">" ),
+            Self::GreaterOrEquals  => write!( f, ">=" ),
+            Self::Less             => write!( f, "<" ),
+            Self::LessOrEquals     => write!( f, "<=" ),
+            Self::Compare          => write!( f, "<=>" ),
         }
     }
 }
@@ -384,32 +421,45 @@ impl Display for Operator {
 impl Len for Operator {
     fn len( &self ) -> usize {
         return match self {
-            Self::Pow => 2,
-            Self::PowEquals => 3,
-            Self::Times => 1,
-            Self::TimesEquals => 2,
-            Self::Divide => 1,
-            Self::DivideEquals => 2,
-            Self::Remainder => 1,
-            Self::RemainderEquals => 2,
+            Self::Not              => 1,
 
-            Self::Plus => 1,
-            Self::PlusEquals => 2,
-            Self::Minus | Self::Negate => 1,
-            Self::MinusEquals => 2,
+            Self::Pow              => 2,
+            Self::PowEquals        => 3,
+            Self::Times            => 1,
+            Self::TimesEquals      => 2,
+            Self::Divide           => 1,
+            Self::DivideEquals     => 2,
+            Self::Remainder        => 1,
+            Self::RemainderEquals  => 2,
+            Self::Plus             => 1,
+            Self::PlusEquals       => 2,
+            Self::Minus            => 1,
+            Self::MinusEquals      => 2,
 
-            Self::EqualsEquals => 2,
-            Self::NotEquals => 2,
-            Self::Greater => 1,
-            Self::GreaterOrEquals => 2,
-            Self::Less => 1,
-            Self::LessOrEquals => 2,
-            Self::Compare => 3,
+            Self::And              => 2,
+            Self::AndEquals        => 3,
+            Self::BitAnd           => 1,
+            Self::BitAndEquals     => 2,
+            Self::Or               => 2,
+            Self::OrEquals         => 3,
+            Self::BitOr            => 1,
+            Self::BitOrEquals      => 2,
+            // Self::Xor              => 2,
+            // Self::XorEquals        => 3,
+            Self::BitXor           => 1,
+            Self::BitXorEquals     => 2,
+            Self::LeftShift        => 2,
+            Self::LeftShiftEquals  => 3,
+            Self::RightShift       => 2,
+            Self::RightShiftEquals => 3,
 
-            Self::And => 2,
-            Self::Or => 2,
-            Self::Not => 1,
-            Self::Xor => 2,
+            Self::EqualsEquals     => 2,
+            Self::NotEquals        => 2,
+            Self::Greater          => 1,
+            Self::GreaterOrEquals  => 2,
+            Self::Less             => 1,
+            Self::LessOrEquals     => 2,
+            Self::Compare          => 3,
         }
     }
 }
@@ -417,45 +467,27 @@ impl Len for Operator {
 impl TypeOf for Operator {
     fn typ( &self ) -> Type {
         return match self {
-            Self::Pow | Self::PowEquals
+            Self::Compare
+            | Self::Pow | Self::PowEquals
             | Self::Times | Self::TimesEquals
             | Self::Divide | Self::DivideEquals
             | Self::Remainder | Self::RemainderEquals
             | Self::Plus | Self::PlusEquals
-            | Self::Minus | Self::MinusEquals | Self::Negate
-            | Self::Compare => Type::Int,
+            | Self::Minus | Self::MinusEquals
+            | Self::BitAnd | Self::BitAndEquals
+            | Self::BitOr | Self::BitOrEquals
+            | Self::BitXor | Self::BitXorEquals
+            | Self::LeftShift | Self::LeftShiftEquals
+            | Self::RightShift | Self::RightShiftEquals => Type::Int,
 
             Self::EqualsEquals | Self::NotEquals
             | Self::Greater | Self::GreaterOrEquals
             | Self::Less | Self::LessOrEquals
-            | Self::And | Self::Or | Self::Not | Self::Xor => Type::Bool,
+            | Self::Not
+            | Self::And | Self::AndEquals
+            | Self::Or | Self::OrEquals
+            /* | Self::Xor | Self::XorEquals */ => Type::Bool,
         }
-    }
-}
-
-impl Precedence for Operator {
-    fn precedence( &self ) -> usize {
-        return match self {
-            Self::Negate | Self::And | Self::Or | Self::Not | Self::Xor => 0,
-
-            Self::EqualsEquals | Self::NotEquals
-            | Self::Greater | Self::GreaterOrEquals
-            | Self::Less | Self::LessOrEquals
-            | Self::Compare => 1,
-
-            Self::Plus | Self::PlusEquals
-            | Self::Minus | Self::MinusEquals => 2,
-
-            Self::Times | Self::TimesEquals
-            | Self::Divide | Self::DivideEquals
-            | Self::Remainder | Self::RemainderEquals => 3,
-
-            Self::Pow | Self::PowEquals => 4,
-        }
-    }
-
-    fn precedence_over( &self, other: &Self ) -> Ordering {
-        return self.precedence().cmp( &other.precedence() );
     }
 }
 
@@ -494,9 +526,9 @@ enum BracketKind {
 impl Display for BracketKind {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
-            Self::OpenRound => write!( f, "(" ),
+            Self::OpenRound  => write!( f, "(" ),
             Self::CloseRound => write!( f, ")" ),
-            Self::OpenCurly => write!( f, "{{" ),
+            Self::OpenCurly  => write!( f, "{{" ),
             Self::CloseCurly => write!( f, "}}" ),
         }
     }
@@ -505,9 +537,9 @@ impl Display for BracketKind {
 impl Len for BracketKind {
     fn len( &self ) -> usize {
         return match self {
-            Self::OpenRound => 1,
+            Self::OpenRound  => 1,
             Self::CloseRound => 1,
-            Self::OpenCurly => 1,
+            Self::OpenCurly  => 1,
             Self::CloseCurly => 1,
         }
     }
@@ -527,14 +559,14 @@ enum TokenKind {
     Op( Operator ),
 
     Literal( Literal ),
+    True,
+    False,
     Identifier( String ),
     Definition( Mutability ),
 
     // Keywords
     Print, // temporary way of printing values
     PrintLn, // temporary way of printing values followed by a newline
-    True,
-    False,
     Do,
     If,
     Else,
@@ -549,33 +581,33 @@ enum TokenKind {
 impl Display for TokenKind {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
-            Self::Comment( text ) => write!( f, "{}", text ),
+            Self::Comment( text )    => write!( f, "{}", text ),
             Self::Unexpected( text ) => write!( f, "{}", text ),
 
             Self::Bracket( bracket ) => write!( f, "{}", bracket ),
-            Self::Equals => write!( f, "=" ),
-            Self::Colon => write!( f, ":" ),
-            Self::SemiColon => write!( f, ";" ),
-            Self::QuestionMark => write!( f, "?" ),
+            Self::Equals             => write!( f, "=" ),
+            Self::Colon              => write!( f, ":" ),
+            Self::SemiColon          => write!( f, ";" ),
+            Self::QuestionMark       => write!( f, "?" ),
 
             Self::Literal( literal ) => write!( f, "{}", literal ),
             Self::Identifier( name ) => write!( f, "{}", name ),
             Self::Definition( kind ) => write!( f, "{}", kind ),
 
-            Self::Op( op ) => write!( f, "{}", op ),
+            Self::Op( op )           => write!( f, "{}", op ),
 
-            Self::Print => write!( f, "print" ),
-            Self::PrintLn => write!( f, "println" ),
-            Self::True => write!( f, "true" ),
-            Self::False => write!( f, "false" ),
-            Self::Do => write!( f, "do" ),
-            Self::If => write!( f, "if" ),
-            Self::Else => write!( f, "else" ),
-            Self::Loop => write!( f, "loop" ),
-            Self::Break => write!( f, "break" ),
-            Self::Continue => write!( f, "continue" ),
+            Self::Print              => write!( f, "print" ),
+            Self::PrintLn            => write!( f, "println" ),
+            Self::True               => write!( f, "true" ),
+            Self::False              => write!( f, "false" ),
+            Self::Do                 => write!( f, "do" ),
+            Self::If                 => write!( f, "if" ),
+            Self::Else               => write!( f, "else" ),
+            Self::Loop               => write!( f, "loop" ),
+            Self::Break              => write!( f, "break" ),
+            Self::Continue           => write!( f, "continue" ),
 
-            Self::Empty => write!( f, "" ),
+            Self::Empty              => write!( f, "" ),
         }
     }
 }
@@ -583,33 +615,32 @@ impl Display for TokenKind {
 impl Len for TokenKind {
     fn len( &self ) -> usize {
         return match self {
-            Self::Comment( text ) => text.len(),
+            Self::Comment( text )    => text.len(),
             Self::Unexpected( text ) => text.len(),
 
             Self::Bracket( bracket ) => bracket.len(),
-            Self::Equals => 1,
-            Self::Colon => 1,
-            Self::SemiColon => 1,
-            Self::QuestionMark => 1,
+            Self::Colon              => 1,
+            Self::SemiColon          => 1,
+            Self::Equals             => 1,
+            Self::QuestionMark       => 1,
+            Self::Op( op )           => op.len(),
 
-            Self::Literal( typ ) => typ.len(),
+            Self::Literal( typ )     => typ.len(),
+            Self::True               => 4,
+            Self::False              => 5,
             Self::Identifier( name ) => name.len(),
             Self::Definition( kind ) => kind.len(),
 
-            Self::Op( op ) => op.len(),
+            Self::Print              => 5,
+            Self::PrintLn            => 7,
+            Self::Do                 => 2,
+            Self::If                 => 2,
+            Self::Else               => 4,
+            Self::Loop               => 4,
+            Self::Break              => 5,
+            Self::Continue           => 8,
 
-            Self::Print => 5,
-            Self::PrintLn => 7,
-            Self::True => 4,
-            Self::False => 5,
-            Self::Do => 2,
-            Self::If => 2,
-            Self::Else => 4,
-            Self::Loop => 4,
-            Self::Break => 5,
-            Self::Continue => 8,
-
-            Self::Empty => 1,
+            Self::Empty              => 0,
         }
     }
 }
@@ -641,8 +672,7 @@ struct SyntaxError {
 }
 
 // TODO find a way to implement display for this
-    // NOTE reading from file requires &mut self, while the Display trait requires a &self,
-    // so the implementation of the "Display" trait is inlined for now
+    // NOTE reading from file requires &mut self, while Display requires a &self
 #[derive( Debug )]
 struct SyntaxErrors {
     src: Src,
@@ -726,8 +756,10 @@ impl TryFrom<Src> for Lexer {
                                 Ok( Some( kind ) ) => Token { col: this.token_start_col, kind },
                                 Err( err ) => {
                                     this.errors.push( err );
-                                    let unrecognized = this.token_text();
-                                    Token { col: this.token_start_col, kind: TokenKind::Unexpected( unrecognized ) }
+                                    Token {
+                                        col: this.token_start_col,
+                                        kind: TokenKind::Unexpected( this.token_text() )
+                                    }
                                 }
                             };
 
@@ -752,8 +784,8 @@ impl TryFrom<Src> for Lexer {
             }
         }
 
-        // FIX insert bracket related errors in the correct place, right now they appear at the end, out of order from
-        // the rest of the errors
+        // FIX insert bracket related errors in the correct place, right now they appear at the end,
+        // out of order from the rest of the errors
         for bracket in &this.brackets {
             // there can only be open brackets at this point
             this.errors.push( SyntaxError {
@@ -859,7 +891,8 @@ impl Lexer {
     }
 
     fn tokeninze_next( &mut self ) -> Result<Option<TokenKind>, SyntaxError> {
-        // this loop is ever going to run just once, it's here just so we can use continue and break
+        // TODO remove this loop, since is ever going to run just once, it's here just so we can use
+        // continue and break
         loop {
             self.token_text.clear();
             let next = match self.next()? {
@@ -867,10 +900,13 @@ impl Lexer {
                 None => return Ok( None ),
             };
 
-            // registering the token start column after getting the next character to maintain 1 indexing token columns
+            // registering the token start column after getting the next character to maintain 1
+            // indexing token columns
             self.token_start_col = self.col;
             return match next {
                 // ignore whitespace
+                // TODO make this return TokenKind::Empty, and use this at the calling site to
+                // continue to the next iteration
                 b'\t' | b'\x0C' | b'\r' | b' ' => continue,
                 b'a'..=b'z' | b'A'..=b'Z' | b'_'  => {
                     let mut contains_non_ascii = false;
@@ -932,7 +968,8 @@ impl Lexer {
                     }
 
                     self.gather_token_text();
-                    match self.token_text.parse() { // TODO create own number parsing function
+                    // TODO create own number parsing function
+                    match self.token_text.parse() {
                         Ok( value ) => Ok( Some( TokenKind::Literal( Literal::Int( value ) ) ) ),
                         Err( err ) => match err.kind() {
                             IntErrorKind::InvalidDigit =>
@@ -991,7 +1028,8 @@ impl Lexer {
                     }
                 },
                 b'#' => {
-                    self.col = self.line_bytes.len(); // consume the rest of the tokens in the current line
+                    // consume the rest of the tokens in the current line
+                    self.col = self.line_bytes.len();
                     let comment = self.token_text();
                     Ok( Some( TokenKind::Comment( comment ) ) )
                 },
@@ -1167,6 +1205,13 @@ impl Lexer {
                 },
                 b':' => Ok( Some( TokenKind::Colon ) ),
                 b';' => Ok( Some( TokenKind::SemiColon ) ),
+                b'!' => match self.peek_next()? {
+                    Some( b'=' ) => {
+                        self.col += 1;
+                        Ok( Some( TokenKind::Op( Operator::NotEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::Not ) ) ),
+                },
                 b'*' => match self.peek_next()? {
                     Some( b'*' ) => {
                         self.col += 1;
@@ -1212,6 +1257,57 @@ impl Lexer {
                     },
                     _ => Ok( Some( TokenKind::Op( Operator::Minus ) ) ),
                 },
+                b'&' => match self.peek_next()? {
+                    Some( b'&' ) => {
+                        self.col += 1;
+                        match self.peek_next()? {
+                            Some( b'=' ) => {
+                                self.col += 1;
+                                Ok( Some( TokenKind::Op( Operator::AndEquals ) ) )
+                            },
+                            _ => Ok( Some( TokenKind::Op( Operator::And ) ) ),
+                        }
+                    },
+                    Some( b'=' ) => {
+                        self.col += 1;
+                        Ok( Some( TokenKind::Op( Operator::BitAndEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::BitAnd ) ) ),
+                },
+                b'^' => match self.peek_next()? {
+                    // Some( b'^' ) => {
+                    //     self.col += 1;
+                    //     match self.peek_next()? {
+                    //         Some( b'=' ) => {
+                    //             self.col += 1;
+                    //             Ok( Some( TokenKind::Op( Operator::XorEquals ) ) )
+                    //         },
+                    //         _ => Ok( Some( TokenKind::Op( Operator::Xor ) ) ),
+                    //     }
+                    // },
+                    Some( b'=' ) => {
+                        self.col += 1;
+                        Ok( Some( TokenKind::Op( Operator::BitXorEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::BitXor ) ) ),
+                },
+                b'|' => match self.peek_next()? {
+                    Some( b'|' ) => {
+                        self.col += 1;
+                        match self.peek_next()? {
+                            Some( b'=' ) => {
+                                self.col += 1;
+                                Ok( Some( TokenKind::Op( Operator::OrEquals ) ) )
+                            },
+                            _ => Ok( Some( TokenKind::Op( Operator::Or ) ) ),
+                        }
+                    },
+                    Some( b'=' ) => {
+                        self.col += 1;
+                        Ok( Some( TokenKind::Op( Operator::BitOrEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::BitOr ) ) ),
+                },
                 b'=' => match self.peek_next()? {
                     Some( b'=' ) => {
                         self.col += 1;
@@ -1219,14 +1315,17 @@ impl Lexer {
                     },
                     _ => Ok( Some( TokenKind::Equals ) ),
                 },
-                b'!' => match self.peek_next()? {
-                    Some( b'=' ) => {
-                        self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::NotEquals ) ) )
-                    },
-                    _ => Ok( Some( TokenKind::Op( Operator::Not ) ) ),
-                },
                 b'>' => match self.peek_next()? {
+                    Some( b'>' ) => {
+                        self.col += 1;
+                        match self.peek_next()? {
+                            Some( b'=' ) => {
+                                self.col += 1;
+                                Ok( Some( TokenKind::Op( Operator::RightShiftEquals ) ) )
+                            },
+                            _ => Ok( Some( TokenKind::Op( Operator::RightShift ) ) ),
+                        }
+                    },
                     Some( b'=' ) => {
                         self.col += 1;
                         Ok( Some( TokenKind::Op( Operator::GreaterOrEquals ) ) )
@@ -1234,6 +1333,16 @@ impl Lexer {
                     _ => Ok( Some( TokenKind::Op( Operator::Greater ) ) ),
                 },
                 b'<' => match self.peek_next()? {
+                    Some( b'<' ) => {
+                        self.col += 1;
+                        match self.peek_next()? {
+                            Some( b'=' ) => {
+                                self.col += 1;
+                                Ok( Some( TokenKind::Op( Operator::LeftShiftEquals ) ) )
+                            },
+                            _ => Ok( Some( TokenKind::Op( Operator::LeftShift ) ) ),
+                        }
+                    },
                     Some( b'=' ) => {
                         self.col += 1;
                         match self.peek_next()? {
@@ -1246,50 +1355,9 @@ impl Lexer {
                     },
                     _ => Ok( Some( TokenKind::Op( Operator::Less ) ) ),
                 },
-                b'^' => match self.peek_next()? {
-                    Some( b'^' ) => {
-                        self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::Xor ) ) )
-                    },
-                    _ => Err( SyntaxError {
-                        line_byte_start: self.line_byte_start,
-                        line: self.line,
-                        col: self.token_start_col,
-                        len: 1,
-                        msg: "unexpected character".into(),
-                        help_msg: "did you mean '^^'?".into(),
-                    } ),
-                },
-                b'&' => match self.peek_next()? {
-                    Some( b'&' ) => {
-                        self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::And ) ) )
-                    },
-                    _ => Err( SyntaxError {
-                        line_byte_start: self.line_byte_start,
-                        line: self.line,
-                        col: self.token_start_col,
-                        len: 1,
-                        msg: "unexpected character".into(),
-                        help_msg: "did you mean '&&'?".into(),
-                    } ),
-                },
-                b'|' => match self.peek_next()? {
-                    Some( b'|' ) => {
-                        self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::Or ) ) )
-                    },
-                    _ => Err( SyntaxError {
-                        line_byte_start: self.line_byte_start,
-                        line: self.line,
-                        col: self.token_start_col,
-                        len: 1,
-                        msg: "unexpected character".into(),
-                        help_msg: "did you mean '||'?".into(),
-                    } ),
-                },
                 b'\n' => unreachable!( "line text should have been trimmed already" ),
-                // disabling explicit uninitialization until we have proper uninitialization checking
+                // disabling explicit uninitialization until we have proper uninitialization or
+                // execution path checking
                 b'?' | _ => Err( SyntaxError {
                     line_byte_start: self.line_byte_start,
                     line: self.line,
@@ -1319,10 +1387,13 @@ struct TokenCursor<'lexer> {
     tokens: &'lexer [Token],
 }
 
-// TODO implement methods that return only tokens or lines since lines are only really needed when reporting errors
+// TODO implement methods that return only tokens or lines since lines are only
+// really needed when reporting errors
 impl<'lexer> TokenCursor<'lexer> {
-    // TODO remove this method and make the next/previous methods return their current position and then move (i.e. like a normal iterator)
-        // NOTE its goint to be required to pass a position object around instead of calling current when needed
+    // TODO remove this method and make the next/previous methods return their current position and
+    // then move (i.e. like a normal iterator)
+        // NOTE its goint to be required to pass a position object around instead of calling current
+        // when needed
     fn current( &mut self ) -> Option<TokenPosition<'lexer>> {
         if self.token >= self.tokens.len() || self.line >= self.lines.len() {
             return None
@@ -1393,7 +1464,6 @@ trait BoundedPosition<'lexer> {
         tokens: &mut TokenCursor<'lexer>,
         err_msg: impl Into<String>
     ) -> Result<TokenPosition<'lexer>, Self::Error> where Self: Sized;
-    // no implementation for "bounded_previous" is provided since it is never actually needed during parsing
     fn or_next( self, tokens: &mut TokenCursor<'lexer> ) -> Self where Self: Sized;
     fn or_previous( self, tokens: &mut TokenCursor<'lexer> ) -> Self where Self: Sized;
 }
@@ -1410,7 +1480,7 @@ impl<'lexer> BoundedPosition<'lexer> for Option<TokenPosition<'lexer>> {
         return match self {
             Some( position ) => Ok( position ),
             None => {
-                // this function is never called without a previous token existing, so we can safely unwrap
+                // this function is never called without a previous token, so we can safely unwrap
                 let previous = unsafe{ tokens.peek_previous().unwrap_unchecked() };
                 Err( SyntaxError {
                     line_byte_start: previous.line.byte_start,
@@ -1450,10 +1520,10 @@ enum Expression {
 impl Display for Expression {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
-            Self::Literal( literal ) => write!( f, "{}", literal ),
-            Self::Unary { op, operand } => write!( f, "{}{}", op, operand ),
+            Self::Literal( literal )      => write!( f, "{}", literal ),
+            Self::Unary { op, operand }   => write!( f, "{}{}", op, operand ),
             Self::Binary { lhs, op, rhs } => write!( f, "({} {} {})", lhs, op, rhs ),
-            Self::Identifier( name, _ ) => write!( f, "{}", name ),
+            Self::Identifier( name, _ )   => write!( f, "{}", name ),
         }
     }
 }
@@ -1461,27 +1531,14 @@ impl Display for Expression {
 impl TypeOf for Expression {
     fn typ( &self ) -> Type {
         return match self {
-            Self::Literal( literal ) => literal.typ(),
+            Self::Literal( literal )    => literal.typ(),
             Self::Unary { operand, .. } => operand.typ(),
-            Self::Binary { op, .. } => op.typ(),
-            Self::Identifier( _, typ ) => *typ,
+            Self::Binary { op, .. }     => op.typ(),
+            Self::Identifier( _, typ )  => *typ,
         }
     }
 }
 
-impl Precedence for Expression {
-    fn precedence( &self ) -> usize {
-        return match self {
-            Self::Unary { .. } => 0,
-            Self::Literal( _ ) | Self::Identifier( _, _) => 1,
-            Self::Binary { .. } => 2,
-        }
-    }
-
-    fn precedence_over( &self, other: &Self ) -> Ordering {
-        return self.precedence().cmp( &other.precedence() );
-    }
-}
 
 #[derive( Debug, Clone )]
 struct Variable {
@@ -1511,6 +1568,7 @@ struct If {
 
 #[derive( Debug, Clone )]
 enum LoopCondition {
+    #[allow( dead_code )]
     Infinite,
     Pre( Expression ),
     Post( Expression )
@@ -1528,13 +1586,15 @@ struct Loop {
 impl Display for Loop {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match &self.condition {
-            LoopCondition::Infinite => write!( f, "loop" ),
-            LoopCondition::Pre( condition ) => write!( f, "loop {}", condition ),
+            LoopCondition::Infinite          => write!( f, "loop" ),
+            LoopCondition::Pre( condition )  => write!( f, "loop {}", condition ),
             LoopCondition::Post( condition ) => write!( f, "do loop {}", condition ),
         }
     }
 }
 
+// TODO create node struct that contains the line and token of the start of the node, and when
+// required to print errors walk the structure of the node based on defined syntax rulese
 #[derive( Debug, Clone )]
 enum Node {
     Semicolon,
@@ -1556,18 +1616,16 @@ impl Display for Node {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
             Self::Expression( expression ) => write!( f, "{}", expression ),
-            Self::Print( argument ) => write!( f, "print {}", argument ),
-            Self::Println( argument ) => match argument {
-                Some( arg ) => write!( f, "println {}", arg ),
-                None => write!( f, "println" ),
-            },
-            Self::If( iff ) => write!( f, "{}", iff.ifs[ 0 ] ),
-            Self::Loop( looop ) => write!( f, "{}", looop ),
+            Self::Print( argument )        => write!( f, "print {}", argument ),
+            Self::Println( Some( arg ) )   => write!( f, "println {}", arg ),
+            Self::Println( None )          => write!( f, "println" ),
+            Self::If( iff )                => write!( f, "{}", iff.ifs[ 0 ] ),
+            Self::Loop( looop )            => write!( f, "{}", looop ),
 
             Self::Semicolon
             | Self::Break | Self::Continue
             | Self::Definition( _, _ ) | Self::Assignment( _, _ )
-            | Self::Scope( _ ) => unreachable!(),
+            | Self::Scope( _ )             => unreachable!(),
         }
     }
 }
@@ -1647,9 +1705,10 @@ impl AST {
                     self.scopes[ self.scope ].nodes.push( node );
                 },
                 Ok( None ) => break,
-                // only parsing until the first error until a fault tolerant parser is developed, this is because the
-                // first truly relevant error is the first one, which in turn causes a ripple effect that propagates to
-                // the rest of the parsing, causing subsequent errors to be wrong
+                // only parsing until the first error until a fault tolerant parser is developed,
+                // this is because the first truly relevant error is the first one, which in turn
+                // causes a ripple effect that propagates to the rest of the parsing, causing
+                // subsequent errors to be wrong
                 Err( err ) => {
                     self.errors.push( err );
 
@@ -1672,11 +1731,16 @@ impl AST {
             TokenKind::Literal( _ )
             | TokenKind::True | TokenKind::False
             | TokenKind::Bracket( BracketKind::OpenRound )
-            | TokenKind::Op( Operator::Minus | Operator::Not ) => Ok( Some( Node::Expression( self.expression( tokens )? ) ) ),
-            TokenKind::Definition( _ ) => Ok( Some( self.variable_definition( tokens )? ) ),
-            TokenKind::Print | TokenKind::PrintLn => Ok( Some( self.print( tokens )? ) ),
-            TokenKind::Identifier( _ ) => Ok( Some( self.variable_reassignment_or_expression( tokens )? ) ),
-            TokenKind::If => Ok( Some( self.iff( tokens )? ) ),
+            | TokenKind::Op( Operator::Minus | Operator::Not ) =>
+                Ok( Some( Node::Expression( self.expression( tokens )? ) ) ),
+            TokenKind::Definition( _ ) =>
+                Ok( Some( self.variable_definition( tokens )? ) ),
+            TokenKind::Print | TokenKind::PrintLn =>
+                Ok( Some( self.print( tokens )? ) ),
+            TokenKind::Identifier( _ ) =>
+                Ok( Some( self.variable_reassignment_or_expression( tokens )? ) ),
+            TokenKind::If =>
+                Ok( Some( self.iff( tokens )? ) ),
             TokenKind::Else => {
                 tokens.next();
                 Err( SyntaxError {
@@ -1851,7 +1915,7 @@ impl AST {
                 Ok( () )
             },
             _ => {
-                // this function is never called without a previous token existing, so we can safely unwrap
+                // this function is never called without a previous token, so we can safely unwrap
                 let previous = unsafe{ tokens.peek_previous().unwrap_unchecked() };
                 Err( SyntaxError {
                     line_byte_start: previous.line.byte_start,
@@ -1868,10 +1932,22 @@ impl AST {
 
 // expressions
 impl AST {
-    // TODO disallow implicit conversions (str + i64, char + i64, str + char or str + str (maybe treat this as concatenation))
-        // IDEA introduce casting operators
-    fn factor( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
-        let previous = tokens.peek_previous().unwrap();
+    fn operator( &mut self, tokens: &mut TokenCursor, ops: &[Operator] ) -> Result<Option<Operator>, SyntaxError> {
+        let current_pos = tokens.current().bounded( tokens, "expected operator or semicolon" )?;
+        return match current_pos.token.kind {
+            TokenKind::Op( op ) =>
+                if ops.contains( &op ) {
+                    tokens.next();
+                    Ok( Some( op ) )
+                }
+                else {
+                    Ok( None )
+                },
+            _ => Ok( None ),
+        }
+    }
+
+    fn primary_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
         let current = tokens.current().bounded( tokens, "expected expression" )?;
         let factor = match &current.token.kind {
             TokenKind::Literal( literal ) => Ok( Expression::Literal( literal.clone() ) ),
@@ -1941,34 +2017,25 @@ impl AST {
             },
             TokenKind::Op( Operator::Minus ) => {
                 let mut sign: isize = -1;
+                // NOTE this optimization should be moved to later stages
                 while let Some( TokenPosition { token: Token { kind: TokenKind::Op( Operator::Minus ), .. }, .. } ) = tokens.next() {
                     sign *= -1;
                 }
 
-                let mut operand = self.factor( tokens )?;
-                return match operand {
-                    Expression::Literal( ref mut literal ) => match literal {
-                        Literal::Int( ref mut value ) => {
-                            *value = *value * sign;
-                            Ok( operand )
-                        },
-                        Literal::Char( code ) => {
-                            *literal = Literal::Int( (*code as isize) * sign );
-                            Ok( operand )
-                        },
-                        Literal::Str( Str { text } ) => {
-                            *literal = Literal::Int( (text.len() as isize) * sign );
-                            Ok( operand )
-                        },
-                        Literal::Bool( _ ) => Err( SyntaxError {
-                            line_byte_start: current.line.byte_start,
-                            line: current.line.number,
-                            col: current.token.col,
-                            len: current.token.kind.len(),
-                            msg: "invalid expression".into(),
-                            help_msg: "cannot negate boolean value, use the '!' operator instead".into(),
-                        } ),
-                        Literal::Uninitialized( _ ) => Err( SyntaxError {
+                let operand = self.primary_expression( tokens )?;
+
+                // returning to avoid the call to tokens.next at the end of the function
+                return match operand.typ() {
+                    Type::Bool => Err( SyntaxError {
+                        line_byte_start: current.line.byte_start,
+                        line: current.line.number,
+                        col: current.token.col,
+                        len: current.token.kind.len(),
+                        msg: "invalid expression".into(),
+                        help_msg: "cannot negate boolean values, use the '!' operator instead".into(),
+                    } ),
+                    Type::Int | Type::Char | Type::Str => match operand {
+                        Expression::Literal( Literal::Uninitialized( _ ) ) => Err( SyntaxError {
                             line_byte_start: current.line.byte_start,
                             line: current.line.number,
                             col: current.token.col,
@@ -1976,71 +2043,70 @@ impl AST {
                             msg: "variable not initialized".into(),
                             help_msg: "was not previously initialized".into(),
                         } ),
+                        _ =>
+                            if sign < 0 {
+                                Ok( Expression::Unary { op: Operator::Minus, operand: Box::new( operand ) } )
+                            }
+                            else {
+                                Ok( operand )
+                            }
                     }
-                    _ => Ok( Expression::Unary { op: Operator::Negate, operand: Box::new( operand ) } ),
                 }
             },
             TokenKind::Op( Operator::Not ) => {
                 let mut should_be_inverted = true;
+                // NOTE this optimization should be moved to later stages
                 while let Some( TokenPosition { token: Token { kind: TokenKind::Op( Operator::Not ), .. }, .. } ) = tokens.next() {
                     should_be_inverted = !should_be_inverted;
                 }
 
-                let mut operand = self.factor( tokens )?;
+                let operand = self.primary_expression( tokens )?;
+
+                // returning to avoid the call to tokens.next at the end of the function
                 return match operand {
-                    Expression::Literal( ref mut literal ) => match literal {
-                        Literal::Bool( ref mut value ) => {
-                            if should_be_inverted {
-                                *value = !*value;
-                            }
+                    Expression::Literal( Literal::Uninitialized( _ ) ) => Err( SyntaxError {
+                        line_byte_start: current.line.byte_start,
+                        line: current.line.number,
+                        col: current.token.col,
+                        len: current.token.kind.len(),
+                        msg: "variable not initialized".into(),
+                        help_msg: "was not previously initialized".into(),
+                    } ),
+                    _ =>
+                        if should_be_inverted {
+                            Ok( Expression::Unary { op: Operator::Not, operand: Box::new( operand ) } )
+                        }
+                        else {
                             Ok( operand )
-                        },
-                        Literal::Int( _ ) | Literal::Char( _ ) | Literal::Str( Str { .. } ) => Err( SyntaxError {
-                            line_byte_start: current.line.byte_start,
-                            line: current.line.number,
-                            col: current.token.col,
-                            len: current.token.kind.len(),
-                            msg: "invalid expression".into(),
-                            help_msg: "cannot invert non boolean value, use the '-' operator instead".into(),
-                        } ),
-                        Literal::Uninitialized( _ ) => Err( SyntaxError {
-                            line_byte_start: current.line.byte_start,
-                            line: current.line.number,
-                            col: current.token.col,
-                            len: current.token.kind.len(),
-                            msg: "variable not initialized".into(),
-                            help_msg: "was not previously initialized".into(),
-                        } ),
-                    }
-                    _ => Ok( Expression::Unary { op: Operator::Not, operand: Box::new( operand ) } ),
+                        }
                 }
             },
             TokenKind::Definition( _ )
             | TokenKind::Print | TokenKind::PrintLn
             | TokenKind::If | TokenKind::Else
             | TokenKind::Loop | TokenKind::Break | TokenKind::Continue => Err( SyntaxError {
-                line_byte_start: previous.line.byte_start,
-                line: previous.line.number,
-                col: previous.token.col,
-                len: previous.token.kind.len(),
+                line_byte_start: current.line.byte_start,
+                line: current.line.number,
+                col: current.token.col,
+                len: current.token.kind.len(),
                 msg: "invalid expression".into(),
-                help_msg: "cannot be followed by a keyword".into(),
+                help_msg: "cannot be a keyword".into(),
             } ),
             TokenKind::QuestionMark => Err( SyntaxError {
-                line_byte_start: previous.line.byte_start,
-                line: previous.line.number,
-                col: previous.token.col,
-                len: previous.token.kind.len(),
+                line_byte_start: current.line.byte_start,
+                line: current.line.number,
+                col: current.token.col,
+                len: current.token.kind.len(),
                 msg: "invalid expression".into(),
                 help_msg: "uninitialized values cannot be used inside expressions".into(),
             } ),
             _ => Err( SyntaxError {
-                line_byte_start: previous.line.byte_start,
-                line: previous.line.number,
-                col: previous.token.col,
-                len: previous.token.kind.len(),
+                line_byte_start: current.line.byte_start,
+                line: current.line.number,
+                col: current.token.col,
+                len: current.token.kind.len(),
                 msg: "invalid expression".into(),
-                help_msg: "expected expression operand after this token".into(),
+                help_msg: "expected expression operand before this token".into(),
             } ),
         };
 
@@ -2048,30 +2114,11 @@ impl AST {
         return factor;
     }
 
-    fn operator( &mut self, tokens: &mut TokenCursor, ops: &[Operator] ) -> Result<Option<Operator>, SyntaxError> {
-        let current_pos = tokens.current().bounded( tokens, "expected operator or semicolon" )?;
-        return match current_pos.token.kind {
-            TokenKind::Op( op ) =>
-                if ops.contains( &op ) {
-                    tokens.next();
-                    Ok( Some( op ) )
-                }
-                else {
-                    Ok( None )
-                },
-            _ => Ok( None ),
-        }
-    }
-
-    // IDEA optimize expression building by implementing associativity rules
-    // FIX division by zero, raising to a negative power
-    // IDEA print crash error message
-        // TODO implement a way to print file, line and column information in source code
-    fn exponentiation( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
-        let mut lhs = self.factor( tokens )?;
+    fn exponentiative_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
+        let mut lhs = self.primary_expression( tokens )?;
 
         while let Some( op ) = self.operator( tokens, &[Operator::Pow] )? {
-            let rhs = self.factor( tokens )?;
+            let rhs = self.primary_expression( tokens )?;
             lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
 
@@ -2079,10 +2126,10 @@ impl AST {
     }
 
     fn multiplicative_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
-        let mut lhs = self.exponentiation( tokens )?;
+        let mut lhs = self.exponentiative_expression( tokens )?;
 
         while let Some( op ) = self.operator( tokens, &[Operator::Times, Operator::Divide, Operator::Remainder] )? {
-            let rhs = self.exponentiation( tokens )?;
+            let rhs = self.exponentiative_expression( tokens )?;
             lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
 
@@ -2100,17 +2147,10 @@ impl AST {
         return Ok( lhs );
     }
 
-    fn comparative_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
+    fn shift_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
         let mut lhs = self.additive_expression( tokens )?;
 
-        let ops = [
-            Operator::EqualsEquals, Operator::NotEquals,
-            Operator::Greater, Operator::GreaterOrEquals,
-            Operator::Less, Operator::LessOrEquals,
-            Operator::Compare
-        ];
-
-        while let Some( op ) = self.operator( tokens, &ops )? {
+        while let Some( op ) = self.operator( tokens, &[Operator::LeftShift, Operator::RightShift] )? {
             let rhs = self.additive_expression( tokens )?;
             lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
         }
@@ -2118,11 +2158,86 @@ impl AST {
         return Ok( lhs );
     }
 
-    // TODO implement boolean operators for strings
-    fn boolean_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
+    fn bitand_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
+        let mut lhs = self.shift_expression( tokens )?;
+
+        while let Some( op ) = self.operator( tokens, &[Operator::BitAnd] )? {
+            let rhs = self.shift_expression( tokens )?;
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+        }
+
+        return Ok( lhs );
+    }
+
+    fn bitxor_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
+        let mut lhs = self.bitand_expression( tokens )?;
+
+        while let Some( op ) = self.operator( tokens, &[Operator::BitXor] )? {
+            let rhs = self.bitand_expression( tokens )?;
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+        }
+
+        return Ok( lhs );
+    }
+
+    fn bitor_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
+        let mut lhs = self.bitxor_expression( tokens )?;
+
+        while let Some( op ) = self.operator( tokens, &[Operator::BitOr] )? {
+            let rhs = self.bitxor_expression( tokens )?;
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+        }
+
+        return Ok( lhs );
+    }
+
+    fn comparative_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
+        let mut lhs = self.bitor_expression( tokens )?;
+
+        while let Some( op ) = self.operator( tokens, &[Operator::Compare] )? {
+            let rhs = self.bitor_expression( tokens )?;
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+        }
+
+        return Ok( lhs );
+    }
+
+    fn comparison_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
         let mut lhs = self.comparative_expression( tokens )?;
 
-        while let Some( op ) = self.operator( tokens, &[Operator::And, Operator::Or, Operator::Xor] )? {
+        let ops = [
+            Operator::EqualsEquals, Operator::NotEquals,
+            Operator::Greater, Operator::GreaterOrEquals,
+            Operator::Less, Operator::LessOrEquals
+        ];
+
+        let mut is_chained = false;
+        while let Some( op ) = self.operator( tokens, &ops )? {
+            let op_pos = tokens.peek_previous().unwrap();
+            let rhs = self.comparative_expression( tokens )?;
+
+            if is_chained {
+                return Err( SyntaxError {
+                    line_byte_start: op_pos.line.byte_start,
+                    line: op_pos.line.number,
+                    col: op_pos.token.col,
+                    len: op_pos.token.kind.len(),
+                    msg: "invalid boolean expression".into(),
+                    help_msg: "comparison operators cannot be chained".into(),
+                } );
+            }
+            is_chained = true;
+
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+        }
+
+        return Ok( lhs );
+    }
+
+    fn and_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
+        let mut lhs = self.comparison_expression( tokens )?;
+
+        while let Some( op ) = self.operator( tokens, &[Operator::And] )? {
             let op_pos = tokens.peek_previous().unwrap();
 
             if lhs.typ() != Type::Bool {
@@ -2136,7 +2251,7 @@ impl AST {
                 } );
             }
 
-            let rhs = self.comparative_expression( tokens )?;
+            let rhs = self.comparison_expression( tokens )?;
             if rhs.typ() != Type::Bool {
                 return Err( SyntaxError {
                     line_byte_start: op_pos.line.byte_start,
@@ -2154,8 +2269,83 @@ impl AST {
         return Ok( lhs );
     }
 
+    // fn xor_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
+    //     let mut lhs = self.and_expression( tokens )?;
+
+    //     while let Some( op ) = self.operator( tokens, &[Operator::Xor] )? {
+    //         let op_pos = tokens.peek_previous().unwrap();
+
+    //         if lhs.typ() != Type::Bool {
+    //             return Err( SyntaxError {
+    //                 line_byte_start: op_pos.line.byte_start,
+    //                 line: op_pos.line.number,
+    //                 col: op_pos.token.col,
+    //                 len: op_pos.token.kind.len(),
+    //                 msg: "invalid boolean expression".into(),
+    //                 help_msg: "must be preceded by a boolean expression".into(),
+    //             } );
+    //         }
+
+    //         let rhs = self.and_expression( tokens )?;
+    //         if rhs.typ() != Type::Bool {
+    //             return Err( SyntaxError {
+    //                 line_byte_start: op_pos.line.byte_start,
+    //                 line: op_pos.line.number,
+    //                 col: op_pos.token.col,
+    //                 len: op_pos.token.kind.len(),
+    //                 msg: "invalid boolean expression".into(),
+    //                 help_msg: "must be followed by a boolean expression".into(),
+    //             } );
+    //         }
+
+    //         lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+    //     }
+
+    //     return Ok( lhs );
+    // }
+
+    fn or_expression( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
+        let mut lhs = self.and_expression( tokens )?;
+
+        while let Some( op ) = self.operator( tokens, &[Operator::Or] )? {
+            let op_pos = tokens.peek_previous().unwrap();
+
+            if lhs.typ() != Type::Bool {
+                return Err( SyntaxError {
+                    line_byte_start: op_pos.line.byte_start,
+                    line: op_pos.line.number,
+                    col: op_pos.token.col,
+                    len: op_pos.token.kind.len(),
+                    msg: "invalid boolean expression".into(),
+                    help_msg: "must be preceded by a boolean expression".into(),
+                } );
+            }
+
+            let rhs = self.and_expression( tokens )?;
+            if rhs.typ() != Type::Bool {
+                return Err( SyntaxError {
+                    line_byte_start: op_pos.line.byte_start,
+                    line: op_pos.line.number,
+                    col: op_pos.token.col,
+                    len: op_pos.token.kind.len(),
+                    msg: "invalid boolean expression".into(),
+                    help_msg: "must be followed by a boolean expression".into(),
+                } );
+            }
+
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+        }
+
+        return Ok( lhs );
+    }
+
+    // TODO implement boolean operators for strings
+    // IDEA optimize expression building by implementing associativity rules
+    // TODO disallow implicit conversions (str + i64, char + i64, str + char or str + str
+        // IDEA introduce casting operators
+    // TODO implement boolean operator chaining
     fn expression( &mut self, tokens: &mut TokenCursor ) -> Result<Expression, SyntaxError> {
-        return self.boolean_expression( tokens );
+        return self.or_expression( tokens );
     }
 }
 
@@ -2406,11 +2596,17 @@ impl<'lexer> AST {
         let op_pos = match tokens.peek_next() {
             Some( pos ) => match pos.token.kind {
                 TokenKind::Equals
-                | TokenKind::Op( Operator::PowEquals )
-                | TokenKind::Op( Operator::TimesEquals )
-                | TokenKind::Op( Operator::DivideEquals )
-                | TokenKind::Op( Operator::PlusEquals )
-                | TokenKind::Op( Operator::MinusEquals ) => pos,
+                | TokenKind::Op(
+                    Operator::PowEquals
+                    | Operator::TimesEquals
+                    | Operator::DivideEquals
+                    | Operator::PlusEquals
+                    | Operator::MinusEquals
+                    | Operator::AndEquals | Operator::BitAndEquals
+                    | Operator::OrEquals | Operator::BitOrEquals
+                    /* | Operator::XorEquals */ | Operator::BitXorEquals
+                    | Operator::LeftShiftEquals | Operator::RightShiftEquals
+                ) => pos,
                 _ => return Ok( Node::Expression( self.expression( tokens )? ) ),
             },
             None => return Ok( Node::Expression( self.expression( tokens )? ) ),
@@ -2714,7 +2910,10 @@ impl Checker {
         time_info.push_str( &format!( "lexing: {}", elapsed_lexing ) );
 
         let lexer = match lexer {
-            Ok( lexer ) => lexer,
+            Ok( lexer ) => {
+                // println!( "{:#?}", lexer );
+                lexer
+            },
             Err( err ) => {
                 eprintln!( " ... in [{}]", time_info );
                 return Err( err );
@@ -2775,8 +2974,8 @@ impl Display for Register {
             Self::RDI => write!( f, "rdi" ),
             Self::RBP => write!( f, "rbp" ),
             Self::RSP => write!( f, "rsp" ),
-            Self::R8 => write!( f, "r8" ),
-            Self::R9 => write!( f, "r9" ),
+            Self::R8  => write!( f, "r8" ),
+            Self::R9  => write!( f, "r9" ),
             Self::R10 => write!( f, "r10" ),
             Self::R11 => write!( f, "r11" ),
             Self::R12 => write!( f, "r12" ),
@@ -2798,8 +2997,8 @@ enum MemorySize {
 impl Display for MemorySize {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
-            Self::Byte => write!( f, "byte" ),
-            Self::Word => write!( f, "word" ),
+            Self::Byte  => write!( f, "byte" ),
+            Self::Word  => write!( f, "word" ),
             Self::DWord => write!( f, "dword" ),
             Self::QWord => write!( f, "qword" ),
         }
@@ -2827,7 +3026,7 @@ enum MovDst {
 impl Display for MovDst {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
-            Self::Register( reg ) => write!( f, "{}", reg ),
+            Self::Register( reg )     => write!( f, "{}", reg ),
             Self::Memory( size, mem ) => write!( f, "{} {}", size, mem ),
         }
     }
@@ -2844,8 +3043,8 @@ impl Display for MovSrc {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
             Self::Immediate( literal ) => write!( f, "{}", literal ),
-            Self::Register( reg ) => write!( f, "{}", reg ),
-            Self::Memory( size, mem ) => write!( f, "{} {}", size, mem ),
+            Self::Register( reg )      => write!( f, "{}", reg ),
+            Self::Memory( size, mem )  => write!( f, "{} {}", size, mem ),
         }
     }
 }
@@ -3320,6 +3519,7 @@ impl<'ast> Compiler<'ast> {
     }
 }
 
+// IDEA convert "match ... self.asm +=" to "self.asm += match ..."
 // Compilation of nodes
 impl<'ast> Compiler<'ast> {
     fn node( &mut self, node: &'ast Node ) {
@@ -3329,7 +3529,7 @@ impl<'ast> Compiler<'ast> {
                 self.expression( argument );
 
                 match argument.typ() {
-                    Type::Int => self.asm +=
+                    Type::Int  => self.asm +=
                         " mov rsi, 10\
                         \n call int_toStr\
                         \n\
@@ -3357,7 +3557,7 @@ impl<'ast> Compiler<'ast> {
                         \n mov rdi, stdout\
                         \n mov rax, SYS_write\
                         \n syscall\n\n",
-                    Type::Str => self.asm +=
+                    Type::Str  => self.asm +=
                         " mov rdi, stdout\
                         \n mov rax, SYS_write\
                         \n syscall\n\n",
@@ -3369,7 +3569,7 @@ impl<'ast> Compiler<'ast> {
                     self.expression( arg );
 
                     match arg.typ() {
-                        Type::Int => self.asm +=
+                        Type::Int  => self.asm +=
                             " mov rsi, 10\
                             \n call int_toStr\
                             \n\
@@ -3397,7 +3597,7 @@ impl<'ast> Compiler<'ast> {
                             \n mov rdi, stdout\
                             \n mov rax, SYS_write\
                             \n syscall\n\n",
-                        Type::Str => self.asm +=
+                        Type::Str  => self.asm +=
                             " mov rdi, stdout\
                             \n mov rax, SYS_write\
                             \n syscall\n\n",
@@ -3420,6 +3620,8 @@ impl<'ast> Compiler<'ast> {
                 let mut ifs = if_statement.ifs.iter();
                 let iff = ifs.next().unwrap();
 
+                // NOTE call ifs.next_back() to get the last else if and match on that instead of
+                // checking for the len() of the ifs
                 let (has_else_ifs, has_else) = (if_statement.ifs.len() > 1, if_statement.els.is_some());
 
                 // compiling the if branch
@@ -3495,11 +3697,11 @@ impl<'ast> Compiler<'ast> {
             },
             Node::Definition( name, value ) => self.assignment( name, value ),
             Node::Assignment( name, value ) => self.assignment( name, value ),
-            Node::Scope( inner ) => self.scope( *inner ),
-            Node::Expression( expression ) => self.expression( expression ),
-            Node::Break => self.asm += &format!( " jmp loop_{}_end\n\n", self.loop_idx_stack.last().unwrap() ),
-            Node::Continue => self.asm += &format!( " jmp loop_{}\n\n", self.loop_idx_stack.last().unwrap() ),
-            Node::Semicolon => (/* do nothing */),
+            Node::Scope( inner )            => self.scope( *inner ),
+            Node::Expression( expression )  => self.expression( expression ),
+            Node::Break                     => self.asm += &format!( " jmp loop_{}_end\n\n", self.loop_idx_stack.last().unwrap() ),
+            Node::Continue                  => self.asm += &format!( " jmp loop_{}\n\n", self.loop_idx_stack.last().unwrap() ),
+            Node::Semicolon                 => (/* do nothing */),
         }
     }
 
@@ -3510,11 +3712,13 @@ impl<'ast> Compiler<'ast> {
         }
     }
 
-
+    // FIX division by zero, raising to a negative power
+        // IDEA print crash error message (implement a way to print file, line and column
+        // information in source code)
     fn expression( &mut self, expression: &'ast Expression ) {
         match expression {
-            Expression::Literal( Literal::Int( value ) ) => self.asm += &format!( " mov rdi, {}\n", value ),
-            Expression::Literal( Literal::Char( code ) ) => self.asm += &format!( " mov rdi, {}\n", code ),
+            Expression::Literal( Literal::Int( value ) )  => self.asm += &format!( " mov rdi, {}\n", value ),
+            Expression::Literal( Literal::Char( code ) )  => self.asm += &format!( " mov rdi, {}\n", code ),
             Expression::Literal( Literal::Bool( value ) ) => self.asm += &format!( " mov rdi, {}\n", value ),
             Expression::Literal( Literal::Str( string ) ) => {
                 let string_label_idx = self.string_label_idx( string );
@@ -3535,9 +3739,9 @@ impl<'ast> Compiler<'ast> {
                 let src_variable_offset = src_variable.offset;
 
                 match src_variable_typ {
-                    Type::Int => self.asm += &format!( " mov rdi, [rbp + {}]\n", src_variable_offset ),
+                    Type::Int               => self.asm += &format!( " mov rdi, [rbp + {}]\n", src_variable_offset ),
                     Type::Char | Type::Bool => self.asm += &format!( " movzx rdi, byte [rbp + {}]\n", src_variable_offset ),
-                    Type::Str =>
+                    Type::Str               =>
                         self.asm += &format!(
                             " mov rsi, [rbp + {}]\
                             \n mov rdx, [rbp + {}]\n",
@@ -3547,10 +3751,13 @@ impl<'ast> Compiler<'ast> {
                 }
             },
             Expression::Unary { op, operand } => {
-                self.expression( operand );
+                self.expression_factor( operand, Register::RDI );
                 match op {
-                    Operator::Negate => self.asm += " neg rdi\n",
-                    Operator::Not => self.asm += " xor dil, 1\n",
+                    Operator::Not => match operand.typ() {
+                        Type::Bool                         => self.asm += " xor dil, 1\n",
+                        Type::Int | Type::Char | Type::Str => self.asm += " not rdi\n",
+                    },
+                    Operator::Minus                        => self.asm += " neg rdi\n",
                     _ => unreachable!(),
                 }
             },
@@ -3560,8 +3767,8 @@ impl<'ast> Compiler<'ast> {
     // IDEA make this return the place of where to find the result of the operation
     fn expression_factor( &mut self, factor: &'ast Expression, dst: Register ) {
         match factor {
-            Expression::Literal( Literal::Int( value ) ) => self.asm += &format!( " mov {}, {}\n", dst, value ),
-            Expression::Literal( Literal::Char( code ) ) => self.asm += &format!( " mov {}, {}\n", dst, code ),
+            Expression::Literal( Literal::Int( value ) )  => self.asm += &format!( " mov {}, {}\n", dst, value ),
+            Expression::Literal( Literal::Char( code ) )  => self.asm += &format!( " mov {}, {}\n", dst, code ),
             Expression::Literal( Literal::Bool( value ) ) => self.asm += &format!( " mov {}, {}\n", dst, value ),
             Expression::Literal( Literal::Str( string ) ) => {
                 let string_label_idx = self.string_label_idx( string );
@@ -3570,10 +3777,11 @@ impl<'ast> Compiler<'ast> {
                 self.asm += &format!( " mov {}, {}\n", dst, string_label.len_label );
             },
             Expression::Literal( Literal::Uninitialized( _ ) ) => unreachable!(),
-            // TODO find way to avoiding compiling the move to a support register if the rhs operand is a literal
+            // TODO find way to avoiding compiling the move to a support register if the rhs operand
+            // is a literal
                 // IDEA optimize increments
-                // IDEA optimize checking for even values by testing the least significant bit (e.g. test rax, 1)
-            // IDEA optimize check for divisibility by 2 (i.e. even or odd)
+                // IDEA optimize checking for even values by testing the least significant bit
+                // (e.g. test rax, 1)
             Expression::Binary { lhs, op, rhs } => {
                 let (lhs_reg, rhs_reg, op_asm) = match op {
                     Operator::Pow | Operator::PowEquals => match &**rhs {
@@ -3585,76 +3793,86 @@ impl<'ast> Compiler<'ast> {
                             \n mov rdi, rax\n"
                         ),
                     },
-                    Operator::Times | Operator::TimesEquals => (Register::RDI, Register::RSI, " imul rdi, rsi\n"),
-                    Operator::Divide | Operator::DivideEquals =>
-                        (Register::RDI, Register::RSI,
-                            " mov rax, rdi\
-                            \n xor rdx, rdx\
-                            \n idiv rsi\
-                            \n mov rdi, rax\n"
-                        ),
-                    Operator::Remainder | Operator::RemainderEquals =>
-                        (Register::RDI, Register::RSI,
-                            " mov rax, rdi\
-                            \n xor rdx, rdx\
-                            \n idiv rsi\
-                            \n mov rdi, rdx\n"
-                        ),
-                    Operator::Plus | Operator::PlusEquals => (Register::RDI, Register::RSI, " add rdi, rsi\n"),
-                    Operator::Minus | Operator::MinusEquals => (Register::RDI, Register::RSI, " sub rdi, rsi\n"),
-                    Operator::EqualsEquals =>
-                        (Register::RDI, Register::RSI,
-                            " cmp rdi, rsi\
-                            \n mov rdi, false\
-                            \n sete dil\n"
-                        ),
-                    Operator::NotEquals =>
-                        (Register::RDI, Register::RSI,
-                            " cmp rdi, rsi\
-                            \n mov rdi, false\
-                            \n setne dil\n"
-                        ),
-                    Operator::Greater =>
-                        (Register::RDI, Register::RSI,
-                            " cmp rdi, rsi\
-                            \n mov rdi, false\
-                            \n setg dil\n"
-                        ),
-                    Operator::GreaterOrEquals =>
-                        (Register::RDI, Register::RSI,
-                            " cmp rdi, rsi\
-                            \n mov rdi, false\
-                            \n setge dil\n"
-                        ),
-                    Operator::Less =>
-                        (Register::RDI, Register::RSI,
-                            " cmp rdi, rsi\
-                            \n mov rdi, false\
-                            \n setl dil\n"
-                        ),
-                    Operator::LessOrEquals =>
-                        (Register::RDI, Register::RSI,
-                            " cmp rdi, rsi\
-                            \n mov rdi, false\
-                            \n setle dil\n"
-                        ),
-
-                    Operator::Compare =>
-                        (Register::RDI, Register::RSI,
-                            " cmp rdi, rsi\
-                            \n mov rdi, LESS\
-                            \n mov rdx, EQUAL\
-                            \n cmove rdi, rdx\
-                            \n mov rdx, GREATER\
-                            \n cmovg rdi, rdx\n"
-                        ),
-
-                    // FIX shortcircuit boolean operators
-                    Operator::And => (Register::RDI, Register::RSI, " and rdi, rsi\n"),
-                    Operator::Or => (Register::RDI, Register::RSI, " or rdi, rsi\n" ),
-                    Operator::Xor => (Register::RDI, Register::RSI, " xor rdi, rsi\n" ),
-
-                    Operator::Not | Operator::Negate => unreachable!(),
+                    Operator::Times | Operator::TimesEquals => (Register::RDI, Register::RSI,
+                        " imul rdi, rsi\n"
+                    ),
+                    Operator::Divide | Operator::DivideEquals => (Register::RDI, Register::RSI,
+                        " mov rax, rdi\
+                        \n xor rdx, rdx\
+                        \n idiv rsi\
+                        \n mov rdi, rax\n"
+                    ),
+                    Operator::Remainder | Operator::RemainderEquals => (Register::RDI, Register::RSI,
+                        " mov rax, rdi\
+                        \n xor rdx, rdx\
+                        \n idiv rsi\
+                        \n mov rdi, rdx\n"
+                    ),
+                    Operator::Plus | Operator::PlusEquals => (Register::RDI, Register::RSI,
+                        " add rdi, rsi\n"
+                    ),
+                    Operator::Minus | Operator::MinusEquals => (Register::RDI, Register::RSI,
+                        " sub rdi, rsi\n"
+                    ),
+                    Operator::EqualsEquals => (Register::RDI, Register::RSI,
+                        " cmp rdi, rsi\
+                        \n mov rdi, false\
+                        \n sete dil\n"
+                    ),
+                    Operator::NotEquals => (Register::RDI, Register::RSI,
+                        " cmp rdi, rsi\
+                        \n mov rdi, false\
+                        \n setne dil\n"
+                    ),
+                    Operator::Greater => (Register::RDI, Register::RSI,
+                        " cmp rdi, rsi\
+                        \n mov rdi, false\
+                        \n setg dil\n"
+                    ),
+                    Operator::GreaterOrEquals => (Register::RDI, Register::RSI,
+                        " cmp rdi, rsi\
+                        \n mov rdi, false\
+                        \n setge dil\n"
+                    ),
+                    Operator::Less => (Register::RDI, Register::RSI,
+                        " cmp rdi, rsi\
+                        \n mov rdi, false\
+                        \n setl dil\n"
+                    ),
+                    Operator::LessOrEquals => (Register::RDI, Register::RSI,
+                        " cmp rdi, rsi\
+                        \n mov rdi, false\
+                        \n setle dil\n"
+                    ),
+                    Operator::Compare => (Register::RDI, Register::RSI,
+                        " cmp rdi, rsi\
+                        \n mov rdi, LESS\
+                        \n mov rdx, EQUAL\
+                        \n cmove rdi, rdx\
+                        \n mov rdx, GREATER\
+                        \n cmovg rdi, rdx\n"
+                    ),
+                    // TODO shortcircuit boolean operators
+                    Operator::And | Operator::AndEquals
+                    | Operator::BitAnd | Operator::BitAndEquals => (Register::RDI, Register::RSI,
+                        " and rdi, rsi\n"
+                    ),
+                    Operator::Or | Operator::OrEquals
+                    | Operator::BitOr | Operator::BitOrEquals => (Register::RDI, Register::RSI,
+                        " or rdi, rsi\n"
+                    ),
+                    // IDEA have the xor sum the booleans and return a boolean based on the sum:
+                    // 0 -> false, 1 -> true, > 1 -> false
+                    Operator::BitXor | Operator::BitXorEquals => (Register::RDI, Register::RSI,
+                        " xor rdi, rsi\n"
+                    ),
+                    Operator::LeftShift | Operator::LeftShiftEquals => (Register::RDI, Register::RSI,
+                        " shl rdi, rsi\n"
+                    ),
+                    Operator::RightShift | Operator::RightShiftEquals => (Register::RDI, Register::RSI,
+                        " shr rdi, rsi\n"
+                    ),
+                    Operator::Not => unreachable!(),
                 };
 
                 match &**rhs {
@@ -3684,17 +3902,20 @@ impl<'ast> Compiler<'ast> {
                 let src_variable_offset = src_variable.offset;
 
                 match src_variable_typ {
-                    Type::Int => self.asm += &format!( " mov {}, [rbp + {}]\n", dst, src_variable_offset ),
+                    Type::Int               => self.asm += &format!( " mov {}, [rbp + {}]\n", dst, src_variable_offset ),
                     Type::Char | Type::Bool => self.asm += &format!( " movzx {}, byte [rbp + {}]\n", dst, src_variable_offset ),
-                    Type::Str => self.asm += &format!( " mov {}, [rbp + {}]\n", dst, src_variable_offset + 8 ),
+                    Type::Str               => self.asm += &format!( " mov {}, [rbp + {}]\n", dst, src_variable_offset + 8 ),
                 }
             },
             Expression::Unary { op, operand } => {
-                self.expression( operand );
+                self.expression_factor( operand, Register::RDI );
                 match op {
-                    Operator::Negate => self.asm += " neg rdi\n",
-                    Operator::Not => self.asm += " xor dil, 1\n",
-                    _ => unreachable!()
+                    Operator::Not => match operand.typ() {
+                        Type::Bool                         => self.asm += " xor dil, 1\n",
+                        Type::Int | Type::Char | Type::Str => self.asm += " not rdi\n",
+                    },
+                    Operator::Minus                        => self.asm += " neg rdi\n",
+                    _ => unreachable!(),
                 }
             },
         }
@@ -3716,8 +3937,8 @@ impl<'ast> Compiler<'ast> {
             },
             LoopCondition::Post( condition ) => {
                 /*
-                // NOTE by inverting the jmp instruction and jumping to the start of the loop we can avoid compiling an extra jmp instruction
-                a situation like this is present:
+                // NOTE by inverting the jmp instruction and jumping to the start of the loop we
+                can avoid compiling an extra jmp instruction:
                     mov rdi, [rbp + 0]
                     mov rsi, 10
                     cmp rdi, rsi
@@ -3751,31 +3972,22 @@ impl<'ast> Compiler<'ast> {
                     *value as usize,
                     false_tag
                 ),
-            Expression::Binary { lhs, op, rhs } => {
-                match &**rhs {
-                    Expression::Binary { .. } | Expression::Unary { .. }=> {
-                        self.expression_factor( lhs, Register::RDI );
-                        self.asm += " push rdi\n\n";
-                        self.expression_factor( rhs, Register::RSI );
-
-                        self.asm += " mov rsi, rdi\n pop rdi\n";
-                    },
-                    _ => {
-                        self.expression_factor( lhs, Register::RDI );
-                        self.expression_factor( rhs, Register::RSI );
-                    }
-                }
+            Expression::Literal(
+                Literal::Int( _ ) | Literal::Char( _ ) | Literal::Str( _ ) | Literal::Uninitialized( _ )
+            ) => unreachable!(),
+            Expression::Binary { op, .. } => {
+                self.expression( condition );
 
                 match op {
-                    Operator::EqualsEquals => self.asm += &format!( " cmp rdi, rsi\n jne {}\n\n", false_tag ),
-                    Operator::NotEquals => self.asm += &format!( " cmp rdi, rsi\n je {}\n\n", false_tag ),
-                    Operator::Greater => self.asm += &format!( " cmp rdi, rsi\n jle {}\n\n", false_tag ),
-                    Operator::GreaterOrEquals => self.asm += &format!( " cmp rdi, rsi\n jl {}\n\n", false_tag ),
-                    Operator::Less => self.asm += &format!( " cmp rdi, rsi\n jge {}\n\n", false_tag ),
-                    Operator::LessOrEquals => self.asm += &format!( " cmp rdi, rsi\n jg {}\n\n", false_tag ),
-                    Operator::And => self.asm += &format!( " and rdi, rsi\n jz {}\n\n", false_tag ),
-                    Operator::Or => self.asm += &format!( " or rdi, rsi\n jz {}\n\n", false_tag ),
-                    Operator::Xor => self.asm += &format!( " xor rdi, rsi\n jz {}\n\n", false_tag ),
+                    Operator::EqualsEquals              => self.asm += &format!( " cmp rdi, rsi\n jne {}\n\n", false_tag ),
+                    Operator::NotEquals                 => self.asm += &format!( " cmp rdi, rsi\n je {}\n\n", false_tag ),
+                    Operator::Greater                   => self.asm += &format!( " cmp rdi, rsi\n jle {}\n\n", false_tag ),
+                    Operator::GreaterOrEquals           => self.asm += &format!( " cmp rdi, rsi\n jl {}\n\n", false_tag ),
+                    Operator::Less                      => self.asm += &format!( " cmp rdi, rsi\n jge {}\n\n", false_tag ),
+                    Operator::LessOrEquals              => self.asm += &format!( " cmp rdi, rsi\n jg {}\n\n", false_tag ),
+                    Operator::And | Operator::AndEquals => self.asm += &format!( " and rdi, rsi\n jz {}\n\n", false_tag ),
+                    Operator::Or | Operator::OrEquals   => self.asm += &format!( " or rdi, rsi\n jz {}\n\n", false_tag ),
+                    // Operator::Xor | Operator::XorEquals => self.asm += &format!( " xor rdi, rsi\n jz {}\n\n", false_tag ),
 
                     Operator::Pow | Operator::PowEquals
                     | Operator::Times | Operator::TimesEquals
@@ -3784,9 +3996,13 @@ impl<'ast> Compiler<'ast> {
                     | Operator::Plus | Operator::PlusEquals
                     | Operator::Minus | Operator::MinusEquals
                     | Operator::Compare
-                    | Operator::Not | Operator::Negate => unreachable!(),
-                };
-
+                    | Operator::Not
+                    | Operator::BitAnd | Operator::BitAndEquals
+                    | Operator::BitOr | Operator::BitOrEquals
+                    | Operator::BitXor | Operator::BitXorEquals
+                    | Operator::LeftShift | Operator::LeftShiftEquals
+                    | Operator::RightShift | Operator::RightShiftEquals => unreachable!(),
+                }
             },
             Expression::Identifier( src_name, _ ) => {
                 let src_variable = self.resolve( src_name );
@@ -3798,17 +4014,17 @@ impl<'ast> Compiler<'ast> {
                     false_tag
                 )
             },
-            Expression::Unary { operand, .. } => {
-                self.expression( operand );
+            Expression::Unary { .. } => {
+                self.expression( condition );
 
-                // we can only have boolean expressions at this point, so it's safe to ignore the integer negation case
+                // we can only have boolean expressions at this point, so it's safe to ignore the
+                // integer negation case
                 self.asm += &format!(
                     " xor dil, 1\
                     \n jz {}\n\n",
                     false_tag
                 );
             },
-            Expression::Literal( _ ) => unreachable!(),
         }
     }
 
@@ -3847,7 +4063,7 @@ impl<'ast> Compiler<'ast> {
                 self.expression( new_value );
 
                 match variable_typ {
-                    Type::Int | Type::Str => self.asm += &format!( " mov [rbp + {}], rdi\n\n", variable_offset ),
+                    Type::Int | Type::Str   => self.asm += &format!( " mov [rbp + {}], rdi\n\n", variable_offset ),
                     Type::Char | Type::Bool => self.asm += &format!( " mov [rbp + {}], dil\n\n", variable_offset ),
                 }
             }
@@ -3880,16 +4096,11 @@ impl<'ast> Compiler<'ast> {
                         ),
                 }
             },
-            Expression::Unary { op, operand } => {
-                self.expression( operand );
-                match op {
-                    Operator::Negate => self.asm += " neg rdi\n",
-                    Operator::Not => self.asm += " xor dil, 1\n",
-                    _ => unreachable!()
-                }
+            Expression::Unary { .. } => {
+                self.expression( new_value );
 
                 match variable_typ {
-                    Type::Int | Type::Str => self.asm += &format!( " mov [rbp + {}], rdi\n\n", variable_offset ),
+                    Type::Int | Type::Str   => self.asm += &format!( " mov [rbp + {}], rdi\n\n", variable_offset ),
                     Type::Char | Type::Bool => self.asm += &format!( " mov [rbp + {}], dil\n\n", variable_offset ),
                 }
             },

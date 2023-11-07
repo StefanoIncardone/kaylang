@@ -3,6 +3,7 @@
 ## 0.4
 
 - renamed language to `kay`
+- revised and added operators
 
 ## 0.3
 

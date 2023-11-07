@@ -51,33 +51,43 @@ String literals are surrounded by `"` and contain any number of regular or escap
 
 ### Expressions
 
-Expressions follow this order of operations (precedence from highest to lowest):
+**Note** boolean expressions implicit convert to `1` if `true` or `0` if `false` inside math expressions,
 
-- minus `-`, not `!`: integer negation and boolean inversion as unary operators
-- round brackets `(`, `)`
-- power `**`: exponentiation as a binary operator
-- times `*`, divide `/`, remainder `%`: multiplication, floor division and remainder as binary operators
-- plus `+` and minus `-`: addition and subtraction as binary operators
-- comparisons:
-    - comparison operator `<=>`: `-1` if less than, `0` if equals, `1` if greater
-    - boolean comparisons (evaluate to `1` or `0` when inside math expressions, otherwise to `true` and `false`):
-        - equals to: `==`
-        - not equals to: `!=`
-        - greater than: `>`
-        - greater or equals than: `>=`
-        - less than: `<`
-        - less or equals than: `<=`
-- boolean expressions (evaluates to `1` or `0` when inside match expressions):
-    - opearands must be boolean values, i.e.: `1 and 2` is not a valid boolean expression
-    - logical and: `&&`
-    - logical or: `||`
-    - logical xor: `^^`
+```kay
+println 1 + true; # will print 2 (1 + true -> 1 + 1)
+println 1 + false; # will print 1 (1 + false -> 1 + 0)
+```
 
-Note: when using strings in expressions they get converted to their length (waiting for proper type checking)
+**Note**: when using strings in expressions they get converted to their length (waiting for proper type checking)
 
 ```kay
 print "length of \"lucky\" is "; println "lucky" + 0;   # easy way to obtain the length of the string
 ```
+
+Expressions follow this order of operations (precedence from highest to lowest):
+
+- unary minus `-`, unary not `!`: integer negation and boolean inversion/bitwise not as unary operators
+- round brackets `(`, `)`
+- binary exponentiation `**`
+- binary multiplication `*`, binary division `/` and binary remainder `%`
+- binary addition `+` and binary subtraction `-`
+- binary left shift `<<` and binary right shift `>>`: `1 << 2 # 0001 << 2 == 0100`
+- binary bitwise and `&`
+- binary bitwise xor `^`
+- binary bitwise or `|`
+- binary comparison `<=>`: `-1` if less than, `0` if equals, `1` if greater
+- binary boolean comparisons (cannot be chained, i.e.: `3 > 2 > 1` is not a valid boolean expression):
+    - equals to `==`
+    - not equals to `!=`
+    - greater than `>`
+    - greater or equals than `>=`
+    - less than `<`
+    - less or equals than `<=`
+- binary boolean expressions (opearands must be boolean values):
+    - logical and `&&`
+    - logical or `||`
+- all *op*= variations (i.e.: `+=`, `-=`, ...)
+
 
 ### Variables
 
