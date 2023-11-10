@@ -1,11 +1,11 @@
-let high_divisor = 15;
+let HIGH_DIVISOR = 15;
 
 var number = 1;
 loop true {
     var divisor = 2;
-    loop divisor <= high_divisor && number % divisor == 0 do divisor += 1;
-    if divisor - 1 == high_divisor do break;
+    loop divisor <= HIGH_DIVISOR && number % divisor == 0 do divisor += 1;
+    if divisor - 1 == HIGH_DIVISOR do break;
     number += 1;
 }
 
-print "the smallest number to be evenly divisible by "; print high_divisor; print " is "; println number;
+print "the smallest number to be evenly divisible by "; print HIGH_DIVISOR; print " is "; println number;

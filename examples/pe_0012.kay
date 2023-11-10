@@ -1,4 +1,4 @@
-let TARGET_FACTOR_COUNT = 500;
+let TARGET_FACTOR_COUNT = 100;
 
 var triangle_number = 0;
 var number = 1;
@@ -22,12 +22,11 @@ loop total_factor_count <= TARGET_FACTOR_COUNT {
         prime_factor_count = 0;
 
         var is_prime = false;
-        loop !is_prime {
-            is_prime = true;
+        do loop is_prime {
             prime_factor += 1;
 
-            if prime_factor == 2 || prime_factor == 3 do break;
-            else if prime_factor <= 1 || prime_factor % 2 == 0 || prime_factor % 3 == 0 do break;
+            if prime_factor == 2 || prime_factor == 3 do is_prime = true;
+            else if prime_factor <= 1 || prime_factor % 2 == 0 || prime_factor % 3 == 0 do is_prime = false;
             else {
                 var divisor = 5;
                 loop divisor ** 2 <= prime_factor {

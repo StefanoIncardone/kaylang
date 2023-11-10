@@ -7,34 +7,62 @@ use std::{
     path::{Path, PathBuf},
     borrow::Cow,
     num::IntErrorKind,
-    time::Instant,
+    time::{Instant, Duration}
 };
 
 
-static CHECKING:     Colored = Colored { text: Cow::Borrowed( "    Checking" ),              fg: Fg::LightGreen, bg: Bg::Default, flags: Flags::Bold };
-static COMPILING:    Colored = Colored { text: Cow::Borrowed( "   Compiling" ),              fg: Fg::LightGreen, bg: Bg::Default, flags: Flags::Bold };
-static RUNNING:      Colored = Colored { text: Cow::Borrowed( "     Running" ),              fg: Fg::LightGreen, bg: Bg::Default, flags: Flags::Bold };
-static DONE:         Colored = Colored { text: Cow::Borrowed( "        Done" ),              fg: Fg::LightGreen, bg: Bg::Default, flags: Flags::Bold };
+// main compilation steps (displayed when verbosity level is normal or verbose)
+const STEP_FG:      Fg    = Fg::LightGreen;
+const STEP_BG:      Bg    = Bg::Default;
+const STEP_FLAGS:   Flags = Flag::Bold;
+const STEP_PADDING: usize = 9;
 
-static ERROR:        Colored = Colored { text: Cow::Borrowed( "Error" ),                     fg: Fg::LightRed,   bg: Bg::Default, flags: Flags::Bold };
-static CAUSE:        Colored = Colored { text: Cow::Borrowed( "Cause" ),                     fg: Fg::LightRed,   bg: Bg::Default, flags: Flags::Bold };
-static AT:           Colored = Colored { text: Cow::Borrowed( "at" ),                        fg: Fg::LightRed,   bg: Bg::Default, flags: Flags::Bold };
-static BAR:          Colored = Colored { text: Cow::Borrowed( "|" ),                         fg: Fg::LightBlue,  bg: Bg::Default, flags: Flags::Bold };
+static CHECKING:  ColoredStr = ColoredStr { text: "Checking",  fg: STEP_FG, bg: STEP_BG, flags: STEP_FLAGS };
+static COMPILING: ColoredStr = ColoredStr { text: "Compiling", fg: STEP_FG, bg: STEP_BG, flags: STEP_FLAGS };
+static RUNNING:   ColoredStr = ColoredStr { text: "Running",   fg: STEP_FG, bg: STEP_BG, flags: STEP_FLAGS };
+static DONE:      ColoredStr = ColoredStr { text: "Done",      fg: STEP_FG, bg: STEP_BG, flags: STEP_FLAGS };
 
-static VERSION:      Colored = Colored { text: Cow::Borrowed( env!( "CARGO_PKG_VERSION" ) ), fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
-static OPTIONS:      Colored = Colored { text: Cow::Borrowed( "Options" ),                   fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
-static RUN_MODE:     Colored = Colored { text: Cow::Borrowed( "Run mode" ),                  fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
-static MODE:         Colored = Colored { text: Cow::Borrowed( "mode" ),                      fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
-static FILE:         Colored = Colored { text: Cow::Borrowed( "file" ),                      fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
-static PATH:         Colored = Colored { text: Cow::Borrowed( "path" ),                      fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
-static OUTPUT:       Colored = Colored { text: Cow::Borrowed( "Output" ),                    fg: Fg::LightGray,  bg: Bg::Default, flags: Flags::Bold };
+// sub compilation steps (displayed when verbosity lever is verbose)
+const SUBSTEP_FG:      Fg    = Fg::LightBlue;
+const SUBSTEP_BG:      Bg    = Bg::Default;
+const SUBSTEP_FLAGS:   Flags = Flag::Bold;
+const SUBSTEP_PADDING: usize = 14;
 
+static LEXING:         ColoredStr = ColoredStr { text: "Lexing",         fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+static PARSING:        ColoredStr = ColoredStr { text: "Parsing",        fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+static ASM_GENERATION: ColoredStr = ColoredStr { text: "Asm Generation", fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+static ASSEMBLER:      ColoredStr = ColoredStr { text: "Assembler",      fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+static LINKER:         ColoredStr = ColoredStr { text: "Linker",         fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+static SUBSTEP_DONE:   ColoredStr = ColoredStr { text: "Done",           fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+
+// errors
+const ERR_FG:    Fg    = Fg::LightRed;
+const ERR_BG:    Bg    = Bg::Default;
+const ERR_FLAGS: Flags = Flag::Bold;
+
+static ERROR: ColoredStr = ColoredStr { text: "Error", fg: ERR_FG,   bg: ERR_BG, flags: ERR_FLAGS };
+static CAUSE: ColoredStr = ColoredStr { text: "Cause", fg: ERR_FG,   bg: ERR_BG, flags: ERR_FLAGS };
+static AT:    ColoredStr = ColoredStr { text: "at",    fg: ERR_FG,   bg: ERR_BG, flags: ERR_FLAGS };
+static BAR:   ColoredStr = ColoredStr { text: "|",     fg: Fg::Blue, bg: ERR_BG, flags: ERR_FLAGS };
+
+// help messages
+const HELP_FG:    Fg    = Fg::White;
+const HELP_BG:    Bg    = Bg::Default;
+const HELP_FLAGS: Flags = Flag::Bold;
+
+static VERSION:  ColoredStr = ColoredStr { text: env!( "CARGO_PKG_VERSION" ), fg: HELP_FG,   bg: HELP_BG, flags: HELP_FLAGS };
+static OPTIONS:  ColoredStr = ColoredStr { text: "Options",                   fg: HELP_FG,   bg: HELP_BG, flags: HELP_FLAGS };
+static RUN_MODE: ColoredStr = ColoredStr { text: "Run mode",                  fg: HELP_FG,   bg: HELP_BG, flags: HELP_FLAGS };
+static MODE:     ColoredStr = ColoredStr { text: "mode",                      fg: HELP_FG,   bg: HELP_BG, flags: HELP_FLAGS };
+static FILE:     ColoredStr = ColoredStr { text: "file",                      fg: HELP_FG,   bg: HELP_BG, flags: HELP_FLAGS };
+static PATH:     ColoredStr = ColoredStr { text: "path",                      fg: HELP_FG,   bg: HELP_BG, flags: HELP_FLAGS };
+static OUTPUT:   ColoredStr = ColoredStr { text: "Output",                    fg: HELP_FG,   bg: HELP_BG, flags: HELP_FLAGS };
 
 
 #[allow( dead_code )]
 #[derive( Debug, Default, Clone, Copy, PartialEq )]
 #[repr( u8 )]
-pub enum Fg {
+enum Fg {
     #[default] Default = 0,
     Black = 30,
     Red = 31,
@@ -57,7 +85,7 @@ pub enum Fg {
 #[allow( dead_code )]
 #[derive( Debug, Default, Clone, Copy, PartialEq )]
 #[repr( u8 )]
-pub enum Bg {
+enum Bg {
     #[default] Default = 0,
     Black = 40,
     DarkRed = 41,
@@ -77,91 +105,26 @@ pub enum Bg {
     White = 107,
 }
 
-#[derive( Debug, Default, Clone, Copy, PartialEq )]
-#[repr( u8 )]
-pub enum Flags {
-    #[default]
-    Default         = 0b0000_0000,
-    Bold            = 0b0000_0001,
-    Underline       = 0b0000_0010,
-    NoUnderline     = 0b0000_0100,
-    ReverseText     = 0b0000_1000,
-    PositiveText    = 0b0001_0000,
-}
+type Flags = u8;
+struct Flag;
 
-impl Flags {
-    fn is( &self, flag: Flags ) -> bool { return *self as u8 & flag as u8 != 0; }
-
-    fn bold( &self )            -> bool { return self.is( Flags::Bold ); }
-    fn underline( &self )       -> bool { return self.is( Flags::Underline ); }
-    fn no_underline( &self )    -> bool { return self.is( Flags::NoUnderline ); }
-    fn reverse_text( &self )    -> bool { return self.is( Flags::ReverseText ); }
-    fn positive_text( &self )   -> bool { return self.is( Flags::PositiveText ); }
-}
-
-#[derive( Debug, Default )]
-pub struct Colored {
-    pub text: Cow<'static, str>,
-    pub fg: Fg,
-    pub bg: Bg,
-    pub flags: Flags,
-}
-
-impl Display for Colored {
-    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        return unsafe { display( self, f ) };
-    }
-}
-
-impl Colored {
-    fn no_color( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        return self.text.fmt( f );
-    }
-
-    fn color( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        let mut codes = String::with_capacity( 15 );
-
-        if self.fg != Fg::Default {
-            codes += &format!( "{};", self.fg as u8 );
-        }
-        if self.bg != Bg::Default {
-            codes += &format!( "{};", self.bg as u8 );
-        }
-        if self.flags.bold() {
-            codes += "1;";
-        }
-        if self.flags.underline() {
-            codes += "4;";
-        }
-        if self.flags.no_underline() {
-            codes += "24;";
-        }
-        if self.flags.reverse_text() {
-            codes += "7;";
-        }
-        if self.flags.positive_text() {
-            codes += "27;";
-        }
-
-        return if codes.is_empty() {
-            self.text.fmt( f )
-        }
-        else {
-            codes.pop(); //remove the last ";"
-
-            write!( f, "\x1b[{}m", codes )?;
-            self.text.fmt( f )?;
-            write!( f, "\x1b[0m" )
-        }
-    }
+#[allow( non_upper_case_globals )]
+#[allow( dead_code )]
+impl Flag {
+    const Default:      Flags = 0b0000_0000;
+    const Bold:         Flags = 0b0000_0001;
+    const Underline:    Flags = 0b0000_0010;
+    const NoUnderline:  Flags = 0b0000_0100;
+    const ReverseText:  Flags = 0b0000_1000;
+    const PositiveText: Flags = 0b0001_0000;
 }
 
 #[allow( non_upper_case_globals )]
-static mut display: fn(&Colored, &mut std::fmt::Formatter<'_>) -> std::fmt::Result = Colored::color;
+static mut display: fn( &str, Fg, Bg, Flags, &mut std::fmt::Formatter<'_> ) -> std::fmt::Result = Color::color;
 
 #[derive( Debug, Default, Clone, Copy, PartialEq )]
 #[repr( u8 )]
-pub enum Color {
+enum Color {
     #[default] Auto,
     Always,
     Never,
@@ -172,13 +135,13 @@ impl Color {
         unsafe { display = match self {
             Self::Auto   =>
                 if !std::io::stderr().is_terminal() {
-                    Colored::no_color
+                    Self::no_color
                 }
                 else {
-                    Colored::color
+                    Self::color
                 },
-            Self::Always => Colored::color,
-            Self::Never  => Colored::no_color,
+            Self::Always => Self::color,
+            Self::Never  => Self::no_color,
         } }
     }
 
@@ -189,14 +152,85 @@ impl Color {
         unsafe { display = match self {
             Self::Auto   =>
                 if !std::io::stdout().is_terminal() {
-                    Colored::no_color
+                    Self::no_color
                 }
                 else {
-                    Colored::color
+                    Self::color
                 },
-            Self::Always => Colored::color,
-            Self::Never  => Colored::no_color,
+            Self::Always => Self::color,
+            Self::Never  => Self::no_color,
         } }
+    }
+
+
+    fn no_color( text: &str, _: Fg, _: Bg, _: Flags, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        return text.fmt( f );
+    }
+
+    fn color( text: &str, fg: Fg, bg: Bg, flags: Flags, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        let mut codes = String::with_capacity( 15 );
+
+        if fg != Fg::Default {
+            codes += &format!( "{};", fg as u8 );
+        }
+        if bg != Bg::Default {
+            codes += &format!( "{};", bg as u8 );
+        }
+        if flags & Flag::Bold != 0 {
+            codes += "1;";
+        }
+        if flags & Flag::Underline != 0 {
+            codes += "4;";
+        }
+        if flags & Flag::NoUnderline != 0 {
+            codes += "24;";
+        }
+        if flags & Flag::ReverseText != 0 {
+            codes += "7;";
+        }
+        if flags & Flag::PositiveText != 0 {
+            codes += "27;";
+        }
+
+        return if codes.is_empty() {
+            text.fmt( f )
+        }
+        else {
+            codes.pop(); //remove the last ";"
+
+            write!( f, "\x1b[{}m", codes )?;
+            text.fmt( f )?;
+            write!( f, "\x1b[0m" )
+        }
+    }
+}
+
+
+#[derive( Debug, Default )]
+struct ColoredStr {
+    text: &'static str,
+    fg: Fg,
+    bg: Bg,
+    flags: Flags,
+}
+
+#[derive( Debug, Default )]
+struct Colored {
+    text: String,
+    fg: Fg,
+    bg: Bg,
+    flags: Flags,
+}
+
+impl Display for ColoredStr {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        return unsafe { display( self.text, self.fg, self.bg, self.flags, f ) };
+    }
+}
+
+impl Display for Colored {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        return unsafe { display( &self.text, self.fg, self.bg, self.flags, f ) };
     }
 }
 
@@ -221,7 +255,6 @@ enum Literal {
     Char( u8 ), // only supporting ASCII characters for now
     Bool( bool ),
     Str( Str ),
-    Uninitialized( Type ),
 }
 
 impl Display for Literal {
@@ -238,7 +271,6 @@ impl Display for Literal {
                 }
                 write!( f, "\"" )
             },
-            Self::Uninitialized( _ ) => write!( f, "?" ),
         }
     }
 }
@@ -250,7 +282,6 @@ impl Into<isize> for Literal {
             Self::Char( code )       => code.into(),
             Self::Bool( value )      => value.into(),
             Self::Str( string )      => string.text.len() as isize,
-            Self::Uninitialized( _ ) => panic!( "cannot get the int value of an uninitialized value"),
         }
     }
 }
@@ -262,7 +293,6 @@ impl Len for Literal {
             Self::Char( _ )            => 1,
             Self::Bool( value )        => value.to_string().len(),
             Self::Str( string )        => string.text.len() + 2,
-            Self::Uninitialized( typ ) => typ.len(),
         }
     }
 }
@@ -274,7 +304,6 @@ impl TypeOf for Literal {
             Self::Char { .. }          => Type::Char,
             Self::Bool { .. }          => Type::Bool,
             Self::Str( _ )             => Type::Str,
-            Self::Uninitialized( typ ) => *typ,
         }
     }
 }
@@ -554,8 +583,6 @@ enum TokenKind {
     Colon,
     SemiColon,
     Equals,
-    #[allow( dead_code )]
-    QuestionMark,
     Op( Operator ),
 
     Literal( Literal ),
@@ -588,7 +615,6 @@ impl Display for TokenKind {
             Self::Equals             => write!( f, "=" ),
             Self::Colon              => write!( f, ":" ),
             Self::SemiColon          => write!( f, ";" ),
-            Self::QuestionMark       => write!( f, "?" ),
 
             Self::Literal( literal ) => write!( f, "{}", literal ),
             Self::Identifier( name ) => write!( f, "{}", name ),
@@ -622,7 +648,6 @@ impl Len for TokenKind {
             Self::Colon              => 1,
             Self::SemiColon          => 1,
             Self::Equals             => 1,
-            Self::QuestionMark       => 1,
             Self::Op( op )           => op.len(),
 
             Self::Literal( typ )     => typ.len(),
@@ -678,6 +703,64 @@ struct SyntaxErrors {
     src: Src,
     errors: Vec<SyntaxError>,
 }
+
+impl SyntaxErrors {
+    fn display( &mut self ) {
+        let mut line_byte_start = self.errors[ 0 ].line_byte_start;
+        let mut line_text = String::new();
+        let _ = self.src.src.seek( SeekFrom::Start( line_byte_start as u64 ) );
+        let _ = self.src.src.read_line( &mut line_text );
+
+        for error in &self.errors {
+            if line_byte_start != error.line_byte_start {
+                line_byte_start = error.line_byte_start;
+                line_text.clear();
+                let _ = self.src.src.seek( SeekFrom::Start( line_byte_start as u64 ) );
+                let _ = self.src.src.read_line( &mut line_text );
+            }
+
+            let error_msg = Colored {
+                text: error.msg.to_string(),
+                fg: Fg::White,
+                flags: Flag::Bold,
+                ..Default::default()
+            };
+
+            let line_number = Colored {
+                text: error.line.to_string(),
+                fg: Fg::LightBlue,
+                flags: Flag::Bold,
+                ..Default::default()
+            };
+
+            let visualization_padding = line_number.text.len() + 1 + BAR.text.len();
+            let at_padding = visualization_padding - 1;
+
+            let pointers_col = error.col - 1;
+            let pointers_len = error.len;
+
+            let pointers_and_help_msg = Colored {
+                text: format!( "{:^>pointers_len$} {}", "", error.help_msg ),
+                fg: Fg::LightRed,
+                ..Default::default()
+            };
+
+            eprintln!(
+                "{}: {}\
+                \n{:>#at_padding$}: {}:{}:{}\
+                \n{:>#visualization_padding$}\
+                \n{} {} {}\
+                \n{:>#visualization_padding$} {:>pointers_col$}{}\n",
+                ERROR, error_msg,
+                AT, self.src.path.display(), error.line, error.col,
+                BAR,
+                line_number, BAR, line_text.trim_end(),
+                BAR, "", pointers_and_help_msg
+            );
+        }
+    }
+}
+
 
 #[derive( Debug )]
 struct Bracket {
@@ -753,7 +836,10 @@ impl TryFrom<Src> for Lexer {
                         loop {
                             let token = match this.tokeninze_next() {
                                 Ok( None ) => break,
-                                Ok( Some( kind ) ) => Token { col: this.token_start_col, kind },
+                                Ok( Some( kind ) ) => match kind {
+                                    TokenKind::Empty => continue,
+                                    _ => Token { col: this.token_start_col, kind },
+                                },
                                 Err( err ) => {
                                     this.errors.push( err );
                                     Token {
@@ -891,217 +977,155 @@ impl Lexer {
     }
 
     fn tokeninze_next( &mut self ) -> Result<Option<TokenKind>, SyntaxError> {
-        // TODO remove this loop, since is ever going to run just once, it's here just so we can use
-        // continue and break
-        loop {
-            self.token_text.clear();
-            let next = match self.next()? {
-                Some( ch ) => ch,
-                None => return Ok( None ),
-            };
+        self.token_text.clear();
+        let next = match self.next()? {
+            Some( ch ) => ch,
+            None => return Ok( None ),
+        };
 
-            // registering the token start column after getting the next character to maintain 1
-            // indexing token columns
-            self.token_start_col = self.col;
-            return match next {
-                // ignore whitespace
-                // TODO make this return TokenKind::Empty, and use this at the calling site to
-                // continue to the next iteration
-                b'\t' | b'\x0C' | b'\r' | b' ' => continue,
-                b'a'..=b'z' | b'A'..=b'Z' | b'_'  => {
-                    let mut contains_non_ascii = false;
-                    loop {
-                        match self.next() {
-                            Ok( Some( b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_' ) ) => {},
-                            Ok( Some( _ ) ) => {
-                                self.col -= 1;
-                                break;
-                            },
-                            Ok( None ) => break,
-                            Err( _ ) => contains_non_ascii = true,
-                        }
+        // registering the token start column after getting the next character to maintain 1 indexing token columns
+        self.token_start_col = self.col;
+        return match next {
+            // ignore whitespace
+            b'\t' | b'\x0C' | b'\r' | b' ' => Ok( Some( TokenKind::Empty ) ),
+            b'a'..=b'z' | b'A'..=b'Z' | b'_'  => {
+                let mut contains_non_ascii = false;
+                loop {
+                    match self.next() {
+                        Ok( Some( b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_' ) ) => {},
+                        Ok( Some( _ ) ) => {
+                            self.col -= 1;
+                            break;
+                        },
+                        Ok( None ) => break,
+                        Err( _ ) => contains_non_ascii = true,
                     }
+                }
 
-                    if contains_non_ascii {
-                        Err( SyntaxError {
+                if contains_non_ascii {
+                    Err( SyntaxError {
+                        line_byte_start: self.line_byte_start,
+                        line: self.line,
+                        col: self.token_start_col,
+                        len: self.col - self.token_start_col + 1,
+                        msg: "invalid identifier".into(),
+                        help_msg: "contains non-ASCII characters".into(),
+                    } )
+                }
+                else {
+                    self.gather_token_text();
+                    let identifier = match self.token_text.as_str() {
+                        "let"      => TokenKind::Definition( Mutability::Let ),
+                        "var"      => TokenKind::Definition( Mutability::Var ),
+                        "print"    => TokenKind::Print,
+                        "println"  => TokenKind::PrintLn,
+                        "true"     => TokenKind::True,
+                        "false"    => TokenKind::False,
+                        "do"       => TokenKind::Do,
+                        "if"       => TokenKind::If,
+                        "else"     => TokenKind::Else,
+                        "loop"     => TokenKind::Loop,
+                        "break"    => TokenKind::Break,
+                        "continue" => TokenKind::Continue,
+                        _          => TokenKind::Identifier( self.token_text.clone() ),
+                    };
+
+                    Ok( Some( identifier ) )
+                }
+            },
+            b'0'..=b'9' => {
+                let mut contains_non_ascii = false;
+                loop {
+                    match self.next() {
+                        Ok( Some( b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_') ) => {},
+                        Ok( Some( _ ) ) => {
+                            self.col -= 1;
+                            break;
+                        },
+                        Ok( None ) => break,
+                        Err( _ ) => contains_non_ascii = true,
+                    }
+                }
+
+                self.gather_token_text();
+                // TODO create own number parsing function
+                match self.token_text.parse() {
+                    Ok( value ) => Ok( Some( TokenKind::Literal( Literal::Int( value ) ) ) ),
+                    Err( err ) => match err.kind() {
+                        IntErrorKind::InvalidDigit =>
+                            if contains_non_ascii {
+                                Err( SyntaxError {
+                                    line_byte_start: self.line_byte_start,
+                                    line: self.line,
+                                    col: self.token_start_col,
+                                    len: self.token_text.len(),
+                                    msg: "invalid number literal".into(),
+                                    help_msg: "contains non-ASCII characters".into(),
+                                } )
+                            }
+                            else {
+                                Err( SyntaxError {
+                                    line_byte_start: self.line_byte_start,
+                                    line: self.line,
+                                    col: self.token_start_col,
+                                    len: self.token_text.len(),
+                                    msg: "invalid number literal".into(),
+                                    help_msg: "contains non-digit characters".into(),
+                                } )
+                            },
+                        IntErrorKind::PosOverflow => Err( SyntaxError {
                             line_byte_start: self.line_byte_start,
                             line: self.line,
                             col: self.token_start_col,
-                            len: self.col - self.token_start_col + 1,
-                            msg: "invalid identifier".into(),
-                            help_msg: "contains non-ASCII characters".into(),
-                        } )
-                    }
-                    else {
-                        self.gather_token_text();
-                        let identifier = match self.token_text.as_str() {
-                            "let" => TokenKind::Definition( Mutability::Let ),
-                            "var" => TokenKind::Definition( Mutability::Var ),
-                            "print" => TokenKind::Print,
-                            "println" => TokenKind::PrintLn,
-                            "true" => TokenKind::True,
-                            "false" => TokenKind::False,
-                            "do" => TokenKind::Do,
-                            "if" => TokenKind::If,
-                            "else" => TokenKind::Else,
-                            "loop" => TokenKind::Loop,
-                            "break" => TokenKind::Break,
-                            "continue" => TokenKind::Continue,
-                            _ => TokenKind::Identifier( self.token_text.clone() ),
-                        };
+                            len: self.token_text.len(),
+                            msg: "invalid number literal".into(),
+                            help_msg: format!( "overflows a {} bit signed integer (over {})", isize::BITS, isize::MAX ).into(),
+                        } ),
+                        IntErrorKind::NegOverflow => Err( SyntaxError {
+                            line_byte_start: self.line_byte_start,
+                            line: self.line,
+                            col: self.token_start_col,
+                            len: self.token_text.len(),
+                            msg: "invalid number literal".into(),
+                            help_msg: format!( "underflows a {} bit signed integer (under {})", isize::BITS, isize::MIN ).into(),
+                        } ),
+                        IntErrorKind::Empty | std::num::IntErrorKind::Zero => unreachable!(),
+                        _ => Err( SyntaxError {
+                            line_byte_start: self.line_byte_start,
+                            line: self.line,
+                            col: self.token_start_col,
+                            len: self.token_text.len(),
+                            msg: "invalid number literal".into(),
+                            help_msg: err.to_string().into(),
+                        } ),
+                    },
+                }
+            },
+            b'#' => {
+                // consume the rest of the tokens in the current line
+                self.col = self.line_bytes.len();
+                let comment = self.token_text();
+                Ok( Some( TokenKind::Comment( comment ) ) )
+            },
+            b'"' => {
+                let mut errors: Vec<SyntaxError> = Vec::new();
 
-                        Ok( Some( identifier ) )
-                    }
-                },
-                b'0'..=b'9' => {
-                    let mut contains_non_ascii = false;
-                    loop {
-                        match self.next() {
-                            Ok( Some( b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_') ) => {},
-                            Ok( Some( _ ) ) => {
-                                self.col -= 1;
-                                break;
-                            },
-                            Ok( None ) => break,
-                            Err( _ ) => contains_non_ascii = true,
-                        }
-                    }
-
-                    self.gather_token_text();
-                    // TODO create own number parsing function
-                    match self.token_text.parse() {
-                        Ok( value ) => Ok( Some( TokenKind::Literal( Literal::Int( value ) ) ) ),
-                        Err( err ) => match err.kind() {
-                            IntErrorKind::InvalidDigit =>
-                                if !contains_non_ascii {
-                                    Err( SyntaxError {
-                                        line_byte_start: self.line_byte_start,
-                                        line: self.line,
-                                        col: self.token_start_col,
-                                        len: self.token_text.len(),
-                                        msg: "invalid number literal".into(),
-                                        help_msg: "contains non-digit characters".into(),
-                                    } )
-                                }
-                                else {
-                                    Err( SyntaxError {
-                                        line_byte_start: self.line_byte_start,
-                                        line: self.line,
-                                        col: self.token_start_col,
-                                        len: self.token_text.len(),
-                                        msg: "invalid number literal".into(),
-                                        help_msg: "contains non-ASCII characters".into(),
-                                    } )
-                                },
-                            IntErrorKind::PosOverflow => Err( SyntaxError {
-                                line_byte_start: self.line_byte_start,
-                                line: self.line,
-                                col: self.token_start_col,
-                                len: self.token_text.len(),
-                                msg: "invalid number literal".into(),
-                                help_msg: format!(
-                                    "overflows a {} bit signed integer (over {})",
-                                    isize::BITS, isize::MAX
-                                ).into(),
-                            } ),
-                            IntErrorKind::NegOverflow => Err( SyntaxError {
-                                line_byte_start: self.line_byte_start,
-                                line: self.line,
-                                col: self.token_start_col,
-                                len: self.token_text.len(),
-                                msg: "invalid number literal".into(),
-                                help_msg: format!(
-                                    "underflows a {} bit signed integer (under {})",
-                                    isize::BITS, isize::MIN
-                                ).into(),
-                            } ),
-                            IntErrorKind::Empty | std::num::IntErrorKind::Zero => unreachable!(),
-                            _ => Err( SyntaxError {
-                                line_byte_start: self.line_byte_start,
-                                line: self.line,
-                                col: self.token_start_col,
-                                len: self.token_text.len(),
-                                msg: "invalid number literal".into(),
-                                help_msg: err.to_string().into(),
-                            } ),
-                        },
-                    }
-                },
-                b'#' => {
-                    // consume the rest of the tokens in the current line
-                    self.col = self.line_bytes.len();
-                    let comment = self.token_text();
-                    Ok( Some( TokenKind::Comment( comment ) ) )
-                },
-                b'"' => {
-                    let mut errors: Vec<SyntaxError> = Vec::new();
-
-                    loop {
-                        let next = match self.next_str_char()? {
-                            b'\\' => match self.next_str_char()? {
-                                b'\\' => Ok( '\\' ),
-                                b'\'' => Ok( '\'' ),
-                                b'"' => Ok( '"' ),
-                                b'n' => Ok( '\n' ),
-                                b'r' => Ok( '\r' ),
-                                b't' => Ok( '\t' ),
-                                b'0' => Ok( '\0' ),
-                                _ => Err( SyntaxError {
-                                    line_byte_start: self.line_byte_start,
-                                    line: self.line,
-                                    col: self.col,
-                                    len: 1,
-                                    msg: "invalid string character".into(),
-                                    help_msg: "unrecognized escape character".into(),
-                                } ),
-                            },
-                            b'\x00'..=b'\x1F' | b'\x7F' => Err( SyntaxError {
-                                line_byte_start: self.line_byte_start,
-                                line: self.line,
-                                col: self.col,
-                                len: 1,
-                                msg: "invalid string literal".into(),
-                                help_msg: "cannot be a control character".into(),
-                            } ),
-                            b'"' => break,
-                            other => Ok( other as char ),
-                        };
-
-                        match next {
-                            Ok( next_char ) => self.token_text.push( next_char ),
-                            Err( err ) => errors.push( err ),
-                        }
-                    }
-
-                    // after here there cannot be unclosed strings
-                    if errors.is_empty() {
-                        Ok( Some(
-                            TokenKind::Literal( Literal::Str( Str { text: self.token_text.clone().into_bytes() } ) )
-                        ) )
-                    }
-                    else {
-                        // FIX add proper multiple error handling
-                        let last_error = errors.pop().unwrap();
-                        self.errors.extend( errors );
-                        Err( last_error )
-                    }
-                },
-                b'\'' => {
-                    let code = match self.next_char()? {
-                        b'\\' => match self.next_char()? {
-                            b'\\' => Ok( b'\\' ),
-                            b'\'' => Ok( b'\'' ),
-                            b'"' => Ok( b'"' ),
-                            b'n' => Ok( b'\n' ),
-                            b'r' => Ok( b'\r' ),
-                            b't' => Ok( b'\t' ),
-                            b'0' => Ok( b'\0' ),
+                loop {
+                    let next = match self.next_str_char()? {
+                        b'\\' => match self.next_str_char()? {
+                            b'\\' => Ok( '\\' ),
+                            b'\'' => Ok( '\'' ),
+                            b'"' => Ok( '"' ),
+                            b'n' => Ok( '\n' ),
+                            b'r' => Ok( '\r' ),
+                            b't' => Ok( '\t' ),
+                            b'0' => Ok( '\0' ),
                             _ => Err( SyntaxError {
                                 line_byte_start: self.line_byte_start,
                                 line: self.line,
                                 col: self.col,
                                 len: 1,
-                                msg: "invalid character literal".into(),
+                                msg: "invalid string character".into(),
                                 help_msg: "unrecognized escape character".into(),
                             } ),
                         },
@@ -1110,263 +1134,308 @@ impl Lexer {
                             line: self.line,
                             col: self.col,
                             len: 1,
-                            msg: "invalid character literal".into(),
+                            msg: "invalid string literal".into(),
                             help_msg: "cannot be a control character".into(),
                         } ),
-                        b'\'' => break Err( SyntaxError {
-                            line_byte_start: self.line_byte_start,
-                            line: self.line,
-                            col: self.token_start_col,
-                            len: 2,
-                            msg: "invalid character literal".into(),
-                            help_msg: "must not be empty".into(),
-                        } ),
-                        ch => Ok( ch ),
+                        b'"' => break,
+                        other => Ok( other as char ),
                     };
 
-                    match self.peek_next()? {
-                        Some( b'\'' ) => {
-                            self.col += 1;
-                            Ok( Some( TokenKind::Literal( Literal::Char( code? ) ) ) )
-                        },
-                        Some( _ ) | None => Err( SyntaxError {
-                            line_byte_start: self.line_byte_start,
-                            line: self.line,
-                            col: self.token_start_col,
-                            len: self.col - self.token_start_col + 1,
-                            msg: "invalid character literal".into(),
-                            help_msg: "missing closing single quote".into(),
-                        } )
+                    match next {
+                        Ok( next_char ) => self.token_text.push( next_char ),
+                        Err( err ) => errors.push( err ),
                     }
-                },
-                b'(' => {
-                    let kind = BracketKind::OpenRound;
-                    self.brackets.push( Bracket {
-                        line_byte_start: self.line_byte_start,
-                        line_number: self.line,
-                        col: self.token_start_col,
-                        kind,
-                    } );
-                    Ok( Some( TokenKind::Bracket( kind ) ) )
-                },
-                b')' => match self.brackets.pop() {
-                    Some( bracket ) => match bracket.kind {
-                        BracketKind::OpenRound | BracketKind::CloseCurly | BracketKind::CloseRound =>
-                            Ok( Some( TokenKind::Bracket( BracketKind::CloseRound ) ) ),
-                        BracketKind::OpenCurly => Err( SyntaxError {
+                }
+
+                // after here there cannot be unclosed strings
+                if errors.is_empty() {
+                    Ok( Some( TokenKind::Literal( Literal::Str( Str { text: self.token_text.clone().into_bytes() } ) ) ) )
+                }
+                else {
+                    // FIX add proper multiple error handling
+                    let last_error = errors.pop().unwrap();
+                    self.errors.extend( errors );
+                    Err( last_error )
+                }
+            },
+            b'\'' => {
+                let code = match self.next_char()? {
+                    b'\\' => match self.next_char()? {
+                        b'\\' => Ok( b'\\' ),
+                        b'\'' => Ok( b'\'' ),
+                        b'"' => Ok( b'"' ),
+                        b'n' => Ok( b'\n' ),
+                        b'r' => Ok( b'\r' ),
+                        b't' => Ok( b'\t' ),
+                        b'0' => Ok( b'\0' ),
+                        _ => Err( SyntaxError {
                             line_byte_start: self.line_byte_start,
                             line: self.line,
-                            col: self.token_start_col,
+                            col: self.col,
                             len: 1,
-                            msg: "stray bracket".into(),
-                            help_msg: "closes the wrong bracket".into(),
+                            msg: "invalid character literal".into(),
+                            help_msg: "unrecognized escape character".into(),
                         } ),
                     },
-                    None => Err( SyntaxError {
+                    b'\x00'..=b'\x1F' | b'\x7F' => Err( SyntaxError {
+                        line_byte_start: self.line_byte_start,
+                        line: self.line,
+                        col: self.col,
+                        len: 1,
+                        msg: "invalid character literal".into(),
+                        help_msg: "cannot be a control character".into(),
+                    } ),
+                    b'\'' => return Err( SyntaxError {
+                        line_byte_start: self.line_byte_start,
+                        line: self.line,
+                        col: self.token_start_col,
+                        len: 2,
+                        msg: "invalid character literal".into(),
+                        help_msg: "must not be empty".into(),
+                    } ),
+                    ch => Ok( ch ),
+                };
+
+                match self.peek_next()? {
+                    Some( b'\'' ) => {
+                        self.col += 1;
+                        Ok( Some( TokenKind::Literal( Literal::Char( code? ) ) ) )
+                    },
+                    Some( _ ) | None => Err( SyntaxError {
+                        line_byte_start: self.line_byte_start,
+                        line: self.line,
+                        col: self.token_start_col,
+                        len: self.col - self.token_start_col + 1,
+                        msg: "invalid character literal".into(),
+                        help_msg: "missing closing single quote".into(),
+                    } )
+                }
+            },
+            b'(' => {
+                let kind = BracketKind::OpenRound;
+                self.brackets.push( Bracket {
+                    line_byte_start: self.line_byte_start,
+                    line_number: self.line,
+                    col: self.token_start_col,
+                    kind,
+                } );
+                Ok( Some( TokenKind::Bracket( kind ) ) )
+            },
+            b')' => match self.brackets.pop() {
+                Some( bracket ) => match bracket.kind {
+                    BracketKind::OpenRound | BracketKind::CloseCurly | BracketKind::CloseRound =>
+                        Ok( Some( TokenKind::Bracket( BracketKind::CloseRound ) ) ),
+                    BracketKind::OpenCurly => Err( SyntaxError {
                         line_byte_start: self.line_byte_start,
                         line: self.line,
                         col: self.token_start_col,
                         len: 1,
                         msg: "stray bracket".into(),
-                        help_msg: "was not opened before".into(),
+                        help_msg: "closes the wrong bracket".into(),
                     } ),
                 },
-                b'{' => {
-                    let kind = BracketKind::OpenCurly;
-                    self.brackets.push( Bracket {
-                        line_byte_start: self.line_byte_start,
-                        line_number: self.line,
-                        col: self.token_start_col,
-                        kind,
-                    } );
-                    Ok( Some( TokenKind::Bracket( kind ) ) )
-                },
-                b'}' => match self.brackets.pop() {
-                    Some( bracket ) => match bracket.kind {
-                        BracketKind::OpenCurly | BracketKind::CloseCurly | BracketKind::CloseRound =>
-                            Ok( Some( TokenKind::Bracket( BracketKind::CloseCurly ) ) ),
-                        BracketKind::OpenRound => Err( SyntaxError {
-                            line_byte_start: self.line_byte_start,
-                            line: self.line,
-                            col: self.token_start_col,
-                            len: 1,
-                            msg: "stray bracket".into(),
-                            help_msg: "closes the wrong bracket".into(),
-                        } ),
-                    },
-                    None => Err( SyntaxError {
-                        line_byte_start: self.line_byte_start,
-                        line: self.line,
-                        col: self.token_start_col,
-                        len: 1,
-                        msg: "stray bracket".into(),
-                        help_msg: "was not opened before".into(),
-                    } ),
-                },
-                b':' => Ok( Some( TokenKind::Colon ) ),
-                b';' => Ok( Some( TokenKind::SemiColon ) ),
-                b'!' => match self.peek_next()? {
-                    Some( b'=' ) => {
-                        self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::NotEquals ) ) )
-                    },
-                    _ => Ok( Some( TokenKind::Op( Operator::Not ) ) ),
-                },
-                b'*' => match self.peek_next()? {
-                    Some( b'*' ) => {
-                        self.col += 1;
-                        match self.peek_next()? {
-                            Some( b'=' ) => {
-                                self.col += 1;
-                                Ok( Some( TokenKind::Op( Operator::PowEquals ) ) )
-                            }
-                            _ => Ok( Some( TokenKind::Op( Operator::Pow ) ) ),
-                        }
-                    },
-                    Some( b'=' ) => {
-                        self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::TimesEquals ) ) )
-                    },
-                    _ => Ok( Some( TokenKind::Op( Operator::Times ) ) ),
-                },
-                b'/' => match self.peek_next()? {
-                    Some( b'=' ) => {
-                        self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::DivideEquals ) ) )
-                    },
-                    _ => Ok( Some( TokenKind::Op( Operator::Divide ) ) ),
-                },
-                b'%' => match self.peek_next()? {
-                    Some( b'=' ) => {
-                        self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::RemainderEquals ) ) )
-                    },
-                    _ => Ok( Some( TokenKind::Op( Operator::Remainder ) ) ),
-                },
-                b'+' => match self.peek_next()? {
-                    Some( b'=' ) => {
-                        self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::PlusEquals ) ) )
-                    },
-                    _ => Ok( Some( TokenKind::Op( Operator::Plus ) ) )
-                },
-                b'-' => match self.peek_next()? {
-                    Some( b'=' ) => {
-                        self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::MinusEquals ) ) )
-                    },
-                    _ => Ok( Some( TokenKind::Op( Operator::Minus ) ) ),
-                },
-                b'&' => match self.peek_next()? {
-                    Some( b'&' ) => {
-                        self.col += 1;
-                        match self.peek_next()? {
-                            Some( b'=' ) => {
-                                self.col += 1;
-                                Ok( Some( TokenKind::Op( Operator::AndEquals ) ) )
-                            },
-                            _ => Ok( Some( TokenKind::Op( Operator::And ) ) ),
-                        }
-                    },
-                    Some( b'=' ) => {
-                        self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::BitAndEquals ) ) )
-                    },
-                    _ => Ok( Some( TokenKind::Op( Operator::BitAnd ) ) ),
-                },
-                b'^' => match self.peek_next()? {
-                    // Some( b'^' ) => {
-                    //     self.col += 1;
-                    //     match self.peek_next()? {
-                    //         Some( b'=' ) => {
-                    //             self.col += 1;
-                    //             Ok( Some( TokenKind::Op( Operator::XorEquals ) ) )
-                    //         },
-                    //         _ => Ok( Some( TokenKind::Op( Operator::Xor ) ) ),
-                    //     }
-                    // },
-                    Some( b'=' ) => {
-                        self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::BitXorEquals ) ) )
-                    },
-                    _ => Ok( Some( TokenKind::Op( Operator::BitXor ) ) ),
-                },
-                b'|' => match self.peek_next()? {
-                    Some( b'|' ) => {
-                        self.col += 1;
-                        match self.peek_next()? {
-                            Some( b'=' ) => {
-                                self.col += 1;
-                                Ok( Some( TokenKind::Op( Operator::OrEquals ) ) )
-                            },
-                            _ => Ok( Some( TokenKind::Op( Operator::Or ) ) ),
-                        }
-                    },
-                    Some( b'=' ) => {
-                        self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::BitOrEquals ) ) )
-                    },
-                    _ => Ok( Some( TokenKind::Op( Operator::BitOr ) ) ),
-                },
-                b'=' => match self.peek_next()? {
-                    Some( b'=' ) => {
-                        self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::EqualsEquals ) ) )
-                    },
-                    _ => Ok( Some( TokenKind::Equals ) ),
-                },
-                b'>' => match self.peek_next()? {
-                    Some( b'>' ) => {
-                        self.col += 1;
-                        match self.peek_next()? {
-                            Some( b'=' ) => {
-                                self.col += 1;
-                                Ok( Some( TokenKind::Op( Operator::RightShiftEquals ) ) )
-                            },
-                            _ => Ok( Some( TokenKind::Op( Operator::RightShift ) ) ),
-                        }
-                    },
-                    Some( b'=' ) => {
-                        self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::GreaterOrEquals ) ) )
-                    },
-                    _ => Ok( Some( TokenKind::Op( Operator::Greater ) ) ),
-                },
-                b'<' => match self.peek_next()? {
-                    Some( b'<' ) => {
-                        self.col += 1;
-                        match self.peek_next()? {
-                            Some( b'=' ) => {
-                                self.col += 1;
-                                Ok( Some( TokenKind::Op( Operator::LeftShiftEquals ) ) )
-                            },
-                            _ => Ok( Some( TokenKind::Op( Operator::LeftShift ) ) ),
-                        }
-                    },
-                    Some( b'=' ) => {
-                        self.col += 1;
-                        match self.peek_next()? {
-                            Some( b'>' ) => {
-                                self.col += 1;
-                                Ok( Some( TokenKind::Op( Operator::Compare ) ) )
-                            },
-                            _ => Ok( Some( TokenKind::Op( Operator::LessOrEquals ) ) ),
-                        }
-                    },
-                    _ => Ok( Some( TokenKind::Op( Operator::Less ) ) ),
-                },
-                b'\n' => unreachable!( "line text should have been trimmed already" ),
-                // disabling explicit uninitialization until we have proper uninitialization or
-                // execution path checking
-                b'?' | _ => Err( SyntaxError {
+                None => Err( SyntaxError {
                     line_byte_start: self.line_byte_start,
                     line: self.line,
                     col: self.token_start_col,
                     len: 1,
-                    msg: "unexpected character".into(),
-                    help_msg: "unrecognized".into(),
+                    msg: "stray bracket".into(),
+                    help_msg: "was not opened before".into(),
                 } ),
-            }
+            },
+            b'{' => {
+                let kind = BracketKind::OpenCurly;
+                self.brackets.push( Bracket {
+                    line_byte_start: self.line_byte_start,
+                    line_number: self.line,
+                    col: self.token_start_col,
+                    kind,
+                } );
+                Ok( Some( TokenKind::Bracket( kind ) ) )
+            },
+            b'}' => match self.brackets.pop() {
+                Some( bracket ) => match bracket.kind {
+                    BracketKind::OpenCurly | BracketKind::CloseCurly | BracketKind::CloseRound =>
+                        Ok( Some( TokenKind::Bracket( BracketKind::CloseCurly ) ) ),
+                    BracketKind::OpenRound => Err( SyntaxError {
+                        line_byte_start: self.line_byte_start,
+                        line: self.line,
+                        col: self.token_start_col,
+                        len: 1,
+                        msg: "stray bracket".into(),
+                        help_msg: "closes the wrong bracket".into(),
+                    } ),
+                },
+                None => Err( SyntaxError {
+                    line_byte_start: self.line_byte_start,
+                    line: self.line,
+                    col: self.token_start_col,
+                    len: 1,
+                    msg: "stray bracket".into(),
+                    help_msg: "was not opened before".into(),
+                } ),
+            },
+            b':' => Ok( Some( TokenKind::Colon ) ),
+            b';' => Ok( Some( TokenKind::SemiColon ) ),
+            b'!' => match self.peek_next()? {
+                Some( b'=' ) => {
+                    self.col += 1;
+                    Ok( Some( TokenKind::Op( Operator::NotEquals ) ) )
+                },
+                _ => Ok( Some( TokenKind::Op( Operator::Not ) ) ),
+            },
+            b'*' => match self.peek_next()? {
+                Some( b'*' ) => {
+                    self.col += 1;
+                    match self.peek_next()? {
+                        Some( b'=' ) => {
+                            self.col += 1;
+                            Ok( Some( TokenKind::Op( Operator::PowEquals ) ) )
+                        }
+                        _ => Ok( Some( TokenKind::Op( Operator::Pow ) ) ),
+                    }
+                },
+                Some( b'=' ) => {
+                    self.col += 1;
+                    Ok( Some( TokenKind::Op( Operator::TimesEquals ) ) )
+                },
+                _ => Ok( Some( TokenKind::Op( Operator::Times ) ) ),
+            },
+            b'/' => match self.peek_next()? {
+                Some( b'=' ) => {
+                    self.col += 1;
+                    Ok( Some( TokenKind::Op( Operator::DivideEquals ) ) )
+                },
+                _ => Ok( Some( TokenKind::Op( Operator::Divide ) ) ),
+            },
+            b'%' => match self.peek_next()? {
+                Some( b'=' ) => {
+                    self.col += 1;
+                    Ok( Some( TokenKind::Op( Operator::RemainderEquals ) ) )
+                },
+                _ => Ok( Some( TokenKind::Op( Operator::Remainder ) ) ),
+            },
+            b'+' => match self.peek_next()? {
+                Some( b'=' ) => {
+                    self.col += 1;
+                    Ok( Some( TokenKind::Op( Operator::PlusEquals ) ) )
+                },
+                _ => Ok( Some( TokenKind::Op( Operator::Plus ) ) )
+            },
+            b'-' => match self.peek_next()? {
+                Some( b'=' ) => {
+                    self.col += 1;
+                    Ok( Some( TokenKind::Op( Operator::MinusEquals ) ) )
+                },
+                _ => Ok( Some( TokenKind::Op( Operator::Minus ) ) ),
+            },
+            b'&' => match self.peek_next()? {
+                Some( b'&' ) => {
+                    self.col += 1;
+                    match self.peek_next()? {
+                        Some( b'=' ) => {
+                            self.col += 1;
+                            Ok( Some( TokenKind::Op( Operator::AndEquals ) ) )
+                        },
+                        _ => Ok( Some( TokenKind::Op( Operator::And ) ) ),
+                    }
+                },
+                Some( b'=' ) => {
+                    self.col += 1;
+                    Ok( Some( TokenKind::Op( Operator::BitAndEquals ) ) )
+                },
+                _ => Ok( Some( TokenKind::Op( Operator::BitAnd ) ) ),
+            },
+            b'^' => match self.peek_next()? {
+                // Some( b'^' ) => {
+                //     self.col += 1;
+                //     match self.peek_next()? {
+                //         Some( b'=' ) => {
+                //             self.col += 1;
+                //             Ok( Some( TokenKind::Op( Operator::XorEquals ) ) )
+                //         },
+                //         _ => Ok( Some( TokenKind::Op( Operator::Xor ) ) ),
+                //     }
+                // },
+                Some( b'=' ) => {
+                    self.col += 1;
+                    Ok( Some( TokenKind::Op( Operator::BitXorEquals ) ) )
+                },
+                _ => Ok( Some( TokenKind::Op( Operator::BitXor ) ) ),
+            },
+            b'|' => match self.peek_next()? {
+                Some( b'|' ) => {
+                    self.col += 1;
+                    match self.peek_next()? {
+                        Some( b'=' ) => {
+                            self.col += 1;
+                            Ok( Some( TokenKind::Op( Operator::OrEquals ) ) )
+                        },
+                        _ => Ok( Some( TokenKind::Op( Operator::Or ) ) ),
+                    }
+                },
+                Some( b'=' ) => {
+                    self.col += 1;
+                    Ok( Some( TokenKind::Op( Operator::BitOrEquals ) ) )
+                },
+                _ => Ok( Some( TokenKind::Op( Operator::BitOr ) ) ),
+            },
+            b'=' => match self.peek_next()? {
+                Some( b'=' ) => {
+                    self.col += 1;
+                    Ok( Some( TokenKind::Op( Operator::EqualsEquals ) ) )
+                },
+                _ => Ok( Some( TokenKind::Equals ) ),
+            },
+            b'>' => match self.peek_next()? {
+                Some( b'>' ) => {
+                    self.col += 1;
+                    match self.peek_next()? {
+                        Some( b'=' ) => {
+                            self.col += 1;
+                            Ok( Some( TokenKind::Op( Operator::RightShiftEquals ) ) )
+                        },
+                        _ => Ok( Some( TokenKind::Op( Operator::RightShift ) ) ),
+                    }
+                },
+                Some( b'=' ) => {
+                    self.col += 1;
+                    Ok( Some( TokenKind::Op( Operator::GreaterOrEquals ) ) )
+                },
+                _ => Ok( Some( TokenKind::Op( Operator::Greater ) ) ),
+            },
+            b'<' => match self.peek_next()? {
+                Some( b'<' ) => {
+                    self.col += 1;
+                    match self.peek_next()? {
+                        Some( b'=' ) => {
+                            self.col += 1;
+                            Ok( Some( TokenKind::Op( Operator::LeftShiftEquals ) ) )
+                        },
+                        _ => Ok( Some( TokenKind::Op( Operator::LeftShift ) ) ),
+                    }
+                },
+                Some( b'=' ) => {
+                    self.col += 1;
+                    match self.peek_next()? {
+                        Some( b'>' ) => {
+                            self.col += 1;
+                            Ok( Some( TokenKind::Op( Operator::Compare ) ) )
+                        },
+                        _ => Ok( Some( TokenKind::Op( Operator::LessOrEquals ) ) ),
+                    }
+                },
+                _ => Ok( Some( TokenKind::Op( Operator::Less ) ) ),
+            },
+            b'\n' => unreachable!( "line text should have been trimmed already" ),
+            _ => Err( SyntaxError {
+                line_byte_start: self.line_byte_start,
+                line: self.line,
+                col: self.token_start_col,
+                len: 1,
+                msg: "unexpected character".into(),
+                help_msg: "unrecognized".into(),
+            } ),
         }
     }
 }
@@ -1544,8 +1613,7 @@ impl TypeOf for Expression {
 struct Variable {
     mutability: Mutability,
     name: String,
-    typ: Type,
-    initialized: bool,
+    value: Expression,
 }
 
 #[derive( Debug, Clone )]
@@ -1597,7 +1665,7 @@ impl Display for Loop {
 // required to print errors walk the structure of the node based on defined syntax rulese
 #[derive( Debug, Clone )]
 enum Node {
-    Semicolon,
+    Empty,
 
     Expression( Expression ),
     Print( Expression ),
@@ -1607,8 +1675,8 @@ enum Node {
     Break,
     Continue,
 
-    Definition( String, Expression ),
-    Assignment( String, Expression ),
+    Definition( usize /* scope idx */, usize /* variable idx */ ),
+    Assignment( usize /* scope idx */, usize /* variable idx */, Expression ),
     Scope( usize ),
 }
 
@@ -1622,13 +1690,14 @@ impl Display for Node {
             Self::If( iff )                => write!( f, "{}", iff.ifs[ 0 ] ),
             Self::Loop( looop )            => write!( f, "{}", looop ),
 
-            Self::Semicolon
+            Self::Empty
             | Self::Break | Self::Continue
-            | Self::Definition( _, _ ) | Self::Assignment( _, _ )
+            | Self::Definition( _, _ ) | Self::Assignment( _, _, _ )
             | Self::Scope( _ )             => unreachable!(),
         }
     }
 }
+
 
 #[derive( Debug, Clone )]
 struct Scope {
@@ -1683,10 +1752,10 @@ impl AST {
                 Ok( Some( node ) ) => {
                     match node {
                         // skip to the next token after a semicolon
-                        Node::Semicolon => continue,
+                        Node::Empty => continue,
 
                         // check to see if a terminating semicolon is present
-                        Node::Definition( _, _ ) | Node::Assignment( _, _ )
+                        Node::Definition( _, _ ) | Node::Assignment( _, _, _ )
                         | Node::Expression( _ )
                         | Node::Break | Node::Continue
                         | Node::Print( _ ) | Node::Println( _ ) =>
@@ -1699,7 +1768,7 @@ impl AST {
                             },
 
                         // no need to check for a terminating semicolon
-                        Node::If( _ ) | Node::Loop( _ ) | Node::Scope( _ ) => (),
+                        Node::If( _ ) | Node::Loop( _ ) | Node::Scope( _ ) => {},
                     }
 
                     self.scopes[ self.scope ].nodes.push( node );
@@ -1731,16 +1800,11 @@ impl AST {
             TokenKind::Literal( _ )
             | TokenKind::True | TokenKind::False
             | TokenKind::Bracket( BracketKind::OpenRound )
-            | TokenKind::Op( Operator::Minus | Operator::Not ) =>
-                Ok( Some( Node::Expression( self.expression( tokens )? ) ) ),
-            TokenKind::Definition( _ ) =>
-                Ok( Some( self.variable_definition( tokens )? ) ),
-            TokenKind::Print | TokenKind::PrintLn =>
-                Ok( Some( self.print( tokens )? ) ),
-            TokenKind::Identifier( _ ) =>
-                Ok( Some( self.variable_reassignment_or_expression( tokens )? ) ),
-            TokenKind::If =>
-                Ok( Some( self.iff( tokens )? ) ),
+            | TokenKind::Op( Operator::Minus | Operator::Not )
+            | TokenKind::Identifier( _ )          => Ok( Some( self.variable_reassignment_or_expression( tokens )? ) ),
+            TokenKind::Definition( _ )            => Ok( Some( self.variable_definition( tokens )? ) ),
+            TokenKind::Print | TokenKind::PrintLn => Ok( Some( self.print( tokens )? ) ),
+            TokenKind::If                         => Ok( Some( self.iff( tokens )? ) ),
             TokenKind::Else => {
                 tokens.next();
                 Err( SyntaxError {
@@ -1844,17 +1908,6 @@ impl AST {
                     help_msg: "stray assignment".into(),
                 } )
             },
-            TokenKind::QuestionMark => {
-                tokens.next();
-                Err( SyntaxError {
-                    line_byte_start: current.line.byte_start,
-                    line: current.line.number,
-                    col: current.token.col,
-                    len: current.token.kind.len(),
-                    msg: "invalid explicit uninitialization".into(),
-                    help_msg: "stray uninitialized value".into(),
-                } )
-            },
             TokenKind::Op( _ ) => {
                 tokens.next();
                 Err( SyntaxError {
@@ -1868,9 +1921,38 @@ impl AST {
             },
             TokenKind::SemiColon => {
                 tokens.next();
-                Ok( Some( Node::Semicolon ) )
+                Ok( Some( Node::Empty ) )
             },
             TokenKind::Comment( _ ) | TokenKind::Empty | TokenKind::Unexpected( _ ) => unreachable!(),
+        }
+    }
+
+    fn parse_do_single_statement( &mut self, tokens: &mut TokenCursor ) -> Result<Option<Node>, SyntaxError> {
+        let current = tokens.next().bounded( tokens, "expected statement" )?;
+        return match current.token.kind {
+            TokenKind::Bracket( BracketKind::OpenCurly ) => {
+                tokens.next();
+                Err( SyntaxError {
+                    line_byte_start: current.line.byte_start,
+                    line: current.line.number,
+                    col: current.token.col,
+                    len: current.token.kind.len(),
+                    msg: "invalid statement".into(),
+                    help_msg: "blocks are not allowed in do statements".into(),
+                } )
+            },
+            TokenKind::Definition( _ ) => {
+                tokens.next();
+                Err( SyntaxError {
+                    line_byte_start: current.line.byte_start,
+                    line: current.line.number,
+                    col: current.token.col,
+                    len: current.token.kind.len(),
+                    msg: "invalid statement".into(),
+                    help_msg: "variable definitions are not allowed in do statements".into(),
+                } )
+            },
+            _ => self.parse_single_statement( tokens ),
         }
     }
 
@@ -1955,20 +2037,8 @@ impl AST {
             TokenKind::False => Ok( Expression::Literal( Literal::Bool( false ) ) ),
             TokenKind::Identifier( name ) => match self.resolve_type( name ) {
                 None => match self.resolve_variable( name ) {
-                    Some( variable ) =>
-                        if variable.initialized {
-                            Ok( Expression::Identifier( name.clone(), variable.typ ) )
-                        }
-                        else {
-                            Err( SyntaxError {
-                                line_byte_start: current.line.byte_start,
-                                line: current.line.number,
-                                col: current.token.col,
-                                len: current.token.kind.len(),
-                                msg: "variable not initialized".into(),
-                                help_msg: "was not previously initialized".into(),
-                            } )
-                        },
+                    Some( (variable, _, _) ) =>
+                        Ok( Expression::Identifier( variable.name.clone(), variable.value.typ() ) ),
                     None => Err( SyntaxError {
                         line_byte_start: current.line.byte_start,
                         line: current.line.number,
@@ -2032,25 +2102,15 @@ impl AST {
                         col: current.token.col,
                         len: current.token.kind.len(),
                         msg: "invalid expression".into(),
-                        help_msg: "cannot negate boolean values, use the '!' operator instead".into(),
+                        help_msg: "cannot negate boolean values, use the '!' operator instead to invert them".into(),
                     } ),
-                    Type::Int | Type::Char | Type::Str => match operand {
-                        Expression::Literal( Literal::Uninitialized( _ ) ) => Err( SyntaxError {
-                            line_byte_start: current.line.byte_start,
-                            line: current.line.number,
-                            col: current.token.col,
-                            len: current.token.kind.len(),
-                            msg: "variable not initialized".into(),
-                            help_msg: "was not previously initialized".into(),
-                        } ),
-                        _ =>
-                            if sign < 0 {
-                                Ok( Expression::Unary { op: Operator::Minus, operand: Box::new( operand ) } )
-                            }
-                            else {
-                                Ok( operand )
-                            }
-                    }
+                    Type::Int | Type::Char | Type::Str =>
+                        if sign < 0 {
+                            Ok( Expression::Unary { op: Operator::Minus, operand: Box::new( operand ) } )
+                        }
+                        else {
+                            Ok( operand )
+                        }
                 }
             },
             TokenKind::Op( Operator::Not ) => {
@@ -2061,24 +2121,12 @@ impl AST {
                 }
 
                 let operand = self.primary_expression( tokens )?;
-
                 // returning to avoid the call to tokens.next at the end of the function
-                return match operand {
-                    Expression::Literal( Literal::Uninitialized( _ ) ) => Err( SyntaxError {
-                        line_byte_start: current.line.byte_start,
-                        line: current.line.number,
-                        col: current.token.col,
-                        len: current.token.kind.len(),
-                        msg: "variable not initialized".into(),
-                        help_msg: "was not previously initialized".into(),
-                    } ),
-                    _ =>
-                        if should_be_inverted {
-                            Ok( Expression::Unary { op: Operator::Not, operand: Box::new( operand ) } )
-                        }
-                        else {
-                            Ok( operand )
-                        }
+                return if should_be_inverted {
+                    Ok( Expression::Unary { op: Operator::Not, operand: Box::new( operand ) } )
+                }
+                else {
+                    Ok( operand )
                 }
             },
             TokenKind::Definition( _ )
@@ -2091,14 +2139,6 @@ impl AST {
                 len: current.token.kind.len(),
                 msg: "invalid expression".into(),
                 help_msg: "cannot be a keyword".into(),
-            } ),
-            TokenKind::QuestionMark => Err( SyntaxError {
-                line_byte_start: current.line.byte_start,
-                line: current.line.number,
-                col: current.token.col,
-                len: current.token.kind.len(),
-                msg: "invalid expression".into(),
-                help_msg: "uninitialized values cannot be used inside expressions".into(),
             } ),
             _ => Err( SyntaxError {
                 line_byte_start: current.line.byte_start,
@@ -2350,27 +2390,8 @@ impl AST {
 }
 
 // variable definitions and assignments
-impl<'lexer> AST {
-    fn resolve_variable( &'lexer self, name: &str ) -> Option<&'lexer Variable> {
-        let mut current_scope = self.scope;
-        loop {
-            let scope = &self.scopes[ current_scope ];
-
-            for variable in &scope.variables {
-                if variable.name == name {
-                    return Some( variable );
-                }
-            }
-
-            if current_scope == 0 && scope.parent == 0 {
-                return None;
-            }
-
-            current_scope = scope.parent;
-        }
-    }
-
-    fn resolve_variable_mut( &'lexer mut self, name: &str ) -> Option<&'lexer mut Variable> {
+impl<'this> AST {
+    fn resolve_variable( &'this self, name: &str ) -> Option<(&'this Variable, usize /* scope idx */, usize /* variable idx */)> {
         let mut current_scope = self.scope;
         loop {
             let scope = &self.scopes[ current_scope ];
@@ -2378,7 +2399,7 @@ impl<'lexer> AST {
             let mut current_variable = 0;
             for variable in &scope.variables {
                 if variable.name == name {
-                    return Some( &mut self.scopes[ current_scope ].variables[ current_variable ] );
+                    return Some( (variable, current_scope, current_variable) );
                 }
                 current_variable += 1;
             }
@@ -2391,7 +2412,7 @@ impl<'lexer> AST {
         }
     }
 
-    fn resolve_type( &'lexer self, name: &str ) -> Option<&'lexer Type> {
+    fn resolve_type( &'this self, name: &str ) -> Option<&'this Type> {
         let mut current_scope = self.scope;
         loop {
             let scope = &self.scopes[ current_scope ];
@@ -2450,7 +2471,7 @@ impl<'lexer> AST {
                     TokenKind::Identifier( type_name ) => match self.resolve_type( type_name ) {
                         Some( typ ) => Ok( Some( (*typ, annotation_pos) ) ),
                         None => match self.resolve_variable( type_name ) {
-                            Some( var ) => Ok( Some( (var.typ, annotation_pos) ) ),
+                            Some( (var, _, _) ) => Ok( Some( (var.value.typ(), annotation_pos) ) ),
                             None => Err( SyntaxError {
                                 line_byte_start: annotation_pos.line.byte_start,
                                 line: annotation_pos.line.number,
@@ -2475,20 +2496,12 @@ impl<'lexer> AST {
         };
 
         let equals_or_semicolon_pos = tokens.next().bounded( tokens, "expected equals" )?;
-        let mut initialized = true;
         let expression = match equals_or_semicolon_pos.token.kind {
             TokenKind::Equals => {
-                let expression_start = tokens.next().bounded( tokens, "expected expression" )?;
-                match expression_start.token.kind {
-                    TokenKind::QuestionMark => {
-                        initialized = false;
-                        tokens.next();
-                        Ok( Some( Expression::Literal( Literal::Uninitialized( Type::Int /* placeholder */ ) ) ) )
-                    },
-                    _ => match self.expression( tokens ) {
-                        Ok( expr ) => Ok( Some( expr ) ),
-                        Err( err ) => Err( err ),
-                    }
+                tokens.next().bounded( tokens, "expected expression" )?;
+                match self.expression( tokens ) {
+                    Ok( expr ) => Ok( Some( expr ) ),
+                    Err( err ) => Err( err ),
                 }
             },
             TokenKind::SemiColon => Ok( None ),
@@ -2518,8 +2531,8 @@ impl<'lexer> AST {
         }
 
         return match expression {
-            Some( mut value ) => match annotation {
-                Some( (typ, pos) ) => {
+            Some( value ) => {
+                if let Some( (typ, pos) ) = annotation {
                     if typ != value.typ() {
                         return Err( SyntaxError {
                             line_byte_start: pos.line.byte_start,
@@ -2533,51 +2546,27 @@ impl<'lexer> AST {
                             ).into(),
                         } );
                     }
+                }
 
-                    if let Expression::Literal( Literal::Uninitialized( ref mut uninitialized_type ) ) = value {
-                        *uninitialized_type = typ;
-                    }
+                let variables = &mut self.scopes[ self.scope ].variables;
+                variables.push( Variable {
+                    mutability,
+                    name: name.clone(),
+                    value
+                } );
 
-                    self.scopes[ self.scope ].variables.push( Variable {
-                        mutability,
-                        name: name.clone(),
-                        typ,
-                        initialized
-                    } );
-
-                    Ok( Node::Definition( name, value ) )
-                },
-                None => match value {
-                    Expression::Literal( Literal::Uninitialized( _ ) ) => Err( SyntaxError {
-                        line_byte_start: name_pos.line.byte_start,
-                        line: name_pos.line.number,
-                        col: name_pos.token.col,
-                        len: name_pos.token.kind.len(),
-                        msg: "invalid definition".into(),
-                        help_msg: "expected type annotation after here to infer the type of the variable".into(),
-                    } ),
-                    _ => {
-                        self.scopes[ self.scope ].variables.push( Variable {
-                            mutability,
-                            name: name.clone(),
-                            typ: value.typ(),
-                            initialized
-                        } );
-
-                        Ok( Node::Definition( name, value ) )
-                    }
-                },
+                Ok( Node::Definition( self.scope, variables.len() - 1 ) )
             },
             None => match annotation {
                 Some( (typ, _) ) => {
-                    self.scopes[ self.scope ].variables.push( Variable {
+                    let variables = &mut self.scopes[ self.scope ].variables;
+                    variables.push( Variable {
                         mutability,
                         name: name.clone(),
-                        typ,
-                        initialized
+                        value: Expression::Literal( typ.default() )
                     } );
 
-                    Ok( Node::Definition( name, Expression::Literal( typ.default() ) ) )
+                    Ok( Node::Definition( self.scope, variables.len() - 1 ) )
                 },
                 None => Err( SyntaxError {
                     line_byte_start: name_pos.line.byte_start,
@@ -2616,15 +2605,6 @@ impl<'lexer> AST {
         tokens.next().bounded( tokens, "expected expression" )?;
 
         let name = name_pos.token.kind.to_string();
-        let rhs = self.expression( tokens )?;
-        let value = match &op_pos.token.kind {
-            TokenKind::Equals => Ok( rhs ),
-            TokenKind::Op( op ) => {
-                let lhs = Expression::Identifier( name.clone(), op.typ() );
-                Ok( Expression::Binary { lhs: Box::new( lhs ), op: *op, rhs: Box::new( rhs ) } )
-            },
-            _ => unreachable!(),
-        };
 
         if let Some( _ ) = self.resolve_type( &name ) {
             return Err( SyntaxError {
@@ -2637,8 +2617,9 @@ impl<'lexer> AST {
             } );
         }
 
-        match self.resolve_variable_mut( &name ) {
-            Some( var ) => match var.mutability {
+        let rhs = self.expression( tokens )?;
+        match self.resolve_variable( &name ) {
+            Some( (var, scope, var_idx) ) => match var.mutability {
                 Mutability::Let => Err( SyntaxError {
                     line_byte_start: name_pos.line.byte_start,
                     line: name_pos.line.number,
@@ -2648,10 +2629,16 @@ impl<'lexer> AST {
                     help_msg: "was defined as immutable".into(),
                 } ),
                 Mutability::Var => {
-                    let value = value?;
-                    let value_typ = value.typ();
+                    let value = match &op_pos.token.kind {
+                        TokenKind::Equals => rhs,
+                        TokenKind::Op( op ) => {
+                            let lhs = Expression::Identifier( name.clone(), op.typ() );
+                            Expression::Binary { lhs: Box::new( lhs ), op: *op, rhs: Box::new( rhs ) }
+                        },
+                        _ => unreachable!(),
+                    };
 
-                    if var.typ != value_typ {
+                    if var.value.typ() != value.typ() {
                         return Err( SyntaxError {
                             line_byte_start: name_pos.line.byte_start,
                             line: name_pos.line.number,
@@ -2660,14 +2647,13 @@ impl<'lexer> AST {
                             msg: "mismatched types".into(),
                             help_msg: format!(
                                 "trying to assign an expression of type '{}' to a variable of type '{}'",
-                                value_typ,
-                                var.typ,
+                                value.typ(),
+                                var.value.typ(),
                             ).into(),
                         } );
                     }
 
-                    var.initialized = true;
-                    Ok( Node::Assignment( name_pos.token.kind.to_string(), value ) )
+                    Ok( Node::Assignment( scope, var_idx, value ) )
                 },
             },
             None => Err( SyntaxError {
@@ -2733,21 +2719,9 @@ impl AST {
                     Ok( IfStatement { condition, statement: scope } )
                 },
                 TokenKind::Do => {
-                    tokens.next().bounded( tokens, "expected statement" )?;
-                    match self.parse_single_statement( tokens )? {
-                        Some( statement ) => {
-                            self.semicolon( tokens )?;
-                            Ok( IfStatement { condition, statement } )
-                        },
-                        None => Err( SyntaxError {
-                            line_byte_start: after_condition_pos.line.byte_start,
-                            line: after_condition_pos.line.number,
-                            col: after_condition_pos.token.col,
-                            len: after_condition_pos.token.kind.len(),
-                            msg: "invalid if statement".into(),
-                            help_msg: "must be followed by a statement".into(),
-                        } )
-                    }
+                    let statement = self.parse_do_single_statement( tokens )?.unwrap();
+                    self.semicolon( tokens )?;
+                    Ok( IfStatement { condition, statement } )
                 },
                 _ => {
                     let before_curly_bracket_pos = tokens.peek_previous().unwrap();
@@ -2765,13 +2739,12 @@ impl AST {
             if_statement.ifs.push( iff? );
 
             while let Some( else_pos ) = tokens.current() {
-                match else_pos.token.kind {
-                    TokenKind::Else => (),
+                let after_else_pos = match else_pos.token.kind {
+                    TokenKind::Else => tokens.next().bounded( tokens, "expected do, block or if statement" )?,
                     _ => break 'iff,
-                }
+                };
 
                 // we are now inside an else branch
-                let after_else_pos = tokens.next().bounded( tokens, "expected do, block or if statement" )?;
                 let else_if = match after_else_pos.token.kind {
                     TokenKind::Bracket( BracketKind::OpenCurly ) => {
                         let scope = self.parse_single_any( tokens )?.unwrap();
@@ -2779,22 +2752,10 @@ impl AST {
                         break 'iff;
                     },
                     TokenKind::Do => {
-                        tokens.next().bounded( tokens, "expected statement" )?;
-                        match self.parse_single_statement( tokens )? {
-                            Some( statement ) => {
-                                self.semicolon( tokens )?;
-                                if_statement.els = Some( Box::new( statement ) );
-                                break 'iff;
-                            },
-                            None => Err( SyntaxError {
-                                line_byte_start: after_else_pos.line.byte_start,
-                                line: after_else_pos.line.number,
-                                col: after_else_pos.token.col,
-                                len: after_else_pos.token.kind.len(),
-                                msg: "invalid else statement".into(),
-                                help_msg: "must be followed by a statement".into(),
-                            } )
-                        }
+                        let statement = self.parse_do_single_statement( tokens )?.unwrap();
+                        self.semicolon( tokens )?;
+                        if_statement.els = Some( Box::new( statement ) );
+                        break 'iff;
                     },
                     TokenKind::If => break,
                     _ => Err( SyntaxError {
@@ -2818,18 +2779,13 @@ impl AST {
 // for statements
 impl AST {
     fn loop_statement( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
-        let do_or_loop_pos = tokens.current().unwrap();
-        let is_do_loop = if let TokenKind::Do = do_or_loop_pos.token.kind {
-            tokens.next().bounded( tokens, "expected loop statement" )?;
-            true
-        }
-        else {
-            false
+        let do_pos = tokens.current().unwrap();
+        let loop_pos = match do_pos.token.kind {
+            TokenKind::Do => tokens.next().bounded( tokens, "expected loop statement" )?,
+            _ => do_pos,
         };
 
-        let loop_pos = tokens.current().unwrap();
         tokens.next().bounded( tokens, "expected boolean expression" )?;
-
         let expression = self.expression( tokens )?;
         let condition = match &expression.typ() {
             Type::Bool => Ok( expression ),
@@ -2842,7 +2798,6 @@ impl AST {
                 help_msg: "must be followed by a boolean expression".into(),
             } ),
         };
-        let condition = condition?;
 
         let after_condition_pos = tokens.current().bounded( tokens, "expected do or block" )?;
         let statement = match after_condition_pos.token.kind {
@@ -2851,21 +2806,9 @@ impl AST {
                 Ok( scope )
             },
             TokenKind::Do => {
-                tokens.next().bounded( tokens, "expected statement" )?;
-                match self.parse_single_statement( tokens )? {
-                    Some( statement ) => {
-                        self.semicolon( tokens )?;
-                        Ok( statement )
-                    },
-                    None => Err( SyntaxError {
-                        line_byte_start: after_condition_pos.line.byte_start,
-                        line: after_condition_pos.line.number,
-                        col: after_condition_pos.token.col,
-                        len: after_condition_pos.token.kind.len(),
-                        msg: "invalid for statement".into(),
-                        help_msg: "must be followed by a statement".into(),
-                    } ),
-                }
+                let statement = self.parse_do_single_statement( tokens )?.unwrap();
+                self.semicolon( tokens )?;
+                Ok( statement )
             },
             _ => {
                 let before_curly_bracket_pos = tokens.peek_previous().unwrap();
@@ -2880,8 +2823,14 @@ impl AST {
             },
         };
 
+        let condition = condition?;
         let statement = statement?;
-        let condition = if is_do_loop { LoopCondition::Post( condition ) } else { LoopCondition::Pre( condition ) };
+        let condition = if let TokenKind::Do = do_pos.token.kind {
+            LoopCondition::Post( Expression::Unary { op: Operator::Not, operand: Box::new( condition ) } )
+        }
+        else {
+            LoopCondition::Pre( condition )
+        };
 
         return Ok( Node::Loop( Loop {
             pre: None,
@@ -2894,49 +2843,21 @@ impl AST {
 
 
 struct Checker;
-
 impl Checker {
-    fn check( src: Src, start_time: &Instant ) -> Result<AST, SyntaxErrors> {
-        eprint!( "{}: {}", CHECKING, src.path.display() );
-        let mut time_info = String::new();
+    fn check( src: Src, logger: &mut Logger ) -> Result<AST, SyntaxErrors> {
+        logger.step( &CHECKING, &src.path );
 
-        let lexer = Lexer::try_from( src );
-        let lexing_time = start_time.elapsed();
-        let elapsed_lexing = Colored {
-            text: format!( "{}s", lexing_time.as_secs_f64() ).into(),
-            fg: Fg::LightGray,
-            ..Default::default()
-        };
-        time_info.push_str( &format!( "lexing: {}", elapsed_lexing ) );
+        let lexer_result = Lexer::try_from( src );
+        logger.substep( &LEXING );
 
-        let lexer = match lexer {
-            Ok( lexer ) => {
-                // println!( "{:#?}", lexer );
-                lexer
-            },
-            Err( err ) => {
-                eprintln!( " ... in [{}]", time_info );
-                return Err( err );
-            },
-        };
+        let lexer = lexer_result?;
+        // println!( "{:#?}", lexer );
 
-        let ast = AST::try_from( lexer );
-        let ast_time = start_time.elapsed() - lexing_time;
-        let elapsed_ast = Colored {
-            text: format!( "{}s", ast_time.as_secs_f64() ).into(),
-            fg: Fg::LightGray,
-            ..Default::default()
-        };
-        time_info.push_str( &format!( ", parsing: {}", elapsed_ast ) );
+        let ast_result = AST::try_from( lexer );
+        logger.substep( &PARSING );
 
-        let elapsed_total = Colored {
-            text: format!( "{}s", start_time.elapsed().as_secs_f64() ).into(),
-            fg: Fg::LightGray,
-            ..Default::default()
-        };
-
-        eprintln!( " ... in {} [{}]", elapsed_total, time_info );
-        return ast;
+        logger.substep_done();
+        return ast_result;
     }
 }
 
@@ -3098,27 +3019,18 @@ struct Compiler<'ast> {
 impl Compiler<'_> {
     const STACK_ALIGN: usize = core::mem::size_of::<usize>();
 
-    fn compile( &mut self, start_time: &Instant ) -> std::io::Result<PathBuf> {
-        eprint!( "{}: {}", COMPILING, self.src_path.display() );
-        let mut time_info = String::new();
+    fn compile( &mut self, logger: &mut Logger ) -> std::io::Result<PathBuf> {
+        logger.step( &COMPILING, &self.src_path );
 
         let (asm_path, obj_path, exe_path) = if let Some( out_path ) = &self.out_path {
             match std::fs::create_dir_all( &out_path ) {
-                Ok( _ ) => (),
-                Err( err ) if err.kind() == ErrorKind::AlreadyExists => (),
+                Ok( _ ) => {},
+                Err( err ) if err.kind() == ErrorKind::AlreadyExists => {},
                 Err( err ) => {
-                    let out_creation_time = start_time.elapsed();
-                    let elapsed_out_creation = Colored {
-                        text: format!( "{}s", out_creation_time.as_secs_f64() ).into(),
-                        fg: Fg::LightGray,
-                        ..Default::default()
-                    };
-                    time_info.push_str( &format!( "asm generation: {}", elapsed_out_creation ) );
-
-                    eprintln!( " ... in [{}]", time_info );
+                    logger.substep( &ASM_GENERATION );
                     return Err( std::io::Error::new(
                         err.kind(),
-                        format!( "{}: could not create output path '{}'\n{}: {}", ERROR, out_path.display(), CAUSE, err )
+                        format!( "{}: could not create output directory '{}'\n{}: {}", ERROR, out_path.display(), CAUSE, err )
                     ) );
                 }
             }
@@ -3136,15 +3048,7 @@ impl Compiler<'_> {
         let asm_file = match File::create( &asm_path ) {
             Ok( file ) => file,
             Err( err ) => {
-                let asm_file_opening_time = start_time.elapsed();
-                let elapsed_asm_file_opening = Colored {
-                    text: format!( "{}s", asm_file_opening_time.as_secs_f64() ).into(),
-                    fg: Fg::LightGray,
-                    ..Default::default()
-                };
-                time_info.push_str( &format!( "asm generation: {}", elapsed_asm_file_opening ) );
-
-                eprintln!( " ... in [{}]", time_info );
+                logger.substep( &ASM_GENERATION );
                 return Err( std::io::Error::new(
                     err.kind(),
                     format!( "{}: could not create file '{}'\n{}: {}", ERROR, asm_path.display(), CAUSE, err )
@@ -3182,7 +3086,7 @@ r#" stdout: equ 1
         let mut variables: Vec<(Type, Vec<&Variable>)> = Vec::new();
         for scope in &self.ast.scopes {
             for variable in &scope.variables {
-                let typ = &variable.typ;
+                let typ = &variable.value.typ();
 
                 let mut type_already_encountered = false;
                 for var_info in &mut variables {
@@ -3194,7 +3098,7 @@ r#" stdout: equ 1
                 }
 
                 if !type_already_encountered {
-                    variables.push( (variable.typ, vec![variable]) );
+                    variables.push( (variable.value.typ(), vec![variable]) );
                 }
             }
 
@@ -3211,7 +3115,7 @@ r#" stdout: equ 1
 
                 for variable in variables.swap_remove( current_type ).1 {
                     let name = variable.name.clone();
-                    let typ = variable.typ;
+                    let typ = variable.value.typ();
 
                     self.variables.push( CompilerVariable { name, typ, offset: stack_size } );
                     stack_size += typ.len();
@@ -3353,15 +3257,7 @@ _start:
         );
 
         if let Err( err ) = asm_writer.write_all( program.as_bytes() ) {
-            let asm_writing_time = start_time.elapsed();
-            let elapsed_asm_writing = Colored {
-                text: format!( "{}s", asm_writing_time.as_secs_f64() ).into(),
-                fg: Fg::LightGray,
-                ..Default::default()
-            };
-            time_info.push_str( &format!( "asm generation: {}", elapsed_asm_writing ) );
-
-            eprintln!( " ... in [{}]", time_info );
+            logger.substep( &ASM_GENERATION );
             return Err( std::io::Error::new(
                 err.kind(),
                 format!( "{}: writing assembly file failed\n{}: {}", ERROR, CAUSE, err )
@@ -3369,41 +3265,28 @@ _start:
         }
 
         if let Err( err ) = asm_writer.flush() {
-            let asm_flushin_time = start_time.elapsed();
-            let elapsed_asm_flushin = Colored {
-                text: format!( "{}s", asm_flushin_time.as_secs_f64() ).into(),
-                fg: Fg::LightGray,
-                ..Default::default()
-            };
-            time_info.push_str( &format!( "asm generation: {}", elapsed_asm_flushin ) );
-
-            eprintln!( " ... in [{}]", time_info );
+            logger.substep( &ASM_GENERATION );
             return Err( std::io::Error::new(
                 err.kind(),
                 format!( "{}: writing assembly file failed\n{}: {}", ERROR, CAUSE, err )
             ) );
         }
 
-        let asm_generation_time = start_time.elapsed();
-        let elapsed_asm_generation = Colored {
-            text: format!( "{}s", asm_generation_time.as_secs_f64() ).into(),
-            fg: Fg::LightGray,
-            ..Default::default()
-        };
-        time_info.push_str( &format!( "asm generation: {}", elapsed_asm_generation ) );
+        logger.substep( &ASM_GENERATION );
 
 
         let nasm_args = ["-felf64", "-gdwarf", asm_path.to_str().unwrap(), "-o", obj_path.to_str().unwrap()];
         match Command::new( "nasm" ).args( nasm_args ).output() {
-            Ok( nasm_out ) => if !nasm_out.status.success() {
-                eprintln!( " ... in [{}]", time_info );
-                return Err( std::io::Error::new(
-                    ErrorKind::InvalidData,
-                    format!( "{}: nasm assembler failed\n{}: {}", ERROR, CAUSE, String::from_utf8_lossy( &nasm_out.stderr ) )
-                ) );
-            },
+            Ok( nasm_out ) =>
+                if !nasm_out.status.success() {
+                    logger.substep( &ASSEMBLER );
+                    return Err( std::io::Error::new(
+                        ErrorKind::InvalidData,
+                        format!( "{}: nasm assembler failed\n{}: {}", ERROR, CAUSE, String::from_utf8_lossy( &nasm_out.stderr ) )
+                    ) );
+                },
             Err( err ) => {
-                eprintln!( " ... in [{}]", time_info );
+                logger.substep( &ASSEMBLER );
                 return Err( std::io::Error::new(
                     err.kind(),
                     format!( "{}: could not create nasm assembler process\n{}: {}", ERROR, CAUSE, err )
@@ -3411,26 +3294,21 @@ _start:
             },
         }
 
-        let nasm_time = start_time.elapsed() - asm_generation_time;
-        let elapsed_nasm = Colored {
-            text: format!( "{}s", nasm_time.as_secs_f64() ).into(),
-            fg: Fg::LightGray,
-            ..Default::default()
-        };
-        time_info.push_str( &format!( ", assembler: {}", elapsed_nasm ) );
+        logger.substep( &ASSEMBLER );
 
 
         let ld_args = [obj_path.to_str().unwrap(), "-o", exe_path.to_str().unwrap()];
         match Command::new( "ld" ).args( ld_args ).output() {
-            Ok( ld_out ) => if !ld_out.status.success() {
-                eprintln!( " ... in [{}]", time_info );
-                return Err( std::io::Error::new(
-                    ErrorKind::InvalidData,
-                    format!( "{}: ld linker failed\n{}: {}", ERROR, CAUSE, String::from_utf8_lossy( &ld_out.stderr ) )
-                ) );
-            },
+            Ok( ld_out ) =>
+                if !ld_out.status.success() {
+                    logger.substep( &LINKER );
+                    return Err( std::io::Error::new(
+                        ErrorKind::InvalidData,
+                        format!( "{}: ld linker failed\n{}: {}", ERROR, CAUSE, String::from_utf8_lossy( &ld_out.stderr ) )
+                    ) );
+                },
             Err( err ) => {
-                eprintln!( " ... in [{}]", time_info );
+                logger.substep( &LINKER );
                 return Err( std::io::Error::new(
                     err.kind(),
                     format!( "{}: could not create ld linker process\n{}: {}", ERROR, CAUSE, err )
@@ -3438,27 +3316,13 @@ _start:
             },
         };
 
-        let ld_time = start_time.elapsed() - nasm_time;
-        let elapsed_ld = Colored {
-            text: format!( "{}s", ld_time.as_secs_f64() ).into(),
-            fg: Fg::LightGray,
-            ..Default::default()
-        };
-        time_info.push_str( &format!( ", linker: {}", elapsed_ld ) );
-
-
-        let elapsed_total = Colored {
-            text: format!( "{}s", start_time.elapsed().as_secs_f64() ).into(),
-            fg: Fg::LightGray,
-            ..Default::default()
-        };
-
-        eprintln!( " ... in {} [{}]", elapsed_total, time_info );
+        logger.substep( &LINKER );
+        logger.substep_done();
         return Ok( exe_path );
     }
 
-    fn run( &mut self, exe_path: &Path ) -> std::io::Result<()> {
-        eprintln!( "{}: {}", RUNNING, exe_path.display() );
+    fn run( &mut self, logger: &mut Logger, exe_path: &Path ) -> std::io::Result<()> {
+        logger.step( &RUNNING, exe_path );
 
         return match Command::new( Path::new( "." ).join( exe_path ).display().to_string() ).spawn() {
             Ok( mut executable ) => match executable.wait() {
@@ -3695,13 +3559,19 @@ impl<'ast> Compiler<'ast> {
                     loop_end_tag
                 );
             },
-            Node::Definition( name, value ) => self.assignment( name, value ),
-            Node::Assignment( name, value ) => self.assignment( name, value ),
+            Node::Definition( scope, variable )    => {
+                let variable = &self.ast.scopes[ *scope ].variables[ *variable ];
+                self.assignment( &variable.name, &variable.value );
+            },
+            Node::Assignment( scope, variable, value ) => {
+                let variable = &self.ast.scopes[ *scope ].variables[ *variable ];
+                self.assignment( &variable.name, value );
+            },
             Node::Scope( inner )            => self.scope( *inner ),
             Node::Expression( expression )  => self.expression( expression ),
             Node::Break                     => self.asm += &format!( " jmp loop_{}_end\n\n", self.loop_idx_stack.last().unwrap() ),
             Node::Continue                  => self.asm += &format!( " jmp loop_{}\n\n", self.loop_idx_stack.last().unwrap() ),
-            Node::Semicolon                 => (/* do nothing */),
+            Node::Empty                 => unreachable!(),
         }
     }
 
@@ -3731,7 +3601,6 @@ impl<'ast> Compiler<'ast> {
                     string_label.len_label
                 );
             },
-            Expression::Literal( Literal::Uninitialized( _ ) ) => unreachable!(),
             Expression::Binary { .. } => self.expression_factor( expression, Register::RDI ),
             Expression::Identifier( src_name, _ ) => {
                 let src_variable = self.resolve( src_name );
@@ -3776,7 +3645,6 @@ impl<'ast> Compiler<'ast> {
 
                 self.asm += &format!( " mov {}, {}\n", dst, string_label.len_label );
             },
-            Expression::Literal( Literal::Uninitialized( _ ) ) => unreachable!(),
             // TODO find way to avoiding compiling the move to a support register if the rhs operand
             // is a literal
                 // IDEA optimize increments
@@ -3972,11 +3840,21 @@ impl<'ast> Compiler<'ast> {
                     *value as usize,
                     false_tag
                 ),
-            Expression::Literal(
-                Literal::Int( _ ) | Literal::Char( _ ) | Literal::Str( _ ) | Literal::Uninitialized( _ )
-            ) => unreachable!(),
-            Expression::Binary { op, .. } => {
-                self.expression( condition );
+            Expression::Literal( Literal::Int( _ ) | Literal::Char( _ ) | Literal::Str( _ ) ) => unreachable!(),
+            Expression::Binary { lhs, op, rhs } => {
+                match &**rhs {
+                    Expression::Binary { .. } | Expression::Unary { .. }=> {
+                        self.expression_factor( lhs, Register::RDI );
+                        self.asm += " push rdi\n\n";
+                        self.expression_factor( rhs, Register::RSI );
+
+                        self.asm += " mov rsi, rdi\n pop rdi\n";
+                    },
+                    _ => {
+                        self.expression_factor( lhs, Register::RDI );
+                        self.expression_factor( rhs, Register::RSI );
+                    }
+                }
 
                 match op {
                     Operator::EqualsEquals              => self.asm += &format!( " cmp rdi, rsi\n jne {}\n\n", false_tag ),
@@ -4057,8 +3935,6 @@ impl<'ast> Compiler<'ast> {
                     variable_offset + 8, string_label.len_label
                 );
             },
-            /* leave blank, possibility to get garbage values */
-            Expression::Literal( Literal::Uninitialized( _ ) ) => self.asm += "\n",
             Expression::Binary { .. } => {
                 self.expression( new_value );
 
@@ -4145,10 +4021,137 @@ enum RunModeKind {
     Compile { out_path: Option<PathBuf>, run: bool },
 }
 
+
 struct RunMode {
     src_path: PathBuf,
     kind: RunModeKind,
 }
+
+
+enum Verbosity {
+    Quiet,
+    Normal,
+    Verbose,
+}
+
+struct Logger {
+    start_time: Instant,
+    step_time: Instant,
+    substep_time: Instant,
+    verbosity: Verbosity,
+    steps: Vec<(&'static ColoredStr, PathBuf, Duration, Vec<(&'static ColoredStr, Duration)>)>,
+}
+
+impl Logger {
+    fn new( verbosity: Verbosity ) -> Self {
+        let now = Instant::now();
+        return Self {
+            start_time: now.clone(),
+            step_time: now.clone(),
+            substep_time: now.clone(),
+            verbosity,
+            steps: Vec::new(),
+        };
+    }
+
+
+    fn step_display( &self, step: &'static ColoredStr, path: &Path ) {
+        eprintln!( "{:>STEP_PADDING$}: {}", step, path.display() );
+    }
+
+    fn substep_display( &self, start_time: &Instant, indent: usize, step: &'static ColoredStr, padding: usize ) {
+        let elapsed_time = Colored {
+            text: format!( "{}s", start_time.elapsed().as_secs_f64() ),
+            fg: Fg::White,
+            ..Default::default()
+        };
+
+        eprintln!( "{:indent$}{:>padding$}: in {}", "", step, elapsed_time );
+    }
+
+
+    fn step( &mut self, step: &'static ColoredStr, path: &Path ) {
+        self.steps.push( (step, path.to_owned(), self.start_time.elapsed(), Vec::new() ) );
+
+        match self.verbosity {
+            Verbosity::Quiet => {},
+            Verbosity::Normal | Verbosity::Verbose => self.step_display( step, path ),
+        }
+    }
+
+    fn done( &mut self ) {
+        // let last_step = self.steps.len() - 1;
+        // self.steps[ last_step ].3.push( (&DONE, self.start_time.elapsed() ) );
+
+        match self.verbosity {
+            Verbosity::Quiet | Verbosity::Normal => {},
+            Verbosity::Verbose => self.substep_display( &self.start_time, 0, &DONE, STEP_PADDING ),
+        }
+    }
+
+    fn substep( &mut self, step: &'static ColoredStr ) {
+        let last_step = self.steps.len() - 1;
+        self.steps[ last_step ].3.push( (step, self.start_time.elapsed() ) );
+
+        match self.verbosity {
+            Verbosity::Quiet | Verbosity::Normal => {},
+            Verbosity::Verbose => {
+                self.substep_display( &self.substep_time, 4, step, SUBSTEP_PADDING );
+                self.substep_time = Instant::now();
+            },
+        }
+    }
+
+    fn substep_done( &mut self ) {
+        // let last_step = self.steps.len() - 1;
+        // self.steps[ last_step ].3.push( (&SUBSTEP_DONE, self.start_time.elapsed() ) );
+
+        match self.verbosity {
+            Verbosity::Quiet | Verbosity::Normal => {},
+            Verbosity::Verbose => {
+                self.substep_display( &self.step_time, 4, &SUBSTEP_DONE, SUBSTEP_PADDING );
+                let new_step_time = Instant::now();
+                (self.step_time, self.substep_time) = (new_step_time.clone(), new_step_time.clone());
+            },
+        }
+    }
+}
+
+// impl Drop for Logger {
+//     fn drop( &mut self ) {
+//         println!( "dumping the logger" );
+//         for (step, path, step_duration, substeps) in &self.steps {
+//             let elapsed_time = Colored {
+//                 text: format!( "{}s", step_duration.as_secs_f64() ),
+//                 fg: Fg::White,
+//                 ..Default::default()
+//             };
+
+//             let padding = STEP_PADDING - step.text.len();
+//             eprintln!( "{}: {:padding$}{} in {}", step, "", path.display(), elapsed_time );
+
+//             for (substep, substep_duration) in substeps {
+//                 let elapsed_time = Colored {
+//                     text: format!( "{}s", substep_duration.as_secs_f64() ),
+//                     fg: Fg::White,
+//                     ..Default::default()
+//                 };
+
+//                 let padding = SUBSTEP_PADDING - substep.text.len();
+//                 eprintln!( "    {}: {:padding$}in {}", substep, "", elapsed_time );
+//             }
+//         }
+
+//         let elapsed_time = Colored {
+//             text: format!( "{}s", Instant::now().elapsed().as_secs_f64() ),
+//             fg: Fg::White,
+//             ..Default::default()
+//         };
+
+//         let padding = STEP_PADDING - &DONE.text.len();
+//         eprintln!( "{}: {:padding$}in {}", &DONE, "", elapsed_time );
+//     }
+// }
 
 struct Kay;
 
@@ -4163,11 +4166,13 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
     -h, --help            Display this message
     -v, --version         Display the compiler version
     -c, --color <{MODE}>    Wether to display colored output ({MODE}: auto (default), never, always)
+    -q, --quiet           Don't display any diagnostic messages
+    -V, --verbose         Display extra diagnostic messages
 
 {RUN_MODE}:
-    check   <{FILE}>              Check the source code for correctness
-    compile <{FILE}> [{OUTPUT}]     Compile the source code down to an executable
-    run     <{FILE}> [{OUTPUT}]     Compile and run the generated executable
+    check    <{FILE}>              Check the source code for correctness
+    compile  <{FILE}> [{OUTPUT}]     Compile the source code down to an executable
+    run      <{FILE}> [{OUTPUT}]     Compile and run the generated executable
 
 {OUTPUT}:
     -o, --output <{PATH}>       Folder to populate with compilation artifacts (.asm, .o, executable) (default: '.')"
@@ -4182,19 +4187,15 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
     fn from_vec( #[allow( unused_mut )] mut args: Vec<String> ) -> Result<(), ExitCode> {
         let mut current_arg = 1; // starting at 1 to skip the name of this executable
         // to quickly debug
-        // args.push( "-c".to_string() );
-        // args.push( "never".to_string() );
-        // args.push( "-v".to_string() );
-        // args.push( "-h".to_string() );
         // args.push( "run".to_string() );
-        // args.push( "examples/features_test.blz".to_string() );
+        // args.push( "examples/features_test.kay".to_string() );
         // args.push( "-o".to_string() );
         // args.push( "examples/out".to_string() );
-        // args.push( "compile".to_string() );
-        // args.push( "examples/features_test.blz".to_string() );
+        // args.push( "-c".to_string() );
+        // args.push( "never".to_string() );
 
 
-        // looking for color modes flags
+        // looking for color modes
         let mut color_mode: Option<Color> = None;
 
         while current_arg < args.len() {
@@ -4232,13 +4233,13 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
         color_mode.set();
 
 
-        // looking for help commands
         // printing help message when no arguments were provided
         if args.len() < 2 {
             Self::print_usage( color_mode );
             return Ok( () );
         }
 
+        // looking for help commands
         current_arg = 1;
         while current_arg < args.len() {
             let arg = &args[ current_arg ];
@@ -4265,13 +4266,14 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
 
 
         // looking for other commands
+        let mut verbosity: Option<Verbosity> = None;
         let mut run_mode: Option<RunMode> = None;
 
         current_arg = 1;
         while current_arg < args.len() {
             let arg = &args[ current_arg ];
             match arg.as_str() {
-                "check" | "compile" | "run" => {
+                "check"| "compile" | "run" => {
                     if let Some( _ ) = run_mode {
                         eprintln!( "{}: run mode already selected", ERROR );
                         return Err( ExitCode::FAILURE );
@@ -4290,16 +4292,16 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
                         "compile" | "run" => {
                             let mut output_path: Option<PathBuf> = None;
 
-                            current_arg += 1;
-                            if current_arg < args.len() {
-                                let out_arg = &args[ current_arg ];
+                            if current_arg + 1 < args.len() {
+                                let out_arg = &args[ current_arg + 1 ];
                                 if out_arg == "-o" || out_arg == "--output" {
                                     current_arg += 1;
-                                    if current_arg >= args.len() {
+                                    if current_arg + 1 >= args.len() {
                                         eprintln!( "{}: missing output folder path", ERROR );
                                         return Err( ExitCode::FAILURE );
                                     }
 
+                                    current_arg += 1;
                                     output_path = Some( args[ current_arg ].to_owned().into() );
                                 }
                             }
@@ -4313,8 +4315,18 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
                         _ => unreachable!(),
                     };
                 },
-                "-h" | "--help" | "-v" | "--version" => (),
-                "-c" | "--color" => current_arg += 1,
+                "-q" | "--quiet" | "-V" | "--verbose" => {
+                    if let Some( _ ) = verbosity {
+                        eprintln!( "{}: verbosity mode already selected", ERROR );
+                        return Err( ExitCode::FAILURE );
+                    }
+
+                    verbosity = match arg.as_str() {
+                        "-q" | "--quiet" => Some( Verbosity::Quiet ),
+                        "-V" | "--verbose" => Some( Verbosity::Verbose ),
+                        _ => unreachable!(),
+                    };
+                },
                 "-o" | "--output" => {
                     current_arg += 1;
                     if current_arg < args.len() {
@@ -4331,6 +4343,8 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
                     eprintln!( "{}: output folder option can only be used after a 'compile' or 'run' command", ERROR );
                     return Err( ExitCode::FAILURE );
                 }
+                "-h" | "--help" | "-v" | "--version" => {},
+                "-c" | "--color" => current_arg += 1,
                 _ => {
                     eprintln!( "{}: unrecognized option '{}'", ERROR, arg );
                     return Err( ExitCode::FAILURE );
@@ -4338,8 +4352,16 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
             }
 
             current_arg += 1;
+
         }
 
+
+        let verbosity = match verbosity {
+            Some( mode ) => mode,
+            None => Verbosity::Normal,
+        };
+
+        let mut logger = Logger::new( verbosity );
 
         let run_mode = match run_mode {
             Some( mode ) => mode,
@@ -4357,71 +4379,19 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
             },
         };
 
-        let start_time = Instant::now();
-        let ast = match Checker::check( source_file, &start_time ) {
+        let ast = match Checker::check( source_file, &mut logger ) {
             Ok( ast ) => {
                 // println!( "{:#?}", ast );
                 ast
             }
             Err( mut errors ) => {
-                let mut line_byte_start = errors.errors[ 0 ].line_byte_start;
-                let mut line_text = String::new();
-                let _ = errors.src.src.seek( SeekFrom::Start( line_byte_start as u64 ) );
-                let _ = errors.src.src.read_line( &mut line_text );
-
-                for error in &errors.errors {
-                    if line_byte_start != error.line_byte_start {
-                        line_byte_start = error.line_byte_start;
-                        line_text.clear();
-                        let _ = errors.src.src.seek( SeekFrom::Start( line_byte_start as u64 ) );
-                        let _ = errors.src.src.read_line( &mut line_text );
-                    }
-
-                    let error_msg = Colored {
-                        text: error.msg.to_string().into(),
-                        fg: Fg::White,
-                        flags: Flags::Bold,
-                        ..Default::default()
-                    };
-
-                    let line_number_and_bar = Colored {
-                        text: format!( "{} |", error.line ).into(),
-                        fg: Fg::LightBlue,
-                        ..Default::default()
-                    };
-
-                    let visualization_padding = line_number_and_bar.text.len();
-                    let at_padding = visualization_padding - 1;
-
-                    let pointers_col = error.col - 1;
-                    let pointers_len = error.len;
-
-                    let pointers_and_help_msg = Colored {
-                        text: format!( "{:^>pointers_len$} {}", "", error.help_msg ).into(),
-                        fg: Fg::LightRed,
-                        ..Default::default()
-                    };
-
-                    eprintln!(
-                        "{}: {}\
-                        \n{:>#at_padding$}: {}:{}:{}\
-                        \n{:>#visualization_padding$}\
-                        \n{} {}\
-                        \n{:>#visualization_padding$} {:>pointers_col$}{}\n",
-                        ERROR, error_msg,
-                        AT, errors.src.path.display(), error.line, error.col,
-                        BAR,
-                        line_number_and_bar, line_text.trim_end(),
-                        BAR, "", pointers_and_help_msg
-                    );
-                }
-
+                errors.display();
                 return Err( ExitCode::FAILURE );
             }
         };
 
         match &run_mode.kind {
-            RunModeKind::Check => (/* do nothing */),
+            RunModeKind::Check => logger.done(),
             RunModeKind::Compile { out_path, run } => {
                 let mut compiler = Compiler {
                     src_path: run_mode.src_path.into(),
@@ -4436,7 +4406,7 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
                     loop_idx_stack: Vec::new(),
                 };
 
-                let executable_path = match compiler.compile( &start_time ) {
+                let executable_path = match compiler.compile( &mut logger ) {
                     Ok( path ) => path,
                     Err( err ) => {
                         eprintln!( "{}", err );
@@ -4444,17 +4414,11 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
                     },
                 };
 
-                let done_time = start_time.elapsed();
-                let elapsed_done = Colored {
-                    text: format!( "{}s", done_time.as_secs_f64() ).into(),
-                    fg: Fg::LightGray,
-                    ..Default::default()
-                };
-                eprintln!( "{}: {} ... in {}", DONE, executable_path.display(), elapsed_done );
+                logger.done();
 
                 if *run {
-                    match compiler.run( &executable_path ) {
-                        Ok( _ ) => (),
+                    match compiler.run( &mut logger, &executable_path ) {
+                        Ok( _ ) => {},
                         Err( err ) => {
                             eprintln!( "{}", err );
                             return Err( ExitCode::FAILURE );
@@ -4472,7 +4436,6 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
     }
 }
 
-
 // IDEA adapt SyntaxErrors to report cli mistakes
 // IDEA add compiler flag to compile all blz files in directory
 fn main() -> ExitCode {
@@ -4482,18 +4445,19 @@ fn main() -> ExitCode {
     }
 }
 
+// TODO implement testing of the differences between compilation and interpretation mode
 #[cfg( test )]
 mod tests {
     use std::{path::Path, process::ExitCode};
 
-    use crate::Kay;
+    use crate::*;
 
     #[test]
-    fn project_eulers() -> Result<(), ExitCode> {
+    fn test_checking() -> Result<(), ExitCode> {
         for src_file in Path::new( "./examples" ).read_dir().unwrap() {
             let src_file_path = src_file.unwrap().path();
             if let Some( extension ) = src_file_path.extension() {
-                if extension == "blz" {
+                if extension == "kay" {
                     let args = vec!["".to_string(), "check".to_string(), src_file_path.display().to_string() ];
                     Kay::from_vec( args )?;
                 }

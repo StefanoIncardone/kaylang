@@ -1,5 +1,0 @@
-var i: int = 19;
-if i % 15 == 0     do println "fizzbuz";
-else if i % 3 == 0 do println "fizz";
-else if i % 5 == 0 do println "buzz";
-else               do println i;

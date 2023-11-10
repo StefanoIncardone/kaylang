@@ -1,9 +1,9 @@
-let number = 600851475143;
+let TARGET_NUMBER = 600851475143;
 var largest_prime = 0;
 
 var factor = 1;
-loop factor ** 2 <= number {
-    if number % factor == 0 {
+loop factor ** 2 <= TARGET_NUMBER {
+    if TARGET_NUMBER % factor == 0 {
         var is_prime = true;
         if factor == 2 || factor == 3 do is_prime = true;
         else if factor <= 1 || factor % 2 == 0 || factor % 3 == 0 do is_prime = false;
