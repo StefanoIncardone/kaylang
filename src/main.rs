@@ -40,23 +40,23 @@ const ERR_FG:    Fg    = Fg::LightRed;
 const ERR_BG:    Bg    = Bg::Default;
 const ERR_FLAGS: Flags = Flag::Bold;
 
-static ERROR: ColoredStr = ColoredStr { text: "Error", fg: ERR_FG,   bg: ERR_BG, flags: ERR_FLAGS };
-static CAUSE: ColoredStr = ColoredStr { text: "Cause", fg: ERR_FG,   bg: ERR_BG, flags: ERR_FLAGS };
-static AT:    ColoredStr = ColoredStr { text: "at",    fg: ERR_FG,   bg: ERR_BG, flags: ERR_FLAGS };
-static BAR:   ColoredStr = ColoredStr { text: "|",     fg: Fg::Blue, bg: ERR_BG, flags: ERR_FLAGS };
+static ERROR: ColoredStr = ColoredStr { text: "Error", fg: ERR_FG,        bg: ERR_BG, flags: ERR_FLAGS };
+static CAUSE: ColoredStr = ColoredStr { text: "Cause", fg: ERR_FG,        bg: ERR_BG, flags: ERR_FLAGS };
+static AT:    ColoredStr = ColoredStr { text: "at",    fg: ERR_FG,        bg: ERR_BG, flags: ERR_FLAGS };
+static BAR:   ColoredStr = ColoredStr { text: "|",     fg: Fg::LightBlue, bg: ERR_BG, flags: ERR_FLAGS };
 
 // help messages
 const HELP_FG:    Fg    = Fg::White;
 const HELP_BG:    Bg    = Bg::Default;
 const HELP_FLAGS: Flags = Flag::Bold;
 
-static VERSION:  ColoredStr = ColoredStr { text: env!( "CARGO_PKG_VERSION" ), fg: HELP_FG,   bg: HELP_BG, flags: HELP_FLAGS };
-static OPTIONS:  ColoredStr = ColoredStr { text: "Options",                   fg: HELP_FG,   bg: HELP_BG, flags: HELP_FLAGS };
-static RUN_MODE: ColoredStr = ColoredStr { text: "Run mode",                  fg: HELP_FG,   bg: HELP_BG, flags: HELP_FLAGS };
-static MODE:     ColoredStr = ColoredStr { text: "mode",                      fg: HELP_FG,   bg: HELP_BG, flags: HELP_FLAGS };
-static FILE:     ColoredStr = ColoredStr { text: "file",                      fg: HELP_FG,   bg: HELP_BG, flags: HELP_FLAGS };
-static PATH:     ColoredStr = ColoredStr { text: "path",                      fg: HELP_FG,   bg: HELP_BG, flags: HELP_FLAGS };
-static OUTPUT:   ColoredStr = ColoredStr { text: "Output",                    fg: HELP_FG,   bg: HELP_BG, flags: HELP_FLAGS };
+static VERSION:  ColoredStr = ColoredStr { text: env!( "CARGO_PKG_VERSION" ), fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+static OPTIONS:  ColoredStr = ColoredStr { text: "Options",                   fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+static RUN_MODE: ColoredStr = ColoredStr { text: "Run mode",                  fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+static MODE:     ColoredStr = ColoredStr { text: "mode",                      fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+static FILE:     ColoredStr = ColoredStr { text: "file",                      fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+static PATH:     ColoredStr = ColoredStr { text: "path",                      fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+static OUTPUT:   ColoredStr = ColoredStr { text: "Output",                    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
 
 
 #[allow( dead_code )]
@@ -64,22 +64,22 @@ static OUTPUT:   ColoredStr = ColoredStr { text: "Output",                    fg
 #[repr( u8 )]
 enum Fg {
     #[default] Default = 0,
-    Black = 30,
-    Red = 31,
-    Green = 32,
-    Yellow = 33,
-    Blue = 34,
-    Magenta = 35,
-    Cyan = 36,
-    LightGray = 37,
-    DarkGray = 90,
-    LightRed = 91,
-    LightGreen = 92,
-    LightYellow = 93,
-    LightBlue = 94,
-    LightMagenta = 95,
-    LightCyan = 96,
-    White = 97,
+    Black              = 30,
+    Red                = 31,
+    Green              = 32,
+    Yellow             = 33,
+    Blue               = 34,
+    Magenta            = 35,
+    Cyan               = 36,
+    LightGray          = 37,
+    DarkGray           = 90,
+    LightRed           = 91,
+    LightGreen         = 92,
+    LightYellow        = 93,
+    LightBlue          = 94,
+    LightMagenta       = 95,
+    LightCyan          = 96,
+    White              = 97,
 }
 
 #[allow( dead_code )]
@@ -87,22 +87,22 @@ enum Fg {
 #[repr( u8 )]
 enum Bg {
     #[default] Default = 0,
-    Black = 40,
-    DarkRed = 41,
-    DarkGreen = 42,
-    DarkYellow = 43,
-    DarkBlue = 44,
-    DarkMagenta = 45,
-    DarkCyan = 46,
-    DarkWhite = 47,
-    BrightBlack = 100,
-    BrightRed = 101,
-    BrightGreen = 102,
-    BrightYellow = 103,
-    BrightBlue = 104,
-    BrightMagenta = 105,
-    BrightCyan = 106,
-    White = 107,
+    Black              = 40,
+    DarkRed            = 41,
+    DarkGreen          = 42,
+    DarkYellow         = 43,
+    DarkBlue           = 44,
+    DarkMagenta        = 45,
+    DarkCyan           = 46,
+    DarkWhite          = 47,
+    BrightBlack        = 100,
+    BrightRed          = 101,
+    BrightGreen        = 102,
+    BrightYellow       = 103,
+    BrightBlue         = 104,
+    BrightMagenta      = 105,
+    BrightCyan         = 106,
+    White              = 107,
 }
 
 type Flags = u8;
@@ -119,104 +119,9 @@ impl Flag {
     const PositiveText: Flags = 0b0001_0000;
 }
 
-#[allow( non_upper_case_globals )]
-static mut display: fn( &str, Fg, Bg, Flags, &mut std::fmt::Formatter<'_> ) -> std::fmt::Result = Color::color;
-
-#[derive( Debug, Default, Clone, Copy, PartialEq )]
-#[repr( u8 )]
-enum Color {
-    #[default] Auto,
-    Always,
-    Never,
-}
-
-impl Color {
-    pub fn set( &self ) {
-        unsafe { display = match self {
-            Self::Auto   =>
-                if !std::io::stderr().is_terminal() {
-                    Self::no_color
-                }
-                else {
-                    Self::color
-                },
-            Self::Always => Self::color,
-            Self::Never  => Self::no_color,
-        } }
-    }
-
-    // since printing version and help message are the only places where printing to stdoud is
-    // performed we are manually checking if stdout (overring stderr coloring modes) is in terminal
-    // mode until a way to separately print colored/non-colored output to stdout/stderr is found
-    pub fn set_stdout( &self ) {
-        unsafe { display = match self {
-            Self::Auto   =>
-                if !std::io::stdout().is_terminal() {
-                    Self::no_color
-                }
-                else {
-                    Self::color
-                },
-            Self::Always => Self::color,
-            Self::Never  => Self::no_color,
-        } }
-    }
-
-
-    fn no_color( text: &str, _: Fg, _: Bg, _: Flags, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        return text.fmt( f );
-    }
-
-    fn color( text: &str, fg: Fg, bg: Bg, flags: Flags, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        let mut codes = String::with_capacity( 15 );
-
-        if fg != Fg::Default {
-            codes += &format!( "{};", fg as u8 );
-        }
-        if bg != Bg::Default {
-            codes += &format!( "{};", bg as u8 );
-        }
-        if flags & Flag::Bold != 0 {
-            codes += "1;";
-        }
-        if flags & Flag::Underline != 0 {
-            codes += "4;";
-        }
-        if flags & Flag::NoUnderline != 0 {
-            codes += "24;";
-        }
-        if flags & Flag::ReverseText != 0 {
-            codes += "7;";
-        }
-        if flags & Flag::PositiveText != 0 {
-            codes += "27;";
-        }
-
-        return if codes.is_empty() {
-            text.fmt( f )
-        }
-        else {
-            codes.pop(); //remove the last ";"
-
-            write!( f, "\x1b[{}m", codes )?;
-            text.fmt( f )?;
-            write!( f, "\x1b[0m" )
-        }
-    }
-}
-
-
 #[derive( Debug, Default )]
 struct ColoredStr {
     text: &'static str,
-    fg: Fg,
-    bg: Bg,
-    flags: Flags,
-}
-
-#[derive( Debug, Default )]
-struct Colored {
-    text: String,
     fg: Fg,
     bg: Bg,
     flags: Flags,
@@ -226,6 +131,14 @@ impl Display for ColoredStr {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return unsafe { display( self.text, self.fg, self.bg, self.flags, f ) };
     }
+}
+
+#[derive( Debug, Default )]
+struct Colored {
+    text: String,
+    fg: Fg,
+    bg: Bg,
+    flags: Flags,
 }
 
 impl Display for Colored {
@@ -742,6 +655,7 @@ impl SyntaxErrors {
             let pointers_and_help_msg = Colored {
                 text: format!( "{:^>pointers_len$} {}", "", error.help_msg ),
                 fg: Fg::LightRed,
+                flags: Flag::Bold,
                 ..Default::default()
             };
 
@@ -2844,7 +2758,7 @@ impl AST {
 
 struct Checker;
 impl Checker {
-    fn check( src: Src, logger: &mut Logger ) -> Result<AST, SyntaxErrors> {
+    fn check( src: Src, logger: &mut CompilationLogger ) -> Result<AST, SyntaxErrors> {
         logger.step( &CHECKING, &src.path );
 
         let lexer_result = Lexer::try_from( src );
@@ -3001,6 +2915,7 @@ struct StringLabel<'ast> {
 struct Compiler<'ast> {
     src_path: PathBuf,
     out_path: Option<PathBuf>,
+    run: bool,
 
     ast: &'ast AST,
 
@@ -3019,7 +2934,7 @@ struct Compiler<'ast> {
 impl Compiler<'_> {
     const STACK_ALIGN: usize = core::mem::size_of::<usize>();
 
-    fn compile( &mut self, logger: &mut Logger ) -> std::io::Result<PathBuf> {
+    fn compile( &mut self, logger: &mut CompilationLogger ) -> std::io::Result<()> {
         logger.step( &COMPILING, &self.src_path );
 
         let (asm_path, obj_path, exe_path) = if let Some( out_path ) = &self.out_path {
@@ -3318,25 +3233,28 @@ _start:
 
         logger.substep( &LINKER );
         logger.substep_done();
-        return Ok( exe_path );
-    }
+        logger.done();
 
-    fn run( &mut self, logger: &mut Logger, exe_path: &Path ) -> std::io::Result<()> {
-        logger.step( &RUNNING, exe_path );
 
-        return match Command::new( Path::new( "." ).join( exe_path ).display().to_string() ).spawn() {
-            Ok( mut executable ) => match executable.wait() {
-                Ok( _status ) => Ok( () ),
-                Err( err ) => Err( std::io::Error::new(
+        if self.run {
+            logger.step( &RUNNING, &exe_path );
+
+            match Command::new( Path::new( "." ).join( exe_path ).display().to_string() ).spawn() {
+                Ok( mut executable ) => match executable.wait() {
+                    Ok( _status ) => {},
+                    Err( err ) => return Err( std::io::Error::new(
+                        err.kind(),
+                        format!( "{}: could not run executable\n{}: {}", ERROR, CAUSE, err )
+                    ) ),
+                },
+                Err( err ) => return Err( std::io::Error::new(
                     err.kind(),
-                    format!( "{}: could not run executable\n{}: {}", ERROR, CAUSE, err )
+                    format!( "{}: could not create executable process\n{}: {}", ERROR, CAUSE, err )
                 ) ),
-            },
-            Err( err ) => Err( std::io::Error::new(
-                err.kind(),
-                format!( "{}: could not create executable process\n{}: {}", ERROR, CAUSE, err )
-            ) ),
+            }
         }
+
+        return Ok( () );
     }
 }
 
@@ -3383,7 +3301,6 @@ impl<'ast> Compiler<'ast> {
     }
 }
 
-// IDEA convert "match ... self.asm +=" to "self.asm += match ..."
 // Compilation of nodes
 impl<'ast> Compiler<'ast> {
     fn node( &mut self, node: &'ast Node ) {
@@ -4016,15 +3933,79 @@ impl Src {
     }
 }
 
-enum RunModeKind {
-    Check,
-    Compile { out_path: Option<PathBuf>, run: bool },
+
+#[allow( non_upper_case_globals )]
+static mut display: fn( &str, Fg, Bg, Flags, &mut std::fmt::Formatter<'_> ) -> std::fmt::Result = Color::color;
+
+#[derive( Debug, Default, Clone, Copy, PartialEq )]
+#[repr( u8 )]
+enum Color {
+    #[default] Auto,
+    Always,
+    Never,
 }
 
+impl Color {
+    pub fn set( &self ) {
+        unsafe { display = match self {
+            Self::Auto   => if !std::io::stderr().is_terminal() { Self::no_color } else { Self::color },
+            Self::Always => Self::color,
+            Self::Never  => Self::no_color,
+        } }
+    }
 
-struct RunMode {
-    src_path: PathBuf,
-    kind: RunModeKind,
+    // since printing version and help message are the only places where printing to stdoud is
+    // performed we are manually checking if stdout (overring stderr coloring modes) is in terminal
+    // mode until a way to separately print colored/non-colored output to stdout/stderr is found
+    pub fn set_stdout( &self ) {
+        unsafe { display = match self {
+            Self::Auto   => if !std::io::stdout().is_terminal() { Self::no_color } else { Self::color },
+            Self::Always => Self::color,
+            Self::Never  => Self::no_color,
+        } }
+    }
+
+
+    fn no_color( text: &str, _: Fg, _: Bg, _: Flags, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        return text.fmt( f );
+    }
+
+    fn color( text: &str, fg: Fg, bg: Bg, flags: Flags, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        let mut codes = String::with_capacity( 15 );
+
+        if fg != Fg::Default {
+            codes += &format!( "{};", fg as u8 );
+        }
+        if bg != Bg::Default {
+            codes += &format!( "{};", bg as u8 );
+        }
+        if flags & Flag::Bold != 0 {
+            codes += "1;";
+        }
+        if flags & Flag::Underline != 0 {
+            codes += "4;";
+        }
+        if flags & Flag::NoUnderline != 0 {
+            codes += "24;";
+        }
+        if flags & Flag::ReverseText != 0 {
+            codes += "7;";
+        }
+        if flags & Flag::PositiveText != 0 {
+            codes += "27;";
+        }
+
+        return if codes.is_empty() {
+            text.fmt( f )
+        }
+        else {
+            codes.pop(); //remove the last ";"
+
+            write!( f, "\x1b[{}m", codes )?;
+            text.fmt( f )?;
+            write!( f, "\x1b[0m" )
+        }
+    }
 }
 
 
@@ -4034,7 +4015,8 @@ enum Verbosity {
     Verbose,
 }
 
-struct Logger {
+
+struct CompilationLogger {
     start_time: Instant,
     step_time: Instant,
     substep_time: Instant,
@@ -4042,7 +4024,7 @@ struct Logger {
     steps: Vec<(&'static ColoredStr, PathBuf, Duration, Vec<(&'static ColoredStr, Duration)>)>,
 }
 
-impl Logger {
+impl CompilationLogger {
     fn new( verbosity: Verbosity ) -> Self {
         let now = Instant::now();
         return Self {
@@ -4153,8 +4135,16 @@ impl Logger {
 //     }
 // }
 
+enum RunMode {
+    Help,
+    Version,
+    Check { src: PathBuf },
+    Compile { src: PathBuf, out: Option<PathBuf>, run: bool },
+}
+
 struct Kay;
 
+// TODO create CLIParser struct
 impl Kay {
     fn print_usage( color: Color ) {
         Self::print_version( color );
@@ -4187,15 +4177,16 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
     fn from_vec( #[allow( unused_mut )] mut args: Vec<String> ) -> Result<(), ExitCode> {
         let mut current_arg = 1; // starting at 1 to skip the name of this executable
         // to quickly debug
+        args.push( "--help".to_string() );
+        // args.push( "--version".to_string() );
         // args.push( "run".to_string() );
         // args.push( "examples/features_test.kay".to_string() );
         // args.push( "-o".to_string() );
         // args.push( "examples/out".to_string() );
-        // args.push( "-c".to_string() );
-        // args.push( "never".to_string() );
 
 
         // looking for color modes
+        Color::Auto.set();
         let mut color_mode: Option<Color> = None;
 
         while current_arg < args.len() {
@@ -4232,39 +4223,6 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
         };
         color_mode.set();
 
-
-        // printing help message when no arguments were provided
-        if args.len() < 2 {
-            Self::print_usage( color_mode );
-            return Ok( () );
-        }
-
-        // looking for help commands
-        current_arg = 1;
-        while current_arg < args.len() {
-            let arg = &args[ current_arg ];
-            if arg == "-h" || arg == "--help" {
-                Self::print_usage( color_mode );
-                return Ok( () );
-            }
-
-            current_arg += 1;
-        }
-
-
-        // looking for version commands
-        current_arg = 1;
-        while current_arg < args.len() {
-            let arg = &args[ current_arg ];
-            if arg == "-v" || arg == "--version" {
-                Self::print_version( color_mode );
-                return Ok( () );
-            }
-
-            current_arg += 1;
-        }
-
-
         // looking for other commands
         let mut verbosity: Option<Verbosity> = None;
         let mut run_mode: Option<RunMode> = None;
@@ -4273,8 +4231,30 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
         while current_arg < args.len() {
             let arg = &args[ current_arg ];
             match arg.as_str() {
+                "-h" | "--help" => match run_mode {
+                    Some( RunMode::Help ) => {
+                        eprintln!( "{}: help command already selected", ERROR );
+                        return Err( ExitCode::FAILURE );
+                    },
+                    Some( RunMode::Version ) => {
+                        eprintln!( "{}: help and version commands cannot be used together", ERROR );
+                        return Err( ExitCode::FAILURE );
+                    },
+                    _ => run_mode = Some( RunMode::Help ),
+                },
+                "-v" | "--version" => match run_mode {
+                    Some( RunMode::Version ) => {
+                        eprintln!( "{}: version command already selected", ERROR );
+                        return Err( ExitCode::FAILURE );
+                    },
+                    Some( RunMode::Help ) => {
+                        eprintln!( "{}: help and version commands cannot be used together", ERROR );
+                        return Err( ExitCode::FAILURE );
+                    }
+                    _ => run_mode = Some( RunMode::Version ),
+                },
                 "check"| "compile" | "run" => {
-                    if let Some( _ ) = run_mode {
+                    if let Some( RunMode::Check { .. } | RunMode::Compile { .. } ) = run_mode {
                         eprintln!( "{}: run mode already selected", ERROR );
                         return Err( ExitCode::FAILURE );
                     }
@@ -4285,10 +4265,10 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
                         return Err( ExitCode::FAILURE );
                     }
 
-                    let src_path: PathBuf = args[ current_arg ].to_owned().into();
+                    let src: PathBuf = args[ current_arg ].to_owned().into();
 
-                    run_mode = match arg.as_str() {
-                        "check" => Some( RunMode { src_path, kind: RunModeKind::Check } ),
+                    let mode = match arg.as_str() {
+                        "check" => RunMode::Check { src },
                         "compile" | "run" => {
                             let mut output_path: Option<PathBuf> = None;
 
@@ -4306,14 +4286,25 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
                                 }
                             }
 
-                            match arg.as_str() {
-                                "compile" => Some( RunMode { src_path, kind: RunModeKind::Compile { out_path: output_path, run: false } } ),
-                                "run" => Some( RunMode { src_path, kind: RunModeKind::Compile { out_path: output_path, run: true } } ),
+                            let run = match arg.as_str() {
+                                "compile" => false,
+                                "run" => true,
                                 _ => unreachable!(),
-                            }
+                            };
+
+                            RunMode::Compile { src, out: output_path, run }
                         },
                         _ => unreachable!(),
                     };
+
+                    if let Some( RunMode::Help | RunMode::Version ) = run_mode {
+                        // this is just to make sure that run modes commands are properly
+                        // formatted, so we do nothing in the case where the -h, --help, -v
+                        // or --version command was already selected
+                    }
+                    else {
+                        run_mode = Some( mode );
+                    }
                 },
                 "-q" | "--quiet" | "-V" | "--verbose" => {
                     if let Some( _ ) = verbosity {
@@ -4343,7 +4334,6 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
                     eprintln!( "{}: output folder option can only be used after a 'compile' or 'run' command", ERROR );
                     return Err( ExitCode::FAILURE );
                 }
-                "-h" | "--help" | "-v" | "--version" => {},
                 "-c" | "--color" => current_arg += 1,
                 _ => {
                     eprintln!( "{}: unrecognized option '{}'", ERROR, arg );
@@ -4355,77 +4345,70 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
 
         }
 
-
-        let verbosity = match verbosity {
-            Some( mode ) => mode,
-            None => Verbosity::Normal,
-        };
-
-        let mut logger = Logger::new( verbosity );
-
         let run_mode = match run_mode {
             Some( mode ) => mode,
-            None => {
-                Self::print_usage( color_mode );
-                return Ok( () );
-            },
+            None => RunMode::Help,
         };
 
-        let source_file = match Src::try_from( Path::new( &run_mode.src_path ) ) {
-            Ok( src ) => src,
-            Err( err ) => {
-                eprintln!( "{}", err );
-                return Err( ExitCode::FAILURE );
-            },
-        };
-
-        let ast = match Checker::check( source_file, &mut logger ) {
-            Ok( ast ) => {
-                // println!( "{:#?}", ast );
-                ast
-            }
-            Err( mut errors ) => {
-                errors.display();
-                return Err( ExitCode::FAILURE );
-            }
-        };
-
-        match &run_mode.kind {
-            RunModeKind::Check => logger.done(),
-            RunModeKind::Compile { out_path, run } => {
-                let mut compiler = Compiler {
-                    src_path: run_mode.src_path.into(),
-                    out_path: out_path.clone(),
-                    ast: &ast,
-                    rodata: String::new(),
-                    asm: String::new(),
-                    variables: Vec::new(),
-                    strings: Vec::new(),
-                    if_idx: 0,
-                    loop_idx: 0,
-                    loop_idx_stack: Vec::new(),
+        // TODO move this to a RunMode impl block
+        match &run_mode {
+            RunMode::Help => Self::print_usage( color_mode ),
+            RunMode::Version => Self::print_version( color_mode ),
+            RunMode::Check { src } | RunMode::Compile { src, .. } => {
+                let verbosity = match verbosity {
+                    Some( mode ) => mode,
+                    None => Verbosity::Normal,
                 };
 
-                let executable_path = match compiler.compile( &mut logger ) {
-                    Ok( path ) => path,
+                let mut logger = CompilationLogger::new( verbosity );
+
+                let source_file = match Src::try_from( Path::new( &src ) ) {
+                    Ok( src ) => src,
                     Err( err ) => {
                         eprintln!( "{}", err );
                         return Err( ExitCode::FAILURE );
                     },
                 };
 
-                logger.done();
-
-                if *run {
-                    match compiler.run( &mut logger, &executable_path ) {
-                        Ok( _ ) => {},
-                        Err( err ) => {
-                            eprintln!( "{}", err );
-                            return Err( ExitCode::FAILURE );
-                        },
+                let ast = match Checker::check( source_file, &mut logger ) {
+                    Ok( ast ) => {
+                        // println!( "{:#?}", ast );
+                        ast
                     }
+                    Err( mut errors ) => {
+                        errors.display();
+                        return Err( ExitCode::FAILURE );
+                    }
+                };
+
+                match run_mode {
+                    RunMode::Check { .. } => logger.done(),
+                    RunMode::Compile { src, out, run } => {
+                        let mut compiler = Compiler {
+                            src_path: src,
+                            out_path: out,
+                            run,
+                            ast: &ast,
+                            rodata: String::new(),
+                            asm: String::new(),
+                            variables: Vec::new(),
+                            strings: Vec::new(),
+                            if_idx: 0,
+                            loop_idx: 0,
+                            loop_idx_stack: Vec::new(),
+                        };
+
+                        match compiler.compile( &mut logger ) {
+                            Ok( _ ) => {},
+                            Err( err ) => {
+                                eprintln!( "{}", err );
+                                return Err( ExitCode::FAILURE );
+                            },
+                        }
+                    },
+                    RunMode::Help | RunMode::Version => unreachable!(),
                 }
-            }
+            },
         }
 
         return Ok( () );
