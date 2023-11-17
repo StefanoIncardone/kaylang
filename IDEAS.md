@@ -6,11 +6,30 @@
 
 From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProjects/bldaps_for/common/bldaps_under_inpext.htm#:~:text=Typical%20Fortran%20source%20files%20have,f.)
 
-## Loops
+## Loops/ifs/switches
 
-- loops similar to [Odin's for loops](https://odin-lang.org/docs/overview/#for-statement)
+- loops and ifs similar to Odin's [for loops](https://odin-lang.org/docs/overview/#for-statement) and [if statements](https://odin-lang.org/docs/overview/#if-statement)
 - do-loop loops, only for C-style while loops
     - cannot be used with infinite loops or with C-style for loops
+
+### switch statements
+
+```kay
+let answer = 0;
+
+# regular if
+if answer == 19      do println "lucky";
+else if answer == 21 do println "you stoopid";
+else if answer == 42 do println "that's the right answer";
+else                 do println "too bad";
+
+# switch statement
+if answer
+case 19 do println "lucky";
+case 21 do println "you stoopid";
+case 42 do println "that's the right answer";
+else    do println "too bad";
+```
 
 ## Once keyword
 
@@ -27,6 +46,12 @@ From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProj
 ## Operators
 
 have them as built-in operators or just implement them as functions
+
+- divmod:
+
+    ```kay
+    let division, remainder = 3 /% 2; # will result in 1, 1
+    ```
 
 - absolute value, enclosed by a `|`:
 
@@ -208,14 +233,12 @@ let rgb = RGB { 255, 255, 255 };
 
 ### Inheritance
 
-(NOTE: convert `extends` keyword to `using`, and have it also represent inclusion of other modules/files)
-
 inheritance is just syntactic sugar, this allows for any extended type to be passed as "base" type only carrying
 the fields defined in the base type:
 
 ```kay
 struct RGBA_unnamed {
-    extends RGB,
+    using RGB,
     a: u8
 }
 
@@ -229,26 +252,26 @@ struct RBGA {
 
 # or we can give a name to the "extension" and acces the RGB fields as rgb.r, rgb.g, rgb.b
 struct RGBA_named {
-    rgb: extends RGB,
+    rgb: using RGB,
     a: u8
 }
 
 # Multiple extension are not allowed
 struct RGBA {
-    rgb: extends RGB,
-    rgb2: extends RGB, # not allowed
+    rgb: using RGB,
+    rgb2: using RGB, # not allowed
     a: u8
 }
 
 struct RGBA {
-    extends RGB,
-    rgb2: extends RGB, # not allowed
+    using RGB,
+    rgb2: using RGB, # not allowed
     a: u8
 }
 
 struct RGBA {
-    extends RGB,
-    extends RGB, # not allowed
+    using RGB,
+    using RGB, # not allowed
     a: u8
 }
 
@@ -413,25 +436,6 @@ const some_function();
 static some_function();
 ```
 
-## switch statements
-
-```kay
-let answer = 0;
-
-# regular if
-if answer == 19      do println "lucky";
-else if answer == 21 do println "you stoopid";
-else if answer == 42 do println "that's the right answer";
-else                 do println "too bad";
-
-# switch statement
-if answer
-case 19 do println "lucky";
-case 21 do println "you stoopid";
-case 42 do println "that's the right answer";
-else    do println "too bad";
-```
-
 ## pass/none/whatever equivalent to doing nothing (python's pass)
 
 let answer = 0;
@@ -449,3 +453,112 @@ specific function, so the compiler can basically inject the tagged union represe
 check for the type of the object by itself
 
 maybe optionally enable true dynamic dispatch on demand with v-tables and stuff
+
+## MATLAB-inspired [function](https://www.mathworks.com/help/matlab/ref/function.html) definitions
+
+```kay
+# introductory keyword
+fn
+
+# return values
+[result: int, remainder: int]
+
+# return values' names are optional
+[int, int]
+
+# equals sign to make it ease to copy paste this function definition in code
+=
+
+# name of the function
+divmod
+
+# function arguments
+( dividend: int, divisor: int )
+
+# body of the function, can also be in the do single-statement form
+{
+    # we can name our return values
+    return result = dividend / divisor, remainder = dividend % divisor;
+
+    # or not, where return values' names just serve as comments
+    return dividend / divisor, dividend % divisor;
+}
+```
+
+putting it all together:
+
+```kay
+
+# no return values
+fn [] = answer() do return 42;
+
+# with named return values (NOTE: naked returns are not going to be allowed)
+fn [result: int, remainder: int] = divmod( dividend: int, divisor: int )
+    do return result = dividendo / divisor, remainder = dividendo % divisor;
+
+# with unnamed return values
+fn [int, int] = divmod( dividend: int, divisor: int ) do return dividend / divisor, remainder = dividend % divisor;
+```
+
+
+```kay
+# or have it like this
+
+# with return values
+fn result: int, remainder: int = divmod( dividend: int, divisor: int ) do return result = dividend / divisor, remainder = dividend % divisor;
+
+# no return values
+fn answer() do return 42;
+```
+
+going from function definition to usage would look like this
+
+```kay
+# function definition
+fn result: int, remainder: int = divmod( dividend: int, divisor: int ) do return result = dividend / divisor, remainder = dividend % divisor;
+
+# from here onwards we are pretending that each line is the progression of steps needed to go from function definition to the usage
+
+# copy paste the definition
+fn result: int, remainder: int = divmod( dividend: int, divisor: int ) do return result = dividend / divisor, remainder = dividend % divisor;
+
+# change 'fn' to 'let'/'var'
+let result: int, remainder: int = divmod( dividend: int, divisor: int ) do return result = dividend / divisor, remainder = dividend % divisor;
+
+# remove the function body, keeping the semicolon at the end
+let result: int, remainder: int = divmod( dividend: int, divisor: int );
+
+# remove the function arguments' type hints 
+let result: int, remainder: int = divmod( dividend, divisor );
+
+# done!
+```
+
+going from usage to function definition would look like this
+
+```kay
+let dividend = 3;
+let divisor = 2;
+
+# usage
+let result: int, remainder: int = dividend / divisor, dividend % divisor;
+
+# from here onwards we are pretending that each line is the progression of steps needed to go from usage to the function definition
+
+# copy paste the usage
+let result: int, remainder: int = dividend / divisor, dividend % divisor;
+
+# change 'let'/'var' to 'fn'
+fn result: int, remainder: int = dividend / divisor, dividend % divisor;
+
+# add the function name and arguments
+fn result: int, remainder: int = divmod( dividend: int, divisor: int ) dividend / divisor, dividend % divisor;
+
+# add the function body, with no named returns
+fn result: int, remainder: int = divmod( dividend: int, divisor: int ) do return dividend / divisor, dividend % divisor;
+
+# optionally add named returns
+fn result: int, remainder: int = divmod( dividend: int, divisor: int ) do return result = dividend / divisor, remainder = dividend % divisor;
+
+# done
+```
