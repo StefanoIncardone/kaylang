@@ -2,12 +2,12 @@ use std::{
     io::{BufReader, BufRead, ErrorKind, BufWriter, Write, Seek, SeekFrom, IsTerminal},
     fs::File,
     env::{self, Args},
-    process::{ExitCode, Command},
+    process::{Command, ExitCode},
     fmt::Display,
     path::{Path, PathBuf},
     borrow::Cow,
     num::IntErrorKind,
-    time::{Instant, Duration}
+    time::Instant
 };
 
 
@@ -263,6 +263,7 @@ impl Type {
     }
 }
 
+
 #[derive( Debug, Clone, Copy, PartialEq )]
 enum Operator {
     // unary operators
@@ -487,6 +488,14 @@ impl Len for BracketKind {
     }
 }
 
+#[derive( Debug )]
+struct Bracket {
+    line_byte_start: usize,
+    line_number: usize,
+    col: usize,
+    kind: BracketKind,
+}
+
 #[derive( Debug, Clone )]
 enum TokenKind {
     Comment( String ),
@@ -597,7 +606,18 @@ struct Line {
     token_end_idx: usize,
 }
 
-// TODO create different kinds of errors for different stages of compilation
+
+#[derive( Debug )]
+struct CLIError {
+    msg: Cow<'static, str>,
+}
+
+impl Display for CLIError {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        return write!( f, "{}: {}", ERROR, self.msg );
+    }
+}
+
 // TODO implement NOTE, HINT, HELP in error messages
 #[derive( Debug )]
 struct SyntaxError {
@@ -609,28 +629,23 @@ struct SyntaxError {
     help_msg: Cow<'static, str>,
 }
 
-// TODO find a way to implement display for this
-    // NOTE reading from file requires &mut self, while Display requires a &self
 #[derive( Debug )]
 struct SyntaxErrors {
-    src: Src,
+    src_path: PathBuf,
     errors: Vec<SyntaxError>,
+    error_idxs: Vec<(
+        usize, // error_idx
+        usize, // line_number
+        usize  // line_text
+    )>,
+    line_texts: Vec<String>,
 }
 
-impl SyntaxErrors {
-    fn display( &mut self ) {
-        let mut line_byte_start = self.errors[ 0 ].line_byte_start;
-        let mut line_text = String::new();
-        let _ = self.src.src.seek( SeekFrom::Start( line_byte_start as u64 ) );
-        let _ = self.src.src.read_line( &mut line_text );
-
-        for error in &self.errors {
-            if line_byte_start != error.line_byte_start {
-                line_byte_start = error.line_byte_start;
-                line_text.clear();
-                let _ = self.src.src.seek( SeekFrom::Start( line_byte_start as u64 ) );
-                let _ = self.src.src.read_line( &mut line_text );
-            }
+impl Display for SyntaxErrors {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        for (err_idx, _, err_line_text_idx) in &self.error_idxs {
+            let error = &self.errors[ *err_idx ];
+            let line_text = &self.line_texts[ *err_line_text_idx ];
 
             let error_msg = Colored {
                 text: error.msg.to_string(),
@@ -659,30 +674,91 @@ impl SyntaxErrors {
                 ..Default::default()
             };
 
-            eprintln!(
+            writeln!( f,
                 "{}: {}\
                 \n{:>#at_padding$}: {}:{}:{}\
                 \n{:>#visualization_padding$}\
                 \n{} {} {}\
                 \n{:>#visualization_padding$} {:>pointers_col$}{}\n",
                 ERROR, error_msg,
-                AT, self.src.path.display(), error.line, error.col,
+                AT, self.src_path.display(), error.line, error.col,
                 BAR,
-                line_number, BAR, line_text.trim_end(),
+                line_number, BAR, line_text,
                 BAR, "", pointers_and_help_msg
-            );
+            )?;
+        }
+
+        return Ok( () );
+    }
+
+}
+
+impl SyntaxErrors {
+    fn new( errors: Vec<SyntaxError>, src: &mut Src ) -> Self {
+        let mut this = Self {
+            src_path: src.path.clone(),
+            errors,
+            error_idxs: Vec::new(),
+            line_texts: Vec::new(),
+        };
+
+        let mut line_text = String::new();
+
+        'errors: for error in &this.errors {
+            for (_, line_number, line_text_idx) in &this.error_idxs {
+                if error.line == *line_number {
+                    this.error_idxs.push( (this.error_idxs.len(), error.line, *line_text_idx) );
+                    continue 'errors;
+                }
+            }
+
+            line_text.clear();
+            let _ = src.src.seek( SeekFrom::Start( error.line_byte_start as u64 ) );
+            let _ = src.src.read_line( &mut line_text );
+
+            this.error_idxs.push( (this.error_idxs.len(), error.line, this.line_texts.len()) );
+            this.line_texts.push( line_text.trim_end().to_string() );
+        }
+
+        this.error_idxs.sort_by_key( |err_idx| err_idx.1 );
+        return this;
+    }
+}
+
+#[derive( Debug )]
+struct IOError {
+    kind: ErrorKind,
+    msg: Cow<'static, str>,
+    cause: Cow<'static, str>,
+}
+
+impl Display for IOError {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        return write!( f,
+            "{}: {} [{}]
+            \n{}: {}",
+            ERROR, self.msg, self.kind,
+            CAUSE, self.cause
+        );
+    }
+}
+
+#[derive( Debug )]
+enum KayError {
+    Src( IOError ),
+    Syntax( SyntaxErrors ),
+    BackEnd( IOError ),
+}
+
+impl Display for KayError {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        return match self {
+            Self::Src( error ) | Self::BackEnd( error ) => write!( f, "{}", error ),
+            Self::Syntax( errors )                      => write!( f, "{}", errors ),
         }
     }
 }
 
-
-#[derive( Debug )]
-struct Bracket {
-    line_byte_start: usize,
-    line_number: usize,
-    col: usize,
-    kind: BracketKind,
-}
 
 #[derive( Debug )]
 struct Lexer {
@@ -784,8 +860,6 @@ impl TryFrom<Src> for Lexer {
             }
         }
 
-        // FIX insert bracket related errors in the correct place, right now they appear at the end,
-        // out of order from the rest of the errors
         for bracket in &this.brackets {
             // there can only be open brackets at this point
             this.errors.push( SyntaxError {
@@ -800,7 +874,7 @@ impl TryFrom<Src> for Lexer {
 
         return match this.errors.is_empty() {
             true => Ok( this ),
-            false => Err( SyntaxErrors { src: this.src, errors: this.errors } ),
+            false => Err( SyntaxErrors::new( this.errors, &mut this.src ) ),
         }
     }
 }
@@ -1492,6 +1566,7 @@ impl<'lexer> BoundedPosition<'lexer> for Option<TokenPosition<'lexer>> {
     }
 }
 
+
 #[derive( Debug, Clone )]
 enum Expression {
     Literal( Literal ),
@@ -1522,7 +1597,6 @@ impl TypeOf for Expression {
     }
 }
 
-
 #[derive( Debug, Clone )]
 struct Variable {
     mutability: Mutability,
@@ -1548,9 +1622,9 @@ struct If {
     els: Option<Box<Node>>,
 }
 
+#[allow( dead_code )]
 #[derive( Debug, Clone )]
 enum LoopCondition {
-    #[allow( dead_code )]
     Infinite,
     Pre( Expression ),
     Post( Expression )
@@ -1612,7 +1686,6 @@ impl Display for Node {
     }
 }
 
-
 #[derive( Debug, Clone )]
 struct Scope {
     parent: usize,
@@ -1620,6 +1693,7 @@ struct Scope {
     variables: Vec<Variable>,
     nodes: Vec<Node>,
 }
+
 
 // TODO process entire statement for syntactical correctness and then report all the errors
     // IDEA create Parser class that builds the AST, and then validate the AST afterwards
@@ -1632,10 +1706,10 @@ struct AST {
     errors: Vec<SyntaxError>,
 }
 
-impl TryFrom<Lexer> for AST {
+impl TryFrom<&mut Lexer> for AST {
     type Error = SyntaxErrors;
 
-    fn try_from( lexer: Lexer ) -> Result<Self, Self::Error> {
+    fn try_from( lexer: &mut Lexer ) -> Result<Self, Self::Error> {
         let mut this = Self {
             scopes: vec![Scope {
                 parent: 0,
@@ -1645,7 +1719,7 @@ impl TryFrom<Lexer> for AST {
             }],
             scope: 0,
             loop_depth: 0,
-            errors: Vec::new(),
+            errors: Vec::new()
         };
 
         let mut tokens = lexer.iter();
@@ -1653,7 +1727,7 @@ impl TryFrom<Lexer> for AST {
 
         return match this.errors.is_empty() {
             true => Ok( this ),
-            false => Err( SyntaxErrors { src: lexer.src, errors: this.errors } ),
+            false => Err( SyntaxErrors::new( this.errors, &mut lexer.src ) ),
         }
     }
 }
@@ -2757,6 +2831,7 @@ impl AST {
 
 
 struct Checker;
+
 impl Checker {
     fn check( src: Src, logger: &mut CompilationLogger ) -> Result<AST, SyntaxErrors> {
         logger.step( &CHECKING, &src.path );
@@ -2764,10 +2839,10 @@ impl Checker {
         let lexer_result = Lexer::try_from( src );
         logger.substep( &LEXING );
 
-        let lexer = lexer_result?;
+        let mut lexer = lexer_result?;
         // println!( "{:#?}", lexer );
 
-        let ast_result = AST::try_from( lexer );
+        let ast_result = AST::try_from( &mut lexer );
         logger.substep( &PARSING );
 
         logger.substep_done();
@@ -2934,7 +3009,7 @@ struct Compiler<'ast> {
 impl Compiler<'_> {
     const STACK_ALIGN: usize = core::mem::size_of::<usize>();
 
-    fn compile( &mut self, logger: &mut CompilationLogger ) -> std::io::Result<()> {
+    fn compile( &mut self, logger: &mut CompilationLogger ) -> Result<(), IOError> {
         logger.step( &COMPILING, &self.src_path );
 
         let (asm_path, obj_path, exe_path) = if let Some( out_path ) = &self.out_path {
@@ -2943,10 +3018,11 @@ impl Compiler<'_> {
                 Err( err ) if err.kind() == ErrorKind::AlreadyExists => {},
                 Err( err ) => {
                     logger.substep( &ASM_GENERATION );
-                    return Err( std::io::Error::new(
-                        err.kind(),
-                        format!( "{}: could not create output directory '{}'\n{}: {}", ERROR, out_path.display(), CAUSE, err )
-                    ) );
+                    return Err( IOError {
+                        kind: err.kind(),
+                        msg: format!( "could not create output directory '{}'", out_path.display() ).into(),
+                        cause: err.to_string().into(),
+                    } );
                 }
             }
 
@@ -2964,10 +3040,11 @@ impl Compiler<'_> {
             Ok( file ) => file,
             Err( err ) => {
                 logger.substep( &ASM_GENERATION );
-                return Err( std::io::Error::new(
-                    err.kind(),
-                    format!( "{}: could not create file '{}'\n{}: {}", ERROR, asm_path.display(), CAUSE, err )
-                ) );
+                return Err( IOError {
+                    kind: err.kind(),
+                    msg: format!( "could not create file '{}'", asm_path.display() ).into(),
+                    cause: err.to_string().into(),
+                } );
             },
         };
 
@@ -3173,18 +3250,20 @@ _start:
 
         if let Err( err ) = asm_writer.write_all( program.as_bytes() ) {
             logger.substep( &ASM_GENERATION );
-            return Err( std::io::Error::new(
-                err.kind(),
-                format!( "{}: writing assembly file failed\n{}: {}", ERROR, CAUSE, err )
-            ) );
+            return Err( IOError {
+                kind: err.kind(),
+                msg: "writing assembly file failed".into(),
+                cause: err.to_string().into(),
+            } );
         }
 
         if let Err( err ) = asm_writer.flush() {
             logger.substep( &ASM_GENERATION );
-            return Err( std::io::Error::new(
-                err.kind(),
-                format!( "{}: writing assembly file failed\n{}: {}", ERROR, CAUSE, err )
-            ) );
+            return Err( IOError {
+                kind: err.kind(),
+                msg: "writing assembly file failed".into(),
+                cause: err.to_string().into(),
+            } );
         }
 
         logger.substep( &ASM_GENERATION );
@@ -3195,17 +3274,19 @@ _start:
             Ok( nasm_out ) =>
                 if !nasm_out.status.success() {
                     logger.substep( &ASSEMBLER );
-                    return Err( std::io::Error::new(
-                        ErrorKind::InvalidData,
-                        format!( "{}: nasm assembler failed\n{}: {}", ERROR, CAUSE, String::from_utf8_lossy( &nasm_out.stderr ) )
-                    ) );
+                    return Err( IOError {
+                        kind: ErrorKind::InvalidData,
+                        msg: "nasm assembler failed".into(),
+                        cause: String::from_utf8( nasm_out.stderr ).unwrap().into()
+                    } );
                 },
             Err( err ) => {
                 logger.substep( &ASSEMBLER );
-                return Err( std::io::Error::new(
-                    err.kind(),
-                    format!( "{}: could not create nasm assembler process\n{}: {}", ERROR, CAUSE, err )
-                ) );
+                return Err( IOError {
+                    kind: err.kind(),
+                    msg: "could not create nasm assembler process".into(),
+                    cause: err.to_string().into(),
+                } );
             },
         }
 
@@ -3217,17 +3298,19 @@ _start:
             Ok( ld_out ) =>
                 if !ld_out.status.success() {
                     logger.substep( &LINKER );
-                    return Err( std::io::Error::new(
-                        ErrorKind::InvalidData,
-                        format!( "{}: ld linker failed\n{}: {}", ERROR, CAUSE, String::from_utf8_lossy( &ld_out.stderr ) )
-                    ) );
+                    return Err( IOError {
+                        kind: ErrorKind::InvalidData,
+                        msg: "ld linker failed".into(),
+                        cause: String::from_utf8( ld_out.stderr ).unwrap().into()
+                    } );
                 },
             Err( err ) => {
                 logger.substep( &LINKER );
-                return Err( std::io::Error::new(
-                    err.kind(),
-                    format!( "{}: could not create ld linker process\n{}: {}", ERROR, CAUSE, err )
-                ) );
+                return Err( IOError {
+                    kind: err.kind(),
+                    msg: "could not create ld linker process".into(),
+                    cause: err.to_string().into(),
+                } );
             },
         };
 
@@ -3242,15 +3325,17 @@ _start:
             match Command::new( Path::new( "." ).join( exe_path ).display().to_string() ).spawn() {
                 Ok( mut executable ) => match executable.wait() {
                     Ok( _status ) => {},
-                    Err( err ) => return Err( std::io::Error::new(
-                        err.kind(),
-                        format!( "{}: could not run executable\n{}: {}", ERROR, CAUSE, err )
-                    ) ),
+                    Err( err ) => return Err( IOError {
+                        kind: err.kind(),
+                        msg: "could not run executable".into(),
+                        cause: err.to_string().into(),
+                    } ),
                 },
-                Err( err ) => return Err( std::io::Error::new(
-                    err.kind(),
-                    format!( "{}: could not create executable process\n{}: {}", ERROR, CAUSE, err )
-                ) ),
+                Err( err ) => return Err( IOError {
+                    kind: err.kind(),
+                    msg: "could not create executable process".into(),
+                    cause: err.to_string().into(),
+                } ),
             }
         }
 
@@ -3910,25 +3995,28 @@ struct Src {
 }
 
 impl Src {
-    fn try_from( path: &Path ) -> std::io::Result<Self> {
+    fn try_from( path: &Path ) -> Result<Self, IOError> {
         return match File::open( path ) {
             Ok( file ) => match file.metadata() {
                 Ok( metadata ) => match metadata.is_file() {
                     true => Ok( Self { path: PathBuf::from( path ), src: BufReader::with_capacity( 1, file ) } ),
-                    false => Err( std::io::Error::new(
-                        ErrorKind::InvalidInput,
-                        format!( "{}: invalid path '{}'\n{}: expected a file but got a directory", ERROR, path.display(), CAUSE )
-                    ) ),
+                    false => Err( IOError {
+                        kind: ErrorKind::InvalidInput,
+                        msg: "invalid path".into(),
+                        cause: "expected a file but got a directory".into(),
+                    } ),
                 },
-                Err( err ) => Err( std::io::Error::new(
-                    err.kind(),
-                    format!( "{}: could not read metadata of '{}'\n{}: {}", ERROR, path.display(), CAUSE, err )
-                ) ),
+                Err( err ) => Err( IOError {
+                    kind: err.kind(),
+                    msg: format!( "could not read metadata of '{}'", path.display() ).into(),
+                    cause: err.to_string().into(),
+                } ),
             },
-            Err( err ) => Err( std::io::Error::new(
-                err.kind(),
-                format!( "{}: could not open '{}'\n{}: {}", ERROR, path.display(), CAUSE, err )
-            ) ),
+            Err( err ) => Err( IOError {
+                kind: err.kind(),
+                msg: format!( "could not open '{}'", path.display() ).into(),
+                cause: err.to_string().into(),
+            } ),
         }
     }
 }
@@ -4009,9 +4097,11 @@ impl Color {
 }
 
 
+
+#[derive( Debug, Default, Clone, Copy, PartialEq )]
 enum Verbosity {
+    #[default] Normal,
     Quiet,
-    Normal,
     Verbose,
 }
 
@@ -4021,7 +4111,6 @@ struct CompilationLogger {
     step_time: Instant,
     substep_time: Instant,
     verbosity: Verbosity,
-    steps: Vec<(&'static ColoredStr, PathBuf, Duration, Vec<(&'static ColoredStr, Duration)>)>,
 }
 
 impl CompilationLogger {
@@ -4032,7 +4121,6 @@ impl CompilationLogger {
             step_time: now.clone(),
             substep_time: now.clone(),
             verbosity,
-            steps: Vec::new(),
         };
     }
 
@@ -4053,8 +4141,6 @@ impl CompilationLogger {
 
 
     fn step( &mut self, step: &'static ColoredStr, path: &Path ) {
-        self.steps.push( (step, path.to_owned(), self.start_time.elapsed(), Vec::new() ) );
-
         match self.verbosity {
             Verbosity::Quiet => {},
             Verbosity::Normal | Verbosity::Verbose => self.step_display( step, path ),
@@ -4062,9 +4148,6 @@ impl CompilationLogger {
     }
 
     fn done( &mut self ) {
-        // let last_step = self.steps.len() - 1;
-        // self.steps[ last_step ].3.push( (&DONE, self.start_time.elapsed() ) );
-
         match self.verbosity {
             Verbosity::Quiet | Verbosity::Normal => {},
             Verbosity::Verbose => self.substep_display( &self.start_time, 0, &DONE, STEP_PADDING ),
@@ -4072,9 +4155,6 @@ impl CompilationLogger {
     }
 
     fn substep( &mut self, step: &'static ColoredStr ) {
-        let last_step = self.steps.len() - 1;
-        self.steps[ last_step ].3.push( (step, self.start_time.elapsed() ) );
-
         match self.verbosity {
             Verbosity::Quiet | Verbosity::Normal => {},
             Verbosity::Verbose => {
@@ -4085,9 +4165,6 @@ impl CompilationLogger {
     }
 
     fn substep_done( &mut self ) {
-        // let last_step = self.steps.len() - 1;
-        // self.steps[ last_step ].3.push( (&SUBSTEP_DONE, self.start_time.elapsed() ) );
-
         match self.verbosity {
             Verbosity::Quiet | Verbosity::Normal => {},
             Verbosity::Verbose => {
@@ -4099,42 +4176,6 @@ impl CompilationLogger {
     }
 }
 
-// impl Drop for Logger {
-//     fn drop( &mut self ) {
-//         println!( "dumping the logger" );
-//         for (step, path, step_duration, substeps) in &self.steps {
-//             let elapsed_time = Colored {
-//                 text: format!( "{}s", step_duration.as_secs_f64() ),
-//                 fg: Fg::White,
-//                 ..Default::default()
-//             };
-
-//             let padding = STEP_PADDING - step.text.len();
-//             eprintln!( "{}: {:padding$}{} in {}", step, "", path.display(), elapsed_time );
-
-//             for (substep, substep_duration) in substeps {
-//                 let elapsed_time = Colored {
-//                     text: format!( "{}s", substep_duration.as_secs_f64() ),
-//                     fg: Fg::White,
-//                     ..Default::default()
-//                 };
-
-//                 let padding = SUBSTEP_PADDING - substep.text.len();
-//                 eprintln!( "    {}: {:padding$}in {}", substep, "", elapsed_time );
-//             }
-//         }
-
-//         let elapsed_time = Colored {
-//             text: format!( "{}s", Instant::now().elapsed().as_secs_f64() ),
-//             fg: Fg::White,
-//             ..Default::default()
-//         };
-
-//         let padding = STEP_PADDING - &DONE.text.len();
-//         eprintln!( "{}: {:padding$}in {}", &DONE, "", elapsed_time );
-//     }
-// }
-
 enum RunMode {
     Help,
     Version,
@@ -4142,12 +4183,168 @@ enum RunMode {
     Compile { src: PathBuf, out: Option<PathBuf>, run: bool },
 }
 
-struct Kay;
 
-// TODO create CLIParser struct
+struct Kay {
+    color: Color,
+    verbosity: Verbosity,
+    run_mode: RunMode,
+}
+
+// Parsing of command line arguments
 impl Kay {
-    fn print_usage( color: Color ) {
-        Self::print_version( color );
+    fn from_args( args: Args ) -> Result<Self, CLIError> {
+        return Self::from_vec( args.collect() );
+    }
+
+    fn from_vec( #[allow( unused_mut )] mut args: Vec<String> ) -> Result<Self, CLIError> {
+        // to quickly debug
+        // args.push( "--help".to_string() );
+        // args.push( "--version".to_string() );
+        // args.push( "run".to_string() );
+        // args.push( "examples/features_test.kay".to_string() );
+        // args.push( "-o".to_string() );
+        // args.push( "examples/out".to_string() );
+
+
+        let mut current_arg = 1; // starting at 1 to skip the name of this executable
+
+        Color::Auto.set();
+        let mut color_mode: Option<Color> = None;
+
+        while current_arg < args.len() {
+            let arg = &args[ current_arg ];
+            if arg == "-c" || arg == "--color" {
+                if let Some( _ ) = color_mode {
+                    return Err( CLIError { msg: "color mode already selected".into() } );
+                }
+
+                current_arg += 1;
+                if current_arg >= args.len() {
+                    return Err( CLIError { msg: "expected color mode".into() } );
+                }
+
+                color_mode = match args[ current_arg ].as_str() {
+                    "auto" => Some( Color::Auto ),
+                    "always" => Some( Color::Always ),
+                    "never" => Some( Color::Never ),
+                    _ => return Err( CLIError { msg: "unrecognized color mode".into() } ),
+                };
+            }
+
+            current_arg += 1;
+        }
+
+        let color = color_mode.unwrap_or( Color::Auto );
+        color.set();
+
+        let mut verbosity: Option<Verbosity> = None;
+        let mut run_mode: Option<RunMode> = None;
+
+        current_arg = 1;
+        while current_arg < args.len() {
+            let arg = &args[ current_arg ];
+            match arg.as_str() {
+                "-h" | "--help" => match run_mode {
+                    Some( RunMode::Help )    => return Err( CLIError { msg: "help command already selected".into() } ),
+                    Some( RunMode::Version ) => return Err( CLIError { msg: "help and version commands cannot be used together".into() } ),
+                    _                        => run_mode = Some( RunMode::Help ),
+                },
+                "-v" | "--version" => match run_mode {
+                    Some( RunMode::Version ) => return Err( CLIError { msg: "version command already selected".into() } ),
+                    Some( RunMode::Help )    => return Err( CLIError { msg: "help and version commands cannot be used together".into() } ),
+                    _                        => run_mode = Some( RunMode::Version ),
+                },
+                "check"| "compile" | "run" => {
+                    if let Some( RunMode::Check { .. } | RunMode::Compile { .. } ) = run_mode {
+                        return Err( CLIError { msg: "run mode already selected".into() } );
+                    }
+
+                    current_arg += 1;
+                    if current_arg >= args.len() {
+                        return Err( CLIError { msg: format!( "missing source file path for '{}' mode", arg ).into() } );
+                    }
+
+                    let src: PathBuf = args[ current_arg ].to_owned().into();
+                    let mode = match arg.as_str() {
+                        "check" => RunMode::Check { src },
+                        "compile" | "run" => {
+                            let mut output_path: Option<PathBuf> = None;
+
+                            if current_arg + 1 < args.len() {
+                                let out_arg = &args[ current_arg + 1 ];
+                                if out_arg == "-o" || out_arg == "--output" {
+                                    current_arg += 1;
+                                    if current_arg + 1 >= args.len() {
+                                        return Err( CLIError { msg: "missing output folder path".into() } );
+                                    }
+
+                                    current_arg += 1;
+                                    output_path = Some( args[ current_arg ].to_owned().into() );
+                                }
+                            }
+
+                            match arg.as_str() {
+                                "compile" => RunMode::Compile { src, out: output_path, run: false },
+                                "run"     => RunMode::Compile { src, out: output_path, run: true },
+                                _         => unreachable!(),
+                            }
+
+                        },
+                        _ => unreachable!(),
+                    };
+
+                    if let Some( RunMode::Help | RunMode::Version ) = run_mode {
+                        // this is just to make sure that run modes commands are properly
+                        // formatted, so we do nothing in the case where the -h, --help, -v
+                        // or --version command was already selected
+                    }
+                    else {
+                        run_mode = Some( mode );
+                    }
+                },
+                "-q" | "--quiet" | "-V" | "--verbose" => {
+                    if let Some( _ ) = verbosity {
+                        return Err( CLIError { msg: "verbosity mode already selected".into() } );
+                    }
+
+                    verbosity = match arg.as_str() {
+                        "-q" | "--quiet"   => Some( Verbosity::Quiet ),
+                        "-V" | "--verbose" => Some( Verbosity::Verbose ),
+                        _                  => unreachable!(),
+                    };
+                },
+                "-o" | "--output" => {
+                    current_arg += 1;
+                    if current_arg < args.len() {
+                        let out_arg = &args[ current_arg ];
+                        if out_arg == "-o" || out_arg == "--output" {
+                            current_arg += 1;
+                            if current_arg >= args.len() {
+                                return Err( CLIError { msg: "missing output folder path".into() } );
+                            }
+                        }
+                    }
+
+                    return Err( CLIError { msg: "output folder option can only be used after a 'compile' or 'run' command".into() } );
+                },
+                "-c" | "--color" => current_arg += 1,
+                _ => return Err( CLIError { msg: format!( "unrecognized option '{}'", arg ).into() } ),
+            }
+
+            current_arg += 1;
+        }
+
+        let run_mode = run_mode.unwrap_or( RunMode::Help );
+        let verbosity = verbosity.unwrap_or( Verbosity::Normal );
+
+        return Ok( Self { color, verbosity, run_mode } );
+    }
+}
+
+// Execution of specified commands
+impl Kay {
+    fn print_usage( &self ) -> Result<(), KayError> {
+        let _ = self.print_version();
 
         println!( r"
 Usage: kay [{OPTIONS}] [{RUN_MODE}]
@@ -4167,227 +4364,45 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
 {OUTPUT}:
     -o, --output <{PATH}>       Folder to populate with compilation artifacts (.asm, .o, executable) (default: '.')"
         );
+
+        return Ok( () );
     }
 
-    fn print_version( color: Color ) {
-        color.set_stdout();
+    fn print_version( &self ) -> Result<(), KayError> {
+        self.color.set_stdout();
         println!( "Kaylang compiler, version {}", VERSION );
+
+        return Ok( () );
     }
 
-    fn from_vec( #[allow( unused_mut )] mut args: Vec<String> ) -> Result<(), ExitCode> {
-        let mut current_arg = 1; // starting at 1 to skip the name of this executable
-        // to quickly debug
-        args.push( "--help".to_string() );
-        // args.push( "--version".to_string() );
-        // args.push( "run".to_string() );
-        // args.push( "examples/features_test.kay".to_string() );
-        // args.push( "-o".to_string() );
-        // args.push( "examples/out".to_string() );
 
-
-        // looking for color modes
-        Color::Auto.set();
-        let mut color_mode: Option<Color> = None;
-
-        while current_arg < args.len() {
-            let arg = &args[ current_arg ];
-            if arg == "-c" || arg == "--color" {
-                if let Some( _ ) = color_mode {
-                    eprintln!( "{}: color mode already selected", ERROR );
-                    return Err( ExitCode::FAILURE );
-                }
-
-                current_arg += 1;
-                if current_arg >= args.len() {
-                    eprintln!( "{}: expected color mode", ERROR );
-                    return Err( ExitCode::FAILURE );
-                }
-
-                color_mode = match args[ current_arg ].as_str() {
-                    "auto" => Some( Color::Auto ),
-                    "always" => Some( Color::Always ),
-                    "never" => Some( Color::Never ),
-                    _ => {
-                        eprintln!( "{}: unrecognized color mode", ERROR );
-                        return Err( ExitCode::FAILURE );
-                    },
-                };
-            }
-
-            current_arg += 1;
-        }
-
-        let color_mode = match color_mode {
-            Some( mode ) => mode,
-            None => Color::Auto,
-        };
-        color_mode.set();
-
-        // looking for other commands
-        let mut verbosity: Option<Verbosity> = None;
-        let mut run_mode: Option<RunMode> = None;
-
-        current_arg = 1;
-        while current_arg < args.len() {
-            let arg = &args[ current_arg ];
-            match arg.as_str() {
-                "-h" | "--help" => match run_mode {
-                    Some( RunMode::Help ) => {
-                        eprintln!( "{}: help command already selected", ERROR );
-                        return Err( ExitCode::FAILURE );
-                    },
-                    Some( RunMode::Version ) => {
-                        eprintln!( "{}: help and version commands cannot be used together", ERROR );
-                        return Err( ExitCode::FAILURE );
-                    },
-                    _ => run_mode = Some( RunMode::Help ),
-                },
-                "-v" | "--version" => match run_mode {
-                    Some( RunMode::Version ) => {
-                        eprintln!( "{}: version command already selected", ERROR );
-                        return Err( ExitCode::FAILURE );
-                    },
-                    Some( RunMode::Help ) => {
-                        eprintln!( "{}: help and version commands cannot be used together", ERROR );
-                        return Err( ExitCode::FAILURE );
-                    }
-                    _ => run_mode = Some( RunMode::Version ),
-                },
-                "check"| "compile" | "run" => {
-                    if let Some( RunMode::Check { .. } | RunMode::Compile { .. } ) = run_mode {
-                        eprintln!( "{}: run mode already selected", ERROR );
-                        return Err( ExitCode::FAILURE );
-                    }
-
-                    current_arg += 1;
-                    if current_arg >= args.len() {
-                        eprintln!( "{}: missing source file path for '{}' mode", ERROR, arg );
-                        return Err( ExitCode::FAILURE );
-                    }
-
-                    let src: PathBuf = args[ current_arg ].to_owned().into();
-
-                    let mode = match arg.as_str() {
-                        "check" => RunMode::Check { src },
-                        "compile" | "run" => {
-                            let mut output_path: Option<PathBuf> = None;
-
-                            if current_arg + 1 < args.len() {
-                                let out_arg = &args[ current_arg + 1 ];
-                                if out_arg == "-o" || out_arg == "--output" {
-                                    current_arg += 1;
-                                    if current_arg + 1 >= args.len() {
-                                        eprintln!( "{}: missing output folder path", ERROR );
-                                        return Err( ExitCode::FAILURE );
-                                    }
-
-                                    current_arg += 1;
-                                    output_path = Some( args[ current_arg ].to_owned().into() );
-                                }
-                            }
-
-                            let run = match arg.as_str() {
-                                "compile" => false,
-                                "run" => true,
-                                _ => unreachable!(),
-                            };
-
-                            RunMode::Compile { src, out: output_path, run }
-                        },
-                        _ => unreachable!(),
-                    };
-
-                    if let Some( RunMode::Help | RunMode::Version ) = run_mode {
-                        // this is just to make sure that run modes commands are properly
-                        // formatted, so we do nothing in the case where the -h, --help, -v
-                        // or --version command was already selected
-                    }
-                    else {
-                        run_mode = Some( mode );
-                    }
-                },
-                "-q" | "--quiet" | "-V" | "--verbose" => {
-                    if let Some( _ ) = verbosity {
-                        eprintln!( "{}: verbosity mode already selected", ERROR );
-                        return Err( ExitCode::FAILURE );
-                    }
-
-                    verbosity = match arg.as_str() {
-                        "-q" | "--quiet" => Some( Verbosity::Quiet ),
-                        "-V" | "--verbose" => Some( Verbosity::Verbose ),
-                        _ => unreachable!(),
-                    };
-                },
-                "-o" | "--output" => {
-                    current_arg += 1;
-                    if current_arg < args.len() {
-                        let out_arg = &args[ current_arg ];
-                        if out_arg == "-o" || out_arg == "--output" {
-                            current_arg += 1;
-                            if current_arg >= args.len() {
-                                eprintln!( "{}: missing output folder path", ERROR );
-                                return Err( ExitCode::FAILURE );
-                            }
-                        }
-                    }
-
-                    eprintln!( "{}: output folder option can only be used after a 'compile' or 'run' command", ERROR );
-                    return Err( ExitCode::FAILURE );
-                }
-                "-c" | "--color" => current_arg += 1,
-                _ => {
-                    eprintln!( "{}: unrecognized option '{}'", ERROR, arg );
-                    return Err( ExitCode::FAILURE );
-                }
-            }
-
-            current_arg += 1;
-
-        }
-
-        let run_mode = match run_mode {
-            Some( mode ) => mode,
-            None => RunMode::Help,
-        };
-
-        // TODO move this to a RunMode impl block
-        match &run_mode {
-            RunMode::Help => Self::print_usage( color_mode ),
-            RunMode::Version => Self::print_version( color_mode ),
+    fn execute( &self ) -> Result<(), KayError> {
+        return match &self.run_mode {
+            RunMode::Help => self.print_usage(),
+            RunMode::Version => self.print_version(),
             RunMode::Check { src } | RunMode::Compile { src, .. } => {
-                let verbosity = match verbosity {
-                    Some( mode ) => mode,
-                    None => Verbosity::Normal,
-                };
-
-                let mut logger = CompilationLogger::new( verbosity );
-
                 let source_file = match Src::try_from( Path::new( &src ) ) {
                     Ok( src ) => src,
-                    Err( err ) => {
-                        eprintln!( "{}", err );
-                        return Err( ExitCode::FAILURE );
-                    },
+                    Err( err ) => return Err( KayError::Src( err ) ),
                 };
+
+                let mut logger = CompilationLogger::new( self.verbosity );
 
                 let ast = match Checker::check( source_file, &mut logger ) {
                     Ok( ast ) => {
                         // println!( "{:#?}", ast );
                         ast
-                    }
-                    Err( mut errors ) => {
-                        errors.display();
-                        return Err( ExitCode::FAILURE );
-                    }
+                    },
+                    Err( errors ) => return Err( KayError::Syntax( errors ) ),
                 };
 
-                match run_mode {
+                match &self.run_mode {
                     RunMode::Check { .. } => logger.done(),
                     RunMode::Compile { src, out, run } => {
                         let mut compiler = Compiler {
-                            src_path: src,
-                            out_path: out,
-                            run,
+                            src_path: src.clone(),
+                            out_path: out.clone(),
+                            run: *run,
                             ast: &ast,
                             rodata: String::new(),
                             asm: String::new(),
@@ -4400,53 +4415,66 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
 
                         match compiler.compile( &mut logger ) {
                             Ok( _ ) => {},
-                            Err( err ) => {
-                                eprintln!( "{}", err );
-                                return Err( ExitCode::FAILURE );
-                            },
+                            Err( err ) => return Err( KayError::BackEnd( err ) ),
                         }
                     },
                     RunMode::Help | RunMode::Version => unreachable!(),
                 }
+
+                Ok( () )
             },
         }
-
-        return Ok( () );
-    }
-
-    fn from_args( args: Args ) -> Result<(), ExitCode> {
-        return Self::from_vec( args.collect() );
     }
 }
 
-// IDEA adapt SyntaxErrors to report cli mistakes
-// IDEA add compiler flag to compile all blz files in directory
+
 fn main() -> ExitCode {
     return match Kay::from_args( env::args() ) {
-        Ok( () ) => ExitCode::SUCCESS,
-        Err( code ) => ExitCode::from( code ),
+        Ok( kay ) => match kay.execute() {
+            Ok( () ) => ExitCode::SUCCESS,
+            Err( err ) => {
+                eprintln!( "{}", err );
+                ExitCode::FAILURE
+            },
+        },
+        Err( err ) => {
+            eprintln!( "{}", err );
+            ExitCode::FAILURE
+        },
     }
 }
 
-// TODO implement testing of the differences between compilation and interpretation mode
 #[cfg( test )]
 mod tests {
-    use std::{path::Path, process::ExitCode};
+    use std::path::Path;
 
     use crate::*;
 
+    #[allow( unused_mut )]
     #[test]
-    fn test_checking() -> Result<(), ExitCode> {
+    fn test_checking() -> ExitCode {
         for src_file in Path::new( "./examples" ).read_dir().unwrap() {
             let src_file_path = src_file.unwrap().path();
             if let Some( extension ) = src_file_path.extension() {
                 if extension == "kay" {
                     let args = vec!["".to_string(), "check".to_string(), src_file_path.display().to_string() ];
-                    Kay::from_vec( args )?;
+                    match Kay::from_vec( args ) {
+                        Ok( kay ) => match kay.execute() {
+                            Ok( () ) => {},
+                            Err( err ) => {
+                                eprintln!( "{}", err );
+                                return ExitCode::FAILURE;
+                            },
+                        },
+                        Err( err ) => {
+                            eprintln!( "{}", err );
+                            return ExitCode::FAILURE;
+                        },
+                    }
                 }
             }
         }
 
-        return Ok( () );
+        return ExitCode::SUCCESS;
     }
 }

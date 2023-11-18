@@ -5,6 +5,10 @@
 - renamed language to `kay`
 - revised and added operators
 
+## 0.4.1
+
+- revised compiler API and failure during compilation steps
+
 ## 0.3
 
 ### 0.3.2
