@@ -11,24 +11,24 @@ pub(crate) struct Src {
 }
 
 impl Src {
-    pub(crate) fn try_from( path: &Path ) -> Result<Self, IOError> {
+    pub(crate) fn try_from( path: &Path ) -> Result<Self, IoError> {
         return match File::open( path ) {
             Ok( file ) => match file.metadata() {
                 Ok( metadata ) => match metadata.is_file() {
                     true => Ok( Self { path: PathBuf::from( path ), src: BufReader::with_capacity( 1, file ) } ),
-                    false => Err( IOError {
+                    false => Err( IoError {
                         kind: ErrorKind::InvalidInput,
                         msg: "invalid path".into(),
                         cause: "expected a file but got a directory".into(),
                     } ),
                 },
-                Err( err ) => Err( IOError {
+                Err( err ) => Err( IoError {
                     kind: err.kind(),
                     msg: format!( "could not read metadata of '{}'", path.display() ).into(),
                     cause: err.to_string().into(),
                 } ),
             },
-            Err( err ) => Err( IOError {
+            Err( err ) => Err( IoError {
                 kind: err.kind(),
                 msg: format!( "could not open '{}'", path.display() ).into(),
                 cause: err.to_string().into(),

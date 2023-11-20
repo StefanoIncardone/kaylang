@@ -5,7 +5,6 @@ use crate::Color;
 
 #[allow( dead_code )]
 #[derive( Debug, Default, Clone, Copy, PartialEq )]
-#[repr( u8 )]
 pub(crate) enum Fg {
     #[default] Default = 0,
     Black              = 30,
@@ -28,7 +27,6 @@ pub(crate) enum Fg {
 
 #[allow( dead_code )]
 #[derive( Debug, Default, Clone, Copy, PartialEq )]
-#[repr( u8 )]
 pub(crate) enum Bg {
     #[default] Default = 0,
     Black              = 40,

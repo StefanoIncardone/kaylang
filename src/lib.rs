@@ -1,5 +1,5 @@
 #![deny( private_bounds, private_interfaces )]
-#![allow( clippy::needless_return, clippy::upper_case_acronyms )]
+#![allow( clippy::needless_return )]
 
 use std::{path::{PathBuf, Path}, env::Args, fmt::Display};
 
@@ -91,7 +91,7 @@ impl From<KayArgs> for Kay {
 }
 
 impl TryFrom<Args> for Kay {
-    type Error = CLIError;
+    type Error = CliError;
 
     fn try_from( args: Args ) -> Result<Self, Self::Error> {
         return Self::try_from( args.collect::<Vec<String>>() );
@@ -100,7 +100,7 @@ impl TryFrom<Args> for Kay {
 
 // Command line arguments parsing
 impl TryFrom<Vec<String>> for Kay {
-    type Error = CLIError;
+    type Error = CliError;
 
     fn try_from( args: Vec<String> ) -> Result<Self, Self::Error> {
         let args_iter = args.iter().peekable();
@@ -114,18 +114,18 @@ impl TryFrom<Vec<String>> for Kay {
         while let Some( arg ) = args.next() {
             if arg == "-c" || arg == "--color" {
                 if let Some( mode ) = color_mode {
-                    return Err( CLIError { msg: format!( "'{}' color mode already selected", mode ).into() } );
+                    return Err( CliError { msg: format!( "'{}' color mode already selected", mode ).into() } );
                 }
 
                 let Some( mode ) = args.next() else {
-                    return Err( CLIError { msg: "expected color mode".into() } );
+                    return Err( CliError { msg: "expected color mode".into() } );
                 };
 
                 color_mode = match mode.as_str() {
                     "auto" => Some( Color::Auto ),
                     "always" => Some( Color::Always ),
                     "never" => Some( Color::Never ),
-                    _ => return Err( CLIError { msg: "unrecognized color mode".into() } ),
+                    _ => return Err( CliError { msg: "unrecognized color mode".into() } ),
                 };
             }
         }
@@ -143,29 +143,29 @@ impl TryFrom<Vec<String>> for Kay {
             match arg.as_str() {
                 "-h" | "--help" => match run_mode {
                     Some( RunMode::Help ) => return Err(
-                        CLIError { msg: format!( "'{}' help command already selected", arg ).into() }
+                        CliError { msg: format!( "'{}' help command already selected", arg ).into() }
                     ),
                     Some( RunMode::Version ) => return Err(
-                        CLIError { msg: "help and version commands cannot be used together".into() }
+                        CliError { msg: "help and version commands cannot be used together".into() }
                     ),
                     _ => run_mode = Some( RunMode::Help ),
                 },
                 "-v" | "--version" => match run_mode {
                     Some( RunMode::Version ) => return Err(
-                        CLIError { msg: format!( "'{}' version command already selected", arg ).into()
+                        CliError { msg: format!( "'{}' version command already selected", arg ).into()
                     } ),
                     Some( RunMode::Help ) => return Err(
-                        CLIError { msg: "help and version commands cannot be used together".into() }
+                        CliError { msg: "help and version commands cannot be used together".into() }
                     ),
                     _ => run_mode = Some( RunMode::Version ),
                 },
                 "check"| "compile" | "run" => {
                     if let Some( RunMode::Check { .. } | RunMode::Compile { .. } ) = run_mode {
-                        return Err( CLIError { msg: format!( "'{}' run mode already selected", arg ).into() } );
+                        return Err( CliError { msg: format!( "'{}' run mode already selected", arg ).into() } );
                     }
 
                     let Some( src ) = args.next() else {
-                        return Err( CLIError { msg: format!( "missing source file path for '{}' mode", arg ).into() } );
+                        return Err( CliError { msg: format!( "missing source file path for '{}' mode", arg ).into() } );
                     };
 
                     let mode = match arg.as_str() {
@@ -178,7 +178,7 @@ impl TryFrom<Vec<String>> for Kay {
                                     args.next();
 
                                     let Some( out_path ) = args.next() else {
-                                        return Err( CLIError { msg: "missing output folder path".into() } );
+                                        return Err( CliError { msg: "missing output folder path".into() } );
                                     };
 
                                     out = Some( out_path.into() );
@@ -205,7 +205,7 @@ impl TryFrom<Vec<String>> for Kay {
                 },
                 "-q" | "--quiet" | "-V" | "--verbose" => {
                     if let Some( mode ) = verbosity {
-                        return Err( CLIError { msg: format!( "'{}' verbosity mode already selected", mode ).into() } );
+                        return Err( CliError { msg: format!( "'{}' verbosity mode already selected", mode ).into() } );
                     }
 
                     verbosity = match arg.as_str() {
@@ -216,13 +216,13 @@ impl TryFrom<Vec<String>> for Kay {
                 },
                 "-o" | "--output" => {
                     let Some( _ ) = args.next() else {
-                        return Err( CLIError { msg: "missing output folder path".into() } );
+                        return Err( CliError { msg: "missing output folder path".into() } );
                     };
 
-                    return Err( CLIError { msg: "output folder option can only be used after a 'compile' or 'run' command".into() } );
+                    return Err( CliError { msg: "output folder option can only be used after a 'compile' or 'run' command".into() } );
                 },
                 "-c" | "--color" => { args.next(); },
-                _ => return Err( CLIError { msg: format!( "unrecognized option '{}'", arg ).into() } ),
+                _ => return Err( CliError { msg: format!( "unrecognized option '{}'", arg ).into() } ),
             }
         }
 

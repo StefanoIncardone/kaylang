@@ -24,7 +24,7 @@ pub(crate) struct Compiler<'ast> {
     pub(crate) out_path: Option<PathBuf>,
     pub(crate) run: bool,
 
-    pub(crate) ast: &'ast AST,
+    pub(crate) ast: &'ast Ast,
 
     pub(crate) rodata: String,
     pub(crate) asm: String,
@@ -84,7 +84,7 @@ impl<'ast> Compiler<'ast> {
 impl Compiler<'_> {
     const STACK_ALIGN: usize = core::mem::size_of::<usize>();
 
-    pub(crate) fn compile( &mut self, logger: &mut CompilationLogger ) -> Result<(), IOError> {
+    pub(crate) fn compile( &mut self, logger: &mut CompilationLogger ) -> Result<(), IoError> {
         logger.step( &COMPILING, &self.src_path );
 
         let (asm_path, obj_path, exe_path) = if let Some( out_path ) = &self.out_path {
@@ -93,7 +93,7 @@ impl Compiler<'_> {
                 Err( err ) if err.kind() == ErrorKind::AlreadyExists => {},
                 Err( err ) => {
                     logger.substep( &ASM_GENERATION );
-                    return Err( IOError {
+                    return Err( IoError {
                         kind: err.kind(),
                         msg: format!( "could not create output directory '{}'", out_path.display() ).into(),
                         cause: err.to_string().into(),
@@ -115,7 +115,7 @@ impl Compiler<'_> {
             Ok( file ) => file,
             Err( err ) => {
                 logger.substep( &ASM_GENERATION );
-                return Err( IOError {
+                return Err( IoError {
                     kind: err.kind(),
                     msg: format!( "could not create file '{}'", asm_path.display() ).into(),
                     cause: err.to_string().into(),
@@ -325,7 +325,7 @@ _start:
 
         if let Err( err ) = asm_writer.write_all( program.as_bytes() ) {
             logger.substep( &ASM_GENERATION );
-            return Err( IOError {
+            return Err( IoError {
                 kind: err.kind(),
                 msg: "writing assembly file failed".into(),
                 cause: err.to_string().into(),
@@ -334,7 +334,7 @@ _start:
 
         if let Err( err ) = asm_writer.flush() {
             logger.substep( &ASM_GENERATION );
-            return Err( IOError {
+            return Err( IoError {
                 kind: err.kind(),
                 msg: "writing assembly file failed".into(),
                 cause: err.to_string().into(),
@@ -349,7 +349,7 @@ _start:
             Ok( nasm_out ) =>
                 if !nasm_out.status.success() {
                     logger.substep( &ASSEMBLER );
-                    return Err( IOError {
+                    return Err( IoError {
                         kind: ErrorKind::InvalidData,
                         msg: "nasm assembler failed".into(),
                         cause: String::from_utf8( nasm_out.stderr ).unwrap().into()
@@ -357,7 +357,7 @@ _start:
                 },
             Err( err ) => {
                 logger.substep( &ASSEMBLER );
-                return Err( IOError {
+                return Err( IoError {
                     kind: err.kind(),
                     msg: "could not create nasm assembler process".into(),
                     cause: err.to_string().into(),
@@ -373,7 +373,7 @@ _start:
             Ok( ld_out ) =>
                 if !ld_out.status.success() {
                     logger.substep( &LINKER );
-                    return Err( IOError {
+                    return Err( IoError {
                         kind: ErrorKind::InvalidData,
                         msg: "ld linker failed".into(),
                         cause: String::from_utf8( ld_out.stderr ).unwrap().into()
@@ -381,7 +381,7 @@ _start:
                 },
             Err( err ) => {
                 logger.substep( &LINKER );
-                return Err( IOError {
+                return Err( IoError {
                     kind: err.kind(),
                     msg: "could not create ld linker process".into(),
                     cause: err.to_string().into(),
@@ -400,13 +400,13 @@ _start:
             match Command::new( Path::new( "." ).join( exe_path ).display().to_string() ).spawn() {
                 Ok( mut executable ) => match executable.wait() {
                     Ok( _status ) => {},
-                    Err( err ) => return Err( IOError {
+                    Err( err ) => return Err( IoError {
                         kind: err.kind(),
                         msg: "could not run executable".into(),
                         cause: err.to_string().into(),
                     } ),
                 },
-                Err( err ) => return Err( IOError {
+                Err( err ) => return Err( IoError {
                     kind: err.kind(),
                     msg: "could not create executable process".into(),
                     cause: err.to_string().into(),

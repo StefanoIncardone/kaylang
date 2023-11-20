@@ -133,7 +133,7 @@ pub(crate) struct Scope {
 // TODO process entire statement for syntactical correctness and then report all the errors
     // IDEA create Parser class that builds the AST, and then validate the AST afterwards
 #[derive( Debug )]
-pub(crate) struct AST {
+pub(crate) struct Ast {
     pub(crate) scopes: Vec<Scope>,
     scope: usize,
     loop_depth: usize,
@@ -141,7 +141,7 @@ pub(crate) struct AST {
     errors: Vec<SyntaxError>,
 }
 
-impl TryFrom<&mut Lexer> for AST {
+impl TryFrom<&mut Lexer> for Ast {
     type Error = SyntaxErrors;
 
     fn try_from( lexer: &mut Lexer ) -> Result<Self, Self::Error> {
@@ -168,7 +168,7 @@ impl TryFrom<&mut Lexer> for AST {
 }
 
 // scopes
-impl AST {
+impl Ast {
     fn parse_scope( &mut self, tokens: &mut TokenCursor ) {
         loop {
             match self.parse_single_any( tokens ) {
@@ -411,7 +411,7 @@ impl AST {
 }
 
 // semicolons
-impl AST {
+impl Ast {
     fn semicolon( &mut self, tokens: &mut TokenCursor ) -> Result<(), SyntaxError> {
         let semicolon = tokens.current().bounded( tokens, "expected semicolon" )?;
         return match &semicolon.token.kind {
@@ -436,7 +436,7 @@ impl AST {
 }
 
 // expressions
-impl AST {
+impl Ast {
     fn operator( &mut self, tokens: &mut TokenCursor, ops: &[Operator] ) -> Result<Option<Operator>, SyntaxError> {
         let current_pos = tokens.current().bounded( tokens, "expected operator or semicolon" )?;
         return match current_pos.token.kind {
@@ -813,7 +813,7 @@ impl AST {
 }
 
 // variable definitions and assignments
-impl<'this> AST {
+impl<'this> Ast {
     fn resolve_variable( &'this self, name: &str ) -> Option<(&'this Variable, usize /* scope idx */, usize /* variable idx */)> {
         let mut current_scope = self.scope;
         loop {
@@ -1090,7 +1090,7 @@ impl<'this> AST {
 }
 
 // print statements
-impl AST {
+impl Ast {
     fn print( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
         let print_pos = tokens.current().unwrap();
         if let TokenKind::PrintLn = print_pos.token.kind {
@@ -1112,7 +1112,7 @@ impl AST {
 }
 
 // if statements
-impl AST {
+impl Ast {
     fn iff( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
         let mut if_statement = If { ifs: Vec::new(), els: None };
 
@@ -1198,7 +1198,7 @@ impl AST {
 }
 
 // for statements
-impl AST {
+impl Ast {
     fn loop_statement( &mut self, tokens: &mut TokenCursor ) -> Result<Node, SyntaxError> {
         let do_pos = tokens.current().unwrap();
         let loop_pos = match do_pos.token.kind {

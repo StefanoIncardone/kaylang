@@ -5,11 +5,11 @@ use crate::{Src, logging::*, color::*};
 
 
 #[derive( Debug )]
-pub struct CLIError {
+pub struct CliError {
     pub msg: Cow<'static, str>,
 }
 
-impl Display for CLIError {
+impl Display for CliError {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return write!( f, "{}: {}", ERROR, self.msg );
     }
@@ -119,13 +119,13 @@ impl SyntaxErrors {
 }
 
 #[derive( Debug )]
-pub struct IOError {
+pub struct IoError {
     pub kind: ErrorKind,
     pub msg: Cow<'static, str>,
     pub cause: Cow<'static, str>,
 }
 
-impl Display for IOError {
+impl Display for IoError {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return write!( f,
             "{}: {} [{}]
@@ -139,9 +139,9 @@ impl Display for IOError {
 
 #[derive( Debug )]
 pub enum KayError {
-    Src( IOError ),
+    Src( IoError ),
     Syntax( SyntaxErrors ),
-    BackEnd( IOError ),
+    BackEnd( IoError ),
 }
 
 impl Display for KayError {

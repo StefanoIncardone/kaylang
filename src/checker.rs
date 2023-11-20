@@ -3,7 +3,7 @@ use crate::{logging::*, Src, lexer::*, parser::*, errors::*};
 pub(crate) struct Checker;
 
 impl Checker {
-    pub(crate) fn check( src: Src, logger: &mut CompilationLogger ) -> Result<AST, SyntaxErrors> {
+    pub(crate) fn check( src: Src, logger: &mut CompilationLogger ) -> Result<Ast, SyntaxErrors> {
         logger.step( &CHECKING, &src.path );
 
         let lexer_result = Lexer::try_from( src );
@@ -12,7 +12,7 @@ impl Checker {
         let mut lexer = lexer_result?;
         // println!( "{:#?}", lexer );
 
-        let ast_result = AST::try_from( &mut lexer );
+        let ast_result = Ast::try_from( &mut lexer );
         logger.substep( &PARSING );
 
         logger.substep_done();

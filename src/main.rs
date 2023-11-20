@@ -8,13 +8,13 @@ fn main() -> ExitCode {
     #[allow( unused_mut )]
     let mut args: Vec<String> = env::args().collect();
     // // to quickly debug
-    args.push( "-c".to_string() );
-    args.push( "auto".to_string() );
-    args.push( "run".to_string() );
-    args.push( "examples/features_test.kay".to_string() );
-    args.push( "-o".to_string() );
-    args.push( "examples/out".to_string() );
-    args.push( "-V".to_string() );
+    // args.push( "-c".to_string() );
+    // args.push( "auto".to_string() );
+    // args.push( "run".to_string() );
+    // args.push( "examples/features_test.kay".to_string() );
+    // args.push( "-o".to_string() );
+    // args.push( "examples/out".to_string() );
+    // args.push( "-V".to_string() );
 
     return match Kay::try_from( args ) {
         Ok( kay ) => match kay.execute() {
