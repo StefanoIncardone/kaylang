@@ -1,41 +1,89 @@
-use std::{fmt::Display, path::{PathBuf, Path}, io::{BufReader, ErrorKind, BufRead}, fs::File, num::IntErrorKind};
+use std::{fmt::Display, path::{PathBuf, Path}, io::{ErrorKind, BufReader, BufRead}, fs::File, num::IntErrorKind};
 
 use crate::errors::*;
 
 
-// IDEA make the source generic, eg: to be able to compile from strings instead of just files
+#[derive( Debug, Clone, Copy )]
+pub(crate) struct Line {
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+}
+
 #[derive( Debug )]
-pub(crate) struct Src {
+pub struct Src {
     pub(crate) path: PathBuf,
-    pub(crate) src: BufReader<File>,
+    pub(crate) code: String,
+    pub(crate) lines: Vec<Line>,
 }
 
 impl Src {
     pub(crate) fn try_from( path: &Path ) -> Result<Self, IoError> {
-        return match File::open( path ) {
-            Ok( file ) => match file.metadata() {
-                Ok( metadata ) => match metadata.is_file() {
-                    true => Ok( Self { path: PathBuf::from( path ), src: BufReader::with_capacity( 1, file ) } ),
-                    false => Err( IoError {
-                        kind: ErrorKind::InvalidInput,
-                        msg: "invalid path".into(),
-                        cause: "expected a file but got a directory".into(),
-                    } ),
-                },
-                Err( err ) => Err( IoError {
-                    kind: err.kind(),
-                    msg: format!( "could not read metadata of '{}'", path.display() ).into(),
-                    cause: err.to_string().into(),
-                } ),
-            },
-            Err( err ) => Err( IoError {
+        let file = match File::open( path ) {
+            Ok( f ) => f,
+            Err( err ) => return Err( IoError {
                 kind: err.kind(),
                 msg: format!( "could not open '{}'", path.display() ).into(),
                 cause: err.to_string().into(),
             } ),
+        };
+
+        let file_len = match file.metadata() {
+            Ok( metadata ) => match metadata.is_file() {
+                true => metadata.len() as usize,
+                false => return Err( IoError {
+                    kind: ErrorKind::InvalidInput,
+                    msg: "invalid path".into(),
+                    cause: format!( "expected a file but got directory '{}'", path.display() ).into(),
+                } )
+            },
+            Err( err ) => return Err( IoError {
+                kind: err.kind(),
+                msg: format!( "could not read metadata of '{}'", path.display() ).into(),
+                cause: err.to_string().into(),
+            } ),
+        };
+
+        // plus one to account for a phantom newline at the end
+        let mut data = String::with_capacity( file_len + 1 );
+        let mut lines: Vec<Line> = Vec::new();
+        let mut start = 0;
+        let mut src = BufReader::new( file );
+
+        loop {
+            let chars_read = match src.read_line( &mut data ) {
+                Ok( 0 ) => {
+                    // it will make lexing simpler
+                    if !data.is_empty() {
+                        let last_char = data.len() - 1;
+                        if data.as_bytes()[ last_char ] != b'\n' {
+                            data.push( '\n' );
+                            let last_line = lines.len() - 1;
+                            lines[ last_line ].end += 1;
+                        }
+                    }
+                    break;
+                },
+                Ok( read ) => read,
+                Err( err ) => return Err( IoError {
+                    kind: err.kind(),
+                    msg: format!( "could not read contents of '{}'", path.display() ).into(),
+                    cause: err.to_string().into(),
+                } )
+            };
+
+            let mut end = data.len() - 1;
+            if end > start && data.as_bytes()[ end - 1 ] == b'\r' {
+                end -= 1;
+            }
+
+            lines.push( Line { start, end } );
+            start += chars_read;
         }
+
+        return Ok( Self { path: path.into(), code: data, lines } );
     }
 }
+
 
 pub(crate) trait Len {
     fn len( &self ) -> usize;
@@ -63,7 +111,6 @@ impl Display for Literal {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
             Self::Int( value )       => write!( f, "{}", value ),
-            // TODO create own escaping function
             Self::Char( code )       => write!( f, "'{}'", code.escape_ascii() ),
             Self::Bool( value )      => write!( f, "{}", value ),
             Self::Str( string )      => {
@@ -379,12 +426,11 @@ impl Len for BracketKind {
 
 #[derive( Debug )]
 struct Bracket {
-    line_byte_start: usize,
-    line_number: usize,
     col: usize,
     kind: BracketKind,
 }
 
+// TODO replace String with &'src str
 #[derive( Debug, Clone )]
 pub(crate) enum TokenKind {
     Comment( String ),
@@ -411,15 +457,12 @@ pub(crate) enum TokenKind {
     Loop,
     Break,
     Continue,
-
-    // Special
-    Empty,
 }
 
 impl Display for TokenKind {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
-            Self::Comment( text )    => write!( f, "{}", text ),
+            Self::Comment( text )    => write!( f, "#{}", text ),
             Self::Unexpected( text ) => write!( f, "{}", text ),
 
             Self::Bracket( bracket ) => write!( f, "{}", bracket ),
@@ -443,8 +486,6 @@ impl Display for TokenKind {
             Self::Loop               => write!( f, "loop" ),
             Self::Break              => write!( f, "break" ),
             Self::Continue           => write!( f, "continue" ),
-
-            Self::Empty              => write!( f, "" ),
         }
     }
 }
@@ -475,8 +516,6 @@ impl Len for TokenKind {
             Self::Loop               => 4,
             Self::Break              => 5,
             Self::Continue           => 8,
-
-            Self::Empty              => 0,
         }
     }
 }
@@ -487,119 +526,65 @@ pub(crate) struct Token {
     pub(crate) kind: TokenKind,
 }
 
-#[derive( Debug, Clone, Copy )]
-pub(crate) struct Line {
-    pub(crate) number: usize,
-    pub(crate) byte_start: usize,
-    pub(crate) token_start_idx: usize,
-    pub(crate) token_end_idx: usize,
-}
-
 #[derive( Debug )]
-pub(crate) struct Lexer {
-    pub(crate) src: Src,
+pub(crate) struct Lexer<'src> {
+    src: &'src Src,
 
-    line: usize,
-    line_byte_start: usize,
     col: usize,
     token_start_col: usize,
+    line_end: usize,
 
-    pub(crate) lines: Vec<Line>,
-    pub(crate) tokens: Vec<Token>,
-
-    line_bytes: Vec<u8>,
-    token_text: String,
+    tokens: Vec<Token>,
 
     brackets: Vec<Bracket>,
     errors: Vec<SyntaxError>,
 }
 
-impl TryFrom<Src> for Lexer {
-    type Error = SyntaxErrors;
+impl<'src> Lexer<'src> {
+    pub(crate) fn tokenize( src: &'src Src ) -> Result<Vec<Token>, Vec<SyntaxError>> {
+        if src.lines.is_empty() {
+            return Ok( Vec::new() );
+        }
 
-
-    fn try_from( src: Src ) -> Result<Self, Self::Error> {
         let mut this = Self {
             src,
-            line: 0,
-            line_byte_start: 0,
             col: 0,
-            token_start_col: 1,
-            lines: Vec::new(),
+            token_start_col: 0,
+            line_end: 0,
             tokens: Vec::new(),
-            line_bytes: Vec::new(),
-            token_text: String::new(),
             brackets: Vec::new(),
             errors: Vec::new(),
         };
 
-        let mut line = Line {
-            number: 1,
-            byte_start: 0,
-            token_start_idx: 0,
-            token_end_idx: 0,
-        };
+        for line in &src.lines {
+            if line.start == line.end {
+                continue;
+            }
 
-        loop {
-            this.line_bytes.clear();
-            match this.src.src.read_until( b'\n', &mut this.line_bytes ) {
-                Ok( chars_read ) => {
-                    this.line += 1;
-                    this.col = 0;
-                    this.token_start_col = 1;
-
-                    let mut line_len = this.line_bytes.len();
-                    while line_len > 0 && this.line_bytes[ line_len - 1 ].is_ascii_whitespace() {
-                        line_len -= 1;
-                    }
-
-                    if line_len == 0 {
-                        this.tokens.push( Token { col: 1, kind: TokenKind::Empty } );
-                    }
-                    else {
-                        this.line_bytes.truncate( line_len );
-                        loop {
-                            let token = match this.tokeninze_next() {
-                                Ok( None ) => break,
-                                Ok( Some( kind ) ) => match kind {
-                                    TokenKind::Empty => continue,
-                                    _ => Token { col: this.token_start_col, kind },
-                                },
-                                Err( err ) => {
-                                    this.errors.push( err );
-                                    Token {
-                                        col: this.token_start_col,
-                                        kind: TokenKind::Unexpected( this.token_text() )
-                                    }
-                                }
-                            };
-
-                            this.tokens.push( token );
+            this.col = line.start;
+            this.line_end = line.end;
+            // just to check if we are getting the correct line text
+            let _line_text = &src.code[ line.start..line.end ];
+            loop {
+                let token = match this.tokeninze_next() {
+                    Ok( None ) => break,
+                    Ok( Some( kind ) ) => Token { col: this.token_start_col, kind },
+                    Err( err ) => {
+                        this.errors.push( err );
+                        Token {
+                            col: this.token_start_col,
+                            kind: TokenKind::Unexpected( this.token_text().to_string() )
                         }
                     }
+                };
 
-                    line.token_end_idx = this.tokens.len() - 1;
-                    this.lines.push( line );
-
-                    this.line_byte_start += chars_read;
-                    line.byte_start += chars_read;
-                    line.number += 1;
-                    line.token_start_idx = this.tokens.len();
-
-                    let reached_eof = chars_read == line_len;
-                    if reached_eof {
-                        break;
-                    }
-                },
-                Err( err ) => panic!( "Error: {}", err ),
+                this.tokens.push( token );
             }
         }
 
         for bracket in &this.brackets {
             // there can only be open brackets at this point
             this.errors.push( SyntaxError {
-                line_byte_start: bracket.line_byte_start,
-                line: bracket.line_number,
                 col: bracket.col,
                 len: bracket.kind.len(),
                 msg: "stray bracket".into(),
@@ -608,38 +593,31 @@ impl TryFrom<Src> for Lexer {
         }
 
         return match this.errors.is_empty() {
-            true => Ok( this ),
-            false => Err( SyntaxErrors::new( this.errors, &mut this.src ) ),
+            true => Ok( this.tokens ),
+            false => Err( this.errors ),
         }
     }
 }
 
-impl Lexer {
-    fn gather_token_text( &mut self ) {
-        self.token_text = self.token_text();
-    }
-
-    // TODO move String related function to the Str struct
-    // TODO create own from_utf8 function
-    fn token_text( &self ) -> String {
-        return String::from_utf8_lossy( &self.line_bytes[ self.token_start_col - 1..self.col ] ).into();
+// TODO make next/peek methods return Option<Result> instead of Result<Option>
+impl<'src> Lexer<'src> {
+    fn token_text( &self ) -> &'src str {
+        return &self.src.code[ self.token_start_col..self.col ];
     }
 
     // FIX properly handle non ASCII characters
         // TODO add an absolute column for the bytes in the line
         // IDEA only allow utf-8 characters in strings, characters and comments
     fn next( &mut self ) -> Result<Option<u8>, SyntaxError> {
-        if self.col >= self.line_bytes.len() {
+        if self.col >= self.line_end {
             return Ok( None );
         }
 
-        let next = self.line_bytes[ self.col ];
+        let next = self.src.code.as_bytes()[ self.col ];
         self.col += 1;
         return match next {
             ..=b'\x7F' => Ok( Some( next ) ),
             _ => Err( SyntaxError {
-                line_byte_start: self.line_byte_start,
-                line: self.line,
                 col: self.col,
                 len: 1,
                 msg: "unrecognized character".into(),
@@ -648,17 +626,15 @@ impl Lexer {
         }
     }
 
-    fn peek_next( &self ) -> Result<Option<&u8>, SyntaxError> {
-        if self.col >= self.line_bytes.len() {
+    fn peek_next( &self ) -> Result<Option<&'src u8>, SyntaxError> {
+        if self.col >= self.line_end {
             return Ok( None );
         }
 
-        let next = &self.line_bytes[ self.col ];
+        let next = &self.src.code.as_bytes()[ self.col ];
         return match next {
             ..=b'\x7F' => Ok( Some( next ) ),
             _ => Err( SyntaxError {
-                line_byte_start: self.line_byte_start,
-                line: self.line,
                 col: self.col,
                 len: 1,
                 msg: "unrecognized character".into(),
@@ -669,634 +645,447 @@ impl Lexer {
 
     fn next_char( &mut self ) -> Result<u8, SyntaxError> {
         return match self.next()? {
-            Some( b'\n' ) | None => Err( SyntaxError {
-                line_byte_start: self.line_byte_start,
-                line: self.line,
+            Some( next ) => Ok( next ),
+            None => Err( SyntaxError {
                 col: self.token_start_col,
                 len: self.col - self.token_start_col + 1,
                 msg: "invalid character literal".into(),
                 help_msg: "missing closing single quote".into(),
             } ),
-            Some( next ) => Ok( next ),
         }
     }
 
     fn next_str_char( &mut self ) -> Result<u8, SyntaxError> {
         return match self.next()? {
-            Some( b'\n' ) | None => Err( SyntaxError {
-                line_byte_start: self.line_byte_start,
-                line: self.line,
+            Some( next ) => Ok( next ),
+            None => Err( SyntaxError {
                 col: self.token_start_col,
                 len: self.col - self.token_start_col + 1,
                 msg: "invalid string literal".into(),
                 help_msg: "missing closing double quote".into(),
             } ),
-            Some( next ) => Ok( next ),
         }
     }
 
     fn tokeninze_next( &mut self ) -> Result<Option<TokenKind>, SyntaxError> {
-        self.token_text.clear();
-        let next = match self.next()? {
-            Some( ch ) => ch,
-            None => return Ok( None ),
-        };
+        loop {
+            self.token_start_col = self.col;
+            let next = match self.next()? {
+                Some( ch ) => ch,
+                None => return Ok( None ),
+            };
 
-        // registering the token start column after getting the next character to maintain 1 indexing token columns
-        self.token_start_col = self.col;
-        return match next {
-            // ignore whitespace
-            b'\t' | b'\x0C' | b'\r' | b' ' => Ok( Some( TokenKind::Empty ) ),
-            b'a'..=b'z' | b'A'..=b'Z' | b'_'  => {
-                let mut contains_non_ascii = false;
-                loop {
-                    match self.next() {
-                        Ok( Some( b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_' ) ) => {},
-                        Ok( Some( _ ) ) => {
-                            self.col -= 1;
-                            break;
-                        },
-                        Ok( None ) => break,
-                        Err( _ ) => contains_non_ascii = true,
-                    }
-                }
-
-                if contains_non_ascii {
-                    Err( SyntaxError {
-                        line_byte_start: self.line_byte_start,
-                        line: self.line,
-                        col: self.token_start_col,
-                        len: self.col - self.token_start_col + 1,
-                        msg: "invalid identifier".into(),
-                        help_msg: "contains non-ASCII characters".into(),
-                    } )
-                }
-                else {
-                    self.gather_token_text();
-                    let identifier = match self.token_text.as_str() {
-                        "let"      => TokenKind::Definition( Mutability::Let ),
-                        "var"      => TokenKind::Definition( Mutability::Var ),
-                        "print"    => TokenKind::Print,
-                        "println"  => TokenKind::PrintLn,
-                        "true"     => TokenKind::True,
-                        "false"    => TokenKind::False,
-                        "do"       => TokenKind::Do,
-                        "if"       => TokenKind::If,
-                        "else"     => TokenKind::Else,
-                        "loop"     => TokenKind::Loop,
-                        "break"    => TokenKind::Break,
-                        "continue" => TokenKind::Continue,
-                        _          => TokenKind::Identifier( self.token_text.clone() ),
-                    };
-
-                    Ok( Some( identifier ) )
-                }
-            },
-            b'0'..=b'9' => {
-                let mut contains_non_ascii = false;
-                loop {
-                    match self.next() {
-                        Ok( Some( b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_') ) => {},
-                        Ok( Some( _ ) ) => {
-                            self.col -= 1;
-                            break;
-                        },
-                        Ok( None ) => break,
-                        Err( _ ) => contains_non_ascii = true,
-                    }
-                }
-
-                self.gather_token_text();
-                // TODO create own number parsing function
-                match self.token_text.parse() {
-                    Ok( value ) => Ok( Some( TokenKind::Literal( Literal::Int( value ) ) ) ),
-                    Err( err ) => match err.kind() {
-                        IntErrorKind::InvalidDigit =>
-                            if contains_non_ascii {
-                                Err( SyntaxError {
-                                    line_byte_start: self.line_byte_start,
-                                    line: self.line,
-                                    col: self.token_start_col,
-                                    len: self.token_text.len(),
-                                    msg: "invalid number literal".into(),
-                                    help_msg: "contains non-ASCII characters".into(),
-                                } )
-                            }
-                            else {
-                                Err( SyntaxError {
-                                    line_byte_start: self.line_byte_start,
-                                    line: self.line,
-                                    col: self.token_start_col,
-                                    len: self.token_text.len(),
-                                    msg: "invalid number literal".into(),
-                                    help_msg: "contains non-digit characters".into(),
-                                } )
+            return match next {
+                // ignore whitespace
+                b'\t' | b'\r' | b'\n' | b'\x0C' | b' ' => continue,
+                b'a'..=b'z' | b'A'..=b'Z' | b'_'  => {
+                    let mut contains_non_ascii = false;
+                    loop {
+                        match self.next() {
+                            Ok( Some( b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_' ) ) => {},
+                            Ok( Some( _ ) ) => {
+                                self.col -= 1;
+                                break;
                             },
-                        IntErrorKind::PosOverflow => Err( SyntaxError {
-                            line_byte_start: self.line_byte_start,
-                            line: self.line,
-                            col: self.token_start_col,
-                            len: self.token_text.len(),
-                            msg: "invalid number literal".into(),
-                            help_msg: format!( "overflows a {} bit signed integer (over {})", isize::BITS, isize::MAX ).into(),
-                        } ),
-                        IntErrorKind::NegOverflow => Err( SyntaxError {
-                            line_byte_start: self.line_byte_start,
-                            line: self.line,
-                            col: self.token_start_col,
-                            len: self.token_text.len(),
-                            msg: "invalid number literal".into(),
-                            help_msg: format!( "underflows a {} bit signed integer (under {})", isize::BITS, isize::MIN ).into(),
-                        } ),
-                        IntErrorKind::Empty | std::num::IntErrorKind::Zero => unreachable!(),
-                        _ => Err( SyntaxError {
-                            line_byte_start: self.line_byte_start,
-                            line: self.line,
-                            col: self.token_start_col,
-                            len: self.token_text.len(),
-                            msg: "invalid number literal".into(),
-                            help_msg: err.to_string().into(),
-                        } ),
-                    },
-                }
-            },
-            b'#' => {
-                // consume the rest of the tokens in the current line
-                self.col = self.line_bytes.len();
-                let comment = self.token_text();
-                Ok( Some( TokenKind::Comment( comment ) ) )
-            },
-            b'"' => {
-                let mut errors: Vec<SyntaxError> = Vec::new();
+                            Ok( None ) => break,
+                            Err( _ ) => contains_non_ascii = true,
+                        }
+                    }
 
-                loop {
-                    let next = match self.next_str_char()? {
-                        b'\\' => match self.next_str_char()? {
-                            b'\\' => Ok( '\\' ),
-                            b'\'' => Ok( '\'' ),
-                            b'"' => Ok( '"' ),
-                            b'n' => Ok( '\n' ),
-                            b'r' => Ok( '\r' ),
-                            b't' => Ok( '\t' ),
-                            b'0' => Ok( '\0' ),
+                    if contains_non_ascii {
+                        Err( SyntaxError {
+                            col: self.token_start_col,
+                            len: self.col - self.token_start_col + 1,
+                            msg: "invalid identifier".into(),
+                            help_msg: "contains non-ASCII characters".into(),
+                        } )
+                    }
+                    else {
+                        let identifier = match self.token_text() {
+                            "let"      => TokenKind::Definition( Mutability::Let ),
+                            "var"      => TokenKind::Definition( Mutability::Var ),
+                            "print"    => TokenKind::Print,
+                            "println"  => TokenKind::PrintLn,
+                            "true"     => TokenKind::True,
+                            "false"    => TokenKind::False,
+                            "do"       => TokenKind::Do,
+                            "if"       => TokenKind::If,
+                            "else"     => TokenKind::Else,
+                            "loop"     => TokenKind::Loop,
+                            "break"    => TokenKind::Break,
+                            "continue" => TokenKind::Continue,
+                            identifier => TokenKind::Identifier( identifier.to_string() ),
+                        };
+
+                        Ok( Some( identifier ) )
+                    }
+                },
+                b'0'..=b'9' => {
+                    let mut contains_non_ascii = false;
+                    loop {
+                        match self.next() {
+                            Ok( Some( b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_') ) => {},
+                            Ok( Some( _ ) ) => {
+                                self.col -= 1;
+                                break;
+                            },
+                            Ok( None ) => break,
+                            Err( _ ) => contains_non_ascii = true,
+                        }
+                    }
+
+                    let token_text = self.token_text();
+                    match token_text.parse() {
+                        Ok( value ) => Ok( Some( TokenKind::Literal( Literal::Int( value ) ) ) ),
+                        Err( err ) => match err.kind() {
+                            IntErrorKind::InvalidDigit =>
+                                if contains_non_ascii {
+                                    Err( SyntaxError {
+                                        col: self.token_start_col,
+                                        len: token_text.len(),
+                                        msg: "invalid number literal".into(),
+                                        help_msg: "contains non-ASCII characters".into(),
+                                    } )
+                                }
+                                else {
+                                    Err( SyntaxError {
+                                        col: self.token_start_col,
+                                        len: token_text.len(),
+                                        msg: "invalid number literal".into(),
+                                        help_msg: "contains non-digit characters".into(),
+                                    } )
+                                },
+                            IntErrorKind::PosOverflow => Err( SyntaxError {
+                                col: self.token_start_col,
+                                len: token_text.len(),
+                                msg: "invalid number literal".into(),
+                                help_msg: format!( "overflows a {} bit signed integer (over {})", isize::BITS, isize::MAX ).into(),
+                            } ),
+                            IntErrorKind::NegOverflow => Err( SyntaxError {
+                                col: self.token_start_col,
+                                len: token_text.len(),
+                                msg: "invalid number literal".into(),
+                                help_msg: format!( "underflows a {} bit signed integer (under {})", isize::BITS, isize::MIN ).into(),
+                            } ),
+                            IntErrorKind::Empty | std::num::IntErrorKind::Zero => unreachable!(),
                             _ => Err( SyntaxError {
-                                line_byte_start: self.line_byte_start,
-                                line: self.line,
+                                col: self.token_start_col,
+                                len: token_text.len(),
+                                msg: "invalid number literal".into(),
+                                help_msg: err.to_string().into(),
+                            } ),
+                        },
+                    }
+                },
+                b'#' => match self.peek_next()? {
+                    Some( b'"' ) => todo!( "block comments" ),
+                    _ => {
+                        // consume the rest of the tokens in the current line
+                        self.col = self.line_end;
+                        self.token_start_col += 1;
+                        let comment = self.token_text();
+                        Ok( Some( TokenKind::Comment( comment.to_string() ) ) )
+                    },
+                },
+                b'"' => {
+                    let mut errors: Vec<SyntaxError> = Vec::new();
+                    let mut text = String::new();
+
+                    loop {
+                        let next = match self.next_str_char()? {
+                            b'\\' => match self.next_str_char()? {
+                                b'\\' => Ok( '\\' ),
+                                b'\'' => Ok( '\'' ),
+                                b'"' => Ok( '"' ),
+                                b'n' => Ok( '\n' ),
+                                b'r' => Ok( '\r' ),
+                                b't' => Ok( '\t' ),
+                                b'0' => Ok( '\0' ),
+                                _ => Err( SyntaxError {
+                                    col: self.col,
+                                    len: 1,
+                                    msg: "invalid string character".into(),
+                                    help_msg: "unrecognized escape character".into(),
+                                } ),
+                            },
+                            b'\x00'..=b'\x1F' | b'\x7F' => Err( SyntaxError {
                                 col: self.col,
                                 len: 1,
-                                msg: "invalid string character".into(),
+                                msg: "invalid string literal".into(),
+                                help_msg: "cannot be a control character".into(),
+                            } ),
+                            b'"' => break,
+                            other => Ok( other as char ),
+                        };
+
+                        match next {
+                            Ok( next_char ) => text.push( next_char ),
+                            Err( err ) => errors.push( err ),
+                        }
+                    }
+
+                    // after here there cannot be unclosed strings
+                    if errors.is_empty() {
+                        Ok( Some( TokenKind::Literal( Literal::Str( Str { text: text.into_bytes() } ) ) ) )
+                    }
+                    else {
+                        // FIX add proper multiple error handling
+                        let last_error = errors.pop().unwrap();
+                        self.errors.extend( errors );
+                        Err( last_error )
+                    }
+                },
+                b'\'' => {
+                    let code = match self.next_char()? {
+                        b'\\' => match self.next_char()? {
+                            b'\\' => Ok( b'\\' ),
+                            b'\'' => Ok( b'\'' ),
+                            b'"' => Ok( b'"' ),
+                            b'n' => Ok( b'\n' ),
+                            b'r' => Ok( b'\r' ),
+                            b't' => Ok( b'\t' ),
+                            b'0' => Ok( b'\0' ),
+                            _ => Err( SyntaxError {
+                                col: self.col,
+                                len: 1,
+                                msg: "invalid character literal".into(),
                                 help_msg: "unrecognized escape character".into(),
                             } ),
                         },
                         b'\x00'..=b'\x1F' | b'\x7F' => Err( SyntaxError {
-                            line_byte_start: self.line_byte_start,
-                            line: self.line,
-                            col: self.col,
-                            len: 1,
-                            msg: "invalid string literal".into(),
-                            help_msg: "cannot be a control character".into(),
-                        } ),
-                        b'"' => break,
-                        other => Ok( other as char ),
-                    };
-
-                    match next {
-                        Ok( next_char ) => self.token_text.push( next_char ),
-                        Err( err ) => errors.push( err ),
-                    }
-                }
-
-                // after here there cannot be unclosed strings
-                if errors.is_empty() {
-                    Ok( Some( TokenKind::Literal( Literal::Str( Str { text: self.token_text.clone().into_bytes() } ) ) ) )
-                }
-                else {
-                    // FIX add proper multiple error handling
-                    let last_error = errors.pop().unwrap();
-                    self.errors.extend( errors );
-                    Err( last_error )
-                }
-            },
-            b'\'' => {
-                let code = match self.next_char()? {
-                    b'\\' => match self.next_char()? {
-                        b'\\' => Ok( b'\\' ),
-                        b'\'' => Ok( b'\'' ),
-                        b'"' => Ok( b'"' ),
-                        b'n' => Ok( b'\n' ),
-                        b'r' => Ok( b'\r' ),
-                        b't' => Ok( b'\t' ),
-                        b'0' => Ok( b'\0' ),
-                        _ => Err( SyntaxError {
-                            line_byte_start: self.line_byte_start,
-                            line: self.line,
                             col: self.col,
                             len: 1,
                             msg: "invalid character literal".into(),
-                            help_msg: "unrecognized escape character".into(),
+                            help_msg: "cannot be a control character".into(),
+                        } ),
+                        b'\'' => return Err( SyntaxError {
+                            col: self.token_start_col,
+                            len: 2,
+                            msg: "invalid character literal".into(),
+                            help_msg: "must not be empty".into(),
+                        } ),
+                        ch => Ok( ch ),
+                    };
+
+                    match self.peek_next()? {
+                        Some( b'\'' ) => {
+                            self.col += 1;
+                            Ok( Some( TokenKind::Literal( Literal::Char( code? ) ) ) )
+                        },
+                        Some( _ ) | None => Err( SyntaxError {
+                            col: self.token_start_col,
+                            len: self.col - self.token_start_col + 1,
+                            msg: "invalid character literal".into(),
+                            help_msg: "missing closing single quote".into(),
+                        } )
+                    }
+                },
+                b'(' => {
+                    let kind = BracketKind::OpenRound;
+                    self.brackets.push( Bracket { col: self.token_start_col, kind } );
+                    Ok( Some( TokenKind::Bracket( kind ) ) )
+                },
+                b')' => match self.brackets.pop() {
+                    Some( bracket ) => match bracket.kind {
+                        BracketKind::OpenRound | BracketKind::CloseCurly | BracketKind::CloseRound =>
+                            Ok( Some( TokenKind::Bracket( BracketKind::CloseRound ) ) ),
+                        BracketKind::OpenCurly => Err( SyntaxError {
+                            col: self.token_start_col,
+                            len: 1,
+                            msg: "stray bracket".into(),
+                            help_msg: "closes the wrong bracket".into(),
                         } ),
                     },
-                    b'\x00'..=b'\x1F' | b'\x7F' => Err( SyntaxError {
-                        line_byte_start: self.line_byte_start,
-                        line: self.line,
-                        col: self.col,
-                        len: 1,
-                        msg: "invalid character literal".into(),
-                        help_msg: "cannot be a control character".into(),
-                    } ),
-                    b'\'' => return Err( SyntaxError {
-                        line_byte_start: self.line_byte_start,
-                        line: self.line,
+                    None => Err( SyntaxError {
                         col: self.token_start_col,
-                        len: 2,
-                        msg: "invalid character literal".into(),
-                        help_msg: "must not be empty".into(),
+                        len: 1,
+                        msg: "stray bracket".into(),
+                        help_msg: "was not opened before".into(),
                     } ),
-                    ch => Ok( ch ),
-                };
-
-                match self.peek_next()? {
-                    Some( b'\'' ) => {
-                        self.col += 1;
-                        Ok( Some( TokenKind::Literal( Literal::Char( code? ) ) ) )
+                },
+                b'{' => {
+                    let kind = BracketKind::OpenCurly;
+                    self.brackets.push( Bracket { col: self.token_start_col, kind } );
+                    Ok( Some( TokenKind::Bracket( kind ) ) )
+                },
+                b'}' => match self.brackets.pop() {
+                    Some( bracket ) => match bracket.kind {
+                        BracketKind::OpenCurly | BracketKind::CloseCurly | BracketKind::CloseRound =>
+                            Ok( Some( TokenKind::Bracket( BracketKind::CloseCurly ) ) ),
+                        BracketKind::OpenRound => Err( SyntaxError {
+                            col: self.token_start_col,
+                            len: 1,
+                            msg: "stray bracket".into(),
+                            help_msg: "closes the wrong bracket".into(),
+                        } ),
                     },
-                    Some( _ ) | None => Err( SyntaxError {
-                        line_byte_start: self.line_byte_start,
-                        line: self.line,
-                        col: self.token_start_col,
-                        len: self.col - self.token_start_col + 1,
-                        msg: "invalid character literal".into(),
-                        help_msg: "missing closing single quote".into(),
-                    } )
-                }
-            },
-            b'(' => {
-                let kind = BracketKind::OpenRound;
-                self.brackets.push( Bracket {
-                    line_byte_start: self.line_byte_start,
-                    line_number: self.line,
-                    col: self.token_start_col,
-                    kind,
-                } );
-                Ok( Some( TokenKind::Bracket( kind ) ) )
-            },
-            b')' => match self.brackets.pop() {
-                Some( bracket ) => match bracket.kind {
-                    BracketKind::OpenRound | BracketKind::CloseCurly | BracketKind::CloseRound =>
-                        Ok( Some( TokenKind::Bracket( BracketKind::CloseRound ) ) ),
-                    BracketKind::OpenCurly => Err( SyntaxError {
-                        line_byte_start: self.line_byte_start,
-                        line: self.line,
+                    None => Err( SyntaxError {
                         col: self.token_start_col,
                         len: 1,
                         msg: "stray bracket".into(),
-                        help_msg: "closes the wrong bracket".into(),
+                        help_msg: "was not opened before".into(),
                     } ),
                 },
-                None => Err( SyntaxError {
-                    line_byte_start: self.line_byte_start,
-                    line: self.line,
-                    col: self.token_start_col,
-                    len: 1,
-                    msg: "stray bracket".into(),
-                    help_msg: "was not opened before".into(),
-                } ),
-            },
-            b'{' => {
-                let kind = BracketKind::OpenCurly;
-                self.brackets.push( Bracket {
-                    line_byte_start: self.line_byte_start,
-                    line_number: self.line,
-                    col: self.token_start_col,
-                    kind,
-                } );
-                Ok( Some( TokenKind::Bracket( kind ) ) )
-            },
-            b'}' => match self.brackets.pop() {
-                Some( bracket ) => match bracket.kind {
-                    BracketKind::OpenCurly | BracketKind::CloseCurly | BracketKind::CloseRound =>
-                        Ok( Some( TokenKind::Bracket( BracketKind::CloseCurly ) ) ),
-                    BracketKind::OpenRound => Err( SyntaxError {
-                        line_byte_start: self.line_byte_start,
-                        line: self.line,
-                        col: self.token_start_col,
-                        len: 1,
-                        msg: "stray bracket".into(),
-                        help_msg: "closes the wrong bracket".into(),
-                    } ),
+                b':' => Ok( Some( TokenKind::Colon ) ),
+                b';' => Ok( Some( TokenKind::SemiColon ) ),
+                b'!' => match self.peek_next()? {
+                    Some( b'=' ) => {
+                        self.col += 1;
+                        Ok( Some( TokenKind::Op( Operator::NotEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::Not ) ) ),
                 },
-                None => Err( SyntaxError {
-                    line_byte_start: self.line_byte_start,
-                    line: self.line,
-                    col: self.token_start_col,
-                    len: 1,
-                    msg: "stray bracket".into(),
-                    help_msg: "was not opened before".into(),
-                } ),
-            },
-            b':' => Ok( Some( TokenKind::Colon ) ),
-            b';' => Ok( Some( TokenKind::SemiColon ) ),
-            b'!' => match self.peek_next()? {
-                Some( b'=' ) => {
-                    self.col += 1;
-                    Ok( Some( TokenKind::Op( Operator::NotEquals ) ) )
-                },
-                _ => Ok( Some( TokenKind::Op( Operator::Not ) ) ),
-            },
-            b'*' => match self.peek_next()? {
-                Some( b'*' ) => {
-                    self.col += 1;
-                    match self.peek_next()? {
-                        Some( b'=' ) => {
-                            self.col += 1;
-                            Ok( Some( TokenKind::Op( Operator::PowEquals ) ) )
+                b'*' => match self.peek_next()? {
+                    Some( b'*' ) => {
+                        self.col += 1;
+                        match self.peek_next()? {
+                            Some( b'=' ) => {
+                                self.col += 1;
+                                Ok( Some( TokenKind::Op( Operator::PowEquals ) ) )
+                            }
+                            _ => Ok( Some( TokenKind::Op( Operator::Pow ) ) ),
                         }
-                        _ => Ok( Some( TokenKind::Op( Operator::Pow ) ) ),
-                    }
+                    },
+                    Some( b'=' ) => {
+                        self.col += 1;
+                        Ok( Some( TokenKind::Op( Operator::TimesEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::Times ) ) ),
                 },
-                Some( b'=' ) => {
-                    self.col += 1;
-                    Ok( Some( TokenKind::Op( Operator::TimesEquals ) ) )
+                b'/' => match self.peek_next()? {
+                    Some( b'=' ) => {
+                        self.col += 1;
+                        Ok( Some( TokenKind::Op( Operator::DivideEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::Divide ) ) ),
                 },
-                _ => Ok( Some( TokenKind::Op( Operator::Times ) ) ),
-            },
-            b'/' => match self.peek_next()? {
-                Some( b'=' ) => {
-                    self.col += 1;
-                    Ok( Some( TokenKind::Op( Operator::DivideEquals ) ) )
+                b'%' => match self.peek_next()? {
+                    Some( b'=' ) => {
+                        self.col += 1;
+                        Ok( Some( TokenKind::Op( Operator::RemainderEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::Remainder ) ) ),
                 },
-                _ => Ok( Some( TokenKind::Op( Operator::Divide ) ) ),
-            },
-            b'%' => match self.peek_next()? {
-                Some( b'=' ) => {
-                    self.col += 1;
-                    Ok( Some( TokenKind::Op( Operator::RemainderEquals ) ) )
+                b'+' => match self.peek_next()? {
+                    Some( b'=' ) => {
+                        self.col += 1;
+                        Ok( Some( TokenKind::Op( Operator::PlusEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::Plus ) ) )
                 },
-                _ => Ok( Some( TokenKind::Op( Operator::Remainder ) ) ),
-            },
-            b'+' => match self.peek_next()? {
-                Some( b'=' ) => {
-                    self.col += 1;
-                    Ok( Some( TokenKind::Op( Operator::PlusEquals ) ) )
+                b'-' => match self.peek_next()? {
+                    Some( b'=' ) => {
+                        self.col += 1;
+                        Ok( Some( TokenKind::Op( Operator::MinusEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::Minus ) ) ),
                 },
-                _ => Ok( Some( TokenKind::Op( Operator::Plus ) ) )
-            },
-            b'-' => match self.peek_next()? {
-                Some( b'=' ) => {
-                    self.col += 1;
-                    Ok( Some( TokenKind::Op( Operator::MinusEquals ) ) )
+                b'&' => match self.peek_next()? {
+                    Some( b'&' ) => {
+                        self.col += 1;
+                        match self.peek_next()? {
+                            Some( b'=' ) => {
+                                self.col += 1;
+                                Ok( Some( TokenKind::Op( Operator::AndEquals ) ) )
+                            },
+                            _ => Ok( Some( TokenKind::Op( Operator::And ) ) ),
+                        }
+                    },
+                    Some( b'=' ) => {
+                        self.col += 1;
+                        Ok( Some( TokenKind::Op( Operator::BitAndEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::BitAnd ) ) ),
                 },
-                _ => Ok( Some( TokenKind::Op( Operator::Minus ) ) ),
-            },
-            b'&' => match self.peek_next()? {
-                Some( b'&' ) => {
-                    self.col += 1;
-                    match self.peek_next()? {
-                        Some( b'=' ) => {
-                            self.col += 1;
-                            Ok( Some( TokenKind::Op( Operator::AndEquals ) ) )
-                        },
-                        _ => Ok( Some( TokenKind::Op( Operator::And ) ) ),
-                    }
+                b'^' => match self.peek_next()? {
+                    // Some( b'^' ) => {
+                    //     self.col += 1;
+                    //     match self.peek_next()? {
+                    //         Some( b'=' ) => {
+                    //             self.col += 1;
+                    //             Ok( Some( TokenKind::Op( Operator::XorEquals ) ) )
+                    //         },
+                    //         _ => Ok( Some( TokenKind::Op( Operator::Xor ) ) ),
+                    //     }
+                    // },
+                    Some( b'=' ) => {
+                        self.col += 1;
+                        Ok( Some( TokenKind::Op( Operator::BitXorEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::BitXor ) ) ),
                 },
-                Some( b'=' ) => {
-                    self.col += 1;
-                    Ok( Some( TokenKind::Op( Operator::BitAndEquals ) ) )
+                b'|' => match self.peek_next()? {
+                    Some( b'|' ) => {
+                        self.col += 1;
+                        match self.peek_next()? {
+                            Some( b'=' ) => {
+                                self.col += 1;
+                                Ok( Some( TokenKind::Op( Operator::OrEquals ) ) )
+                            },
+                            _ => Ok( Some( TokenKind::Op( Operator::Or ) ) ),
+                        }
+                    },
+                    Some( b'=' ) => {
+                        self.col += 1;
+                        Ok( Some( TokenKind::Op( Operator::BitOrEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::BitOr ) ) ),
                 },
-                _ => Ok( Some( TokenKind::Op( Operator::BitAnd ) ) ),
-            },
-            b'^' => match self.peek_next()? {
-                // Some( b'^' ) => {
-                //     self.col += 1;
-                //     match self.peek_next()? {
-                //         Some( b'=' ) => {
-                //             self.col += 1;
-                //             Ok( Some( TokenKind::Op( Operator::XorEquals ) ) )
-                //         },
-                //         _ => Ok( Some( TokenKind::Op( Operator::Xor ) ) ),
-                //     }
-                // },
-                Some( b'=' ) => {
-                    self.col += 1;
-                    Ok( Some( TokenKind::Op( Operator::BitXorEquals ) ) )
+                b'=' => match self.peek_next()? {
+                    Some( b'=' ) => {
+                        self.col += 1;
+                        Ok( Some( TokenKind::Op( Operator::EqualsEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Equals ) ),
                 },
-                _ => Ok( Some( TokenKind::Op( Operator::BitXor ) ) ),
-            },
-            b'|' => match self.peek_next()? {
-                Some( b'|' ) => {
-                    self.col += 1;
-                    match self.peek_next()? {
-                        Some( b'=' ) => {
-                            self.col += 1;
-                            Ok( Some( TokenKind::Op( Operator::OrEquals ) ) )
-                        },
-                        _ => Ok( Some( TokenKind::Op( Operator::Or ) ) ),
-                    }
+                b'>' => match self.peek_next()? {
+                    Some( b'>' ) => {
+                        self.col += 1;
+                        match self.peek_next()? {
+                            Some( b'=' ) => {
+                                self.col += 1;
+                                Ok( Some( TokenKind::Op( Operator::RightShiftEquals ) ) )
+                            },
+                            _ => Ok( Some( TokenKind::Op( Operator::RightShift ) ) ),
+                        }
+                    },
+                    Some( b'=' ) => {
+                        self.col += 1;
+                        Ok( Some( TokenKind::Op( Operator::GreaterOrEquals ) ) )
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::Greater ) ) ),
                 },
-                Some( b'=' ) => {
-                    self.col += 1;
-                    Ok( Some( TokenKind::Op( Operator::BitOrEquals ) ) )
+                b'<' => match self.peek_next()? {
+                    Some( b'<' ) => {
+                        self.col += 1;
+                        match self.peek_next()? {
+                            Some( b'=' ) => {
+                                self.col += 1;
+                                Ok( Some( TokenKind::Op( Operator::LeftShiftEquals ) ) )
+                            },
+                            _ => Ok( Some( TokenKind::Op( Operator::LeftShift ) ) ),
+                        }
+                    },
+                    Some( b'=' ) => {
+                        self.col += 1;
+                        match self.peek_next()? {
+                            Some( b'>' ) => {
+                                self.col += 1;
+                                Ok( Some( TokenKind::Op( Operator::Compare ) ) )
+                            },
+                            _ => Ok( Some( TokenKind::Op( Operator::LessOrEquals ) ) ),
+                        }
+                    },
+                    _ => Ok( Some( TokenKind::Op( Operator::Less ) ) ),
                 },
-                _ => Ok( Some( TokenKind::Op( Operator::BitOr ) ) ),
-            },
-            b'=' => match self.peek_next()? {
-                Some( b'=' ) => {
-                    self.col += 1;
-                    Ok( Some( TokenKind::Op( Operator::EqualsEquals ) ) )
-                },
-                _ => Ok( Some( TokenKind::Equals ) ),
-            },
-            b'>' => match self.peek_next()? {
-                Some( b'>' ) => {
-                    self.col += 1;
-                    match self.peek_next()? {
-                        Some( b'=' ) => {
-                            self.col += 1;
-                            Ok( Some( TokenKind::Op( Operator::RightShiftEquals ) ) )
-                        },
-                        _ => Ok( Some( TokenKind::Op( Operator::RightShift ) ) ),
-                    }
-                },
-                Some( b'=' ) => {
-                    self.col += 1;
-                    Ok( Some( TokenKind::Op( Operator::GreaterOrEquals ) ) )
-                },
-                _ => Ok( Some( TokenKind::Op( Operator::Greater ) ) ),
-            },
-            b'<' => match self.peek_next()? {
-                Some( b'<' ) => {
-                    self.col += 1;
-                    match self.peek_next()? {
-                        Some( b'=' ) => {
-                            self.col += 1;
-                            Ok( Some( TokenKind::Op( Operator::LeftShiftEquals ) ) )
-                        },
-                        _ => Ok( Some( TokenKind::Op( Operator::LeftShift ) ) ),
-                    }
-                },
-                Some( b'=' ) => {
-                    self.col += 1;
-                    match self.peek_next()? {
-                        Some( b'>' ) => {
-                            self.col += 1;
-                            Ok( Some( TokenKind::Op( Operator::Compare ) ) )
-                        },
-                        _ => Ok( Some( TokenKind::Op( Operator::LessOrEquals ) ) ),
-                    }
-                },
-                _ => Ok( Some( TokenKind::Op( Operator::Less ) ) ),
-            },
-            b'\n' => unreachable!( "line text should have been trimmed already" ),
-            _ => Err( SyntaxError {
-                line_byte_start: self.line_byte_start,
-                line: self.line,
-                col: self.token_start_col,
-                len: 1,
-                msg: "unexpected character".into(),
-                help_msg: "unrecognized".into(),
-            } ),
+                // b'\r' | b'\n' => unreachable!( "line text should have been trimmed already" ),
+                _ => Err( SyntaxError {
+                    col: self.token_start_col,
+                    len: 1,
+                    msg: "unexpected character".into(),
+                    help_msg: "unrecognized".into(),
+                } ),
+            }
         }
-    }
-}
-
-
-#[derive( Debug, Clone, Copy )]
-pub(crate) struct TokenPosition<'lexer> {
-    pub(crate) line: &'lexer Line,
-    pub(crate) token: &'lexer Token,
-}
-
-#[derive( Debug )]
-pub(crate) struct TokenCursor<'lexer> {
-    pub(crate) line: usize,
-    pub(crate) lines: &'lexer [Line],
-
-    pub(crate) token: usize,
-    pub(crate) tokens: &'lexer [Token],
-}
-
-// TODO implement methods that return only tokens or lines since lines are only
-// really needed when reporting errors
-impl<'lexer> TokenCursor<'lexer> {
-    // TODO remove this method and make the next/previous methods return their current position and
-    // then move (i.e. like a normal iterator)
-        // NOTE its goint to be required to pass a position object around instead of calling current
-        // when needed
-    pub(crate) fn current( &mut self ) -> Option<TokenPosition<'lexer>> {
-        if self.token >= self.tokens.len() || self.line >= self.lines.len() {
-            return None
-        }
-
-        return Some( TokenPosition {
-            line: &self.lines[ self.line ],
-            token: &self.tokens[ self.token ]
-        } ).or_next( self );
-    }
-
-    pub(crate) fn next( &mut self ) -> Option<TokenPosition<'lexer>> {
-        if self.token >= self.tokens.len() - 1 {
-            self.token += 1;
-            return None;
-        }
-
-        self.token += 1;
-        let token = &self.tokens[ self.token ];
-
-        let mut line = &self.lines[ self.line ];
-        if self.token > line.token_end_idx {
-            self.line += 1;
-            line = &self.lines[ self.line ];
-        }
-
-        return Some( TokenPosition { line, token } ).or_next( self );
-    }
-
-    pub(crate) fn previous( &mut self ) -> Option<TokenPosition<'lexer>> {
-        if self.token == 0 {
-            return None;
-        }
-
-        self.token -= 1;
-        let token = &self.tokens[ self.token ];
-
-        let mut line = &self.lines[ self.line ];
-        if self.token < line.token_start_idx {
-            self.line -= 1;
-            line = &self.lines[ self.line ];
-        }
-
-        return Some( TokenPosition { line, token } ).or_previous( self );
-    }
-
-    pub(crate) fn peek_next( &mut self ) -> Option<TokenPosition<'lexer>> {
-        let (starting_line, starting_token) = (self.line, self.token);
-        let next = self.next();
-        (self.line, self.token) = (starting_line, starting_token);
-        return next;
-    }
-
-    pub(crate) fn peek_previous( &mut self ) -> Option<TokenPosition<'lexer>> {
-        let (starting_line, starting_token) = (self.line, self.token);
-        let previous = self.previous();
-        (self.line, self.token) = (starting_line, starting_token);
-        return previous;
-    }
-}
-
-pub(crate) trait BoundedPosition<'lexer> {
-    type Error;
-
-    fn bounded(
-        self,
-        tokens: &mut TokenCursor<'lexer>,
-        err_msg: impl Into<String>
-    ) -> Result<TokenPosition<'lexer>, Self::Error> where Self: Sized;
-    fn or_next( self, tokens: &mut TokenCursor<'lexer> ) -> Self where Self: Sized;
-    fn or_previous( self, tokens: &mut TokenCursor<'lexer> ) -> Self where Self: Sized;
-}
-
-impl<'lexer> BoundedPosition<'lexer> for Option<TokenPosition<'lexer>> {
-    type Error = SyntaxError;
-
-    fn bounded(
-        self,
-        tokens: &mut TokenCursor<'lexer>,
-        err_msg: impl Into<String>
-    ) -> Result<TokenPosition<'lexer>, Self::Error> {
-        return match self {
-            Some( position ) => Ok( position ),
-            None => {
-                // this function is never called without a previous token, so we can safely unwrap
-                let previous = unsafe{ tokens.peek_previous().unwrap_unchecked() };
-                Err( SyntaxError {
-                    line_byte_start: previous.line.byte_start,
-                    line: previous.line.number,
-                    col: previous.token.col,
-                    len: previous.token.kind.len(),
-                    msg: err_msg.into().into(),
-                    help_msg: "file ended after here instead".into(),
-                } )
-            },
-        }
-    }
-
-    fn or_next( self, tokens: &mut TokenCursor<'lexer> ) -> Self {
-        return match self?.token.kind {
-            TokenKind::Comment( _ ) | TokenKind::Empty => tokens.next(),
-            _ => self,
-        }
-    }
-
-    fn or_previous( self, tokens: &mut TokenCursor<'lexer> ) -> Self {
-        return match self?.token.kind {
-            TokenKind::Comment( _ ) | TokenKind::Empty => tokens.previous(),
-            _ => self,
-        }
-    }
-}
-
-impl Lexer {
-    pub(crate) fn iter( &self ) -> TokenCursor<'_> {
-        return TokenCursor { line: 0, lines: &self.lines, token: 0, tokens: &self.tokens };
     }
 }

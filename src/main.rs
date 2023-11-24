@@ -16,14 +16,16 @@ fn main() -> ExitCode {
     // args.push( "examples/out".to_string() );
     // args.push( "-V".to_string() );
 
-    return match Kay::try_from( args ) {
-        Ok( kay ) => match kay.execute() {
-            Ok( () ) => ExitCode::SUCCESS,
-            Err( err ) => {
-                eprintln!( "{}", err );
-                ExitCode::FAILURE
-            },
+    let kay = match Kay::try_from( args ) {
+        Ok( kay ) => kay,
+        Err( err ) => {
+            eprintln!( "{}", err );
+            return ExitCode::FAILURE;
         },
+    };
+
+    match kay.execute() {
+        Ok( () ) => ExitCode::SUCCESS,
         Err( err ) => {
             eprintln!( "{}", err );
             ExitCode::FAILURE
@@ -42,11 +44,11 @@ mod tests {
     #[test]
     fn test_checking() -> ExitCode {
         for src_file in Path::new( "./examples" ).read_dir().unwrap() {
-            let src = src_file.unwrap().path();
-            if let Some( extension ) = src.extension() {
+            let src_path = src_file.unwrap().path();
+            if let Some( extension ) = src_path.extension() {
                 if extension == "kay" {
                     let kay: Kay = KayArgs {
-                        run_mode: Some( RunMode::Check { src } ),
+                        run_mode: Some( RunMode::Check { src_path } ),
                         ..Default::default()
                     }.into();
 

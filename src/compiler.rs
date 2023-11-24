@@ -24,7 +24,7 @@ pub(crate) struct Compiler<'ast> {
     pub(crate) out_path: Option<PathBuf>,
     pub(crate) run: bool,
 
-    pub(crate) ast: &'ast Ast,
+    pub(crate) scopes: &'ast Vec<Scope>,
 
     pub(crate) rodata: String,
     pub(crate) asm: String,
@@ -151,7 +151,7 @@ r#" stdout: equ 1
 
         let mut stack_size = 0;
         let mut variables: Vec<(Type, Vec<&Variable>)> = Vec::new();
-        for scope in &self.ast.scopes {
+        for scope in self.scopes {
             for variable in &scope.variables {
                 let typ = &variable.value.typ();
 
@@ -594,11 +594,11 @@ impl<'ast> Compiler<'ast> {
                 );
             },
             Node::Definition( scope, variable )    => {
-                let variable = &self.ast.scopes[ *scope ].variables[ *variable ];
+                let variable = &self.scopes[ *scope ].variables[ *variable ];
                 self.assignment( &variable.name, &variable.value );
             },
             Node::Assignment( scope, variable, value ) => {
-                let variable = &self.ast.scopes[ *scope ].variables[ *variable ];
+                let variable = &self.scopes[ *scope ].variables[ *variable ];
                 self.assignment( &variable.name, value );
             },
             Node::Scope( inner )            => self.scope( *inner ),
@@ -610,7 +610,7 @@ impl<'ast> Compiler<'ast> {
     }
 
     fn scope( &mut self, scope_idx: usize ) {
-        let scope = &self.ast.scopes[ scope_idx ];
+        let scope = &self.scopes[ scope_idx ];
         for node in &scope.nodes {
             self.node( node );
         }
@@ -667,7 +667,6 @@ impl<'ast> Compiler<'ast> {
         }
     }
 
-    // IDEA make this return the place of where to find the result of the operation
     fn expression_factor( &mut self, factor: &'ast Expression, dst: &str ) {
         match factor {
             Expression::Literal( Literal::Int( value ) )  => self.asm += &format!( " mov {}, {}\n", dst, value ),
@@ -679,11 +678,6 @@ impl<'ast> Compiler<'ast> {
 
                 self.asm += &format!( " mov {}, {}\n", dst, string_label.len_label );
             },
-            // TODO find way to avoiding compiling the move to a support register if the rhs operand
-            // is a literal
-                // IDEA optimize increments
-                // IDEA optimize checking for even values by testing the least significant bit
-                // (e.g. test rax, 1)
             Expression::Binary { lhs, op, rhs } => {
                 let (lhs_reg, rhs_reg, op_asm) = match op {
                     Operator::Pow | Operator::PowEquals => match &**rhs {

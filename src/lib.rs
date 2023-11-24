@@ -61,8 +61,8 @@ impl Display for Verbosity {
 pub enum RunMode {
     #[default] Help,
     Version,
-    Check { src: PathBuf },
-    Compile { src: PathBuf, out: Option<PathBuf>, run: bool },
+    Check { src_path: PathBuf },
+    Compile { src_path: PathBuf, out: Option<PathBuf>, run: bool },
 }
 
 #[derive( Debug, Default, Clone )]
@@ -164,12 +164,13 @@ impl TryFrom<Vec<String>> for Kay {
                         return Err( CliError { msg: format!( "'{}' run mode already selected", arg ).into() } );
                     }
 
-                    let Some( src ) = args.next() else {
-                        return Err( CliError { msg: format!( "missing source file path for '{}' mode", arg ).into() } );
+                    let src_path: PathBuf = match args.next() {
+                        Some( path ) => path.into(),
+                        None => return Err( CliError { msg: format!( "missing source file path for '{}' mode", arg ).into() } ),
                     };
 
                     let mode = match arg.as_str() {
-                        "check" => RunMode::Check { src: src.into() },
+                        "check" => RunMode::Check { src_path },
                         "compile" | "run" => {
                             let mut out: Option<PathBuf> = None;
 
@@ -177,17 +178,16 @@ impl TryFrom<Vec<String>> for Kay {
                                 if *out_flag == "-o" || *out_flag == "--output" {
                                     args.next();
 
-                                    let Some( out_path ) = args.next() else {
-                                        return Err( CliError { msg: "missing output folder path".into() } );
+                                    out = match args.next() {
+                                        Some( path ) => Some( path.into() ),
+                                        None => return Err( CliError { msg: "missing output folder path".into() } ),
                                     };
-
-                                    out = Some( out_path.into() );
                                 }
                             }
 
                             match arg.as_str() {
-                                "compile" => RunMode::Compile { src: src.into(), out, run: false },
-                                "run"     => RunMode::Compile { src: src.into(), out, run: true },
+                                "compile" => RunMode::Compile { src_path, out, run: false },
+                                "run"     => RunMode::Compile { src_path, out, run: true },
                                 _         => unreachable!(),
                             }
                         },
@@ -235,8 +235,8 @@ impl TryFrom<Vec<String>> for Kay {
 
 // Execution of specified commands
 impl Kay {
-    fn print_usage( &self ) -> Result<(), KayError> {
-        let _ = self.print_version();
+    fn print_usage( &self ) {
+        self.print_version();
 
         println!( r"
 Usage: kay [{OPTIONS}] [{RUN_MODE}]
@@ -256,46 +256,54 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
 {OUTPUT}:
     -o, --output <{PATH}>       Folder to populate with compilation artifacts (.asm, .o, executable) (default: '.')"
         );
-
-        return Ok( () );
     }
 
-    fn print_version( &self ) -> Result<(), KayError> {
+    fn print_version( &self ) {
         self.color.set_stdout();
         println!( "Kaylang compiler, version {}", VERSION );
-
-        return Ok( () );
     }
 
 
+    // IDEA remove KayError enum
+        // TODO split into different compilation phases:
+        // 0) help message (if present) (which does not return anything)
+        // 1) source file reading       (which returns IoError)
+        // 2) fron-end                  (which returns Vec<SyntaxError>)
+        // 3) back-end                  (which returns IoError )
     pub fn execute( &self ) -> Result<(), KayError> {
         return match &self.run_mode {
-            RunMode::Help => self.print_usage(),
-            RunMode::Version => self.print_version(),
-            RunMode::Check { src } | RunMode::Compile { src, .. } => {
+            RunMode::Help => {
+                self.print_usage();
+                return Ok( () );
+            },
+            RunMode::Version => {
+                self.print_version();
+                return Ok( () );
+            },
+            RunMode::Check { src_path: src } | RunMode::Compile { src_path: src, .. } => {
+                let mut logger = CompilationLogger::new( self.verbosity );
+
                 let source_file = match Src::try_from( Path::new( &src ) ) {
                     Ok( src ) => src,
                     Err( err ) => return Err( KayError::Src( err ) ),
                 };
 
-                let mut logger = CompilationLogger::new( self.verbosity );
-
-                let ast = match Checker::check( source_file, &mut logger ) {
-                    Ok( ast ) => {
+                let scopes = match Checker::check( &source_file, &mut logger ) {
+                    Ok( scopes ) => {
                         // println!( "{:#?}", ast );
-                        ast
+                        scopes
                     },
-                    Err( errors ) => return Err( KayError::Syntax( errors ) ),
+                    Err( errors ) => return Err( KayError::Syntax( SyntaxErrors::new( errors, &source_file ) ) ),
                 };
 
                 match &self.run_mode {
                     RunMode::Check { .. } => logger.done(),
-                    RunMode::Compile { src, out, run } => {
+                    RunMode::Compile { src_path: src, out, run } => {
                         let mut compiler = Compiler {
                             src_path: src.clone(),
                             out_path: out.clone(),
                             run: *run,
-                            ast: &ast,
+                            scopes: &scopes,
                             rodata: String::new(),
                             asm: String::new(),
                             variables: Vec::new(),

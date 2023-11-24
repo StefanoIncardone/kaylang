@@ -1,4 +1,4 @@
-use std::io::{Seek, SeekFrom, BufRead, ErrorKind};
+use std::io::ErrorKind;
 use std::{fmt::Display, borrow::Cow, path::PathBuf};
 
 use crate::{Src, logging::*, color::*};
@@ -15,11 +15,10 @@ impl Display for CliError {
     }
 }
 
+// TODO implement SyntaxErrorsDisplay struct that gets constructed on demand when needing to print errors
 // TODO implement NOTE, HINT, HELP in error messages
 #[derive( Debug )]
 pub struct SyntaxError {
-    pub line_byte_start: usize,
-    pub line: usize,
     pub col: usize,
     pub len: usize,
     pub msg: Cow<'static, str>,
@@ -31,14 +30,15 @@ pub struct SyntaxErrors {
     pub src_path: PathBuf,
     pub errors: Vec<SyntaxError>,
     pub error_idxs: Vec<(usize /* error_idx */, usize /* line_number */, usize /* line_text */)>,
-    pub line_texts: Vec<String>,
+    pub error_texts: Vec<String>, // TODO try making this a vec of str and inline it inside the error_idxs field
 }
 
 impl Display for SyntaxErrors {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        for (err_idx, _, err_line_text_idx) in &self.error_idxs {
+        for (err_idx, mut line_number, line_text_idx) in &self.error_idxs {
+            line_number += 1;
             let error = &self.errors[ *err_idx ];
-            let line_text = &self.line_texts[ *err_line_text_idx ];
+            let line_text = &self.error_texts[ *line_text_idx ];
 
             let error_msg = Colored {
                 text: error.msg.to_string(),
@@ -47,14 +47,14 @@ impl Display for SyntaxErrors {
                 ..Default::default()
             };
 
-            let line_number = Colored {
-                text: error.line.to_string(),
+            let line_number_text = Colored {
+                text: line_number.to_string(),
                 fg: Fg::LightBlue,
                 flags: Flag::Bold,
                 ..Default::default()
             };
 
-            let visualization_padding = line_number.text.len() + 1 + BAR.text.len();
+            let visualization_padding = line_number_text.text.len() + 1 + BAR.text.len();
             let at_padding = visualization_padding - 1;
 
             let pointers_col = error.col - 1;
@@ -74,9 +74,9 @@ impl Display for SyntaxErrors {
                 \n{} {} {}\
                 \n{:>#visualization_padding$} {:>pointers_col$}{}\n",
                 ERROR, error_msg,
-                AT, self.src_path.display(), error.line, error.col,
+                AT, self.src_path.display(), line_number, error.col,
                 BAR,
-                line_number, BAR, line_text,
+                line_number_text, BAR, line_text,
                 BAR, "", pointers_and_help_msg
             )?;
         }
@@ -87,30 +87,34 @@ impl Display for SyntaxErrors {
 }
 
 impl SyntaxErrors {
-    pub(crate) fn new( errors: Vec<SyntaxError>, src: &mut Src ) -> Self {
+    pub(crate) fn new( errors: Vec<SyntaxError>, src: &Src ) -> Self {
         let mut this = Self {
             src_path: src.path.clone(),
             errors,
             error_idxs: Vec::new(),
-            line_texts: Vec::new(),
+            error_texts: Vec::new(),
         };
 
-        let mut line_text = String::new();
+        'errors: for error in &mut this.errors {
+            let mut line_number = 0;
+            for line in &src.lines {
+                if error.col <= line.end {
+                    error.col -= line.start;
+                    error.col += 1;
 
-        'errors: for error in &this.errors {
-            for (_, line_number, line_text_idx) in &this.error_idxs {
-                if error.line == *line_number {
-                    this.error_idxs.push( (this.error_idxs.len(), error.line, *line_text_idx) );
-                    continue 'errors;
+                    for (_, err_line_number, line_text_idx) in &this.error_idxs {
+                        if line_number == *err_line_number {
+                            this.error_idxs.push( (this.error_idxs.len(), line_number, *line_text_idx) );
+                            continue 'errors;
+                        }
+                    }
+
+                    this.error_idxs.push( (this.error_idxs.len(), line_number, this.error_texts.len() ) );
+                    this.error_texts.push( src.code[ line.start..line.end ].to_string() );
+                    break;
                 }
+                line_number += 1;
             }
-
-            line_text.clear();
-            let _ = src.src.seek( SeekFrom::Start( error.line_byte_start as u64 ) );
-            let _ = src.src.read_line( &mut line_text );
-
-            this.error_idxs.push( (this.error_idxs.len(), error.line, this.line_texts.len()) );
-            this.line_texts.push( line_text.trim_end().to_string() );
         }
 
         this.error_idxs.sort_by_key( |err_idx| err_idx.1 );
