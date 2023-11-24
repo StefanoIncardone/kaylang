@@ -95,27 +95,22 @@ pub(crate) trait TypeOf {
 
 
 #[derive( Debug, Clone )]
-pub(crate) struct Str {
-    pub(crate) text: Vec<u8>,
-}
-
-#[derive( Debug, Clone )]
 pub(crate) enum Literal {
     Int( isize ), // IDEA have different size integers and default to 32 bits for literals
     Char( u8 ), // only supporting ASCII characters for now
     Bool( bool ),
-    Str( Str ),
+    Str( Vec<u8> ),
 }
 
 impl Display for Literal {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
-            Self::Int( value )       => write!( f, "{}", value ),
-            Self::Char( code )       => write!( f, "'{}'", code.escape_ascii() ),
-            Self::Bool( value )      => write!( f, "{}", value ),
-            Self::Str( string )      => {
+            Self::Int( value )  => write!( f, "{}", value ),
+            Self::Char( code )  => write!( f, "'{}'", code.escape_ascii() ),
+            Self::Bool( value ) => write!( f, "{}", value ),
+            Self::Str( string ) => {
                 write!( f, "\"" )?;
-                for character in &string.text {
+                for character in string {
                     write!( f, "{}", character.escape_ascii() )?;
                 }
                 write!( f, "\"" )
@@ -130,7 +125,7 @@ impl From<Literal> for isize {
             Literal::Int( value )  => value,
             Literal::Char( code )  => code.into(),
             Literal::Bool( value ) => value.into(),
-            Literal::Str( string ) => string.text.len() as isize,
+            Literal::Str( string ) => string.len() as isize,
         }
     }
 }
@@ -138,10 +133,10 @@ impl From<Literal> for isize {
 impl Len for Literal {
     fn len( &self ) -> usize {
         return match self {
-            Self::Int( value )         => value.to_string().len(),
-            Self::Char( _ )            => 1,
-            Self::Bool( value )        => value.to_string().len(),
-            Self::Str( string )        => string.text.len() + 2,
+            Self::Int( value )  => value.to_string().len(),
+            Self::Char( _ )     => 1,
+            Self::Bool( value ) => value.to_string().len(),
+            Self::Str( string ) => string.len() + 2,
         }
     }
 }
@@ -149,13 +144,14 @@ impl Len for Literal {
 impl TypeOf for Literal {
     fn typ( &self ) -> Type {
         return match self {
-            Self::Int { .. }           => Type::Int,
-            Self::Char { .. }          => Type::Char,
-            Self::Bool { .. }          => Type::Bool,
-            Self::Str( _ )             => Type::Str,
+            Self::Int( _ )  => Type::Int,
+            Self::Char( _ ) => Type::Char,
+            Self::Bool( _ ) => Type::Bool,
+            Self::Str( _ )  => Type::Str,
         }
     }
 }
+
 
 // TODO implement unsigned integers
 #[derive( Debug, PartialEq, Clone, Copy )]
@@ -194,7 +190,7 @@ impl Type {
             Self::Bool => Literal::Bool( false ),
             Self::Char => Literal::Char( 0 ),
             Self::Int  => Literal::Int( 0 ),
-            Self::Str  => Literal::Str( Str { text: Vec::new() } ),
+            Self::Str  => Literal::Str( Vec::new() ),
         }
     }
 }
@@ -430,11 +426,10 @@ struct Bracket {
     kind: BracketKind,
 }
 
-// TODO replace String with &'src str
 #[derive( Debug, Clone )]
-pub(crate) enum TokenKind {
-    Comment( String ),
-    Unexpected( String ),
+pub(crate) enum TokenKind<'src> {
+    Comment( &'src str ),
+    Unexpected( &'src str ),
 
     Bracket( BracketKind ),
     Colon,
@@ -445,7 +440,7 @@ pub(crate) enum TokenKind {
     Literal( Literal ),
     True,
     False,
-    Identifier( String ),
+    Identifier( &'src str ),
     Definition( Mutability ),
 
     // Keywords
@@ -459,7 +454,7 @@ pub(crate) enum TokenKind {
     Continue,
 }
 
-impl Display for TokenKind {
+impl Display for TokenKind<'_> {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
             Self::Comment( text )    => write!( f, "#{}", text ),
@@ -490,7 +485,7 @@ impl Display for TokenKind {
     }
 }
 
-impl Len for TokenKind {
+impl Len for TokenKind<'_> {
     fn len( &self ) -> usize {
         return match self {
             Self::Comment( text )    => text.len(),
@@ -521,27 +516,27 @@ impl Len for TokenKind {
 }
 
 #[derive( Debug, Clone )]
-pub(crate) struct Token {
+pub(crate) struct Token<'src> {
     pub(crate) col: usize,
-    pub(crate) kind: TokenKind,
+    pub(crate) kind: TokenKind<'src>,
 }
 
 #[derive( Debug )]
-pub(crate) struct Lexer<'src> {
+pub(crate) struct Lexer<'tokens, 'src: 'tokens> {
     src: &'src Src,
 
     col: usize,
     token_start_col: usize,
     line_end: usize,
 
-    tokens: Vec<Token>,
+    tokens: Vec<Token<'tokens>>,
 
     brackets: Vec<Bracket>,
     errors: Vec<SyntaxError>,
 }
 
-impl<'src> Lexer<'src> {
-    pub(crate) fn tokenize( src: &'src Src ) -> Result<Vec<Token>, Vec<SyntaxError>> {
+impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
+    pub(crate) fn tokenize( src: &'src Src ) -> Result<Vec<Token<'tokens>>, Vec<SyntaxError>> {
         if src.lines.is_empty() {
             return Ok( Vec::new() );
         }
@@ -571,9 +566,10 @@ impl<'src> Lexer<'src> {
                     Ok( Some( kind ) ) => Token { col: this.token_start_col, kind },
                     Err( err ) => {
                         this.errors.push( err );
+                        let unexpected = this.token_text();
                         Token {
                             col: this.token_start_col,
-                            kind: TokenKind::Unexpected( this.token_text().to_string() )
+                            kind: TokenKind::Unexpected( unexpected )
                         }
                     }
                 };
@@ -600,8 +596,8 @@ impl<'src> Lexer<'src> {
 }
 
 // TODO make next/peek methods return Option<Result> instead of Result<Option>
-impl<'src> Lexer<'src> {
-    fn token_text( &self ) -> &'src str {
+impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
+    fn token_text( &self ) -> &'tokens str {
         return &self.src.code[ self.token_start_col..self.col ];
     }
 
@@ -626,7 +622,7 @@ impl<'src> Lexer<'src> {
         }
     }
 
-    fn peek_next( &self ) -> Result<Option<&'src u8>, SyntaxError> {
+    fn peek_next( &self ) -> Result<Option<&'tokens u8>, SyntaxError> {
         if self.col >= self.line_end {
             return Ok( None );
         }
@@ -667,7 +663,7 @@ impl<'src> Lexer<'src> {
         }
     }
 
-    fn tokeninze_next( &mut self ) -> Result<Option<TokenKind>, SyntaxError> {
+    fn tokeninze_next( &mut self ) -> Result<Option<TokenKind<'tokens>>, SyntaxError> {
         loop {
             self.token_start_col = self.col;
             let next = match self.next()? {
@@ -714,7 +710,7 @@ impl<'src> Lexer<'src> {
                             "loop"     => TokenKind::Loop,
                             "break"    => TokenKind::Break,
                             "continue" => TokenKind::Continue,
-                            identifier => TokenKind::Identifier( identifier.to_string() ),
+                            identifier => TokenKind::Identifier( identifier ),
                         };
 
                         Ok( Some( identifier ) )
@@ -784,23 +780,23 @@ impl<'src> Lexer<'src> {
                         self.col = self.line_end;
                         self.token_start_col += 1;
                         let comment = self.token_text();
-                        Ok( Some( TokenKind::Comment( comment.to_string() ) ) )
+                        Ok( Some( TokenKind::Comment( comment ) ) )
                     },
                 },
                 b'"' => {
                     let mut errors: Vec<SyntaxError> = Vec::new();
-                    let mut text = String::new();
+                    let mut text: Vec<u8> = Vec::new();
 
                     loop {
                         let next = match self.next_str_char()? {
                             b'\\' => match self.next_str_char()? {
-                                b'\\' => Ok( '\\' ),
-                                b'\'' => Ok( '\'' ),
-                                b'"' => Ok( '"' ),
-                                b'n' => Ok( '\n' ),
-                                b'r' => Ok( '\r' ),
-                                b't' => Ok( '\t' ),
-                                b'0' => Ok( '\0' ),
+                                b'\\' => Ok( b'\\' ),
+                                b'\'' => Ok( b'\'' ),
+                                b'"' => Ok( b'"' ),
+                                b'n' => Ok( b'\n' ),
+                                b'r' => Ok( b'\r' ),
+                                b't' => Ok( b'\t' ),
+                                b'0' => Ok( b'\0' ),
                                 _ => Err( SyntaxError {
                                     col: self.col,
                                     len: 1,
@@ -815,7 +811,7 @@ impl<'src> Lexer<'src> {
                                 help_msg: "cannot be a control character".into(),
                             } ),
                             b'"' => break,
-                            other => Ok( other as char ),
+                            other => Ok( other ),
                         };
 
                         match next {
@@ -826,7 +822,7 @@ impl<'src> Lexer<'src> {
 
                     // after here there cannot be unclosed strings
                     if errors.is_empty() {
-                        Ok( Some( TokenKind::Literal( Literal::Str( Str { text: text.into_bytes() } ) ) ) )
+                        Ok( Some( TokenKind::Literal( Literal::Str( text ) ) ) )
                     }
                     else {
                         // FIX add proper multiple error handling

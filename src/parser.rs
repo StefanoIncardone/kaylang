@@ -4,17 +4,17 @@ use crate::{lexer::*, errors::*};
 
 
 #[derive( Debug )]
-struct TokenIter<'lexer> {
+struct TokenIter<'tokens, 'src: 'tokens> {
     token: usize,
-    tokens: &'lexer [Token],
+    tokens: &'tokens [Token<'src>],
 }
 
-impl<'lexer> TokenIter<'lexer> {
+impl<'tokens, 'src: 'tokens> TokenIter<'tokens, 'src> {
     // TODO remove this method and make the next/previous methods return their current position and
     // then move (i.e. like a normal iterator)
         // NOTE its going to be required to pass a position object around instead of calling current
         // when needed, or store the current position and refer to that
-    fn current( &mut self ) -> Option<&'lexer Token> {
+    fn current( &mut self ) -> Option<&'tokens Token<'src>> {
         if self.token >= self.tokens.len() {
             return None;
         }
@@ -22,7 +22,7 @@ impl<'lexer> TokenIter<'lexer> {
         return Some( &self.tokens[ self.token ] ).or_next( self );
     }
 
-    fn next( &mut self ) -> Option<&'lexer Token> {
+    fn next( &mut self ) -> Option<&'tokens Token<'src>> {
         if self.token >= self.tokens.len() - 1 {
             self.token += 1;
             return None;
@@ -32,7 +32,7 @@ impl<'lexer> TokenIter<'lexer> {
         return Some( &self.tokens[ self.token ] ).or_next( self );
     }
 
-    fn previous( &mut self ) -> Option<&'lexer Token> {
+    fn previous( &mut self ) -> Option<&'tokens Token<'src>> {
         if self.token == 0 {
             return None;
         }
@@ -41,14 +41,14 @@ impl<'lexer> TokenIter<'lexer> {
         return Some( &self.tokens[ self.token ] ).or_previous( self );
     }
 
-    fn peek_next( &mut self ) -> Option<&'lexer Token> {
+    fn peek_next( &mut self ) -> Option<&'tokens Token<'src>> {
         let starting_token = self.token;
         let next = self.next();
         self.token = starting_token;
         return next;
     }
 
-    fn peek_previous( &mut self ) -> Option<&'lexer Token> {
+    fn peek_previous( &mut self ) -> Option<&'tokens Token<'src>> {
         let starting_token = self.token;
         let previous = self.previous();
         self.token = starting_token;
@@ -56,18 +56,18 @@ impl<'lexer> TokenIter<'lexer> {
     }
 }
 
-trait BoundedToken<'tokens> where Self: Sized {
+trait BoundedToken<'tokens, 'src: 'tokens> {
     type Error;
 
-    fn bounded( self, tokens: &mut TokenIter<'tokens>, err_msg: impl Into<String> ) -> Result<&'tokens Token, Self::Error>;
-    fn or_next( self, tokens: &mut TokenIter<'tokens> ) -> Self;
-    fn or_previous( self, tokens: &mut TokenIter<'tokens> ) -> Self;
+    fn bounded( self, tokens: &mut TokenIter<'tokens, 'src>, err_msg: impl Into<String> ) -> Result<&'tokens Token<'src>, Self::Error>;
+    fn or_next( self, tokens: &mut TokenIter<'tokens, 'src> ) -> Self;
+    fn or_previous( self, tokens: &mut TokenIter<'tokens, 'src> ) -> Self;
 }
 
-impl<'tokens> BoundedToken<'tokens> for Option<&'tokens Token> {
+impl<'tokens, 'src: 'tokens> BoundedToken<'tokens, 'src> for Option<&'tokens Token<'src>> {
     type Error = SyntaxError;
 
-    fn bounded( self, tokens: &mut TokenIter<'tokens>, err_msg: impl Into<String> ) -> Result<&'tokens Token, Self::Error> {
+    fn bounded( self, tokens: &mut TokenIter<'tokens, 'src>, err_msg: impl Into<String> ) -> Result<&'tokens Token<'src>, Self::Error> {
         return match self {
             Some( token ) => Ok( token ),
             None => {
@@ -83,14 +83,14 @@ impl<'tokens> BoundedToken<'tokens> for Option<&'tokens Token> {
         }
     }
 
-    fn or_next( self, tokens: &mut TokenIter<'tokens> ) -> Self {
+    fn or_next( self, tokens: &mut TokenIter<'tokens, 'src> ) -> Self {
         return match self?.kind {
             TokenKind::Comment( _ ) => tokens.next(),
             _ => self,
         }
     }
 
-    fn or_previous( self, tokens: &mut TokenIter<'tokens> ) -> Self {
+    fn or_previous( self, tokens: &mut TokenIter<'tokens, 'src> ) -> Self {
         return match self?.kind {
             TokenKind::Comment( _ ) => tokens.previous(),
             _ => self,
@@ -100,14 +100,14 @@ impl<'tokens> BoundedToken<'tokens> for Option<&'tokens Token> {
 
 
 #[derive( Debug, Clone )]
-pub(crate) enum Expression {
+pub(crate) enum Expression<'src> {
     Literal( Literal ),
-    Unary { op: Operator, operand: Box<Expression> },
-    Binary { lhs: Box<Expression>, op: Operator, rhs: Box<Expression> },
-    Identifier( String, Type ),
+    Unary { op: Operator, operand: Box<Expression<'src>> },
+    Binary { lhs: Box<Expression<'src>>, op: Operator, rhs: Box<Expression<'src>> },
+    Identifier( &'src str, Type ),
 }
 
-impl Display for Expression {
+impl Display for Expression<'_> {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
             Self::Literal( literal )      => write!( f, "{}", literal ),
@@ -118,7 +118,7 @@ impl Display for Expression {
     }
 }
 
-impl TypeOf for Expression {
+impl TypeOf for Expression<'_> {
     fn typ( &self ) -> Type {
         return match self {
             Self::Literal( literal )    => literal.typ(),
@@ -130,48 +130,48 @@ impl TypeOf for Expression {
 }
 
 #[derive( Debug, Clone )]
-pub(crate) struct Variable {
+pub(crate) struct Variable<'src> {
     pub(crate) mutability: Mutability,
-    pub(crate) name: String,
-    pub(crate) value: Expression,
+    pub(crate) name: &'src str,
+    pub(crate) value: Expression<'src>,
 }
 
 #[derive( Debug, Clone )]
-pub(crate) struct IfStatement {
-    pub(crate) condition: Expression,
-    pub(crate) statement: Node,
+pub(crate) struct IfStatement<'src> {
+    pub(crate) condition: Expression<'src>,
+    pub(crate) statement: Node<'src>,
 }
 
-impl Display for IfStatement {
+impl Display for IfStatement<'_> {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return write!( f, "if {}", self.condition );
     }
 }
 
 #[derive( Debug, Clone )]
-pub(crate) struct If {
-    pub(crate) ifs: Vec<IfStatement>,
-    pub(crate) els: Option<Box<Node>>,
+pub(crate) struct If<'src> {
+    pub(crate) ifs: Vec<IfStatement<'src>>,
+    pub(crate) els: Option<Box<Node<'src>>>,
 }
 
 #[allow( dead_code )]
 #[derive( Debug, Clone )]
-pub(crate) enum LoopCondition {
+pub(crate) enum LoopCondition<'src> {
     Infinite,
-    Pre( Expression ),
-    Post( Expression )
+    Pre( Expression<'src> ),
+    Post( Expression<'src> )
 }
 
 #[allow( dead_code )]
 #[derive( Debug, Clone )]
-pub(crate) struct Loop {
-    pub(crate) pre: Option<Box<Node>>,
-    pub(crate) condition: LoopCondition,
-    pub(crate) post: Option<Box<Node>>,
-    pub(crate) statement: Box<Node>,
+pub(crate) struct Loop<'src> {
+    pub(crate) pre: Option<Box<Node<'src>>>,
+    pub(crate) condition: LoopCondition<'src>,
+    pub(crate) post: Option<Box<Node<'src>>>,
+    pub(crate) statement: Box<Node<'src>>,
 }
 
-impl Display for Loop {
+impl Display for Loop<'_> {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match &self.condition {
             LoopCondition::Infinite          => write!( f, "loop" ),
@@ -183,23 +183,23 @@ impl Display for Loop {
 
 // TODO create node struct that contains the line and token of the start of the node
 #[derive( Debug, Clone )]
-pub(crate) enum Node {
+pub(crate) enum Node<'src> {
     Empty,
 
-    Expression( Expression ),
-    Print( Expression ),
-    Println( Option<Expression> ),
-    If( If ),
-    Loop( Loop ),
+    Expression( Expression<'src> ),
+    Print( Expression<'src> ),
+    Println( Option<Expression<'src>> ),
+    If( If<'src> ),
+    Loop( Loop<'src> ),
     Break,
     Continue,
 
     Definition( usize /* scope idx */, usize /* variable idx */ ),
-    Assignment( usize /* scope idx */, usize /* variable idx */, Expression ),
+    Assignment( usize /* scope idx */, usize /* variable idx */, Expression<'src> ),
     Scope( usize ),
 }
 
-impl Display for Node {
+impl Display for Node<'_> {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
             Self::Expression( expression ) => write!( f, "{}", expression ),
@@ -218,26 +218,26 @@ impl Display for Node {
 }
 
 #[derive( Debug, Clone )]
-pub(crate) struct Scope {
+pub(crate) struct Scope<'src> {
     pub(crate) parent: usize,
     pub(crate) types: Vec<Type>,
-    pub(crate) variables: Vec<Variable>,
-    pub(crate) nodes: Vec<Node>,
+    pub(crate) variables: Vec<Variable<'src>>,
+    pub(crate) nodes: Vec<Node<'src>>,
 }
 
 // IDEA create Parser class that builds the AST, and then validate the AST afterwards
 #[derive( Debug )]
-pub(crate) struct Ast<'tokens> {
-    scopes: Vec<Scope>,
+pub(crate) struct Ast<'tokens, 'ast, 'src: 'ast> {
+    scopes: Vec<Scope<'ast>>,
     scope: usize,
     loop_depth: usize,
 
-    tokens: TokenIter<'tokens>,
+    tokens: TokenIter<'tokens, 'src>,
     errors: Vec<SyntaxError>,
 }
 
-impl<'tokens> Ast<'tokens> {
-    pub(crate) fn build( tokens: &'tokens [Token] ) -> Result<Vec<Scope>, Vec<SyntaxError>> {
+impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
+    pub(crate) fn build( tokens: &'tokens [Token<'src>] ) -> Result<Vec<Scope<'ast>>, Vec<SyntaxError>> {
         if tokens.is_empty() {
             return Ok( Vec::new() );
         }
@@ -265,7 +265,7 @@ impl<'tokens> Ast<'tokens> {
 }
 
 // scopes
-impl Ast<'_> {
+impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
     fn parse_scope( &mut self ) {
         loop {
             match self.parse_single_any() {
@@ -308,7 +308,7 @@ impl Ast<'_> {
         }
     }
 
-    fn parse_single_statement( &mut self ) -> Result<Option<Node>, SyntaxError> {
+    fn parse_single_statement( &mut self ) -> Result<Option<Node<'ast>>, SyntaxError> {
         let current_token = match self.tokens.current() {
             Some( token ) => token,
             None => return Ok( None ),
@@ -427,7 +427,7 @@ impl Ast<'_> {
         }
     }
 
-    fn parse_do_single_statement( &mut self ) -> Result<Option<Node>, SyntaxError> {
+    fn parse_do_single_statement( &mut self ) -> Result<Option<Node<'ast>>, SyntaxError> {
         let current_token = self.tokens.next().bounded( &mut self.tokens, "expected statement" )?;
         return match current_token.kind {
             TokenKind::Bracket( BracketKind::OpenCurly ) => {
@@ -452,7 +452,7 @@ impl Ast<'_> {
         }
     }
 
-    fn parse_single_any( &mut self ) -> Result<Option<Node>, SyntaxError> {
+    fn parse_single_any( &mut self ) -> Result<Option<Node<'ast>>, SyntaxError> {
         let current_token = match self.tokens.current() {
             Some( token ) => token,
             None => return Ok( None ),
@@ -484,7 +484,7 @@ impl Ast<'_> {
 }
 
 // semicolons
-impl Ast<'_> {
+impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
     fn semicolon( &mut self ) -> Result<(), SyntaxError> {
         let semicolon_token = self.tokens.current().bounded( &mut self.tokens, "expected semicolon" )?;
         return match &semicolon_token.kind {
@@ -507,7 +507,7 @@ impl Ast<'_> {
 }
 
 // expressions
-impl Ast<'_> {
+impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
     fn operator( &mut self, ops: &[Operator] ) -> Result<Option<Operator>, SyntaxError> {
         let current_token = self.tokens.current().bounded( &mut self.tokens, "expected operator or semicolon" )?;
         return match current_token.kind {
@@ -523,7 +523,7 @@ impl Ast<'_> {
         }
     }
 
-    fn primary_expression( &mut self ) -> Result<Expression, SyntaxError> {
+    fn primary_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
         let current_token = self.tokens.current().bounded( &mut self.tokens, "expected expression" )?;
         let factor = match &current_token.kind {
             TokenKind::Literal( literal ) => Ok( Expression::Literal( literal.clone() ) ),
@@ -532,7 +532,7 @@ impl Ast<'_> {
             TokenKind::Identifier( name ) => match self.resolve_type( name ) {
                 None => match self.resolve_variable( name ) {
                     Some( (variable, _, _) ) =>
-                        Ok( Expression::Identifier( variable.name.clone(), variable.value.typ() ) ),
+                        Ok( Expression::Identifier( variable.name, variable.value.typ() ) ),
                     None => Err( SyntaxError {
                         col: current_token.col,
                         len: current_token.kind.len(),
@@ -634,7 +634,7 @@ impl Ast<'_> {
         return factor;
     }
 
-    fn exponentiative_expression( &mut self ) -> Result<Expression, SyntaxError> {
+    fn exponentiative_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
         let mut lhs = self.primary_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::Pow] )? {
@@ -645,7 +645,7 @@ impl Ast<'_> {
         return Ok( lhs );
     }
 
-    fn multiplicative_expression( &mut self ) -> Result<Expression, SyntaxError> {
+    fn multiplicative_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
         let mut lhs = self.exponentiative_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::Times, Operator::Divide, Operator::Remainder] )? {
@@ -656,7 +656,7 @@ impl Ast<'_> {
         return Ok( lhs );
     }
 
-    fn additive_expression( &mut self ) -> Result<Expression, SyntaxError> {
+    fn additive_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
         let mut lhs = self.multiplicative_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::Plus, Operator::Minus] )? {
@@ -667,7 +667,7 @@ impl Ast<'_> {
         return Ok( lhs );
     }
 
-    fn shift_expression( &mut self ) -> Result<Expression, SyntaxError> {
+    fn shift_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
         let mut lhs = self.additive_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::LeftShift, Operator::RightShift] )? {
@@ -678,7 +678,7 @@ impl Ast<'_> {
         return Ok( lhs );
     }
 
-    fn bitand_expression( &mut self ) -> Result<Expression, SyntaxError> {
+    fn bitand_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
         let mut lhs = self.shift_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::BitAnd] )? {
@@ -689,7 +689,7 @@ impl Ast<'_> {
         return Ok( lhs );
     }
 
-    fn bitxor_expression( &mut self ) -> Result<Expression, SyntaxError> {
+    fn bitxor_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
         let mut lhs = self.bitand_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::BitXor] )? {
@@ -700,7 +700,7 @@ impl Ast<'_> {
         return Ok( lhs );
     }
 
-    fn bitor_expression( &mut self ) -> Result<Expression, SyntaxError> {
+    fn bitor_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
         let mut lhs = self.bitxor_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::BitOr] )? {
@@ -711,7 +711,7 @@ impl Ast<'_> {
         return Ok( lhs );
     }
 
-    fn comparative_expression( &mut self ) -> Result<Expression, SyntaxError> {
+    fn comparative_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
         let mut lhs = self.bitor_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::Compare] )? {
@@ -722,7 +722,7 @@ impl Ast<'_> {
         return Ok( lhs );
     }
 
-    fn comparison_expression( &mut self ) -> Result<Expression, SyntaxError> {
+    fn comparison_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
         let mut lhs = self.comparative_expression()?;
 
         let ops = [
@@ -752,7 +752,7 @@ impl Ast<'_> {
         return Ok( lhs );
     }
 
-    fn and_expression( &mut self ) -> Result<Expression, SyntaxError> {
+    fn and_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
         let mut lhs = self.comparison_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::And] )? {
@@ -818,7 +818,7 @@ impl Ast<'_> {
     //     return Ok( lhs );
     // }
 
-    fn or_expression( &mut self ) -> Result<Expression, SyntaxError> {
+    fn or_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
         let mut lhs = self.and_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::Or] )? {
@@ -853,14 +853,14 @@ impl Ast<'_> {
     // TODO disallow implicit conversions (str + i64, char + i64, str + char or str + str
         // IDEA introduce casting operators
     // TODO implement boolean operator chaining
-    fn expression( &mut self ) -> Result<Expression, SyntaxError> {
+    fn expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
         return self.or_expression();
     }
 }
 
 // variable definitions and assignments
-impl<'this> Ast<'_> {
-    fn resolve_variable( &'this self, name: &str ) -> Option<(&'this Variable, usize /* scope idx */, usize /* variable idx */)> {
+impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
+    fn resolve_variable( &self, name: &'src str ) -> Option<(&Variable<'ast>, usize /* scope idx */, usize /* variable idx */)> {
         let mut current_scope = self.scope;
         loop {
             let scope = &self.scopes[ current_scope ];
@@ -879,7 +879,7 @@ impl<'this> Ast<'_> {
         }
     }
 
-    fn resolve_type( &'this self, name: &str ) -> Option<&'this Type> {
+    fn resolve_type( &self, name: &'src str ) -> Option<&Type> {
         let mut current_scope = self.scope;
         loop {
             let scope = &self.scopes[ current_scope ];
@@ -899,7 +899,7 @@ impl<'this> Ast<'_> {
     }
 
 
-    fn variable_definition( &mut self ) -> Result<Node, SyntaxError> {
+    fn variable_definition( &mut self ) -> Result<Node<'ast>, SyntaxError> {
         let definition_token = self.tokens.current().unwrap();
         let mutability = match definition_token.kind {
             TokenKind::Definition( kind ) => kind,
@@ -909,7 +909,7 @@ impl<'this> Ast<'_> {
         let name_token = self.tokens.next().bounded( &mut self.tokens, "expected identifier" )?;
         let name = match &name_token.kind {
             TokenKind::Identifier( name ) => match self.resolve_type( name ) {
-                None => Ok( name.clone() ),
+                None => Ok( name ),
                 Some( _ ) => Err( SyntaxError {
                     col: name_token.col,
                     len: name_token.kind.len(),
@@ -976,7 +976,7 @@ impl<'this> Ast<'_> {
         let annotation = annotation?;
         let expression = expression?;
 
-        if self.resolve_variable( &name ).is_some() {
+        if self.resolve_variable( name ).is_some() {
             return Err( SyntaxError {
                 col: name_token.col,
                 len: name_token.kind.len(),
@@ -1002,21 +1002,13 @@ impl<'this> Ast<'_> {
                 }
 
                 let variables = &mut self.scopes[ self.scope ].variables;
-                variables.push( Variable {
-                    mutability,
-                    name: name.clone(),
-                    value
-                } );
+                variables.push( Variable { mutability, name, value } );
                 Ok( Node::Definition( self.scope, variables.len() - 1 ) )
             },
             None => match annotation {
                 Some( (typ, _) ) => {
                     let variables = &mut self.scopes[ self.scope ].variables;
-                    variables.push( Variable {
-                        mutability,
-                        name: name.clone(),
-                        value: Expression::Literal( typ.default() )
-                    } );
+                    variables.push( Variable { mutability, name, value: Expression::Literal( typ.default() ) } );
                     Ok( Node::Definition( self.scope, variables.len() - 1 ) )
                 },
                 None => Err( SyntaxError {
@@ -1029,7 +1021,7 @@ impl<'this> Ast<'_> {
         }
     }
 
-    fn variable_reassignment_or_expression( &mut self ) -> Result<Node, SyntaxError> {
+    fn variable_reassignment_or_expression( &mut self ) -> Result<Node<'ast>, SyntaxError> {
         let name_token = self.tokens.current().unwrap();
         let op_token = match self.tokens.peek_next() {
             Some( token ) => match token.kind {
@@ -1053,9 +1045,12 @@ impl<'this> Ast<'_> {
         self.tokens.next();
         self.tokens.next().bounded( &mut self.tokens, "expected expression" )?;
 
-        let name = name_token.kind.to_string();
+        let name = match name_token.kind {
+            TokenKind::Identifier( name ) => name,
+            _ => unreachable!(),
+        };
 
-        if self.resolve_type( &name ).is_some() {
+        if self.resolve_type( name ).is_some() {
             return Err( SyntaxError {
                 col: name_token.col,
                 len: name_token.kind.len(),
@@ -1065,7 +1060,7 @@ impl<'this> Ast<'_> {
         }
 
         let rhs = self.expression()?;
-        match self.resolve_variable( &name ) {
+        match self.resolve_variable( name ) {
             Some( (var, scope, var_idx) ) => match var.mutability {
                 Mutability::Let => Err( SyntaxError {
                     col: name_token.col,
@@ -1077,7 +1072,7 @@ impl<'this> Ast<'_> {
                     let value = match &op_token.kind {
                         TokenKind::Equals => rhs,
                         TokenKind::Op( op ) => {
-                            let lhs = Expression::Identifier( name.clone(), op.typ() );
+                            let lhs = Expression::Identifier( name, op.typ() );
                             Expression::Binary { lhs: Box::new( lhs ), op: *op, rhs: Box::new( rhs ) }
                         },
                         _ => unreachable!(),
@@ -1110,8 +1105,8 @@ impl<'this> Ast<'_> {
 }
 
 // print statements
-impl Ast<'_> {
-    fn print( &mut self ) -> Result<Node, SyntaxError> {
+impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
+    fn print( &mut self ) -> Result<Node<'ast>, SyntaxError> {
         let print_token = self.tokens.current().unwrap();
         if let TokenKind::PrintLn = print_token.kind {
             if let Some( &Token { kind: TokenKind::SemiColon, .. } ) = self.tokens.peek_next() {
@@ -1132,8 +1127,8 @@ impl Ast<'_> {
 }
 
 // if statements
-impl Ast<'_> {
-    fn iff( &mut self ) -> Result<Node, SyntaxError> {
+impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
+    fn iff( &mut self ) -> Result<Node<'ast>, SyntaxError> {
         let mut if_statement = If { ifs: Vec::new(), els: None };
 
         'iff: while let Some( if_token ) = self.tokens.current() {
@@ -1212,8 +1207,8 @@ impl Ast<'_> {
 }
 
 // for statements
-impl Ast<'_> {
-    fn loop_statement( &mut self ) -> Result<Node, SyntaxError> {
+impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src>{
+    fn loop_statement( &mut self ) -> Result<Node<'ast>, SyntaxError> {
         let do_token = self.tokens.current().unwrap();
         let loop_token = match do_token.kind {
             TokenKind::Do => self.tokens.next().bounded( &mut self.tokens, "expected loop statement" )?,

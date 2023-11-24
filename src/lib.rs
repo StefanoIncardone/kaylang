@@ -40,6 +40,7 @@ impl Display for Color {
     }
 }
 
+// TODO disallow verbosity with help messages
 #[derive( Debug, Default, Clone, Copy )]
 pub enum Verbosity {
     #[default] Normal,
@@ -87,14 +88,6 @@ impl From<KayArgs> for Kay {
 
         color.set();
         return Self { color, verbosity, run_mode };
-    }
-}
-
-impl TryFrom<Args> for Kay {
-    type Error = CliError;
-
-    fn try_from( args: Args ) -> Result<Self, Self::Error> {
-        return Self::try_from( args.collect::<Vec<String>>() );
     }
 }
 
@@ -232,6 +225,14 @@ impl TryFrom<Vec<String>> for Kay {
     }
 }
 
+impl TryFrom<Args> for Kay {
+    type Error = CliError;
+
+    fn try_from( args: Args ) -> Result<Self, Self::Error> {
+        return Self::try_from( args.collect::<Vec<String>>() );
+    }
+}
+
 
 // Execution of specified commands
 impl Kay {
@@ -288,11 +289,8 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
                     Err( err ) => return Err( KayError::Src( err ) ),
                 };
 
-                let scopes = match Checker::check( &source_file, &mut logger ) {
-                    Ok( scopes ) => {
-                        // println!( "{:#?}", ast );
-                        scopes
-                    },
+                let ast = match Checker::check( &source_file, &mut logger ) {
+                    Ok( ast ) => ast,
                     Err( errors ) => return Err( KayError::Syntax( SyntaxErrors::new( errors, &source_file ) ) ),
                 };
 
@@ -303,7 +301,7 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
                             src_path: src.clone(),
                             out_path: out.clone(),
                             run: *run,
-                            scopes: &scopes,
+                            scopes: &ast,
                             rodata: String::new(),
                             asm: String::new(),
                             variables: Vec::new(),

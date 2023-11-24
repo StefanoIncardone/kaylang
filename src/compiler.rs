@@ -5,32 +5,32 @@ use crate::{lexer::*, parser::*, logging::*, errors::*};
 
 // TODO introduce intermediate representation
 #[derive( Debug )]
-pub(crate) struct CompilerVariable {
-    name: String,
+pub(crate) struct CompilerVariable<'src> {
+    name: &'src str,
     typ: Type,
     offset: usize,
 }
 
 #[derive( Debug )]
-pub(crate) struct StringLabel<'ast> {
-    string: &'ast Str,
+pub(crate) struct CompilerString<'ast> {
+    string: &'ast Vec<u8>,
     label: String,
     len_label: String,
 }
 
 #[derive( Debug )]
-pub(crate) struct Compiler<'ast> {
+pub(crate) struct Compiler<'ast, 'src: 'ast> {
     pub(crate) src_path: PathBuf,
     pub(crate) out_path: Option<PathBuf>,
     pub(crate) run: bool,
 
-    pub(crate) scopes: &'ast Vec<Scope>,
+    pub(crate) scopes: &'ast Vec<Scope<'src>>,
 
     pub(crate) rodata: String,
     pub(crate) asm: String,
 
-    pub(crate) variables: Vec<CompilerVariable>,
-    pub(crate) strings: Vec<StringLabel<'ast>>,
+    pub(crate) variables: Vec<CompilerVariable<'src>>,
+    pub(crate) strings: Vec<CompilerString<'ast>>,
 
     pub(crate) if_idx: usize,
     pub(crate) loop_idx: usize,
@@ -38,8 +38,8 @@ pub(crate) struct Compiler<'ast> {
 }
 
 // Resolution of identifiers and string tags
-impl<'ast> Compiler<'ast> {
-    fn resolve( &'ast self, name: &str ) -> &'ast CompilerVariable {
+impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
+    fn resolve( &self, name: &'src str ) -> &CompilerVariable<'src> {
         for variable in &self.variables {
             if variable.name == name {
                 return variable;
@@ -49,7 +49,7 @@ impl<'ast> Compiler<'ast> {
         unreachable!();
     }
 
-    fn string_label_idx( &mut self, string: &'ast Str ) -> usize {
+    fn string_label_idx( &mut self, string: &'ast Vec<u8> ) -> usize {
         let mut string_idx = 0;
         for string_label in &self.strings {
             if std::ptr::eq( string, string_label.string ) {
@@ -58,9 +58,9 @@ impl<'ast> Compiler<'ast> {
             string_idx += 1;
         }
 
-        let mut string_text = String::with_capacity( string.text.len() + 2 );
+        let mut string_text = String::with_capacity( string.len() + 2 );
         string_text.push( '`' );
-        for ch in &string.text {
+        for ch in string {
             string_text.extend( (*ch as char).escape_default() );
         }
         string_text.push( '`' );
@@ -75,13 +75,13 @@ impl<'ast> Compiler<'ast> {
             len_label, label
         );
 
-        self.strings.push( StringLabel { string, label, len_label } );
+        self.strings.push( CompilerString { string, label, len_label } );
         return string_idx;
     }
 }
 
 // Generation of compilation artifacts (.asm, .o, executable)
-impl Compiler<'_> {
+impl Compiler<'_, '_> {
     const STACK_ALIGN: usize = core::mem::size_of::<usize>();
 
     pub(crate) fn compile( &mut self, logger: &mut CompilationLogger ) -> Result<(), IoError> {
@@ -181,10 +181,8 @@ r#" stdout: equ 1
                 }
 
                 for variable in variables.swap_remove( current_type ).1 {
-                    let name = variable.name.clone();
                     let typ = variable.value.typ();
-
-                    self.variables.push( CompilerVariable { name, typ, offset: stack_size } );
+                    self.variables.push( CompilerVariable { name: variable.name, typ, offset: stack_size } );
                     stack_size += typ.len();
                 }
             }
@@ -346,15 +344,14 @@ _start:
 
         let nasm_args = ["-felf64", "-gdwarf", asm_path.to_str().unwrap(), "-o", obj_path.to_str().unwrap()];
         match Command::new( "nasm" ).args( nasm_args ).output() {
-            Ok( nasm_out ) =>
-                if !nasm_out.status.success() {
-                    logger.substep( &ASSEMBLER );
-                    return Err( IoError {
-                        kind: ErrorKind::InvalidData,
-                        msg: "nasm assembler failed".into(),
-                        cause: String::from_utf8( nasm_out.stderr ).unwrap().into()
-                    } );
-                },
+            Ok( nasm_out ) => if !nasm_out.status.success() {
+                logger.substep( &ASSEMBLER );
+                return Err( IoError {
+                    kind: ErrorKind::InvalidData,
+                    msg: "nasm assembler failed".into(),
+                    cause: String::from_utf8( nasm_out.stderr ).unwrap().into()
+                } );
+            },
             Err( err ) => {
                 logger.substep( &ASSEMBLER );
                 return Err( IoError {
@@ -370,15 +367,14 @@ _start:
 
         let ld_args = [obj_path.to_str().unwrap(), "-o", exe_path.to_str().unwrap()];
         match Command::new( "ld" ).args( ld_args ).output() {
-            Ok( ld_out ) =>
-                if !ld_out.status.success() {
-                    logger.substep( &LINKER );
-                    return Err( IoError {
-                        kind: ErrorKind::InvalidData,
-                        msg: "ld linker failed".into(),
-                        cause: String::from_utf8( ld_out.stderr ).unwrap().into()
-                    } );
-                },
+            Ok( ld_out ) => if !ld_out.status.success() {
+                logger.substep( &LINKER );
+                return Err( IoError {
+                    kind: ErrorKind::InvalidData,
+                    msg: "ld linker failed".into(),
+                    cause: String::from_utf8( ld_out.stderr ).unwrap().into()
+                } );
+            },
             Err( err ) => {
                 logger.substep( &LINKER );
                 return Err( IoError {
@@ -419,8 +415,8 @@ _start:
 }
 
 // Compilation of nodes
-impl<'ast> Compiler<'ast> {
-    fn node( &mut self, node: &'ast Node ) {
+impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
+    fn node( &mut self, node: &'ast Node<'src> ) {
         match node {
             Node::Print( argument ) => {
                 self.asm += &format!( " ; {}\n", node );
@@ -593,19 +589,19 @@ impl<'ast> Compiler<'ast> {
                     loop_end_tag
                 );
             },
-            Node::Definition( scope, variable )    => {
+            Node::Definition( scope, variable ) => {
                 let variable = &self.scopes[ *scope ].variables[ *variable ];
-                self.assignment( &variable.name, &variable.value );
+                self.assignment( variable.name, &variable.value );
             },
             Node::Assignment( scope, variable, value ) => {
                 let variable = &self.scopes[ *scope ].variables[ *variable ];
-                self.assignment( &variable.name, value );
+                self.assignment( variable.name, value );
             },
-            Node::Scope( inner )            => self.scope( *inner ),
-            Node::Expression( expression )  => self.expression( expression ),
-            Node::Break                     => self.asm += &format!( " jmp loop_{}_end\n\n", self.loop_idx_stack.last().unwrap() ),
-            Node::Continue                  => self.asm += &format!( " jmp loop_{}\n\n", self.loop_idx_stack.last().unwrap() ),
-            Node::Empty                 => unreachable!(),
+            Node::Scope( inner )           => self.scope( *inner ),
+            Node::Expression( expression ) => self.expression( expression ),
+            Node::Break                    => self.asm += &format!( " jmp loop_{}_end\n\n", self.loop_idx_stack.last().unwrap() ),
+            Node::Continue                 => self.asm += &format!( " jmp loop_{}\n\n", self.loop_idx_stack.last().unwrap() ),
+            Node::Empty                    => unreachable!(),
         }
     }
 
@@ -619,7 +615,7 @@ impl<'ast> Compiler<'ast> {
     // FIX division by zero, raising to a negative power
         // IDEA print crash error message (implement a way to print file, line and column
         // information in source code)
-    fn expression( &mut self, expression: &'ast Expression ) {
+    fn expression( &mut self, expression: &'ast Expression<'src> ) {
         match expression {
             Expression::Literal( Literal::Int( value ) )  => self.asm += &format!( " mov rdi, {}\n", value ),
             Expression::Literal( Literal::Char( code ) )  => self.asm += &format!( " mov rdi, {}\n", code ),
@@ -667,7 +663,7 @@ impl<'ast> Compiler<'ast> {
         }
     }
 
-    fn expression_factor( &mut self, factor: &'ast Expression, dst: &str ) {
+    fn expression_factor( &mut self, factor: &'ast Expression<'src>, dst: &str ) {
         match factor {
             Expression::Literal( Literal::Int( value ) )  => self.asm += &format!( " mov {}, {}\n", dst, value ),
             Expression::Literal( Literal::Char( code ) )  => self.asm += &format!( " mov {}, {}\n", dst, code ),
@@ -675,7 +671,6 @@ impl<'ast> Compiler<'ast> {
             Expression::Literal( Literal::Str( string ) ) => {
                 let string_label_idx = self.string_label_idx( string );
                 let string_label = &self.strings[ string_label_idx ];
-
                 self.asm += &format!( " mov {}, {}\n", dst, string_label.len_label );
             },
             Expression::Binary { lhs, op, rhs } => {
@@ -818,13 +813,13 @@ impl<'ast> Compiler<'ast> {
     }
 
 
-    fn iff( &mut self, iff: &'ast IfStatement, tag: &String, false_tag: &String ) {
+    fn iff( &mut self, iff: &'ast IfStatement<'src>, tag: &String, false_tag: &String ) {
         self.asm += &format!( "{}:; {}\n", tag, iff.condition );
         self.condition( &iff.condition, false_tag );
         self.node( &iff.statement );
     }
 
-    fn looop( &mut self, looop: &'ast Loop, tag: &String, false_tag: &String ) {
+    fn looop( &mut self, looop: &'ast Loop<'src>, tag: &String, false_tag: &String ) {
         self.asm += &format!( "{}:; {}\n", tag, looop );
         match &looop.condition {
             LoopCondition::Pre( condition ) => {
@@ -858,7 +853,7 @@ impl<'ast> Compiler<'ast> {
         }
     }
 
-    fn condition( &mut self, condition: &'ast Expression, false_tag: &String ) {
+    fn condition( &mut self, condition: &'ast Expression<'src>, false_tag: &String ) {
         match condition {
             Expression::Literal( Literal::Bool( value ) ) =>
                 self.asm += &format!(
@@ -935,7 +930,7 @@ impl<'ast> Compiler<'ast> {
     }
 
 
-    fn assignment( &mut self, name: &String, new_value: &'ast Expression ) {
+    fn assignment( &mut self, name: &'src str, new_value: &'ast Expression<'src> ) {
         let variable = self.resolve( name );
         let variable_typ = variable.typ;
         let variable_offset = variable.offset;
@@ -952,7 +947,7 @@ impl<'ast> Compiler<'ast> {
                 self.asm += &format!( " mov byte [rbp + {}], {}\n\n", variable_offset, code ),
             Expression::Literal( Literal::Bool( value ) ) =>
                 self.asm += &format!( " mov byte [rbp + {}], {}\n\n", variable_offset, value ),
-            Expression::Literal( Literal::Str( string @ Str { .. } ) ) => {
+            Expression::Literal( Literal::Str( string ) ) => {
                 let string_label_idx = self.string_label_idx( string );
                 let string_label = &self.strings[ string_label_idx ];
 

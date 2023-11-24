@@ -15,7 +15,23 @@ impl Display for CliError {
     }
 }
 
-// TODO implement SyntaxErrorsDisplay struct that gets constructed on demand when needing to print errors
+// // TODO implement SyntaxErrorsDisplay struct that gets constructed on demand when needing to print errors
+// #[derive( Debug )]
+// pub struct SyntaxErrorDisplay<'src> {
+//     pub line: usize,
+//     pub col: usize,
+//     pub len: usize,
+//     pub line_text: &'src str,
+//     pub msg: Cow<'static, str>,
+//     pub help_msg: Cow<'static, str>,
+// }
+
+// #[derive( Debug )]
+// pub struct SyntaxErrorsDisplay<'src> {
+//     pub src_path: PathBuf,
+//     pub errors: Vec<SyntaxErrorDisplay<'src>>,
+// }
+
 // TODO implement NOTE, HINT, HELP in error messages
 #[derive( Debug )]
 pub struct SyntaxError {
