@@ -366,6 +366,7 @@ impl TypeOf for Operator {
     }
 }
 
+
 #[derive( Debug, Clone, Copy )]
 pub(crate) enum Mutability {
     Let,
@@ -389,6 +390,7 @@ impl Len for Mutability {
         }
     }
 }
+
 
 #[derive( Debug, Clone, Copy )]
 pub(crate) enum BracketKind {
@@ -425,6 +427,7 @@ struct Bracket {
     col: usize,
     kind: BracketKind,
 }
+
 
 #[derive( Debug, Clone )]
 pub(crate) enum TokenKind<'src> {
@@ -521,6 +524,7 @@ pub(crate) struct Token<'src> {
     pub(crate) kind: TokenKind<'src>,
 }
 
+
 #[derive( Debug )]
 pub(crate) struct Lexer<'tokens, 'src: 'tokens> {
     src: &'src Src,
@@ -532,11 +536,11 @@ pub(crate) struct Lexer<'tokens, 'src: 'tokens> {
     tokens: Vec<Token<'tokens>>,
 
     brackets: Vec<Bracket>,
-    errors: Vec<SyntaxError>,
+    errors: Vec<RawSyntaxError>,
 }
 
 impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
-    pub(crate) fn tokenize( src: &'src Src ) -> Result<Vec<Token<'tokens>>, Vec<SyntaxError>> {
+    pub(crate) fn tokenize( src: &'src Src ) -> Result<Vec<Token<'tokens>>, RawSyntaxErrors<'src>> {
         if src.lines.is_empty() {
             return Ok( Vec::new() );
         }
@@ -580,7 +584,7 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
 
         for bracket in &this.brackets {
             // there can only be open brackets at this point
-            this.errors.push( SyntaxError {
+            this.errors.push( RawSyntaxError {
                 col: bracket.col,
                 len: bracket.kind.len(),
                 msg: "stray bracket".into(),
@@ -590,7 +594,7 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
 
         return match this.errors.is_empty() {
             true => Ok( this.tokens ),
-            false => Err( this.errors ),
+            false => Err( RawSyntaxErrors { src, errors: this.errors } ),
         }
     }
 }
@@ -604,7 +608,7 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
     // FIX properly handle non ASCII characters
         // TODO add an absolute column for the bytes in the line
         // IDEA only allow utf-8 characters in strings, characters and comments
-    fn next( &mut self ) -> Result<Option<u8>, SyntaxError> {
+    fn next( &mut self ) -> Result<Option<u8>, RawSyntaxError> {
         if self.col >= self.line_end {
             return Ok( None );
         }
@@ -613,7 +617,7 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
         self.col += 1;
         return match next {
             ..=b'\x7F' => Ok( Some( next ) ),
-            _ => Err( SyntaxError {
+            _ => Err( RawSyntaxError {
                 col: self.col,
                 len: 1,
                 msg: "unrecognized character".into(),
@@ -622,7 +626,7 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
         }
     }
 
-    fn peek_next( &self ) -> Result<Option<&'tokens u8>, SyntaxError> {
+    fn peek_next( &self ) -> Result<Option<&'tokens u8>, RawSyntaxError> {
         if self.col >= self.line_end {
             return Ok( None );
         }
@@ -630,7 +634,7 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
         let next = &self.src.code.as_bytes()[ self.col ];
         return match next {
             ..=b'\x7F' => Ok( Some( next ) ),
-            _ => Err( SyntaxError {
+            _ => Err( RawSyntaxError {
                 col: self.col,
                 len: 1,
                 msg: "unrecognized character".into(),
@@ -639,10 +643,10 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
         }
     }
 
-    fn next_char( &mut self ) -> Result<u8, SyntaxError> {
+    fn next_char( &mut self ) -> Result<u8, RawSyntaxError> {
         return match self.next()? {
             Some( next ) => Ok( next ),
-            None => Err( SyntaxError {
+            None => Err( RawSyntaxError {
                 col: self.token_start_col,
                 len: self.col - self.token_start_col + 1,
                 msg: "invalid character literal".into(),
@@ -651,10 +655,10 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
         }
     }
 
-    fn next_str_char( &mut self ) -> Result<u8, SyntaxError> {
+    fn next_str_char( &mut self ) -> Result<u8, RawSyntaxError> {
         return match self.next()? {
             Some( next ) => Ok( next ),
-            None => Err( SyntaxError {
+            None => Err( RawSyntaxError {
                 col: self.token_start_col,
                 len: self.col - self.token_start_col + 1,
                 msg: "invalid string literal".into(),
@@ -663,7 +667,7 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
         }
     }
 
-    fn tokeninze_next( &mut self ) -> Result<Option<TokenKind<'tokens>>, SyntaxError> {
+    fn tokeninze_next( &mut self ) -> Result<Option<TokenKind<'tokens>>, RawSyntaxError> {
         loop {
             self.token_start_col = self.col;
             let next = match self.next()? {
@@ -689,7 +693,7 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
                     }
 
                     if contains_non_ascii {
-                        Err( SyntaxError {
+                        Err( RawSyntaxError {
                             col: self.token_start_col,
                             len: self.col - self.token_start_col + 1,
                             msg: "invalid identifier".into(),
@@ -736,7 +740,7 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
                         Err( err ) => match err.kind() {
                             IntErrorKind::InvalidDigit =>
                                 if contains_non_ascii {
-                                    Err( SyntaxError {
+                                    Err( RawSyntaxError {
                                         col: self.token_start_col,
                                         len: token_text.len(),
                                         msg: "invalid number literal".into(),
@@ -744,27 +748,27 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
                                     } )
                                 }
                                 else {
-                                    Err( SyntaxError {
+                                    Err( RawSyntaxError {
                                         col: self.token_start_col,
                                         len: token_text.len(),
                                         msg: "invalid number literal".into(),
                                         help_msg: "contains non-digit characters".into(),
                                     } )
                                 },
-                            IntErrorKind::PosOverflow => Err( SyntaxError {
+                            IntErrorKind::PosOverflow => Err( RawSyntaxError {
                                 col: self.token_start_col,
                                 len: token_text.len(),
                                 msg: "invalid number literal".into(),
                                 help_msg: format!( "overflows a {} bit signed integer (over {})", isize::BITS, isize::MAX ).into(),
                             } ),
-                            IntErrorKind::NegOverflow => Err( SyntaxError {
+                            IntErrorKind::NegOverflow => Err( RawSyntaxError {
                                 col: self.token_start_col,
                                 len: token_text.len(),
                                 msg: "invalid number literal".into(),
                                 help_msg: format!( "underflows a {} bit signed integer (under {})", isize::BITS, isize::MIN ).into(),
                             } ),
                             IntErrorKind::Empty | std::num::IntErrorKind::Zero => unreachable!(),
-                            _ => Err( SyntaxError {
+                            _ => Err( RawSyntaxError {
                                 col: self.token_start_col,
                                 len: token_text.len(),
                                 msg: "invalid number literal".into(),
@@ -784,7 +788,7 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
                     },
                 },
                 b'"' => {
-                    let mut errors: Vec<SyntaxError> = Vec::new();
+                    let mut errors: Vec<RawSyntaxError> = Vec::new();
                     let mut text: Vec<u8> = Vec::new();
 
                     loop {
@@ -797,14 +801,14 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
                                 b'r' => Ok( b'\r' ),
                                 b't' => Ok( b'\t' ),
                                 b'0' => Ok( b'\0' ),
-                                _ => Err( SyntaxError {
+                                _ => Err( RawSyntaxError {
                                     col: self.col,
                                     len: 1,
                                     msg: "invalid string character".into(),
                                     help_msg: "unrecognized escape character".into(),
                                 } ),
                             },
-                            b'\x00'..=b'\x1F' | b'\x7F' => Err( SyntaxError {
+                            b'\x00'..=b'\x1F' | b'\x7F' => Err( RawSyntaxError {
                                 col: self.col,
                                 len: 1,
                                 msg: "invalid string literal".into(),
@@ -841,20 +845,20 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
                             b'r' => Ok( b'\r' ),
                             b't' => Ok( b'\t' ),
                             b'0' => Ok( b'\0' ),
-                            _ => Err( SyntaxError {
+                            _ => Err( RawSyntaxError {
                                 col: self.col,
                                 len: 1,
                                 msg: "invalid character literal".into(),
                                 help_msg: "unrecognized escape character".into(),
                             } ),
                         },
-                        b'\x00'..=b'\x1F' | b'\x7F' => Err( SyntaxError {
+                        b'\x00'..=b'\x1F' | b'\x7F' => Err( RawSyntaxError {
                             col: self.col,
                             len: 1,
                             msg: "invalid character literal".into(),
                             help_msg: "cannot be a control character".into(),
                         } ),
-                        b'\'' => return Err( SyntaxError {
+                        b'\'' => return Err( RawSyntaxError {
                             col: self.token_start_col,
                             len: 2,
                             msg: "invalid character literal".into(),
@@ -868,7 +872,7 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
                             self.col += 1;
                             Ok( Some( TokenKind::Literal( Literal::Char( code? ) ) ) )
                         },
-                        Some( _ ) | None => Err( SyntaxError {
+                        Some( _ ) | None => Err( RawSyntaxError {
                             col: self.token_start_col,
                             len: self.col - self.token_start_col + 1,
                             msg: "invalid character literal".into(),
@@ -885,14 +889,14 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
                     Some( bracket ) => match bracket.kind {
                         BracketKind::OpenRound | BracketKind::CloseCurly | BracketKind::CloseRound =>
                             Ok( Some( TokenKind::Bracket( BracketKind::CloseRound ) ) ),
-                        BracketKind::OpenCurly => Err( SyntaxError {
+                        BracketKind::OpenCurly => Err( RawSyntaxError {
                             col: self.token_start_col,
                             len: 1,
                             msg: "stray bracket".into(),
                             help_msg: "closes the wrong bracket".into(),
                         } ),
                     },
-                    None => Err( SyntaxError {
+                    None => Err( RawSyntaxError {
                         col: self.token_start_col,
                         len: 1,
                         msg: "stray bracket".into(),
@@ -908,14 +912,14 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
                     Some( bracket ) => match bracket.kind {
                         BracketKind::OpenCurly | BracketKind::CloseCurly | BracketKind::CloseRound =>
                             Ok( Some( TokenKind::Bracket( BracketKind::CloseCurly ) ) ),
-                        BracketKind::OpenRound => Err( SyntaxError {
+                        BracketKind::OpenRound => Err( RawSyntaxError {
                             col: self.token_start_col,
                             len: 1,
                             msg: "stray bracket".into(),
                             help_msg: "closes the wrong bracket".into(),
                         } ),
                     },
-                    None => Err( SyntaxError {
+                    None => Err( RawSyntaxError {
                         col: self.token_start_col,
                         len: 1,
                         msg: "stray bracket".into(),
@@ -1075,7 +1079,7 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
                     _ => Ok( Some( TokenKind::Op( Operator::Less ) ) ),
                 },
                 // b'\r' | b'\n' => unreachable!( "line text should have been trimmed already" ),
-                _ => Err( SyntaxError {
+                _ => Err( RawSyntaxError {
                     col: self.token_start_col,
                     len: 1,
                     msg: "unexpected character".into(),

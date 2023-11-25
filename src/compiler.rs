@@ -11,12 +11,14 @@ pub(crate) struct CompilerVariable<'src> {
     offset: usize,
 }
 
+
 #[derive( Debug )]
 pub(crate) struct CompilerString<'ast> {
     string: &'ast Vec<u8>,
     label: String,
     len_label: String,
 }
+
 
 #[derive( Debug )]
 pub(crate) struct Compiler<'ast, 'src: 'ast> {

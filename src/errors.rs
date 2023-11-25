@@ -1,5 +1,5 @@
 use std::io::ErrorKind;
-use std::{fmt::Display, borrow::Cow, path::PathBuf};
+use std::{fmt::Display, borrow::Cow};
 
 use crate::{Src, logging::*, color::*};
 
@@ -15,47 +15,27 @@ impl Display for CliError {
     }
 }
 
-// // TODO implement SyntaxErrorsDisplay struct that gets constructed on demand when needing to print errors
-// #[derive( Debug )]
-// pub struct SyntaxErrorDisplay<'src> {
-//     pub line: usize,
-//     pub col: usize,
-//     pub len: usize,
-//     pub line_text: &'src str,
-//     pub msg: Cow<'static, str>,
-//     pub help_msg: Cow<'static, str>,
-// }
 
-// #[derive( Debug )]
-// pub struct SyntaxErrorsDisplay<'src> {
-//     pub src_path: PathBuf,
-//     pub errors: Vec<SyntaxErrorDisplay<'src>>,
-// }
-
-// TODO implement NOTE, HINT, HELP in error messages
+// TODO implement SyntaxErrorsDisplay struct that gets constructed on demand when needing to print errors
 #[derive( Debug )]
-pub struct SyntaxError {
+pub struct SyntaxError<'src> {
+    pub line: usize,
     pub col: usize,
     pub len: usize,
+    pub line_text: &'src str,
     pub msg: Cow<'static, str>,
     pub help_msg: Cow<'static, str>,
 }
 
 #[derive( Debug )]
-pub struct SyntaxErrors {
-    pub src_path: PathBuf,
-    pub errors: Vec<SyntaxError>,
-    pub error_idxs: Vec<(usize /* error_idx */, usize /* line_number */, usize /* line_text */)>,
-    pub error_texts: Vec<String>, // TODO try making this a vec of str and inline it inside the error_idxs field
+pub struct SyntaxErrors<'src> {
+    pub src: &'src Src,
+    pub errors: Vec<SyntaxError<'src>>,
 }
 
-impl Display for SyntaxErrors {
+impl Display for SyntaxErrors<'_> {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        for (err_idx, mut line_number, line_text_idx) in &self.error_idxs {
-            line_number += 1;
-            let error = &self.errors[ *err_idx ];
-            let line_text = &self.error_texts[ *line_text_idx ];
-
+        for error in &self.errors {
             let error_msg = Colored {
                 text: error.msg.to_string(),
                 fg: Fg::White,
@@ -64,7 +44,7 @@ impl Display for SyntaxErrors {
             };
 
             let line_number_text = Colored {
-                text: line_number.to_string(),
+                text: error.line.to_string(),
                 fg: Fg::LightBlue,
                 flags: Flag::Bold,
                 ..Default::default()
@@ -90,53 +70,59 @@ impl Display for SyntaxErrors {
                 \n{} {} {}\
                 \n{:>#visualization_padding$} {:>pointers_col$}{}\n",
                 ERROR, error_msg,
-                AT, self.src_path.display(), line_number, error.col,
+                AT, self.src.path.display(), error.line, error.col,
                 BAR,
-                line_number_text, BAR, line_text,
+                line_number_text, BAR, error.line_text,
                 BAR, "", pointers_and_help_msg
             )?;
         }
 
         return Ok( () );
     }
-
 }
 
-impl SyntaxErrors {
-    pub(crate) fn new( errors: Vec<SyntaxError>, src: &Src ) -> Self {
-        let mut this = Self {
-            src_path: src.path.clone(),
-            errors,
-            error_idxs: Vec::new(),
-            error_texts: Vec::new(),
+impl<'src> From<RawSyntaxErrors<'src>> for SyntaxErrors<'src> {
+    fn from( errors: RawSyntaxErrors<'src> ) -> Self {
+        let mut this = SyntaxErrors {
+            src: errors.src,
+            errors: Vec::new(),
         };
 
-        'errors: for error in &mut this.errors {
-            let mut line_number = 0;
-            for line in &src.lines {
+        for error in &errors.errors {
+            for (line_number, line) in errors.src.lines.iter().enumerate() {
                 if error.col <= line.end {
-                    error.col -= line.start;
-                    error.col += 1;
-
-                    for (_, err_line_number, line_text_idx) in &this.error_idxs {
-                        if line_number == *err_line_number {
-                            this.error_idxs.push( (this.error_idxs.len(), line_number, *line_text_idx) );
-                            continue 'errors;
-                        }
-                    }
-
-                    this.error_idxs.push( (this.error_idxs.len(), line_number, this.error_texts.len() ) );
-                    this.error_texts.push( src.code[ line.start..line.end ].to_string() );
+                    this.errors.push( SyntaxError {
+                        line: line_number + 1,
+                        col: error.col + 1 - line.start,
+                        len: error.len,
+                        line_text: &errors.src.code[ line.start..line.end],
+                        msg: error.msg.clone(),
+                        help_msg: error.help_msg.clone(),
+                    } );
                     break;
                 }
-                line_number += 1;
             }
         }
 
-        this.error_idxs.sort_by_key( |err_idx| err_idx.1 );
         return this;
     }
 }
+
+// TODO implement NOTE, HINT, HELP in error messages
+#[derive( Debug )]
+pub(crate) struct RawSyntaxError {
+    pub(crate) col: usize,
+    pub(crate) len: usize,
+    pub(crate) msg: Cow<'static, str>,
+    pub(crate) help_msg: Cow<'static, str>,
+}
+
+#[derive( Debug )]
+pub(crate) struct RawSyntaxErrors<'src> {
+    pub(crate) src: &'src Src,
+    pub(crate) errors: Vec<RawSyntaxError>,
+}
+
 
 #[derive( Debug )]
 pub struct IoError {
@@ -158,17 +144,47 @@ impl Display for IoError {
 
 
 #[derive( Debug )]
-pub enum KayError {
+pub enum CheckError<'src> {
     Src( IoError ),
-    Syntax( SyntaxErrors ),
+    Syntax( SyntaxErrors<'src> ),
+}
+
+impl Display for CheckError<'_> {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        return match self {
+            Self::Src( error ) => write!( f, "{}", error ),
+            Self::Syntax( errors )                      => write!( f, "{}", errors ),
+        }
+    }
+}
+
+#[derive( Debug )]
+pub enum CompileError<'src> {
+    Check( CheckError<'src> ),
     BackEnd( IoError ),
 }
 
-impl Display for KayError {
+impl Display for CompileError<'_> {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
-            Self::Src( error ) | Self::BackEnd( error ) => write!( f, "{}", error ),
-            Self::Syntax( errors )                      => write!( f, "{}", errors ),
+            Self::Check( error ) => write!( f, "{}", error ),
+            Self::BackEnd( errors )                      => write!( f, "{}", errors ),
+        }
+    }
+}
+
+#[derive( Debug )]
+pub enum KayError<'src> {
+    Src( IoError ),
+    Syntax( SyntaxErrors<'src> ),
+    BackEnd( IoError ),
+}
+
+impl Display for KayError<'_> {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        return match self {
+            Self::Src( err ) | Self::BackEnd( err ) => write!( f, "{}", err ),
+            Self::Syntax( err )                     => write!( f, "{}", err ),
         }
     }
 }

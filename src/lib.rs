@@ -21,6 +21,8 @@ use checker::*;
 mod compiler;
 use compiler::*;
 
+use parser::*;
+
 
 // Command line arguments
 #[derive( Debug, Default, Clone, Copy )]
@@ -74,10 +76,11 @@ pub struct KayArgs {
 }
 
 
-pub struct Kay {
-    color: Color,
-    verbosity: Verbosity,
-    run_mode: RunMode,
+pub enum Kay {
+    Help( KayHelp ),
+    Version( KayVersion ),
+    Check( KayCheck ),
+    Compile( KayCompile ),
 }
 
 impl From<KayArgs> for Kay {
@@ -85,9 +88,24 @@ impl From<KayArgs> for Kay {
         let color = args.color.unwrap_or_default();
         let verbosity = args.verbosity.unwrap_or_default();
         let run_mode = args.run_mode.unwrap_or_default();
-
         color.set();
-        return Self { color, verbosity, run_mode };
+
+        return match run_mode {
+            RunMode::Help => Self::Help( KayHelp { version: KayVersion { color } } ),
+            RunMode::Version => Self::Version( KayVersion { color } ),
+            RunMode::Check { src_path } => Self::Check( KayCheck {
+                color,
+                logger: CompilationLogger::new( verbosity ),
+                src: Src { path: src_path, code: String::new(), lines: Vec::new() } }
+            ),
+            RunMode::Compile { src_path, out, run } => Self::Compile( KayCompile {
+                color,
+                logger: CompilationLogger::new( verbosity ),
+                src: Src { path: src_path, code: String::new(), lines: Vec::new() },
+                out,
+                run
+            } ),
+        }
     }
 }
 
@@ -219,9 +237,9 @@ impl TryFrom<Vec<String>> for Kay {
             }
         }
 
-        let run_mode = run_mode.unwrap_or_default();
-        let verbosity = verbosity.unwrap_or_default();
-        return Ok( Self { color, verbosity, run_mode } );
+        // let run_mode = run_mode.unwrap_or_default();
+        // let verbosity = verbosity.unwrap_or_default();
+        return Ok( Self::from( KayArgs { color: Some( color ), verbosity, run_mode } ) );
     }
 }
 
@@ -233,11 +251,117 @@ impl TryFrom<Args> for Kay {
     }
 }
 
-
 // Execution of specified commands
-impl Kay {
-    fn print_usage( &self ) {
-        self.print_version();
+// impl Kay {
+//     fn print_usage( &self ) {
+//         self.print_version();
+
+//         println!( r"
+// Usage: kay [{OPTIONS}] [{RUN_MODE}]
+
+// {OPTIONS}:
+//     -h, --help            Display this message
+//     -v, --version         Display the compiler version
+//     -c, --color <{MODE}>    Wether to display colored output ({MODE}: auto (default), never, always)
+//     -q, --quiet           Don't display any diagnostic messages
+//     -V, --verbose         Display extra diagnostic messages
+
+// {RUN_MODE}:
+//     check    <{FILE}>              Check the source code for correctness
+//     compile  <{FILE}> [{OUTPUT}]     Compile the source code down to an executable
+//     run      <{FILE}> [{OUTPUT}]     Compile and run the generated executable
+
+// {OUTPUT}:
+//     -o, --output <{PATH}>       Folder to populate with compilation artifacts (.asm, .o, executable) (default: '.')"
+//         );
+//     }
+
+//     fn print_version( &self ) {
+//         self.color.set_stdout();
+//         println!( "Kaylang compiler, version {}", VERSION );
+//     }
+
+
+//     // IDEA remove KayError enum
+//         // TODO split into different compilation phases:
+//         // 0) help message (if present) (which does not return anything)
+//         // 1) source file reading       (which returns IoError)
+//         // 2) fron-end                  (which returns Vec<SyntaxError>)
+//         // 3) back-end                  (which returns IoError )
+//     pub fn execute( &self ) -> Result<(), CompileError> {
+//         return match &self.run_mode {
+//             RunMode::Help => {
+//                 self.print_usage();
+//                 return Ok( () );
+//             },
+//             RunMode::Version => {
+//                 self.print_version();
+//                 return Ok( () );
+//             },
+//             RunMode::Check { src_path: src } | RunMode::Compile { src_path: src, .. } => {
+//                 let mut logger = CompilationLogger::new( self.verbosity );
+
+//                 let source_file = match Src::try_from( Path::new( &src ) ) {
+//                     Ok( src ) => src,
+//                     Err( err ) => return Err( KayError::Src( err ) ),
+//                 };
+
+//                 let ast = match Checker::check( &source_file, &mut logger ) {
+//                     Ok( ast ) => ast,
+//                     Err( errors ) => return Err( KayError::Syntax( SyntaxErrors::new( errors, &source_file ) ) ),
+//                 };
+
+//                 match &self.run_mode {
+//                     RunMode::Check { .. } => logger.done(),
+//                     RunMode::Compile { src_path: src, out, run } => {
+//                         let mut compiler = Compiler {
+//                             src_path: src.clone(),
+//                             out_path: out.clone(),
+//                             run: *run,
+//                             scopes: &ast,
+//                             rodata: String::new(),
+//                             asm: String::new(),
+//                             variables: Vec::new(),
+//                             strings: Vec::new(),
+//                             if_idx: 0,
+//                             loop_idx: 0,
+//                             loop_idx_stack: Vec::new(),
+//                         };
+
+//                         match compiler.compile( &mut logger ) {
+//                             Ok( _ ) => {},
+//                             Err( err ) => return Err( KayError::BackEnd( err ) ),
+//                         }
+//                     },
+//                     RunMode::Help | RunMode::Version => unreachable!(),
+//                 }
+
+//                 Ok( () )
+//             },
+//         }
+//     }
+// }
+
+
+pub struct KayVersion {
+    color: Color,
+}
+
+impl KayVersion {
+    pub fn execute( &self ) {
+        self.color.set_stdout();
+        println!( "Kaylang compiler, version {}", VERSION );
+    }
+}
+
+
+pub struct KayHelp {
+    version: KayVersion,
+}
+
+impl KayHelp {
+    pub fn execute( &self ) {
+        self.version.execute();
 
         println!( r"
 Usage: kay [{OPTIONS}] [{RUN_MODE}]
@@ -258,69 +382,99 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
     -o, --output <{PATH}>       Folder to populate with compilation artifacts (.asm, .o, executable) (default: '.')"
         );
     }
+}
 
-    fn print_version( &self ) {
-        self.color.set_stdout();
-        println!( "Kaylang compiler, version {}", VERSION );
+
+pub struct KayCheck {
+    color: Color,
+    pub logger: CompilationLogger,
+    src: Src,
+}
+
+impl<'this> KayCheck {
+    pub fn execute( &'this mut self ) -> Result<Vec<Scope<'this>>, CheckError<'this>> {
+        self.logger = CompilationLogger::new( self.logger.verbosity );
+        self.logger.step( &CHECKING, &self.src.path );
+
+        self.src = match Src::try_from( Path::new( &self.src.path ) ) {
+            Ok( src ) => src,
+            Err( err ) => return Err( CheckError::Src( err ) ),
+        };
+
+        let tokens_result = Lexer::tokenize( &self.src );
+        self.logger.substep( &LEXING );
+        let tokens = match tokens_result {
+            Ok( tokens ) => tokens,
+            Err( err ) => return Err( CheckError::Syntax( err.into() ) ),
+        };
+
+        let ast_result = Ast::build( &tokens, &self.src );
+        self.logger.substep( &PARSING );
+        let ast = match ast_result {
+            Ok( ast ) => ast,
+            Err( err ) => return Err( CheckError::Syntax( err.into() ) ),
+        };
+
+        self.logger.substep_done();
+        self.logger.done();
+        return Ok( ast );
     }
+}
 
 
-    // IDEA remove KayError enum
-        // TODO split into different compilation phases:
-        // 0) help message (if present) (which does not return anything)
-        // 1) source file reading       (which returns IoError)
-        // 2) fron-end                  (which returns Vec<SyntaxError>)
-        // 3) back-end                  (which returns IoError )
-    pub fn execute( &self ) -> Result<(), KayError> {
-        return match &self.run_mode {
-            RunMode::Help => {
-                self.print_usage();
-                return Ok( () );
-            },
-            RunMode::Version => {
-                self.print_version();
-                return Ok( () );
-            },
-            RunMode::Check { src_path: src } | RunMode::Compile { src_path: src, .. } => {
-                let mut logger = CompilationLogger::new( self.verbosity );
+pub struct KayCompile {
+    color: Color,
+    pub logger: CompilationLogger,
+    src: Src,
+    out: Option<PathBuf>,
+    run: bool,
+}
 
-                let source_file = match Src::try_from( Path::new( &src ) ) {
-                    Ok( src ) => src,
-                    Err( err ) => return Err( KayError::Src( err ) ),
-                };
+impl<'this> KayCompile {
+    pub fn execute( &'this mut self ) -> Result<(), CompileError<'this>> {
+        self.logger = CompilationLogger::new( self.logger.verbosity );
+        self.logger.step( &CHECKING, &self.src.path );
 
-                let ast = match Checker::check( &source_file, &mut logger ) {
-                    Ok( ast ) => ast,
-                    Err( errors ) => return Err( KayError::Syntax( SyntaxErrors::new( errors, &source_file ) ) ),
-                };
+        self.src = match Src::try_from( Path::new( &self.src.path ) ) {
+            Ok( src ) => src,
+            Err( err ) => return Err( CompileError::Check( CheckError::Src( err ) ) ),
+        };
 
-                match &self.run_mode {
-                    RunMode::Check { .. } => logger.done(),
-                    RunMode::Compile { src_path: src, out, run } => {
-                        let mut compiler = Compiler {
-                            src_path: src.clone(),
-                            out_path: out.clone(),
-                            run: *run,
-                            scopes: &ast,
-                            rodata: String::new(),
-                            asm: String::new(),
-                            variables: Vec::new(),
-                            strings: Vec::new(),
-                            if_idx: 0,
-                            loop_idx: 0,
-                            loop_idx_stack: Vec::new(),
-                        };
+        let tokens_result = Lexer::tokenize( &self.src );
+        self.logger.substep( &LEXING );
+        let tokens = match tokens_result {
+            Ok( tokens ) => tokens,
+            Err( err ) => return Err( CompileError::Check( CheckError::Syntax( err.into() ) ) ),
+        };
 
-                        match compiler.compile( &mut logger ) {
-                            Ok( _ ) => {},
-                            Err( err ) => return Err( KayError::BackEnd( err ) ),
-                        }
-                    },
-                    RunMode::Help | RunMode::Version => unreachable!(),
-                }
+        let ast_result = Ast::build( &tokens, &self.src );
+        self.logger.substep( &PARSING );
+        let ast = match ast_result {
+            Ok( ast ) => ast,
+            Err( err ) => return Err( CompileError::Check( CheckError::Syntax( err.into() ) ) ),
+        };
 
-                Ok( () )
-            },
+        self.logger.substep_done();
+
+        let src_path = self.src.path.clone();
+
+        let mut compiler = Compiler {
+            src_path,
+            out_path: self.out.clone(),
+            run: self.run,
+            scopes: &ast,
+            rodata: String::new(),
+            asm: String::new(),
+            variables: Vec::new(),
+            strings: Vec::new(),
+            if_idx: 0,
+            loop_idx: 0,
+            loop_idx_stack: Vec::new(),
+        };
+
+        return match compiler.compile( &mut self.logger ) {
+            Ok( _ ) => Ok( () ),
+            Err( err ) => return Err( CompileError::BackEnd( err ) ),
         }
     }
 }

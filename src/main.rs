@@ -24,11 +24,28 @@ fn main() -> ExitCode {
         },
     };
 
-    match kay.execute() {
-        Ok( () ) => ExitCode::SUCCESS,
-        Err( err ) => {
-            eprintln!( "{}", err );
-            ExitCode::FAILURE
+    return match kay {
+        Kay::Help( help ) => {
+            help.execute();
+            ExitCode::SUCCESS
+        },
+        Kay::Version( version ) => {
+            version.execute();
+            ExitCode::SUCCESS
+        },
+        Kay::Check( mut check ) => match check.execute() {
+            Ok( _ ) => ExitCode::SUCCESS,
+            Err( err ) => {
+                eprintln!( "{}", err );
+                ExitCode::FAILURE
+            },
+        },
+        Kay::Compile( mut compile ) => match compile.execute() {
+            Ok( _ ) => ExitCode::SUCCESS,
+            Err( err ) => {
+                eprintln!( "{}", err );
+                ExitCode::FAILURE
+            },
         },
     }
 }
@@ -52,13 +69,43 @@ mod tests {
                         ..Default::default()
                     }.into();
 
-                    match kay.execute() {
-                        Ok( () ) => {},
-                        Err( err ) => {
-                            eprintln!( "{}", err );
-                            return ExitCode::FAILURE;
+                    match kay {
+                        // Kay::Help( help ) => {
+                        //     help.execute();
+                        //     ExitCode::SUCCESS
+                        // },
+                        // Kay::Version( version ) => {
+                        //     version.execute();
+                        //     ExitCode::SUCCESS
+                        // },
+                        Kay::Check( mut check ) => match check.execute() {
+                            Ok( _ ) => {
+                            },
+                            Err( err ) => {
+                                eprintln!( "{}", err );
+                                return ExitCode::FAILURE;
+                            },
                         },
+                        _ => unreachable!(),
+                        // Kay::Compile( mut compile ) => match compile.execute() {
+                        //     Ok( _ ) => {
+                        //         compile.logger.done();
+                        //         ExitCode::SUCCESS
+                        //     },
+                        //     Err( err ) => {
+                        //         eprintln!( "{}", err );
+                        //         ExitCode::FAILURE
+                        //     },
+                        // },
                     }
+
+                    // match kay.execute() {
+                    //     Ok( () ) => {},
+                    //     Err( err ) => {
+                    //         eprintln!( "{}", err );
+                    //         return ExitCode::FAILURE;
+                    //     },
+                    // }
                 }
             }
         }

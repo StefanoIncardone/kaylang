@@ -65,7 +65,7 @@ trait BoundedToken<'tokens, 'src: 'tokens> {
 }
 
 impl<'tokens, 'src: 'tokens> BoundedToken<'tokens, 'src> for Option<&'tokens Token<'src>> {
-    type Error = SyntaxError;
+    type Error = RawSyntaxError;
 
     fn bounded( self, tokens: &mut TokenIter<'tokens, 'src>, err_msg: impl Into<String> ) -> Result<&'tokens Token<'src>, Self::Error> {
         return match self {
@@ -73,7 +73,7 @@ impl<'tokens, 'src: 'tokens> BoundedToken<'tokens, 'src> for Option<&'tokens Tok
             None => {
                 // this function is never called without a previous token, so we can safely unwrap
                 let previous = unsafe{ tokens.peek_previous().unwrap_unchecked() };
-                Err( SyntaxError {
+                Err( RawSyntaxError {
                     col: previous.col,
                     len: previous.kind.len(),
                     msg: err_msg.into().into(),
@@ -136,6 +136,7 @@ pub(crate) struct Variable<'src> {
     pub(crate) value: Expression<'src>,
 }
 
+
 #[derive( Debug, Clone )]
 pub(crate) struct IfStatement<'src> {
     pub(crate) condition: Expression<'src>,
@@ -153,6 +154,7 @@ pub(crate) struct If<'src> {
     pub(crate) ifs: Vec<IfStatement<'src>>,
     pub(crate) els: Option<Box<Node<'src>>>,
 }
+
 
 #[allow( dead_code )]
 #[derive( Debug, Clone )]
@@ -180,6 +182,7 @@ impl Display for Loop<'_> {
         }
     }
 }
+
 
 // TODO create node struct that contains the line and token of the start of the node
 #[derive( Debug, Clone )]
@@ -217,13 +220,15 @@ impl Display for Node<'_> {
     }
 }
 
+
 #[derive( Debug, Clone )]
-pub(crate) struct Scope<'src> {
+pub struct Scope<'src> {
     pub(crate) parent: usize,
     pub(crate) types: Vec<Type>,
     pub(crate) variables: Vec<Variable<'src>>,
     pub(crate) nodes: Vec<Node<'src>>,
 }
+
 
 // IDEA create Parser class that builds the AST, and then validate the AST afterwards
 #[derive( Debug )]
@@ -233,11 +238,11 @@ pub(crate) struct Ast<'tokens, 'ast, 'src: 'ast> {
     loop_depth: usize,
 
     tokens: TokenIter<'tokens, 'src>,
-    errors: Vec<SyntaxError>,
+    errors: Vec<RawSyntaxError>,
 }
 
 impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
-    pub(crate) fn build( tokens: &'tokens [Token<'src>] ) -> Result<Vec<Scope<'ast>>, Vec<SyntaxError>> {
+    pub(crate) fn build( tokens: &'tokens [Token<'src>], src: &'src Src ) -> Result<Vec<Scope<'ast>>, RawSyntaxErrors<'src>> {
         if tokens.is_empty() {
             return Ok( Vec::new() );
         }
@@ -259,7 +264,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 
         return match this.errors.is_empty() {
             true => Ok( this.scopes ),
-            false => Err( this.errors ),
+            false => Err( RawSyntaxErrors { src, errors: this.errors } ),
         }
     }
 }
@@ -308,7 +313,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         }
     }
 
-    fn parse_single_statement( &mut self ) -> Result<Option<Node<'ast>>, SyntaxError> {
+    fn parse_single_statement( &mut self ) -> Result<Option<Node<'ast>>, RawSyntaxError> {
         let current_token = match self.tokens.current() {
             Some( token ) => token,
             None => return Ok( None ),
@@ -325,7 +330,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             TokenKind::If                         => Ok( Some( self.iff()? ) ),
             TokenKind::Else => {
                 self.tokens.next();
-                Err( SyntaxError {
+                Err( RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
                     msg: "invalid if statement".into(),
@@ -344,7 +349,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             TokenKind::Break => {
                 self.tokens.next();
                 match self.loop_depth {
-                    0 => Err( SyntaxError {
+                    0 => Err( RawSyntaxError {
                         col: current_token.col,
                         len: current_token.kind.len(),
                         msg: "invalid break statement".into(),
@@ -356,7 +361,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             TokenKind::Continue => {
                 self.tokens.next();
                 match self.loop_depth {
-                    0 => Err( SyntaxError {
+                    0 => Err( RawSyntaxError {
                         col: current_token.col,
                         len: current_token.kind.len(),
                         msg: "invalid continue statement".into(),
@@ -367,7 +372,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             },
             TokenKind::Bracket( BracketKind::OpenCurly ) => {
                 self.tokens.next();
-                Err( SyntaxError {
+                Err( RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
                     msg: "invalid statement".into(),
@@ -376,7 +381,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             },
             TokenKind::Bracket( BracketKind::CloseCurly ) => {
                 self.tokens.next();
-                Err( SyntaxError {
+                Err( RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
                     msg: "invalid statement".into(),
@@ -385,7 +390,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             },
             TokenKind::Bracket( BracketKind::CloseRound ) => {
                 self.tokens.next();
-                Err( SyntaxError {
+                Err( RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
                     msg: "invalid expression".into(),
@@ -394,7 +399,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             },
             TokenKind::Colon => {
                 self.tokens.next();
-                Err( SyntaxError {
+                Err( RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
                     msg: "invalid type annotation".into(),
@@ -403,7 +408,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             },
             TokenKind::Equals => {
                 self.tokens.next();
-                Err( SyntaxError {
+                Err( RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
                     msg: "invalid assignment".into(),
@@ -412,7 +417,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             },
             TokenKind::Op( _ ) => {
                 self.tokens.next();
-                Err( SyntaxError {
+                Err( RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
                     msg: "invalid expression".into(),
@@ -427,12 +432,12 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         }
     }
 
-    fn parse_do_single_statement( &mut self ) -> Result<Option<Node<'ast>>, SyntaxError> {
+    fn parse_do_single_statement( &mut self ) -> Result<Option<Node<'ast>>, RawSyntaxError> {
         let current_token = self.tokens.next().bounded( &mut self.tokens, "expected statement" )?;
         return match current_token.kind {
             TokenKind::Bracket( BracketKind::OpenCurly ) => {
                 self.tokens.next();
-                Err( SyntaxError {
+                Err( RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
                     msg: "invalid statement".into(),
@@ -441,7 +446,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             },
             TokenKind::Definition( _ ) => {
                 self.tokens.next();
-                Err( SyntaxError {
+                Err( RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
                     msg: "invalid statement".into(),
@@ -452,7 +457,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         }
     }
 
-    fn parse_single_any( &mut self ) -> Result<Option<Node<'ast>>, SyntaxError> {
+    fn parse_single_any( &mut self ) -> Result<Option<Node<'ast>>, RawSyntaxError> {
         let current_token = match self.tokens.current() {
             Some( token ) => token,
             None => return Ok( None ),
@@ -485,7 +490,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 
 // semicolons
 impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
-    fn semicolon( &mut self ) -> Result<(), SyntaxError> {
+    fn semicolon( &mut self ) -> Result<(), RawSyntaxError> {
         let semicolon_token = self.tokens.current().bounded( &mut self.tokens, "expected semicolon" )?;
         return match &semicolon_token.kind {
             TokenKind::SemiColon => {
@@ -495,7 +500,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             _ => {
                 // this function is never called without a previous token, so we can safely unwrap
                 let previous_token = unsafe{ self.tokens.peek_previous().unwrap_unchecked() };
-                Err( SyntaxError {
+                Err( RawSyntaxError {
                     col: previous_token.col,
                     len: previous_token.kind.len(),
                     msg: "invalid statement".into(),
@@ -508,7 +513,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 
 // expressions
 impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
-    fn operator( &mut self, ops: &[Operator] ) -> Result<Option<Operator>, SyntaxError> {
+    fn operator( &mut self, ops: &[Operator] ) -> Result<Option<Operator>, RawSyntaxError> {
         let current_token = self.tokens.current().bounded( &mut self.tokens, "expected operator or semicolon" )?;
         return match current_token.kind {
             TokenKind::Op( op ) =>
@@ -523,7 +528,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         }
     }
 
-    fn primary_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
+    fn primary_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
         let current_token = self.tokens.current().bounded( &mut self.tokens, "expected expression" )?;
         let factor = match &current_token.kind {
             TokenKind::Literal( literal ) => Ok( Expression::Literal( literal.clone() ) ),
@@ -533,14 +538,14 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
                 None => match self.resolve_variable( name ) {
                     Some( (variable, _, _) ) =>
                         Ok( Expression::Identifier( variable.name, variable.value.typ() ) ),
-                    None => Err( SyntaxError {
+                    None => Err( RawSyntaxError {
                         col: current_token.col,
                         len: current_token.kind.len(),
                         msg: "variable not defined".into(),
                         help_msg: "was not previously defined in this scope".into(),
                     } ),
                 },
-                Some( _ ) => Err( SyntaxError {
+                Some( _ ) => Err( RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
                     msg: "invalid expression".into(),
@@ -550,7 +555,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             TokenKind::Bracket( BracketKind::OpenRound ) => {
                 let expression_start_token = self.tokens.next().bounded( &mut self.tokens, "expected expression" )?;
                 match expression_start_token.kind {
-                    TokenKind::Bracket( BracketKind::CloseRound ) => Err( SyntaxError {
+                    TokenKind::Bracket( BracketKind::CloseRound ) => Err( RawSyntaxError {
                         col: expression_start_token.col,
                         len: expression_start_token.kind.len(),
                         msg: "invalid expression".into(),
@@ -561,7 +566,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
                         let close_bracket_token = self.tokens.current().bounded( &mut self.tokens, "expected closed parenthesis" )?;
                         match close_bracket_token.kind {
                             TokenKind::Bracket( BracketKind::CloseRound ) => Ok( expression ),
-                            _ => Err( SyntaxError {
+                            _ => Err( RawSyntaxError {
                                 col: current_token.col,
                                 len: current_token.kind.len(),
                                 msg: "invalid expression".into(),
@@ -582,7 +587,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 
                 // returning to avoid the call to tokens.next at the end of the function
                 return match operand.typ() {
-                    Type::Bool => Err( SyntaxError {
+                    Type::Bool => Err( RawSyntaxError {
                         col: current_token.col,
                         len: current_token.kind.len(),
                         msg: "invalid expression".into(),
@@ -616,13 +621,13 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             TokenKind::Definition( _ )
             | TokenKind::Print | TokenKind::PrintLn
             | TokenKind::If | TokenKind::Else
-            | TokenKind::Loop | TokenKind::Break | TokenKind::Continue => Err( SyntaxError {
+            | TokenKind::Loop | TokenKind::Break | TokenKind::Continue => Err( RawSyntaxError {
                 col: current_token.col,
                 len: current_token.kind.len(),
                 msg: "invalid expression".into(),
                 help_msg: "cannot be a keyword".into(),
             } ),
-            _ => Err( SyntaxError {
+            _ => Err( RawSyntaxError {
                 col: current_token.col,
                 len: current_token.kind.len(),
                 msg: "invalid expression".into(),
@@ -634,7 +639,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         return factor;
     }
 
-    fn exponentiative_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
+    fn exponentiative_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
         let mut lhs = self.primary_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::Pow] )? {
@@ -645,7 +650,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         return Ok( lhs );
     }
 
-    fn multiplicative_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
+    fn multiplicative_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
         let mut lhs = self.exponentiative_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::Times, Operator::Divide, Operator::Remainder] )? {
@@ -656,7 +661,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         return Ok( lhs );
     }
 
-    fn additive_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
+    fn additive_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
         let mut lhs = self.multiplicative_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::Plus, Operator::Minus] )? {
@@ -667,7 +672,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         return Ok( lhs );
     }
 
-    fn shift_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
+    fn shift_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
         let mut lhs = self.additive_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::LeftShift, Operator::RightShift] )? {
@@ -678,7 +683,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         return Ok( lhs );
     }
 
-    fn bitand_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
+    fn bitand_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
         let mut lhs = self.shift_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::BitAnd] )? {
@@ -689,7 +694,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         return Ok( lhs );
     }
 
-    fn bitxor_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
+    fn bitxor_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
         let mut lhs = self.bitand_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::BitXor] )? {
@@ -700,7 +705,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         return Ok( lhs );
     }
 
-    fn bitor_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
+    fn bitor_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
         let mut lhs = self.bitxor_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::BitOr] )? {
@@ -711,7 +716,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         return Ok( lhs );
     }
 
-    fn comparative_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
+    fn comparative_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
         let mut lhs = self.bitor_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::Compare] )? {
@@ -722,7 +727,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         return Ok( lhs );
     }
 
-    fn comparison_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
+    fn comparison_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
         let mut lhs = self.comparative_expression()?;
 
         let ops = [
@@ -737,7 +742,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             let rhs = self.comparative_expression()?;
 
             if is_chained {
-                return Err( SyntaxError {
+                return Err( RawSyntaxError {
                     col: op_token.col,
                     len: op_token.kind.len(),
                     msg: "invalid boolean expression".into(),
@@ -752,14 +757,14 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         return Ok( lhs );
     }
 
-    fn and_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
+    fn and_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
         let mut lhs = self.comparison_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::And] )? {
             let op_token = self.tokens.peek_previous().unwrap();
 
             if lhs.typ() != Type::Bool {
-                return Err( SyntaxError {
+                return Err( RawSyntaxError {
                     col: op_token.col,
                     len: op_token.kind.len(),
                     msg: "invalid boolean expression".into(),
@@ -769,7 +774,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 
             let rhs = self.comparison_expression()?;
             if rhs.typ() != Type::Bool {
-                return Err( SyntaxError {
+                return Err( RawSyntaxError {
                     col: op_token.col,
                     len: op_token.kind.len(),
                     msg: "invalid boolean expression".into(),
@@ -783,14 +788,14 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         return Ok( lhs );
     }
 
-    // pub(crate) fn xor_expression( &mut self ) -> Result<Expression, SyntaxError> {
+    // pub(crate) fn xor_expression( &mut self ) -> Result<Expression, RawSyntaxError> {
     //     let mut lhs = self.and_expression( tokens )?;
 
     //     while let Some( op ) = self.operator( tokens, &[Operator::Xor] )? {
     //         let op_pos = tokens.peek_previous().unwrap();
 
     //         if lhs.typ() != Type::Bool {
-    //             return Err( SyntaxError {
+    //             return Err( RawSyntaxError {
     //                 line_byte_start: op_pos.line.byte_start,
     //                 line: op_pos.line.number,
     //                 col: op_pos.token.col,
@@ -802,7 +807,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 
     //         let rhs = self.and_expression( tokens )?;
     //         if rhs.typ() != Type::Bool {
-    //             return Err( SyntaxError {
+    //             return Err( RawSyntaxError {
     //                 line_byte_start: op_pos.line.byte_start,
     //                 line: op_pos.line.number,
     //                 col: op_pos.token.col,
@@ -818,14 +823,14 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
     //     return Ok( lhs );
     // }
 
-    fn or_expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
+    fn or_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
         let mut lhs = self.and_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::Or] )? {
             let op_token = self.tokens.peek_previous().unwrap();
 
             if lhs.typ() != Type::Bool {
-                return Err( SyntaxError {
+                return Err( RawSyntaxError {
                     col: op_token.col,
                     len: op_token.kind.len(),
                     msg: "invalid boolean expression".into(),
@@ -835,7 +840,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 
             let rhs = self.and_expression()?;
             if rhs.typ() != Type::Bool {
-                return Err( SyntaxError {
+                return Err( RawSyntaxError {
                     col: op_token.col,
                     len: op_token.kind.len(),
                     msg: "invalid boolean expression".into(),
@@ -853,7 +858,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
     // TODO disallow implicit conversions (str + i64, char + i64, str + char or str + str
         // IDEA introduce casting operators
     // TODO implement boolean operator chaining
-    fn expression( &mut self ) -> Result<Expression<'ast>, SyntaxError> {
+    fn expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
         return self.or_expression();
     }
 }
@@ -899,7 +904,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
     }
 
 
-    fn variable_definition( &mut self ) -> Result<Node<'ast>, SyntaxError> {
+    fn variable_definition( &mut self ) -> Result<Node<'ast>, RawSyntaxError> {
         let definition_token = self.tokens.current().unwrap();
         let mutability = match definition_token.kind {
             TokenKind::Definition( kind ) => kind,
@@ -910,14 +915,14 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         let name = match &name_token.kind {
             TokenKind::Identifier( name ) => match self.resolve_type( name ) {
                 None => Ok( name ),
-                Some( _ ) => Err( SyntaxError {
+                Some( _ ) => Err( RawSyntaxError {
                     col: name_token.col,
                     len: name_token.kind.len(),
                     msg: "invalid variable name".into(),
                     help_msg: "cannot be a type name".into(),
                 } ),
             },
-            _ => Err( SyntaxError {
+            _ => Err( RawSyntaxError {
                 col: name_token.col,
                 len: name_token.kind.len(),
                 msg: "invalid assignment".into(),
@@ -935,7 +940,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
                         Some( typ ) => Ok( Some( (*typ, annotation_token) ) ),
                         None => match self.resolve_variable( type_name ) {
                             Some( (var, _, _) ) => Ok( Some( (var.value.typ(), annotation_token) ) ),
-                            None => Err( SyntaxError {
+                            None => Err( RawSyntaxError {
                                 col: annotation_token.col,
                                 len: annotation_token.kind.len(),
                                 msg: "invalid type annotation".into(),
@@ -943,7 +948,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
                             } )
                         },
                     },
-                    _ => Err( SyntaxError {
+                    _ => Err( RawSyntaxError {
                         col: colon_token.col,
                         len: colon_token.kind.len(),
                         msg: "invalid type annotation".into(),
@@ -964,7 +969,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
                 }
             },
             TokenKind::SemiColon => Ok( None ),
-            _ => Err( SyntaxError {
+            _ => Err( RawSyntaxError {
                 col: name_token.col,
                 len: name_token.kind.len(),
                 msg: "invalid assignment".into(),
@@ -977,7 +982,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         let expression = expression?;
 
         if self.resolve_variable( name ).is_some() {
-            return Err( SyntaxError {
+            return Err( RawSyntaxError {
                 col: name_token.col,
                 len: name_token.kind.len(),
                 msg: "variable redefinition".into(),
@@ -989,7 +994,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             Some( value ) => {
                 if let Some( (typ, token) ) = annotation {
                     if typ != value.typ() {
-                        return Err( SyntaxError {
+                        return Err( RawSyntaxError {
                             col: token.col,
                             len: token.kind.len(),
                             msg: "invalid definition".into(),
@@ -1011,7 +1016,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
                     variables.push( Variable { mutability, name, value: Expression::Literal( typ.default() ) } );
                     Ok( Node::Definition( self.scope, variables.len() - 1 ) )
                 },
-                None => Err( SyntaxError {
+                None => Err( RawSyntaxError {
                     col: name_token.col,
                     len: name_token.kind.len(),
                     msg: "invalid definition".into(),
@@ -1021,7 +1026,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         }
     }
 
-    fn variable_reassignment_or_expression( &mut self ) -> Result<Node<'ast>, SyntaxError> {
+    fn variable_reassignment_or_expression( &mut self ) -> Result<Node<'ast>, RawSyntaxError> {
         let name_token = self.tokens.current().unwrap();
         let op_token = match self.tokens.peek_next() {
             Some( token ) => match token.kind {
@@ -1051,7 +1056,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         };
 
         if self.resolve_type( name ).is_some() {
-            return Err( SyntaxError {
+            return Err( RawSyntaxError {
                 col: name_token.col,
                 len: name_token.kind.len(),
                 msg: "invalid assignment".into(),
@@ -1062,7 +1067,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         let rhs = self.expression()?;
         match self.resolve_variable( name ) {
             Some( (var, scope, var_idx) ) => match var.mutability {
-                Mutability::Let => Err( SyntaxError {
+                Mutability::Let => Err( RawSyntaxError {
                     col: name_token.col,
                     len: name_token.kind.len(),
                     msg: "invalid assignment".into(),
@@ -1079,7 +1084,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
                     };
 
                     if var.value.typ() != value.typ() {
-                        return Err( SyntaxError {
+                        return Err( RawSyntaxError {
                             col: name_token.col,
                             len: name_token.kind.len(),
                             msg: "mismatched types".into(),
@@ -1094,7 +1099,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
                     Ok( Node::Assignment( scope, var_idx, value ) )
                 },
             },
-            None => Err( SyntaxError {
+            None => Err( RawSyntaxError {
                 col: name_token.col,
                 len: name_token.kind.len(),
                 msg: "variable redefinition".into(),
@@ -1106,7 +1111,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 
 // print statements
 impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
-    fn print( &mut self ) -> Result<Node<'ast>, SyntaxError> {
+    fn print( &mut self ) -> Result<Node<'ast>, RawSyntaxError> {
         let print_token = self.tokens.current().unwrap();
         if let TokenKind::PrintLn = print_token.kind {
             if let Some( &Token { kind: TokenKind::SemiColon, .. } ) = self.tokens.peek_next() {
@@ -1128,7 +1133,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 
 // if statements
 impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
-    fn iff( &mut self ) -> Result<Node<'ast>, SyntaxError> {
+    fn iff( &mut self ) -> Result<Node<'ast>, RawSyntaxError> {
         let mut if_statement = If { ifs: Vec::new(), els: None };
 
         'iff: while let Some( if_token ) = self.tokens.current() {
@@ -1137,7 +1142,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             let expression = self.expression()?;
             let condition = match &expression.typ() {
                 Type::Bool => Ok( expression ),
-                Type::Char | Type::Int | Type::Str => Err( SyntaxError {
+                Type::Char | Type::Int | Type::Str => Err( RawSyntaxError {
                     col: if_token.col,
                     len: if_token.kind.len(),
                     msg: "expected boolean expression".into(),
@@ -1159,7 +1164,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
                 },
                 _ => {
                     let before_curly_bracket_token = self.tokens.peek_previous().unwrap();
-                    Err( SyntaxError {
+                    Err( RawSyntaxError {
                         col: before_curly_bracket_token.col,
                         len: before_curly_bracket_token.kind.len(),
                         msg: "invalid if statement".into(),
@@ -1190,7 +1195,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
                         break 'iff;
                     },
                     TokenKind::If => break,
-                    _ => Err( SyntaxError {
+                    _ => Err( RawSyntaxError {
                         col: else_token.col,
                         len: else_token.kind.len(),
                         msg: "invalid else statement".into(),
@@ -1208,7 +1213,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 
 // for statements
 impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src>{
-    fn loop_statement( &mut self ) -> Result<Node<'ast>, SyntaxError> {
+    fn loop_statement( &mut self ) -> Result<Node<'ast>, RawSyntaxError> {
         let do_token = self.tokens.current().unwrap();
         let loop_token = match do_token.kind {
             TokenKind::Do => self.tokens.next().bounded( &mut self.tokens, "expected loop statement" )?,
@@ -1219,7 +1224,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src>{
         let expression = self.expression()?;
         let condition = match &expression.typ() {
             Type::Bool => Ok( expression ),
-            Type::Char | Type::Int | Type::Str => Err( SyntaxError {
+            Type::Char | Type::Int | Type::Str => Err( RawSyntaxError {
                 col: loop_token.col,
                 len: loop_token.kind.len(),
                 msg: "expected boolean expression".into(),
@@ -1240,7 +1245,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src>{
             },
             _ => {
                 let before_curly_bracket_token = self.tokens.peek_previous().unwrap();
-                Err( SyntaxError {
+                Err( RawSyntaxError {
                     col: before_curly_bracket_token.col,
                     len: before_curly_bracket_token.kind.len(),
                     msg: "invalid for statement".into(),
