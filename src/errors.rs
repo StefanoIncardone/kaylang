@@ -15,14 +15,20 @@ impl Display for CliError {
     }
 }
 
-
-// TODO implement SyntaxErrorsDisplay struct that gets constructed on demand when needing to print errors
 #[derive( Debug )]
-pub struct SyntaxError<'src> {
+pub(crate) struct RawSyntaxError {
+    pub(crate) col: usize,
+    pub(crate) len: usize,
+    pub(crate) msg: Cow<'static, str>,
+    pub(crate) help_msg: Cow<'static, str>,
+}
+
+// TODO implement NOTE, HINT, HELP in error messages
+#[derive( Debug )]
+pub struct SyntaxError {
     pub line: usize,
     pub col: usize,
     pub len: usize,
-    pub line_text: &'src str,
     pub msg: Cow<'static, str>,
     pub help_msg: Cow<'static, str>,
 }
@@ -30,12 +36,15 @@ pub struct SyntaxError<'src> {
 #[derive( Debug )]
 pub struct SyntaxErrors<'src> {
     pub src: &'src Src,
-    pub errors: Vec<SyntaxError<'src>>,
+    pub errors: Vec<SyntaxError>,
 }
 
 impl Display for SyntaxErrors<'_> {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         for error in &self.errors {
+            let line = &self.src.lines[ error.line - 1 ];
+            let line_text = &self.src.code[ line.start..line.end ];
+
             let error_msg = Colored {
                 text: error.msg.to_string(),
                 fg: Fg::White,
@@ -72,7 +81,7 @@ impl Display for SyntaxErrors<'_> {
                 ERROR, error_msg,
                 AT, self.src.path.display(), error.line, error.col,
                 BAR,
-                line_number_text, BAR, error.line_text,
+                line_number_text, BAR, line_text,
                 BAR, "", pointers_and_help_msg
             )?;
         }
@@ -81,46 +90,32 @@ impl Display for SyntaxErrors<'_> {
     }
 }
 
-impl<'src> From<RawSyntaxErrors<'src>> for SyntaxErrors<'src> {
-    fn from( errors: RawSyntaxErrors<'src> ) -> Self {
-        let mut this = SyntaxErrors {
-            src: errors.src,
-            errors: Vec::new(),
-        };
+pub(crate) trait AddError<'src> {
+    fn add( &mut self, src: &'src Src, error: RawSyntaxError );
+}
 
-        for error in &errors.errors {
-            for (line_number, line) in errors.src.lines.iter().enumerate() {
-                if error.col <= line.end {
-                    this.errors.push( SyntaxError {
-                        line: line_number + 1,
-                        col: error.col + 1 - line.start,
-                        len: error.len,
-                        line_text: &errors.src.code[ line.start..line.end],
-                        msg: error.msg.clone(),
-                        help_msg: error.help_msg.clone(),
-                    } );
-                    break;
-                }
+impl<'src> AddError<'src> for Vec<SyntaxError> {
+    fn add( &mut self, src: &'src Src, error: RawSyntaxError ) {
+        let mut left = 0;
+        let mut right = src.lines.len();
+        while left < right {
+            let middle = left + (right - left) / 2;
+            if error.col < src.lines[ middle ].end {
+                right = middle;
+            }
+            else {
+                left = middle + 1;
             }
         }
 
-        return this;
+        self.push( SyntaxError {
+            line: left + 1,
+            col: error.col + 1 - src.lines[ left ].start,
+            len: error.len,
+            msg: error.msg.clone(),
+            help_msg: error.help_msg.clone(),
+        } );
     }
-}
-
-// TODO implement NOTE, HINT, HELP in error messages
-#[derive( Debug )]
-pub(crate) struct RawSyntaxError {
-    pub(crate) col: usize,
-    pub(crate) len: usize,
-    pub(crate) msg: Cow<'static, str>,
-    pub(crate) help_msg: Cow<'static, str>,
-}
-
-#[derive( Debug )]
-pub(crate) struct RawSyntaxErrors<'src> {
-    pub(crate) src: &'src Src,
-    pub(crate) errors: Vec<RawSyntaxError>,
 }
 
 

@@ -5,8 +5,8 @@ use crate::errors::*;
 
 #[derive( Debug, Clone, Copy )]
 pub(crate) struct Line {
-    pub(crate) start: usize,
-    pub(crate) end: usize,
+    pub(crate) start: usize, // inclusive
+    pub(crate) end: usize, // not inclusive
 }
 
 #[derive( Debug )]
@@ -534,13 +534,12 @@ pub(crate) struct Lexer<'tokens, 'src: 'tokens> {
     line_end: usize,
 
     tokens: Vec<Token<'tokens>>,
-
     brackets: Vec<Bracket>,
-    errors: Vec<RawSyntaxError>,
+    errors: Vec<SyntaxError>,
 }
 
 impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
-    pub(crate) fn tokenize( src: &'src Src ) -> Result<Vec<Token<'tokens>>, RawSyntaxErrors<'src>> {
+    pub(crate) fn tokenize( src: &'src Src ) -> Result<Vec<Token<'tokens>>, SyntaxErrors<'src>> {
         if src.lines.is_empty() {
             return Ok( Vec::new() );
         }
@@ -569,7 +568,7 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
                     Ok( None ) => break,
                     Ok( Some( kind ) ) => Token { col: this.token_start_col, kind },
                     Err( err ) => {
-                        this.errors.push( err );
+                        this.errors.add( this.src, err );
                         let unexpected = this.token_text();
                         Token {
                             col: this.token_start_col,
@@ -584,7 +583,7 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
 
         for bracket in &this.brackets {
             // there can only be open brackets at this point
-            this.errors.push( RawSyntaxError {
+            this.errors.add( this.src, RawSyntaxError {
                 col: bracket.col,
                 len: bracket.kind.len(),
                 msg: "stray bracket".into(),
@@ -594,7 +593,10 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
 
         return match this.errors.is_empty() {
             true => Ok( this.tokens ),
-            false => Err( RawSyntaxErrors { src, errors: this.errors } ),
+            false => {
+                this.errors.sort_by( |e1, e2| e1.line.cmp( &e2.line ) );
+                Err( SyntaxErrors { src: this.src, errors: this.errors } )
+            },
         }
     }
 }
@@ -831,7 +833,9 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
                     else {
                         // FIX add proper multiple error handling
                         let last_error = errors.pop().unwrap();
-                        self.errors.extend( errors );
+                        for error in errors {
+                            self.errors.add( self.src, error );
+                        }
                         Err( last_error )
                     }
                 },

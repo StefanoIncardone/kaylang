@@ -15,9 +15,6 @@ use logging::*;
 mod lexer;
 use lexer::*;
 
-mod checker;
-use checker::*;
-
 mod compiler;
 use compiler::*;
 
@@ -94,12 +91,10 @@ impl From<KayArgs> for Kay {
             RunMode::Help => Self::Help( KayHelp { version: KayVersion { color } } ),
             RunMode::Version => Self::Version( KayVersion { color } ),
             RunMode::Check { src_path } => Self::Check( KayCheck {
-                color,
                 logger: CompilationLogger::new( verbosity ),
                 src: Src { path: src_path, code: String::new(), lines: Vec::new() } }
             ),
             RunMode::Compile { src_path, out, run } => Self::Compile( KayCompile {
-                color,
                 logger: CompilationLogger::new( verbosity ),
                 src: Src { path: src_path, code: String::new(), lines: Vec::new() },
                 out,
@@ -251,97 +246,6 @@ impl TryFrom<Args> for Kay {
     }
 }
 
-// Execution of specified commands
-// impl Kay {
-//     fn print_usage( &self ) {
-//         self.print_version();
-
-//         println!( r"
-// Usage: kay [{OPTIONS}] [{RUN_MODE}]
-
-// {OPTIONS}:
-//     -h, --help            Display this message
-//     -v, --version         Display the compiler version
-//     -c, --color <{MODE}>    Wether to display colored output ({MODE}: auto (default), never, always)
-//     -q, --quiet           Don't display any diagnostic messages
-//     -V, --verbose         Display extra diagnostic messages
-
-// {RUN_MODE}:
-//     check    <{FILE}>              Check the source code for correctness
-//     compile  <{FILE}> [{OUTPUT}]     Compile the source code down to an executable
-//     run      <{FILE}> [{OUTPUT}]     Compile and run the generated executable
-
-// {OUTPUT}:
-//     -o, --output <{PATH}>       Folder to populate with compilation artifacts (.asm, .o, executable) (default: '.')"
-//         );
-//     }
-
-//     fn print_version( &self ) {
-//         self.color.set_stdout();
-//         println!( "Kaylang compiler, version {}", VERSION );
-//     }
-
-
-//     // IDEA remove KayError enum
-//         // TODO split into different compilation phases:
-//         // 0) help message (if present) (which does not return anything)
-//         // 1) source file reading       (which returns IoError)
-//         // 2) fron-end                  (which returns Vec<SyntaxError>)
-//         // 3) back-end                  (which returns IoError )
-//     pub fn execute( &self ) -> Result<(), CompileError> {
-//         return match &self.run_mode {
-//             RunMode::Help => {
-//                 self.print_usage();
-//                 return Ok( () );
-//             },
-//             RunMode::Version => {
-//                 self.print_version();
-//                 return Ok( () );
-//             },
-//             RunMode::Check { src_path: src } | RunMode::Compile { src_path: src, .. } => {
-//                 let mut logger = CompilationLogger::new( self.verbosity );
-
-//                 let source_file = match Src::try_from( Path::new( &src ) ) {
-//                     Ok( src ) => src,
-//                     Err( err ) => return Err( KayError::Src( err ) ),
-//                 };
-
-//                 let ast = match Checker::check( &source_file, &mut logger ) {
-//                     Ok( ast ) => ast,
-//                     Err( errors ) => return Err( KayError::Syntax( SyntaxErrors::new( errors, &source_file ) ) ),
-//                 };
-
-//                 match &self.run_mode {
-//                     RunMode::Check { .. } => logger.done(),
-//                     RunMode::Compile { src_path: src, out, run } => {
-//                         let mut compiler = Compiler {
-//                             src_path: src.clone(),
-//                             out_path: out.clone(),
-//                             run: *run,
-//                             scopes: &ast,
-//                             rodata: String::new(),
-//                             asm: String::new(),
-//                             variables: Vec::new(),
-//                             strings: Vec::new(),
-//                             if_idx: 0,
-//                             loop_idx: 0,
-//                             loop_idx_stack: Vec::new(),
-//                         };
-
-//                         match compiler.compile( &mut logger ) {
-//                             Ok( _ ) => {},
-//                             Err( err ) => return Err( KayError::BackEnd( err ) ),
-//                         }
-//                     },
-//                     RunMode::Help | RunMode::Version => unreachable!(),
-//                 }
-
-//                 Ok( () )
-//             },
-//         }
-//     }
-// }
-
 
 pub struct KayVersion {
     color: Color,
@@ -386,7 +290,6 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
 
 
 pub struct KayCheck {
-    color: Color,
     pub logger: CompilationLogger,
     src: Src,
 }
@@ -405,14 +308,14 @@ impl<'this> KayCheck {
         self.logger.substep( &LEXING );
         let tokens = match tokens_result {
             Ok( tokens ) => tokens,
-            Err( err ) => return Err( CheckError::Syntax( err.into() ) ),
+            Err( err ) => return Err( CheckError::Syntax( err ) ),
         };
 
         let ast_result = Ast::build( &tokens, &self.src );
         self.logger.substep( &PARSING );
         let ast = match ast_result {
             Ok( ast ) => ast,
-            Err( err ) => return Err( CheckError::Syntax( err.into() ) ),
+            Err( err ) => return Err( CheckError::Syntax( err ) ),
         };
 
         self.logger.substep_done();
@@ -423,7 +326,6 @@ impl<'this> KayCheck {
 
 
 pub struct KayCompile {
-    color: Color,
     pub logger: CompilationLogger,
     src: Src,
     out: Option<PathBuf>,
@@ -444,14 +346,14 @@ impl<'this> KayCompile {
         self.logger.substep( &LEXING );
         let tokens = match tokens_result {
             Ok( tokens ) => tokens,
-            Err( err ) => return Err( CompileError::Check( CheckError::Syntax( err.into() ) ) ),
+            Err( err ) => return Err( CompileError::Check( CheckError::Syntax( err ) ) ),
         };
 
         let ast_result = Ast::build( &tokens, &self.src );
         self.logger.substep( &PARSING );
         let ast = match ast_result {
             Ok( ast ) => ast,
-            Err( err ) => return Err( CompileError::Check( CheckError::Syntax( err.into() ) ) ),
+            Err( err ) => return Err( CompileError::Check( CheckError::Syntax( err ) ) ),
         };
 
         self.logger.substep_done();

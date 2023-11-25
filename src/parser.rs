@@ -233,21 +233,24 @@ pub struct Scope<'src> {
 // IDEA create Parser class that builds the AST, and then validate the AST afterwards
 #[derive( Debug )]
 pub(crate) struct Ast<'tokens, 'ast, 'src: 'ast> {
+    src: &'src Src,
+
     scopes: Vec<Scope<'ast>>,
     scope: usize,
     loop_depth: usize,
 
     tokens: TokenIter<'tokens, 'src>,
-    errors: Vec<RawSyntaxError>,
+    errors: Vec<SyntaxError>,
 }
 
 impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
-    pub(crate) fn build( tokens: &'tokens [Token<'src>], src: &'src Src ) -> Result<Vec<Scope<'ast>>, RawSyntaxErrors<'src>> {
+    pub(crate) fn build( tokens: &'tokens [Token<'src>], src: &'src Src ) -> Result<Vec<Scope<'ast>>, SyntaxErrors<'src>> {
         if tokens.is_empty() {
             return Ok( Vec::new() );
         }
 
         let mut this = Self {
+            src,
             scopes: vec![Scope {
                 parent: 0,
                 types: vec![Type::Int, Type::Char, Type::Bool, Type::Str],
@@ -264,7 +267,10 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 
         return match this.errors.is_empty() {
             true => Ok( this.scopes ),
-            false => Err( RawSyntaxErrors { src, errors: this.errors } ),
+            false => {
+                this.errors.sort_by( |e1, e2| e1.line.cmp( &e2.line ) );
+                Err( SyntaxErrors { src: this.src, errors: this.errors } )
+            },
         }
     }
 }
@@ -285,7 +291,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
                         | Node::Break | Node::Continue
                         | Node::Print( _ ) | Node::Println( _ ) =>
                             if let Err( err ) = self.semicolon() {
-                                self.errors.push( err );
+                                self.errors.add( self.src, err );
 
                                 self.tokens.token = self.tokens.tokens.len();
                                 break;
@@ -303,7 +309,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
                 // causes a ripple effect that propagates to the rest of the parsing, causing
                 // subsequent errors to be wrong
                 Err( err ) => {
-                    self.errors.push( err );
+                    self.errors.add( self.src, err );
 
                     // consuming all remaining tokens until the end of the file
                     self.tokens.token = self.tokens.tokens.len();
