@@ -1,6 +1,6 @@
 use std::{fmt::Display, path::PathBuf, io::{ErrorKind, BufReader, BufRead}, fs::File, num::IntErrorKind};
 
-use crate::errors::*;
+use crate::logging::*;
 
 
 #[derive( Debug, Clone, Copy )]
@@ -568,11 +568,7 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
                     Ok( Some( kind ) ) => Token { col: this.token_start_col, kind },
                     Err( err ) => {
                         this.errors.add( this.src, err );
-                        let unexpected = this.token_text();
-                        Token {
-                            col: this.token_start_col,
-                            kind: TokenKind::Unexpected( unexpected )
-                        }
+                        Token { col: this.token_start_col, kind: TokenKind::Unexpected( this.token_text() ) }
                     }
                 };
 
@@ -778,15 +774,10 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
                         },
                     }
                 },
-                b'#' => match self.peek_next()? {
-                    Some( b'"' ) => todo!( "block comments" ),
-                    _ => {
-                        // consume the rest of the tokens in the current line
-                        self.col = self.line_end;
-                        self.token_start_col += 1;
-                        let comment = self.token_text();
-                        Ok( Some( TokenKind::Comment( comment ) ) )
-                    },
+                b'#' => {
+                    self.col = self.line_end; // consuming the rest of the characters in the current line
+                    self.token_start_col += 1; // ignoring the hash symbol
+                    Ok( Some( TokenKind::Comment( self.token_text() ) ) )
                 },
                 b'"' => {
                     let mut errors: Vec<RawSyntaxError> = Vec::new();

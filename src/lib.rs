@@ -3,12 +3,7 @@
 
 use std::{path::{Path, PathBuf}, env::Args, fmt::Display, process::Command};
 
-mod color;
-
-pub mod errors;
-use errors::*;
-
-mod logging;
+pub mod logging;
 use logging::*;
 
 mod lexer;

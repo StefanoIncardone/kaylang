@@ -53,7 +53,7 @@ mod tests {
                     }.into();
 
                     match kay.execute() {
-                        Ok( _ ) => {},
+                        Ok( _ ) => eprintln!(),
                         Err( err ) => {
                             eprint!( "{}", err );
                             return ExitCode::FAILURE;

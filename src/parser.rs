@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::{lexer::*, errors::*};
+use crate::{lexer::*, logging::*};
 
 
 #[derive( Debug )]
