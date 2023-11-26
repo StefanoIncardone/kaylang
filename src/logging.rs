@@ -93,8 +93,8 @@ impl CompilationLogger {
 
     pub(crate) fn done( &mut self ) {
         match self.verbosity {
-            Verbosity::Quiet | Verbosity::Normal => {},
-            Verbosity::Verbose => self.substep_display( &self.start_time, 0, &DONE, STEP_PADDING ),
+            Verbosity::Quiet => {},
+            Verbosity::Normal | Verbosity::Verbose => self.substep_display( &self.start_time, 0, &DONE, STEP_PADDING ),
         }
     }
 
