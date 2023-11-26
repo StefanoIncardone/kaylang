@@ -31,7 +31,6 @@ impl Display for Color {
     }
 }
 
-// TODO disallow verbosity with help messages
 #[derive( Debug, Default, Clone, Copy )]
 pub enum Verbosity {
     #[default] Normal,
@@ -65,21 +64,118 @@ pub struct KayArgs {
 }
 
 
+pub struct Help {
+    color: Color,
+    full: bool,
+}
+
+impl Help {
+    pub fn execute( &self ) {
+        self.color.set_stdout();
+        println!( "Kaylang compiler, version {}", VERSION );
+
+        if self.full {
+            println!( r"
+Usage: kay [{OPTIONS}] [{RUN_MODE}]
+
+{OPTIONS}:
+-h, --help            Display this message
+-v, --version         Display the compiler version
+-c, --color <{MODE}>    Wether to display colored output ({MODE}: auto (default), never, always)
+-q, --quiet           Don't display any diagnostic messages
+-V, --verbose         Display extra diagnostic messages
+
+{RUN_MODE}:
+check    <{FILE}>              Check the source code for correctness
+compile  <{FILE}> [{OUTPUT}]     Compile the source code down to an executable
+run      <{FILE}> [{OUTPUT}]     Compile and run the generated executable
+
+{OUTPUT}:
+-o, --output <{PATH}>       Folder to populate with compilation artifacts (.asm, .o, executable) (default: '.')"
+            );
+        }
+    }
+}
+
 pub enum CompileKind {
     Check,
     Compile { out_path: Option<PathBuf>, run: bool },
 }
 
+pub struct Compile {
+    src: Src,
+    verbosity: Verbosity,
+    kind: CompileKind,
+}
+
+impl Compile {
+    pub fn execute( &mut self ) -> Result<(), KayError>  {
+        let mut logger = CompilationLogger::new( self.verbosity );
+        logger.step( &CHECKING, &self.src.path );
+
+        match self.src.populate() {
+            Ok( src ) => src,
+            Err( err ) => return Err( KayError::Src( err ) ),
+        };
+
+        let tokens_result = Lexer::tokenize( &self.src );
+        logger.substep( &LEXING );
+        let tokens = match tokens_result {
+            Ok( tokens ) => tokens,
+            Err( err ) => return Err( KayError::Syntax( err ) ),
+        };
+
+        let ast_result = Ast::build( &tokens, &self.src );
+        logger.substep( &PARSING );
+        let ast = match ast_result {
+            Ok( ast ) => ast,
+            Err( err ) => return Err( KayError::Syntax( err ) ),
+        };
+
+        logger.substep_done();
+        match &self.kind {
+            CompileKind::Check => logger.done(),
+            CompileKind::Compile { out_path, run } => {
+                let exe_path = match Compiler::compile( &self.src.path, out_path, &ast, &mut logger ) {
+                    Ok( exe_path ) => exe_path,
+                    Err( err ) => return Err( KayError::Compilation( err ) ),
+                };
+
+                logger.done();
+                if !*run {
+                    return Ok( () );
+                }
+
+                logger.step( &RUNNING, &exe_path );
+
+                let mut executable = match Command::new( Path::new( "." ).join( &exe_path ) ).spawn() {
+                    Ok( executable ) => executable,
+                    Err( err ) => return Err( KayError::Running( IoError {
+                        kind: err.kind(),
+                        msg: format!( "could not create executable process '{}'", exe_path.display() ).into(),
+                        cause: err.to_string().into(),
+                    } ) ),
+                };
+
+                match executable.wait() {
+                    Ok( _ ) => {},
+                    Err( err ) => return Err( KayError::Running( IoError {
+                        kind: err.kind(),
+                        msg: format!( "could not run executable '{}'", exe_path.display() ).into(),
+                        cause: err.to_string().into(),
+                    } ) ),
+                }
+            }
+        }
+
+        return Ok( () );
+    }
+}
+
+
 pub enum Kay {
-    Help {
-        color: Color,
-        full: bool,
-    },
-    Compile {
-        src: Src,
-        verbosity: Verbosity,
-        kind: CompileKind,
-    },
+    Help( Help ),
+    Compile( Compile ),
 }
 
 impl From<KayArgs> for Kay {
@@ -90,18 +186,18 @@ impl From<KayArgs> for Kay {
         color.set();
 
         return match run_mode {
-            RunMode::Help => Self::Help { color, full: true },
-            RunMode::Version => Self::Help { color, full: false },
-            RunMode::Check { src_path } => Self::Compile {
+            RunMode::Help => Self::Help( Help { color, full: true } ),
+            RunMode::Version => Self::Help( Help { color, full: false } ),
+            RunMode::Check { src_path } => Self::Compile( Compile {
                 src: Src { path: src_path, code: String::new(), lines: Vec::new() },
                 verbosity,
                 kind: CompileKind::Check,
-            },
-            RunMode::Compile { src_path, out_path, run } => Self::Compile {
+            } ),
+            RunMode::Compile { src_path, out_path, run } => Self::Compile( Compile {
                 src: Src { path: src_path, code: String::new(), lines: Vec::new() },
                 verbosity,
                 kind: CompileKind::Compile { out_path, run },
-            },
+            } ),
         }
     }
 }
@@ -246,96 +342,41 @@ impl TryFrom<Args> for Kay {
     }
 }
 
+// factory methods
+impl Kay {
+    pub fn help( color: Color ) -> Help {
+        return Help { color, full: true };
+    }
+
+    pub fn version( color: Color ) -> Help {
+        return Help { color, full: false };
+    }
+
+    pub fn check( path: impl Into<PathBuf>, verbosity: Verbosity ) -> Compile {
+        return Compile {
+            src: Src { path: path.into(), code: String::new(), lines: Vec::new() },
+            verbosity,
+            kind: CompileKind::Check
+        };
+    }
+
+    pub fn compile( path: impl Into<PathBuf>, verbosity: Verbosity, out_path: Option<PathBuf>, run: bool ) -> Compile {
+        return Compile {
+            src: Src { path: path.into(), code: String::new(), lines: Vec::new() },
+            verbosity,
+            kind: CompileKind::Compile { out_path, run }
+        };
+    }
+}
+
 impl Kay {
     pub fn execute( &mut self ) -> Result<(), KayError> {
-        match self {
-            Self::Help { color, full } => {
-                color.set_stdout();
-                println!( "Kaylang compiler, version {}", VERSION );
-
-                if *full {
-                    println!( r"
-Usage: kay [{OPTIONS}] [{RUN_MODE}]
-
-{OPTIONS}:
-    -h, --help            Display this message
-    -v, --version         Display the compiler version
-    -c, --color <{MODE}>    Wether to display colored output ({MODE}: auto (default), never, always)
-    -q, --quiet           Don't display any diagnostic messages
-    -V, --verbose         Display extra diagnostic messages
-
-{RUN_MODE}:
-    check    <{FILE}>              Check the source code for correctness
-    compile  <{FILE}> [{OUTPUT}]     Compile the source code down to an executable
-    run      <{FILE}> [{OUTPUT}]     Compile and run the generated executable
-
-{OUTPUT}:
-    -o, --output <{PATH}>       Folder to populate with compilation artifacts (.asm, .o, executable) (default: '.')"
-                    );
-                }
+        return match self {
+            Self::Help( help ) => {
+                help.execute();
+                Ok( () )
             },
-            Self::Compile { src, verbosity, kind } => {
-                let mut logger = CompilationLogger::new( *verbosity );
-                logger.step( &CHECKING, &src.path );
-
-                match src.populate() {
-                    Ok( src ) => src,
-                    Err( err ) => return Err( KayError::Src( err ) ),
-                };
-
-                let tokens_result = Lexer::tokenize( src );
-                logger.substep( &LEXING );
-                let tokens = match tokens_result {
-                    Ok( tokens ) => tokens,
-                    Err( err ) => return Err( KayError::Syntax( err ) ),
-                };
-
-                let ast_result = Ast::build( &tokens, src );
-                logger.substep( &PARSING );
-                let ast = match ast_result {
-                    Ok( ast ) => ast,
-                    Err( err ) => return Err( KayError::Syntax( err ) ),
-                };
-
-                logger.substep_done();
-                match kind {
-                    CompileKind::Check => logger.done(),
-                    CompileKind::Compile { out_path, run } => {
-                        let exe_path = match Compiler::compile( &src.path, out_path, &ast, &mut logger ) {
-                            Ok( exe_path ) => exe_path,
-                            Err( err ) => return Err( KayError::Compilation( err ) ),
-                        };
-
-                        logger.done();
-                        if !*run {
-                            return Ok( () );
-                        }
-
-                        logger.step( &RUNNING, &exe_path );
-
-                        let mut executable = match Command::new( Path::new( "." ).join( &exe_path ) ).spawn() {
-                            Ok( executable ) => executable,
-                            Err( err ) => return Err( KayError::Running( IoError {
-                                kind: err.kind(),
-                                msg: format!( "could not create executable process '{}'", exe_path.display() ).into(),
-                                cause: err.to_string().into(),
-                            } ) ),
-                        };
-
-                        match executable.wait() {
-                            Ok( _ ) => {},
-                            Err( err ) => return Err( KayError::Running( IoError {
-                                kind: err.kind(),
-                                msg: format!( "could not run executable '{}'", exe_path.display() ).into(),
-                                cause: err.to_string().into(),
-                            } ) ),
-                        }
-                    }
-                }
-
-            },
+            Self::Compile( compile ) => compile.execute(),
         }
-
-        return Ok( () );
     }
 }

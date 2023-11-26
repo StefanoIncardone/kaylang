@@ -46,12 +46,8 @@ mod tests {
             let src_path = src_file.unwrap().path();
             if let Some( extension ) = src_path.extension() {
                 if extension == "kay" {
-                    let mut kay: Kay = KayArgs {
-                        run_mode: Some( RunMode::Check { src_path } ),
-                        ..Default::default()
-                    }.into();
-
-                    match kay.execute() {
+                    let mut check = Kay::check( src_path, Verbosity::Normal );
+                    match check.execute() {
                         Ok( _ ) => {},
                         Err( err ) => {
                             eprint!( "{}", err );
