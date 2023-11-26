@@ -95,7 +95,9 @@ pub(crate) trait TypeOf {
 
 #[derive( Debug, Clone )]
 pub(crate) enum Literal {
-    Int( isize ), // IDEA have different size integers and default to 32 bits for literals
+    // TODO implement unsigned integers
+    // IDEA have different size integers and default to 32 bits for literals
+    Int( isize ),
     Char( u8 ), // only supporting ASCII characters for now
     Bool( bool ),
     Str( Vec<u8> ),
@@ -152,7 +154,6 @@ impl TypeOf for Literal {
 }
 
 
-// TODO implement unsigned integers
 #[derive( Debug, PartialEq, Clone, Copy )]
 pub(crate) enum Type {
     Int,
@@ -563,12 +564,13 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
             // just to check if we are getting the correct line text
             let _line_text = &src.code[ line.start..line.end ];
             loop {
-                let token = match this.tokeninze_next() {
+                let token = match this.next_token() {
                     Ok( None ) => break,
                     Ok( Some( kind ) ) => Token { col: this.token_start_col, kind },
                     Err( err ) => {
                         this.errors.add( this.src, err );
-                        Token { col: this.token_start_col, kind: TokenKind::Unexpected( this.token_text() ) }
+                        let unexpected = &this.src.code[ this.token_start_col..this.col ];
+                        Token { col: this.token_start_col, kind: TokenKind::Unexpected( unexpected ) }
                     }
                 };
 
@@ -596,12 +598,7 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
     }
 }
 
-// TODO make next/peek methods return Option<Result> instead of Result<Option>
 impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
-    fn token_text( &self ) -> &'tokens str {
-        return &self.src.code[ self.token_start_col..self.col ];
-    }
-
     // FIX properly handle non ASCII characters
         // TODO add an absolute column for the bytes in the line
         // IDEA only allow utf-8 characters in strings, characters and comments
@@ -664,7 +661,7 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
         }
     }
 
-    fn tokeninze_next( &mut self ) -> Result<Option<TokenKind<'tokens>>, RawSyntaxError> {
+    fn next_token( &mut self ) -> Result<Option<TokenKind<'tokens>>, RawSyntaxError> {
         loop {
             self.token_start_col = self.col;
             let next = match self.next()? {
@@ -698,7 +695,7 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
                         } )
                     }
                     else {
-                        let identifier = match self.token_text() {
+                        let identifier = match &self.src.code[ self.token_start_col..self.col ] {
                             "let"      => TokenKind::Definition( Mutability::Let ),
                             "var"      => TokenKind::Definition( Mutability::Var ),
                             "print"    => TokenKind::Print,
@@ -731,7 +728,7 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
                         }
                     }
 
-                    let token_text = self.token_text();
+                    let token_text = &self.src.code[ self.token_start_col..self.col ];
                     match token_text.parse() {
                         Ok( value ) => Ok( Some( TokenKind::Literal( Literal::Int( value ) ) ) ),
                         Err( err ) => match err.kind() {
@@ -775,9 +772,13 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
                     }
                 },
                 b'#' => {
-                    self.col = self.line_end; // consuming the rest of the characters in the current line
-                    self.token_start_col += 1; // ignoring the hash symbol
-                    Ok( Some( TokenKind::Comment( self.token_text() ) ) )
+                    // consuming the rest of the characters in the current line
+                    self.col = self.line_end;
+
+                    // starting at token_start_col + 1 to ignore the hash symbol
+                    let comment = &self.src.code[ self.token_start_col + 1..self.col ];
+
+                    Ok( Some( TokenKind::Comment( comment ) ) )
                 },
                 b'"' => {
                     let mut errors: Vec<RawSyntaxError> = Vec::new();
