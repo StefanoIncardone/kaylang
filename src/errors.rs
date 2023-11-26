@@ -139,47 +139,18 @@ impl Display for IoError {
 
 
 #[derive( Debug )]
-pub enum CheckError<'src> {
-    Src( IoError ),
-    Syntax( SyntaxErrors<'src> ),
-}
-
-impl Display for CheckError<'_> {
-    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        return match self {
-            Self::Src( error ) => write!( f, "{}", error ),
-            Self::Syntax( errors )                      => write!( f, "{}", errors ),
-        }
-    }
-}
-
-#[derive( Debug )]
-pub enum CompileError<'src> {
-    Check( CheckError<'src> ),
-    BackEnd( IoError ),
-}
-
-impl Display for CompileError<'_> {
-    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        return match self {
-            Self::Check( error ) => write!( f, "{}", error ),
-            Self::BackEnd( errors )                      => write!( f, "{}", errors ),
-        }
-    }
-}
-
-#[derive( Debug )]
 pub enum KayError<'src> {
     Src( IoError ),
     Syntax( SyntaxErrors<'src> ),
-    BackEnd( IoError ),
+    Compilation( IoError ),
+    Running( IoError ),
 }
 
 impl Display for KayError<'_> {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
-            Self::Src( err ) | Self::BackEnd( err ) => write!( f, "{}", err ),
-            Self::Syntax( err )                     => write!( f, "{}", err ),
+            Self::Src( err ) | Self::Compilation( err ) | Self::Running( err ) => write!( f, "{}", err ),
+            Self::Syntax( err )                                                => write!( f, "{}", err ),
         }
     }
 }

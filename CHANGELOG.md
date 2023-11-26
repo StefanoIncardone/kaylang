@@ -8,8 +8,7 @@
 ## 0.4.1
 
 - revised compiler API
-- revised and optimized failure during compilation steps
-- simplified lexing stage
+- revised and optimized error reporting during compilation steps
 - optimized String allocations
 
 ## 0.3

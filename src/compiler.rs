@@ -22,21 +22,20 @@ pub(crate) struct CompilerString<'ast> {
 
 #[derive( Debug )]
 pub(crate) struct Compiler<'ast, 'src: 'ast> {
-    pub(crate) src_path: PathBuf,
-    pub(crate) out_path: Option<PathBuf>,
-    pub(crate) run: bool,
+    src_path: &'src Path,
+    out_path: &'src Option<PathBuf>,
 
-    pub(crate) scopes: &'ast Vec<Scope<'src>>,
+    ast: &'ast Vec<Scope<'src>>,
 
-    pub(crate) rodata: String,
-    pub(crate) asm: String,
+    rodata: String,
+    asm: String,
 
-    pub(crate) variables: Vec<CompilerVariable<'src>>,
-    pub(crate) strings: Vec<CompilerString<'ast>>,
+    variables: Vec<CompilerVariable<'src>>,
+    strings: Vec<CompilerString<'ast>>,
 
-    pub(crate) if_idx: usize,
-    pub(crate) loop_idx: usize,
-    pub(crate) loop_idx_stack: Vec<usize>,
+    if_idx: usize,
+    loop_idx: usize,
+    loop_idx_stack: Vec<usize>,
 }
 
 // Resolution of identifiers and string tags
@@ -79,340 +78,6 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
 
         self.strings.push( CompilerString { string, label, len_label } );
         return string_idx;
-    }
-}
-
-// Generation of compilation artifacts (.asm, .o, executable)
-impl Compiler<'_, '_> {
-    const STACK_ALIGN: usize = core::mem::size_of::<usize>();
-
-    pub(crate) fn compile( &mut self, logger: &mut CompilationLogger ) -> Result<(), IoError> {
-        logger.step( &COMPILING, &self.src_path );
-
-        let (asm_path, obj_path, exe_path) = if let Some( out_path ) = &self.out_path {
-            match std::fs::create_dir_all( out_path ) {
-                Ok( _ ) => {},
-                Err( err ) if err.kind() == ErrorKind::AlreadyExists => {},
-                Err( err ) => {
-                    logger.substep( &ASM_GENERATION );
-                    return Err( IoError {
-                        kind: err.kind(),
-                        msg: format!( "could not create output directory '{}'", out_path.display() ).into(),
-                        cause: err.to_string().into(),
-                    } );
-                }
-            }
-
-            (out_path.join( self.src_path.with_extension( "asm" ).file_name().unwrap() ),
-            out_path.join( self.src_path.with_extension( "o" ).file_name().unwrap() ),
-            out_path.join( self.src_path.with_extension( "" ).file_name().unwrap() ))
-        }
-        else {
-            (self.src_path.with_extension( "asm" ),
-            self.src_path.with_extension( "o" ),
-            self.src_path.with_extension( "" ))
-        };
-
-        let asm_file = match File::create( &asm_path ) {
-            Ok( file ) => file,
-            Err( err ) => {
-                logger.substep( &ASM_GENERATION );
-                return Err( IoError {
-                    kind: err.kind(),
-                    msg: format!( "could not create file '{}'", asm_path.display() ).into(),
-                    cause: err.to_string().into(),
-                } );
-            },
-        };
-
-        let mut asm_writer = BufWriter::new( asm_file );
-
-        self.rodata +=
-r#" stdout: equ 1
- SYS_write: equ 1
- SYS_exit: equ 60
- EXIT_SUCCESS: equ 0
-
- INT_MIN: equ 1 << 63
- INT_MAX: equ ~INT_MIN
- INT_BITS: equ 64
-
- true: equ 1
- true_str: db "true"
- true_str_len: equ $ - true_str
-
- false: equ 0
- false_str: db "false"
- false_str_len: equ $ - false_str
-
- LESS: equ -1
- EQUAL: equ 0
- GREATER: equ 1
-
- INT_STR_LEN: equ INT_BITS"#;
-
-        let mut stack_size = 0;
-        let mut variables: Vec<(Type, Vec<&Variable>)> = Vec::new();
-        for scope in self.scopes {
-            for variable in &scope.variables {
-                let typ = &variable.value.typ();
-
-                let mut type_already_encountered = false;
-                for var_info in &mut variables {
-                    if *typ == var_info.0 {
-                        var_info.1.push( variable );
-                        type_already_encountered = true;
-                        break;
-                    }
-                }
-
-                if !type_already_encountered {
-                    variables.push( (variable.value.typ(), vec![variable]) );
-                }
-            }
-
-            while !variables.is_empty() {
-                let mut largest_type_bytes = 0;
-                let mut current_type = 0;
-                for (variable_idx, variable) in variables.iter().enumerate() {
-                    let bytes = variable.0.len();
-                    if bytes > largest_type_bytes {
-                        largest_type_bytes = bytes;
-                        current_type = variable_idx;
-                    }
-                }
-
-                for variable in variables.swap_remove( current_type ).1 {
-                    let typ = variable.value.typ();
-                    self.variables.push( CompilerVariable { name: variable.name, typ, offset: stack_size } );
-                    stack_size += typ.len();
-                }
-            }
-        }
-
-        if stack_size > 0 {
-            let misalignment = stack_size % Compiler::STACK_ALIGN;
-            let needs_padding = misalignment != 0;
-            let padding = needs_padding as usize * (Compiler::STACK_ALIGN - misalignment);
-            stack_size += padding;
-
-            self.asm += &format!(
-                " push rbp\
-                \n sub rsp, {}\
-                \n mov rbp, rsp\
-                \n\n",
-                stack_size
-            );
-        }
-
-        self.scope( 0 );
-
-        if stack_size > 0 {
-            self.asm += &format!(
-                " add rsp, {}\
-                \n pop rbp\n",
-                stack_size
-            );
-        }
-
-        let program = format!(
-r"global _start
-
-section .rodata
-{}
-
-section .data
- int_str: times INT_STR_LEN db 0
-
-section .text
-int_toStr:
- push rcx
-
- mov rsi, 10
- mov rcx, int_str + INT_STR_LEN - 1
-
- mov rax, rdi
- cmp rax, 0
- je .writeZero
- jl .makeNumberPositive
- jg .extractNextDigit
-
-.writeZero:
- mov byte [rcx], '0'
- jmp .done
-
-.makeNumberPositive:
- neg rax
-
-.extractNextDigit:
- xor rdx, rdx
- idiv rsi
-
- add dl, '0'
- mov byte [rcx], dl
- dec rcx
-
- cmp rax, 0
- jne .extractNextDigit
-
- cmp rdi, 0
- jl .addMinusSign
- inc rcx
- jmp .done
-
-.addMinusSign:
- mov byte [rcx], '-'
-
-.done:
- mov rdx, int_str + INT_STR_LEN
- sub rdx, rcx
-
- mov rax, rcx
- pop rcx
- ret
-
-int_pow:
- cmp rsi, 1
- jne .exponent_is_not_one
- mov rax, rdi
- ret
-
-.exponent_is_not_one:
- cmp rsi, 0
- jne .exponent_is_not_zero
- mov rax, 1
- ret
-
-.exponent_is_not_zero:
- push rsi
-
- mov rax, rdi
- mov rdx, 1
-
-.next_power:
- cmp rsi, 1
- jle .done
-
- test rsi, 1
- jnz .exponent_is_odd
-
- imul rax, rax
- shr rsi, 1
- jmp .next_power
-
-.exponent_is_odd:
- imul rdx, rax
- imul rax, rax
-
- dec rsi
- shr rsi, 1
- jmp .next_power
-
-.done:
- imul rax, rdx
-
- pop rsi
- ret
-
-_start:
-{}
-
- mov rdi, EXIT_SUCCESS
- mov rax, SYS_exit
- syscall",
-            self.rodata, self.asm
-        );
-
-        if let Err( err ) = asm_writer.write_all( program.as_bytes() ) {
-            logger.substep( &ASM_GENERATION );
-            return Err( IoError {
-                kind: err.kind(),
-                msg: "writing assembly file failed".into(),
-                cause: err.to_string().into(),
-            } );
-        }
-
-        if let Err( err ) = asm_writer.flush() {
-            logger.substep( &ASM_GENERATION );
-            return Err( IoError {
-                kind: err.kind(),
-                msg: "writing assembly file failed".into(),
-                cause: err.to_string().into(),
-            } );
-        }
-
-        logger.substep( &ASM_GENERATION );
-
-
-        let nasm_args = ["-felf64", "-gdwarf", asm_path.to_str().unwrap(), "-o", obj_path.to_str().unwrap()];
-        match Command::new( "nasm" ).args( nasm_args ).output() {
-            Ok( nasm_out ) => if !nasm_out.status.success() {
-                logger.substep( &ASSEMBLER );
-                return Err( IoError {
-                    kind: ErrorKind::InvalidData,
-                    msg: "nasm assembler failed".into(),
-                    cause: String::from_utf8( nasm_out.stderr ).unwrap().into()
-                } );
-            },
-            Err( err ) => {
-                logger.substep( &ASSEMBLER );
-                return Err( IoError {
-                    kind: err.kind(),
-                    msg: "could not create nasm assembler process".into(),
-                    cause: err.to_string().into(),
-                } );
-            },
-        }
-
-        logger.substep( &ASSEMBLER );
-
-
-        let ld_args = [obj_path.to_str().unwrap(), "-o", exe_path.to_str().unwrap()];
-        match Command::new( "ld" ).args( ld_args ).output() {
-            Ok( ld_out ) => if !ld_out.status.success() {
-                logger.substep( &LINKER );
-                return Err( IoError {
-                    kind: ErrorKind::InvalidData,
-                    msg: "ld linker failed".into(),
-                    cause: String::from_utf8( ld_out.stderr ).unwrap().into()
-                } );
-            },
-            Err( err ) => {
-                logger.substep( &LINKER );
-                return Err( IoError {
-                    kind: err.kind(),
-                    msg: "could not create ld linker process".into(),
-                    cause: err.to_string().into(),
-                } );
-            },
-        };
-
-        logger.substep( &LINKER );
-        logger.substep_done();
-        logger.done();
-
-
-        if self.run {
-            logger.step( &RUNNING, &exe_path );
-
-            match Command::new( Path::new( "." ).join( exe_path ).display().to_string() ).spawn() {
-                Ok( mut executable ) => match executable.wait() {
-                    Ok( _status ) => {},
-                    Err( err ) => return Err( IoError {
-                        kind: err.kind(),
-                        msg: "could not run executable".into(),
-                        cause: err.to_string().into(),
-                    } ),
-                },
-                Err( err ) => return Err( IoError {
-                    kind: err.kind(),
-                    msg: "could not create executable process".into(),
-                    cause: err.to_string().into(),
-                } ),
-            }
-        }
-
-        return Ok( () );
     }
 }
 
@@ -592,11 +257,11 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
                 );
             },
             Node::Definition( scope, variable ) => {
-                let variable = &self.scopes[ *scope ].variables[ *variable ];
+                let variable = &self.ast[ *scope ].variables[ *variable ];
                 self.assignment( variable.name, &variable.value );
             },
             Node::Assignment( scope, variable, value ) => {
-                let variable = &self.scopes[ *scope ].variables[ *variable ];
+                let variable = &self.ast[ *scope ].variables[ *variable ];
                 self.assignment( variable.name, value );
             },
             Node::Scope( inner )           => self.scope( *inner ),
@@ -608,7 +273,7 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
     }
 
     fn scope( &mut self, scope_idx: usize ) {
-        let scope = &self.scopes[ scope_idx ];
+        let scope = &self.ast[ scope_idx ];
         for node in &scope.nodes {
             self.node( node );
         }
@@ -1006,5 +671,331 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
                 }
             },
         }
+    }
+}
+
+// Generation of compilation artifacts (.asm, .o, executable)
+impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
+    const STACK_ALIGN: usize = core::mem::size_of::<usize>();
+
+    pub(crate) fn compile( src_path: &Path, out_path: &Option<PathBuf>, ast: &Vec<Scope>, logger: &mut CompilationLogger ) -> Result<PathBuf, IoError> {
+        let mut this = Compiler {
+            src_path,
+            out_path,
+            ast,
+            rodata: String::new(),
+            asm: String::new(),
+            variables: Vec::new(),
+            strings: Vec::new(),
+            if_idx: 0,
+            loop_idx: 0,
+            loop_idx_stack: Vec::new(),
+        };
+
+        logger.step( &COMPILING, this.src_path );
+
+
+        let (asm_path, obj_path, exe_path) = if let Some( out_path ) = &this.out_path {
+            match std::fs::create_dir_all( out_path ) {
+                Ok( _ ) => {},
+                Err( err ) if err.kind() == ErrorKind::AlreadyExists => {},
+                Err( err ) => {
+                    logger.substep( &ASM_GENERATION );
+                    return Err( IoError {
+                        kind: err.kind(),
+                        msg: format!( "could not create output directory '{}'", out_path.display() ).into(),
+                        cause: err.to_string().into(),
+                    } );
+                }
+            }
+
+            (out_path.join( this.src_path.with_extension( "asm" ).file_name().unwrap() ),
+            out_path.join( this.src_path.with_extension( "o" ).file_name().unwrap() ),
+            out_path.join( this.src_path.with_extension( "" ).file_name().unwrap() ))
+        }
+        else {
+            (this.src_path.with_extension( "asm" ),
+            this.src_path.with_extension( "o" ),
+            this.src_path.with_extension( "" ))
+        };
+
+        let asm_file = match File::create( &asm_path ) {
+            Ok( file ) => file,
+            Err( err ) => {
+                logger.substep( &ASM_GENERATION );
+                return Err( IoError {
+                    kind: err.kind(),
+                    msg: format!( "could not create file '{}'", asm_path.display() ).into(),
+                    cause: err.to_string().into(),
+                } );
+            },
+        };
+
+        let mut asm_writer = BufWriter::new( asm_file );
+
+        this.rodata +=
+r#" stdout: equ 1
+ SYS_write: equ 1
+ SYS_exit: equ 60
+ EXIT_SUCCESS: equ 0
+
+ INT_MIN: equ 1 << 63
+ INT_MAX: equ ~INT_MIN
+ INT_BITS: equ 64
+
+ true: equ 1
+ true_str: db "true"
+ true_str_len: equ $ - true_str
+
+ false: equ 0
+ false_str: db "false"
+ false_str_len: equ $ - false_str
+
+ LESS: equ -1
+ EQUAL: equ 0
+ GREATER: equ 1
+
+ INT_STR_LEN: equ INT_BITS"#;
+
+        let mut stack_size = 0;
+        let mut variables: Vec<(Type, Vec<&Variable>)> = Vec::new();
+        for scope in this.ast {
+            for variable in &scope.variables {
+                let typ = &variable.value.typ();
+
+                let mut type_already_encountered = false;
+                for var_info in &mut variables {
+                    if *typ == var_info.0 {
+                        var_info.1.push( variable );
+                        type_already_encountered = true;
+                        break;
+                    }
+                }
+
+                if !type_already_encountered {
+                    variables.push( (variable.value.typ(), vec![variable]) );
+                }
+            }
+
+            while !variables.is_empty() {
+                let mut largest_type_bytes = 0;
+                let mut current_type = 0;
+                for (variable_idx, variable) in variables.iter().enumerate() {
+                    let bytes = variable.0.len();
+                    if bytes > largest_type_bytes {
+                        largest_type_bytes = bytes;
+                        current_type = variable_idx;
+                    }
+                }
+
+                for variable in variables.swap_remove( current_type ).1 {
+                    let typ = variable.value.typ();
+                    this.variables.push( CompilerVariable { name: variable.name, typ, offset: stack_size } );
+                    stack_size += typ.len();
+                }
+            }
+        }
+
+        if stack_size > 0 {
+            let misalignment = stack_size % Compiler::STACK_ALIGN;
+            let needs_padding = misalignment != 0;
+            let padding = needs_padding as usize * (Compiler::STACK_ALIGN - misalignment);
+            stack_size += padding;
+
+            this.asm += &format!(
+                " push rbp\
+                \n sub rsp, {}\
+                \n mov rbp, rsp\
+                \n\n",
+                stack_size
+            );
+        }
+
+        this.scope( 0 );
+
+        if stack_size > 0 {
+            this.asm += &format!(
+                " add rsp, {}\
+                \n pop rbp\n",
+                stack_size
+            );
+        }
+
+        let program = format!(
+r"global _start
+
+section .rodata
+{}
+
+section .data
+ int_str: times INT_STR_LEN db 0
+
+section .text
+int_toStr:
+ push rcx
+
+ mov rsi, 10
+ mov rcx, int_str + INT_STR_LEN - 1
+
+ mov rax, rdi
+ cmp rax, 0
+ je .writeZero
+ jl .makeNumberPositive
+ jg .extractNextDigit
+
+.writeZero:
+ mov byte [rcx], '0'
+ jmp .done
+
+.makeNumberPositive:
+ neg rax
+
+.extractNextDigit:
+ xor rdx, rdx
+ idiv rsi
+
+ add dl, '0'
+ mov byte [rcx], dl
+ dec rcx
+
+ cmp rax, 0
+ jne .extractNextDigit
+
+ cmp rdi, 0
+ jl .addMinusSign
+ inc rcx
+ jmp .done
+
+.addMinusSign:
+ mov byte [rcx], '-'
+
+.done:
+ mov rdx, int_str + INT_STR_LEN
+ sub rdx, rcx
+
+ mov rax, rcx
+ pop rcx
+ ret
+
+int_pow:
+ cmp rsi, 1
+ jne .exponent_is_not_one
+ mov rax, rdi
+ ret
+
+.exponent_is_not_one:
+ cmp rsi, 0
+ jne .exponent_is_not_zero
+ mov rax, 1
+ ret
+
+.exponent_is_not_zero:
+ push rsi
+
+ mov rax, rdi
+ mov rdx, 1
+
+.next_power:
+ cmp rsi, 1
+ jle .done
+
+ test rsi, 1
+ jnz .exponent_is_odd
+
+ imul rax, rax
+ shr rsi, 1
+ jmp .next_power
+
+.exponent_is_odd:
+ imul rdx, rax
+ imul rax, rax
+
+ dec rsi
+ shr rsi, 1
+ jmp .next_power
+
+.done:
+ imul rax, rdx
+
+ pop rsi
+ ret
+
+_start:
+{}
+
+ mov rdi, EXIT_SUCCESS
+ mov rax, SYS_exit
+ syscall",
+            this.rodata, this.asm
+        );
+
+        if let Err( err ) = asm_writer.write_all( program.as_bytes() ) {
+            logger.substep( &ASM_GENERATION );
+            return Err( IoError {
+                kind: err.kind(),
+                msg: "writing assembly file failed".into(),
+                cause: err.to_string().into(),
+            } );
+        }
+
+        if let Err( err ) = asm_writer.flush() {
+            logger.substep( &ASM_GENERATION );
+            return Err( IoError {
+                kind: err.kind(),
+                msg: "writing assembly file failed".into(),
+                cause: err.to_string().into(),
+            } );
+        }
+
+        logger.substep( &ASM_GENERATION );
+
+
+        let nasm_args = ["-felf64", "-gdwarf", asm_path.to_str().unwrap(), "-o", obj_path.to_str().unwrap()];
+        match Command::new( "nasm" ).args( nasm_args ).output() {
+            Ok( nasm_out ) => if !nasm_out.status.success() {
+                logger.substep( &ASSEMBLER );
+                return Err( IoError {
+                    kind: ErrorKind::InvalidData,
+                    msg: "nasm assembler failed".into(),
+                    cause: String::from_utf8( nasm_out.stderr ).unwrap().into()
+                } );
+            },
+            Err( err ) => {
+                logger.substep( &ASSEMBLER );
+                return Err( IoError {
+                    kind: err.kind(),
+                    msg: "could not create nasm assembler process".into(),
+                    cause: err.to_string().into(),
+                } );
+            },
+        }
+
+        logger.substep( &ASSEMBLER );
+
+
+        let ld_args = [obj_path.to_str().unwrap(), "-o", exe_path.to_str().unwrap()];
+        match Command::new( "ld" ).args( ld_args ).output() {
+            Ok( ld_out ) => if !ld_out.status.success() {
+                logger.substep( &LINKER );
+                return Err( IoError {
+                    kind: ErrorKind::InvalidData,
+                    msg: "ld linker failed".into(),
+                    cause: String::from_utf8( ld_out.stderr ).unwrap().into()
+                } );
+            },
+            Err( err ) => {
+                logger.substep( &LINKER );
+                return Err( IoError {
+                    kind: err.kind(),
+                    msg: "could not create ld linker process".into(),
+                    cause: err.to_string().into(),
+                } );
+            },
+        };
+
+        logger.substep( &LINKER );
+        logger.substep_done();
+
+        return Ok( exe_path );
     }
 }

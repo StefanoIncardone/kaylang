@@ -50,11 +50,11 @@ pub(crate) static PATH:     ColoredStr = ColoredStr { text: "path",             
 pub(crate) static OUTPUT:   ColoredStr = ColoredStr { text: "Output",                    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
 
 
-pub struct CompilationLogger {
+pub(crate) struct CompilationLogger {
     start_time: Instant,
     step_time: Instant,
     substep_time: Instant,
-    pub(crate) verbosity: Verbosity,
+    verbosity: Verbosity,
 }
 
 impl CompilationLogger {

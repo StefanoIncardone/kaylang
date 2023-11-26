@@ -1,4 +1,4 @@
-use std::{fmt::Display, path::{PathBuf, Path}, io::{ErrorKind, BufReader, BufRead}, fs::File, num::IntErrorKind};
+use std::{fmt::Display, path::PathBuf, io::{ErrorKind, BufReader, BufRead}, fs::File, num::IntErrorKind};
 
 use crate::errors::*;
 
@@ -17,12 +17,12 @@ pub struct Src {
 }
 
 impl Src {
-    pub(crate) fn try_from( path: &Path ) -> Result<Self, IoError> {
-        let file = match File::open( path ) {
+    pub fn populate( &mut self ) -> Result<(), IoError> {
+        let file = match File::open( &self.path ) {
             Ok( f ) => f,
             Err( err ) => return Err( IoError {
                 kind: err.kind(),
-                msg: format!( "could not open '{}'", path.display() ).into(),
+                msg: format!( "could not open '{}'", self.path.display() ).into(),
                 cause: err.to_string().into(),
             } ),
         };
@@ -33,32 +33,31 @@ impl Src {
                 false => return Err( IoError {
                     kind: ErrorKind::InvalidInput,
                     msg: "invalid path".into(),
-                    cause: format!( "expected a file but got directory '{}'", path.display() ).into(),
+                    cause: format!( "expected a file but got directory '{}'", self.path.display() ).into(),
                 } )
             },
             Err( err ) => return Err( IoError {
                 kind: err.kind(),
-                msg: format!( "could not read metadata of '{}'", path.display() ).into(),
+                msg: format!( "could not read metadata of '{}'", self.path.display() ).into(),
                 cause: err.to_string().into(),
             } ),
         };
 
-        // plus one to account for a phantom newline at the end
-        let mut data = String::with_capacity( file_len + 1 );
-        let mut lines: Vec<Line> = Vec::new();
+        // plus one to account for a possible phantom newline at the end
+        self.code.reserve_exact( file_len + 1 );
         let mut start = 0;
         let mut src = BufReader::new( file );
 
         loop {
-            let chars_read = match src.read_line( &mut data ) {
+            let chars_read = match src.read_line( &mut self.code ) {
                 Ok( 0 ) => {
                     // it will make lexing simpler
-                    if !data.is_empty() {
-                        let last_char = data.len() - 1;
-                        if data.as_bytes()[ last_char ] != b'\n' {
-                            data.push( '\n' );
-                            let last_line = lines.len() - 1;
-                            lines[ last_line ].end += 1;
+                    if !self.code.is_empty() {
+                        let last_char = self.code.len() - 1;
+                        if self.code.as_bytes()[ last_char ] != b'\n' {
+                            self.code.push( '\n' );
+                            let last_line = self.lines.len() - 1;
+                            self.lines[ last_line ].end += 1;
                         }
                     }
                     break;
@@ -66,21 +65,21 @@ impl Src {
                 Ok( read ) => read,
                 Err( err ) => return Err( IoError {
                     kind: err.kind(),
-                    msg: format!( "could not read contents of '{}'", path.display() ).into(),
+                    msg: format!( "could not read contents of '{}'", self.path.display() ).into(),
                     cause: err.to_string().into(),
                 } )
             };
 
-            let mut end = data.len() - 1;
-            if end > start && data.as_bytes()[ end - 1 ] == b'\r' {
+            let mut end = self.code.len() - 1;
+            if end > start && self.code.as_bytes()[ end - 1 ] == b'\r' {
                 end -= 1;
             }
 
-            lines.push( Line { start, end } );
+            self.lines.push( Line { start, end } );
             start += chars_read;
         }
 
-        return Ok( Self { path: path.into(), code: data, lines } );
+        return Ok( () );
     }
 }
 

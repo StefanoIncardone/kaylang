@@ -16,7 +16,7 @@ fn main() -> ExitCode {
     // args.push( "examples/out".to_string() );
     // args.push( "-V".to_string() );
 
-    let kay = match Kay::try_from( args ) {
+    let mut kay = match Kay::try_from( args ) {
         Ok( kay ) => kay,
         Err( err ) => {
             eprintln!( "{}", err );
@@ -24,28 +24,11 @@ fn main() -> ExitCode {
         },
     };
 
-    return match kay {
-        Kay::Help( help ) => {
-            help.execute();
-            ExitCode::SUCCESS
-        },
-        Kay::Version( version ) => {
-            version.execute();
-            ExitCode::SUCCESS
-        },
-        Kay::Check( mut check ) => match check.execute() {
-            Ok( _ ) => ExitCode::SUCCESS,
-            Err( err ) => {
-                eprint!( "{}", err );
-                ExitCode::FAILURE
-            },
-        },
-        Kay::Compile( mut compile ) => match compile.execute() {
-            Ok( _ ) => ExitCode::SUCCESS,
-            Err( err ) => {
-                eprint!( "{}", err );
-                ExitCode::FAILURE
-            },
+    return match kay.execute() {
+        Ok( () ) => ExitCode::SUCCESS,
+        Err( err ) => {
+            eprint!( "{}", err );
+            ExitCode::FAILURE
         },
     }
 }
@@ -64,21 +47,17 @@ mod tests {
             let src_path = src_file.unwrap().path();
             if let Some( extension ) = src_path.extension() {
                 if extension == "kay" {
-                    let kay: Kay = KayArgs {
+                    let mut kay: Kay = KayArgs {
                         run_mode: Some( RunMode::Check { src_path } ),
                         ..Default::default()
                     }.into();
 
-                    match kay {
-                        Kay::Check( mut check ) => match check.execute() {
-                            Ok( _ ) => {
-                            },
-                            Err( err ) => {
-                                eprint!( "{}", err );
-                                return ExitCode::FAILURE;
-                            },
+                    match kay.execute() {
+                        Ok( _ ) => {},
+                        Err( err ) => {
+                            eprint!( "{}", err );
+                            return ExitCode::FAILURE;
                         },
-                        _ => unreachable!(),
                     }
                 }
             }

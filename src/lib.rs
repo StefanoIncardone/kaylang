@@ -1,9 +1,8 @@
 #![deny( private_bounds, private_interfaces )]
 #![allow( clippy::needless_return )]
 
-use std::{path::{PathBuf, Path}, env::Args, fmt::Display};
+use std::{path::{Path, PathBuf}, env::Args, fmt::Display, process::Command};
 
-mod parser;
 mod color;
 
 pub mod errors;
@@ -15,10 +14,11 @@ use logging::*;
 mod lexer;
 use lexer::*;
 
+mod parser;
+use parser::*;
+
 mod compiler;
 use compiler::*;
-
-use parser::*;
 
 
 // Command line arguments
@@ -62,7 +62,7 @@ pub enum RunMode {
     #[default] Help,
     Version,
     Check { src_path: PathBuf },
-    Compile { src_path: PathBuf, out: Option<PathBuf>, run: bool },
+    Compile { src_path: PathBuf, out_path: Option<PathBuf>, run: bool },
 }
 
 #[derive( Debug, Default, Clone )]
@@ -73,11 +73,21 @@ pub struct KayArgs {
 }
 
 
+pub enum CompileKind {
+    Check,
+    Compile { out_path: Option<PathBuf>, run: bool },
+}
+
 pub enum Kay {
-    Help( KayHelp ),
-    Version( KayVersion ),
-    Check( KayCheck ),
-    Compile( KayCompile ),
+    Help {
+        color: Color,
+        full: bool,
+    },
+    Compile {
+        src: Src,
+        verbosity: Verbosity,
+        kind: CompileKind,
+    },
 }
 
 impl From<KayArgs> for Kay {
@@ -88,18 +98,18 @@ impl From<KayArgs> for Kay {
         color.set();
 
         return match run_mode {
-            RunMode::Help => Self::Help( KayHelp { version: KayVersion { color } } ),
-            RunMode::Version => Self::Version( KayVersion { color } ),
-            RunMode::Check { src_path } => Self::Check( KayCheck {
-                logger: CompilationLogger::new( verbosity ),
-                src: Src { path: src_path, code: String::new(), lines: Vec::new() } }
-            ),
-            RunMode::Compile { src_path, out, run } => Self::Compile( KayCompile {
-                logger: CompilationLogger::new( verbosity ),
+            RunMode::Help => Self::Help { color, full: true },
+            RunMode::Version => Self::Help { color, full: false },
+            RunMode::Check { src_path } => Self::Compile {
                 src: Src { path: src_path, code: String::new(), lines: Vec::new() },
-                out,
-                run
-            } ),
+                verbosity,
+                kind: CompileKind::Check,
+            },
+            RunMode::Compile { src_path, out_path, run } => Self::Compile {
+                src: Src { path: src_path, code: String::new(), lines: Vec::new() },
+                verbosity,
+                kind: CompileKind::Compile { out_path, run },
+            },
         }
     }
 }
@@ -192,8 +202,8 @@ impl TryFrom<Vec<String>> for Kay {
                             }
 
                             match arg.as_str() {
-                                "compile" => RunMode::Compile { src_path, out, run: false },
-                                "run"     => RunMode::Compile { src_path, out, run: true },
+                                "compile" => RunMode::Compile { src_path, out_path: out, run: false },
+                                "run"     => RunMode::Compile { src_path, out_path: out, run: true },
                                 _         => unreachable!(),
                             }
                         },
@@ -232,8 +242,6 @@ impl TryFrom<Vec<String>> for Kay {
             }
         }
 
-        // let run_mode = run_mode.unwrap_or_default();
-        // let verbosity = verbosity.unwrap_or_default();
         return Ok( Self::from( KayArgs { color: Some( color ), verbosity, run_mode } ) );
     }
 }
@@ -246,28 +254,15 @@ impl TryFrom<Args> for Kay {
     }
 }
 
+impl Kay {
+    pub fn execute( &mut self ) -> Result<(), KayError> {
+        match self {
+            Self::Help { color, full } => {
+                color.set_stdout();
+                println!( "Kaylang compiler, version {}", VERSION );
 
-pub struct KayVersion {
-    color: Color,
-}
-
-impl KayVersion {
-    pub fn execute( &self ) {
-        self.color.set_stdout();
-        println!( "Kaylang compiler, version {}", VERSION );
-    }
-}
-
-
-pub struct KayHelp {
-    version: KayVersion,
-}
-
-impl KayHelp {
-    pub fn execute( &self ) {
-        self.version.execute();
-
-        println!( r"
+                if *full {
+                    println!( r"
 Usage: kay [{OPTIONS}] [{RUN_MODE}]
 
 {OPTIONS}:
@@ -284,99 +279,71 @@ Usage: kay [{OPTIONS}] [{RUN_MODE}]
 
 {OUTPUT}:
     -o, --output <{PATH}>       Folder to populate with compilation artifacts (.asm, .o, executable) (default: '.')"
-        );
-    }
-}
+                    );
+                }
+            },
+            Self::Compile { src, verbosity, kind } => {
+                let mut logger = CompilationLogger::new( *verbosity );
+                logger.step( &CHECKING, &src.path );
 
+                match src.populate() {
+                    Ok( src ) => src,
+                    Err( err ) => return Err( KayError::Src( err ) ),
+                };
 
-pub struct KayCheck {
-    pub logger: CompilationLogger,
-    src: Src,
-}
+                let tokens_result = Lexer::tokenize( src );
+                logger.substep( &LEXING );
+                let tokens = match tokens_result {
+                    Ok( tokens ) => tokens,
+                    Err( err ) => return Err( KayError::Syntax( err ) ),
+                };
 
-impl<'this> KayCheck {
-    pub fn execute( &'this mut self ) -> Result<Vec<Scope<'this>>, CheckError<'this>> {
-        self.logger = CompilationLogger::new( self.logger.verbosity );
-        self.logger.step( &CHECKING, &self.src.path );
+                let ast_result = Ast::build( &tokens, src );
+                logger.substep( &PARSING );
+                let ast = match ast_result {
+                    Ok( ast ) => ast,
+                    Err( err ) => return Err( KayError::Syntax( err ) ),
+                };
 
-        self.src = match Src::try_from( Path::new( &self.src.path ) ) {
-            Ok( src ) => src,
-            Err( err ) => return Err( CheckError::Src( err ) ),
-        };
+                logger.substep_done();
+                match kind {
+                    CompileKind::Check => logger.done(),
+                    CompileKind::Compile { out_path, run } => {
+                        let exe_path = match Compiler::compile( &src.path, out_path, &ast, &mut logger ) {
+                            Ok( exe_path ) => exe_path,
+                            Err( err ) => return Err( KayError::Compilation( err ) ),
+                        };
 
-        let tokens_result = Lexer::tokenize( &self.src );
-        self.logger.substep( &LEXING );
-        let tokens = match tokens_result {
-            Ok( tokens ) => tokens,
-            Err( err ) => return Err( CheckError::Syntax( err ) ),
-        };
+                        logger.done();
+                        if !*run {
+                            return Ok( () );
+                        }
 
-        let ast_result = Ast::build( &tokens, &self.src );
-        self.logger.substep( &PARSING );
-        let ast = match ast_result {
-            Ok( ast ) => ast,
-            Err( err ) => return Err( CheckError::Syntax( err ) ),
-        };
+                        logger.step( &RUNNING, &exe_path );
 
-        self.logger.substep_done();
-        self.logger.done();
-        return Ok( ast );
-    }
-}
+                        let mut executable = match Command::new( Path::new( "." ).join( &exe_path ) ).spawn() {
+                            Ok( executable ) => executable,
+                            Err( err ) => return Err( KayError::Running( IoError {
+                                kind: err.kind(),
+                                msg: format!( "could not create executable process '{}'", exe_path.display() ).into(),
+                                cause: err.to_string().into(),
+                            } ) ),
+                        };
 
+                        match executable.wait() {
+                            Ok( _ ) => {},
+                            Err( err ) => return Err( KayError::Running( IoError {
+                                kind: err.kind(),
+                                msg: format!( "could not run executable '{}'", exe_path.display() ).into(),
+                                cause: err.to_string().into(),
+                            } ) ),
+                        }
+                    }
+                }
 
-pub struct KayCompile {
-    pub logger: CompilationLogger,
-    src: Src,
-    out: Option<PathBuf>,
-    run: bool,
-}
-
-impl<'this> KayCompile {
-    pub fn execute( &'this mut self ) -> Result<(), CompileError<'this>> {
-        self.logger = CompilationLogger::new( self.logger.verbosity );
-        self.logger.step( &CHECKING, &self.src.path );
-
-        self.src = match Src::try_from( Path::new( &self.src.path ) ) {
-            Ok( src ) => src,
-            Err( err ) => return Err( CompileError::Check( CheckError::Src( err ) ) ),
-        };
-
-        let tokens_result = Lexer::tokenize( &self.src );
-        self.logger.substep( &LEXING );
-        let tokens = match tokens_result {
-            Ok( tokens ) => tokens,
-            Err( err ) => return Err( CompileError::Check( CheckError::Syntax( err ) ) ),
-        };
-
-        let ast_result = Ast::build( &tokens, &self.src );
-        self.logger.substep( &PARSING );
-        let ast = match ast_result {
-            Ok( ast ) => ast,
-            Err( err ) => return Err( CompileError::Check( CheckError::Syntax( err ) ) ),
-        };
-
-        self.logger.substep_done();
-
-        let src_path = self.src.path.clone();
-
-        let mut compiler = Compiler {
-            src_path,
-            out_path: self.out.clone(),
-            run: self.run,
-            scopes: &ast,
-            rodata: String::new(),
-            asm: String::new(),
-            variables: Vec::new(),
-            strings: Vec::new(),
-            if_idx: 0,
-            loop_idx: 0,
-            loop_idx_stack: Vec::new(),
-        };
-
-        return match compiler.compile( &mut self.logger ) {
-            Ok( _ ) => Ok( () ),
-            Err( err ) => return Err( CompileError::BackEnd( err ) ),
+            },
         }
+
+        return Ok( () );
     }
 }
