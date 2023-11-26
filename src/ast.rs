@@ -56,7 +56,7 @@ impl<'tokens, 'src: 'tokens> TokenIter<'tokens, 'src> {
     }
 }
 
-trait BoundedToken<'tokens, 'src: 'tokens> {
+trait TokenPosition<'tokens, 'src: 'tokens> {
     type Error;
 
     fn bounded( self, tokens: &mut TokenIter<'tokens, 'src>, err_msg: impl Into<String> ) -> Result<&'tokens Token<'src>, Self::Error>;
@@ -64,7 +64,7 @@ trait BoundedToken<'tokens, 'src: 'tokens> {
     fn or_previous( self, tokens: &mut TokenIter<'tokens, 'src> ) -> Self;
 }
 
-impl<'tokens, 'src: 'tokens> BoundedToken<'tokens, 'src> for Option<&'tokens Token<'src>> {
+impl<'tokens, 'src: 'tokens> TokenPosition<'tokens, 'src> for Option<&'tokens Token<'src>> {
     type Error = RawSyntaxError;
 
     fn bounded( self, tokens: &mut TokenIter<'tokens, 'src>, err_msg: impl Into<String> ) -> Result<&'tokens Token<'src>, Self::Error> {
@@ -128,6 +128,7 @@ impl TypeOf for Expression<'_> {
         }
     }
 }
+
 
 #[derive( Debug, Clone )]
 pub(crate) struct Variable<'src> {

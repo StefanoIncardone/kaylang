@@ -6,8 +6,8 @@ use logging::*;
 mod lexer;
 use lexer::*;
 
-mod parser;
-use parser::*;
+mod ast;
+use ast::*;
 
 mod compiler;
 use compiler::*;
@@ -126,7 +126,7 @@ impl Compile {
         };
 
         let ast_result = Ast::build( &tokens, &self.src );
-        logger.substep( &PARSING );
+        logger.substep( &AST_BUILDING );
         let ast = match ast_result {
             Ok( ast ) => ast,
             Err( err ) => return Err( KayError::Syntax( err ) ),

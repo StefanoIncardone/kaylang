@@ -16,7 +16,7 @@ const SUBSTEP_OPT: Options = Options { fg: Fg::LightBlue, bg: Bg::Default, flags
 pub(crate) const SUBSTEP_PADDING: usize = 14;
 
 pub(crate) static LEXING:         ColoredStr = ColoredStr { text: "Lexing",         opt: SUBSTEP_OPT };
-pub(crate) static PARSING:        ColoredStr = ColoredStr { text: "Parsing",        opt: SUBSTEP_OPT };
+pub(crate) static AST_BUILDING:   ColoredStr = ColoredStr { text: "Ast building",   opt: SUBSTEP_OPT };
 pub(crate) static ASM_GENERATION: ColoredStr = ColoredStr { text: "Asm Generation", opt: SUBSTEP_OPT };
 pub(crate) static ASSEMBLER:      ColoredStr = ColoredStr { text: "Assembler",      opt: SUBSTEP_OPT };
 pub(crate) static LINKER:         ColoredStr = ColoredStr { text: "Linker",         opt: SUBSTEP_OPT };
@@ -168,6 +168,7 @@ impl Flag {
     pub(crate) const PositiveText: Flags = 0b0001_0000;
 }
 
+
 #[derive( Debug, Default, Clone, Copy )]
 pub(crate) struct Options {
     pub(crate) fg: Fg,
@@ -175,8 +176,6 @@ pub(crate) struct Options {
     pub(crate) flags: Flags,
 }
 
-// TODO creare frozen colored struct, where codes are all baked in instead of having to build
-// color codes each time
 #[derive( Debug, Default )]
 pub(crate) struct ColoredStr {
     pub(crate) text: &'static str,

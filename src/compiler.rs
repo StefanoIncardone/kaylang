@@ -1,6 +1,6 @@
 use std::{path::{PathBuf, Path}, io::{BufWriter, Write, ErrorKind}, process::Command, fs::File};
 
-use crate::{lexer::*, parser::*, logging::*};
+use crate::{lexer::*, ast::*, logging::*};
 
 
 // TODO introduce intermediate representation
