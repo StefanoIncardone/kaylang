@@ -1,4 +1,3 @@
-#![allow( clippy::needless_return )]
 use std::{env::{self}, process::ExitCode};
 
 use kaylang::Kay;
@@ -53,7 +52,7 @@ mod tests {
                     }.into();
 
                     match kay.execute() {
-                        Ok( _ ) => eprintln!(),
+                        Ok( _ ) => {},
                         Err( err ) => {
                             eprint!( "{}", err );
                             return ExitCode::FAILURE;

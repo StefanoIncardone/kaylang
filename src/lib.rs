@@ -1,6 +1,3 @@
-#![deny( private_bounds, private_interfaces )]
-#![allow( clippy::needless_return )]
-
 use std::{path::{Path, PathBuf}, env::Args, fmt::Display, process::Command};
 
 pub mod logging;

@@ -283,6 +283,7 @@ impl Display for CliError {
     }
 }
 
+
 #[derive( Debug )]
 pub(crate) struct RawSyntaxError {
     pub(crate) col: usize,
