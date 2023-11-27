@@ -33,9 +33,9 @@ pub(crate) struct Compiler<'ast, 'src: 'ast> {
     variables: Vec<CompilerVariable<'src>>,
     strings: Vec<CompilerString<'ast>>,
 
-    if_idx: usize,
-    loop_idx: usize,
-    loop_idx_stack: Vec<usize>,
+    if_depth: usize,
+    loop_depth: usize,
+    loop_stack: Vec<usize>,
 }
 
 // Resolution of identifiers and string tags
@@ -175,8 +175,8 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
                     \n pop rsi\n\n";
             },
             Node::If( if_statement ) => {
-                let if_idx = self.if_idx;
-                self.if_idx += 1;
+                let if_idx = self.if_depth;
+                self.if_depth += 1;
 
                 let mut ifs = if_statement.ifs.iter();
                 let iff = ifs.next().unwrap();
@@ -241,13 +241,13 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
                 self.asm += &format!( "if_{}_end:\n", if_idx );
             },
             Node::Loop( looop ) => {
-                let loop_tag = format!( "loop_{}", self.loop_idx );
-                let loop_end_tag = format!( "loop_{}_end", self.loop_idx );
+                let loop_tag = format!( "loop_{}", self.loop_depth );
+                let loop_end_tag = format!( "loop_{}_end", self.loop_depth );
 
-                self.loop_idx_stack.push( self.loop_idx );
-                self.loop_idx += 1;
+                self.loop_stack.push( self.loop_depth );
+                self.loop_depth += 1;
                 self.looop( looop, &loop_tag, &loop_end_tag );
-                self.loop_idx_stack.pop();
+                self.loop_stack.pop();
 
                 self.asm += &format!(
                     " jmp {}\
@@ -266,8 +266,8 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
             },
             Node::Scope( inner )           => self.scope( *inner ),
             Node::Expression( expression ) => self.expression( expression ),
-            Node::Break                    => self.asm += &format!( " jmp loop_{}_end\n\n", self.loop_idx_stack.last().unwrap() ),
-            Node::Continue                 => self.asm += &format!( " jmp loop_{}\n\n", self.loop_idx_stack.last().unwrap() ),
+            Node::Break                    => self.asm += &format!( " jmp loop_{}_end\n\n", self.loop_stack[ self.loop_stack.len() - 1 ] ),
+            Node::Continue                 => self.asm += &format!( " jmp loop_{}\n\n", self.loop_stack[ self.loop_stack.len() - 1 ] ),
             Node::Empty                    => unreachable!(),
         }
     }
@@ -280,8 +280,7 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
     }
 
     // FIX division by zero, raising to a negative power
-        // IDEA print crash error message (implement a way to print file, line and column
-        // information in source code)
+        // IDEA print crash error message (with crash location information (file:line:col))
     fn expression( &mut self, expression: &'ast Expression<'src> ) {
         match expression {
             Expression::Literal( Literal::Int( value ) )  => self.asm += &format!( " mov rdi, {}\n", value ),
@@ -354,16 +353,14 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
                     Operator::Times | Operator::TimesEquals => ("rdi", "rsi",
                         " imul rdi, rsi\n"
                     ),
-                    Operator::Divide | Operator::DivideEquals => ("rdi", "rsi",
-                        " mov rax, rdi\
-                        \n xor rdx, rdx\
-                        \n idiv rsi\
+                    Operator::Divide | Operator::DivideEquals => ("rax", "rdi",
+                        " xor rdx, rdx\
+                        \n idiv rdi\
                         \n mov rdi, rax\n"
                     ),
-                    Operator::Remainder | Operator::RemainderEquals => ("rdi", "rsi",
-                        " mov rax, rdi\
-                        \n xor rdx, rdx\
-                        \n idiv rsi\
+                    Operator::Remainder | Operator::RemainderEquals => ("rax", "rdi",
+                        " xor rdx, rdx\
+                        \n idiv rdi\
                         \n mov rdi, rdx\n"
                     ),
                     Operator::Plus | Operator::PlusEquals => ("rdi", "rsi",
@@ -493,26 +490,25 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
                 self.condition( condition, false_tag );
                 self.node( &looop.statement );
             },
+            /* // NOTE by inverting the jmp instruction and jumping to the start of the loop we can
+            avoid compiling an extra jmp instruction:
+                mov rdi, [rbp + 0]
+                mov rsi, 10
+                cmp rdi, rsi
+                jge loop_0_end
+
+                jmp loop_0
+                loop_0_end:
+
+            what we actually want:
+                mov rdi, [rbp + 0]
+                mov rsi, 10
+                cmp rdi, rsi
+                jl loop_0
+
+                loop_0_end:
+             */
             LoopCondition::Post( condition ) => {
-                /*
-                // NOTE by inverting the jmp instruction and jumping to the start of the loop we
-                can avoid compiling an extra jmp instruction:
-                    mov rdi, [rbp + 0]
-                    mov rsi, 10
-                    cmp rdi, rsi
-                    jge loop_0_end
-
-                    jmp loop_0
-                    loop_0_end:
-
-                what we actually want:
-                    mov rdi, [rbp + 0]
-                    mov rsi, 10
-                    cmp rdi, rsi
-                    jl loop_0
-
-                    loop_0_end:
-                 */
                 self.node( &looop.statement );
                 self.condition( condition, false_tag );
             }
@@ -537,7 +533,6 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
                         self.expression_factor( lhs, "rdi" );
                         self.asm += " push rdi\n\n";
                         self.expression_factor( rhs, "rsi" );
-
                         self.asm += " mov rsi, rdi\n pop rdi\n";
                     },
                     _ => {
@@ -687,9 +682,9 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
             asm: String::new(),
             variables: Vec::new(),
             strings: Vec::new(),
-            if_idx: 0,
-            loop_idx: 0,
-            loop_idx_stack: Vec::new(),
+            if_depth: 0,
+            loop_depth: 0,
+            loop_stack: Vec::new(),
         };
 
         logger.step( &COMPILING, this.src_path );
