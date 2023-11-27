@@ -2,9 +2,11 @@
 
 /target
 
-# ignoring any non .blz file in subdirectories
-/examples/out
-
 /asm
 Makefile
-examples/features_test.kay
+
+/src/saved_for_later.rs
+
+/examples/features_test.kay
+# ignoring any non .kay file in subdirectories
+/examples/out
