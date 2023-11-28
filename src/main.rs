@@ -46,6 +46,7 @@ mod tests {
             let src_path = src_file.unwrap().path();
             if let Some( extension ) = src_path.extension() {
                 if extension == "kay" {
+                    // TODO run the programs to check for any errors
                     let mut check = Kay::check( src_path, Verbosity::Normal );
                     match check.execute() {
                         Ok( _ ) => {},

@@ -279,8 +279,7 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
         }
     }
 
-    // FIX division by zero, raising to a negative power
-        // IDEA print crash error message (with crash location information (file:line:col))
+    // TODO print crash error message, with location information -> file:line:col
     fn expression( &mut self, expression: &'ast Expression<'src> ) {
         match expression {
             Expression::Literal( Literal::Int( value ) )  => self.asm += &format!( " mov rdi, {}\n", value ),
@@ -354,12 +353,16 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
                         " imul rdi, rsi\n"
                     ),
                     Operator::Divide | Operator::DivideEquals => ("rax", "rdi",
-                        " xor rdx, rdx\
+                        " test rdi, rdi\
+                        \n jz crash_division_by_zero\
+                        \n xor rdx, rdx\
                         \n idiv rdi\
                         \n mov rdi, rax\n"
                     ),
                     Operator::Remainder | Operator::RemainderEquals => ("rax", "rdi",
-                        " xor rdx, rdx\
+                        " test rdi, rdi\
+                        \n jz crash_modulo_zero\
+                        \n xor rdx, rdx\
                         \n idiv rdi\
                         \n mov rdi, rdx\n"
                     ),
@@ -728,11 +731,30 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
 
         let mut asm_writer = BufWriter::new( asm_file );
 
-        this.rodata +=
+        this.rodata += &format!(
 r#" stdout: equ 1
  SYS_write: equ 1
  SYS_exit: equ 60
  EXIT_SUCCESS: equ 0
+ EXIT_FAILURE: equ 1
+
+ CRASH: db "Crash: ", 0
+ CRASH_len: equ $ - CRASH
+
+ _AT: db "at: ", 0
+ _AT_len: equ $ - _AT
+
+ attempt_division_by_zero: db "attempt to divide by zero", 10, 0
+ attempt_division_by_zero_len: equ $ - attempt_division_by_zero
+
+ attempt_modulo_zero: db "attempt to take the modulo zero of a number", 10, 0
+ attempt_modulo_zero_len: equ $ - attempt_modulo_zero
+
+ attempt_exponent_negative: db "attempt to raise a number to a negative power", 10, 0
+ attempt_exponent_negative_len: equ $ - attempt_exponent_negative
+
+ file: db "{}", 0
+ file_len: equ $ - file
 
  INT_MIN: equ 1 << 63
  INT_MAX: equ ~INT_MIN
@@ -750,7 +772,9 @@ r#" stdout: equ 1
  EQUAL: equ 0
  GREATER: equ 1
 
- INT_STR_LEN: equ INT_BITS"#;
+ INT_STR_LEN: equ INT_BITS"#,
+            src_path.to_str().unwrap()
+        );
 
         let mut stack_size = 0;
         let mut variables: Vec<(Type, Vec<&Variable>)> = Vec::new();
@@ -810,7 +834,10 @@ r#" stdout: equ 1
 
         if stack_size > 0 {
             this.asm += &format!(
-                " add rsp, {}\
+                " mov rdi, EXIT_SUCCESS\
+                \n\
+                \nexit:\
+                \n add rsp, {}\
                 \n pop rbp\n",
                 stack_size
             );
@@ -826,6 +853,61 @@ section .data
  int_str: times INT_STR_LEN db 0
 
 section .text
+
+crash_division_by_zero:
+ mov rsi, attempt_division_by_zero
+ mov rdx, attempt_division_by_zero_len
+ jmp crash
+
+crash_modulo_zero:
+ mov rsi, attempt_modulo_zero
+ mov rdx, attempt_modulo_zero_len
+ jmp crash
+
+crash_exponent_negative:
+ mov rsi, attempt_exponent_negative
+ mov rdx, attempt_exponent_negative_len
+ jmp crash
+
+crash:
+ push rdx
+ push rsi
+
+ mov rdi, stdout
+ mov rsi, CRASH
+ mov rdx, CRASH_len
+ mov rax, SYS_write
+ syscall
+
+ mov rdi, stdout
+ pop rsi
+ pop rdx
+ mov rax, SYS_write
+ syscall
+
+ mov rdi, stdout
+ mov rsi, _AT
+ mov rdx, _AT_len
+ mov rax, SYS_write
+ syscall
+
+ mov rdi, stdout
+ mov rsi, file
+ mov rdx, file_len
+ mov rax, SYS_write
+ syscall
+
+ push 10
+ mov rdi, stdout
+ mov rsi, rsp
+ mov rdx, 1
+ mov rax, SYS_write
+ syscall
+ pop rsi
+
+ mov rdi, EXIT_FAILURE
+ jmp exit
+
 int_toStr:
  push rcx
 
@@ -872,19 +954,25 @@ int_toStr:
  pop rcx
  ret
 
-int_pow:
+ int_pow:
+ cmp rsi, 0
+ jl .exponent_is_negative
+ jg .exponent_is_positive
+ mov rax, 1
+ ret
+
+.exponent_is_negative
+ mov rsi, attempt_exponent_negative
+ mov rdx, attempt_exponent_negative_len
+ jmp crash
+
+ .exponent_is_positive:
  cmp rsi, 1
  jne .exponent_is_not_one
  mov rax, rdi
  ret
 
 .exponent_is_not_one:
- cmp rsi, 0
- jne .exponent_is_not_zero
- mov rax, 1
- ret
-
-.exponent_is_not_zero:
  push rsi
 
  mov rax, rdi
@@ -917,8 +1005,6 @@ int_pow:
 
 _start:
 {}
-
- mov rdi, EXIT_SUCCESS
  mov rax, SYS_exit
  syscall",
             this.rodata, this.asm

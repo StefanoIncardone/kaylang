@@ -12,6 +12,9 @@
 - optimized String allocations
 - cleaned ast genereation code
 
+## 0.4.2
+
+- added runtime errors for division by zero, taking the modulo 0 and raising to a negative power
 
 ## 0.3
 

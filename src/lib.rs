@@ -175,6 +175,7 @@ impl Compile {
 
 pub enum Kay {
     Help( Help ),
+    // TODO split into Compile and Run and make Run return the exitcode of the code it just run
     Compile( Compile ),
 }
 
