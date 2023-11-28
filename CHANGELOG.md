@@ -10,6 +10,8 @@
 - revised compiler API
 - revised and optimized error reporting during compilation steps
 - optimized String allocations
+- cleaned ast genereation code
+
 
 ## 0.3
 

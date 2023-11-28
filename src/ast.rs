@@ -1,99 +1,103 @@
-use std::fmt::Display;
+use std::{fmt::Display, borrow::Cow};
 
 use crate::{lexer::*, logging::*};
 
 
-#[derive( Debug )]
-struct TokenIter<'tokens, 'src: 'tokens> {
-    token: usize,
-    tokens: &'tokens [Token<'src>],
-}
-
-impl<'tokens, 'src: 'tokens> TokenIter<'tokens, 'src> {
-    // TODO remove this method and make the next/previous methods return their current position and
-    // then move (i.e. like a normal iterator)
-        // NOTE its going to be required to pass a position object around instead of calling current
-        // when needed, or store the current position and refer to that
-    fn current( &mut self ) -> Option<&'tokens Token<'src>> {
-        if self.token >= self.tokens.len() {
-            return None;
-        }
-
-        return Some( &self.tokens[ self.token ] ).or_next( self );
-    }
-
-    fn next( &mut self ) -> Option<&'tokens Token<'src>> {
-        if self.token >= self.tokens.len() - 1 {
-            self.token += 1;
-            return None;
-        }
-
-        self.token += 1;
-        return Some( &self.tokens[ self.token ] ).or_next( self );
-    }
-
-    fn previous( &mut self ) -> Option<&'tokens Token<'src>> {
-        if self.token == 0 {
-            return None;
-        }
-
-        self.token -= 1;
-        return Some( &self.tokens[ self.token ] ).or_previous( self );
-    }
-
-    fn peek_next( &mut self ) -> Option<&'tokens Token<'src>> {
-        let starting_token = self.token;
-        let next = self.next();
-        self.token = starting_token;
-        return next;
-    }
-
-    fn peek_previous( &mut self ) -> Option<&'tokens Token<'src>> {
-        let starting_token = self.token;
-        let previous = self.previous();
-        self.token = starting_token;
-        return previous;
-    }
-}
-
-trait TokenPosition<'tokens, 'src: 'tokens> {
+trait Bounded<'tokens, 'src: 'tokens> {
     type Error;
 
-    fn bounded( self, tokens: &mut TokenIter<'tokens, 'src>, err_msg: impl Into<String> ) -> Result<&'tokens Token<'src>, Self::Error>;
-    fn or_next( self, tokens: &mut TokenIter<'tokens, 'src> ) -> Self;
-    fn or_previous( self, tokens: &mut TokenIter<'tokens, 'src> ) -> Self;
+    fn bounded( self, tokens: &mut Tokens<'tokens, 'src>, err_msg: impl Into<Cow<'static, str>> ) -> Result<&'tokens Token<'src>, Self::Error>;
 }
 
-impl<'tokens, 'src: 'tokens> TokenPosition<'tokens, 'src> for Option<&'tokens Token<'src>> {
+
+#[derive( Debug )]
+struct Tokens<'tokens, 'src: 'tokens> {
+    token: usize,
+    tokens: &'tokens [Token<'src>],
+    current: Option<&'tokens Token<'src>>,
+}
+
+impl<'tokens, 'src: 'tokens> From<&'tokens [Token<'src>]> for Tokens<'tokens, 'src> {
+    fn from( tokens: &'tokens [Token<'src>] ) -> Self {
+        let mut token = 0;
+
+        // skipping to the first non-comment token
+        let current = loop {
+            if token >= tokens.len() {
+                break None;
+            }
+
+            let current = &tokens[ token ];
+            match current.kind {
+                TokenKind::Comment( _ ) => token += 1,
+                _ => break Some( current ),
+            }
+        };
+
+        return Self { token, tokens, current };
+    }
+}
+
+impl<'tokens, 'src: 'tokens> Tokens<'tokens, 'src> {
+    fn next( &mut self ) -> Option<&'tokens Token<'src>> {
+        self.current = loop {
+            if self.token >= self.tokens.len() - 1 {
+                self.token = self.tokens.len();
+                break None;
+            }
+
+            self.token += 1;
+            let next = &self.tokens[ self.token ];
+            let TokenKind::Comment( _ ) = next.kind else {
+                break Some( next );
+            };
+        };
+
+        return self.current
+    }
+
+    fn peek_next( &self ) -> Option<&'tokens Token<'src>> {
+        let mut current_token = self.token;
+        loop {
+            if current_token >= self.tokens.len() - 1 {
+                return None;
+            }
+
+            current_token += 1;
+            let next = &self.tokens[ current_token ];
+            let TokenKind::Comment( _ ) = next.kind else {
+                return Some( next );
+            };
+        }
+    }
+
+    fn peek_previous( &self ) -> &'tokens Token<'src> {
+        let mut current_token = self.token;
+        loop {
+            current_token -= 1;
+            let previous = &self.tokens[ current_token ];
+            let TokenKind::Comment( _ ) = previous.kind else {
+                return previous;
+            };
+        }
+    }
+}
+
+impl<'tokens, 'src: 'tokens> Bounded<'tokens, 'src> for Option<&'tokens Token<'src>> {
     type Error = RawSyntaxError;
 
-    fn bounded( self, tokens: &mut TokenIter<'tokens, 'src>, err_msg: impl Into<String> ) -> Result<&'tokens Token<'src>, Self::Error> {
+    fn bounded( self, tokens: &mut Tokens<'tokens, 'src>, err_msg: impl Into<Cow<'static, str>> ) -> Result<&'tokens Token<'src>, Self::Error> {
         return match self {
             Some( token ) => Ok( token ),
             None => {
-                // this function is never called without a previous token, so we can safely unwrap
-                let previous = unsafe{ tokens.peek_previous().unwrap_unchecked() };
+                let previous = tokens.peek_previous();
                 Err( RawSyntaxError {
                     col: previous.col,
                     len: previous.kind.len(),
-                    msg: err_msg.into().into(),
-                    help_msg: "file ended after here instead".into(),
+                    msg: err_msg.into(),
+                    help_msg: "no more tokens left after here".into(),
                 } )
             },
-        }
-    }
-
-    fn or_next( self, tokens: &mut TokenIter<'tokens, 'src> ) -> Self {
-        return match self?.kind {
-            TokenKind::Comment( _ ) => tokens.next(),
-            _ => self,
-        }
-    }
-
-    fn or_previous( self, tokens: &mut TokenIter<'tokens, 'src> ) -> Self {
-        return match self?.kind {
-            TokenKind::Comment( _ ) => tokens.previous(),
-            _ => self,
         }
     }
 }
@@ -168,9 +172,9 @@ pub(crate) enum LoopCondition<'src> {
 #[allow( dead_code )]
 #[derive( Debug, Clone )]
 pub(crate) struct Loop<'src> {
-    pub(crate) pre: Option<Box<Node<'src>>>,
+    // pub(crate) pre: Option<Box<Node<'src>>>,
     pub(crate) condition: LoopCondition<'src>,
-    pub(crate) post: Option<Box<Node<'src>>>,
+    // pub(crate) post: Option<Box<Node<'src>>>,
     pub(crate) statement: Box<Node<'src>>,
 }
 
@@ -221,7 +225,6 @@ impl Display for Node<'_> {
     }
 }
 
-
 #[derive( Debug, Clone )]
 pub struct Scope<'src> {
     pub(crate) parent: usize,
@@ -240,7 +243,7 @@ pub(crate) struct Ast<'tokens, 'ast, 'src: 'ast> {
     scope: usize,
     loop_depth: usize,
 
-    tokens: TokenIter<'tokens, 'src>,
+    tokens: Tokens<'tokens, 'src>,
     errors: Vec<SyntaxError>,
 }
 
@@ -259,7 +262,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
                 nodes: Vec::new(),
             }],
             scope: 0,
-            tokens: TokenIter { token: 0, tokens },
+            tokens: Tokens::from( tokens ),
             loop_depth: 0,
             errors: Vec::new()
         };
@@ -276,7 +279,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
     }
 }
 
-// scopes
+// parsing of nodes
 impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
     fn parse_scope( &mut self ) {
         loop {
@@ -321,7 +324,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
     }
 
     fn parse_single_statement( &mut self ) -> Result<Option<Node<'ast>>, RawSyntaxError> {
-        let current_token = match self.tokens.current() {
+        let current_token = match self.tokens.current {
             Some( token ) => token,
             None => return Ok( None ),
         };
@@ -465,7 +468,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
     }
 
     fn parse_single_any( &mut self ) -> Result<Option<Node<'ast>>, RawSyntaxError> {
-        let current_token = match self.tokens.current() {
+        let current_token = match self.tokens.current {
             Some( token ) => token,
             None => return Ok( None ),
         };
@@ -498,15 +501,14 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 // semicolons
 impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
     fn semicolon( &mut self ) -> Result<(), RawSyntaxError> {
-        let semicolon_token = self.tokens.current().bounded( &mut self.tokens, "expected semicolon" )?;
+        let semicolon_token = self.tokens.current.bounded( &mut self.tokens, "expected semicolon" )?;
         return match &semicolon_token.kind {
             TokenKind::SemiColon => {
                 self.tokens.next();
                 Ok( () )
             },
             _ => {
-                // this function is never called without a previous token, so we can safely unwrap
-                let previous_token = unsafe{ self.tokens.peek_previous().unwrap_unchecked() };
+                let previous_token = self.tokens.peek_previous();
                 Err( RawSyntaxError {
                     col: previous_token.col,
                     len: previous_token.kind.len(),
@@ -521,7 +523,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 // expressions
 impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
     fn operator( &mut self, ops: &[Operator] ) -> Result<Option<Operator>, RawSyntaxError> {
-        let current_token = self.tokens.current().bounded( &mut self.tokens, "expected operator or semicolon" )?;
+        let current_token = self.tokens.current.bounded( &mut self.tokens, "expected operator or semicolon" )?;
         return match current_token.kind {
             TokenKind::Op( op ) =>
                 if ops.contains( &op ) {
@@ -536,15 +538,14 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
     }
 
     fn primary_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
-        let current_token = self.tokens.current().bounded( &mut self.tokens, "expected expression" )?;
+        let current_token = self.tokens.current.bounded( &mut self.tokens, "expected expression" )?;
         let factor = match &current_token.kind {
             TokenKind::Literal( literal ) => Ok( Expression::Literal( literal.clone() ) ),
             TokenKind::True => Ok( Expression::Literal( Literal::Bool( true ) ) ),
             TokenKind::False => Ok( Expression::Literal( Literal::Bool( false ) ) ),
             TokenKind::Identifier( name ) => match self.resolve_type( name ) {
                 None => match self.resolve_variable( name ) {
-                    Some( (variable, _, _) ) =>
-                        Ok( Expression::Identifier( variable.name, variable.value.typ() ) ),
+                    Some( (_, _, var) ) => Ok( Expression::Identifier( var.name, var.value.typ() ) ),
                     None => Err( RawSyntaxError {
                         col: current_token.col,
                         len: current_token.kind.len(),
@@ -570,7 +571,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
                     } ),
                     _ => {
                         let expression = self.expression()?;
-                        let close_bracket_token = self.tokens.current().bounded( &mut self.tokens, "expected closed parenthesis" )?;
+                        let close_bracket_token = self.tokens.current.bounded( &mut self.tokens, "expected closed parenthesis" )?;
                         match close_bracket_token.kind {
                             TokenKind::Bracket( BracketKind::CloseRound ) => Ok( expression ),
                             _ => Err( RawSyntaxError {
@@ -745,7 +746,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 
         let mut is_chained = false;
         while let Some( op ) = self.operator( &ops )? {
-            let op_token = self.tokens.peek_previous().unwrap();
+            let op_token = self.tokens.peek_previous();
             let rhs = self.comparative_expression()?;
 
             if is_chained {
@@ -768,7 +769,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         let mut lhs = self.comparison_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::And] )? {
-            let op_token = self.tokens.peek_previous().unwrap();
+            let op_token = self.tokens.peek_previous();
 
             if lhs.typ() != Type::Bool {
                 return Err( RawSyntaxError {
@@ -834,7 +835,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         let mut lhs = self.and_expression()?;
 
         while let Some( op ) = self.operator( &[Operator::Or] )? {
-            let op_token = self.tokens.peek_previous().unwrap();
+            let op_token = self.tokens.peek_previous();
 
             if lhs.typ() != Type::Bool {
                 return Err( RawSyntaxError {
@@ -872,47 +873,43 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 
 // variable definitions and assignments
 impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
-    fn resolve_variable( &self, name: &'src str ) -> Option<(&Variable<'ast>, usize /* scope idx */, usize /* variable idx */)> {
-        let mut current_scope = self.scope;
+    fn resolve_variable( &self, name: &'src str ) -> Option<(usize /* scope idx */, usize /* variable idx */, &Variable<'ast>)> {
+        let mut scope_idx = self.scope;
         loop {
-            let scope = &self.scopes[ current_scope ];
-
-            for (current_variable, variable) in scope.variables.iter().enumerate() {
+            let scope = &self.scopes[ scope_idx ];
+            for (variable_idx, variable) in scope.variables.iter().enumerate() {
                 if variable.name == name {
-                    return Some( (variable, current_scope, current_variable) );
+                    return Some( (scope_idx, variable_idx, variable) );
                 }
             }
 
-            if current_scope == 0 && scope.parent == 0 {
-                return None;
-            }
-
-            current_scope = scope.parent;
+            scope_idx = match scope_idx {
+                0 => return None,
+                _ => scope.parent,
+            };
         }
     }
 
     fn resolve_type( &self, name: &'src str ) -> Option<&Type> {
-        let mut current_scope = self.scope;
+        let mut scope_idx = self.scope;
         loop {
-            let scope = &self.scopes[ current_scope ];
-
+            let scope = &self.scopes[ scope_idx ];
             for typ in &scope.types {
                 if typ.to_string() == name {
                     return Some( typ );
                 }
             }
 
-            if current_scope == 0 && scope.parent == 0 {
-                return None;
-            }
-
-            current_scope = scope.parent;
+            scope_idx = match scope_idx {
+                0 => return None,
+                _ => scope.parent,
+            };
         }
     }
 
 
     fn variable_definition( &mut self ) -> Result<Node<'ast>, RawSyntaxError> {
-        let definition_token = self.tokens.current().unwrap();
+        let definition_token = self.tokens.current.unwrap();
         let mutability = match definition_token.kind {
             TokenKind::Definition( kind ) => kind,
             _ => unreachable!(),
@@ -937,16 +934,15 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             } ),
         };
 
-        let colon_token = self.tokens.peek_next().bounded( &mut self.tokens, "expected type annotation or variable definition" )?;
+        let colon_token = self.tokens.next().bounded( &mut self.tokens, "expected type annotation or variable definition" )?;
         let annotation = match &colon_token.kind {
             TokenKind::Colon => {
-                self.tokens.next();
                 let annotation_token = self.tokens.next().bounded( &mut self.tokens, "expected type" )?;
                 match &annotation_token.kind {
                     TokenKind::Identifier( type_name ) => match self.resolve_type( type_name ) {
                         Some( typ ) => Ok( Some( (*typ, annotation_token) ) ),
                         None => match self.resolve_variable( type_name ) {
-                            Some( (var, _, _) ) => Ok( Some( (var.value.typ(), annotation_token) ) ),
+                            Some( (_, _, var) ) => Ok( Some( (var.value.typ(), annotation_token) ) ),
                             None => Err( RawSyntaxError {
                                 col: annotation_token.col,
                                 len: annotation_token.kind.len(),
@@ -963,13 +959,16 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
                     } )
                 }
             },
-            _ => Ok( None ),
+            _ => {
+                self.tokens.token -= 1;
+                Ok( None )
+            },
         };
 
         let equals_or_semicolon_token = self.tokens.next().bounded( &mut self.tokens, "expected equals" )?;
         let expression = match equals_or_semicolon_token.kind {
             TokenKind::Equals => {
-                self.tokens.next().bounded( &mut self.tokens, "expected expression" )?;
+                self.tokens.next();
                 match self.expression() {
                     Ok( expr ) => Ok( Some( expr ) ),
                     Err( err ) => Err( err ),
@@ -1034,7 +1033,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
     }
 
     fn variable_reassignment_or_expression( &mut self ) -> Result<Node<'ast>, RawSyntaxError> {
-        let name_token = self.tokens.current().unwrap();
+        let name_token = self.tokens.current.unwrap();
         let op_token = match self.tokens.peek_next() {
             Some( token ) => match token.kind {
                 TokenKind::Equals
@@ -1054,9 +1053,6 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             None => return Ok( Node::Expression( self.expression()? ) ),
         };
 
-        self.tokens.next();
-        self.tokens.next().bounded( &mut self.tokens, "expected expression" )?;
-
         let name = match name_token.kind {
             TokenKind::Identifier( name ) => name,
             _ => unreachable!(),
@@ -1071,9 +1067,12 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             } );
         }
 
+        self.tokens.next();
+        self.tokens.next();
+
         let rhs = self.expression()?;
         match self.resolve_variable( name ) {
-            Some( (var, scope, var_idx) ) => match var.mutability {
+            Some( (scope_idx, var_idx, var) ) => match var.mutability {
                 Mutability::Let => Err( RawSyntaxError {
                     col: name_token.col,
                     len: name_token.kind.len(),
@@ -1103,7 +1102,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
                         } );
                     }
 
-                    Ok( Node::Assignment( scope, var_idx, value ) )
+                    Ok( Node::Assignment( scope_idx, var_idx, value ) )
                 },
             },
             None => Err( RawSyntaxError {
@@ -1119,7 +1118,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 // print statements
 impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
     fn print( &mut self ) -> Result<Node<'ast>, RawSyntaxError> {
-        let print_token = self.tokens.current().unwrap();
+        let print_token = self.tokens.current.unwrap();
         if let TokenKind::PrintLn = print_token.kind {
             if let Some( &Token { kind: TokenKind::SemiColon, .. } ) = self.tokens.peek_next() {
                 self.tokens.next();
@@ -1127,7 +1126,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             }
         }
 
-        self.tokens.next().bounded( &mut self.tokens, "expected expression" )?;
+        self.tokens.next();
         let argument = self.expression()?;
 
         return match print_token.kind {
@@ -1143,7 +1142,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
     fn iff( &mut self ) -> Result<Node<'ast>, RawSyntaxError> {
         let mut if_statement = If { ifs: Vec::new(), els: None };
 
-        'iff: while let Some( if_token ) = self.tokens.current() {
+        'iff: while let Some( if_token ) = self.tokens.current {
             self.tokens.next().bounded( &mut self.tokens, "expected boolean expression" )?;
 
             let expression = self.expression()?;
@@ -1158,7 +1157,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             };
 
             let condition = condition?;
-            let after_condition_token = self.tokens.current().bounded( &mut self.tokens, "expected do or block" )?;
+            let after_condition_token = self.tokens.current.bounded( &mut self.tokens, "expected do or block" )?;
             let iff = match after_condition_token.kind {
                 TokenKind::Bracket( BracketKind::OpenCurly ) => {
                     let scope = self.parse_single_any()?.unwrap();
@@ -1170,7 +1169,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
                     Ok( IfStatement { condition, statement } )
                 },
                 _ => {
-                    let before_curly_bracket_token = self.tokens.peek_previous().unwrap();
+                    let before_curly_bracket_token = self.tokens.peek_previous();
                     Err( RawSyntaxError {
                         col: before_curly_bracket_token.col,
                         len: before_curly_bracket_token.kind.len(),
@@ -1182,7 +1181,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 
             if_statement.ifs.push( iff? );
 
-            while let Some( else_token ) = self.tokens.current() {
+            while let Some( else_token ) = self.tokens.current {
                 let after_else_token = match else_token.kind {
                     TokenKind::Else => self.tokens.next().bounded( &mut self.tokens, "expected do, block or if statement" )?,
                     _ => break 'iff,
@@ -1221,7 +1220,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 // for statements
 impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src>{
     fn loop_statement( &mut self ) -> Result<Node<'ast>, RawSyntaxError> {
-        let do_token = self.tokens.current().unwrap();
+        let do_token = self.tokens.current.unwrap();
         let loop_token = match do_token.kind {
             TokenKind::Do => self.tokens.next().bounded( &mut self.tokens, "expected loop statement" )?,
             _ => do_token,
@@ -1239,7 +1238,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src>{
             } ),
         };
 
-        let after_condition_token = self.tokens.current().bounded( &mut self.tokens, "expected do or block" )?;
+        let after_condition_token = self.tokens.current.bounded( &mut self.tokens, "expected do or block" )?;
         let statement = match after_condition_token.kind {
             TokenKind::Bracket( BracketKind::OpenCurly ) => {
                 let scope = self.parse_single_any()?.unwrap();
@@ -1251,7 +1250,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src>{
                 Ok( statement )
             },
             _ => {
-                let before_curly_bracket_token = self.tokens.peek_previous().unwrap();
+                let before_curly_bracket_token = self.tokens.peek_previous();
                 Err( RawSyntaxError {
                     col: before_curly_bracket_token.col,
                     len: before_curly_bracket_token.kind.len(),
@@ -1271,9 +1270,9 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src>{
         };
 
         return Ok( Node::Loop( Loop {
-            pre: None,
+            // pre: None,
             condition,
-            post: None,
+            // post: None,
             statement: Box::new( statement )
         } ) );
     }
