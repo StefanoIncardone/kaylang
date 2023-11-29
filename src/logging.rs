@@ -358,21 +358,10 @@ pub(crate) trait AddError<'src> {
 
 impl<'src> AddError<'src> for Vec<SyntaxError> {
     fn add( &mut self, src: &'src Src, error: RawSyntaxError ) {
-        let mut left = 0;
-        let mut right = src.lines.len();
-        while left < right {
-            let middle = left + (right - left) / 2;
-            if error.col < src.lines[ middle ].end {
-                right = middle;
-            }
-            else {
-                left = middle + 1;
-            }
-        }
-
+        let (line, col) = src.col_to_line( error.col );
         self.push( SyntaxError {
-            line: left + 1,
-            col: error.col + 1 - src.lines[ left ].start,
+            line,
+            col,
             len: error.len,
             msg: error.msg.clone(),
             help_msg: error.help_msg.clone(),

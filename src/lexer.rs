@@ -17,7 +17,7 @@ pub struct Src {
 }
 
 impl Src {
-    pub fn populate( &mut self ) -> Result<(), IoError> {
+    pub(crate) fn populate( &mut self ) -> Result<(), IoError> {
         let file = match File::open( &self.path ) {
             Ok( f ) => f,
             Err( err ) => return Err( IoError {
@@ -80,6 +80,23 @@ impl Src {
         }
 
         return Ok( () );
+    }
+
+    pub(crate) fn col_to_line( &self, col: usize ) -> (usize /* line number */, usize /* colum number */) {
+        let mut left = 0;
+        let mut right = self.lines.len();
+        while left < right {
+            let middle = left + (right - left) / 2;
+            if col < self.lines[ middle ].end {
+                right = middle;
+            }
+            else {
+                left = middle + 1;
+            }
+        }
+
+        let line = &self.lines[ left ];
+        return (left + 1, col + 1 - line.start);
     }
 }
 
@@ -526,20 +543,20 @@ pub(crate) struct Token<'src> {
 
 
 #[derive( Debug )]
-pub(crate) struct Lexer<'tokens, 'src: 'tokens> {
+pub(crate) struct Lexer<'src> {
     src: &'src Src,
 
     col: usize,
     token_start_col: usize,
     line_end: usize,
 
-    tokens: Vec<Token<'tokens>>,
+    tokens: Vec<Token<'src>>,
     brackets: Vec<Bracket>,
     errors: Vec<SyntaxError>,
 }
 
-impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
-    pub(crate) fn tokenize( src: &'src Src ) -> Result<Vec<Token<'tokens>>, SyntaxErrors<'src>> {
+impl<'src> Lexer<'src> {
+    pub(crate) fn tokenize( src: &'src Src ) -> Result<Vec<Token<'src>>, SyntaxErrors<'src>> {
         if src.lines.is_empty() {
             return Ok( Vec::new() );
         }
@@ -598,10 +615,9 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
     }
 }
 
-impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
-    // FIX properly handle non ASCII characters
-        // TODO add an absolute column for the bytes in the line
-        // IDEA only allow utf-8 characters in strings, characters and comments
+impl<'src> Lexer<'src> {
+    // FIX properly handle non ASCII characters related errors and column advancing
+        // IDEA allow utf-8 characters in strings, characters
     fn next( &mut self ) -> Result<Option<u8>, RawSyntaxError> {
         if self.col >= self.line_end {
             return Ok( None );
@@ -620,7 +636,7 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
         }
     }
 
-    fn peek_next( &self ) -> Result<Option<&'tokens u8>, RawSyntaxError> {
+    fn peek_next( &self ) -> Result<Option<&'src u8>, RawSyntaxError> {
         if self.col >= self.line_end {
             return Ok( None );
         }
@@ -661,7 +677,7 @@ impl<'tokens, 'src: 'tokens> Lexer<'tokens, 'src> {
         }
     }
 
-    fn next_token( &mut self ) -> Result<Option<TokenKind<'tokens>>, RawSyntaxError> {
+    fn next_token( &mut self ) -> Result<Option<TokenKind<'src>>, RawSyntaxError> {
         loop {
             self.token_start_col = self.col;
             let next = match self.next()? {

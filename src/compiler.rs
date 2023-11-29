@@ -1,4 +1,4 @@
-use std::{path::{PathBuf, Path}, io::{BufWriter, Write, ErrorKind}, process::Command, fs::File};
+use std::{path::PathBuf, io::{BufWriter, Write, ErrorKind}, process::Command, fs::File, borrow::Cow};
 
 use crate::{lexer::*, ast::*, logging::*};
 
@@ -21,11 +21,11 @@ pub(crate) struct CompilerString<'ast> {
 
 
 #[derive( Debug )]
-pub(crate) struct Compiler<'ast, 'src: 'ast> {
-    src_path: &'src Path,
+pub(crate) struct Compiler<'src: 'tokens, 'tokens: 'ast, 'ast> {
+    src: &'src Src,
     out_path: &'src Option<PathBuf>,
 
-    ast: &'ast Vec<Scope<'src>>,
+    ast: &'ast Vec<Scope<'tokens, 'src>>,
 
     rodata: String,
     asm: String,
@@ -39,7 +39,7 @@ pub(crate) struct Compiler<'ast, 'src: 'ast> {
 }
 
 // Resolution of identifiers and string tags
-impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
+impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
     fn resolve( &self, name: &'src str ) -> &CompilerVariable<'src> {
         for variable in &self.variables {
             if variable.name == name {
@@ -82,8 +82,8 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
 }
 
 // Compilation of nodes
-impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
-    fn node( &mut self, node: &'ast Node<'src> ) {
+impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
+    fn node( &mut self, node: &'ast Node<'tokens, 'src> ) {
         match node {
             Node::Print( argument ) => {
                 self.asm += &format!( " ; {}\n", node );
@@ -280,7 +280,7 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
     }
 
     // TODO print crash error message, with location information -> file:line:col
-    fn expression( &mut self, expression: &'ast Expression<'src> ) {
+    fn expression( &mut self, expression: &'ast Expression<'tokens, 'src> ) {
         match expression {
             Expression::Literal( Literal::Int( value ) )  => self.asm += &format!( " mov rdi, {}\n", value ),
             Expression::Literal( Literal::Char( code ) )  => self.asm += &format!( " mov rdi, {}\n", code ),
@@ -328,7 +328,7 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
         }
     }
 
-    fn expression_factor( &mut self, factor: &'ast Expression<'src>, dst: &str ) {
+    fn expression_factor( &mut self, factor: &'ast Expression<'tokens, 'src>, dst: &str ) {
         match factor {
             Expression::Literal( Literal::Int( value ) )  => self.asm += &format!( " mov {}, {}\n", dst, value ),
             Expression::Literal( Literal::Char( code ) )  => self.asm += &format!( " mov {}, {}\n", dst, code ),
@@ -338,69 +338,86 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
                 let string_label = &self.strings[ string_label_idx ];
                 self.asm += &format!( " mov {}, {}\n", dst, string_label.len_label );
             },
-            Expression::Binary { lhs, op, rhs } => {
-                let (lhs_reg, rhs_reg, op_asm) = match op {
-                    Operator::Pow | Operator::PowEquals => match &**rhs {
-                        Expression::Literal( Literal::Int( 2 ) ) => ("rdi", "rsi",
-                            " imul rdi, rdi\n"
-                        ),
-                        _ => ("rdi", "rsi",
-                            " call int_pow\
+            Expression::Binary { lhs, op: (col, op), rhs } => {
+
+                let (lhs_reg, rhs_reg, op_asm): (&'static str, &'static str, Cow<'static, str>) = match op {
+                    Operator::Pow | Operator::PowEquals => {
+                        let (line, col) = self.src.col_to_line( **col );
+
+                        ("rdi", "rsi",
+                        format!(
+                            " mov rcx, {line}\
+                            \n mov r8, {col}\
+                            \n call int_pow\
                             \n mov rdi, rax\n"
-                        ),
+                        ).into())
                     },
                     Operator::Times | Operator::TimesEquals => ("rdi", "rsi",
-                        " imul rdi, rsi\n"
+                        " imul rdi, rsi\n".into()
                     ),
-                    Operator::Divide | Operator::DivideEquals => ("rax", "rdi",
-                        " test rdi, rdi\
-                        \n jz crash_division_by_zero\
-                        \n xor rdx, rdx\
-                        \n idiv rdi\
-                        \n mov rdi, rax\n"
-                    ),
-                    Operator::Remainder | Operator::RemainderEquals => ("rax", "rdi",
-                        " test rdi, rdi\
-                        \n jz crash_modulo_zero\
-                        \n xor rdx, rdx\
-                        \n idiv rdi\
-                        \n mov rdi, rdx\n"
-                    ),
+                    Operator::Divide | Operator::DivideEquals => {
+                        let (line, col) = self.src.col_to_line( **col );
+
+                        ("rax", "rdi",
+                        format!(
+                            " mov rcx, {line}\
+                            \n mov r8, {col}\
+                            \n test rdi, rdi\
+                            \n jz crash_division_by_zero\
+                            \n xor rdx, rdx\
+                            \n idiv rdi\
+                            \n mov rdi, rax\n"
+                        ).into())
+                    },
+                    Operator::Remainder | Operator::RemainderEquals => {
+                        let (line, col) = self.src.col_to_line( **col );
+
+                        ("rax", "rdi",
+                        format!(
+                            " mov rcx, {line}\
+                            \n mov r8, {col}\
+                            \n test rdi, rdi\
+                            \n jz crash_modulo_zero\
+                            \n xor rdx, rdx\
+                            \n idiv rdi\
+                            \n mov rdi, rdx\n"
+                        ).into())
+                    },
                     Operator::Plus | Operator::PlusEquals => ("rdi", "rsi",
-                        " add rdi, rsi\n"
+                        " add rdi, rsi\n".into()
                     ),
                     Operator::Minus | Operator::MinusEquals => ("rdi", "rsi",
-                        " sub rdi, rsi\n"
+                        " sub rdi, rsi\n".into()
                     ),
                     Operator::EqualsEquals => ("rdi", "rsi",
                         " cmp rdi, rsi\
                         \n mov rdi, false\
-                        \n sete dil\n"
+                        \n sete dil\n".into()
                     ),
                     Operator::NotEquals => ("rdi", "rsi",
                         " cmp rdi, rsi\
                         \n mov rdi, false\
-                        \n setne dil\n"
+                        \n setne dil\n".into()
                     ),
                     Operator::Greater => ("rdi", "rsi",
                         " cmp rdi, rsi\
                         \n mov rdi, false\
-                        \n setg dil\n"
+                        \n setg dil\n".into()
                     ),
                     Operator::GreaterOrEquals => ("rdi", "rsi",
                         " cmp rdi, rsi\
                         \n mov rdi, false\
-                        \n setge dil\n"
+                        \n setge dil\n".into()
                     ),
                     Operator::Less => ("rdi", "rsi",
                         " cmp rdi, rsi\
                         \n mov rdi, false\
-                        \n setl dil\n"
+                        \n setl dil\n".into()
                     ),
                     Operator::LessOrEquals => ("rdi", "rsi",
                         " cmp rdi, rsi\
                         \n mov rdi, false\
-                        \n setle dil\n"
+                        \n setle dil\n".into()
                     ),
                     Operator::Compare => ("rdi", "rsi",
                         " cmp rdi, rsi\
@@ -408,27 +425,27 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
                         \n mov rdx, EQUAL\
                         \n cmove rdi, rdx\
                         \n mov rdx, GREATER\
-                        \n cmovg rdi, rdx\n"
+                        \n cmovg rdi, rdx\n".into()
                     ),
                     // TODO shortcircuit boolean operators
                     Operator::And | Operator::AndEquals
                     | Operator::BitAnd | Operator::BitAndEquals => ("rdi", "rsi",
-                        " and rdi, rsi\n"
+                        " and rdi, rsi\n".into()
                     ),
                     Operator::Or | Operator::OrEquals
                     | Operator::BitOr | Operator::BitOrEquals => ("rdi", "rsi",
-                        " or rdi, rsi\n"
+                        " or rdi, rsi\n".into()
                     ),
                     // IDEA have the xor sum the booleans and return a boolean based on the sum:
                     // 0 -> false, 1 -> true, > 1 -> false
                     Operator::BitXor | Operator::BitXorEquals => ("rdi", "rsi",
-                        " xor rdi, rsi\n"
+                        " xor rdi, rsi\n".into()
                     ),
                     Operator::LeftShift | Operator::LeftShiftEquals => ("rdi", "rsi",
-                        " shl rdi, rsi\n"
+                        " shl rdi, rsi\n".into()
                     ),
                     Operator::RightShift | Operator::RightShiftEquals => ("rdi", "rsi",
-                        " shr rdi, rsi\n"
+                        " shr rdi, rsi\n".into()
                     ),
                     Operator::Not => unreachable!(),
                 };
@@ -480,13 +497,13 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
     }
 
 
-    fn iff( &mut self, iff: &'ast IfStatement<'src>, tag: &String, false_tag: &String ) {
+    fn iff( &mut self, iff: &'ast IfStatement<'tokens, 'src>, tag: &String, false_tag: &String ) {
         self.asm += &format!( "{}:; {}\n", tag, iff.condition );
         self.condition( &iff.condition, false_tag );
         self.node( &iff.statement );
     }
 
-    fn looop( &mut self, looop: &'ast Loop<'src>, tag: &String, false_tag: &String ) {
+    fn looop( &mut self, looop: &'ast Loop<'tokens, 'src>, tag: &String, false_tag: &String ) {
         self.asm += &format!( "{}:; {}\n", tag, looop );
         match &looop.condition {
             LoopCondition::Pre( condition ) => {
@@ -515,11 +532,10 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
                 self.node( &looop.statement );
                 self.condition( condition, false_tag );
             }
-            LoopCondition::Infinite => self.node( &looop.statement ),
         }
     }
 
-    fn condition( &mut self, condition: &'ast Expression<'src>, false_tag: &String ) {
+    fn condition( &mut self, condition: &'ast Expression<'tokens, 'src>, false_tag: &String ) {
         match condition {
             Expression::Literal( Literal::Bool( value ) ) =>
                 self.asm += &format!(
@@ -530,7 +546,7 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
                     false_tag
                 ),
             Expression::Literal( Literal::Int( _ ) | Literal::Char( _ ) | Literal::Str( _ ) ) => unreachable!(),
-            Expression::Binary { lhs, op, rhs } => {
+            Expression::Binary { lhs, op: (_, op), rhs } => {
                 match &**rhs {
                     Expression::Binary { .. } | Expression::Unary { .. }=> {
                         self.expression_factor( lhs, "rdi" );
@@ -595,7 +611,7 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
     }
 
 
-    fn assignment( &mut self, name: &'src str, new_value: &'ast Expression<'src> ) {
+    fn assignment( &mut self, name: &'src str, new_value: &'ast Expression<'tokens, 'src> ) {
         let variable = self.resolve( name );
         let variable_typ = variable.typ;
         let variable_offset = variable.offset;
@@ -673,12 +689,12 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
 }
 
 // Generation of compilation artifacts (.asm, .o, executable)
-impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
+impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
     const STACK_ALIGN: usize = core::mem::size_of::<usize>();
 
-    pub(crate) fn compile( src_path: &Path, out_path: &Option<PathBuf>, ast: &Vec<Scope>, logger: &mut CompilationLogger ) -> Result<PathBuf, IoError> {
+    pub(crate) fn compile( src: &'src Src, out_path: &Option<PathBuf>, ast: &'ast Vec<Scope<'src, 'tokens>>, logger: &mut CompilationLogger ) -> Result<PathBuf, IoError> {
         let mut this = Compiler {
-            src_path,
+            src,
             out_path,
             ast,
             rodata: String::new(),
@@ -690,7 +706,7 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
             loop_stack: Vec::new(),
         };
 
-        logger.step( &COMPILING, this.src_path );
+        logger.step( &COMPILING, &this.src.path );
 
 
         let (asm_path, obj_path, exe_path) = if let Some( out_path ) = &this.out_path {
@@ -707,14 +723,14 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
                 }
             }
 
-            (out_path.join( this.src_path.with_extension( "asm" ).file_name().unwrap() ),
-            out_path.join( this.src_path.with_extension( "o" ).file_name().unwrap() ),
-            out_path.join( this.src_path.with_extension( "" ).file_name().unwrap() ))
+            (out_path.join( this.src.path.with_extension( "asm" ).file_name().unwrap() ),
+            out_path.join( this.src.path.with_extension( "o" ).file_name().unwrap() ),
+            out_path.join( this.src.path.with_extension( "" ).file_name().unwrap() ))
         }
         else {
-            (this.src_path.with_extension( "asm" ),
-            this.src_path.with_extension( "o" ),
-            this.src_path.with_extension( "" ))
+            (this.src.path.with_extension( "asm" ),
+            this.src.path.with_extension( "o" ),
+            this.src.path.with_extension( "" ))
         };
 
         let asm_file = match File::create( &asm_path ) {
@@ -733,27 +749,28 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src> {
 
         this.rodata += &format!(
 r#" stdout: equ 1
+ stderr: equ 2
  SYS_write: equ 1
  SYS_exit: equ 60
  EXIT_SUCCESS: equ 0
  EXIT_FAILURE: equ 1
 
- CRASH: db "Crash: ", 0
+ CRASH: db "Crash: "
  CRASH_len: equ $ - CRASH
 
- _AT: db "at: ", 0
+ _AT: db "at: "
  _AT_len: equ $ - _AT
 
- attempt_division_by_zero: db "attempt to divide by zero", 10, 0
+ attempt_division_by_zero: db "attempt to divide by zero", 10
  attempt_division_by_zero_len: equ $ - attempt_division_by_zero
 
- attempt_modulo_zero: db "attempt to take the modulo zero of a number", 10, 0
+ attempt_modulo_zero: db "attempt to take the modulo zero of a number", 10
  attempt_modulo_zero_len: equ $ - attempt_modulo_zero
 
- attempt_exponent_negative: db "attempt to raise a number to a negative power", 10, 0
+ attempt_exponent_negative: db "attempt to raise a number to a negative power", 10
  attempt_exponent_negative_len: equ $ - attempt_exponent_negative
 
- file: db "{}", 0
+ file: db "{}:"
  file_len: equ $ - file
 
  INT_MIN: equ 1 << 63
@@ -773,7 +790,7 @@ r#" stdout: equ 1
  GREATER: equ 1
 
  INT_STR_LEN: equ INT_BITS"#,
-            src_path.to_str().unwrap()
+            src.path.to_str().unwrap()
         );
 
         let mut stack_size = 0;
@@ -870,35 +887,63 @@ crash_exponent_negative:
  jmp crash
 
 crash:
+ push r8
+ push rcx
  push rdx
  push rsi
 
- mov rdi, stdout
+ mov rdi, stderr
  mov rsi, CRASH
  mov rdx, CRASH_len
  mov rax, SYS_write
  syscall
 
- mov rdi, stdout
- pop rsi
- pop rdx
+ ; crash message
+ mov rdi, stderr
+ pop rsi ; crash message
+ pop rdx ; crash message's length
  mov rax, SYS_write
  syscall
 
- mov rdi, stdout
+ mov rdi, stderr
  mov rsi, _AT
  mov rdx, _AT_len
  mov rax, SYS_write
  syscall
 
- mov rdi, stdout
+ ; file
+ mov rdi, stderr
  mov rsi, file
  mov rdx, file_len
  mov rax, SYS_write
  syscall
 
+ ; line
+ pop rdi
+ call int_toStr
+ mov rdi, stderr
+ mov rsi, rax
+ mov rax, SYS_write
+ syscall
+
+ push ':'
+ mov rdi, stderr
+ mov rsi, rsp
+ mov rdx, 1
+ mov rax, SYS_write
+ syscall
+ pop rsi
+
+ ; column
+ pop rdi
+ call int_toStr
+ mov rdi, stderr
+ mov rsi, rax
+ mov rax, SYS_write
+ syscall
+
  push 10
- mov rdi, stdout
+ mov rdi, stderr
  mov rsi, rsp
  mov rdx, 1
  mov rax, SYS_write
@@ -916,18 +961,18 @@ int_toStr:
 
  mov rax, rdi
  cmp rax, 0
- je .writeZero
- jl .makeNumberPositive
- jg .extractNextDigit
+ je .write_zero
+ jl .make_number_positive
+ jg .next_digit
 
-.writeZero:
+.write_zero:
  mov byte [rcx], '0'
  jmp .done
 
-.makeNumberPositive:
+.make_number_positive:
  neg rax
 
-.extractNextDigit:
+.next_digit:
  xor rdx, rdx
  idiv rsi
 
@@ -936,14 +981,14 @@ int_toStr:
  dec rcx
 
  cmp rax, 0
- jne .extractNextDigit
+ jne .next_digit
 
  cmp rdi, 0
- jl .addMinusSign
+ jl .add_minus_sign
  inc rcx
  jmp .done
 
-.addMinusSign:
+.add_minus_sign:
  mov byte [rcx], '-'
 
 .done:
@@ -956,23 +1001,18 @@ int_toStr:
 
  int_pow:
  cmp rsi, 0
- jl .exponent_is_negative
- jg .exponent_is_positive
+ jl crash_exponent_negative
+ jg .exponent_positive
  mov rax, 1
  ret
 
-.exponent_is_negative
- mov rsi, attempt_exponent_negative
- mov rdx, attempt_exponent_negative_len
- jmp crash
-
- .exponent_is_positive:
+ .exponent_positive:
  cmp rsi, 1
- jne .exponent_is_not_one
+ jne .exponent_not_one
  mov rax, rdi
  ret
 
-.exponent_is_not_one:
+.exponent_not_one:
  push rsi
 
  mov rax, rdi
@@ -983,13 +1023,13 @@ int_toStr:
  jle .done
 
  test rsi, 1
- jnz .exponent_is_odd
+ jnz .exponent_odd
 
  imul rax, rax
  shr rsi, 1
  jmp .next_power
 
-.exponent_is_odd:
+.exponent_odd:
  imul rdx, rax
  imul rax, rax
 
@@ -1033,14 +1073,15 @@ _start:
 
         let nasm_args = ["-felf64", "-gdwarf", asm_path.to_str().unwrap(), "-o", obj_path.to_str().unwrap()];
         match Command::new( "nasm" ).args( nasm_args ).output() {
-            Ok( nasm_out ) => if !nasm_out.status.success() {
-                logger.substep( &ASSEMBLER );
-                return Err( IoError {
-                    kind: ErrorKind::InvalidData,
-                    msg: "nasm assembler failed".into(),
-                    cause: String::from_utf8( nasm_out.stderr ).unwrap().into()
-                } );
-            },
+            Ok( nasm_out ) =>
+                if !nasm_out.status.success() {
+                    logger.substep( &ASSEMBLER );
+                    return Err( IoError {
+                        kind: ErrorKind::InvalidData,
+                        msg: "nasm assembler failed".into(),
+                        cause: String::from_utf8( nasm_out.stderr ).unwrap().into()
+                    } );
+                },
             Err( err ) => {
                 logger.substep( &ASSEMBLER );
                 return Err( IoError {
@@ -1056,14 +1097,15 @@ _start:
 
         let ld_args = [obj_path.to_str().unwrap(), "-o", exe_path.to_str().unwrap()];
         match Command::new( "ld" ).args( ld_args ).output() {
-            Ok( ld_out ) => if !ld_out.status.success() {
-                logger.substep( &LINKER );
-                return Err( IoError {
-                    kind: ErrorKind::InvalidData,
-                    msg: "ld linker failed".into(),
-                    cause: String::from_utf8( ld_out.stderr ).unwrap().into()
-                } );
-            },
+            Ok( ld_out ) =>
+                if !ld_out.status.success() {
+                    logger.substep( &LINKER );
+                    return Err( IoError {
+                        kind: ErrorKind::InvalidData,
+                        msg: "ld linker failed".into(),
+                        cause: String::from_utf8( ld_out.stderr ).unwrap().into()
+                    } );
+                },
             Err( err ) => {
                 logger.substep( &LINKER );
                 return Err( IoError {

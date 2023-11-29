@@ -3,21 +3,21 @@ use std::{fmt::Display, borrow::Cow};
 use crate::{lexer::*, logging::*};
 
 
-trait Bounded<'tokens, 'src: 'tokens> {
+trait Bounded<'src: 'tokens, 'tokens> {
     type Error;
 
-    fn bounded( self, tokens: &mut Tokens<'tokens, 'src>, err_msg: impl Into<Cow<'static, str>> ) -> Result<&'tokens Token<'src>, Self::Error>;
+    fn bounded( self, tokens: &mut Tokens<'src, 'tokens>, err_msg: impl Into<Cow<'static, str>> ) -> Result<&'tokens Token<'src>, Self::Error>;
 }
 
 
 #[derive( Debug )]
-struct Tokens<'tokens, 'src: 'tokens> {
+struct Tokens<'src: 'tokens, 'tokens> {
     token: usize,
     tokens: &'tokens [Token<'src>],
     current: Option<&'tokens Token<'src>>,
 }
 
-impl<'tokens, 'src: 'tokens> From<&'tokens [Token<'src>]> for Tokens<'tokens, 'src> {
+impl<'src: 'tokens, 'tokens> From<&'tokens [Token<'src>]> for Tokens<'src, 'tokens> {
     fn from( tokens: &'tokens [Token<'src>] ) -> Self {
         let mut token = 0;
 
@@ -38,7 +38,7 @@ impl<'tokens, 'src: 'tokens> From<&'tokens [Token<'src>]> for Tokens<'tokens, 's
     }
 }
 
-impl<'tokens, 'src: 'tokens> Tokens<'tokens, 'src> {
+impl<'src: 'tokens, 'tokens> Tokens<'src, 'tokens> {
     fn next( &mut self ) -> Option<&'tokens Token<'src>> {
         self.current = loop {
             if self.token >= self.tokens.len() - 1 {
@@ -83,10 +83,10 @@ impl<'tokens, 'src: 'tokens> Tokens<'tokens, 'src> {
     }
 }
 
-impl<'tokens, 'src: 'tokens> Bounded<'tokens, 'src> for Option<&'tokens Token<'src>> {
+impl<'src: 'tokens, 'tokens> Bounded<'src, 'tokens> for Option<&'tokens Token<'src>> {
     type Error = RawSyntaxError;
 
-    fn bounded( self, tokens: &mut Tokens<'tokens, 'src>, err_msg: impl Into<Cow<'static, str>> ) -> Result<&'tokens Token<'src>, Self::Error> {
+    fn bounded( self, tokens: &mut Tokens<'src, 'tokens>, err_msg: impl Into<Cow<'static, str>> ) -> Result<&'tokens Token<'src>, Self::Error> {
         return match self {
             Some( token ) => Ok( token ),
             None => {
@@ -104,84 +104,87 @@ impl<'tokens, 'src: 'tokens> Bounded<'tokens, 'src> for Option<&'tokens Token<'s
 
 
 #[derive( Debug, Clone )]
-pub(crate) enum Expression<'src> {
+pub(crate) enum Expression<'src: 'tokens, 'tokens> {
     Literal( Literal ),
-    Unary { op: Operator, operand: Box<Expression<'src>> },
-    Binary { lhs: Box<Expression<'src>>, op: Operator, rhs: Box<Expression<'src>> },
+    Unary { op: Operator, operand: Box<Expression<'src, 'tokens>> },
+    Binary {
+        lhs: Box<Expression<'src, 'tokens>>,
+        // this reference to usize exists to prepare to add column information to every ast node
+        // this is the first place where it is needed for now
+        // it is used for error reporting (division by zero, modulo of 0, raising to a negative power)
+        op: (&'tokens usize, Operator),
+        rhs: Box<Expression<'src, 'tokens>>
+    },
     Identifier( &'src str, Type ),
 }
 
-impl Display for Expression<'_> {
+impl Display for Expression<'_, '_> {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
-            Self::Literal( literal )      => write!( f, "{}", literal ),
-            Self::Unary { op, operand }   => write!( f, "{}{}", op, operand ),
-            Self::Binary { lhs, op, rhs } => write!( f, "({} {} {})", lhs, op, rhs ),
-            Self::Identifier( name, _ )   => write!( f, "{}", name ),
+            Self::Literal( literal )               => write!( f, "{}", literal ),
+            Self::Unary { op, operand }            => write!( f, "{}{}", op, operand ),
+            Self::Binary { lhs, op: (_, op), rhs } => write!( f, "({} {} {})", lhs, op, rhs ),
+            Self::Identifier( name, _ )            => write!( f, "{}", name ),
         }
     }
 }
 
-impl TypeOf for Expression<'_> {
+impl TypeOf for Expression<'_, '_> {
     fn typ( &self ) -> Type {
         return match self {
-            Self::Literal( literal )    => literal.typ(),
-            Self::Unary { operand, .. } => operand.typ(),
-            Self::Binary { op, .. }     => op.typ(),
-            Self::Identifier( _, typ )  => *typ,
+            Self::Literal( literal )         => literal.typ(),
+            Self::Unary { operand, .. }      => operand.typ(),
+            Self::Binary { op: (_, op), .. } => op.typ(),
+            Self::Identifier( _, typ )       => *typ,
         }
     }
 }
 
 
 #[derive( Debug, Clone )]
-pub(crate) struct Variable<'src> {
+pub(crate) struct Variable<'src: 'tokens, 'tokens> {
     pub(crate) mutability: Mutability,
     pub(crate) name: &'src str,
-    pub(crate) value: Expression<'src>,
+    pub(crate) value: Expression<'src, 'tokens>,
 }
 
 
 #[derive( Debug, Clone )]
-pub(crate) struct IfStatement<'src> {
-    pub(crate) condition: Expression<'src>,
-    pub(crate) statement: Node<'src>,
+pub(crate) struct IfStatement<'src: 'tokens, 'tokens> {
+    pub(crate) condition: Expression<'src, 'tokens>,
+    pub(crate) statement: Node<'src, 'tokens>,
 }
 
-impl Display for IfStatement<'_> {
+impl Display for IfStatement<'_, '_> {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return write!( f, "if {}", self.condition );
     }
 }
 
 #[derive( Debug, Clone )]
-pub(crate) struct If<'src> {
-    pub(crate) ifs: Vec<IfStatement<'src>>,
-    pub(crate) els: Option<Box<Node<'src>>>,
+pub(crate) struct If<'src: 'tokens, 'tokens> {
+    pub(crate) ifs: Vec<IfStatement<'src, 'tokens>>,
+    pub(crate) els: Option<Box<Node<'src, 'tokens>>>,
 }
 
 
 #[allow( dead_code )]
 #[derive( Debug, Clone )]
-pub(crate) enum LoopCondition<'src> {
-    Infinite,
-    Pre( Expression<'src> ),
-    Post( Expression<'src> )
+pub(crate) enum LoopCondition<'src: 'tokens, 'tokens> {
+    Pre( Expression<'src, 'tokens> ),
+    Post( Expression<'src, 'tokens> )
 }
 
 #[allow( dead_code )]
 #[derive( Debug, Clone )]
-pub(crate) struct Loop<'src> {
-    // pub(crate) pre: Option<Box<Node<'src>>>,
-    pub(crate) condition: LoopCondition<'src>,
-    // pub(crate) post: Option<Box<Node<'src>>>,
-    pub(crate) statement: Box<Node<'src>>,
+pub(crate) struct Loop<'src: 'tokens, 'tokens> {
+    pub(crate) condition: LoopCondition<'src, 'tokens>,
+    pub(crate) statement: Box<Node<'src, 'tokens>>,
 }
 
-impl Display for Loop<'_> {
+impl Display for Loop<'_, '_> {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match &self.condition {
-            LoopCondition::Infinite          => write!( f, "loop" ),
             LoopCondition::Pre( condition )  => write!( f, "loop {}", condition ),
             LoopCondition::Post( condition ) => write!( f, "do loop {}", condition ),
         }
@@ -189,25 +192,25 @@ impl Display for Loop<'_> {
 }
 
 
-// TODO create node struct that contains the line and token of the start of the node
+// TODO have each node and sub-node be made of a reference to the token/s from which the got generated
 #[derive( Debug, Clone )]
-pub(crate) enum Node<'src> {
+pub(crate) enum Node<'src: 'tokens, 'tokens> {
     Empty,
 
-    Expression( Expression<'src> ),
-    Print( Expression<'src> ),
-    Println( Option<Expression<'src>> ),
-    If( If<'src> ),
-    Loop( Loop<'src> ),
+    Expression( Expression<'src, 'tokens> ),
+    Print( Expression<'src, 'tokens> ),
+    Println( Option<Expression<'src, 'tokens>> ),
+    If( If<'src, 'tokens> ),
+    Loop( Loop<'src, 'tokens> ),
     Break,
     Continue,
 
     Definition( usize /* scope idx */, usize /* variable idx */ ),
-    Assignment( usize /* scope idx */, usize /* variable idx */, Expression<'src> ),
+    Assignment( usize /* scope idx */, usize /* variable idx */, Expression<'src, 'tokens> ),
     Scope( usize ),
 }
 
-impl Display for Node<'_> {
+impl Display for Node<'_, '_> {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
             Self::Expression( expression ) => write!( f, "{}", expression ),
@@ -226,29 +229,29 @@ impl Display for Node<'_> {
 }
 
 #[derive( Debug, Clone )]
-pub struct Scope<'src> {
+pub struct Scope<'src: 'tokens, 'tokens> {
     pub(crate) parent: usize,
     pub(crate) types: Vec<Type>,
-    pub(crate) variables: Vec<Variable<'src>>,
-    pub(crate) nodes: Vec<Node<'src>>,
+    pub(crate) variables: Vec<Variable<'src, 'tokens>>,
+    pub(crate) nodes: Vec<Node<'src, 'tokens>>,
 }
 
 
 // IDEA create Parser class that builds the AST, and then validate the AST afterwards
 #[derive( Debug )]
-pub(crate) struct Ast<'tokens, 'ast, 'src: 'ast> {
+pub(crate) struct Ast<'src: 'tokens, 'tokens> {
     src: &'src Src,
 
-    scopes: Vec<Scope<'ast>>,
+    scopes: Vec<Scope<'src, 'tokens>>,
     scope: usize,
     loop_depth: usize,
 
-    tokens: Tokens<'tokens, 'src>,
+    tokens: Tokens<'src, 'tokens>,
     errors: Vec<SyntaxError>,
 }
 
-impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
-    pub(crate) fn build( tokens: &'tokens [Token<'src>], src: &'src Src ) -> Result<Vec<Scope<'ast>>, SyntaxErrors<'src>> {
+impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
+    pub(crate) fn build( tokens: &'tokens [Token<'src>], src: &'src Src ) -> Result<Vec<Scope<'src, 'tokens>>, SyntaxErrors<'src>> {
         if tokens.is_empty() {
             return Ok( Vec::new() );
         }
@@ -280,7 +283,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 }
 
 // parsing of nodes
-impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
+impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
     fn parse_scope( &mut self ) {
         loop {
             match self.parse_single_any() {
@@ -323,7 +326,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         }
     }
 
-    fn parse_single_statement( &mut self ) -> Result<Option<Node<'ast>>, RawSyntaxError> {
+    fn parse_single_statement( &mut self ) -> Result<Option<Node<'src, 'tokens>>, RawSyntaxError> {
         let current_token = match self.tokens.current {
             Some( token ) => token,
             None => return Ok( None ),
@@ -442,7 +445,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         }
     }
 
-    fn parse_do_single_statement( &mut self ) -> Result<Option<Node<'ast>>, RawSyntaxError> {
+    fn parse_do_single_statement( &mut self ) -> Result<Option<Node<'src, 'tokens>>, RawSyntaxError> {
         let current_token = self.tokens.next().bounded( &mut self.tokens, "expected statement" )?;
         return match current_token.kind {
             TokenKind::Bracket( BracketKind::OpenCurly ) => {
@@ -467,7 +470,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         }
     }
 
-    fn parse_single_any( &mut self ) -> Result<Option<Node<'ast>>, RawSyntaxError> {
+    fn parse_single_any( &mut self ) -> Result<Option<Node<'src, 'tokens>>, RawSyntaxError> {
         let current_token = match self.tokens.current {
             Some( token ) => token,
             None => return Ok( None ),
@@ -499,7 +502,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 }
 
 // semicolons
-impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
+impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
     fn semicolon( &mut self ) -> Result<(), RawSyntaxError> {
         let semicolon_token = self.tokens.current.bounded( &mut self.tokens, "expected semicolon" )?;
         return match &semicolon_token.kind {
@@ -521,14 +524,14 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 }
 
 // expressions
-impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
-    fn operator( &mut self, ops: &[Operator] ) -> Result<Option<Operator>, RawSyntaxError> {
+impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
+    fn operator( &mut self, ops: &[Operator] ) -> Result<Option<(&'tokens Token<'src>, Operator)>, RawSyntaxError> {
         let current_token = self.tokens.current.bounded( &mut self.tokens, "expected operator or semicolon" )?;
         return match current_token.kind {
             TokenKind::Op( op ) =>
                 if ops.contains( &op ) {
                     self.tokens.next();
-                    Ok( Some( op ) )
+                    Ok( Some( (&current_token, op) ) )
                 }
                 else {
                     Ok( None )
@@ -537,7 +540,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         }
     }
 
-    fn primary_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
+    fn primary_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let current_token = self.tokens.current.bounded( &mut self.tokens, "expected expression" )?;
         let factor = match &current_token.kind {
             TokenKind::Literal( literal ) => Ok( Expression::Literal( literal.clone() ) ),
@@ -647,95 +650,95 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         return factor;
     }
 
-    fn exponentiative_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
+    fn exponentiative_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.primary_expression()?;
 
-        while let Some( op ) = self.operator( &[Operator::Pow] )? {
+        while let Some( (op_token, op) ) = self.operator( &[Operator::Pow] )? {
             let rhs = self.primary_expression()?;
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
     }
 
-    fn multiplicative_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
+    fn multiplicative_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.exponentiative_expression()?;
 
-        while let Some( op ) = self.operator( &[Operator::Times, Operator::Divide, Operator::Remainder] )? {
+        while let Some( (op_token, op) ) = self.operator( &[Operator::Times, Operator::Divide, Operator::Remainder] )? {
             let rhs = self.exponentiative_expression()?;
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
     }
 
-    fn additive_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
+    fn additive_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.multiplicative_expression()?;
 
-        while let Some( op ) = self.operator( &[Operator::Plus, Operator::Minus] )? {
+        while let Some( (op_token, op) ) = self.operator( &[Operator::Plus, Operator::Minus] )? {
             let rhs = self.multiplicative_expression()?;
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
     }
 
-    fn shift_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
+    fn shift_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.additive_expression()?;
 
-        while let Some( op ) = self.operator( &[Operator::LeftShift, Operator::RightShift] )? {
+        while let Some( (op_token, op) ) = self.operator( &[Operator::LeftShift, Operator::RightShift] )? {
             let rhs = self.additive_expression()?;
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
     }
 
-    fn bitand_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
+    fn bitand_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.shift_expression()?;
 
-        while let Some( op ) = self.operator( &[Operator::BitAnd] )? {
+        while let Some( (op_token, op) ) = self.operator( &[Operator::BitAnd] )? {
             let rhs = self.shift_expression()?;
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
     }
 
-    fn bitxor_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
+    fn bitxor_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.bitand_expression()?;
 
-        while let Some( op ) = self.operator( &[Operator::BitXor] )? {
+        while let Some( (op_token, op) ) = self.operator( &[Operator::BitXor] )? {
             let rhs = self.bitand_expression()?;
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
     }
 
-    fn bitor_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
+    fn bitor_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.bitxor_expression()?;
 
-        while let Some( op ) = self.operator( &[Operator::BitOr] )? {
+        while let Some( (op_token, op) ) = self.operator( &[Operator::BitOr] )? {
             let rhs = self.bitxor_expression()?;
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
     }
 
-    fn comparative_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
+    fn comparative_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.bitor_expression()?;
 
-        while let Some( op ) = self.operator( &[Operator::Compare] )? {
+        while let Some( (op_token, op) ) = self.operator( &[Operator::Compare] )? {
             let rhs = self.bitor_expression()?;
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
     }
 
-    fn comparison_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
+    fn comparison_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.comparative_expression()?;
 
         let ops = [
@@ -745,8 +748,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         ];
 
         let mut is_chained = false;
-        while let Some( op ) = self.operator( &ops )? {
-            let op_token = self.tokens.peek_previous();
+        while let Some( (op_token, op) ) = self.operator( &ops )? {
             let rhs = self.comparative_expression()?;
 
             if is_chained {
@@ -759,18 +761,16 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
             }
             is_chained = true;
 
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
     }
 
-    fn and_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
+    fn and_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.comparison_expression()?;
 
-        while let Some( op ) = self.operator( &[Operator::And] )? {
-            let op_token = self.tokens.peek_previous();
-
+        while let Some( (op_token, op) ) = self.operator( &[Operator::And] )? {
             if lhs.typ() != Type::Bool {
                 return Err( RawSyntaxError {
                     col: op_token.col,
@@ -790,7 +790,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
                 } );
             }
 
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
@@ -825,18 +825,16 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
     //             } );
     //         }
 
-    //         lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+    //         lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
     //     }
 
     //     return Ok( lhs );
     // }
 
-    fn or_expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
+    fn or_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.and_expression()?;
 
-        while let Some( op ) = self.operator( &[Operator::Or] )? {
-            let op_token = self.tokens.peek_previous();
-
+        while let Some( (op_token, op) ) = self.operator( &[Operator::Or] )? {
             if lhs.typ() != Type::Bool {
                 return Err( RawSyntaxError {
                     col: op_token.col,
@@ -856,7 +854,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
                 } );
             }
 
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op, rhs: Box::new( rhs ) };
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
@@ -866,14 +864,14 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
     // TODO disallow implicit conversions (str + i64, char + i64, str + char or str + str
         // IDEA introduce casting operators
     // TODO implement boolean operator chaining
-    fn expression( &mut self ) -> Result<Expression<'ast>, RawSyntaxError> {
+    fn expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         return self.or_expression();
     }
 }
 
 // variable definitions and assignments
-impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
-    fn resolve_variable( &self, name: &'src str ) -> Option<(usize /* scope idx */, usize /* variable idx */, &Variable<'ast>)> {
+impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
+    fn resolve_variable( &self, name: &'src str ) -> Option<(usize /* scope idx */, usize /* variable idx */, &Variable<'src, 'tokens>)> {
         let mut scope_idx = self.scope;
         loop {
             let scope = &self.scopes[ scope_idx ];
@@ -908,7 +906,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
     }
 
 
-    fn variable_definition( &mut self ) -> Result<Node<'ast>, RawSyntaxError> {
+    fn variable_definition( &mut self ) -> Result<Node<'src, 'tokens>, RawSyntaxError> {
         let definition_token = self.tokens.current.unwrap();
         let mutability = match definition_token.kind {
             TokenKind::Definition( kind ) => kind,
@@ -1032,30 +1030,16 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         }
     }
 
-    fn variable_reassignment_or_expression( &mut self ) -> Result<Node<'ast>, RawSyntaxError> {
+    fn variable_reassignment_or_expression( &mut self ) -> Result<Node<'src, 'tokens>, RawSyntaxError> {
         let name_token = self.tokens.current.unwrap();
-        let op_token = match self.tokens.peek_next() {
-            Some( token ) => match token.kind {
-                TokenKind::Equals
-                | TokenKind::Op(
-                    Operator::PowEquals
-                    | Operator::TimesEquals
-                    | Operator::DivideEquals
-                    | Operator::PlusEquals
-                    | Operator::MinusEquals
-                    | Operator::AndEquals | Operator::BitAndEquals
-                    | Operator::OrEquals | Operator::BitOrEquals
-                    /* | Operator::XorEquals */ | Operator::BitXorEquals
-                    | Operator::LeftShiftEquals | Operator::RightShiftEquals
-                ) => token,
-                _ => return Ok( Node::Expression( self.expression()? ) ),
-            },
-            None => return Ok( Node::Expression( self.expression()? ) ),
-        };
-
         let name = match name_token.kind {
             TokenKind::Identifier( name ) => name,
             _ => unreachable!(),
+        };
+
+        let op_token = match self.tokens.peek_next() {
+            Some( token @ Token { kind: TokenKind::Equals | TokenKind::Op( _ ), .. } ) => token,
+            Some( _ ) | None => return Ok( Node::Expression( self.expression()? ) ),
         };
 
         if self.resolve_type( name ).is_some() {
@@ -1071,7 +1055,7 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
         self.tokens.next();
 
         let rhs = self.expression()?;
-        match self.resolve_variable( name ) {
+        return match self.resolve_variable( name ) {
             Some( (scope_idx, var_idx, var) ) => match var.mutability {
                 Mutability::Let => Err( RawSyntaxError {
                     col: name_token.col,
@@ -1082,9 +1066,10 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
                 Mutability::Var => {
                     let value = match &op_token.kind {
                         TokenKind::Equals => rhs,
-                        TokenKind::Op( op ) => {
-                            let lhs = Expression::Identifier( name, op.typ() );
-                            Expression::Binary { lhs: Box::new( lhs ), op: *op, rhs: Box::new( rhs ) }
+                        TokenKind::Op( op ) => Expression::Binary {
+                            lhs: Box::new( Expression::Identifier( name, op.typ() ) ),
+                            op: (&op_token.col, *op),
+                            rhs: Box::new( rhs )
                         },
                         _ => unreachable!(),
                     };
@@ -1116,8 +1101,8 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 }
 
 // print statements
-impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
-    fn print( &mut self ) -> Result<Node<'ast>, RawSyntaxError> {
+impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
+    fn print( &mut self ) -> Result<Node<'src, 'tokens>, RawSyntaxError> {
         let print_token = self.tokens.current.unwrap();
         if let TokenKind::PrintLn = print_token.kind {
             if let Some( &Token { kind: TokenKind::SemiColon, .. } ) = self.tokens.peek_next() {
@@ -1138,8 +1123,8 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 }
 
 // if statements
-impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
-    fn iff( &mut self ) -> Result<Node<'ast>, RawSyntaxError> {
+impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
+    fn iff( &mut self ) -> Result<Node<'src, 'tokens>, RawSyntaxError> {
         let mut if_statement = If { ifs: Vec::new(), els: None };
 
         'iff: while let Some( if_token ) = self.tokens.current {
@@ -1218,8 +1203,8 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src> {
 }
 
 // for statements
-impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src>{
-    fn loop_statement( &mut self ) -> Result<Node<'ast>, RawSyntaxError> {
+impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens>{
+    fn loop_statement( &mut self ) -> Result<Node<'src, 'tokens>, RawSyntaxError> {
         let do_token = self.tokens.current.unwrap();
         let loop_token = match do_token.kind {
             TokenKind::Do => self.tokens.next().bounded( &mut self.tokens, "expected loop statement" )?,
@@ -1269,11 +1254,6 @@ impl<'tokens, 'ast, 'src: 'ast> Ast<'tokens, 'ast, 'src>{
             LoopCondition::Pre( condition )
         };
 
-        return Ok( Node::Loop( Loop {
-            // pre: None,
-            condition,
-            // post: None,
-            statement: Box::new( statement )
-        } ) );
+        return Ok( Node::Loop( Loop { condition, statement: Box::new( statement ) } ) );
     }
 }

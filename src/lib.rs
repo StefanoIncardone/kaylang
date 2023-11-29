@@ -136,7 +136,7 @@ impl Compile {
         match &self.kind {
             CompileKind::Check => logger.done(),
             CompileKind::Compile { out_path, run } => {
-                let exe_path = match Compiler::compile( &self.src.path, out_path, &ast, &mut logger ) {
+                let exe_path = match Compiler::compile( &self.src, out_path, &ast, &mut logger ) {
                     Ok( exe_path ) => exe_path,
                     Err( err ) => return Err( KayError::Compilation( err ) ),
                 };
