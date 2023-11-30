@@ -2,19 +2,22 @@
 
 ## 0.4
 
-- renamed language to `kay`
-- revised and added operators
+### 0.4.2
 
-## 0.4.1
+- added runtime errors for division by zero, taking the modulo 0 and raising to a negative power
+
+### 0.4.1
 
 - revised compiler API
 - revised and optimized error reporting during compilation steps
 - optimized String allocations
 - cleaned ast genereation code
 
-## 0.4.2
+### 0.4.0
 
-- added runtime errors for division by zero, taking the modulo 0 and raising to a negative power
+- renamed language to `kay`
+- revised and added operators
+
 
 ## 0.3
 
@@ -36,6 +39,7 @@
 - renamed `for` keyword to `loop`
 - introduced the `do` keyword for single statements instead of `:`
     - disallowed blocks in single statement contexts
+
 
 ## 0.2
 
@@ -67,6 +71,7 @@
 
 - removed const variables
     - corrected variable reassignment bug
+
 
 ## 0.1
 
