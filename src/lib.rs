@@ -125,7 +125,7 @@ impl Compile {
             Err( err ) => return Err( KayError::Syntax( err ) ),
         };
 
-        let ast_result = Ast::build( &tokens, &self.src );
+        let ast_result = Ast::build( &self.src, &tokens );
         logger.substep( &AST_BUILDING );
         let ast = match ast_result {
             Ok( ast ) => ast,

@@ -82,7 +82,7 @@ impl Src {
         return Ok( () );
     }
 
-    pub(crate) fn col_to_line( &self, col: usize ) -> (usize /* line number */, usize /* colum number */) {
+    pub(crate) fn normalize( &self, col: usize ) -> (usize /* line number */, usize /* colum number */) {
         let mut left = 0;
         let mut right = self.lines.len();
         while left < right {
@@ -95,8 +95,7 @@ impl Src {
             }
         }
 
-        let line = &self.lines[ left ];
-        return (left + 1, col + 1 - line.start);
+        return (left + 1, col + 1 - self.lines[ left ].start);
     }
 }
 

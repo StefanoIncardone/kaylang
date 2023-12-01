@@ -358,7 +358,7 @@ pub(crate) trait AddError<'src> {
 
 impl<'src> AddError<'src> for Vec<SyntaxError> {
     fn add( &mut self, src: &'src Src, error: RawSyntaxError ) {
-        let (line, col) = src.col_to_line( error.col );
+        let (line, col) = src.normalize( error.col );
         self.push( SyntaxError {
             line,
             col,

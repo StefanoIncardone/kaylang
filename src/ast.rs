@@ -251,7 +251,7 @@ pub(crate) struct Ast<'src: 'tokens, 'tokens> {
 }
 
 impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
-    pub(crate) fn build( tokens: &'tokens [Token<'src>], src: &'src Src ) -> Result<Vec<Scope<'src, 'tokens>>, SyntaxErrors<'src>> {
+    pub(crate) fn build( src: &'src Src, tokens: &'tokens [Token<'src>] ) -> Result<Vec<Scope<'src, 'tokens>>, SyntaxErrors<'src>> {
         if tokens.is_empty() {
             return Ok( Vec::new() );
         }

@@ -38,656 +38,6 @@ pub(crate) struct Compiler<'src: 'tokens, 'tokens: 'ast, 'ast> {
     loop_stack: Vec<usize>,
 }
 
-// Resolution of identifiers and string tags
-impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
-    fn resolve( &self, name: &'src str ) -> &CompilerVariable<'src> {
-        for variable in &self.variables {
-            if variable.name == name {
-                return variable;
-            }
-        }
-
-        unreachable!();
-    }
-
-    fn string_label_idx( &mut self, string: &'ast Vec<u8> ) -> usize {
-        let mut string_idx = 0;
-        for string_label in &self.strings {
-            if std::ptr::eq( string, string_label.string ) {
-                return string_idx;
-            }
-            string_idx += 1;
-        }
-
-        let mut string_text = String::with_capacity( string.len() + 2 );
-        string_text.push( '`' );
-        for ch in string {
-            string_text.extend( (*ch as char).escape_default() );
-        }
-        string_text.push( '`' );
-
-        let label = format!( "str_{}", string_idx );
-        let len_label = format!( "str_{}_len", string_idx );
-
-        self.rodata += &format!(
-            "\n\n {}: db {}\
-            \n {}: equ $ - {}",
-            label, string_text,
-            len_label, label
-        );
-
-        self.strings.push( CompilerString { string, label, len_label } );
-        return string_idx;
-    }
-}
-
-// Compilation of nodes
-impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
-    fn node( &mut self, node: &'ast Node<'tokens, 'src> ) {
-        match node {
-            Node::Print( argument ) => {
-                self.asm += &format!( " ; {}\n", node );
-                self.expression( argument );
-
-                match argument.typ() {
-                    Type::Int  => self.asm +=
-                        " mov rsi, 10\
-                        \n call int_toStr\
-                        \n\
-                        \n mov rdi, stdout\
-                        \n mov rsi, rax\
-                        \n mov rax, SYS_write\
-                        \n syscall\n\n",
-                    Type::Char => self.asm +=
-                        " push rdi\
-                        \n mov rdi, stdout\
-                        \n mov rsi, rsp\
-                        \n mov rdx, 1\
-                        \n mov rax, SYS_write\
-                        \n syscall\
-                        \n pop rsi\n\n",
-                    Type::Bool => self.asm +=
-                        " cmp rdi, true\
-                        \n mov rsi, true_str\
-                        \n mov rdi, false_str\
-                        \n cmovne rsi, rdi\
-                        \n mov rdx, true_str_len\
-                        \n mov rdi, false_str_len\
-                        \n cmovne rdx, rdi\
-                        \n\
-                        \n mov rdi, stdout\
-                        \n mov rax, SYS_write\
-                        \n syscall\n\n",
-                    Type::Str  => self.asm +=
-                        " mov rdi, stdout\
-                        \n mov rax, SYS_write\
-                        \n syscall\n\n",
-                }
-            },
-            Node::Println( argument ) => {
-                self.asm += &format!( " ; {}\n", node );
-                if let Some( arg ) = argument {
-                    self.expression( arg );
-
-                    match arg.typ() {
-                        Type::Int  => self.asm +=
-                            " mov rsi, 10\
-                            \n call int_toStr\
-                            \n\
-                            \n mov rdi, stdout\
-                            \n mov rsi, rax\
-                            \n mov rax, SYS_write\
-                            \n syscall\n\n",
-                        Type::Char => self.asm +=
-                            " push rdi\
-                            \n mov rdi, stdout\
-                            \n mov rsi, rsp\
-                            \n mov rdx, 1\
-                            \n mov rax, SYS_write\
-                            \n syscall\
-                            \n pop rsi\n\n",
-                        Type::Bool => self.asm +=
-                            " cmp rdi, true\
-                            \n mov rsi, true_str\
-                            \n mov rdi, false_str\
-                            \n cmovne rsi, rdi\
-                            \n mov rdx, true_str_len\
-                            \n mov rdi, false_str_len\
-                            \n cmovne rdx, rdi\
-                            \n\
-                            \n mov rdi, stdout\
-                            \n mov rax, SYS_write\
-                            \n syscall\n\n",
-                        Type::Str  => self.asm +=
-                            " mov rdi, stdout\
-                            \n mov rax, SYS_write\
-                            \n syscall\n\n",
-                    }
-                }
-
-                self.asm +=
-                    " push 10\
-                    \n mov rdi, stdout\
-                    \n mov rsi, rsp\
-                    \n mov rdx, 1\
-                    \n mov rax, SYS_write\
-                    \n syscall\
-                    \n pop rsi\n\n";
-            },
-            Node::If( if_statement ) => {
-                let if_idx = self.if_depth;
-                self.if_depth += 1;
-
-                let mut ifs = if_statement.ifs.iter();
-                let iff = ifs.next().unwrap();
-
-                // NOTE call ifs.next_back() to get the last else if and match on that instead of
-                // checking for the len() of the ifs
-                let (has_else_ifs, has_else) = (if_statement.ifs.len() > 1, if_statement.els.is_some());
-
-                // compiling the if branch
-                let if_tag = format!( "if_{}", if_idx );
-                let (if_false_tag, if_end_tag_idx) = if has_else_ifs {
-                    (format!( "if_{}_else_if_0", if_idx ), Some( if_idx ))
-                }
-                else if has_else {
-                    (format!( "if_{}_else", if_idx ), Some( if_idx ))
-                }
-                else {
-                    (format!( "if_{}_end", if_idx ), None)
-                };
-
-                self.iff( iff, &if_tag, &if_false_tag );
-                if let Some( idx ) = if_end_tag_idx {
-                    self.asm += &format!( " jmp if_{}_end\n\n", idx );
-                }
-
-                // compiling the else if branches
-                if has_else_ifs {
-                    let last_else_if = ifs.next_back().unwrap();
-                    let else_if_end_tag = format!( " jmp if_{}_end\n\n", if_idx );
-                    let mut else_if_tag_idx = 0;
-
-                    for else_if in ifs {
-                        let else_if_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx );
-                        let else_if_false_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx + 1 );
-
-                        self.iff( else_if, &else_if_tag, &else_if_false_tag );
-                        self.asm += &else_if_end_tag;
-                        else_if_tag_idx += 1;
-                    }
-
-                    let else_if_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx );
-                    let else_if_false_tag = if has_else {
-                        format!( "if_{}_else", if_idx )
-                    }
-                    else {
-                        format!( "if_{}_end", if_idx )
-                    };
-
-                    self.iff( last_else_if, &else_if_tag, &else_if_false_tag );
-                    self.asm += &else_if_end_tag;
-                }
-
-                // compiling the else branch
-                if let Some( els ) = &if_statement.els {
-                    self.asm += &format!( "if_{}_else:\n", if_idx );
-                    match &**els {
-                        Node::Scope( scope ) => self.scope( *scope ),
-                        other => self.node( other ),
-                    }
-                }
-
-                self.asm += &format!( "if_{}_end:\n", if_idx );
-            },
-            Node::Loop( looop ) => {
-                let loop_tag = format!( "loop_{}", self.loop_depth );
-                let loop_end_tag = format!( "loop_{}_end", self.loop_depth );
-
-                self.loop_stack.push( self.loop_depth );
-                self.loop_depth += 1;
-                self.looop( looop, &loop_tag, &loop_end_tag );
-                self.loop_stack.pop();
-
-                self.asm += &format!(
-                    " jmp {}\
-                    \n{}:\n\n",
-                    loop_tag,
-                    loop_end_tag
-                );
-            },
-            Node::Definition( scope, variable ) => {
-                let variable = &self.ast[ *scope ].variables[ *variable ];
-                self.assignment( variable.name, &variable.value );
-            },
-            Node::Assignment( scope, variable, value ) => {
-                let variable = &self.ast[ *scope ].variables[ *variable ];
-                self.assignment( variable.name, value );
-            },
-            Node::Scope( inner )           => self.scope( *inner ),
-            Node::Expression( expression ) => self.expression( expression ),
-            Node::Break                    => self.asm += &format!( " jmp loop_{}_end\n\n", self.loop_stack[ self.loop_stack.len() - 1 ] ),
-            Node::Continue                 => self.asm += &format!( " jmp loop_{}\n\n", self.loop_stack[ self.loop_stack.len() - 1 ] ),
-            Node::Empty                    => unreachable!(),
-        }
-    }
-
-    fn scope( &mut self, scope_idx: usize ) {
-        let scope = &self.ast[ scope_idx ];
-        for node in &scope.nodes {
-            self.node( node );
-        }
-    }
-
-    // TODO print crash error message, with location information -> file:line:col
-    fn expression( &mut self, expression: &'ast Expression<'tokens, 'src> ) {
-        match expression {
-            Expression::Literal( Literal::Int( value ) )  => self.asm += &format!( " mov rdi, {}\n", value ),
-            Expression::Literal( Literal::Char( code ) )  => self.asm += &format!( " mov rdi, {}\n", code ),
-            Expression::Literal( Literal::Bool( value ) ) => self.asm += &format!( " mov rdi, {}\n", value ),
-            Expression::Literal( Literal::Str( string ) ) => {
-                let string_label_idx = self.string_label_idx( string );
-                let string_label = &self.strings[ string_label_idx ];
-
-                self.asm += &format!(
-                    " mov rsi, {}\
-                    \n mov rdx, {}\n",
-                    string_label.label,
-                    string_label.len_label
-                );
-            },
-            Expression::Binary { .. } => self.expression_factor( expression, "rdi" ),
-            Expression::Identifier( src_name, _ ) => {
-                let src_variable = self.resolve( src_name );
-                let src_variable_typ = &src_variable.typ;
-                let src_variable_offset = src_variable.offset;
-
-                match src_variable_typ {
-                    Type::Int               => self.asm += &format!( " mov rdi, [rbp + {}]\n", src_variable_offset ),
-                    Type::Char | Type::Bool => self.asm += &format!( " movzx rdi, byte [rbp + {}]\n", src_variable_offset ),
-                    Type::Str               =>
-                        self.asm += &format!(
-                            " mov rsi, [rbp + {}]\
-                            \n mov rdx, [rbp + {}]\n",
-                            src_variable_offset,
-                            src_variable_offset + 8
-                        ),
-                }
-            },
-            Expression::Unary { op, operand } => {
-                self.expression_factor( operand, "rdi" );
-                match op {
-                    Operator::Not => match operand.typ() {
-                        Type::Bool                         => self.asm += " xor dil, 1\n",
-                        Type::Int | Type::Char | Type::Str => self.asm += " not rdi\n",
-                    },
-                    Operator::Minus                        => self.asm += " neg rdi\n",
-                    _ => unreachable!(),
-                }
-            },
-        }
-    }
-
-    fn expression_factor( &mut self, factor: &'ast Expression<'tokens, 'src>, dst: &str ) {
-        match factor {
-            Expression::Literal( Literal::Int( value ) )  => self.asm += &format!( " mov {}, {}\n", dst, value ),
-            Expression::Literal( Literal::Char( code ) )  => self.asm += &format!( " mov {}, {}\n", dst, code ),
-            Expression::Literal( Literal::Bool( value ) ) => self.asm += &format!( " mov {}, {}\n", dst, value ),
-            Expression::Literal( Literal::Str( string ) ) => {
-                let string_label_idx = self.string_label_idx( string );
-                let string_label = &self.strings[ string_label_idx ];
-                self.asm += &format!( " mov {}, {}\n", dst, string_label.len_label );
-            },
-            Expression::Binary { lhs, op: (col, op), rhs } => {
-
-                let (lhs_reg, rhs_reg, op_asm): (&'static str, &'static str, Cow<'static, str>) = match op {
-                    Operator::Pow | Operator::PowEquals => {
-                        let (line, col) = self.src.col_to_line( **col );
-
-                        ("rdi", "rsi",
-                        format!(
-                            " mov rcx, {line}\
-                            \n mov r8, {col}\
-                            \n call int_pow\
-                            \n mov rdi, rax\n"
-                        ).into())
-                    },
-                    Operator::Times | Operator::TimesEquals => ("rdi", "rsi",
-                        " imul rdi, rsi\n".into()
-                    ),
-                    Operator::Divide | Operator::DivideEquals => {
-                        let (line, col) = self.src.col_to_line( **col );
-
-                        ("rax", "rdi",
-                        format!(
-                            " mov rcx, {line}\
-                            \n mov r8, {col}\
-                            \n test rdi, rdi\
-                            \n jz crash_division_by_zero\
-                            \n xor rdx, rdx\
-                            \n idiv rdi\
-                            \n mov rdi, rax\n"
-                        ).into())
-                    },
-                    Operator::Remainder | Operator::RemainderEquals => {
-                        let (line, col) = self.src.col_to_line( **col );
-
-                        ("rax", "rdi",
-                        format!(
-                            " mov rcx, {line}\
-                            \n mov r8, {col}\
-                            \n test rdi, rdi\
-                            \n jz crash_modulo_zero\
-                            \n xor rdx, rdx\
-                            \n idiv rdi\
-                            \n mov rdi, rdx\n"
-                        ).into())
-                    },
-                    Operator::Plus | Operator::PlusEquals => ("rdi", "rsi",
-                        " add rdi, rsi\n".into()
-                    ),
-                    Operator::Minus | Operator::MinusEquals => ("rdi", "rsi",
-                        " sub rdi, rsi\n".into()
-                    ),
-                    Operator::EqualsEquals => ("rdi", "rsi",
-                        " cmp rdi, rsi\
-                        \n mov rdi, false\
-                        \n sete dil\n".into()
-                    ),
-                    Operator::NotEquals => ("rdi", "rsi",
-                        " cmp rdi, rsi\
-                        \n mov rdi, false\
-                        \n setne dil\n".into()
-                    ),
-                    Operator::Greater => ("rdi", "rsi",
-                        " cmp rdi, rsi\
-                        \n mov rdi, false\
-                        \n setg dil\n".into()
-                    ),
-                    Operator::GreaterOrEquals => ("rdi", "rsi",
-                        " cmp rdi, rsi\
-                        \n mov rdi, false\
-                        \n setge dil\n".into()
-                    ),
-                    Operator::Less => ("rdi", "rsi",
-                        " cmp rdi, rsi\
-                        \n mov rdi, false\
-                        \n setl dil\n".into()
-                    ),
-                    Operator::LessOrEquals => ("rdi", "rsi",
-                        " cmp rdi, rsi\
-                        \n mov rdi, false\
-                        \n setle dil\n".into()
-                    ),
-                    Operator::Compare => ("rdi", "rsi",
-                        " cmp rdi, rsi\
-                        \n mov rdi, LESS\
-                        \n mov rdx, EQUAL\
-                        \n cmove rdi, rdx\
-                        \n mov rdx, GREATER\
-                        \n cmovg rdi, rdx\n".into()
-                    ),
-                    // TODO shortcircuit boolean operators
-                    Operator::And | Operator::AndEquals
-                    | Operator::BitAnd | Operator::BitAndEquals => ("rdi", "rsi",
-                        " and rdi, rsi\n".into()
-                    ),
-                    Operator::Or | Operator::OrEquals
-                    | Operator::BitOr | Operator::BitOrEquals => ("rdi", "rsi",
-                        " or rdi, rsi\n".into()
-                    ),
-                    // IDEA have the xor sum the booleans and return a boolean based on the sum:
-                    // 0 -> false, 1 -> true, > 1 -> false
-                    Operator::BitXor | Operator::BitXorEquals => ("rdi", "rsi",
-                        " xor rdi, rsi\n".into()
-                    ),
-                    Operator::LeftShift | Operator::LeftShiftEquals => ("rdi", "rsi",
-                        " shl rdi, rsi\n".into()
-                    ),
-                    Operator::RightShift | Operator::RightShiftEquals => ("rdi", "rsi",
-                        " shr rdi, rsi\n".into()
-                    ),
-                    Operator::Not => unreachable!(),
-                };
-
-                match &**rhs {
-                    Expression::Binary { .. } | Expression::Unary { .. } => {
-                        self.expression_factor( lhs, lhs_reg );
-                        self.asm += " push rdi\n\n";
-                        self.expression_factor( rhs, rhs_reg );
-
-                        self.asm += &format!(
-                            " mov {}, rdi\
-                            \n pop {}\n",
-                            rhs_reg,
-                            lhs_reg
-                        );
-                    },
-                    _ => {
-                        self.expression_factor( lhs, lhs_reg );
-                        self.expression_factor( rhs, rhs_reg );
-                    }
-                }
-
-                self.asm += &format!( "{}\n", op_asm );
-            },
-            Expression::Identifier( src_name, _ ) => {
-                let src_variable = self.resolve( src_name );
-                let src_variable_typ = src_variable.typ;
-                let src_variable_offset = src_variable.offset;
-
-                match src_variable_typ {
-                    Type::Int               => self.asm += &format!( " mov {}, [rbp + {}]\n", dst, src_variable_offset ),
-                    Type::Char | Type::Bool => self.asm += &format!( " movzx {}, byte [rbp + {}]\n", dst, src_variable_offset ),
-                    Type::Str               => self.asm += &format!( " mov {}, [rbp + {}]\n", dst, src_variable_offset + 8 ),
-                }
-            },
-            Expression::Unary { op, operand } => {
-                self.expression_factor( operand, "rdi" );
-                match op {
-                    Operator::Not => match operand.typ() {
-                        Type::Bool                         => self.asm += " xor dil, 1\n",
-                        Type::Int | Type::Char | Type::Str => self.asm += " not rdi\n",
-                    },
-                    Operator::Minus                        => self.asm += " neg rdi\n",
-                    _ => unreachable!(),
-                }
-            },
-        }
-    }
-
-
-    fn iff( &mut self, iff: &'ast IfStatement<'tokens, 'src>, tag: &String, false_tag: &String ) {
-        self.asm += &format!( "{}:; {}\n", tag, iff.condition );
-        self.condition( &iff.condition, false_tag );
-        self.node( &iff.statement );
-    }
-
-    fn looop( &mut self, looop: &'ast Loop<'tokens, 'src>, tag: &String, false_tag: &String ) {
-        self.asm += &format!( "{}:; {}\n", tag, looop );
-        match &looop.condition {
-            LoopCondition::Pre( condition ) => {
-                self.condition( condition, false_tag );
-                self.node( &looop.statement );
-            },
-            /* // NOTE by inverting the jmp instruction and jumping to the start of the loop we can
-            avoid compiling an extra jmp instruction:
-                mov rdi, [rbp + 0]
-                mov rsi, 10
-                cmp rdi, rsi
-                jge loop_0_end
-
-                jmp loop_0
-                loop_0_end:
-
-            what we actually want:
-                mov rdi, [rbp + 0]
-                mov rsi, 10
-                cmp rdi, rsi
-                jl loop_0
-
-                loop_0_end:
-             */
-            LoopCondition::Post( condition ) => {
-                self.node( &looop.statement );
-                self.condition( condition, false_tag );
-            }
-        }
-    }
-
-    fn condition( &mut self, condition: &'ast Expression<'tokens, 'src>, false_tag: &String ) {
-        match condition {
-            Expression::Literal( Literal::Bool( value ) ) =>
-                self.asm += &format!(
-                    " mov dil, {}\
-                    \n cmp dil, true\
-                    \n jne {}\n\n",
-                    *value as usize,
-                    false_tag
-                ),
-            Expression::Literal( Literal::Int( _ ) | Literal::Char( _ ) | Literal::Str( _ ) ) => unreachable!(),
-            Expression::Binary { lhs, op: (_, op), rhs } => {
-                match &**rhs {
-                    Expression::Binary { .. } | Expression::Unary { .. }=> {
-                        self.expression_factor( lhs, "rdi" );
-                        self.asm += " push rdi\n\n";
-                        self.expression_factor( rhs, "rsi" );
-                        self.asm += " mov rsi, rdi\n pop rdi\n";
-                    },
-                    _ => {
-                        self.expression_factor( lhs, "rdi" );
-                        self.expression_factor( rhs, "rsi" );
-                    }
-                }
-
-                match op {
-                    Operator::EqualsEquals              => self.asm += &format!( " cmp rdi, rsi\n jne {}\n\n", false_tag ),
-                    Operator::NotEquals                 => self.asm += &format!( " cmp rdi, rsi\n je {}\n\n", false_tag ),
-                    Operator::Greater                   => self.asm += &format!( " cmp rdi, rsi\n jle {}\n\n", false_tag ),
-                    Operator::GreaterOrEquals           => self.asm += &format!( " cmp rdi, rsi\n jl {}\n\n", false_tag ),
-                    Operator::Less                      => self.asm += &format!( " cmp rdi, rsi\n jge {}\n\n", false_tag ),
-                    Operator::LessOrEquals              => self.asm += &format!( " cmp rdi, rsi\n jg {}\n\n", false_tag ),
-                    Operator::And | Operator::AndEquals => self.asm += &format!( " and rdi, rsi\n jz {}\n\n", false_tag ),
-                    Operator::Or | Operator::OrEquals   => self.asm += &format!( " or rdi, rsi\n jz {}\n\n", false_tag ),
-                    // Operator::Xor | Operator::XorEquals => self.asm += &format!( " xor rdi, rsi\n jz {}\n\n", false_tag ),
-
-                    Operator::Pow | Operator::PowEquals
-                    | Operator::Times | Operator::TimesEquals
-                    | Operator::Divide | Operator::DivideEquals
-                    | Operator::Remainder | Operator::RemainderEquals
-                    | Operator::Plus | Operator::PlusEquals
-                    | Operator::Minus | Operator::MinusEquals
-                    | Operator::Compare
-                    | Operator::Not
-                    | Operator::BitAnd | Operator::BitAndEquals
-                    | Operator::BitOr | Operator::BitOrEquals
-                    | Operator::BitXor | Operator::BitXorEquals
-                    | Operator::LeftShift | Operator::LeftShiftEquals
-                    | Operator::RightShift | Operator::RightShiftEquals => unreachable!(),
-                }
-            },
-            Expression::Identifier( src_name, _ ) => {
-                let src_variable = self.resolve( src_name );
-                self.asm += &format!(
-                    " mov dil, [rbp + {}]\
-                    \n cmp dil, true\
-                    \n jne {}\n\n",
-                    src_variable.offset,
-                    false_tag
-                )
-            },
-            Expression::Unary { .. } => {
-                self.expression( condition );
-
-                // we can only have boolean expressions at this point, so it's safe to ignore the
-                // integer negation case
-                self.asm += &format!(
-                    " xor dil, 1\
-                    \n jz {}\n\n",
-                    false_tag
-                );
-            },
-        }
-    }
-
-
-    fn assignment( &mut self, name: &'src str, new_value: &'ast Expression<'tokens, 'src> ) {
-        let variable = self.resolve( name );
-        let variable_typ = variable.typ;
-        let variable_offset = variable.offset;
-        self.asm += &format!( " ; {} = {}\n", name, new_value );
-
-        match new_value {
-            Expression::Literal( Literal::Int( value ) ) =>
-                self.asm += &format!(
-                    " mov rdi, {}\
-                    \n mov [rbp + {}], rdi\n\n",
-                    value, variable_offset
-                ),
-            Expression::Literal( Literal::Char( code ) ) =>
-                self.asm += &format!( " mov byte [rbp + {}], {}\n\n", variable_offset, code ),
-            Expression::Literal( Literal::Bool( value ) ) =>
-                self.asm += &format!( " mov byte [rbp + {}], {}\n\n", variable_offset, value ),
-            Expression::Literal( Literal::Str( string ) ) => {
-                let string_label_idx = self.string_label_idx( string );
-                let string_label = &self.strings[ string_label_idx ];
-
-                self.asm += &format!(
-                    " mov qword [rbp + {}], {}\
-                    \n mov qword [rbp + {}], {}\n\n",
-                    variable_offset, string_label.label,
-                    variable_offset + 8, string_label.len_label
-                );
-            },
-            Expression::Binary { .. } => {
-                self.expression( new_value );
-
-                match variable_typ {
-                    Type::Int | Type::Str   => self.asm += &format!( " mov [rbp + {}], rdi\n\n", variable_offset ),
-                    Type::Char | Type::Bool => self.asm += &format!( " mov [rbp + {}], dil\n\n", variable_offset ),
-                }
-            }
-            Expression::Identifier( src_name, _ ) => {
-                let src_variable = self.resolve( src_name );
-                let src_variable_typ = src_variable.typ;
-                let src_variable_offset = src_variable.offset;
-
-                match src_variable_typ {
-                    Type::Int =>
-                        self.asm += &format!(
-                            " mov rdi, [rbp + {}]\
-                            \n mov [rbp + {}], rdi\n\n",
-                            src_variable_offset, variable_offset
-                        ),
-                    Type::Char | Type::Bool =>
-                        self.asm += &format!(
-                            " movzx rdi, byte [rbp + {}]\
-                            \n mov [rbp + {}], rdi\n\n",
-                            src_variable_offset, variable_offset
-                        ),
-                    Type::Str =>
-                        self.asm += &format!(
-                            " mov rsi, [rbp + {}]\
-                            \n mov rdx, [rbp + {}]\
-                            \n mov [rbp + {}], rsi\
-                            \n mov [rbp + {}], rdx\n\n",
-                            src_variable_offset, variable_offset,
-                            src_variable_offset + 8, variable_offset + 8
-                        ),
-                }
-            },
-            Expression::Unary { .. } => {
-                self.expression( new_value );
-
-                match variable_typ {
-                    Type::Int | Type::Str   => self.asm += &format!( " mov [rbp + {}], rdi\n\n", variable_offset ),
-                    Type::Char | Type::Bool => self.asm += &format!( " mov [rbp + {}], dil\n\n", variable_offset ),
-                }
-            },
-        }
-    }
-}
-
 // Generation of compilation artifacts (.asm, .o, executable)
 impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
     const STACK_ALIGN: usize = core::mem::size_of::<usize>();
@@ -1120,5 +470,655 @@ _start:
         logger.substep_done();
 
         return Ok( exe_path );
+    }
+}
+
+// Resolution of identifiers and string tags
+impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
+    fn resolve( &self, name: &'src str ) -> &CompilerVariable<'src> {
+        for variable in &self.variables {
+            if variable.name == name {
+                return variable;
+            }
+        }
+
+        unreachable!();
+    }
+
+    fn string_label_idx( &mut self, string: &'ast Vec<u8> ) -> usize {
+        let mut string_idx = 0;
+        for string_label in &self.strings {
+            if std::ptr::eq( string, string_label.string ) {
+                return string_idx;
+            }
+            string_idx += 1;
+        }
+
+        let mut string_text = String::with_capacity( string.len() + 2 );
+        string_text.push( '`' );
+        for ch in string {
+            string_text.extend( (*ch as char).escape_default() );
+        }
+        string_text.push( '`' );
+
+        let label = format!( "str_{}", string_idx );
+        let len_label = format!( "str_{}_len", string_idx );
+
+        self.rodata += &format!(
+            "\n\n {}: db {}\
+            \n {}: equ $ - {}",
+            label, string_text,
+            len_label, label
+        );
+
+        self.strings.push( CompilerString { string, label, len_label } );
+        return string_idx;
+    }
+}
+
+// Compilation of nodes
+impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
+    fn node( &mut self, node: &'ast Node<'tokens, 'src> ) {
+        match node {
+            Node::Print( argument ) => {
+                self.asm += &format!( " ; {}\n", node );
+                self.expression( argument );
+
+                match argument.typ() {
+                    Type::Int  => self.asm +=
+                        " mov rsi, 10\
+                        \n call int_toStr\
+                        \n\
+                        \n mov rdi, stdout\
+                        \n mov rsi, rax\
+                        \n mov rax, SYS_write\
+                        \n syscall\n\n",
+                    Type::Char => self.asm +=
+                        " push rdi\
+                        \n mov rdi, stdout\
+                        \n mov rsi, rsp\
+                        \n mov rdx, 1\
+                        \n mov rax, SYS_write\
+                        \n syscall\
+                        \n pop rsi\n\n",
+                    Type::Bool => self.asm +=
+                        " cmp rdi, true\
+                        \n mov rsi, true_str\
+                        \n mov rdi, false_str\
+                        \n cmovne rsi, rdi\
+                        \n mov rdx, true_str_len\
+                        \n mov rdi, false_str_len\
+                        \n cmovne rdx, rdi\
+                        \n\
+                        \n mov rdi, stdout\
+                        \n mov rax, SYS_write\
+                        \n syscall\n\n",
+                    Type::Str  => self.asm +=
+                        " mov rdi, stdout\
+                        \n mov rax, SYS_write\
+                        \n syscall\n\n",
+                }
+            },
+            Node::Println( argument ) => {
+                self.asm += &format!( " ; {}\n", node );
+                if let Some( arg ) = argument {
+                    self.expression( arg );
+
+                    match arg.typ() {
+                        Type::Int  => self.asm +=
+                            " mov rsi, 10\
+                            \n call int_toStr\
+                            \n\
+                            \n mov rdi, stdout\
+                            \n mov rsi, rax\
+                            \n mov rax, SYS_write\
+                            \n syscall\n\n",
+                        Type::Char => self.asm +=
+                            " push rdi\
+                            \n mov rdi, stdout\
+                            \n mov rsi, rsp\
+                            \n mov rdx, 1\
+                            \n mov rax, SYS_write\
+                            \n syscall\
+                            \n pop rsi\n\n",
+                        Type::Bool => self.asm +=
+                            " cmp rdi, true\
+                            \n mov rsi, true_str\
+                            \n mov rdi, false_str\
+                            \n cmovne rsi, rdi\
+                            \n mov rdx, true_str_len\
+                            \n mov rdi, false_str_len\
+                            \n cmovne rdx, rdi\
+                            \n\
+                            \n mov rdi, stdout\
+                            \n mov rax, SYS_write\
+                            \n syscall\n\n",
+                        Type::Str  => self.asm +=
+                            " mov rdi, stdout\
+                            \n mov rax, SYS_write\
+                            \n syscall\n\n",
+                    }
+                }
+
+                self.asm +=
+                    " push 10\
+                    \n mov rdi, stdout\
+                    \n mov rsi, rsp\
+                    \n mov rdx, 1\
+                    \n mov rax, SYS_write\
+                    \n syscall\
+                    \n pop rsi\n\n";
+            },
+            Node::If( if_statement ) => {
+                let if_idx = self.if_depth;
+                self.if_depth += 1;
+
+                let mut ifs = if_statement.ifs.iter();
+                let iff = ifs.next().unwrap();
+
+                // NOTE call ifs.next_back() to get the last else if and match on that instead of
+                // checking for the len() of the ifs
+                let (has_else_ifs, has_else) = (if_statement.ifs.len() > 1, if_statement.els.is_some());
+
+                // compiling the if branch
+                let if_tag = format!( "if_{}", if_idx );
+                let (if_false_tag, if_end_tag_idx) = if has_else_ifs {
+                    (format!( "if_{}_else_if_0", if_idx ), Some( if_idx ))
+                }
+                else if has_else {
+                    (format!( "if_{}_else", if_idx ), Some( if_idx ))
+                }
+                else {
+                    (format!( "if_{}_end", if_idx ), None)
+                };
+
+                self.iff( iff, &if_tag, &if_false_tag );
+                if let Some( idx ) = if_end_tag_idx {
+                    self.asm += &format!( " jmp if_{}_end\n\n", idx );
+                }
+
+                // compiling the else if branches
+                if has_else_ifs {
+                    let last_else_if = ifs.next_back().unwrap();
+                    let else_if_end_tag = format!( " jmp if_{}_end\n\n", if_idx );
+                    let mut else_if_tag_idx = 0;
+
+                    for else_if in ifs {
+                        let else_if_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx );
+                        let else_if_false_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx + 1 );
+
+                        self.iff( else_if, &else_if_tag, &else_if_false_tag );
+                        self.asm += &else_if_end_tag;
+                        else_if_tag_idx += 1;
+                    }
+
+                    let else_if_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx );
+                    let else_if_false_tag = if has_else {
+                        format!( "if_{}_else", if_idx )
+                    }
+                    else {
+                        format!( "if_{}_end", if_idx )
+                    };
+
+                    self.iff( last_else_if, &else_if_tag, &else_if_false_tag );
+                    self.asm += &else_if_end_tag;
+                }
+
+                // compiling the else branch
+                if let Some( els ) = &if_statement.els {
+                    self.asm += &format!( "if_{}_else:\n", if_idx );
+                    match &**els {
+                        Node::Scope( scope ) => self.scope( *scope ),
+                        other => self.node( other ),
+                    }
+                }
+
+                self.asm += &format!( "if_{}_end:\n", if_idx );
+            },
+            Node::Loop( looop ) => {
+                let loop_tag = format!( "loop_{}", self.loop_depth );
+                let loop_end_tag = format!( "loop_{}_end", self.loop_depth );
+
+                self.loop_stack.push( self.loop_depth );
+                self.loop_depth += 1;
+                self.looop( looop, &loop_tag, &loop_end_tag );
+                self.loop_stack.pop();
+
+                self.asm += &format!(
+                    " jmp {}\
+                    \n{}:\n\n",
+                    loop_tag,
+                    loop_end_tag
+                );
+            },
+            Node::Definition( scope, variable ) => {
+                let variable = &self.ast[ *scope ].variables[ *variable ];
+                self.assignment( variable.name, &variable.value );
+            },
+            Node::Assignment( scope, variable, value ) => {
+                let variable = &self.ast[ *scope ].variables[ *variable ];
+                self.assignment( variable.name, value );
+            },
+            Node::Scope( inner )           => self.scope( *inner ),
+            Node::Expression( expression ) => self.expression( expression ),
+            Node::Break                    => self.asm += &format!( " jmp loop_{}_end\n\n", self.loop_stack[ self.loop_stack.len() - 1 ] ),
+            Node::Continue                 => self.asm += &format!( " jmp loop_{}\n\n", self.loop_stack[ self.loop_stack.len() - 1 ] ),
+            Node::Empty                    => unreachable!(),
+        }
+    }
+
+    fn scope( &mut self, scope_idx: usize ) {
+        let scope = &self.ast[ scope_idx ];
+        for node in &scope.nodes {
+            self.node( node );
+        }
+    }
+
+    // TODO print crash error message, with location information -> file:line:col
+    fn expression( &mut self, expression: &'ast Expression<'tokens, 'src> ) {
+        match expression {
+            Expression::Literal( Literal::Int( value ) )  => self.asm += &format!( " mov rdi, {}\n", value ),
+            Expression::Literal( Literal::Char( code ) )  => self.asm += &format!( " mov rdi, {}\n", code ),
+            Expression::Literal( Literal::Bool( value ) ) => self.asm += &format!( " mov rdi, {}\n", value ),
+            Expression::Literal( Literal::Str( string ) ) => {
+                let string_label_idx = self.string_label_idx( string );
+                let string_label = &self.strings[ string_label_idx ];
+
+                self.asm += &format!(
+                    " mov rsi, {}\
+                    \n mov rdx, {}\n",
+                    string_label.label,
+                    string_label.len_label
+                );
+            },
+            Expression::Binary { .. } => self.expression_factor( expression, "rdi" ),
+            Expression::Identifier( src_name, _ ) => {
+                let src_variable = self.resolve( src_name );
+                let src_variable_typ = &src_variable.typ;
+                let src_variable_offset = src_variable.offset;
+
+                match src_variable_typ {
+                    Type::Int               => self.asm += &format!( " mov rdi, [rbp + {}]\n", src_variable_offset ),
+                    Type::Char | Type::Bool => self.asm += &format!( " movzx rdi, byte [rbp + {}]\n", src_variable_offset ),
+                    Type::Str               =>
+                        self.asm += &format!(
+                            " mov rsi, [rbp + {}]\
+                            \n mov rdx, [rbp + {}]\n",
+                            src_variable_offset,
+                            src_variable_offset + 8
+                        ),
+                }
+            },
+            Expression::Unary { op, operand } => {
+                self.expression_factor( operand, "rdi" );
+                match op {
+                    Operator::Not => match operand.typ() {
+                        Type::Bool                         => self.asm += " xor dil, 1\n",
+                        Type::Int | Type::Char | Type::Str => self.asm += " not rdi\n",
+                    },
+                    Operator::Minus                        => self.asm += " neg rdi\n",
+                    _ => unreachable!(),
+                }
+            },
+        }
+    }
+
+    fn expression_factor( &mut self, factor: &'ast Expression<'tokens, 'src>, dst: &str ) {
+        match factor {
+            Expression::Literal( Literal::Int( value ) )  => self.asm += &format!( " mov {}, {}\n", dst, value ),
+            Expression::Literal( Literal::Char( code ) )  => self.asm += &format!( " mov {}, {}\n", dst, code ),
+            Expression::Literal( Literal::Bool( value ) ) => self.asm += &format!( " mov {}, {}\n", dst, value ),
+            Expression::Literal( Literal::Str( string ) ) => {
+                let string_label_idx = self.string_label_idx( string );
+                let string_label = &self.strings[ string_label_idx ];
+                self.asm += &format!( " mov {}, {}\n", dst, string_label.len_label );
+            },
+            Expression::Binary { lhs, op: (col, op), rhs } => {
+
+                let (lhs_reg, rhs_reg, op_asm): (&'static str, &'static str, Cow<'static, str>) = match op {
+                    Operator::Pow | Operator::PowEquals => {
+                        let (line, col) = self.src.normalize( **col );
+
+                        ("rdi", "rsi",
+                        format!(
+                            " mov rcx, {line}\
+                            \n mov r8, {col}\
+                            \n call int_pow\
+                            \n mov rdi, rax\n"
+                        ).into())
+                    },
+                    Operator::Times | Operator::TimesEquals => ("rdi", "rsi",
+                        " imul rdi, rsi\n".into()
+                    ),
+                    Operator::Divide | Operator::DivideEquals => {
+                        let (line, col) = self.src.normalize( **col );
+
+                        ("rax", "rdi",
+                        format!(
+                            " mov rcx, {line}\
+                            \n mov r8, {col}\
+                            \n test rdi, rdi\
+                            \n jz crash_division_by_zero\
+                            \n xor rdx, rdx\
+                            \n idiv rdi\
+                            \n mov rdi, rax\n"
+                        ).into())
+                    },
+                    Operator::Remainder | Operator::RemainderEquals => {
+                        let (line, col) = self.src.normalize( **col );
+
+                        ("rax", "rdi",
+                        format!(
+                            " mov rcx, {line}\
+                            \n mov r8, {col}\
+                            \n test rdi, rdi\
+                            \n jz crash_modulo_zero\
+                            \n xor rdx, rdx\
+                            \n idiv rdi\
+                            \n mov rdi, rdx\n"
+                        ).into())
+                    },
+                    Operator::Plus | Operator::PlusEquals => ("rdi", "rsi",
+                        " add rdi, rsi\n".into()
+                    ),
+                    Operator::Minus | Operator::MinusEquals => ("rdi", "rsi",
+                        " sub rdi, rsi\n".into()
+                    ),
+                    Operator::EqualsEquals => ("rdi", "rsi",
+                        " cmp rdi, rsi\
+                        \n mov rdi, false\
+                        \n sete dil\n".into()
+                    ),
+                    Operator::NotEquals => ("rdi", "rsi",
+                        " cmp rdi, rsi\
+                        \n mov rdi, false\
+                        \n setne dil\n".into()
+                    ),
+                    Operator::Greater => ("rdi", "rsi",
+                        " cmp rdi, rsi\
+                        \n mov rdi, false\
+                        \n setg dil\n".into()
+                    ),
+                    Operator::GreaterOrEquals => ("rdi", "rsi",
+                        " cmp rdi, rsi\
+                        \n mov rdi, false\
+                        \n setge dil\n".into()
+                    ),
+                    Operator::Less => ("rdi", "rsi",
+                        " cmp rdi, rsi\
+                        \n mov rdi, false\
+                        \n setl dil\n".into()
+                    ),
+                    Operator::LessOrEquals => ("rdi", "rsi",
+                        " cmp rdi, rsi\
+                        \n mov rdi, false\
+                        \n setle dil\n".into()
+                    ),
+                    Operator::Compare => ("rdi", "rsi",
+                        " cmp rdi, rsi\
+                        \n mov rdi, LESS\
+                        \n mov rdx, EQUAL\
+                        \n cmove rdi, rdx\
+                        \n mov rdx, GREATER\
+                        \n cmovg rdi, rdx\n".into()
+                    ),
+                    // TODO shortcircuit boolean operators
+                    Operator::And | Operator::AndEquals
+                    | Operator::BitAnd | Operator::BitAndEquals => ("rdi", "rsi",
+                        " and rdi, rsi\n".into()
+                    ),
+                    Operator::Or | Operator::OrEquals
+                    | Operator::BitOr | Operator::BitOrEquals => ("rdi", "rsi",
+                        " or rdi, rsi\n".into()
+                    ),
+                    // IDEA have the xor sum the booleans and return a boolean based on the sum:
+                    // 0 -> false, 1 -> true, > 1 -> false
+                    Operator::BitXor | Operator::BitXorEquals => ("rdi", "rsi",
+                        " xor rdi, rsi\n".into()
+                    ),
+                    Operator::LeftShift | Operator::LeftShiftEquals => ("rdi", "rsi",
+                        " shl rdi, rsi\n".into()
+                    ),
+                    Operator::RightShift | Operator::RightShiftEquals => ("rdi", "rsi",
+                        " shr rdi, rsi\n".into()
+                    ),
+                    Operator::Not => unreachable!(),
+                };
+
+                match &**rhs {
+                    Expression::Binary { .. } | Expression::Unary { .. } => {
+                        self.expression_factor( lhs, lhs_reg );
+                        self.asm += " push rdi\n\n";
+                        self.expression_factor( rhs, rhs_reg );
+
+                        self.asm += &format!(
+                            " mov {}, rdi\
+                            \n pop {}\n",
+                            rhs_reg,
+                            lhs_reg
+                        );
+                    },
+                    _ => {
+                        self.expression_factor( lhs, lhs_reg );
+                        self.expression_factor( rhs, rhs_reg );
+                    }
+                }
+
+                self.asm += &format!( "{}\n", op_asm );
+            },
+            Expression::Identifier( src_name, _ ) => {
+                let src_variable = self.resolve( src_name );
+                let src_variable_typ = src_variable.typ;
+                let src_variable_offset = src_variable.offset;
+
+                match src_variable_typ {
+                    Type::Int               => self.asm += &format!( " mov {}, [rbp + {}]\n", dst, src_variable_offset ),
+                    Type::Char | Type::Bool => self.asm += &format!( " movzx {}, byte [rbp + {}]\n", dst, src_variable_offset ),
+                    Type::Str               => self.asm += &format!( " mov {}, [rbp + {}]\n", dst, src_variable_offset + 8 ),
+                }
+            },
+            Expression::Unary { op, operand } => {
+                self.expression_factor( operand, "rdi" );
+                match op {
+                    Operator::Not => match operand.typ() {
+                        Type::Bool                         => self.asm += " xor dil, 1\n",
+                        Type::Int | Type::Char | Type::Str => self.asm += " not rdi\n",
+                    },
+                    Operator::Minus                        => self.asm += " neg rdi\n",
+                    _ => unreachable!(),
+                }
+            },
+        }
+    }
+
+
+    fn iff( &mut self, iff: &'ast IfStatement<'tokens, 'src>, tag: &String, false_tag: &String ) {
+        self.asm += &format!( "{}:; {}\n", tag, iff.condition );
+        self.condition( &iff.condition, false_tag );
+        self.node( &iff.statement );
+    }
+
+    fn looop( &mut self, looop: &'ast Loop<'tokens, 'src>, tag: &String, false_tag: &String ) {
+        self.asm += &format!( "{}:; {}\n", tag, looop );
+        match &looop.condition {
+            LoopCondition::Pre( condition ) => {
+                self.condition( condition, false_tag );
+                self.node( &looop.statement );
+            },
+            /* // NOTE by inverting the jmp instruction and jumping to the start of the loop we can
+            avoid compiling an extra jmp instruction:
+                mov rdi, [rbp + 0]
+                mov rsi, 10
+                cmp rdi, rsi
+                jge loop_0_end
+
+                jmp loop_0
+                loop_0_end:
+
+            what we actually want:
+                mov rdi, [rbp + 0]
+                mov rsi, 10
+                cmp rdi, rsi
+                jl loop_0
+
+                loop_0_end:
+             */
+            LoopCondition::Post( condition ) => {
+                self.node( &looop.statement );
+                self.condition( condition, false_tag );
+            }
+        }
+    }
+
+    fn condition( &mut self, condition: &'ast Expression<'tokens, 'src>, false_tag: &String ) {
+        match condition {
+            Expression::Literal( Literal::Bool( value ) ) =>
+                self.asm += &format!(
+                    " mov dil, {}\
+                    \n cmp dil, true\
+                    \n jne {}\n\n",
+                    *value as usize,
+                    false_tag
+                ),
+            Expression::Literal( Literal::Int( _ ) | Literal::Char( _ ) | Literal::Str( _ ) ) => unreachable!(),
+            Expression::Binary { lhs, op: (_, op), rhs } => {
+                match &**rhs {
+                    Expression::Binary { .. } | Expression::Unary { .. }=> {
+                        self.expression_factor( lhs, "rdi" );
+                        self.asm += " push rdi\n\n";
+                        self.expression_factor( rhs, "rsi" );
+                        self.asm += " mov rsi, rdi\n pop rdi\n";
+                    },
+                    _ => {
+                        self.expression_factor( lhs, "rdi" );
+                        self.expression_factor( rhs, "rsi" );
+                    }
+                }
+
+                match op {
+                    Operator::EqualsEquals              => self.asm += &format!( " cmp rdi, rsi\n jne {}\n\n", false_tag ),
+                    Operator::NotEquals                 => self.asm += &format!( " cmp rdi, rsi\n je {}\n\n", false_tag ),
+                    Operator::Greater                   => self.asm += &format!( " cmp rdi, rsi\n jle {}\n\n", false_tag ),
+                    Operator::GreaterOrEquals           => self.asm += &format!( " cmp rdi, rsi\n jl {}\n\n", false_tag ),
+                    Operator::Less                      => self.asm += &format!( " cmp rdi, rsi\n jge {}\n\n", false_tag ),
+                    Operator::LessOrEquals              => self.asm += &format!( " cmp rdi, rsi\n jg {}\n\n", false_tag ),
+                    Operator::And | Operator::AndEquals => self.asm += &format!( " and rdi, rsi\n jz {}\n\n", false_tag ),
+                    Operator::Or | Operator::OrEquals   => self.asm += &format!( " or rdi, rsi\n jz {}\n\n", false_tag ),
+                    // Operator::Xor | Operator::XorEquals => self.asm += &format!( " xor rdi, rsi\n jz {}\n\n", false_tag ),
+
+                    Operator::Pow | Operator::PowEquals
+                    | Operator::Times | Operator::TimesEquals
+                    | Operator::Divide | Operator::DivideEquals
+                    | Operator::Remainder | Operator::RemainderEquals
+                    | Operator::Plus | Operator::PlusEquals
+                    | Operator::Minus | Operator::MinusEquals
+                    | Operator::Compare
+                    | Operator::Not
+                    | Operator::BitAnd | Operator::BitAndEquals
+                    | Operator::BitOr | Operator::BitOrEquals
+                    | Operator::BitXor | Operator::BitXorEquals
+                    | Operator::LeftShift | Operator::LeftShiftEquals
+                    | Operator::RightShift | Operator::RightShiftEquals => unreachable!(),
+                }
+            },
+            Expression::Identifier( src_name, _ ) => {
+                let src_variable = self.resolve( src_name );
+                self.asm += &format!(
+                    " mov dil, [rbp + {}]\
+                    \n cmp dil, true\
+                    \n jne {}\n\n",
+                    src_variable.offset,
+                    false_tag
+                )
+            },
+            Expression::Unary { .. } => {
+                self.expression( condition );
+
+                // we can only have boolean expressions at this point, so it's safe to ignore the
+                // integer negation case
+                self.asm += &format!(
+                    " xor dil, 1\
+                    \n jz {}\n\n",
+                    false_tag
+                );
+            },
+        }
+    }
+
+
+    fn assignment( &mut self, name: &'src str, new_value: &'ast Expression<'tokens, 'src> ) {
+        let variable = self.resolve( name );
+        let variable_typ = variable.typ;
+        let variable_offset = variable.offset;
+        self.asm += &format!( " ; {} = {}\n", name, new_value );
+
+        match new_value {
+            Expression::Literal( Literal::Int( value ) ) =>
+                self.asm += &format!(
+                    " mov rdi, {}\
+                    \n mov [rbp + {}], rdi\n\n",
+                    value, variable_offset
+                ),
+            Expression::Literal( Literal::Char( code ) ) =>
+                self.asm += &format!( " mov byte [rbp + {}], {}\n\n", variable_offset, code ),
+            Expression::Literal( Literal::Bool( value ) ) =>
+                self.asm += &format!( " mov byte [rbp + {}], {}\n\n", variable_offset, value ),
+            Expression::Literal( Literal::Str( string ) ) => {
+                let string_label_idx = self.string_label_idx( string );
+                let string_label = &self.strings[ string_label_idx ];
+
+                self.asm += &format!(
+                    " mov qword [rbp + {}], {}\
+                    \n mov qword [rbp + {}], {}\n\n",
+                    variable_offset, string_label.label,
+                    variable_offset + 8, string_label.len_label
+                );
+            },
+            Expression::Binary { .. } => {
+                self.expression( new_value );
+
+                match variable_typ {
+                    Type::Int | Type::Str   => self.asm += &format!( " mov [rbp + {}], rdi\n\n", variable_offset ),
+                    Type::Char | Type::Bool => self.asm += &format!( " mov [rbp + {}], dil\n\n", variable_offset ),
+                }
+            }
+            Expression::Identifier( src_name, _ ) => {
+                let src_variable = self.resolve( src_name );
+                let src_variable_typ = src_variable.typ;
+                let src_variable_offset = src_variable.offset;
+
+                match src_variable_typ {
+                    Type::Int =>
+                        self.asm += &format!(
+                            " mov rdi, [rbp + {}]\
+                            \n mov [rbp + {}], rdi\n\n",
+                            src_variable_offset, variable_offset
+                        ),
+                    Type::Char | Type::Bool =>
+                        self.asm += &format!(
+                            " movzx rdi, byte [rbp + {}]\
+                            \n mov [rbp + {}], rdi\n\n",
+                            src_variable_offset, variable_offset
+                        ),
+                    Type::Str =>
+                        self.asm += &format!(
+                            " mov rsi, [rbp + {}]\
+                            \n mov rdx, [rbp + {}]\
+                            \n mov [rbp + {}], rsi\
+                            \n mov [rbp + {}], rdx\n\n",
+                            src_variable_offset, variable_offset,
+                            src_variable_offset + 8, variable_offset + 8
+                        ),
+                }
+            },
+            Expression::Unary { .. } => {
+                self.expression( new_value );
+
+                match variable_typ {
+                    Type::Int | Type::Str   => self.asm += &format!( " mov [rbp + {}], rdi\n\n", variable_offset ),
+                    Type::Char | Type::Bool => self.asm += &format!( " mov [rbp + {}], dil\n\n", variable_offset ),
+                }
+            },
+        }
     }
 }
