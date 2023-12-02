@@ -336,8 +336,22 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
             TokenKind::Literal( _ )
             | TokenKind::True | TokenKind::False
             | TokenKind::Bracket( BracketKind::OpenRound )
-            | TokenKind::Op( Operator::Minus | Operator::Not )
-            | TokenKind::Identifier( _ )          => Ok( Some( self.variable_reassignment_or_expression()? ) ),
+            | TokenKind::Op( Operator::Minus | Operator::Not ) => Ok( Some( Node::Expression( self.expression()? ) ) ),
+            TokenKind::Identifier( _ ) => match self.tokens.peek_next() {
+                Some( op ) => match op.kind {
+                    TokenKind::Equals |
+                    TokenKind::Op(
+                        Operator::PowEquals
+                        | Operator::TimesEquals | Operator::DivideEquals | Operator::RemainderEquals
+                        | Operator::PlusEquals | Operator::MinusEquals
+                        | Operator::LeftShiftEquals | Operator::RightShiftEquals
+                        | Operator::BitAndEquals | Operator::BitXorEquals | Operator::BitOrEquals
+                        | Operator::AndEquals | Operator::OrEquals
+                    ) => Ok( Some( self.variable_reassignment()? ) ),
+                    _ => Ok( Some( Node::Expression( self.expression()? ) ) ),
+                },
+                None => Ok( Some( Node::Expression( self.expression()? ) ) ),
+            },
             TokenKind::Definition( _ )            => Ok( Some( self.variable_definition()? ) ),
             TokenKind::Print | TokenKind::PrintLn => Ok( Some( self.print()? ) ),
             TokenKind::If                         => Ok( Some( self.iff()? ) ),
@@ -399,6 +413,24 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                     len: current_token.kind.len(),
                     msg: "invalid statement".into(),
                     help_msg: "stray closed curly bracket".into(),
+                } )
+            },
+            TokenKind::Bracket( BracketKind::OpenSquare ) => {
+                self.tokens.next();
+                Err( RawSyntaxError {
+                    col: current_token.col,
+                    len: current_token.kind.len(),
+                    msg: "invalid array type".into(),
+                    help_msg: "stray open square bracket".into(),
+                } )
+            },
+            TokenKind::Bracket( BracketKind::CloseSquare ) => {
+                self.tokens.next();
+                Err( RawSyntaxError {
+                    col: current_token.col,
+                    len: current_token.kind.len(),
+                    msg: "invalid array type".into(),
+                    help_msg: "stray closed square bracket".into(),
                 } )
             },
             TokenKind::Bracket( BracketKind::CloseRound ) => {
@@ -598,19 +630,25 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 
                 // returning to avoid the call to tokens.next at the end of the function
                 return match operand.typ() {
-                    Type::Bool => Err( RawSyntaxError {
-                        col: current_token.col,
-                        len: current_token.kind.len(),
-                        msg: "invalid expression".into(),
-                        help_msg: "cannot negate boolean values, use the '!' operator instead to invert them".into(),
-                    } ),
-                    Type::Int | Type::Char | Type::Str =>
+                    Type::Int | Type::Char =>
                         if sign < 0 {
                             Ok( Expression::Unary { op: Operator::Minus, operand: Box::new( operand ) } )
                         }
                         else {
                             Ok( operand )
                         }
+                    Type::Bool => Err( RawSyntaxError {
+                        col: current_token.col,
+                        len: current_token.kind.len(),
+                        msg: "invalid expression".into(),
+                        help_msg: "cannot negate boolean values, use the '!' operator instead to invert them".into(),
+                    } ),
+                    Type::Str => Err( RawSyntaxError {
+                        col: current_token.col,
+                        len: current_token.kind.len(),
+                        msg: "invalid expression".into(),
+                        help_msg: "cannot negate string values".into(),
+                    } ),
                 }
             },
             TokenKind::Op( Operator::Not ) => {
@@ -622,11 +660,20 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 
                 let operand = self.primary_expression()?;
                 // returning to avoid the call to tokens.next at the end of the function
-                return if should_be_inverted {
-                    Ok( Expression::Unary { op: Operator::Not, operand: Box::new( operand ) } )
-                }
-                else {
-                    Ok( operand )
+                return match operand.typ() {
+                    Type::Str => Err( RawSyntaxError {
+                        col: current_token.col,
+                        len: current_token.kind.len(),
+                        msg: "invalid expression".into(),
+                        help_msg: "cannot invert string values".into(),
+                    } ),
+                    Type::Int | Type::Char | Type::Bool =>
+                        if should_be_inverted {
+                            Ok( Expression::Unary { op: Operator::Not, operand: Box::new( operand ) } )
+                        }
+                        else {
+                            Ok( operand )
+                        }
                 }
             },
             TokenKind::Definition( _ )
@@ -655,7 +702,16 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 
         while let Some( (op_token, op) ) = self.operator( &[Operator::Pow] )? {
             let rhs = self.primary_expression()?;
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
+            lhs = match (lhs.typ(), rhs.typ()) {
+                (Type::Int | Type::Char | Type::Bool, Type::Str)
+                | (Type::Str, Type::Int | Type::Char | Type::Bool) => return Err( RawSyntaxError {
+                    col: op_token.col,
+                    len: op_token.kind.len(),
+                    msg: "invalid expression".into(),
+                    help_msg: "strings are not allowed inside expressions".into(),
+                } ),
+                _ => Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) },
+            }
         }
 
         return Ok( lhs );
@@ -666,7 +722,16 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 
         while let Some( (op_token, op) ) = self.operator( &[Operator::Times, Operator::Divide, Operator::Remainder] )? {
             let rhs = self.exponentiative_expression()?;
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
+            lhs = match (lhs.typ(), rhs.typ()) {
+                (Type::Int | Type::Char | Type::Bool, Type::Str)
+                | (Type::Str, Type::Int | Type::Char | Type::Bool) => return Err( RawSyntaxError {
+                    col: op_token.col,
+                    len: op_token.kind.len(),
+                    msg: "invalid expression".into(),
+                    help_msg: "strings are not allowed inside expressions".into(),
+                } ),
+                _ => Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) },
+            }
         }
 
         return Ok( lhs );
@@ -677,7 +742,16 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 
         while let Some( (op_token, op) ) = self.operator( &[Operator::Plus, Operator::Minus] )? {
             let rhs = self.multiplicative_expression()?;
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
+            lhs = match (lhs.typ(), rhs.typ()) {
+                (Type::Int | Type::Char | Type::Bool, Type::Str)
+                | (Type::Str, Type::Int | Type::Char | Type::Bool) => return Err( RawSyntaxError {
+                    col: op_token.col,
+                    len: op_token.kind.len(),
+                    msg: "invalid expression".into(),
+                    help_msg: "strings are not allowed inside expressions".into(),
+                } ),
+                _ => Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) },
+            }
         }
 
         return Ok( lhs );
@@ -688,7 +762,16 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 
         while let Some( (op_token, op) ) = self.operator( &[Operator::LeftShift, Operator::RightShift] )? {
             let rhs = self.additive_expression()?;
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
+            lhs = match (lhs.typ(), rhs.typ()) {
+                (Type::Int | Type::Char | Type::Bool, Type::Str)
+                | (Type::Str, Type::Int | Type::Char | Type::Bool) => return Err( RawSyntaxError {
+                    col: op_token.col,
+                    len: op_token.kind.len(),
+                    msg: "invalid expression".into(),
+                    help_msg: "strings are not allowed inside expressions".into(),
+                } ),
+                _ => Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) },
+            }
         }
 
         return Ok( lhs );
@@ -699,7 +782,16 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 
         while let Some( (op_token, op) ) = self.operator( &[Operator::BitAnd] )? {
             let rhs = self.shift_expression()?;
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
+            lhs = match (lhs.typ(), rhs.typ()) {
+                (Type::Int | Type::Char | Type::Bool, Type::Str)
+                | (Type::Str, Type::Int | Type::Char | Type::Bool) => return Err( RawSyntaxError {
+                    col: op_token.col,
+                    len: op_token.kind.len(),
+                    msg: "invalid expression".into(),
+                    help_msg: "strings are not allowed inside expressions".into(),
+                } ),
+                _ => Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) },
+            }
         }
 
         return Ok( lhs );
@@ -710,7 +802,16 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 
         while let Some( (op_token, op) ) = self.operator( &[Operator::BitXor] )? {
             let rhs = self.bitand_expression()?;
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
+            lhs = match (lhs.typ(), rhs.typ()) {
+                (Type::Int | Type::Char | Type::Bool, Type::Str)
+                | (Type::Str, Type::Int | Type::Char | Type::Bool) => return Err( RawSyntaxError {
+                    col: op_token.col,
+                    len: op_token.kind.len(),
+                    msg: "invalid expression".into(),
+                    help_msg: "strings are not allowed inside expressions".into(),
+                } ),
+                _ => Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) },
+            }
         }
 
         return Ok( lhs );
@@ -721,7 +822,16 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 
         while let Some( (op_token, op) ) = self.operator( &[Operator::BitOr] )? {
             let rhs = self.bitxor_expression()?;
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
+            lhs = match (lhs.typ(), rhs.typ()) {
+                (Type::Int | Type::Char | Type::Bool, Type::Str)
+                | (Type::Str, Type::Int | Type::Char | Type::Bool) => return Err( RawSyntaxError {
+                    col: op_token.col,
+                    len: op_token.kind.len(),
+                    msg: "invalid expression".into(),
+                    help_msg: "strings are not allowed inside expressions".into(),
+                } ),
+                _ => Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) },
+            }
         }
 
         return Ok( lhs );
@@ -732,7 +842,16 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 
         while let Some( (op_token, op) ) = self.operator( &[Operator::Compare] )? {
             let rhs = self.bitor_expression()?;
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
+            lhs = match (lhs.typ(), rhs.typ()) {
+                (Type::Int | Type::Char | Type::Bool, Type::Str)
+                | (Type::Str, Type::Int | Type::Char | Type::Bool) => return Err( RawSyntaxError {
+                    col: op_token.col,
+                    len: op_token.kind.len(),
+                    msg: "invalid expression".into(),
+                    help_msg: "strings are not allowed inside expressions".into(),
+                } ),
+                _ => Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) },
+            }
         }
 
         return Ok( lhs );
@@ -796,41 +915,6 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
         return Ok( lhs );
     }
 
-    // pub(crate) fn xor_expression( &mut self ) -> Result<Expression, RawSyntaxError> {
-    //     let mut lhs = self.and_expression( tokens )?;
-
-    //     while let Some( op ) = self.operator( tokens, &[Operator::Xor] )? {
-    //         let op_pos = tokens.peek_previous().unwrap();
-
-    //         if lhs.typ() != Type::Bool {
-    //             return Err( RawSyntaxError {
-    //                 line_byte_start: op_pos.line.byte_start,
-    //                 line: op_pos.line.number,
-    //                 col: op_pos.token.col,
-    //                 len: op_pos.token.kind.len(),
-    //                 msg: "invalid boolean expression".into(),
-    //                 help_msg: "must be preceded by a boolean expression".into(),
-    //             } );
-    //         }
-
-    //         let rhs = self.and_expression( tokens )?;
-    //         if rhs.typ() != Type::Bool {
-    //             return Err( RawSyntaxError {
-    //                 line_byte_start: op_pos.line.byte_start,
-    //                 line: op_pos.line.number,
-    //                 col: op_pos.token.col,
-    //                 len: op_pos.token.kind.len(),
-    //                 msg: "invalid boolean expression".into(),
-    //                 help_msg: "must be followed by a boolean expression".into(),
-    //             } );
-    //         }
-
-    //         lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
-    //     }
-
-    //     return Ok( lhs );
-    // }
-
     fn or_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.and_expression()?;
 
@@ -861,7 +945,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
     }
 
     // TODO implement boolean operators for strings
-    // TODO disallow implicit conversions (str + i64, char + i64, str + char or str + str
+    // TODO disallow implicit conversions
         // IDEA introduce casting operators
     // TODO implement boolean operator chaining
     fn expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
@@ -1030,16 +1114,11 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
         }
     }
 
-    fn variable_reassignment_or_expression( &mut self ) -> Result<Node<'src, 'tokens>, RawSyntaxError> {
+    fn variable_reassignment( &mut self ) -> Result<Node<'src, 'tokens>, RawSyntaxError> {
         let name_token = self.tokens.current.unwrap();
         let name = match name_token.kind {
             TokenKind::Identifier( name ) => name,
             _ => unreachable!(),
-        };
-
-        let op_token = match self.tokens.peek_next() {
-            Some( token @ Token { kind: TokenKind::Equals | TokenKind::Op( _ ), .. } ) => token,
-            Some( _ ) | None => return Ok( Node::Expression( self.expression()? ) ),
         };
 
         if self.resolve_type( name ).is_some() {
@@ -1051,9 +1130,9 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
             } );
         }
 
-        self.tokens.next();
-        self.tokens.next();
+        let op_token = self.tokens.next().unwrap();
 
+        self.tokens.next();
         let rhs = self.expression()?;
         return match self.resolve_variable( name ) {
             Some( (scope_idx, var_idx, var) ) => match var.mutability {

@@ -1,5 +1,13 @@
 # Versions
 
+## 0.5
+
+### 0.5.0
+
+- disallowed implicit conversions between strings and other types
+    - corrected related bugs
+
+
 ## 0.4
 
 ### 0.4.2
@@ -34,7 +42,7 @@
 
 - removed `interpret` mode
 - improved cli
-    - added printing of the compile version
+    - added printing of the compiler version
     - added compilation output folder
 - renamed `for` keyword to `loop`
 - introduced the `do` keyword for single statements instead of `:`

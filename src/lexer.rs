@@ -117,6 +117,7 @@ pub(crate) enum Literal {
     Char( u8 ), // only supporting ASCII characters for now
     Bool( bool ),
     Str( Vec<u8> ),
+    // Array( Box<Literal> )
 }
 
 impl Display for Literal {
@@ -176,6 +177,7 @@ pub(crate) enum Type {
     Char,
     Bool,
     Str,
+    // Array( Box<Type> ),
 }
 
 impl Display for Type {
@@ -189,17 +191,6 @@ impl Display for Type {
     }
 }
 
-impl Len for Type {
-    fn len( &self ) -> usize {
-        match self {
-            Self::Int  => core::mem::size_of::<isize>(),
-            Self::Char => core::mem::size_of::<u8>(),
-            Self::Bool => core::mem::size_of::<bool>(),
-            Self::Str  => core::mem::size_of::<*const u8>() + core::mem::size_of::<usize>(),
-        }
-    }
-}
-
 impl Type {
     pub(crate) fn default( &self ) -> Literal {
         match self {
@@ -207,6 +198,16 @@ impl Type {
             Self::Char => Literal::Char( 0 ),
             Self::Int  => Literal::Int( 0 ),
             Self::Str  => Literal::Str( Vec::new() ),
+
+        }
+    }
+
+    pub(crate) fn size( &self ) -> usize {
+        match self {
+            Self::Int  => core::mem::size_of::<isize>(),
+            Self::Char => core::mem::size_of::<u8>(),
+            Self::Bool => core::mem::size_of::<bool>(),
+            Self::Str  => core::mem::size_of::<*const u8>() + core::mem::size_of::<usize>(),
         }
     }
 }
@@ -254,11 +255,6 @@ pub(crate) enum Operator {
 
     And,
     AndEquals,
-    // NOTE temporarily disabling xor operators until we have a flat/chained expression type
-    // such that    [operand, op, operand, op, operand, op, operand]
-    // instead of   [[[operand, op, operand] op, operand], op, operand]
-    // Xor,
-    // XorEquals,
     Or,
     OrEquals,
 }
@@ -289,8 +285,6 @@ impl Display for Operator {
             Self::OrEquals         => write!( f, "||=" ),
             Self::BitOr            => write!( f, "|" ),
             Self::BitOrEquals      => write!( f, "|=" ),
-            // Self::Xor              => write!( f, "^^" ),
-            // Self::XorEquals        => write!( f, "^^=" ),
             Self::BitXor           => write!( f, "^" ),
             Self::BitXorEquals     => write!( f, "^=" ),
             Self::LeftShift        => write!( f, "<<" ),
@@ -335,8 +329,6 @@ impl Len for Operator {
             Self::OrEquals         => 3,
             Self::BitOr            => 1,
             Self::BitOrEquals      => 2,
-            // Self::Xor              => 2,
-            // Self::XorEquals        => 3,
             Self::BitXor           => 1,
             Self::BitXorEquals     => 2,
             Self::LeftShift        => 2,
@@ -376,8 +368,7 @@ impl TypeOf for Operator {
             | Self::Less | Self::LessOrEquals
             | Self::Not
             | Self::And | Self::AndEquals
-            | Self::Or | Self::OrEquals
-            /* | Self::Xor | Self::XorEquals */ => Type::Bool,
+            | Self::Or | Self::OrEquals => Type::Bool,
         }
     }
 }
@@ -412,6 +403,8 @@ impl Len for Mutability {
 pub(crate) enum BracketKind {
     OpenRound,
     CloseRound,
+    OpenSquare,
+    CloseSquare,
     OpenCurly,
     CloseCurly,
 }
@@ -421,6 +414,8 @@ impl Display for BracketKind {
         return match self {
             Self::OpenRound  => write!( f, "(" ),
             Self::CloseRound => write!( f, ")" ),
+            Self::OpenSquare  => write!( f, "[" ),
+            Self::CloseSquare => write!( f, "]" ),
             Self::OpenCurly  => write!( f, "{{" ),
             Self::CloseCurly => write!( f, "}}" ),
         }
@@ -432,6 +427,8 @@ impl Len for BracketKind {
         return match self {
             Self::OpenRound  => 1,
             Self::CloseRound => 1,
+            Self::OpenSquare  => 1,
+            Self::CloseSquare => 1,
             Self::OpenCurly  => 1,
             Self::CloseCurly => 1,
         }
@@ -537,6 +534,7 @@ impl Len for TokenKind<'_> {
 #[derive( Debug, Clone )]
 pub(crate) struct Token<'src> {
     pub(crate) col: usize,
+    // pub(crate) len: usize,
     pub(crate) kind: TokenKind<'src>,
 }
 
@@ -897,9 +895,34 @@ impl<'src> Lexer<'src> {
                 },
                 b')' => match self.brackets.pop() {
                     Some( bracket ) => match bracket.kind {
-                        BracketKind::OpenRound | BracketKind::CloseCurly | BracketKind::CloseRound =>
+                        BracketKind::OpenRound | BracketKind::CloseRound
+                        | BracketKind::CloseCurly | BracketKind::CloseSquare =>
                             Ok( Some( TokenKind::Bracket( BracketKind::CloseRound ) ) ),
-                        BracketKind::OpenCurly => Err( RawSyntaxError {
+                        BracketKind::OpenCurly | BracketKind::OpenSquare => Err( RawSyntaxError {
+                            col: self.token_start_col,
+                            len: 1,
+                            msg: "stray bracket".into(),
+                            help_msg: "closes the wrong bracket".into(),
+                        } ),
+                    },
+                    None => Err( RawSyntaxError {
+                        col: self.token_start_col,
+                        len: 1,
+                        msg: "stray bracket".into(),
+                        help_msg: "was not opened before".into(),
+                    } ),
+                },
+                b'[' => {
+                    let kind = BracketKind::OpenSquare;
+                    self.brackets.push( Bracket { col: self.token_start_col, kind } );
+                    Ok( Some( TokenKind::Bracket( kind ) ) )
+                },
+                b']' => match self.brackets.pop() {
+                    Some( bracket ) => match bracket.kind {
+                        BracketKind::OpenSquare | BracketKind::CloseSquare
+                        | BracketKind::CloseCurly | BracketKind::CloseRound =>
+                            Ok( Some( TokenKind::Bracket( BracketKind::CloseSquare ) ) ),
+                        BracketKind::OpenCurly | BracketKind::OpenRound => Err( RawSyntaxError {
                             col: self.token_start_col,
                             len: 1,
                             msg: "stray bracket".into(),
@@ -920,9 +943,10 @@ impl<'src> Lexer<'src> {
                 },
                 b'}' => match self.brackets.pop() {
                     Some( bracket ) => match bracket.kind {
-                        BracketKind::OpenCurly | BracketKind::CloseCurly | BracketKind::CloseRound =>
+                        BracketKind::OpenCurly | BracketKind::CloseCurly
+                        | BracketKind::CloseRound | BracketKind::CloseSquare =>
                             Ok( Some( TokenKind::Bracket( BracketKind::CloseCurly ) ) ),
-                        BracketKind::OpenRound => Err( RawSyntaxError {
+                        BracketKind::OpenRound | BracketKind::OpenSquare => Err( RawSyntaxError {
                             col: self.token_start_col,
                             len: 1,
                             msg: "stray bracket".into(),
@@ -1008,16 +1032,6 @@ impl<'src> Lexer<'src> {
                     _ => Ok( Some( TokenKind::Op( Operator::BitAnd ) ) ),
                 },
                 b'^' => match self.peek_next()? {
-                    // Some( b'^' ) => {
-                    //     self.col += 1;
-                    //     match self.peek_next()? {
-                    //         Some( b'=' ) => {
-                    //             self.col += 1;
-                    //             Ok( Some( TokenKind::Op( Operator::XorEquals ) ) )
-                    //         },
-                    //         _ => Ok( Some( TokenKind::Op( Operator::Xor ) ) ),
-                    //     }
-                    // },
                     Some( b'=' ) => {
                         self.col += 1;
                         Ok( Some( TokenKind::Op( Operator::BitXorEquals ) ) )

@@ -144,40 +144,40 @@ r#" stdout: equ 1
         );
 
         let mut stack_size = 0;
-        let mut variables: Vec<(Type, Vec<&Variable>)> = Vec::new();
+        let mut variables: Vec<Vec<&Variable>> = Vec::new();
         for scope in this.ast {
             for variable in &scope.variables {
-                let typ = &variable.value.typ();
+                let typ = variable.value.typ();
 
                 let mut type_already_encountered = false;
-                for var_info in &mut variables {
-                    if *typ == var_info.0 {
-                        var_info.1.push( variable );
+                for vars in &mut variables {
+                    if typ == vars[ 0 ].value.typ() {
+                        vars.push( variable );
                         type_already_encountered = true;
                         break;
                     }
                 }
 
                 if !type_already_encountered {
-                    variables.push( (variable.value.typ(), vec![variable]) );
+                    variables.push( vec![variable] );
                 }
             }
 
             while !variables.is_empty() {
                 let mut largest_type_bytes = 0;
                 let mut current_type = 0;
-                for (variable_idx, variable) in variables.iter().enumerate() {
-                    let bytes = variable.0.len();
+                for (typ, variables_of_type) in variables.iter().enumerate() {
+                    let bytes = variables_of_type[ 0 ].value.typ().size();
                     if bytes > largest_type_bytes {
                         largest_type_bytes = bytes;
-                        current_type = variable_idx;
+                        current_type = typ;
                     }
                 }
 
-                for variable in variables.swap_remove( current_type ).1 {
+                for variable in variables.swap_remove( current_type ) {
                     let typ = variable.value.typ();
                     this.variables.push( CompilerVariable { name: variable.name, typ, offset: stack_size } );
-                    stack_size += typ.len();
+                    stack_size += typ.size();
                 }
             }
         }
@@ -473,50 +473,7 @@ _start:
     }
 }
 
-// Resolution of identifiers and string tags
-impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
-    fn resolve( &self, name: &'src str ) -> &CompilerVariable<'src> {
-        for variable in &self.variables {
-            if variable.name == name {
-                return variable;
-            }
-        }
-
-        unreachable!();
-    }
-
-    fn string_label_idx( &mut self, string: &'ast Vec<u8> ) -> usize {
-        let mut string_idx = 0;
-        for string_label in &self.strings {
-            if std::ptr::eq( string, string_label.string ) {
-                return string_idx;
-            }
-            string_idx += 1;
-        }
-
-        let mut string_text = String::with_capacity( string.len() + 2 );
-        string_text.push( '`' );
-        for ch in string {
-            string_text.extend( (*ch as char).escape_default() );
-        }
-        string_text.push( '`' );
-
-        let label = format!( "str_{}", string_idx );
-        let len_label = format!( "str_{}_len", string_idx );
-
-        self.rodata += &format!(
-            "\n\n {}: db {}\
-            \n {}: equ $ - {}",
-            label, string_text,
-            len_label, label
-        );
-
-        self.strings.push( CompilerString { string, label, len_label } );
-        return string_idx;
-    }
-}
-
-// Compilation of nodes
+// nodes
 impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
     fn node( &mut self, node: &'ast Node<'tokens, 'src> ) {
         match node {
@@ -692,12 +649,17 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                 );
             },
             Node::Definition( scope, variable ) => {
-                let variable = &self.ast[ *scope ].variables[ *variable ];
-                self.assignment( variable.name, &variable.value );
+                let ast_variable = &self.ast[ *scope ].variables[ *variable ];
+                let name = &ast_variable.name;
+                let value = &ast_variable.value;
+                let variable = self.resolve( ast_variable.name );
+                self.assignment( name, value, variable.typ, variable.offset );
             },
-            Node::Assignment( scope, variable, value ) => {
-                let variable = &self.ast[ *scope ].variables[ *variable ];
-                self.assignment( variable.name, value );
+            Node::Assignment( scope, variable, new_value ) => {
+                let ast_variable = &self.ast[ *scope ].variables[ *variable ];
+                let name = &ast_variable.name;
+                let variable = self.resolve( ast_variable.name );
+                self.assignment( name, new_value, variable.typ, variable.offset );
             },
             Node::Scope( inner )           => self.scope( *inner ),
             Node::Expression( expression ) => self.expression( expression ),
@@ -713,8 +675,50 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
             self.node( node );
         }
     }
+}
 
-    // TODO print crash error message, with location information -> file:line:col
+// expressions
+impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
+    fn resolve( &self, name: &'src str ) -> &CompilerVariable<'src> {
+        for variable in &self.variables {
+            if variable.name == name {
+                return variable;
+            }
+        }
+
+        unreachable!();
+    }
+
+    fn string_label_idx( &mut self, string: &'ast Vec<u8> ) -> usize {
+        let mut string_idx = 0;
+        for string_label in &self.strings {
+            if std::ptr::eq( string, string_label.string ) {
+                return string_idx;
+            }
+            string_idx += 1;
+        }
+
+        let mut string_text = String::with_capacity( string.len() + 2 );
+        string_text.push( '`' );
+        for ch in string {
+            string_text.extend( (*ch as char).escape_default() );
+        }
+        string_text.push( '`' );
+
+        let label = format!( "str_{}", string_idx );
+        let len_label = format!( "str_{}_len", string_idx );
+
+        self.rodata += &format!(
+            "\n\n {}: db {}\
+            \n {}: equ $ - {}",
+            label, string_text,
+            len_label, label
+        );
+
+        self.strings.push( CompilerString { string, label, len_label } );
+        return string_idx;
+    }
+
     fn expression( &mut self, expression: &'ast Expression<'tokens, 'src> ) {
         match expression {
             Expression::Literal( Literal::Int( value ) )  => self.asm += &format!( " mov rdi, {}\n", value ),
@@ -734,13 +738,15 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
             Expression::Binary { .. } => self.expression_factor( expression, "rdi" ),
             Expression::Identifier( src_name, _ ) => {
                 let src_variable = self.resolve( src_name );
-                let src_variable_typ = &src_variable.typ;
+                let src_variable_typ = src_variable.typ;
                 let src_variable_offset = src_variable.offset;
 
                 match src_variable_typ {
-                    Type::Int               => self.asm += &format!( " mov rdi, [rbp + {}]\n", src_variable_offset ),
-                    Type::Char | Type::Bool => self.asm += &format!( " movzx rdi, byte [rbp + {}]\n", src_variable_offset ),
-                    Type::Str               =>
+                    Type::Int =>
+                        self.asm += &format!( " mov rdi, [rbp + {}]\n", src_variable_offset ),
+                    Type::Char | Type::Bool =>
+                        self.asm += &format!( " movzx rdi, byte [rbp + {}]\n", src_variable_offset ),
+                    Type::Str =>
                         self.asm += &format!(
                             " mov rsi, [rbp + {}]\
                             \n mov rdx, [rbp + {}]\n",
@@ -871,8 +877,6 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                     | Operator::BitOr | Operator::BitOrEquals => ("rdi", "rsi",
                         " or rdi, rsi\n".into()
                     ),
-                    // IDEA have the xor sum the booleans and return a boolean based on the sum:
-                    // 0 -> false, 1 -> true, > 1 -> false
                     Operator::BitXor | Operator::BitXorEquals => ("rdi", "rsi",
                         " xor rdi, rsi\n".into()
                     ),
@@ -919,6 +923,7 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
             },
             Expression::Unary { op, operand } => {
                 self.expression_factor( operand, "rdi" );
+
                 match op {
                     Operator::Not => match operand.typ() {
                         Type::Bool                         => self.asm += " xor dil, 1\n",
@@ -930,8 +935,10 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
             },
         }
     }
+}
 
-
+// ifs and loops
+impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
     fn iff( &mut self, iff: &'ast IfStatement<'tokens, 'src>, tag: &String, false_tag: &String ) {
         self.asm += &format!( "{}:; {}\n", tag, iff.condition );
         self.condition( &iff.condition, false_tag );
@@ -945,25 +952,25 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                 self.condition( condition, false_tag );
                 self.node( &looop.statement );
             },
-            /* // NOTE by inverting the jmp instruction and jumping to the start of the loop we can
-            avoid compiling an extra jmp instruction:
-                mov rdi, [rbp + 0]
-                mov rsi, 10
-                cmp rdi, rsi
-                jge loop_0_end
-
-                jmp loop_0
-                loop_0_end:
-
-            what we actually want:
-                mov rdi, [rbp + 0]
-                mov rsi, 10
-                cmp rdi, rsi
-                jl loop_0
-
-                loop_0_end:
-             */
             LoopCondition::Post( condition ) => {
+                /* // NOTE by inverting the jmp instruction and jumping to the start of the loop we can
+                avoid compiling an extra jmp instruction:
+                    mov rdi, [rbp + 0]
+                    mov rsi, 10
+                    cmp rdi, rsi
+                    jge loop_0_end
+
+                    jmp loop_0
+                    loop_0_end:
+
+                what we actually want:
+                    mov rdi, [rbp + 0]
+                    mov rsi, 10
+                    cmp rdi, rsi
+                    jl loop_0
+
+                    loop_0_end:
+                 */
                 self.node( &looop.statement );
                 self.condition( condition, false_tag );
             }
@@ -1044,25 +1051,24 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
             },
         }
     }
+}
 
+// assignments
+impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
+    fn assignment( &mut self, name: &'src str, value: &'ast Expression<'tokens, 'src>, typ: Type, offset: usize ) {
+        self.asm += &format!( " ; {} = {}\n", name, value );
 
-    fn assignment( &mut self, name: &'src str, new_value: &'ast Expression<'tokens, 'src> ) {
-        let variable = self.resolve( name );
-        let variable_typ = variable.typ;
-        let variable_offset = variable.offset;
-        self.asm += &format!( " ; {} = {}\n", name, new_value );
-
-        match new_value {
+        match value {
             Expression::Literal( Literal::Int( value ) ) =>
                 self.asm += &format!(
                     " mov rdi, {}\
                     \n mov [rbp + {}], rdi\n\n",
-                    value, variable_offset
+                    value, offset
                 ),
             Expression::Literal( Literal::Char( code ) ) =>
-                self.asm += &format!( " mov byte [rbp + {}], {}\n\n", variable_offset, code ),
+                self.asm += &format!( " mov byte [rbp + {}], {}\n\n", offset, code ),
             Expression::Literal( Literal::Bool( value ) ) =>
-                self.asm += &format!( " mov byte [rbp + {}], {}\n\n", variable_offset, value ),
+                self.asm += &format!( " mov byte [rbp + {}], {}\n\n", offset, value ),
             Expression::Literal( Literal::Str( string ) ) => {
                 let string_label_idx = self.string_label_idx( string );
                 let string_label = &self.strings[ string_label_idx ];
@@ -1070,53 +1076,39 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                 self.asm += &format!(
                     " mov qword [rbp + {}], {}\
                     \n mov qword [rbp + {}], {}\n\n",
-                    variable_offset, string_label.label,
-                    variable_offset + 8, string_label.len_label
+                    offset, string_label.label,
+                    offset + 8, string_label.len_label
                 );
             },
             Expression::Binary { .. } => {
-                self.expression( new_value );
+                self.expression( value );
 
-                match variable_typ {
-                    Type::Int | Type::Str   => self.asm += &format!( " mov [rbp + {}], rdi\n\n", variable_offset ),
-                    Type::Char | Type::Bool => self.asm += &format!( " mov [rbp + {}], dil\n\n", variable_offset ),
+                match typ {
+                    Type::Int | Type::Str   => self.asm += &format!( " mov [rbp + {}], rdi\n\n", offset ),
+                    Type::Char | Type::Bool => self.asm += &format!( " mov [rbp + {}], dil\n\n", offset ),
                 }
             }
-            Expression::Identifier( src_name, _ ) => {
-                let src_variable = self.resolve( src_name );
-                let src_variable_typ = src_variable.typ;
-                let src_variable_offset = src_variable.offset;
+            Expression::Identifier( _, _ ) => {
+                self.expression( value );
 
-                match src_variable_typ {
-                    Type::Int =>
+                match typ {
+                    Type::Int               => self.asm += &format!( " mov [rbp + {}], rdi\n\n", offset ),
+                    Type::Char | Type::Bool => self.asm += &format!( " mov [rbp + {}], dil\n\n", offset ),
+                    Type::Str               =>
                         self.asm += &format!(
-                            " mov rdi, [rbp + {}]\
-                            \n mov [rbp + {}], rdi\n\n",
-                            src_variable_offset, variable_offset
-                        ),
-                    Type::Char | Type::Bool =>
-                        self.asm += &format!(
-                            " movzx rdi, byte [rbp + {}]\
-                            \n mov [rbp + {}], rdi\n\n",
-                            src_variable_offset, variable_offset
-                        ),
-                    Type::Str =>
-                        self.asm += &format!(
-                            " mov rsi, [rbp + {}]\
-                            \n mov rdx, [rbp + {}]\
-                            \n mov [rbp + {}], rsi\
+                            " mov [rbp + {}], rsi\
                             \n mov [rbp + {}], rdx\n\n",
-                            src_variable_offset, variable_offset,
-                            src_variable_offset + 8, variable_offset + 8
+                            offset,
+                            offset + 8
                         ),
                 }
             },
             Expression::Unary { .. } => {
-                self.expression( new_value );
+                self.expression( value );
 
-                match variable_typ {
-                    Type::Int | Type::Str   => self.asm += &format!( " mov [rbp + {}], rdi\n\n", variable_offset ),
-                    Type::Char | Type::Bool => self.asm += &format!( " mov [rbp + {}], dil\n\n", variable_offset ),
+                match typ {
+                    Type::Int | Type::Str   => self.asm += &format!( " mov [rbp + {}], rdi\n\n", offset ),
+                    Type::Char | Type::Bool => self.asm += &format!( " mov [rbp + {}], dil\n\n", offset ),
                 }
             },
         }

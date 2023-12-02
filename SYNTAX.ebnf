@@ -11,10 +11,10 @@ string_literal    = '"', [{escape_character | ASCII_character}], '"';
 identifier        = "_" | "A".."Z" | "a".."z", [{"_" | "A".."Z" | "a".."z" | digit}];
 
 (* from highest precedence to lowest *)
-int_factor                = ["-" | "!"], (number_literal | character_literal | string_literal | identifier | ("(", non_boolean_expression, ")"));
+int_factor                = ["-" | "!"], (number_literal | character_literal | identifier | ("(", integer_expression, ")"));
 boolean_factor            = ["!"], (boolean_literal | identifier | ("(", boolean_expression, ")"));
 
-primary_expression        = int_factor | boolean_factor | character_literal | string_literal | ("(", expression, ")");
+primary_expression        = int_factor | boolean_factor | character_literal | ("(", expression, ")");
 exponentiative_expression = primary_expression, ["**", primary_expression];
 multiplicative_expression = boolean_literal, [("*" | "/" | "%"), boolean_literal];
 additive_expression       = multiplicative_expression, [("+" | "-"), multiplicative_expression];
@@ -24,21 +24,25 @@ bitxor_expression         = bitand_expression, ["^", bitand_expression];
 bitor_expression          = bitxor_expression, ["|", bitxor_expression];
 comparative_expression    = bitor_expression, ["<=>", bitor_expression];
 (* comparison expressions cannot be chained*)
-comparison_expression     = comparative_expression, ("==" | "!=" | ">" | ">=" | "<" | "<="), comparative_expression;
+comparison_expression     = comparative_expression, [("==" | "!=" | ">" | ">=" | "<" | "<="), comparative_expression];
 and_expression            = comparison_expression, ["&&", comparison_expression];
 or_expression             = and_expression, ["||", and_expression];
 
 boolean_expression        = or_expression;
-non_boolean_expression    = bitor_expression;
-expression                = boolean_expression | non_boolean_expression;
+integer_expression        = bitor_expression;
+string_expression         = string_literal;
+expression                = boolean_expression | integer_expression | string_expression;
 
-variable_declaration = ("let" | "var"), identifier, (
-    (":", identifier)                       (* type-specific default initialization *)
-    (* | (":", identifier, "=", "?")           ( explicitly uninitialized ) *)
-    | ([":", identifier], "=", expression)  (* regular declaration (explicit/inferred type)*)
-    ), ";";
+type = identifier;
+variable_declaration =
+    ("let" | "var"), identifier, (
+        (":", type)                       (* type-specific default initialization *)
+        | ([":", type], "=", expression)  (* regular declaration (explicit/inferred type)*)
+    ),
+    ";";
 
-variable_reassignment = identifier,
+variable_reassignment =
+    identifier,
     ("=" | "**=" | "*=" | "/=" | "%=" | "+=" | "-=" | "<<=" | ">>=" | "&=" | "^=" | "|=" | "&&=" | "^^=" | "||="),
     expression, ";";
 
