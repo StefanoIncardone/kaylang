@@ -49,19 +49,8 @@ impl Src {
         let mut src = BufReader::new( file );
 
         loop {
-            let chars_read = match src.read_line( &mut self.code ) {
-                Ok( 0 ) => {
-                    // it will make lexing simpler
-                    if !self.code.is_empty() {
-                        let last_char = self.code.len() - 1;
-                        if self.code.as_bytes()[ last_char ] != b'\n' {
-                            self.code.push( '\n' );
-                            let last_line = self.lines.len() - 1;
-                            self.lines[ last_line ].end += 1;
-                        }
-                    }
-                    break;
-                },
+            let mut chars_read = match src.read_line( &mut self.code ) {
+                Ok( 0 ) => break,
                 Ok( read ) => read,
                 Err( err ) => return Err( IoError {
                     kind: err.kind(),
@@ -71,12 +60,27 @@ impl Src {
             };
 
             let mut end = self.code.len() - 1;
-            if end > start && self.code.as_bytes()[ end - 1 ] == b'\r' {
-                end -= 1;
+            if end > start {
+                if let cr @ b'\r' = &mut unsafe { self.code.as_bytes_mut() }[ end - 1 ] {
+                    *cr = b'\n';
+                    unsafe { self.code.as_mut_vec().set_len( end ) };
+                    end -= 1;
+                    chars_read -= 1;
+                }
             }
 
             self.lines.push( Line { start, end } );
             start += chars_read;
+        }
+
+        // it will make lexing simpler
+        if !self.code.is_empty() {
+            let last_char = self.code.len() - 1;
+            if self.code.as_bytes()[ last_char ] != b'\n' {
+                self.code.push( '\n' );
+                let last_line = self.lines.len() - 1;
+                self.lines[ last_line ].end += 1;
+            }
         }
 
         return Ok( () );
@@ -214,37 +218,29 @@ impl Type {
 
 
 #[derive( Debug, Clone, Copy, PartialEq )]
-pub(crate) enum Operator {
-    // unary operators
+pub(crate) enum Op {
+    // unary
     Not,
+    // Minus can also be a unary operator
 
-    // binary operators
+    // binary
     Pow,
-    PowEquals,
     Times,
-    TimesEquals,
     Divide,
-    DivideEquals,
     Remainder,
-    RemainderEquals,
     Plus,
-    PlusEquals,
     Minus,
-    MinusEquals,
 
     LeftShift,
-    LeftShiftEquals,
     RightShift,
-    RightShiftEquals,
 
     BitAnd,
-    BitAndEquals,
     BitXor,
-    BitXorEquals,
     BitOr,
-    BitOrEquals,
 
     Compare,
+    And,
+    Or,
 
     EqualsEquals,
     NotEquals,
@@ -253,15 +249,32 @@ pub(crate) enum Operator {
     Less,
     LessOrEquals,
 
-    And,
+    // assignment
+    Equals,
+
+    PowEquals,
+    TimesEquals,
+    DivideEquals,
+    RemainderEquals,
+    PlusEquals,
+    MinusEquals,
+
+    LeftShiftEquals,
+    RightShiftEquals,
+
+    BitAndEquals,
+    BitXorEquals,
+    BitOrEquals,
+
     AndEquals,
-    Or,
     OrEquals,
 }
 
-impl Display for Operator {
+impl Display for Op {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
+            Self::Equals           => write!( f, "=" ),
+
             Self::Not              => write!( f, "!" ),
 
             Self::Pow              => write!( f, "**" ),
@@ -303,9 +316,11 @@ impl Display for Operator {
     }
 }
 
-impl Len for Operator {
+impl Len for Op {
     fn len( &self ) -> usize {
         return match self {
+            Self::Equals           => 1,
+
             Self::Not              => 1,
 
             Self::Pow              => 2,
@@ -347,7 +362,7 @@ impl Len for Operator {
     }
 }
 
-impl TypeOf for Operator {
+impl TypeOf for Op {
     fn typ( &self ) -> Type {
         return match self {
             Self::Compare
@@ -369,6 +384,8 @@ impl TypeOf for Operator {
             | Self::Not
             | Self::And | Self::AndEquals
             | Self::Or | Self::OrEquals => Type::Bool,
+
+            Self::Equals => unreachable!(),
         }
     }
 }
@@ -450,8 +467,7 @@ pub(crate) enum TokenKind<'src> {
     Bracket( BracketKind ),
     Colon,
     SemiColon,
-    Equals,
-    Op( Operator ),
+    Op( Op ),
 
     Literal( Literal ),
     True,
@@ -477,7 +493,6 @@ impl Display for TokenKind<'_> {
             Self::Unexpected( text ) => write!( f, "{}", text ),
 
             Self::Bracket( bracket ) => write!( f, "{}", bracket ),
-            Self::Equals             => write!( f, "=" ),
             Self::Colon              => write!( f, ":" ),
             Self::SemiColon          => write!( f, ";" ),
 
@@ -510,7 +525,6 @@ impl Len for TokenKind<'_> {
             Self::Bracket( bracket ) => bracket.len(),
             Self::Colon              => 1,
             Self::SemiColon          => 1,
-            Self::Equals             => 1,
             Self::Op( op )           => op.len(),
 
             Self::Literal( typ )     => typ.len(),
@@ -545,7 +559,8 @@ pub(crate) struct Lexer<'src> {
 
     col: usize,
     token_start_col: usize,
-    line_end: usize,
+    line_idx: usize,
+    line: &'src Line,
 
     tokens: Vec<Token<'src>>,
     brackets: Vec<Bracket>,
@@ -562,34 +577,27 @@ impl<'src> Lexer<'src> {
             src,
             col: 0,
             token_start_col: 0,
-            line_end: 0,
+            line_idx: 0,
+            line: &src.lines[ 0 ],
             tokens: Vec::new(),
             brackets: Vec::new(),
             errors: Vec::new(),
         };
 
-        for line in &src.lines {
-            if line.start == line.end {
-                continue;
-            }
-
-            this.col = line.start;
-            this.line_end = line.end;
+        loop {
             // just to check if we are getting the correct line text
-            let _line_text = &src.code[ line.start..line.end ];
-            loop {
-                let token = match this.next_token() {
-                    Ok( None ) => break,
-                    Ok( Some( kind ) ) => Token { col: this.token_start_col, kind },
-                    Err( err ) => {
-                        this.errors.add( this.src, err );
-                        let unexpected = &this.src.code[ this.token_start_col..this.col ];
-                        Token { col: this.token_start_col, kind: TokenKind::Unexpected( unexpected ) }
-                    }
-                };
+            let _line_text = &this.src.code[ this.line.start..this.line.end ];
+            let token = match this.next_token() {
+                Ok( None ) => break,
+                Ok( Some( kind ) ) => Token { col: this.token_start_col, kind },
+                Err( err ) => {
+                    this.errors.add( this.src, err );
+                    let unexpected = &this.src.code[ this.token_start_col..this.col ];
+                    Token { col: this.token_start_col, kind: TokenKind::Unexpected( unexpected ) }
+                }
+            };
 
-                this.tokens.push( token );
-            }
+            this.tokens.push( token );
         }
 
         for bracket in &this.brackets {
@@ -613,68 +621,9 @@ impl<'src> Lexer<'src> {
 }
 
 impl<'src> Lexer<'src> {
-    // FIX properly handle non ASCII characters related errors and column advancing
-        // IDEA allow utf-8 characters in strings, characters
-    fn next( &mut self ) -> Result<Option<u8>, RawSyntaxError> {
-        if self.col >= self.line_end {
-            return Ok( None );
-        }
-
-        let next = self.src.code.as_bytes()[ self.col ];
-        self.col += 1;
-        return match next {
-            ..=b'\x7F' => Ok( Some( next ) ),
-            _ => Err( RawSyntaxError {
-                col: self.col,
-                len: 1,
-                msg: "unrecognized character".into(),
-                help_msg: "not a valid ASCII character".into(),
-            } ),
-        }
-    }
-
-    fn peek_next( &self ) -> Result<Option<&'src u8>, RawSyntaxError> {
-        if self.col >= self.line_end {
-            return Ok( None );
-        }
-
-        let next = &self.src.code.as_bytes()[ self.col ];
-        return match next {
-            ..=b'\x7F' => Ok( Some( next ) ),
-            _ => Err( RawSyntaxError {
-                col: self.col,
-                len: 1,
-                msg: "unrecognized character".into(),
-                help_msg: "not a valid ASCII character".into(),
-            } ),
-        }
-    }
-
-    fn next_char( &mut self ) -> Result<u8, RawSyntaxError> {
-        return match self.next()? {
-            Some( next ) => Ok( next ),
-            None => Err( RawSyntaxError {
-                col: self.token_start_col,
-                len: self.col - self.token_start_col + 1,
-                msg: "invalid character literal".into(),
-                help_msg: "missing closing single quote".into(),
-            } ),
-        }
-    }
-
-    fn next_str_char( &mut self ) -> Result<u8, RawSyntaxError> {
-        return match self.next()? {
-            Some( next ) => Ok( next ),
-            None => Err( RawSyntaxError {
-                col: self.token_start_col,
-                len: self.col - self.token_start_col + 1,
-                msg: "invalid string literal".into(),
-                help_msg: "missing closing double quote".into(),
-            } ),
-        }
-    }
-
+    // this function exists just to be able to use the ? operator
     fn next_token( &mut self ) -> Result<Option<TokenKind<'src>>, RawSyntaxError> {
+        // this loop exists just to be able to use continues and breaks
         loop {
             self.token_start_col = self.col;
             let next = match self.next()? {
@@ -684,18 +633,24 @@ impl<'src> Lexer<'src> {
 
             return match next {
                 // ignore whitespace
-                b'\t' | b'\r' | b'\n' | b'\x0C' | b' ' => continue,
+                b'\t' | b'\r' | b'\x0C' | b' ' => continue,
+                b'\n' => match self.next_line() {
+                    Some( line ) => {
+                        self.line = line;
+                        continue;
+                    },
+                    None => return Ok( None ),
+                },
                 b'a'..=b'z' | b'A'..=b'Z' | b'_'  => {
                     let mut contains_non_ascii = false;
                     loop {
-                        match self.next() {
-                            Ok( Some( b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_' ) ) => {},
-                            Ok( Some( _ ) ) => {
-                                self.col -= 1;
-                                break;
+                        match self.peek_next() {
+                            Ok( Some( b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_' ) ) => self.col += 1,
+                            Ok( Some( _ ) | None ) => break,
+                            Err( _ ) => {
+                                contains_non_ascii = true;
+                                self.col += 1;
                             },
-                            Ok( None ) => break,
-                            Err( _ ) => contains_non_ascii = true,
                         }
                     }
 
@@ -730,14 +685,13 @@ impl<'src> Lexer<'src> {
                 b'0'..=b'9' => {
                     let mut contains_non_ascii = false;
                     loop {
-                        match self.next() {
-                            Ok( Some( b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_') ) => {},
-                            Ok( Some( _ ) ) => {
-                                self.col -= 1;
-                                break;
+                        match self.peek_next() {
+                            Ok( Some( b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_') ) => self.col += 1,
+                            Ok( Some( _ ) | None ) => break,
+                            Err( _ ) => {
+                                contains_non_ascii = true;
+                                self.col += 1;
                             },
-                            Ok( None ) => break,
-                            Err( _ ) => contains_non_ascii = true,
                         }
                     }
 
@@ -786,7 +740,7 @@ impl<'src> Lexer<'src> {
                 },
                 b'#' => {
                     // consuming the rest of the characters in the current line
-                    self.col = self.line_end;
+                    self.col = self.line.end;
 
                     // starting at token_start_col + 1 to ignore the hash symbol
                     let comment = &self.src.code[ self.token_start_col + 1..self.col ];
@@ -798,8 +752,8 @@ impl<'src> Lexer<'src> {
                     let mut text: Vec<u8> = Vec::new();
 
                     loop {
-                        let next = match self.next_str_char()? {
-                            b'\\' => match self.next_str_char()? {
+                        let next = match self.next_in_str_literal()? {
+                            b'\\' => match self.next_in_str_literal()? {
                                 b'\\' => Ok( b'\\' ),
                                 b'\'' => Ok( b'\'' ),
                                 b'"' => Ok( b'"' ),
@@ -844,8 +798,8 @@ impl<'src> Lexer<'src> {
                     }
                 },
                 b'\'' => {
-                    let code = match self.next_char()? {
-                        b'\\' => match self.next_char()? {
+                    let code = match self.next_in_char_literal()? {
+                        b'\\' => match self.next_in_char_literal()? {
                             b'\\' => Ok( b'\\' ),
                             b'\'' => Ok( b'\'' ),
                             b'"' => Ok( b'"' ),
@@ -965,9 +919,9 @@ impl<'src> Lexer<'src> {
                 b'!' => match self.peek_next()? {
                     Some( b'=' ) => {
                         self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::NotEquals ) ) )
+                        Ok( Some( TokenKind::Op( Op::NotEquals ) ) )
                     },
-                    _ => Ok( Some( TokenKind::Op( Operator::Not ) ) ),
+                    _ => Ok( Some( TokenKind::Op( Op::Not ) ) ),
                 },
                 b'*' => match self.peek_next()? {
                     Some( b'*' ) => {
@@ -975,44 +929,44 @@ impl<'src> Lexer<'src> {
                         match self.peek_next()? {
                             Some( b'=' ) => {
                                 self.col += 1;
-                                Ok( Some( TokenKind::Op( Operator::PowEquals ) ) )
+                                Ok( Some( TokenKind::Op( Op::PowEquals ) ) )
                             }
-                            _ => Ok( Some( TokenKind::Op( Operator::Pow ) ) ),
+                            _ => Ok( Some( TokenKind::Op( Op::Pow ) ) ),
                         }
                     },
                     Some( b'=' ) => {
                         self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::TimesEquals ) ) )
+                        Ok( Some( TokenKind::Op( Op::TimesEquals ) ) )
                     },
-                    _ => Ok( Some( TokenKind::Op( Operator::Times ) ) ),
+                    _ => Ok( Some( TokenKind::Op( Op::Times ) ) ),
                 },
                 b'/' => match self.peek_next()? {
                     Some( b'=' ) => {
                         self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::DivideEquals ) ) )
+                        Ok( Some( TokenKind::Op( Op::DivideEquals ) ) )
                     },
-                    _ => Ok( Some( TokenKind::Op( Operator::Divide ) ) ),
+                    _ => Ok( Some( TokenKind::Op( Op::Divide ) ) ),
                 },
                 b'%' => match self.peek_next()? {
                     Some( b'=' ) => {
                         self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::RemainderEquals ) ) )
+                        Ok( Some( TokenKind::Op( Op::RemainderEquals ) ) )
                     },
-                    _ => Ok( Some( TokenKind::Op( Operator::Remainder ) ) ),
+                    _ => Ok( Some( TokenKind::Op( Op::Remainder ) ) ),
                 },
                 b'+' => match self.peek_next()? {
                     Some( b'=' ) => {
                         self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::PlusEquals ) ) )
+                        Ok( Some( TokenKind::Op( Op::PlusEquals ) ) )
                     },
-                    _ => Ok( Some( TokenKind::Op( Operator::Plus ) ) )
+                    _ => Ok( Some( TokenKind::Op( Op::Plus ) ) )
                 },
                 b'-' => match self.peek_next()? {
                     Some( b'=' ) => {
                         self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::MinusEquals ) ) )
+                        Ok( Some( TokenKind::Op( Op::MinusEquals ) ) )
                     },
-                    _ => Ok( Some( TokenKind::Op( Operator::Minus ) ) ),
+                    _ => Ok( Some( TokenKind::Op( Op::Minus ) ) ),
                 },
                 b'&' => match self.peek_next()? {
                     Some( b'&' ) => {
@@ -1020,23 +974,23 @@ impl<'src> Lexer<'src> {
                         match self.peek_next()? {
                             Some( b'=' ) => {
                                 self.col += 1;
-                                Ok( Some( TokenKind::Op( Operator::AndEquals ) ) )
+                                Ok( Some( TokenKind::Op( Op::AndEquals ) ) )
                             },
-                            _ => Ok( Some( TokenKind::Op( Operator::And ) ) ),
+                            _ => Ok( Some( TokenKind::Op( Op::And ) ) ),
                         }
                     },
                     Some( b'=' ) => {
                         self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::BitAndEquals ) ) )
+                        Ok( Some( TokenKind::Op( Op::BitAndEquals ) ) )
                     },
-                    _ => Ok( Some( TokenKind::Op( Operator::BitAnd ) ) ),
+                    _ => Ok( Some( TokenKind::Op( Op::BitAnd ) ) ),
                 },
                 b'^' => match self.peek_next()? {
                     Some( b'=' ) => {
                         self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::BitXorEquals ) ) )
+                        Ok( Some( TokenKind::Op( Op::BitXorEquals ) ) )
                     },
-                    _ => Ok( Some( TokenKind::Op( Operator::BitXor ) ) ),
+                    _ => Ok( Some( TokenKind::Op( Op::BitXor ) ) ),
                 },
                 b'|' => match self.peek_next()? {
                     Some( b'|' ) => {
@@ -1044,23 +998,23 @@ impl<'src> Lexer<'src> {
                         match self.peek_next()? {
                             Some( b'=' ) => {
                                 self.col += 1;
-                                Ok( Some( TokenKind::Op( Operator::OrEquals ) ) )
+                                Ok( Some( TokenKind::Op( Op::OrEquals ) ) )
                             },
-                            _ => Ok( Some( TokenKind::Op( Operator::Or ) ) ),
+                            _ => Ok( Some( TokenKind::Op( Op::Or ) ) ),
                         }
                     },
                     Some( b'=' ) => {
                         self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::BitOrEquals ) ) )
+                        Ok( Some( TokenKind::Op( Op::BitOrEquals ) ) )
                     },
-                    _ => Ok( Some( TokenKind::Op( Operator::BitOr ) ) ),
+                    _ => Ok( Some( TokenKind::Op( Op::BitOr ) ) ),
                 },
                 b'=' => match self.peek_next()? {
                     Some( b'=' ) => {
                         self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::EqualsEquals ) ) )
+                        Ok( Some( TokenKind::Op( Op::EqualsEquals ) ) )
                     },
-                    _ => Ok( Some( TokenKind::Equals ) ),
+                    _ => Ok( Some( TokenKind::Op( Op::Equals ) ) ),
                 },
                 b'>' => match self.peek_next()? {
                     Some( b'>' ) => {
@@ -1068,16 +1022,16 @@ impl<'src> Lexer<'src> {
                         match self.peek_next()? {
                             Some( b'=' ) => {
                                 self.col += 1;
-                                Ok( Some( TokenKind::Op( Operator::RightShiftEquals ) ) )
+                                Ok( Some( TokenKind::Op( Op::RightShiftEquals ) ) )
                             },
-                            _ => Ok( Some( TokenKind::Op( Operator::RightShift ) ) ),
+                            _ => Ok( Some( TokenKind::Op( Op::RightShift ) ) ),
                         }
                     },
                     Some( b'=' ) => {
                         self.col += 1;
-                        Ok( Some( TokenKind::Op( Operator::GreaterOrEquals ) ) )
+                        Ok( Some( TokenKind::Op( Op::GreaterOrEquals ) ) )
                     },
-                    _ => Ok( Some( TokenKind::Op( Operator::Greater ) ) ),
+                    _ => Ok( Some( TokenKind::Op( Op::Greater ) ) ),
                 },
                 b'<' => match self.peek_next()? {
                     Some( b'<' ) => {
@@ -1085,9 +1039,9 @@ impl<'src> Lexer<'src> {
                         match self.peek_next()? {
                             Some( b'=' ) => {
                                 self.col += 1;
-                                Ok( Some( TokenKind::Op( Operator::LeftShiftEquals ) ) )
+                                Ok( Some( TokenKind::Op( Op::LeftShiftEquals ) ) )
                             },
-                            _ => Ok( Some( TokenKind::Op( Operator::LeftShift ) ) ),
+                            _ => Ok( Some( TokenKind::Op( Op::LeftShift ) ) ),
                         }
                     },
                     Some( b'=' ) => {
@@ -1095,14 +1049,13 @@ impl<'src> Lexer<'src> {
                         match self.peek_next()? {
                             Some( b'>' ) => {
                                 self.col += 1;
-                                Ok( Some( TokenKind::Op( Operator::Compare ) ) )
+                                Ok( Some( TokenKind::Op( Op::Compare ) ) )
                             },
-                            _ => Ok( Some( TokenKind::Op( Operator::LessOrEquals ) ) ),
+                            _ => Ok( Some( TokenKind::Op( Op::LessOrEquals ) ) ),
                         }
                     },
-                    _ => Ok( Some( TokenKind::Op( Operator::Less ) ) ),
+                    _ => Ok( Some( TokenKind::Op( Op::Less ) ) ),
                 },
-                // b'\r' | b'\n' => unreachable!( "line text should have been trimmed already" ),
                 _ => Err( RawSyntaxError {
                     col: self.token_start_col,
                     len: 1,
@@ -1110,6 +1063,85 @@ impl<'src> Lexer<'src> {
                     help_msg: "unrecognized".into(),
                 } ),
             }
+        }
+    }
+}
+
+// iteration of characters and lines
+impl<'src> Lexer<'src> {
+    fn next_line( &mut self ) -> Option<&'src Line> {
+        self.line_idx += 1;
+        if self.line_idx >= self.src.lines.len() {
+            return None;
+        }
+
+        return Some( &self.src.lines[ self.line_idx ] );
+    }
+
+    // FIX properly handle non ASCII characters related errors and column advancing
+        // IDEA allow utf-8 characters in strings, characters
+    fn next( &mut self ) -> Result<Option<u8>, RawSyntaxError> {
+        if self.col >= self.src.code.len() {
+            return Ok( None );
+        }
+
+        let next = self.src.code.as_bytes()[ self.col ];
+        self.col += 1;
+        return match next {
+            ..=b'\x7F' => Ok( Some( next ) ),
+            _ => Err( RawSyntaxError {
+                col: self.col,
+                len: 1,
+                msg: "unrecognized character".into(),
+                help_msg: "not a valid ASCII character".into(),
+            } ),
+        }
+    }
+
+    fn peek_next( &self ) -> Result<Option<&'src u8>, RawSyntaxError> {
+        if self.col >= self.src.code.len() {
+            return Ok( None );
+        }
+
+        let next = &self.src.code.as_bytes()[ self.col ];
+        return match next {
+            ..=b'\x7F' => Ok( Some( next ) ),
+            _ => Err( RawSyntaxError {
+                col: self.col,
+                len: 1,
+                msg: "unrecognized character".into(),
+                help_msg: "not a valid ASCII character".into(),
+            } ),
+        }
+    }
+}
+
+// character literals
+impl<'src> Lexer<'src> {
+    fn next_in_char_literal( &mut self ) -> Result<u8, RawSyntaxError> {
+        return match self.next()? {
+            Some( next ) => Ok( next ),
+            None => Err( RawSyntaxError {
+                col: self.token_start_col,
+                len: self.col - self.token_start_col + 1,
+                msg: "invalid character literal".into(),
+                help_msg: "missing closing single quote".into(),
+            } ),
+        }
+    }
+}
+
+// string literals
+impl<'src> Lexer<'src> {
+    fn next_in_str_literal( &mut self ) -> Result<u8, RawSyntaxError> {
+        return match self.next()? {
+            Some( next ) => Ok( next ),
+            None => Err( RawSyntaxError {
+                col: self.token_start_col,
+                len: self.col - self.token_start_col + 1,
+                msg: "invalid string literal".into(),
+                help_msg: "missing closing double quote".into(),
+            } ),
         }
     }
 }

@@ -758,11 +758,11 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
             Expression::Unary { op, operand } => {
                 self.expression_factor( operand, "rdi" );
                 match op {
-                    Operator::Not => match operand.typ() {
+                    Op::Not => match operand.typ() {
                         Type::Bool                         => self.asm += " xor dil, 1\n",
                         Type::Int | Type::Char | Type::Str => self.asm += " not rdi\n",
                     },
-                    Operator::Minus                        => self.asm += " neg rdi\n",
+                    Op::Minus                        => self.asm += " neg rdi\n",
                     _ => unreachable!(),
                 }
             },
@@ -779,11 +779,10 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                 let string_label = &self.strings[ string_label_idx ];
                 self.asm += &format!( " mov {}, {}\n", dst, string_label.len_label );
             },
-            Expression::Binary { lhs, op: (col, op), rhs } => {
-
+            Expression::Binary { lhs, op_col, op, rhs } => {
                 let (lhs_reg, rhs_reg, op_asm): (&'static str, &'static str, Cow<'static, str>) = match op {
-                    Operator::Pow | Operator::PowEquals => {
-                        let (line, col) = self.src.normalize( **col );
+                    Op::Pow | Op::PowEquals => {
+                        let (line, col) = self.src.normalize( **op_col );
 
                         ("rdi", "rsi",
                         format!(
@@ -793,11 +792,11 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                             \n mov rdi, rax\n"
                         ).into())
                     },
-                    Operator::Times | Operator::TimesEquals => ("rdi", "rsi",
+                    Op::Times | Op::TimesEquals => ("rdi", "rsi",
                         " imul rdi, rsi\n".into()
                     ),
-                    Operator::Divide | Operator::DivideEquals => {
-                        let (line, col) = self.src.normalize( **col );
+                    Op::Divide | Op::DivideEquals => {
+                        let (line, col) = self.src.normalize( **op_col );
 
                         ("rax", "rdi",
                         format!(
@@ -810,8 +809,8 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                             \n mov rdi, rax\n"
                         ).into())
                     },
-                    Operator::Remainder | Operator::RemainderEquals => {
-                        let (line, col) = self.src.normalize( **col );
+                    Op::Remainder | Op::RemainderEquals => {
+                        let (line, col) = self.src.normalize( **op_col );
 
                         ("rax", "rdi",
                         format!(
@@ -824,43 +823,43 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                             \n mov rdi, rdx\n"
                         ).into())
                     },
-                    Operator::Plus | Operator::PlusEquals => ("rdi", "rsi",
+                    Op::Plus | Op::PlusEquals => ("rdi", "rsi",
                         " add rdi, rsi\n".into()
                     ),
-                    Operator::Minus | Operator::MinusEquals => ("rdi", "rsi",
+                    Op::Minus | Op::MinusEquals => ("rdi", "rsi",
                         " sub rdi, rsi\n".into()
                     ),
-                    Operator::EqualsEquals => ("rdi", "rsi",
+                    Op::EqualsEquals => ("rdi", "rsi",
                         " cmp rdi, rsi\
                         \n mov rdi, false\
                         \n sete dil\n".into()
                     ),
-                    Operator::NotEquals => ("rdi", "rsi",
+                    Op::NotEquals => ("rdi", "rsi",
                         " cmp rdi, rsi\
                         \n mov rdi, false\
                         \n setne dil\n".into()
                     ),
-                    Operator::Greater => ("rdi", "rsi",
+                    Op::Greater => ("rdi", "rsi",
                         " cmp rdi, rsi\
                         \n mov rdi, false\
                         \n setg dil\n".into()
                     ),
-                    Operator::GreaterOrEquals => ("rdi", "rsi",
+                    Op::GreaterOrEquals => ("rdi", "rsi",
                         " cmp rdi, rsi\
                         \n mov rdi, false\
                         \n setge dil\n".into()
                     ),
-                    Operator::Less => ("rdi", "rsi",
+                    Op::Less => ("rdi", "rsi",
                         " cmp rdi, rsi\
                         \n mov rdi, false\
                         \n setl dil\n".into()
                     ),
-                    Operator::LessOrEquals => ("rdi", "rsi",
+                    Op::LessOrEquals => ("rdi", "rsi",
                         " cmp rdi, rsi\
                         \n mov rdi, false\
                         \n setle dil\n".into()
                     ),
-                    Operator::Compare => ("rdi", "rsi",
+                    Op::Compare => ("rdi", "rsi",
                         " cmp rdi, rsi\
                         \n mov rdi, LESS\
                         \n mov rdx, EQUAL\
@@ -869,24 +868,24 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                         \n cmovg rdi, rdx\n".into()
                     ),
                     // TODO shortcircuit boolean operators
-                    Operator::And | Operator::AndEquals
-                    | Operator::BitAnd | Operator::BitAndEquals => ("rdi", "rsi",
+                    Op::And | Op::AndEquals
+                    | Op::BitAnd | Op::BitAndEquals => ("rdi", "rsi",
                         " and rdi, rsi\n".into()
                     ),
-                    Operator::Or | Operator::OrEquals
-                    | Operator::BitOr | Operator::BitOrEquals => ("rdi", "rsi",
+                    Op::Or | Op::OrEquals
+                    | Op::BitOr | Op::BitOrEquals => ("rdi", "rsi",
                         " or rdi, rsi\n".into()
                     ),
-                    Operator::BitXor | Operator::BitXorEquals => ("rdi", "rsi",
+                    Op::BitXor | Op::BitXorEquals => ("rdi", "rsi",
                         " xor rdi, rsi\n".into()
                     ),
-                    Operator::LeftShift | Operator::LeftShiftEquals => ("rdi", "rsi",
+                    Op::LeftShift | Op::LeftShiftEquals => ("rdi", "rsi",
                         " shl rdi, rsi\n".into()
                     ),
-                    Operator::RightShift | Operator::RightShiftEquals => ("rdi", "rsi",
+                    Op::RightShift | Op::RightShiftEquals => ("rdi", "rsi",
                         " shr rdi, rsi\n".into()
                     ),
-                    Operator::Not => unreachable!(),
+                    Op::Equals | Op::Not => unreachable!(),
                 };
 
                 match &**rhs {
@@ -925,11 +924,11 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                 self.expression_factor( operand, "rdi" );
 
                 match op {
-                    Operator::Not => match operand.typ() {
+                    Op::Not => match operand.typ() {
                         Type::Bool                         => self.asm += " xor dil, 1\n",
                         Type::Int | Type::Char | Type::Str => self.asm += " not rdi\n",
                     },
-                    Operator::Minus                        => self.asm += " neg rdi\n",
+                    Op::Minus                        => self.asm += " neg rdi\n",
                     _ => unreachable!(),
                 }
             },
@@ -988,7 +987,7 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                     false_tag
                 ),
             Expression::Literal( Literal::Int( _ ) | Literal::Char( _ ) | Literal::Str( _ ) ) => unreachable!(),
-            Expression::Binary { lhs, op: (_, op), rhs } => {
+            Expression::Binary { lhs, op, rhs, .. } => {
                 match &**rhs {
                     Expression::Binary { .. } | Expression::Unary { .. }=> {
                         self.expression_factor( lhs, "rdi" );
@@ -1003,29 +1002,30 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                 }
 
                 match op {
-                    Operator::EqualsEquals              => self.asm += &format!( " cmp rdi, rsi\n jne {}\n\n", false_tag ),
-                    Operator::NotEquals                 => self.asm += &format!( " cmp rdi, rsi\n je {}\n\n", false_tag ),
-                    Operator::Greater                   => self.asm += &format!( " cmp rdi, rsi\n jle {}\n\n", false_tag ),
-                    Operator::GreaterOrEquals           => self.asm += &format!( " cmp rdi, rsi\n jl {}\n\n", false_tag ),
-                    Operator::Less                      => self.asm += &format!( " cmp rdi, rsi\n jge {}\n\n", false_tag ),
-                    Operator::LessOrEquals              => self.asm += &format!( " cmp rdi, rsi\n jg {}\n\n", false_tag ),
-                    Operator::And | Operator::AndEquals => self.asm += &format!( " and rdi, rsi\n jz {}\n\n", false_tag ),
-                    Operator::Or | Operator::OrEquals   => self.asm += &format!( " or rdi, rsi\n jz {}\n\n", false_tag ),
+                    Op::EqualsEquals              => self.asm += &format!( " cmp rdi, rsi\n jne {}\n\n", false_tag ),
+                    Op::NotEquals                 => self.asm += &format!( " cmp rdi, rsi\n je {}\n\n", false_tag ),
+                    Op::Greater                   => self.asm += &format!( " cmp rdi, rsi\n jle {}\n\n", false_tag ),
+                    Op::GreaterOrEquals           => self.asm += &format!( " cmp rdi, rsi\n jl {}\n\n", false_tag ),
+                    Op::Less                      => self.asm += &format!( " cmp rdi, rsi\n jge {}\n\n", false_tag ),
+                    Op::LessOrEquals              => self.asm += &format!( " cmp rdi, rsi\n jg {}\n\n", false_tag ),
+                    Op::And | Op::AndEquals => self.asm += &format!( " and rdi, rsi\n jz {}\n\n", false_tag ),
+                    Op::Or | Op::OrEquals   => self.asm += &format!( " or rdi, rsi\n jz {}\n\n", false_tag ),
                     // Operator::Xor | Operator::XorEquals => self.asm += &format!( " xor rdi, rsi\n jz {}\n\n", false_tag ),
 
-                    Operator::Pow | Operator::PowEquals
-                    | Operator::Times | Operator::TimesEquals
-                    | Operator::Divide | Operator::DivideEquals
-                    | Operator::Remainder | Operator::RemainderEquals
-                    | Operator::Plus | Operator::PlusEquals
-                    | Operator::Minus | Operator::MinusEquals
-                    | Operator::Compare
-                    | Operator::Not
-                    | Operator::BitAnd | Operator::BitAndEquals
-                    | Operator::BitOr | Operator::BitOrEquals
-                    | Operator::BitXor | Operator::BitXorEquals
-                    | Operator::LeftShift | Operator::LeftShiftEquals
-                    | Operator::RightShift | Operator::RightShiftEquals => unreachable!(),
+                    Op::Equals
+                    | Op::Pow | Op::PowEquals
+                    | Op::Times | Op::TimesEquals
+                    | Op::Divide | Op::DivideEquals
+                    | Op::Remainder | Op::RemainderEquals
+                    | Op::Plus | Op::PlusEquals
+                    | Op::Minus | Op::MinusEquals
+                    | Op::Compare
+                    | Op::Not
+                    | Op::BitAnd | Op::BitAndEquals
+                    | Op::BitOr | Op::BitOrEquals
+                    | Op::BitXor | Op::BitXorEquals
+                    | Op::LeftShift | Op::LeftShiftEquals
+                    | Op::RightShift | Op::RightShiftEquals => unreachable!(),
                 }
             },
             Expression::Identifier( src_name, _ ) => {

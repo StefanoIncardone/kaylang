@@ -106,13 +106,14 @@ impl<'src: 'tokens, 'tokens> Bounded<'src, 'tokens> for Option<&'tokens Token<'s
 #[derive( Debug, Clone )]
 pub(crate) enum Expression<'src: 'tokens, 'tokens> {
     Literal( Literal ),
-    Unary { op: Operator, operand: Box<Expression<'src, 'tokens>> },
+    Unary { op: Op, operand: Box<Expression<'src, 'tokens>> },
     Binary {
         lhs: Box<Expression<'src, 'tokens>>,
         // this reference to usize exists to prepare to add column information to every ast node
         // this is the first place where it is needed for now
         // it is used for error reporting (division by zero, modulo of 0, raising to a negative power)
-        op: (&'tokens usize, Operator),
+        op_col: &'tokens usize,
+        op: Op,
         rhs: Box<Expression<'src, 'tokens>>
     },
     Identifier( &'src str, Type ),
@@ -121,10 +122,10 @@ pub(crate) enum Expression<'src: 'tokens, 'tokens> {
 impl Display for Expression<'_, '_> {
     fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
         return match self {
-            Self::Literal( literal )               => write!( f, "{}", literal ),
-            Self::Unary { op, operand }            => write!( f, "{}{}", op, operand ),
-            Self::Binary { lhs, op: (_, op), rhs } => write!( f, "({} {} {})", lhs, op, rhs ),
-            Self::Identifier( name, _ )            => write!( f, "{}", name ),
+            Self::Literal( literal )          => write!( f, "{}", literal ),
+            Self::Unary { op, operand }       => write!( f, "{}{}", op, operand ),
+            Self::Binary { lhs, op, rhs, .. } => write!( f, "({} {} {})", lhs, op, rhs ),
+            Self::Identifier( name, _ )       => write!( f, "{}", name ),
         }
     }
 }
@@ -132,10 +133,10 @@ impl Display for Expression<'_, '_> {
 impl TypeOf for Expression<'_, '_> {
     fn typ( &self ) -> Type {
         return match self {
-            Self::Literal( literal )         => literal.typ(),
-            Self::Unary { operand, .. }      => operand.typ(),
-            Self::Binary { op: (_, op), .. } => op.typ(),
-            Self::Identifier( _, typ )       => *typ,
+            Self::Literal( literal )    => literal.typ(),
+            Self::Unary { operand, .. } => operand.typ(),
+            Self::Binary { op, .. }     => op.typ(),
+            Self::Identifier( _, typ )  => *typ,
         }
     }
 }
@@ -336,17 +337,17 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
             TokenKind::Literal( _ )
             | TokenKind::True | TokenKind::False
             | TokenKind::Bracket( BracketKind::OpenRound )
-            | TokenKind::Op( Operator::Minus | Operator::Not ) => Ok( Some( Node::Expression( self.expression()? ) ) ),
+            | TokenKind::Op( Op::Minus | Op::Not ) => Ok( Some( Node::Expression( self.expression()? ) ) ),
             TokenKind::Identifier( _ ) => match self.tokens.peek_next() {
                 Some( op ) => match op.kind {
-                    TokenKind::Equals |
                     TokenKind::Op(
-                        Operator::PowEquals
-                        | Operator::TimesEquals | Operator::DivideEquals | Operator::RemainderEquals
-                        | Operator::PlusEquals | Operator::MinusEquals
-                        | Operator::LeftShiftEquals | Operator::RightShiftEquals
-                        | Operator::BitAndEquals | Operator::BitXorEquals | Operator::BitOrEquals
-                        | Operator::AndEquals | Operator::OrEquals
+                        Op::Equals
+                        | Op::PowEquals
+                        | Op::TimesEquals | Op::DivideEquals | Op::RemainderEquals
+                        | Op::PlusEquals | Op::MinusEquals
+                        | Op::LeftShiftEquals | Op::RightShiftEquals
+                        | Op::BitAndEquals | Op::BitXorEquals | Op::BitOrEquals
+                        | Op::AndEquals | Op::OrEquals
                     ) => Ok( Some( self.variable_reassignment()? ) ),
                     _ => Ok( Some( Node::Expression( self.expression()? ) ) ),
                 },
@@ -451,7 +452,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                     help_msg: "stray colon".into(),
                 } )
             },
-            TokenKind::Equals => {
+            TokenKind::Op( Op::Equals ) => {
                 self.tokens.next();
                 Err( RawSyntaxError {
                     col: current_token.col,
@@ -557,7 +558,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 
 // expressions
 impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
-    fn operator( &mut self, ops: &[Operator] ) -> Result<Option<(&'tokens Token<'src>, Operator)>, RawSyntaxError> {
+    fn operator( &mut self, ops: &[Op] ) -> Result<Option<(&'tokens Token<'src>, Op)>, RawSyntaxError> {
         let current_token = self.tokens.current.bounded( &mut self.tokens, "expected operator or semicolon" )?;
         return match current_token.kind {
             TokenKind::Op( op ) =>
@@ -619,10 +620,10 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                     }
                 }
             },
-            TokenKind::Op( Operator::Minus ) => {
+            TokenKind::Op( Op::Minus ) => {
                 let mut sign: isize = -1;
                 // NOTE this optimization should be moved to later stages
-                while let Some( &Token { kind: TokenKind::Op( Operator::Minus ), .. } ) = self.tokens.next() {
+                while let Some( &Token { kind: TokenKind::Op( Op::Minus ), .. } ) = self.tokens.next() {
                     sign *= -1;
                 }
 
@@ -632,7 +633,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 return match operand.typ() {
                     Type::Int | Type::Char =>
                         if sign < 0 {
-                            Ok( Expression::Unary { op: Operator::Minus, operand: Box::new( operand ) } )
+                            Ok( Expression::Unary { op: Op::Minus, operand: Box::new( operand ) } )
                         }
                         else {
                             Ok( operand )
@@ -651,10 +652,10 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                     } ),
                 }
             },
-            TokenKind::Op( Operator::Not ) => {
+            TokenKind::Op( Op::Not ) => {
                 let mut should_be_inverted = true;
                 // NOTE this optimization should be moved to later stages
-                while let Some( &Token { kind: TokenKind::Op( Operator::Not ), .. } ) = self.tokens.next() {
+                while let Some( &Token { kind: TokenKind::Op( Op::Not ), .. } ) = self.tokens.next() {
                     should_be_inverted = !should_be_inverted;
                 }
 
@@ -669,7 +670,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                     } ),
                     Type::Int | Type::Char | Type::Bool =>
                         if should_be_inverted {
-                            Ok( Expression::Unary { op: Operator::Not, operand: Box::new( operand ) } )
+                            Ok( Expression::Unary { op: Op::Not, operand: Box::new( operand ) } )
                         }
                         else {
                             Ok( operand )
@@ -700,7 +701,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
     fn exponentiative_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.primary_expression()?;
 
-        while let Some( (op_token, op) ) = self.operator( &[Operator::Pow] )? {
+        while let Some( (op_token, op) ) = self.operator( &[Op::Pow] )? {
             let rhs = self.primary_expression()?;
             lhs = match (lhs.typ(), rhs.typ()) {
                 (Type::Int | Type::Char | Type::Bool, Type::Str)
@@ -710,7 +711,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                     msg: "invalid expression".into(),
                     help_msg: "strings are not allowed inside expressions".into(),
                 } ),
-                _ => Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) },
+                _ => Expression::Binary { lhs: Box::new( lhs ), op_col: &op_token.col, op, rhs: Box::new( rhs ) },
             }
         }
 
@@ -720,7 +721,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
     fn multiplicative_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.exponentiative_expression()?;
 
-        while let Some( (op_token, op) ) = self.operator( &[Operator::Times, Operator::Divide, Operator::Remainder] )? {
+        while let Some( (op_token, op) ) = self.operator( &[Op::Times, Op::Divide, Op::Remainder] )? {
             let rhs = self.exponentiative_expression()?;
             lhs = match (lhs.typ(), rhs.typ()) {
                 (Type::Int | Type::Char | Type::Bool, Type::Str)
@@ -730,7 +731,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                     msg: "invalid expression".into(),
                     help_msg: "strings are not allowed inside expressions".into(),
                 } ),
-                _ => Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) },
+                _ => Expression::Binary { lhs: Box::new( lhs ), op_col: &op_token.col, op, rhs: Box::new( rhs ) },
             }
         }
 
@@ -740,7 +741,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
     fn additive_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.multiplicative_expression()?;
 
-        while let Some( (op_token, op) ) = self.operator( &[Operator::Plus, Operator::Minus] )? {
+        while let Some( (op_token, op) ) = self.operator( &[Op::Plus, Op::Minus] )? {
             let rhs = self.multiplicative_expression()?;
             lhs = match (lhs.typ(), rhs.typ()) {
                 (Type::Int | Type::Char | Type::Bool, Type::Str)
@@ -750,7 +751,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                     msg: "invalid expression".into(),
                     help_msg: "strings are not allowed inside expressions".into(),
                 } ),
-                _ => Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) },
+                _ => Expression::Binary { lhs: Box::new( lhs ), op_col: &op_token.col, op, rhs: Box::new( rhs ) },
             }
         }
 
@@ -760,7 +761,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
     fn shift_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.additive_expression()?;
 
-        while let Some( (op_token, op) ) = self.operator( &[Operator::LeftShift, Operator::RightShift] )? {
+        while let Some( (op_token, op) ) = self.operator( &[Op::LeftShift, Op::RightShift] )? {
             let rhs = self.additive_expression()?;
             lhs = match (lhs.typ(), rhs.typ()) {
                 (Type::Int | Type::Char | Type::Bool, Type::Str)
@@ -770,7 +771,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                     msg: "invalid expression".into(),
                     help_msg: "strings are not allowed inside expressions".into(),
                 } ),
-                _ => Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) },
+                _ => Expression::Binary { lhs: Box::new( lhs ), op_col: &op_token.col, op, rhs: Box::new( rhs ) },
             }
         }
 
@@ -780,7 +781,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
     fn bitand_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.shift_expression()?;
 
-        while let Some( (op_token, op) ) = self.operator( &[Operator::BitAnd] )? {
+        while let Some( (op_token, op) ) = self.operator( &[Op::BitAnd] )? {
             let rhs = self.shift_expression()?;
             lhs = match (lhs.typ(), rhs.typ()) {
                 (Type::Int | Type::Char | Type::Bool, Type::Str)
@@ -790,7 +791,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                     msg: "invalid expression".into(),
                     help_msg: "strings are not allowed inside expressions".into(),
                 } ),
-                _ => Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) },
+                _ => Expression::Binary { lhs: Box::new( lhs ), op_col: &op_token.col, op, rhs: Box::new( rhs ) },
             }
         }
 
@@ -800,7 +801,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
     fn bitxor_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.bitand_expression()?;
 
-        while let Some( (op_token, op) ) = self.operator( &[Operator::BitXor] )? {
+        while let Some( (op_token, op) ) = self.operator( &[Op::BitXor] )? {
             let rhs = self.bitand_expression()?;
             lhs = match (lhs.typ(), rhs.typ()) {
                 (Type::Int | Type::Char | Type::Bool, Type::Str)
@@ -810,7 +811,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                     msg: "invalid expression".into(),
                     help_msg: "strings are not allowed inside expressions".into(),
                 } ),
-                _ => Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) },
+                _ => Expression::Binary { lhs: Box::new( lhs ), op_col: &op_token.col, op, rhs: Box::new( rhs ) },
             }
         }
 
@@ -820,7 +821,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
     fn bitor_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.bitxor_expression()?;
 
-        while let Some( (op_token, op) ) = self.operator( &[Operator::BitOr] )? {
+        while let Some( (op_token, op) ) = self.operator( &[Op::BitOr] )? {
             let rhs = self.bitxor_expression()?;
             lhs = match (lhs.typ(), rhs.typ()) {
                 (Type::Int | Type::Char | Type::Bool, Type::Str)
@@ -830,7 +831,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                     msg: "invalid expression".into(),
                     help_msg: "strings are not allowed inside expressions".into(),
                 } ),
-                _ => Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) },
+                _ => Expression::Binary { lhs: Box::new( lhs ), op_col: &op_token.col, op, rhs: Box::new( rhs ) },
             }
         }
 
@@ -840,7 +841,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
     fn comparative_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.bitor_expression()?;
 
-        while let Some( (op_token, op) ) = self.operator( &[Operator::Compare] )? {
+        while let Some( (op_token, op) ) = self.operator( &[Op::Compare] )? {
             let rhs = self.bitor_expression()?;
             lhs = match (lhs.typ(), rhs.typ()) {
                 (Type::Int | Type::Char | Type::Bool, Type::Str)
@@ -850,7 +851,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                     msg: "invalid expression".into(),
                     help_msg: "strings are not allowed inside expressions".into(),
                 } ),
-                _ => Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) },
+                _ => Expression::Binary { lhs: Box::new( lhs ), op_col: &op_token.col, op, rhs: Box::new( rhs ) },
             }
         }
 
@@ -861,9 +862,9 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
         let mut lhs = self.comparative_expression()?;
 
         let ops = [
-            Operator::EqualsEquals, Operator::NotEquals,
-            Operator::Greater, Operator::GreaterOrEquals,
-            Operator::Less, Operator::LessOrEquals
+            Op::EqualsEquals, Op::NotEquals,
+            Op::Greater, Op::GreaterOrEquals,
+            Op::Less, Op::LessOrEquals
         ];
 
         let mut is_chained = false;
@@ -880,7 +881,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
             }
             is_chained = true;
 
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op_col: &op_token.col, op, rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
@@ -889,7 +890,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
     fn and_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.comparison_expression()?;
 
-        while let Some( (op_token, op) ) = self.operator( &[Operator::And] )? {
+        while let Some( (op_token, op) ) = self.operator( &[Op::And] )? {
             if lhs.typ() != Type::Bool {
                 return Err( RawSyntaxError {
                     col: op_token.col,
@@ -909,7 +910,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 } );
             }
 
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op_col: &op_token.col, op, rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
@@ -918,7 +919,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
     fn or_expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         let mut lhs = self.and_expression()?;
 
-        while let Some( (op_token, op) ) = self.operator( &[Operator::Or] )? {
+        while let Some( (op_token, op) ) = self.operator( &[Op::Or] )? {
             if lhs.typ() != Type::Bool {
                 return Err( RawSyntaxError {
                     col: op_token.col,
@@ -938,7 +939,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 } );
             }
 
-            lhs = Expression::Binary { lhs: Box::new( lhs ), op: (&op_token.col, op), rhs: Box::new( rhs ) };
+            lhs = Expression::Binary { lhs: Box::new( lhs ), op_col: &op_token.col, op, rhs: Box::new( rhs ) };
         }
 
         return Ok( lhs );
@@ -1049,7 +1050,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 
         let equals_or_semicolon_token = self.tokens.next().bounded( &mut self.tokens, "expected equals" )?;
         let expression = match equals_or_semicolon_token.kind {
-            TokenKind::Equals => {
+            TokenKind::Op( Op::Equals ) => {
                 self.tokens.next();
                 match self.expression() {
                     Ok( expr ) => Ok( Some( expr ) ),
@@ -1144,10 +1145,11 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 } ),
                 Mutability::Var => {
                     let value = match &op_token.kind {
-                        TokenKind::Equals => rhs,
+                        TokenKind::Op( Op::Equals ) => rhs,
                         TokenKind::Op( op ) => Expression::Binary {
                             lhs: Box::new( Expression::Identifier( name, op.typ() ) ),
-                            op: (&op_token.col, *op),
+                            op_col: &op_token.col,
+                            op: *op,
                             rhs: Box::new( rhs )
                         },
                         _ => unreachable!(),
@@ -1327,7 +1329,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens>{
         let condition = condition?;
         let statement = statement?;
         let condition = if let TokenKind::Do = do_token.kind {
-            LoopCondition::Post( Expression::Unary { op: Operator::Not, operand: Box::new( condition ) } )
+            LoopCondition::Post( Expression::Unary { op: Op::Not, operand: Box::new( condition ) } )
         }
         else {
             LoopCondition::Pre( condition )
