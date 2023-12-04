@@ -176,8 +176,9 @@ r#" stdout: equ 1
 
                 for variable in variables.swap_remove( current_type ) {
                     let typ = variable.value.typ();
+                    let type_size = typ.size();
                     this.variables.push( CompilerVariable { name: variable.name, typ, offset: stack_size } );
-                    stack_size += typ.size();
+                    stack_size += type_size;
                 }
             }
         }
@@ -475,7 +476,7 @@ _start:
 
 // nodes
 impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
-    fn node( &mut self, node: &'ast Node<'tokens, 'src> ) {
+    fn node( &mut self, node: &'ast Node<'src, 'tokens> ) {
         match node {
             Node::Print( argument ) => {
                 self.asm += &format!( " ; {}\n", node );
@@ -514,6 +515,7 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                         " mov rdi, stdout\
                         \n mov rax, SYS_write\
                         \n syscall\n\n",
+                    Type::Array(_, _) => todo!(),
                 }
             },
             Node::Println( argument ) => {
@@ -554,6 +556,7 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                             " mov rdi, stdout\
                             \n mov rax, SYS_write\
                             \n syscall\n\n",
+                        Type::Array(_, _) => todo!(),
                     }
                 }
 
@@ -653,13 +656,13 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                 let name = &ast_variable.name;
                 let value = &ast_variable.value;
                 let variable = self.resolve( ast_variable.name );
-                self.assignment( name, value, variable.typ, variable.offset );
+                self.assignment( name, value, variable.typ.clone(), variable.offset );
             },
             Node::Assignment( scope, variable, new_value ) => {
                 let ast_variable = &self.ast[ *scope ].variables[ *variable ];
                 let name = &ast_variable.name;
                 let variable = self.resolve( ast_variable.name );
-                self.assignment( name, new_value, variable.typ, variable.offset );
+                self.assignment( name, new_value, variable.typ.clone(), variable.offset );
             },
             Node::Scope( inner )           => self.scope( *inner ),
             Node::Expression( expression ) => self.expression( expression ),
@@ -719,7 +722,7 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
         return string_idx;
     }
 
-    fn expression( &mut self, expression: &'ast Expression<'tokens, 'src> ) {
+    fn expression( &mut self, expression: &'ast Expression<'src, 'tokens> ) {
         match expression {
             Expression::Literal( Literal::Int( value ) )  => self.asm += &format!( " mov rdi, {}\n", value ),
             Expression::Literal( Literal::Char( code ) )  => self.asm += &format!( " mov rdi, {}\n", code ),
@@ -738,21 +741,19 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
             Expression::Binary { .. } => self.expression_factor( expression, "rdi" ),
             Expression::Identifier( src_name, _ ) => {
                 let src_variable = self.resolve( src_name );
-                let src_variable_typ = src_variable.typ;
-                let src_variable_offset = src_variable.offset;
-
-                match src_variable_typ {
+                match src_variable.typ {
                     Type::Int =>
-                        self.asm += &format!( " mov rdi, [rbp + {}]\n", src_variable_offset ),
+                        self.asm += &format!( " mov rdi, [rbp + {}]\n", src_variable.offset ),
                     Type::Char | Type::Bool =>
-                        self.asm += &format!( " movzx rdi, byte [rbp + {}]\n", src_variable_offset ),
+                        self.asm += &format!( " movzx rdi, byte [rbp + {}]\n", src_variable.offset ),
                     Type::Str =>
                         self.asm += &format!(
                             " mov rsi, [rbp + {}]\
                             \n mov rdx, [rbp + {}]\n",
-                            src_variable_offset,
-                            src_variable_offset + 8
+                            src_variable.offset,
+                            src_variable.offset + 8
                         ),
+                    Type::Array(_, _) => todo!(),
                 }
             },
             Expression::Unary { op, operand } => {
@@ -761,15 +762,17 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                     Op::Not => match operand.typ() {
                         Type::Bool                         => self.asm += " xor dil, 1\n",
                         Type::Int | Type::Char | Type::Str => self.asm += " not rdi\n",
+                        Type::Array(_, _) => todo!(),
                     },
                     Op::Minus                        => self.asm += " neg rdi\n",
                     _ => unreachable!(),
                 }
             },
+            Expression::Array(_, _) => todo!(),
         }
     }
 
-    fn expression_factor( &mut self, factor: &'ast Expression<'tokens, 'src>, dst: &str ) {
+    fn expression_factor( &mut self, factor: &'ast Expression<'src, 'tokens>, dst: &str ) {
         match factor {
             Expression::Literal( Literal::Int( value ) )  => self.asm += &format!( " mov {}, {}\n", dst, value ),
             Expression::Literal( Literal::Char( code ) )  => self.asm += &format!( " mov {}, {}\n", dst, code ),
@@ -911,13 +914,11 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
             },
             Expression::Identifier( src_name, _ ) => {
                 let src_variable = self.resolve( src_name );
-                let src_variable_typ = src_variable.typ;
-                let src_variable_offset = src_variable.offset;
-
-                match src_variable_typ {
-                    Type::Int               => self.asm += &format!( " mov {}, [rbp + {}]\n", dst, src_variable_offset ),
-                    Type::Char | Type::Bool => self.asm += &format!( " movzx {}, byte [rbp + {}]\n", dst, src_variable_offset ),
-                    Type::Str               => self.asm += &format!( " mov {}, [rbp + {}]\n", dst, src_variable_offset + 8 ),
+                match src_variable.typ {
+                    Type::Int               => self.asm += &format!( " mov {}, [rbp + {}]\n", dst, src_variable.offset ),
+                    Type::Char | Type::Bool => self.asm += &format!( " movzx {}, byte [rbp + {}]\n", dst, src_variable.offset ),
+                    Type::Str               => self.asm += &format!( " mov {}, [rbp + {}]\n", dst, src_variable.offset + 8 ),
+                    Type::Array(_, _) => todo!(),
                 }
             },
             Expression::Unary { op, operand } => {
@@ -927,24 +928,26 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                     Op::Not => match operand.typ() {
                         Type::Bool                         => self.asm += " xor dil, 1\n",
                         Type::Int | Type::Char | Type::Str => self.asm += " not rdi\n",
+                        Type::Array(_, _) => todo!(),
                     },
                     Op::Minus                        => self.asm += " neg rdi\n",
                     _ => unreachable!(),
                 }
             },
+            Expression::Array(_, _) => todo!(),
         }
     }
 }
 
 // ifs and loops
 impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
-    fn iff( &mut self, iff: &'ast IfStatement<'tokens, 'src>, tag: &String, false_tag: &String ) {
+    fn iff( &mut self, iff: &'ast IfStatement<'src, 'tokens>, tag: &String, false_tag: &String ) {
         self.asm += &format!( "{}:; {}\n", tag, iff.condition );
         self.condition( &iff.condition, false_tag );
         self.node( &iff.statement );
     }
 
-    fn looop( &mut self, looop: &'ast Loop<'tokens, 'src>, tag: &String, false_tag: &String ) {
+    fn looop( &mut self, looop: &'ast Loop<'src, 'tokens>, tag: &String, false_tag: &String ) {
         self.asm += &format!( "{}:; {}\n", tag, looop );
         match &looop.condition {
             LoopCondition::Pre( condition ) => {
@@ -976,7 +979,7 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
         }
     }
 
-    fn condition( &mut self, condition: &'ast Expression<'tokens, 'src>, false_tag: &String ) {
+    fn condition( &mut self, condition: &'ast Expression<'src, 'tokens>, false_tag: &String ) {
         match condition {
             Expression::Literal( Literal::Bool( value ) ) =>
                 self.asm += &format!(
@@ -1049,13 +1052,14 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                     false_tag
                 );
             },
+            Expression::Array(_, _) => todo!(),
         }
     }
 }
 
 // assignments
 impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
-    fn assignment( &mut self, name: &'src str, value: &'ast Expression<'tokens, 'src>, typ: Type, offset: usize ) {
+    fn assignment( &mut self, name: &'src str, value: &'ast Expression<'src, 'tokens>, typ: Type, offset: usize ) {
         self.asm += &format!( " ; {} = {}\n", name, value );
 
         match value {
@@ -1086,6 +1090,7 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                 match typ {
                     Type::Int | Type::Str   => self.asm += &format!( " mov [rbp + {}], rdi\n\n", offset ),
                     Type::Char | Type::Bool => self.asm += &format!( " mov [rbp + {}], dil\n\n", offset ),
+                    Type::Array(_, _) => todo!(),
                 }
             }
             Expression::Identifier( _, _ ) => {
@@ -1101,6 +1106,7 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                             offset,
                             offset + 8
                         ),
+                    Type::Array(_, _) => todo!(),
                 }
             },
             Expression::Unary { .. } => {
@@ -1109,8 +1115,10 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                 match typ {
                     Type::Int | Type::Str   => self.asm += &format!( " mov [rbp + {}], rdi\n\n", offset ),
                     Type::Char | Type::Bool => self.asm += &format!( " mov [rbp + {}], dil\n\n", offset ),
+                    Type::Array(_, _) => todo!(),
                 }
             },
+            Expression::Array(_, _) => todo!(),
         }
     }
 }

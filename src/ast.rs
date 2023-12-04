@@ -103,6 +103,84 @@ impl<'src: 'tokens, 'tokens> Bounded<'src, 'tokens> for Option<&'tokens Token<'s
 }
 
 
+pub(crate) trait TypeOf {
+    fn typ( &self ) -> Type;
+}
+
+#[derive( Debug, PartialEq, Clone )]
+pub(crate) enum Type {
+    Int,
+    Char,
+    Bool,
+    Str,
+    Array( Box<Type>, usize ),
+}
+
+impl Display for Type {
+    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
+        return match self {
+            Self::Int                => write!( f, "int" ),
+            Self::Char               => write!( f, "char" ),
+            Self::Bool               => write!( f, "bool" ),
+            Self::Str                => write!( f, "str" ),
+            Self::Array( typ, len ) => write!( f, "{}[{}]", typ, len ),
+        }
+    }
+}
+
+impl Type {
+    pub(crate) fn size( &self ) -> usize {
+        match self {
+            Self::Int  => core::mem::size_of::<isize>(),
+            Self::Char => core::mem::size_of::<u8>(),
+            Self::Bool => core::mem::size_of::<bool>(),
+            Self::Str  => core::mem::size_of::<*const u8>() + core::mem::size_of::<usize>(),
+            Self::Array( typ, len ) => typ.size() * len,
+        }
+    }
+}
+
+
+impl TypeOf for Literal {
+    fn typ( &self ) -> Type {
+        return match self {
+            Self::Int( _ )  => Type::Int,
+            Self::Char( _ ) => Type::Char,
+            Self::Bool( _ ) => Type::Bool,
+            Self::Str( _ )  => Type::Str,
+        }
+    }
+}
+
+impl TypeOf for Op {
+    fn typ( &self ) -> Type {
+        return match self {
+            Self::Compare
+            | Self::Pow | Self::PowEquals
+            | Self::Times | Self::TimesEquals
+            | Self::Divide | Self::DivideEquals
+            | Self::Remainder | Self::RemainderEquals
+            | Self::Plus | Self::PlusEquals
+            | Self::Minus | Self::MinusEquals
+            | Self::BitAnd | Self::BitAndEquals
+            | Self::BitOr | Self::BitOrEquals
+            | Self::BitXor | Self::BitXorEquals
+            | Self::LeftShift | Self::LeftShiftEquals
+            | Self::RightShift | Self::RightShiftEquals => Type::Int,
+
+            Self::EqualsEquals | Self::NotEquals
+            | Self::Greater | Self::GreaterOrEquals
+            | Self::Less | Self::LessOrEquals
+            | Self::Not
+            | Self::And | Self::AndEquals
+            | Self::Or | Self::OrEquals => Type::Bool,
+
+            Self::Equals => unreachable!(),
+        }
+    }
+}
+
+
 #[derive( Debug, Clone )]
 pub(crate) enum Expression<'src: 'tokens, 'tokens> {
     Literal( Literal ),
@@ -117,6 +195,7 @@ pub(crate) enum Expression<'src: 'tokens, 'tokens> {
         rhs: Box<Expression<'src, 'tokens>>
     },
     Identifier( &'src str, Type ),
+    Array( Vec<Literal>, Type ),
 }
 
 impl Display for Expression<'_, '_> {
@@ -126,6 +205,18 @@ impl Display for Expression<'_, '_> {
             Self::Unary { op, operand }       => write!( f, "{}{}", op, operand ),
             Self::Binary { lhs, op, rhs, .. } => write!( f, "({} {} {})", lhs, op, rhs ),
             Self::Identifier( name, _ )       => write!( f, "{}", name ),
+            Self::Array( array, _ )           => {
+                write!( f, "[" )?;
+                if !array.is_empty() {
+                    let max_size = array.len().max( 5 );
+                    for element in array.iter().take( max_size - 1 ) {
+                        write!( f, "{},", element )?;
+                    }
+
+                    write!( f, "{}", array[ array.len() - 1 ] )?;
+                }
+                write!( f, "]" )
+            },
         }
     }
 }
@@ -136,7 +227,20 @@ impl TypeOf for Expression<'_, '_> {
             Self::Literal( literal )    => literal.typ(),
             Self::Unary { operand, .. } => operand.typ(),
             Self::Binary { op, .. }     => op.typ(),
-            Self::Identifier( _, typ )  => *typ,
+            Self::Identifier( _, typ )  => typ.clone(),
+            Self::Array( _, typ )       => typ.clone(),
+        }
+    }
+}
+
+impl From<Type> for Expression<'_, '_> {
+    fn from( typ: Type ) -> Self {
+        match typ {
+            Type::Bool              => Self::Literal( Literal::Bool( false ) ),
+            Type::Char              => Self::Literal( Literal::Char( 0 ) ),
+            Type::Int               => Self::Literal( Literal::Int( 0 ) ),
+            Type::Str               => Self::Literal( Literal::Str( Vec::new() ) ),
+            Type::Array( typ, len ) => Self::Array( Vec::with_capacity( len ), *typ ),
         }
     }
 }
@@ -596,7 +700,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                     help_msg: "cannot be a type name".into(),
                 } ),
             },
-            TokenKind::Bracket( BracketKind::OpenRound ) => {
+            TokenKind::Bracket( BracketKind::OpenRound ) => 'parenthesis: {
                 let expression_start_token = self.tokens.next().bounded( &mut self.tokens, "expected expression" )?;
                 match expression_start_token.kind {
                     TokenKind::Bracket( BracketKind::CloseRound ) => Err( RawSyntaxError {
@@ -614,7 +718,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                                 col: current_token.col,
                                 len: current_token.kind.len(),
                                 msg: "invalid expression".into(),
-                                help_msg: "unclosed parenthesis".into(),
+                                help_msg: "was not closed".into(),
                             } ),
                         }
                     }
@@ -642,13 +746,19 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                         col: current_token.col,
                         len: current_token.kind.len(),
                         msg: "invalid expression".into(),
-                        help_msg: "cannot negate boolean values, use the '!' operator instead to invert them".into(),
+                        help_msg: "cannot negate a boolean, use the '!' operator instead to invert them".into(),
                     } ),
                     Type::Str => Err( RawSyntaxError {
                         col: current_token.col,
                         len: current_token.kind.len(),
                         msg: "invalid expression".into(),
-                        help_msg: "cannot negate string values".into(),
+                        help_msg: "cannot negate a string".into(),
+                    } ),
+                    Type::Array( _, _ ) => Err( RawSyntaxError {
+                        col: current_token.col,
+                        len: current_token.kind.len(),
+                        msg: "invalid expression".into(),
+                        help_msg: "cannot negate an array".into(),
                     } ),
                 }
             },
@@ -662,19 +772,25 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 let operand = self.primary_expression()?;
                 // returning to avoid the call to tokens.next at the end of the function
                 return match operand.typ() {
-                    Type::Str => Err( RawSyntaxError {
-                        col: current_token.col,
-                        len: current_token.kind.len(),
-                        msg: "invalid expression".into(),
-                        help_msg: "cannot invert string values".into(),
-                    } ),
                     Type::Int | Type::Char | Type::Bool =>
                         if should_be_inverted {
                             Ok( Expression::Unary { op: Op::Not, operand: Box::new( operand ) } )
                         }
                         else {
                             Ok( operand )
-                        }
+                        },
+                    Type::Str => Err( RawSyntaxError {
+                        col: current_token.col,
+                        len: current_token.kind.len(),
+                        msg: "invalid expression".into(),
+                        help_msg: "cannot invert a string".into(),
+                    } ),
+                    Type::Array( _, _ ) => Err( RawSyntaxError {
+                        col: current_token.col,
+                        len: current_token.kind.len(),
+                        msg: "invalid expression".into(),
+                        help_msg: "cannot invert an array".into(),
+                    } ),
                 }
             },
             TokenKind::Definition( _ )
@@ -954,7 +1070,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
     }
 }
 
-// variable definitions and assignments
+// variables and types
 impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
     fn resolve_variable( &self, name: &'src str ) -> Option<(usize /* scope idx */, usize /* variable idx */, &Variable<'src, 'tokens>)> {
         let mut scope_idx = self.scope;
@@ -990,6 +1106,64 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
         }
     }
 
+    fn type_annotation( &mut self ) -> Result<Option<(&'tokens Token<'src>, Type)>, RawSyntaxError> {
+        let colon_token = self.tokens.next().bounded( &mut self.tokens, "expected type annotation or variable definition" )?;
+        return match &colon_token.kind {
+            TokenKind::Colon => {
+                let type_token = self.tokens.next().bounded( &mut self.tokens, "expected type" )?;
+                match &type_token.kind {
+                    TokenKind::Identifier( type_name ) => match self.resolve_type( type_name ) {
+                        Some( typ ) => match self.tokens.peek_next() {
+                            Some( open_square_bracket_token @ Token { kind: TokenKind::Bracket( BracketKind::OpenSquare ), .. } ) => {
+                                let array_type = Box::new( typ.clone() );
+                                self.tokens.next();
+                                let len_token = self.tokens.next().bounded( &mut self.tokens, "expected array length" )?;
+                                match len_token.kind {
+                                    TokenKind::Literal( Literal::Int( len ) ) => match self.tokens.next() {
+                                        Some( close_square_bracket_token @ Token { kind: TokenKind::Bracket( BracketKind::CloseSquare ), .. } ) =>
+                                            Ok( Some( (close_square_bracket_token, Type::Array( array_type, len.try_into().unwrap() )) ) ),
+                                        Some( _ ) | None => Err( RawSyntaxError {
+                                            col: open_square_bracket_token.col,
+                                            len: open_square_bracket_token.kind.len(),
+                                            msg: "invalid array type".into(),
+                                            help_msg: "was not closed".into(),
+                                        } ),
+                                    },
+                                    _ => Err( RawSyntaxError {
+                                        col: len_token.col,
+                                        len: len_token.kind.len(),
+                                        msg: "invalid array type".into(),
+                                        help_msg: "must be a literal integer".into(),
+                                    } )
+                                }
+                            },
+                            Some( _ ) | None => Ok( Some( (type_token, typ.clone()) ) ),
+                        },
+                        None => match self.resolve_variable( type_name ) {
+                            Some( (_, _, var) ) => Ok( Some( (type_token, var.value.typ()) ) ),
+                            None => Err( RawSyntaxError {
+                                col: type_token.col,
+                                len: type_token.kind.len(),
+                                msg: "invalid type annotation".into(),
+                                help_msg: "was not previously defined".into(),
+                            } ),
+                        },
+                    },
+                    _ => Err( RawSyntaxError {
+                        col: colon_token.col,
+                        len: colon_token.kind.len(),
+                        msg: "invalid type annotation".into(),
+                        help_msg: "expected type name after here".into(),
+                    } )
+                }
+            },
+            _ => {
+                self.tokens.token -= 1;
+                Ok( None )
+            },
+        }
+    }
+
 
     fn variable_definition( &mut self ) -> Result<Node<'src, 'tokens>, RawSyntaxError> {
         let definition_token = self.tokens.current.unwrap();
@@ -1016,37 +1190,9 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 help_msg: "expected variable name".into(),
             } ),
         };
+        let name = name?;
 
-        let colon_token = self.tokens.next().bounded( &mut self.tokens, "expected type annotation or variable definition" )?;
-        let annotation = match &colon_token.kind {
-            TokenKind::Colon => {
-                let annotation_token = self.tokens.next().bounded( &mut self.tokens, "expected type" )?;
-                match &annotation_token.kind {
-                    TokenKind::Identifier( type_name ) => match self.resolve_type( type_name ) {
-                        Some( typ ) => Ok( Some( (*typ, annotation_token) ) ),
-                        None => match self.resolve_variable( type_name ) {
-                            Some( (_, _, var) ) => Ok( Some( (var.value.typ(), annotation_token) ) ),
-                            None => Err( RawSyntaxError {
-                                col: annotation_token.col,
-                                len: annotation_token.kind.len(),
-                                msg: "invalid type annotation".into(),
-                                help_msg: "was not previously defined".into(),
-                            } )
-                        },
-                    },
-                    _ => Err( RawSyntaxError {
-                        col: colon_token.col,
-                        len: colon_token.kind.len(),
-                        msg: "invalid type annotation".into(),
-                        help_msg: "expected type name after here".into(),
-                    } )
-                }
-            },
-            _ => {
-                self.tokens.token -= 1;
-                Ok( None )
-            },
-        };
+        let annotation = self.type_annotation()?;
 
         let equals_or_semicolon_token = self.tokens.next().bounded( &mut self.tokens, "expected equals" )?;
         let expression = match equals_or_semicolon_token.kind {
@@ -1058,16 +1204,21 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 }
             },
             TokenKind::SemiColon => Ok( None ),
-            _ => Err( RawSyntaxError {
-                col: name_token.col,
-                len: name_token.kind.len(),
-                msg: "invalid assignment".into(),
-                help_msg: "expected '=' or ';' after the variable name".into(),
-            } ),
+            _ => match annotation {
+                None => Err( RawSyntaxError {
+                    col: name_token.col,
+                    len: name_token.kind.len(),
+                    msg: "invalid assignment".into(),
+                    help_msg: "expected '=' or ';' after the variable name".into(),
+                } ),
+                Some( (annotation_token, _) ) => Err( RawSyntaxError {
+                    col: annotation_token.col,
+                    len: annotation_token.kind.len(),
+                    msg: "invalid assignment".into(),
+                    help_msg: "expected '=' or ';' after the type annotation".into(),
+                } ),
+            }
         };
-
-        let name = name?;
-        let annotation = annotation?;
         let expression = expression?;
 
         if self.resolve_variable( name ).is_some() {
@@ -1081,7 +1232,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 
         return match expression {
             Some( value ) => {
-                if let Some( (typ, token) ) = annotation {
+                if let Some( (token, typ) ) = annotation {
                     if typ != value.typ() {
                         return Err( RawSyntaxError {
                             col: token.col,
@@ -1100,9 +1251,9 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 Ok( Node::Definition( self.scope, variables.len() - 1 ) )
             },
             None => match annotation {
-                Some( (typ, _) ) => {
+                Some( (_, typ) ) => {
                     let variables = &mut self.scopes[ self.scope ].variables;
-                    variables.push( Variable { mutability, name, value: Expression::Literal( typ.default() ) } );
+                    variables.push( Variable { mutability, name, value: typ.into() } );
                     Ok( Node::Definition( self.scope, variables.len() - 1 ) )
                 },
                 None => Err( RawSyntaxError {
@@ -1214,7 +1365,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
             let expression = self.expression()?;
             let condition = match &expression.typ() {
                 Type::Bool => Ok( expression ),
-                Type::Char | Type::Int | Type::Str => Err( RawSyntaxError {
+                Type::Char | Type::Int | Type::Str | Type::Array( _, _ ) => Err( RawSyntaxError {
                     col: if_token.col,
                     len: if_token.kind.len(),
                     msg: "expected boolean expression".into(),
@@ -1296,7 +1447,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens>{
         let expression = self.expression()?;
         let condition = match &expression.typ() {
             Type::Bool => Ok( expression ),
-            Type::Char | Type::Int | Type::Str => Err( RawSyntaxError {
+            Type::Char | Type::Int | Type::Str | Type::Array( _, _ ) => Err( RawSyntaxError {
                 col: loop_token.col,
                 len: loop_token.kind.len(),
                 msg: "expected boolean expression".into(),

@@ -108,10 +108,6 @@ pub(crate) trait Len {
     fn len( &self ) -> usize;
 }
 
-pub(crate) trait TypeOf {
-    fn typ( &self ) -> Type;
-}
-
 
 #[derive( Debug, Clone )]
 pub(crate) enum Literal {
@@ -121,7 +117,6 @@ pub(crate) enum Literal {
     Char( u8 ), // only supporting ASCII characters for now
     Bool( bool ),
     Str( Vec<u8> ),
-    // Array( Box<Literal> )
 }
 
 impl Display for Literal {
@@ -159,59 +154,6 @@ impl Len for Literal {
             Self::Char( _ )     => 1,
             Self::Bool( value ) => value.to_string().len(),
             Self::Str( string ) => string.len() + 2,
-        }
-    }
-}
-
-impl TypeOf for Literal {
-    fn typ( &self ) -> Type {
-        return match self {
-            Self::Int( _ )  => Type::Int,
-            Self::Char( _ ) => Type::Char,
-            Self::Bool( _ ) => Type::Bool,
-            Self::Str( _ )  => Type::Str,
-        }
-    }
-}
-
-
-#[derive( Debug, PartialEq, Clone, Copy )]
-pub(crate) enum Type {
-    Int,
-    Char,
-    Bool,
-    Str,
-    // Array( Box<Type> ),
-}
-
-impl Display for Type {
-    fn fmt( &self, f: &mut std::fmt::Formatter<'_> ) -> std::fmt::Result {
-        return match self {
-            Self::Int  => write!( f, "int" ),
-            Self::Char => write!( f, "char" ),
-            Self::Bool => write!( f, "bool" ),
-            Self::Str  => write!( f, "str" ),
-        }
-    }
-}
-
-impl Type {
-    pub(crate) fn default( &self ) -> Literal {
-        match self {
-            Self::Bool => Literal::Bool( false ),
-            Self::Char => Literal::Char( 0 ),
-            Self::Int  => Literal::Int( 0 ),
-            Self::Str  => Literal::Str( Vec::new() ),
-
-        }
-    }
-
-    pub(crate) fn size( &self ) -> usize {
-        match self {
-            Self::Int  => core::mem::size_of::<isize>(),
-            Self::Char => core::mem::size_of::<u8>(),
-            Self::Bool => core::mem::size_of::<bool>(),
-            Self::Str  => core::mem::size_of::<*const u8>() + core::mem::size_of::<usize>(),
         }
     }
 }
@@ -358,34 +300,6 @@ impl Len for Op {
             Self::Less             => 1,
             Self::LessOrEquals     => 2,
             Self::Compare          => 3,
-        }
-    }
-}
-
-impl TypeOf for Op {
-    fn typ( &self ) -> Type {
-        return match self {
-            Self::Compare
-            | Self::Pow | Self::PowEquals
-            | Self::Times | Self::TimesEquals
-            | Self::Divide | Self::DivideEquals
-            | Self::Remainder | Self::RemainderEquals
-            | Self::Plus | Self::PlusEquals
-            | Self::Minus | Self::MinusEquals
-            | Self::BitAnd | Self::BitAndEquals
-            | Self::BitOr | Self::BitOrEquals
-            | Self::BitXor | Self::BitXorEquals
-            | Self::LeftShift | Self::LeftShiftEquals
-            | Self::RightShift | Self::RightShiftEquals => Type::Int,
-
-            Self::EqualsEquals | Self::NotEquals
-            | Self::Greater | Self::GreaterOrEquals
-            | Self::Less | Self::LessOrEquals
-            | Self::Not
-            | Self::And | Self::AndEquals
-            | Self::Or | Self::OrEquals => Type::Bool,
-
-            Self::Equals => unreachable!(),
         }
     }
 }
@@ -618,9 +532,7 @@ impl<'src> Lexer<'src> {
             },
         }
     }
-}
 
-impl<'src> Lexer<'src> {
     // this function exists just to be able to use the ? operator
     fn next_token( &mut self ) -> Result<Option<TokenKind<'src>>, RawSyntaxError> {
         // this loop exists just to be able to use continues and breaks
