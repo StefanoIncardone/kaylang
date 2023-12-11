@@ -494,7 +494,7 @@ fn [] = answer() do return 42;
 
 # with named return values (NOTE: naked returns are not going to be allowed)
 fn [result: int, remainder: int] = divmod( dividend: int, divisor: int )
-    do return result = dividendo / divisor, remainder = dividendo % divisor;
+    do return result = dividend / divisor, remainder = dividend % divisor;
 
 # with unnamed return values
 fn [int, int] = divmod( dividend: int, divisor: int ) do return dividend / divisor, remainder = dividend % divisor;
@@ -561,4 +561,61 @@ fn result: int, remainder: int = divmod( dividend: int, divisor: int ) do return
 fn result: int, remainder: int = divmod( dividend: int, divisor: int ) do return result = dividend / divisor, remainder = dividend % divisor;
 
 # done
+```
+
+## "unconventional" variable names
+
+```kay
+# variable name is not valid because it contains spaces
+let this is not a valid variable name = "some value";
+
+# new syntax, repurposing single quotes
+let 'this is not a valid variable name' = c"s"; # character literals would become this, or something else
+
+# or like this, where the i string modifier would mean "identifier"
+let i"this is not a valid variable name" = "some value";
+
+# it would allow for the use of keywords as identifiers
+let i"let" = "let";
+
+# or for this
+let i"2" = 2;
+```
+
+debate over usefulness and syntax:
+
+```kay
+# this
+let i"this is not a valid variable name" = "some value";
+
+# could be just this
+let this_is_not_a_valid_variable_name = "some value";
+
+# while this
+let i"let" = "let";
+
+# or this (or with some other symbol)
+let $let = "let";
+
+# could be just this
+let lett = "let";
+
+# or simply this
+let _let = "let";
+
+
+# while this
+let i"21" = 9 + 10; # complex calculation might be done here
+let answer = i"21" * 2;
+
+# could become this
+let $21 = 9 + 10;
+let answer = $21 * 2;
+
+# or even this
+let _21 = 9 + 10; 
+let answer = _21 * 2;
+
+# or allow for stuff like this, where a trailing underscore would indicate that this is an identifier instead of a number
+let 21_ = 9 + 10;
 ```
