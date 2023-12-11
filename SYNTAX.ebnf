@@ -10,6 +10,9 @@ character_literal = "'", (escape_character | ASCII_character), "'";
 string_literal    = '"', [{escape_character | ASCII_character}], '"';
 identifier        = "_" | "A".."Z" | "a".."z", [{"_" | "A".."Z" | "a".."z" | digit}];
 
+(* expressions must be of the same type *)
+array             = "[", [{expression}], "]";
+
 (* from highest precedence to lowest *)
 int_factor                = ["-" | "!"], (number_literal | character_literal | identifier | ("(", integer_expression, ")"));
 boolean_factor            = ["!"], (boolean_literal | identifier | ("(", boolean_expression, ")"));

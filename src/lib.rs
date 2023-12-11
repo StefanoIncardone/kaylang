@@ -1,3 +1,5 @@
+// TODO rename typ to type_ or something more consisten with other variable names
+
 use std::{path::{Path, PathBuf}, env::Args, fmt::Display, process::Command};
 
 pub mod logging;

@@ -33,8 +33,6 @@ Boolean values are `true` and `false`, being functionally equivalent to `1` and 
 ### Characters
 
 Character literals are surrounded by `'`: `'B'`
-They can also be used in math expression, being automatically converted to their ASCII code (temporary implicit conversion)
-
 These are the available escaped characters:
 
 - backslash: `\\`
@@ -56,12 +54,6 @@ String literals are surrounded by `"` and contain any number of regular or escap
 ```kay
 println 1 + true; # will print 2 (1 + true -> 1 + 1)
 println 1 + false; # will print 1 (1 + false -> 1 + 0)
-```
-
-**Note**: when using strings in expressions they get converted to their length (waiting for proper type checking)
-
-```kay
-print "length of \"lucky\" is "; println "lucky" + 0;   # easy way to obtain the length of the string
 ```
 
 Expressions follow this order of operations (precedence from highest to lowest):
@@ -263,4 +255,13 @@ Semicolons are reguired after statements.
 ```kay
 print "Hello "; # required semicolon
 println "World!";
+```
+
+### Arrays
+
+Arrays are a collection of values of the same type under a single variable
+
+```kay
+let i = [1, 2, 3, 4];
+println i;
 ```

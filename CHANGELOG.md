@@ -6,6 +6,7 @@
 
 - disallowed implicit conversions between strings and other types
     - corrected related bugs
+- arrays
 
 
 ## 0.4

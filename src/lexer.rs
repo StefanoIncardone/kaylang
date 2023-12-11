@@ -381,6 +381,7 @@ pub(crate) enum TokenKind<'src> {
     Bracket( BracketKind ),
     Colon,
     SemiColon,
+    Comma,
     Op( Op ),
 
     Literal( Literal ),
@@ -409,6 +410,7 @@ impl Display for TokenKind<'_> {
             Self::Bracket( bracket ) => write!( f, "{}", bracket ),
             Self::Colon              => write!( f, ":" ),
             Self::SemiColon          => write!( f, ";" ),
+            Self::Comma              => write!( f, "," ),
 
             Self::Literal( literal ) => write!( f, "{}", literal ),
             Self::Identifier( name ) => write!( f, "{}", name ),
@@ -439,6 +441,7 @@ impl Len for TokenKind<'_> {
             Self::Bracket( bracket ) => bracket.len(),
             Self::Colon              => 1,
             Self::SemiColon          => 1,
+            Self::Comma              => 1,
             Self::Op( op )           => op.len(),
 
             Self::Literal( typ )     => typ.len(),
@@ -461,9 +464,9 @@ impl Len for TokenKind<'_> {
 
 #[derive( Debug, Clone )]
 pub(crate) struct Token<'src> {
+    pub(crate) kind: TokenKind<'src>,
     pub(crate) col: usize,
     // pub(crate) len: usize,
-    pub(crate) kind: TokenKind<'src>,
 }
 
 
@@ -503,11 +506,11 @@ impl<'src> Lexer<'src> {
             let _line_text = &this.src.code[ this.line.start..this.line.end ];
             let token = match this.next_token() {
                 Ok( None ) => break,
-                Ok( Some( kind ) ) => Token { col: this.token_start_col, kind },
+                Ok( Some( kind ) ) => Token { kind, col: this.token_start_col },
                 Err( err ) => {
                     this.errors.add( this.src, err );
                     let unexpected = &this.src.code[ this.token_start_col..this.col ];
-                    Token { col: this.token_start_col, kind: TokenKind::Unexpected( unexpected ) }
+                    Token { kind: TokenKind::Unexpected( unexpected ), col: this.token_start_col }
                 }
             };
 
@@ -594,6 +597,7 @@ impl<'src> Lexer<'src> {
                         Ok( Some( identifier ) )
                     }
                 },
+                // implement negative numbers
                 b'0'..=b'9' => {
                     let mut contains_non_ascii = false;
                     loop {
@@ -640,7 +644,8 @@ impl<'src> Lexer<'src> {
                                 msg: "invalid number literal".into(),
                                 help_msg: format!( "underflows a {} bit signed integer (under {})", isize::BITS, isize::MIN ).into(),
                             } ),
-                            IntErrorKind::Empty | std::num::IntErrorKind::Zero => unreachable!(),
+                            IntErrorKind::Empty => unreachable!( "should never parse empty numbers" ),
+                            IntErrorKind::Zero => unreachable!( "numbers can also be zero" ),
                             _ => Err( RawSyntaxError {
                                 col: self.token_start_col,
                                 len: token_text.len(),
@@ -828,6 +833,7 @@ impl<'src> Lexer<'src> {
                 },
                 b':' => Ok( Some( TokenKind::Colon ) ),
                 b';' => Ok( Some( TokenKind::SemiColon ) ),
+                b',' => Ok( Some( TokenKind::Comma ) ),
                 b'!' => match self.peek_next()? {
                     Some( b'=' ) => {
                         self.col += 1;
