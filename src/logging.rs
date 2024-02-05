@@ -46,14 +46,14 @@ pub(crate) static OUTPUT: ColoredStr = ColoredStr { text: "Output", opt: HELP_OP
 static mut display: fn(&str, Options, &mut std::fmt::Formatter<'_>) -> std::fmt::Result = Color::color;
 
 impl Color {
-    pub(crate) fn set(&self) {
+    pub(crate) fn set(self) {
         unsafe {
             display = match self {
                 Self::Auto => {
-                    if !std::io::stderr().is_terminal() {
-                        Self::no_color
-                    } else {
+                    if std::io::stderr().is_terminal() {
                         Self::color
+                    } else {
+                        Self::no_color
                     }
                 }
                 Self::Always => Self::color,
@@ -65,14 +65,14 @@ impl Color {
     // since printing version and help message are the only places where printing to stdoud is
     // performed we are manually checking if stdout (overring stderr coloring modes) is in terminal
     // mode until a way to separately print colored/non-colored output to stdout/stderr is found
-    pub(crate) fn set_stdout(&self) {
+    pub(crate) fn set_stdout(self) {
         unsafe {
             display = match self {
                 Self::Auto => {
-                    if !std::io::stdout().is_terminal() {
-                        Self::no_color
-                    } else {
+                    if std::io::stdout().is_terminal() {
                         Self::color
+                    } else {
+                        Self::no_color
                     }
                 }
                 Self::Always => Self::color,
@@ -113,7 +113,7 @@ impl Color {
         return if codes.is_empty() {
             text.fmt(f)
         } else {
-            codes.pop(); //remove the last ";"
+            let _last_semicolon = codes.pop();
 
             write!(f, "\x1b[{}m", codes)?;
             text.fmt(f)?;

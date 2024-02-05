@@ -7,20 +7,19 @@ use std::{
     process::Command,
 };
 
-pub mod logging;
-use logging::*;
-
-mod lexer;
-use lexer::*;
+use ast::Ast;
+use compiler::Compiler;
+use error::{CliError, IoError, KayError};
+use lexer::{Lexer, SrcFile};
+use logging::{
+    CompilationLogger, AST_BUILDING, CHECKING, FILE, LEXING, MODE, OPTIONS, OUTPUT, PATH, RUNNING, RUN_MODE, VERSION,
+};
 
 mod ast;
-use ast::*;
-
 mod compiler;
-use compiler::*;
-
 mod error;
-use error::*;
+mod lexer;
+mod logging;
 
 // Command line arguments
 #[derive(Debug, Default, Clone, Copy)]
@@ -81,6 +80,7 @@ pub struct KayArgs {
     pub run_mode: Option<RunMode>,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct Help {
     color: Color,
     full: bool,
@@ -115,11 +115,13 @@ run      <{FILE}> [{OUTPUT}]     Compile and run the generated executable
     }
 }
 
+#[derive(Debug)]
 pub enum CompileKind {
     Check,
     Compile { out_path: Option<PathBuf>, run: bool },
 }
 
+#[derive(Debug)]
 pub struct Compile {
     src: SrcFile,
     verbosity: Verbosity,
@@ -127,7 +129,7 @@ pub struct Compile {
 }
 
 impl Compile {
-    pub fn execute(&mut self) -> Result<(), KayError> {
+    pub fn execute(&mut self) -> Result<(), KayError<'_>> {
         let mut logger = CompilationLogger::new(self.verbosity);
         logger.step(&CHECKING, &self.src.path);
 
@@ -194,6 +196,7 @@ impl Compile {
     }
 }
 
+#[derive(Debug)]
 pub enum Kay {
     Help(Help),
     // TODO(stefano): split into Compile and Run and make Run return the exitcode of the code it just run
@@ -228,7 +231,7 @@ impl TryFrom<Vec<String>> for Kay {
         let args_iter = args.iter().peekable();
 
         let mut args = args_iter.clone();
-        args.next(); // skipping the name of this executable
+        let _ = args.next(); // skipping the name of this executable
 
         Color::Auto.set();
         let mut color_mode: Option<Color> = None;
@@ -259,7 +262,7 @@ impl TryFrom<Vec<String>> for Kay {
         let mut run_mode: Option<RunMode> = None;
 
         args = args_iter.clone();
-        args.next(); // skipping the name of this executable
+        let _ = args.next(); // skipping the name of this executable
 
         while let Some(arg) = args.next() {
             match arg.as_str() {
@@ -300,7 +303,7 @@ impl TryFrom<Vec<String>> for Kay {
 
                             if let Some(out_flag) = args.peek() {
                                 if *out_flag == "-o" || *out_flag == "--output" {
-                                    args.next();
+                                    let _ = args.next();
 
                                     out = match args.next() {
                                         Some(path) => Some(path.into()),
@@ -347,7 +350,7 @@ impl TryFrom<Vec<String>> for Kay {
                     });
                 }
                 "-c" | "--color" => {
-                    args.next();
+                    let _ = args.next();
                 }
                 _ => return Err(CliError { msg: format!("unrecognized option '{}'", arg).into() }),
             }
@@ -367,11 +370,11 @@ impl TryFrom<Args> for Kay {
 
 // factory methods
 impl Kay {
-    pub fn help(color: Color) -> Help {
+    pub const fn help(color: Color) -> Help {
         return Help { color, full: true };
     }
 
-    pub fn version(color: Color) -> Help {
+    pub const fn version(color: Color) -> Help {
         return Help { color, full: false };
     }
 
@@ -385,7 +388,7 @@ impl Kay {
 }
 
 impl Kay {
-    pub fn execute(&mut self) -> Result<(), KayError> {
+    pub fn execute(&mut self) -> Result<(), KayError<'_>> {
         return match self {
             Self::Help(help) => {
                 help.execute();

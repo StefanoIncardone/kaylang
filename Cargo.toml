@@ -10,17 +10,6 @@ readme = "README.md"
 repository = "https://github.com/StefanoIncardone/kaylang"
 license = "MIT"
 
-[lints.clippy]
-needless_return = "allow"
-zero_prefixed_literal = "allow"
-large-stack-arrays = "forbid"
-too-many-arguments = "allow"
-from_over_into = "allow"
-
-[lints.rust]
-private_bounds = "forbid"
-private_interfaces = "forbid"
-
 [profile.dev]
 debug = "full"
 opt-level = 0
@@ -34,3 +23,36 @@ opt-level = 0
 # codegen-units = 1
 # incremental = false
 # lto = "fat"
+
+[lints.clippy]
+## to be used once in a while
+# nursery = "warn"
+# pedantic = "warn"
+# restriction = "warn"
+
+cargo = "forbid"
+from_over_into = "allow"
+large-stack-arrays = "forbid"
+needless_return = "allow"
+too-many-arguments = "allow"
+zero_prefixed_literal = "allow"
+manual_let_else = "warn"
+no_effect_undescore_binding = "warn"
+
+[lints.rust]
+absolute_paths_not_starting_with_crate = "forbid"
+elided-lifetimes-in-paths = "warn"
+keyword_idents = "forbid"
+non_ascii_idents = "forbid"
+unreachable_pub = "warn"
+unstable_features = "forbid"
+unused_crate_dependencies = "warn"
+unused_extern_crates = "warn"
+unused_import_braces = "warn"
+unused_lifetimes = "warn"
+unused_macro_rules = "warn"
+unused_qualifications = "warn"
+unused_results = "forbid"
+unused_tuple_struct_fields = "warn"
+private_bounds = "forbid"
+private_interfaces = "forbid"

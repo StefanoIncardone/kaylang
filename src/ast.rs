@@ -1,8 +1,8 @@
 use std::{borrow::Cow, fmt::Debug, fmt::Display};
 
 use crate::{
-    AddError, BracketKind, Len, Literal, Mutability, Op, RawSyntaxError, SrcFile, SyntaxError, SyntaxErrors, Token,
-    TokenKind,
+    error::{AddError, RawSyntaxError, SyntaxError, SyntaxErrors},
+    lexer::{BracketKind, Len, Literal, Mutability, Op, SrcFile, Token, TokenKind},
 };
 
 trait Bounded<'src: 'tokens, 'tokens> {
@@ -61,7 +61,7 @@ impl<'src: 'tokens, 'tokens> Tokens<'src, 'tokens> {
         return self.current;
     }
 
-    fn peek_next(&self) -> Option<&'tokens Token<'src>> {
+    const fn peek_next(&self) -> Option<&'tokens Token<'src>> {
         let mut current_token = self.token;
         loop {
             if current_token >= self.tokens.len() - 1 {
@@ -76,7 +76,7 @@ impl<'src: 'tokens, 'tokens> Tokens<'src, 'tokens> {
         }
     }
 
-    fn peek_previous(&self) -> &'tokens Token<'src> {
+    const fn peek_previous(&self) -> &'tokens Token<'src> {
         let mut current_token = self.token;
         loop {
             current_token -= 1;
@@ -129,13 +129,13 @@ pub(crate) enum Type {
 impl PartialEq for Type {
     fn eq(&self, other: &Self) -> bool {
         return match (self, other) {
-            (Type::Infer, Type::Infer)
-            | (Type::Int, Type::Int)
-            | (Type::Char, Type::Char)
-            | (Type::Bool, Type::Bool)
-            | (Type::Str, Type::Str) => true,
+            (Self::Infer, Self::Infer)
+            | (Self::Int, Self::Int)
+            | (Self::Char, Self::Char)
+            | (Self::Bool, Self::Bool)
+            | (Self::Str, Self::Str) => true,
 
-            (Type::Array(array_len_1, array_typ_1), Type::Array(array_len_2, array_typ_2)) => {
+            (Self::Array(array_len_1, array_typ_1), Self::Array(array_len_2, array_typ_2)) => {
                 array_len_1 == array_len_2 && array_typ_1 == array_typ_2
             }
 
@@ -179,7 +179,7 @@ impl Type {
         };
     }
 
-    pub(crate) fn inner(&self) -> Type {
+    pub(crate) fn inner(&self) -> Self {
         return match self {
             Self::Array(_, typ) => typ.inner(),
             _ => self.clone(),
@@ -297,7 +297,7 @@ impl From<Type> for Expression<'_, '_> {
             Type::Int => Self::Literal(Literal::Int(0)),
             Type::Str => Self::Literal(Literal::Str(Vec::new())),
             Type::Array(len, typ) => {
-                let mut array: Vec<Expression> = Vec::with_capacity(len);
+                let mut array = Vec::<Expression<'_, '_>>::with_capacity(len);
                 for _ in 1..len {
                     let inner_typ = *typ.clone();
                     array.push(inner_typ.into());
@@ -400,7 +400,7 @@ impl Display for Node<'_, '_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Scope<'src: 'tokens, 'tokens> {
+pub(crate) struct Scope<'src: 'tokens, 'tokens> {
     pub(crate) parent: usize,
     pub(crate) types: Vec<Type>,
     pub(crate) variables: Vec<Variable<'src, 'tokens>>,
@@ -445,12 +445,11 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 
         this.parse_scope();
 
-        return match this.errors.is_empty() {
-            true => Ok(this.scopes),
-            false => {
-                this.errors.sort_by(|e1, e2| e1.line.cmp(&e2.line));
-                Err(SyntaxErrors { src: this.src, errors: this.errors })
-            }
+        return if this.errors.is_empty() {
+            Ok(this.scopes)
+        } else {
+            this.errors.sort_by(|e1, e2| e1.line.cmp(&e2.line));
+            Err(SyntaxErrors { src: this.src, errors: this.errors })
         };
     }
 }
@@ -504,10 +503,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
     }
 
     fn parse_single_statement(&mut self) -> Result<Option<Node<'src, 'tokens>>, RawSyntaxError> {
-        let current_token = match self.tokens.current {
-            Some(token) => token,
-            None => return Ok(None),
-        };
+        let Some(current_token) = self.tokens.current else { return Ok(None) };
 
         return match current_token.kind {
             TokenKind::Literal(_)
@@ -541,7 +537,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
             TokenKind::Print | TokenKind::PrintLn => Ok(Some(self.print()?)),
             TokenKind::If => Ok(Some(self.iff()?)),
             TokenKind::Else => {
-                self.tokens.next();
+                let _ = self.tokens.next();
                 Err(RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
@@ -559,7 +555,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 }
             }
             TokenKind::Break => {
-                self.tokens.next();
+                let _ = self.tokens.next();
                 match self.loop_depth {
                     0 => Err(RawSyntaxError {
                         col: current_token.col,
@@ -571,7 +567,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 }
             }
             TokenKind::Continue => {
-                self.tokens.next();
+                let _ = self.tokens.next();
                 match self.loop_depth {
                     0 => Err(RawSyntaxError {
                         col: current_token.col,
@@ -583,7 +579,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 }
             }
             TokenKind::Bracket(BracketKind::OpenCurly) => {
-                self.tokens.next();
+                let _ = self.tokens.next();
                 Err(RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
@@ -592,7 +588,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 })
             }
             TokenKind::Bracket(BracketKind::CloseCurly) => {
-                self.tokens.next();
+                let _ = self.tokens.next();
                 Err(RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
@@ -601,7 +597,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 })
             }
             TokenKind::Bracket(BracketKind::OpenSquare) => {
-                self.expression()?;
+                let _ = self.expression()?;
                 Err(RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
@@ -610,7 +606,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 })
             }
             TokenKind::Bracket(BracketKind::CloseSquare) => {
-                self.tokens.next();
+                let _ = self.tokens.next();
                 Err(RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
@@ -619,7 +615,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 })
             }
             TokenKind::Bracket(BracketKind::CloseRound) => {
-                self.tokens.next();
+                let _ = self.tokens.next();
                 Err(RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
@@ -628,7 +624,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 })
             }
             TokenKind::Colon => {
-                self.tokens.next();
+                let _ = self.tokens.next();
                 Err(RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
@@ -637,7 +633,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 })
             }
             TokenKind::Comma => {
-                self.tokens.next();
+                let _ = self.tokens.next();
                 Err(RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
@@ -646,7 +642,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 })
             }
             TokenKind::Op(Op::Equals) => {
-                self.tokens.next();
+                let _ = self.tokens.next();
                 Err(RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
@@ -655,7 +651,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 })
             }
             TokenKind::Op(_) => {
-                self.tokens.next();
+                let _ = self.tokens.next();
                 Err(RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
@@ -664,7 +660,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 })
             }
             TokenKind::SemiColon => {
-                self.tokens.next();
+                let _ = self.tokens.next();
                 Ok(Some(Node::Semicolon))
             }
             TokenKind::Comment(_) => unreachable!("should be skipped by the token iterator"),
@@ -676,7 +672,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
         let current_token = self.tokens.next().bounded(&mut self.tokens, "expected statement")?;
         return match current_token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
-                self.tokens.next();
+                let _ = self.tokens.next();
                 Err(RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
@@ -685,7 +681,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 })
             }
             TokenKind::Definition(_) => {
-                self.tokens.next();
+                let _ = self.tokens.next();
                 Err(RawSyntaxError {
                     col: current_token.col,
                     len: current_token.kind.len(),
@@ -698,10 +694,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
     }
 
     fn parse_single_any(&mut self) -> Result<Option<Node<'src, 'tokens>>, RawSyntaxError> {
-        let current_token = match self.tokens.current {
-            Some(token) => token,
-            None => return Ok(None),
-        };
+        let Some(current_token) = self.tokens.current else { return Ok(None) };
 
         return match current_token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
@@ -714,13 +707,13 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 });
                 self.scope = new_scope;
 
-                self.tokens.next();
+                let _ = self.tokens.next();
                 self.parse_scope();
                 Ok(Some(Node::Scope(new_scope)))
             }
             TokenKind::Bracket(BracketKind::CloseCurly) => {
                 self.scope = self.scopes[self.scope].parent;
-                self.tokens.next();
+                let _ = self.tokens.next();
                 Ok(None)
             }
             _ => self.parse_single_statement(),
@@ -734,7 +727,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
         let semicolon_token = self.tokens.current.bounded(&mut self.tokens, "expected semicolon")?;
         return match &semicolon_token.kind {
             TokenKind::SemiColon => {
-                self.tokens.next();
+                let _ = self.tokens.next();
                 Ok(())
             }
             _ => {
@@ -757,7 +750,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
         return match current_token.kind {
             TokenKind::Op(op) => {
                 if ops.contains(&op) {
-                    self.tokens.next();
+                    let _ = self.tokens.next();
                     Ok(Some((&current_token, op)))
                 } else {
                     Ok(None)
@@ -780,9 +773,9 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                             let array = var.name;
                             let array_typ = var.value.typ().inner();
 
-                            self.tokens.next(); // now at the open square bracket
+                            let _open_square = self.tokens.next();
 
-                            self.tokens.next(); // now at the start of the index
+                            let _start_of_index = self.tokens.next();
                             let index = self.expression()?;
                             match index.typ() {
                                 Type::Int => {
@@ -859,8 +852,8 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 }
             }
             TokenKind::Bracket(BracketKind::OpenSquare) => 'array: {
-                self.tokens.next();
-                let mut array: Vec<Expression> = Vec::new();
+                let _ = self.tokens.next();
+                let mut array = Vec::<Expression<'src, 'tokens>>::new();
                 let mut array_typ = Type::Infer;
 
                 loop {
@@ -900,7 +893,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                     let comma_token =
                         self.tokens.current.bounded(&mut self.tokens, "expected comma or closing square bracket")?;
                     if let TokenKind::Comma = comma_token.kind {
-                        self.tokens.next();
+                        let _ = self.tokens.next();
                     }
                 }
             }
@@ -996,7 +989,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
             }),
         };
 
-        self.tokens.next();
+        let _ = self.tokens.next();
         return factor;
     }
 
@@ -1315,7 +1308,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                                 },
                             ) => {
                                 let array_type = Box::new(typ.clone());
-                                self.tokens.next();
+                                let _ = self.tokens.next();
                                 let len_token =
                                     self.tokens.next().bounded(&mut self.tokens, "expected array length")?;
                                 match len_token.kind {
@@ -1379,9 +1372,8 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 
     fn variable_definition(&mut self) -> Result<Node<'src, 'tokens>, RawSyntaxError> {
         let definition_token = self.tokens.current.unwrap();
-        let mutability = match definition_token.kind {
-            TokenKind::Definition(kind) => kind,
-            _ => unreachable!("cannot be anything different from 'let' or 'var'"),
+        let TokenKind::Definition(mutability) = definition_token.kind else {
+            unreachable!("cannot be anything different from 'let' or 'var'");
         };
 
         let name_token = self.tokens.next().bounded(&mut self.tokens, "expected identifier")?;
@@ -1409,7 +1401,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
         let equals_or_semicolon_token = self.tokens.next().bounded(&mut self.tokens, "expected equals")?;
         let expression = match equals_or_semicolon_token.kind {
             TokenKind::Op(Op::Equals) => {
-                self.tokens.next();
+                let _ = self.tokens.next();
                 match self.expression() {
                     Ok(expr) => Ok(Some(expr)),
                     Err(err) => Err(err),
@@ -1493,9 +1485,8 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 
     fn variable_reassignment(&mut self) -> Result<Node<'src, 'tokens>, RawSyntaxError> {
         let name_token = self.tokens.current.unwrap();
-        let name = match name_token.kind {
-            TokenKind::Identifier(name) => name,
-            _ => unreachable!("cannot be different from an identifier"),
+        let TokenKind::Identifier(name) = name_token.kind else {
+            unreachable!("cannot be different from an identifier");
         };
 
         if self.resolve_type(name).is_some() {
@@ -1509,7 +1500,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 
         let op_token = self.tokens.next().unwrap();
 
-        self.tokens.next();
+        let _ = self.tokens.next();
         let rhs = self.expression()?;
         return match self.resolve_variable(name) {
             Some((scope_idx, var_idx, var)) => match var.mutability {
@@ -1564,7 +1555,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
         let print_token = self.tokens.current.unwrap();
         if let TokenKind::PrintLn = print_token.kind {
             if let Some(&Token { kind: TokenKind::SemiColon, .. }) = self.tokens.peek_next() {
-                self.tokens.next();
+                let _ = self.tokens.next();
                 return Ok(Node::Println(None));
             }
         }
@@ -1594,7 +1585,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
         let mut if_statement = If { ifs: Vec::new(), els: None };
 
         'iff: while let Some(if_token) = self.tokens.current {
-            self.tokens.next().bounded(&mut self.tokens, "expected boolean expression")?;
+            let _ = self.tokens.next().bounded(&mut self.tokens, "expected boolean expression")?;
 
             let expression = self.expression()?;
             let condition = match &expression.typ() {
@@ -1679,7 +1670,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
             _ => do_token,
         };
 
-        self.tokens.next().bounded(&mut self.tokens, "expected boolean expression")?;
+        let _ = self.tokens.next().bounded(&mut self.tokens, "expected boolean expression")?;
         let expression = self.expression()?;
         let condition = match &expression.typ() {
             Type::Bool => Ok(expression),

@@ -42,19 +42,16 @@ mod tests {
 
     #[allow(unused_mut)]
     #[test]
-    fn test_checking() -> ExitCode {
+    fn check_examples() -> ExitCode {
         for src_file in Path::new("./examples").read_dir().unwrap() {
             let src_path = src_file.unwrap().path();
             if let Some(extension) = src_path.extension() {
                 if extension == "kay" {
                     // TODO(stefano): run the programs to check for any errors
                     let mut check = Kay::check(src_path, Verbosity::Normal);
-                    match check.execute() {
-                        Ok(_) => {}
-                        Err(err) => {
-                            eprint!("{}", err);
-                            return ExitCode::FAILURE;
-                        }
+                    if let Err(err) = check.execute() {
+                        eprint!("{}", err);
+                        return ExitCode::FAILURE;
                     }
                 }
             }

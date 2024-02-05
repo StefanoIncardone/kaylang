@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{AddError, IoError, RawSyntaxError, SyntaxError, SyntaxErrors};
+use crate::error::{AddError, IoError, RawSyntaxError, SyntaxError, SyntaxErrors};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Line {
@@ -47,22 +47,20 @@ impl SrcFile {
         };
 
         let file_len = match file.metadata() {
-            Ok(metadata) => match metadata.is_file() {
-                true => metadata.len() as usize,
-                false => {
-                    return Err(IoError {
-                        kind: ErrorKind::InvalidInput,
-                        msg: "invalid path".into(),
-                        cause: format!("expected a file but got directory '{}'", self.path.display()).into(),
-                    })
-                }
-            },
+            Ok(metadata) if metadata.is_file() => metadata.len() as usize,
+            Ok(_) => {
+                return Err(IoError {
+                    kind: ErrorKind::InvalidInput,
+                    msg: "invalid path".into(),
+                    cause: format!("expected a file but got directory '{}'", self.path.display()).into(),
+                });
+            }
             Err(err) => {
                 return Err(IoError {
                     kind: err.kind(),
                     msg: format!("could not read metadata of '{}'", self.path.display()).into(),
                     cause: err.to_string().into(),
-                })
+                });
             }
         };
 
@@ -508,8 +506,10 @@ impl<'src> Lexer<'src> {
         };
 
         loop {
-            // just to check if we are getting the correct line text
-            let _line_text = &this.src.code[this.line.start..this.line.end];
+            #[cfg(debug_assertions)]
+            #[allow(unused_variables)]
+            let line_text = &this.src.code[this.line.start..this.line.end];
+
             let token = match this.next_token() {
                 Ok(None) => break,
                 Ok(Some(kind)) => Token { kind, col: this.token_start_col },
@@ -536,12 +536,11 @@ impl<'src> Lexer<'src> {
             );
         }
 
-        return match this.errors.is_empty() {
-            true => Ok(this.tokens),
-            false => {
-                this.errors.sort_by(|e1, e2| e1.line.cmp(&e2.line));
-                Err(SyntaxErrors { src: this.src, errors: this.errors })
-            }
+        return if this.errors.is_empty() {
+            Ok(this.tokens)
+        } else {
+            this.errors.sort_by(|e1, e2| e1.line.cmp(&e2.line));
+            Err(SyntaxErrors { src: this.src, errors: this.errors })
         };
     }
 
@@ -550,10 +549,7 @@ impl<'src> Lexer<'src> {
         // this loop exists just to be able to use continues and breaks
         loop {
             self.token_start_col = self.col;
-            let next = match self.next()? {
-                Some(ch) => ch,
-                None => return Ok(None),
-            };
+            let Some(next) = self.next()? else { return Ok(None) };
 
             return match next {
                 // ignore whitespace

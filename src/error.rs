@@ -5,7 +5,10 @@ use std::{
     path::PathBuf,
 };
 
-use crate::{Bg, Colored, Fg, Flag, Options, Position, SrcFile, AT, BAR, CAUSE, ERROR};
+use crate::{
+    lexer::{Position, SrcFile},
+    logging::{Bg, Colored, Fg, Flag, Options, AT, BAR, CAUSE, ERROR},
+};
 
 #[derive(Debug)]
 pub enum SrcParseError {
