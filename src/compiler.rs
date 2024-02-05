@@ -6,7 +6,10 @@ use std::{
     process::Command,
 };
 
-use crate::{ast::*, lexer::*, logging::*};
+use crate::{
+    CompilationLogger, Expression, IfStatement, IoError, Literal, Loop, LoopCondition, Node, Op, Position, Scope,
+    SrcFile, Type, TypeOf, ASM_GENERATION, ASSEMBLER, COMPILING, LINKER,
+};
 
 // TODO(stefano): introduce intermediate representation
 #[derive(Debug)]

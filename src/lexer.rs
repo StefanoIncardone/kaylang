@@ -1,12 +1,12 @@
 use std::{
     fmt::Display,
     fs::File,
-    io::{self, BufRead, BufReader, ErrorKind},
+    io::{BufRead, BufReader, ErrorKind},
     num::IntErrorKind,
     path::{Path, PathBuf},
 };
 
-use crate::logging::*;
+use crate::{AddError, IoError, RawSyntaxError, SyntaxError, SyntaxErrors};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Line {
@@ -162,9 +162,9 @@ impl Len for Literal {
     fn len(&self) -> usize {
         return match self {
             Self::Int(value) => value.to_string().len(),
-            Self::Char(_) => 1,
+            Self::Char(value) => value.escape_ascii().len() + 2, // + 2 for the quotes
             Self::Bool(value) => value.to_string().len(),
-            Self::Str(string) => string.len() + 2,
+            Self::Str(string) => string.len() + 2, // + 2 for the quotes
         };
     }
 }

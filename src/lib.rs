@@ -19,6 +19,9 @@ use ast::*;
 mod compiler;
 use compiler::*;
 
+mod error;
+use error::*;
+
 // Command line arguments
 #[derive(Debug, Default, Clone, Copy)]
 pub enum Color {
