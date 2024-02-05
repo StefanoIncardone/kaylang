@@ -2,7 +2,7 @@
 
 **IMPORTANT**: no feature is final, modifications can happen at any moment
 
-## Language version embedded in file extension
+## Language version embedded in file extension or in the resulting binary executable
 
 From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProjects/bldaps_for/common/bldaps_under_inpext.htm#:~:text=Typical%20Fortran%20source%20files%20have,f.)
 
@@ -39,7 +39,7 @@ else    do println "too bad";
 
 - unchecked (+, -, /, ... ): overflow will wrap, division by zero will crash
 - checked (++, --, //, ...):
-    - overflow/underflow may either crash or return both the result and the overflow of the addition
+    - overflow/underflow may return both the result and the overflow of the addition
     - division will return either the result or an error value
 - maybe have a compiler flag to use checked/unchecked operators
 

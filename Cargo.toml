@@ -1,12 +1,36 @@
-# TODO add usefull package properties
 [package]
 name = "kaylang"
 version = "0.5.0"
 edition = "2021"
+authors = ["Stefano Incardone"]
+categories = ["compilers", "command-line-utilities"]
+keywords = ["language", "compiler"]
+description = "Experimenting with programming languages by creating one"
+readme = "README.md"
+repository = "https://github.com/StefanoIncardone/kaylang"
+license = "MIT"
 
 [lints.clippy]
 needless_return = "allow"
+zero_prefixed_literal = "allow"
+large-stack-arrays = "forbid"
+too-many-arguments = "allow"
+from_over_into = "allow"
 
 [lints.rust]
 private_bounds = "forbid"
 private_interfaces = "forbid"
+
+[profile.dev]
+debug = "full"
+opt-level = 0
+# codegen-units = 1
+# incremental = false
+# lto = "fat"
+
+[profile.test]
+debug = "full"
+opt-level = 0
+# codegen-units = 1
+# incremental = false
+# lto = "fat"

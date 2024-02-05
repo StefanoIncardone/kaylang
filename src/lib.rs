@@ -1,4 +1,4 @@
-// TODO rename typ to type_ or something more consisten with other variable names
+// TODO(stefano): rename typ to type_ or something more consisten with other variable names
 
 use std::{path::{Path, PathBuf}, env::Args, fmt::Display, process::Command};
 
@@ -105,7 +105,7 @@ pub enum CompileKind {
 }
 
 pub struct Compile {
-    src: Src,
+    src: SrcFile,
     verbosity: Verbosity,
     kind: CompileKind,
 }
@@ -115,7 +115,7 @@ impl Compile {
         let mut logger = CompilationLogger::new( self.verbosity );
         logger.step( &CHECKING, &self.src.path );
 
-        match self.src.populate() {
+        match self.src.parse() {
             Ok( src ) => src,
             Err( err ) => return Err( KayError::Src( err ) ),
         };
@@ -177,7 +177,7 @@ impl Compile {
 
 pub enum Kay {
     Help( Help ),
-    // TODO split into Compile and Run and make Run return the exitcode of the code it just run
+    // TODO(stefano): split into Compile and Run and make Run return the exitcode of the code it just run
     Compile( Compile ),
 }
 
@@ -192,12 +192,12 @@ impl From<KayArgs> for Kay {
             RunMode::Help => Self::Help( Help { color, full: true } ),
             RunMode::Version => Self::Help( Help { color, full: false } ),
             RunMode::Check { src_path } => Self::Compile( Compile {
-                src: Src { path: src_path, code: String::new(), lines: Vec::new() },
+                src: src_path.into(),
                 verbosity,
                 kind: CompileKind::Check,
             } ),
             RunMode::Compile { src_path, out_path, run } => Self::Compile( Compile {
-                src: Src { path: src_path, code: String::new(), lines: Vec::new() },
+                src: src_path.into(),
                 verbosity,
                 kind: CompileKind::Compile { out_path, run },
             } ),
@@ -355,17 +355,17 @@ impl Kay {
         return Help { color, full: false };
     }
 
-    pub fn check( path: impl Into<PathBuf>, verbosity: Verbosity ) -> Compile {
+    pub fn check<P: AsRef<Path>>( path: P, verbosity: Verbosity ) -> Compile {
         return Compile {
-            src: Src { path: path.into(), code: String::new(), lines: Vec::new() },
+            src: path.into(),
             verbosity,
             kind: CompileKind::Check
         };
     }
 
-    pub fn compile( path: impl Into<PathBuf>, verbosity: Verbosity, out_path: Option<PathBuf>, run: bool ) -> Compile {
+    pub fn compile<P: AsRef<Path>>( path: P, verbosity: Verbosity, out_path: Option<PathBuf>, run: bool ) -> Compile {
         return Compile {
-            src: Src { path: path.into(), code: String::new(), lines: Vec::new() },
+            src: path.into(),
             verbosity,
             kind: CompileKind::Compile { out_path, run }
         };

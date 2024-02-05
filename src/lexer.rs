@@ -1,4 +1,4 @@
-use std::{fmt::Display, path::PathBuf, io::{ErrorKind, BufReader, BufRead}, fs::File, num::IntErrorKind};
+use std::{fmt::Display, path::{Path, PathBuf}, io::{self, ErrorKind, BufReader, BufRead}, fs::File, num::IntErrorKind};
 
 use crate::logging::*;
 
@@ -9,15 +9,27 @@ pub(crate) struct Line {
     pub(crate) end: usize, // not inclusive
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Position {
+    pub(crate) line: usize,
+    pub(crate) col: usize,
+}
+
 #[derive( Debug )]
-pub struct Src {
+pub(crate) struct SrcFile {
     pub(crate) path: PathBuf,
     pub(crate) code: String,
     pub(crate) lines: Vec<Line>,
 }
 
-impl Src {
-    pub(crate) fn populate( &mut self ) -> Result<(), IoError> {
+impl<P: AsRef<Path>> From<P> for SrcFile {
+    fn from(path: P) -> Self {
+        return Self { path: path.as_ref().to_owned(), code: String::new(), lines: Vec::new() };
+    }
+}
+
+impl SrcFile {
+    pub(crate) fn parse( &mut self ) -> Result<(), IoError> {
         let file = match File::open( &self.path ) {
             Ok( f ) => f,
             Err( err ) => return Err( IoError {
@@ -86,7 +98,7 @@ impl Src {
         return Ok( () );
     }
 
-    pub(crate) fn normalize( &self, col: usize ) -> (usize /* line number */, usize /* colum number */) {
+    pub(crate) fn position( &self, col: usize ) -> Position {
         let mut left = 0;
         let mut right = self.lines.len();
         while left < right {
@@ -99,7 +111,7 @@ impl Src {
             }
         }
 
-        return (left + 1, col + 1 - self.lines[ left ].start);
+        return Position { line: left + 1, col: col + 1 - self.lines[ left ].start };
     }
 }
 
@@ -111,8 +123,8 @@ pub(crate) trait Len {
 
 #[derive( Debug, Clone )]
 pub(crate) enum Literal {
-    // TODO implement unsigned integers
-    // IDEA have different size integers and default to 32 bits for literals
+    // TODO(stefano): implement unsigned integers
+    // IDEA(stefano): have different size integers and default to 32 bits for literals
     Int( isize ),
     Char( u8 ), // only supporting ASCII characters for now
     Bool( bool ),
@@ -132,17 +144,6 @@ impl Display for Literal {
                 }
                 write!( f, "\"" )
             },
-        }
-    }
-}
-
-impl From<Literal> for isize {
-    fn from( literal: Literal) -> Self {
-        return match literal {
-            Literal::Int( value )  => value,
-            Literal::Char( code )  => code.into(),
-            Literal::Bool( value ) => value.into(),
-            Literal::Str( string ) => string.len() as isize,
         }
     }
 }
@@ -472,7 +473,7 @@ pub(crate) struct Token<'src> {
 
 #[derive( Debug )]
 pub(crate) struct Lexer<'src> {
-    src: &'src Src,
+    src: &'src SrcFile,
 
     col: usize,
     token_start_col: usize,
@@ -485,7 +486,7 @@ pub(crate) struct Lexer<'src> {
 }
 
 impl<'src> Lexer<'src> {
-    pub(crate) fn tokenize( src: &'src Src ) -> Result<Vec<Token<'src>>, SyntaxErrors<'src>> {
+    pub(crate) fn tokenize( src: &'src SrcFile ) -> Result<Vec<Token<'src>>, SyntaxErrors<'src>> {
         if src.lines.is_empty() {
             return Ok( Vec::new() );
         }
@@ -706,7 +707,7 @@ impl<'src> Lexer<'src> {
                         Ok( Some( TokenKind::Literal( Literal::Str( text ) ) ) )
                     }
                     else {
-                        // FIX add proper multiple error handling
+                        // FIX(stefano): add proper multiple error handling
                         let last_error = errors.pop().unwrap();
                         for error in errors {
                             self.errors.add( self.src, error );
@@ -996,8 +997,8 @@ impl<'src> Lexer<'src> {
         return Some( &self.src.lines[ self.line_idx ] );
     }
 
-    // FIX properly handle non ASCII characters related errors and column advancing
-        // IDEA allow utf-8 characters in strings, characters
+    // FIX(stefano): properly handle non ASCII characters related errors and column advancing
+        // IDEA(stefano): allow utf-8 characters in strings, characters
     fn next( &mut self ) -> Result<Option<u8>, RawSyntaxError> {
         if self.col >= self.src.code.len() {
             return Ok( None );

@@ -3,9 +3,9 @@ use std::{path::PathBuf, io::{BufWriter, Write, ErrorKind}, process::Command, fs
 use crate::{lexer::*, ast::*, logging::*};
 
 
-// TODO introduce intermediate representation
+// TODO(stefano): introduce intermediate representation
 #[derive( Debug )]
-pub(crate) struct CompilerVariable<'src: 'tokens, 'tokens: 'ast, 'ast> {
+pub(crate) struct Variable<'src: 'tokens, 'tokens: 'ast, 'ast> {
     name: &'src str,
     value: &'ast Expression<'src, 'tokens>,
     offset: usize,
@@ -13,7 +13,7 @@ pub(crate) struct CompilerVariable<'src: 'tokens, 'tokens: 'ast, 'ast> {
 
 #[derive( Debug )]
 pub(crate) struct Compiler<'src: 'tokens, 'tokens: 'ast, 'ast> {
-    src: &'src Src,
+    src: &'src SrcFile,
     out_path: &'src Option<PathBuf>,
 
     ast: &'ast Vec<Scope<'tokens, 'src>>,
@@ -21,19 +21,19 @@ pub(crate) struct Compiler<'src: 'tokens, 'tokens: 'ast, 'ast> {
     rodata: String,
     asm: String,
 
-    variables: Vec<CompilerVariable<'src, 'tokens, 'ast>>,
+    variables: Vec<Variable<'src, 'tokens, 'ast>>,
     strings: Vec<&'ast Vec<u8>>,
 
-    if_depth: usize,
-    loop_depth: usize,
-    loop_stack: Vec<usize>,
+    if_counter: usize,
+    loop_counter: usize,
+    loop_counters: Vec<usize>,
 }
 
 // Generation of compilation artifacts (.asm, .o, executable)
 impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
     const STACK_ALIGN: usize = core::mem::size_of::<usize>();
 
-    pub(crate) fn compile( src: &'src Src, out_path: &Option<PathBuf>, ast: &'ast Vec<Scope<'src, 'tokens>>, logger: &mut CompilationLogger ) -> Result<PathBuf, IoError> {
+    pub(crate) fn compile( src: &'src SrcFile, out_path: &Option<PathBuf>, ast: &'ast Vec<Scope<'src, 'tokens>>, logger: &mut CompilationLogger ) -> Result<PathBuf, IoError> {
         let mut this = Compiler {
             src,
             out_path,
@@ -42,9 +42,9 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
             asm: String::new(),
             variables: Vec::new(),
             strings: Vec::new(),
-            if_depth: 0,
-            loop_depth: 0,
-            loop_stack: Vec::new(),
+            if_counter: 0,
+            loop_counter: 0,
+            loop_counters: Vec::new(),
         };
 
         logger.step( &COMPILING, &this.src.path );
@@ -111,6 +111,12 @@ r#" stdout: equ 1
  attempt_exponent_negative: db "attempt to raise a number to a negative power", 10
  attempt_exponent_negative_len: equ $ - attempt_exponent_negative
 
+ attempt_array_index_underflow: db "negative array index", 10
+ attempt_array_index_underflow_len: equ $ - attempt_array_index_underflow
+
+ attempt_array_index_overflow: db "array index out of bounds", 10
+ attempt_array_index_overflow_len: equ $ - attempt_array_index_overflow
+
  file: db "{}:"
  file_len: equ $ - file
 
@@ -133,7 +139,7 @@ r#" stdout: equ 1
         );
 
         if !this.ast.is_empty() {
-            // IDEA reserve space for the biggest temporary value and reuse as necessary, to allow for stuff like this
+            // IDEA(stefano): reserve space for the biggest temporary value and reuse as necessary, to allow for stuff like this
             // println 1;
             // println [1, 2, 3];
             // 1; # just a naked value
@@ -141,7 +147,7 @@ r#" stdout: equ 1
 
             for scope in this.ast {
                 for variable in &scope.variables {
-                    this.variables.push( CompilerVariable {
+                    this.variables.push( Variable {
                         name: variable.name,
                         value: &variable.value,
                         offset: 0 /* placeholder */
@@ -223,6 +229,16 @@ crash_exponent_negative:
  mov rdx, attempt_exponent_negative_len
  jmp crash
 
+crash_array_index_underflow:
+ mov rsi, attempt_array_index_underflow
+ mov rdx, attempt_array_index_underflow_len
+ jmp crash
+
+crash_array_index_overflow:
+ mov rsi, attempt_array_index_overflow
+ mov rdx, attempt_array_index_overflow_len
+ jmp crash
+
 crash:
  push r8
  push rcx
@@ -289,6 +305,19 @@ crash:
 
  mov rdi, EXIT_FAILURE
  jmp exit
+
+memcopy:
+ test rdx, rdx
+ jz .done
+ mov al, [rsi]
+ mov [rdi], al
+ inc rdi
+ inc rsi
+ dec rdx
+ jmp memcopy
+
+.done:
+ ret
 
 int_toStr:
  push rcx
@@ -412,8 +441,8 @@ bool_print:
  ret
 
 str_print:
- mov rdx, [rdi]
- mov rsi, [rdi + 8]
+ mov rsi, [rdi]
+ mov rdx, [rdi + 8]
  mov rdi, stdout
  mov rax, SYS_write
  syscall
@@ -584,36 +613,36 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                     self.print( arg );
                 }
 
-                self.asm +=
+                self.asm += &format!(
                     " push 10\
                     \n mov rdi, stdout\
                     \n mov rsi, rsp\
-                    \n mov rdx, 1\
+                    \n mov rdx, {}\
                     \n mov rax, SYS_write\
                     \n syscall\
-                    \n pop rsi\n\n";
+                    \n pop rsi\n\n", Type::Char.size() );
             },
             Node::If( if_statement ) => {
-                let if_idx = self.if_depth;
-                self.if_depth += 1;
+                let if_counter = self.if_counter;
+                self.if_counter += 1;
 
                 let mut ifs = if_statement.ifs.iter();
                 let iff = ifs.next().unwrap();
 
-                // NOTE call ifs.next_back() to get the last else if and match on that instead of
+                // NOTE(stefano): call ifs.next_back() to get the last else if and match on that instead of
                 // checking for the len() of the ifs
                 let (has_else_ifs, has_else) = (if_statement.ifs.len() > 1, if_statement.els.is_some());
 
                 // compiling the if branch
-                let if_tag = format!( "if_{}", if_idx );
+                let if_tag = format!( "if_{}", if_counter );
                 let (if_false_tag, if_end_tag_idx) = if has_else_ifs {
-                    (format!( "if_{}_else_if_0", if_idx ), Some( if_idx ))
+                    (format!( "if_{}_else_if_0", if_counter ), Some( if_counter ))
                 }
                 else if has_else {
-                    (format!( "if_{}_else", if_idx ), Some( if_idx ))
+                    (format!( "if_{}_else", if_counter ), Some( if_counter ))
                 }
                 else {
-                    (format!( "if_{}_end", if_idx ), None)
+                    (format!( "if_{}_end", if_counter ), None)
                 };
 
                 self.iff( iff, &if_tag, &if_false_tag );
@@ -624,24 +653,24 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                 // compiling the else if branches
                 if has_else_ifs {
                     let last_else_if = ifs.next_back().unwrap();
-                    let else_if_end_tag = format!( " jmp if_{}_end\n\n", if_idx );
+                    let else_if_end_tag = format!( " jmp if_{}_end\n\n", if_counter );
                     let mut else_if_tag_idx = 0;
 
                     for else_if in ifs {
-                        let else_if_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx );
-                        let else_if_false_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx + 1 );
+                        let else_if_tag = format!( "if_{}_else_if_{}", if_counter, else_if_tag_idx );
+                        let else_if_false_tag = format!( "if_{}_else_if_{}", if_counter, else_if_tag_idx + 1 );
 
                         self.iff( else_if, &else_if_tag, &else_if_false_tag );
                         self.asm += &else_if_end_tag;
                         else_if_tag_idx += 1;
                     }
 
-                    let else_if_tag = format!( "if_{}_else_if_{}", if_idx, else_if_tag_idx );
+                    let else_if_tag = format!( "if_{}_else_if_{}", if_counter, else_if_tag_idx );
                     let else_if_false_tag = if has_else {
-                        format!( "if_{}_else", if_idx )
+                        format!( "if_{}_else", if_counter )
                     }
                     else {
-                        format!( "if_{}_end", if_idx )
+                        format!( "if_{}_end", if_counter )
                     };
 
                     self.iff( last_else_if, &else_if_tag, &else_if_false_tag );
@@ -650,24 +679,20 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
 
                 // compiling the else branch
                 if let Some( els ) = &if_statement.els {
-                    self.asm += &format!( "if_{}_else:\n", if_idx );
+                    self.asm += &format!( "if_{}_else:\n", if_counter );
                     self.node( els );
-                    // match &**els {
-                    //     Node::Scope( scope ) => self.scope( *scope ),
-                    //     other                => self.node( other ),
-                    // }
                 }
 
-                self.asm += &format!( "if_{}_end:\n", if_idx );
+                self.asm += &format!( "if_{}_end:\n", if_counter );
             },
             Node::Loop( looop ) => {
-                let loop_tag = format!( "loop_{}", self.loop_depth );
-                let loop_end_tag = format!( "loop_{}_end", self.loop_depth );
+                let loop_tag = format!( "loop_{}", self.loop_counter );
+                let loop_end_tag = format!( "loop_{}_end", self.loop_counter );
 
-                self.loop_stack.push( self.loop_depth );
-                self.loop_depth += 1;
+                self.loop_counters.push( self.loop_counter );
+                self.loop_counter += 1;
                 self.looop( looop, &loop_tag, &loop_end_tag );
-                self.loop_stack.pop();
+                self.loop_counters.pop();
 
                 self.asm += &format!(
                     " jmp {}\
@@ -700,9 +725,9 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
             Node::Scope( inner )           => self.scope( *inner ),
             Node::Expression( expression ) => self.expression( expression ),
             Node::Break                    =>
-                self.asm += &format!( " jmp loop_{}_end\n\n", self.loop_stack[ self.loop_stack.len() - 1 ] ),
+                self.asm += &format!( " jmp loop_{}_end\n\n", self.loop_counters[ self.loop_counters.len() - 1 ] ),
             Node::Continue                 =>
-                self.asm += &format!( " jmp loop_{}\n\n", self.loop_stack[ self.loop_stack.len() - 1 ] ),
+                self.asm += &format!( " jmp loop_{}\n\n", self.loop_counters[ self.loop_counters.len() - 1 ] ),
             Node::Semicolon                => unreachable!( "should not be present in the ast" ),
         }
     }
@@ -717,7 +742,7 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
 
 // expressions
 impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
-    fn resolve( &self, name: &'src str ) -> &CompilerVariable<'src, 'tokens, 'ast> {
+    fn resolve( &self, name: &'src str ) -> &Variable<'src, 'tokens, 'ast> {
         for variable in &self.variables {
             if variable.name == name {
                 return variable;
@@ -784,7 +809,7 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                             " mov rdi, [rbp + {}]\
                             \n mov rsi, [rbp + {}]\n",
                             variable.offset,
-                            variable.offset + 8
+                            variable.offset + Type::Int.size()
                         ),
                     Type::Array( _, _ ) => unreachable!( "arrays cannot appear in expressions" ),
                     Type::Infer => unreachable!( "should have been coerced to a concrete type" ),
@@ -811,7 +836,7 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                     self.expression( element );
                 }
             },
-            Expression::ArrayIndex { array, typ, bracket_col, index } => todo!(),
+            Expression::ArrayIndex { .. } => self.expression_factor( expression, "rdi" ),
         }
     }
 
@@ -824,7 +849,8 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
             Expression::Binary { lhs, op_col, op, rhs } => {
                 let (lhs_reg, rhs_reg, op_asm): (&'static str, &'static str, Cow<'static, str>) = match op {
                     Op::Pow | Op::PowEquals => {
-                        let (line, col) = self.src.normalize( **op_col );
+                        // todo!( "use rax and rdx for line and colum information" );
+                        let Position { line, col } = self.src.position( **op_col );
 
                         ("rdi", "rsi",
                         format!(
@@ -838,7 +864,9 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                         " imul rdi, rsi\n".into()
                     ),
                     Op::Divide | Op::DivideEquals => {
-                        let (line, col) = self.src.normalize( **op_col );
+                        // todo!( "use rax and rdx for line and colum information" );
+
+                        let Position { line, col } = self.src.position( **op_col );
 
                         ("rdi", "rsi",
                         format!(
@@ -853,7 +881,9 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                         ).into())
                     },
                     Op::Remainder | Op::RemainderEquals => {
-                        let (line, col) = self.src.normalize( **op_col );
+                        // todo!( "use rax and rdx for line and colum information" );
+
+                        let Position { line, col } = self.src.position( **op_col );
 
                         ("rdi", "rsi",
                         format!(
@@ -911,7 +941,7 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                         \n mov rdx, GREATER\
                         \n cmovg rdi, rdx\n".into()
                     ),
-                    // TODO shortcircuit boolean operators
+                    // TODO(stefano): shortcircuit boolean operators
                     Op::And | Op::AndEquals
                     | Op::BitAnd | Op::BitAndEquals => ("rdi", "rsi",
                         " and rdi, rsi\n".into()
@@ -934,7 +964,7 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                 };
 
                 match &**rhs {
-                    Expression::Binary { .. } | Expression::Unary { .. } => {
+                    Expression::Binary { .. } | Expression::Unary { .. } | Expression::ArrayIndex { .. } => {
                         self.expression_factor( lhs, lhs_reg );
                         self.asm += " push rdi\n\n";
                         self.expression_factor( rhs, rhs_reg );
@@ -979,7 +1009,45 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                 }
             },
             Expression::Array( _, _ ) => unreachable!( "arrays cannot appear in expressions" ),
-            Expression::ArrayIndex { array, typ, bracket_col, index } => todo!(),
+            Expression::ArrayIndex { array, typ, bracket_col, index } => {
+                self.expression( index );
+
+                let variable = self.resolve( array );
+                let offset = variable.offset;
+                let Position { line, col } = self.src.position( **bracket_col );
+
+                self.asm += &format!(
+                    " mov rcx, {line}\
+                    \n mov r8, {col}\
+                    \n cmp {dst}, 0\
+                    \n jl crash_array_index_underflow\
+                    \n mov rdx, [rbp + {}]\
+                    \n cmp {dst}, rdx\
+                    \n jge crash_array_index_overflow\
+                    \n imul {dst}, {}\n",
+                    offset,
+                    typ.size()
+                );
+
+                match typ {
+                    Type::Int => self.asm += &format!(
+                        " mov rdi, [rbp + {} + {} + {dst}]\n",
+                        offset, Type::Int.size()
+                    ),
+                    Type::Char | Type::Bool => self.asm += &format!(
+                        " movzx rdi, byte [rbp + {} + {} + {dst}]\n",
+                        offset, Type::Int.size()
+                    ),
+                    Type::Str => self.asm += &format!(
+                        " mov rsi, [rbp + {} + {} + {dst} + {}]\
+                        \n mov rdi, [rbp + {} + {} + {dst}]\n",
+                        offset, Type::Int.size(), Type::Int.size(),
+                        offset, Type::Int.size(),
+                    ),
+                    Type::Array( _, _ ) => unreachable!( "arrays cannot appear in expressions" ),
+                    Type::Infer => unreachable!( "should have been coerced to a concrete type" ),
+                }
+            }
         }
     }
 }
@@ -1000,24 +1068,24 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                 self.node( &looop.statement );
             },
             LoopCondition::Post( condition ) => {
-                /* // NOTE by inverting the jmp instruction and jumping to the start of the loop we can
-                avoid compiling an extra jmp instruction:
-                    mov rdi, [rbp + 0]
-                    mov rsi, 10
-                    cmp rdi, rsi
-                    jge loop_0_end
+                // NOTE(stefano): by inverting the jmp instruction and jumping to the start of the loop we can
+                // avoid compiling an extra jmp instruction:
+                //     mov rdi, [rbp + 0]
+                //     mov rsi, 10
+                //     cmp rdi, rsi
+                //     jge loop_0_end
 
-                    jmp loop_0
-                    loop_0_end:
+                //     jmp loop_0
+                //     loop_0_end:
 
-                what we actually want:
-                    mov rdi, [rbp + 0]
-                    mov rsi, 10
-                    cmp rdi, rsi
-                    jl loop_0
+                // what we actually want:
+                //     mov rdi, [rbp + 0]
+                //     mov rsi, 10
+                //     cmp rdi, rsi
+                //     jl loop_0
 
-                    loop_0_end:
-                 */
+                //     loop_0_end:
+                //
                 self.node( &looop.statement );
                 self.condition( condition, false_tag );
             }
@@ -1087,7 +1155,7 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                     \n jne {}\n\n",
                     variable.offset,
                     false_tag
-                )
+                );
             },
             Expression::Unary { .. } => {
                 self.expression( condition );
@@ -1101,7 +1169,15 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                 );
             },
             Expression::Array( _, _ ) => unreachable!( "arrays cannot appear in conditions" ),
-            Expression::ArrayIndex { array, typ, bracket_col, index } => todo!(),
+            Expression::ArrayIndex { .. } => {
+                self.expression( condition );
+
+                self.asm += &format!(
+                    " cmp dil, true\
+                    \n jne {}\n\n",
+                    false_tag
+                );
+            },
         }
     }
 }
@@ -1126,7 +1202,7 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                     " mov qword [rbp + {}], str_{}\
                     \n mov qword [rbp + {}], str_{}_len\n\n",
                     offset, string_label_idx,
-                    offset + 8, string_label_idx
+                    offset + Type::Int.size(), string_label_idx
                 );
             },
             Expression::Binary { .. } => {
@@ -1139,39 +1215,39 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                     Type::Infer => unreachable!( "should have been coerced to a concrete type" ),
                 }
             },
-            Expression::Identifier( name, Type::Array( _, _ ) ) => {
-                let variable = self.resolve( name );
-                match variable.value {
-                    Expression::Array( array, typ ) => {
-                        self.asm += &format!(
-                            " mov rdi, [rbp + {}]\
-                            \n mov [rbp + {}], rdi\n\n",
-                            variable.offset, offset
-                        );
-
-                        let len_size = Type::Int.size();
-                        let typ_size = typ.size();
-
-                        for (element_idx, element) in array.iter().enumerate() {
-                            let element_offset = len_size + element_idx * typ_size + offset;
-                            self.assignment( element, element_offset );
-                        }
-                    },
-                    _ => unreachable!( "only arrays can appear here" ),
-                }
-            },
-            Expression::Identifier( _, typ ) => {
-                self.expression( value );
+            Expression::Identifier( name, typ ) => {
                 match typ {
-                    Type::Int               => self.asm += &format!( " mov [rbp + {}], rdi\n\n", offset ),
-                    Type::Char | Type::Bool => self.asm += &format!( " mov [rbp + {}], dil\n\n", offset ),
-                    Type::Str               => self.asm += &format!(
-                        " mov [rbp + {}], rdi\
-                        \n mov [rbp + {}], rsi\n\n",
-                        offset,
-                        offset + 8
-                    ),
-                    Type::Array( _, _ ) => unreachable!( "handled somewhere else" ),
+                    Type::Int               => {
+                        self.expression( value );
+                        self.asm += &format!( " mov [rbp + {}], rdi\n\n", offset );
+                    },
+                    Type::Char | Type::Bool => {
+                        self.expression( value );
+                        self.asm += &format!( " mov [rbp + {}], dil\n\n", offset );
+                    }
+                    Type::Str               => {
+                        self.expression( value );
+                        self.asm += &format!(
+                            " mov [rbp + {}], rdi\
+                            \n mov [rbp + {}], rsi\n\n",
+                            offset,
+                            offset + Type::Int.size()
+                        );
+                    },
+                    Type::Array( _, typ ) => {
+                        let array = self.resolve( name );
+                        self.asm += &format!(
+                            " lea rdi, [rbp + {}]\
+                            \n lea rsi, [rbp + {}]\
+                            \n mov rdx, [rsi]\
+                            \n imul rdx, {}\
+                            \n add rdx, {}\
+                            \n call memcopy\n\n",
+                            offset, array.offset,
+                            typ.size(),
+                            Type::Int.size(),
+                        );
+                    },
                     Type::Infer => unreachable!( "should have been coerced to a concrete type" ),
                 }
             },
@@ -1200,7 +1276,21 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                     self.assignment( element, element_offset );
                 }
             },
-            Expression::ArrayIndex { array, typ, bracket_col, index } => todo!(),
+            Expression::ArrayIndex { typ, .. } => {
+                self.expression( value );
+                match typ {
+                    Type::Int               => self.asm += &format!( "\n mov [rbp + {}], rdi\n\n", offset ),
+                    Type::Char | Type::Bool => self.asm += &format!( "\n mov [rbp + {}], dil\n\n", offset ),
+                    Type::Str               => self.asm += &format!(
+                        " mov [rbp + {}], rdi\
+                        \n mov [rbp + {}], rsi\n\n",
+                        offset,
+                        offset + Type::Int.size()
+                    ),
+                    Type::Array( _, _ ) => unreachable!( "nested arrays are not supported yet" ),
+                    Type::Infer => unreachable!( "should have been coerced to a concrete type" ),
+                }
+            },
         }
     }
 }
@@ -1232,7 +1322,7 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
             Type::Bool => {
                 self.expression( value );
                 self.asm +=
-                    " cmp rdi, true\
+                    " cmp dil, true\
                     \n mov rsi, true_str\
                     \n mov rdi, false_str\
                     \n cmovne rsi, rdi\
@@ -1267,7 +1357,7 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                         Type::Char => self.asm += " mov rdx, char_print\n",
                         Type::Bool => self.asm += " mov rdx, bool_print\n",
                         Type::Str  => self.asm += " mov rdx, str_print\n",
-                        Type::Array( _, _ ) => todo!(),
+                        Type::Array( _, _ ) => unreachable!( "nested arrays are not supported yet" ),
                         Type::Infer => unreachable!( "should have been coerced to a concrete type" ),
                     }
 

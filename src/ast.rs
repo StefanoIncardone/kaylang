@@ -171,9 +171,9 @@ impl Type {
         }
     }
 
-    pub(crate) fn inner_type( &self ) -> Type {
+    pub(crate) fn inner( &self ) -> Type {
         return match self {
-            Self::Array( _, typ ) => typ.inner_type(),
+            Self::Array( _, typ ) => typ.inner(),
             _ => self.clone(),
         }
     }
@@ -344,7 +344,7 @@ impl Display for Loop<'_, '_> {
 }
 
 
-// TODO have each node and sub-node be made of a reference to the token/s from which the got generated
+// TODO(stefano): have each node and sub-node be made of a reference to the token/s from which the got generated
 #[derive( Debug, Clone )]
 pub(crate) enum Node<'src: 'tokens, 'tokens> {
     Semicolon,
@@ -395,10 +395,10 @@ pub struct Scope<'src: 'tokens, 'tokens> {
 }
 
 
-// IDEA create Parser class that builds the AST, and then validate the AST afterwards
+// IDEA(stefano): create Parser class that builds the AST, and then validate the AST afterwards
 #[derive( Debug )]
 pub(crate) struct Ast<'src: 'tokens, 'tokens> {
-    src: &'src Src,
+    src: &'src SrcFile,
 
     scopes: Vec<Scope<'src, 'tokens>>,
     scope: usize,
@@ -409,7 +409,7 @@ pub(crate) struct Ast<'src: 'tokens, 'tokens> {
 }
 
 impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
-    pub(crate) fn build( src: &'src Src, tokens: &'tokens [Token<'src>] ) -> Result<Vec<Scope<'src, 'tokens>>, SyntaxErrors<'src>> {
+    pub(crate) fn build( src: &'src SrcFile, tokens: &'tokens [Token<'src>] ) -> Result<Vec<Scope<'src, 'tokens>>, SyntaxErrors<'src>> {
         if tokens.is_empty() {
             return Ok( Vec::new() );
         }
@@ -725,16 +725,6 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 
 // expressions
 impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
-    fn array_index( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
-        let open_bracket_token = self.tokens.current.unwrap();
-        return Err( RawSyntaxError {
-            col: open_bracket_token.col,
-            len: open_bracket_token.kind.len(),
-            msg: "invalid expression".into(),
-            help_msg: "array indexing is not implemented yet".into(),
-        } );
-    }
-
     fn operator( &mut self, ops: &[Op] ) -> Result<Option<(&'tokens Token<'src>, Op)>, RawSyntaxError> {
         let current_token = self.tokens.current.bounded( &mut self.tokens, "expected operator or semicolon" )?;
         return match current_token.kind {
@@ -759,8 +749,43 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
             TokenKind::Identifier( name ) => match self.resolve_type( name ) {
                 None => match self.resolve_variable( name ) {
                     Some( (_, _, var) ) => match self.tokens.peek_next() {
-                        Some( Token { kind: TokenKind::Bracket( BracketKind::OpenSquare ), .. } ) =>
-                            self.array_index(),
+                        Some( open_bracket_token @ Token { kind: TokenKind::Bracket( BracketKind::OpenSquare ), .. } ) => {
+                            let array = var.name;
+                            let array_typ = var.value.typ().inner();
+
+                            self.tokens.next(); // now at the open square bracket
+
+                            self.tokens.next(); // now at the start of the index
+                            let index = self.expression()?;
+                            match index.typ() {
+                                Type::Int => {
+                                    let after_index_token = self.tokens.current.bounded( &mut self.tokens, "expected closing square bracket" )?;
+                                    match after_index_token.kind {
+                                        TokenKind::Bracket( BracketKind::CloseSquare ) => Ok( Expression::ArrayIndex {
+                                            array,
+                                            typ: array_typ,
+                                            bracket_col: &open_bracket_token.col,
+                                            index: Box::new( index ),
+                                        } ),
+                                        _ => {
+                                            let before_index_token = self.tokens.peek_previous();
+                                            Err( RawSyntaxError {
+                                                col: before_index_token.col,
+                                                len: before_index_token.kind.len(),
+                                                msg: "invalid array index".into(),
+                                                help_msg: "must be followed by a close square bracket".into(),
+                                            } )
+                                        }
+                                    }
+                                },
+                                Type::Array( _, _ ) | Type::Bool | Type::Infer | Type::Char | Type::Str => Err( RawSyntaxError {
+                                    col: open_bracket_token.col,
+                                    len: open_bracket_token.kind.len(),
+                                    msg: "invalid array index".into(),
+                                    help_msg: "must be followed by a integer expression".into(),
+                                } )
+                            }
+                        },
                         Some( _ ) | None => Ok( Expression::Identifier( var.name, var.value.typ() ) )
                     },
                     None => Err( RawSyntaxError {
@@ -841,7 +866,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
             }
             TokenKind::Op( Op::Minus ) => {
                 let mut sign: isize = -1;
-                // NOTE this optimization should be moved to later stages
+                // NOTE(stefano): this optimization should be moved to later stages
                 while let Some( &Token { kind: TokenKind::Op( Op::Minus ), .. } ) = self.tokens.next() {
                     sign *= -1;
                 }
@@ -880,7 +905,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
             },
             TokenKind::Op( Op::Not ) => {
                 let mut should_be_inverted = true;
-                // NOTE this optimization should be moved to later stages
+                // NOTE(stefano): this optimization should be moved to later stages
                 while let Some( &Token { kind: TokenKind::Op( Op::Not ), .. } ) = self.tokens.next() {
                     should_be_inverted = !should_be_inverted;
                 }
@@ -1178,10 +1203,10 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
         return Ok( lhs );
     }
 
-    // TODO implement boolean operators for strings
-    // TODO disallow implicit conversions
-        // IDEA introduce casting operators
-    // TODO implement boolean operator chaining
+    // TODO(stefano): implement boolean operators for strings
+    // TODO(stefano): disallow implicit conversions
+        // IDEA(stefano): introduce casting operators
+    // TODO(stefano): implement boolean operator chaining
     fn expression( &mut self ) -> Result<Expression<'src, 'tokens>, RawSyntaxError> {
         return self.or_expression();
     }
@@ -1357,7 +1382,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
             Some( mut value ) => {
                 if let Some( (token, typ) ) = &annotation {
                     if let Expression::Array( _, array_typ @ Type::Infer ) = &mut value {
-                        *array_typ = typ.inner_type();
+                        *array_typ = typ.inner();
                     }
 
                     if *typ != value.typ() {

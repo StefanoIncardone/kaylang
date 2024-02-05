@@ -263,5 +263,5 @@ Arrays are a collection of values of the same type under a single variable
 
 ```kay
 let i = [1, 2, 3, 4];
-println i;
+println i[ 2 ]; # zero-based indexing
 ```

@@ -1,6 +1,6 @@
 use std::{time::Instant, path::Path, borrow::Cow, fmt::Display, io::{ErrorKind, IsTerminal}};
 
-use crate::{Verbosity, lexer::Src, Color};
+use crate::{lexer::SrcFile, Color, Position, Verbosity};
 
 // main compilation steps (displayed when verbosity level is normal or verbose)
 const STEP_OPT: Options = Options { fg: Fg::LightGreen, bg: Bg::Default, flags: Flag::Bold };
@@ -201,6 +201,7 @@ impl Display for Colored {
 }
 
 
+// TODO(stefano): move compilation steps measurements to individual parts (lexing, ast building, ...)
 pub(crate) struct CompilationLogger {
     start_time: Instant,
     step_time: Instant,
@@ -270,7 +271,8 @@ impl CompilationLogger {
     }
 }
 
-
+// TODO(stefano): move errors to different file
+// TODO(stefano): create specilized instanced of specific errors
 #[derive( Debug )]
 pub struct CliError {
     pub msg: Cow<'static, str>,
@@ -291,7 +293,7 @@ pub(crate) struct RawSyntaxError {
     pub(crate) help_msg: Cow<'static, str>,
 }
 
-// TODO implement NOTE, HINT, HELP in error messages
+// TODO(stefano): implement NOTE, HINT, HELP in error messages
 #[derive( Debug )]
 pub struct SyntaxError {
     pub line: usize,
@@ -303,7 +305,7 @@ pub struct SyntaxError {
 
 #[derive( Debug )]
 pub struct SyntaxErrors<'src> {
-    pub src: &'src Src,
+    pub(crate) src: &'src SrcFile,
     pub errors: Vec<SyntaxError>,
 }
 
@@ -353,12 +355,12 @@ impl Display for SyntaxErrors<'_> {
 }
 
 pub(crate) trait AddError<'src> {
-    fn add( &mut self, src: &'src Src, error: RawSyntaxError );
+    fn add( &mut self, src: &'src SrcFile, error: RawSyntaxError );
 }
 
 impl<'src> AddError<'src> for Vec<SyntaxError> {
-    fn add( &mut self, src: &'src Src, error: RawSyntaxError ) {
-        let (line, col) = src.normalize( error.col );
+    fn add( &mut self, src: &'src SrcFile, error: RawSyntaxError ) {
+        let Position { line, col } = src.position( error.col );
         self.push( SyntaxError {
             line,
             col,
