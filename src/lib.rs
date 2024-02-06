@@ -2,12 +2,12 @@
 
 use std::{
     env::Args,
-    fmt::Display,
     path::{Path, PathBuf},
     process::Command,
 };
 
 use ast::Ast;
+pub use cli::{Color, KayArgs, RunMode, Verbosity};
 use compiler::Compiler;
 use error::{CliError, IoError, KayError};
 use lexer::{Lexer, SrcFile};
@@ -16,84 +16,31 @@ use logging::{
 };
 
 mod ast;
+mod cli;
 mod compiler;
 mod error;
 mod lexer;
 mod logging;
 
-// Command line arguments
-#[derive(Debug, Default, Clone, Copy)]
-pub enum Color {
-    #[default]
-    Auto,
-    Always,
-    Never,
-}
+#[derive(Clone, Copy, Debug)]
+pub struct Version;
 
-impl Display for Color {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return match self {
-            Self::Always => write!(f, "always"),
-            Self::Auto => write!(f, "auto"),
-            Self::Never => write!(f, "never"),
-        };
+impl Version {
+    pub fn print(color: Color) {
+        color.set_stdout();
+        println!("Kaylang compiler, version {}", VERSION);
     }
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-pub enum Verbosity {
-    #[default]
-    Normal,
-    Quiet,
-    Verbose,
-}
-
-impl Display for Verbosity {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return match self {
-            Self::Quiet => write!(f, "quiet"),
-            Self::Normal => write!(f, "normal"),
-            Self::Verbose => write!(f, "verbose"),
-        };
-    }
-}
-
-#[derive(Debug, Default, Clone)]
-pub enum RunMode {
-    #[default]
-    Help,
-    Version,
-    Check {
-        src_path: PathBuf,
-    },
-    Compile {
-        src_path: PathBuf,
-        out_path: Option<PathBuf>,
-        run: bool,
-    },
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct KayArgs {
-    pub color: Option<Color>,
-    pub verbosity: Option<Verbosity>,
-    pub run_mode: Option<RunMode>,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct Help {
-    color: Color,
-    full: bool,
-}
+pub struct Help;
 
 impl Help {
-    pub fn execute(&self) {
-        self.color.set_stdout();
-        println!("Kaylang compiler, version {}", VERSION);
+    pub fn print(color: Color) {
+        Version::print(color);
 
-        if self.full {
-            println!(
-                r"
+        println!(
+            r"
 Usage: kay [{OPTIONS}] [{RUN_MODE}]
 
 {OPTIONS}:
@@ -110,8 +57,7 @@ run      <{FILE}> [{OUTPUT}]     Compile and run the generated executable
 
 {OUTPUT}:
 -o, --output <{PATH}>       Folder to populate with compilation artifacts (.asm, .o, executable) (default: '.')"
-            );
-        }
+        );
     }
 }
 
@@ -123,13 +69,13 @@ pub enum CompileKind {
 
 #[derive(Debug)]
 pub struct Compile {
-    src: SrcFile,
-    verbosity: Verbosity,
-    kind: CompileKind,
+    pub src: SrcFile,
+    pub verbosity: Verbosity,
+    pub kind: CompileKind,
 }
 
 impl Compile {
-    pub fn execute(&mut self) -> Result<(), KayError<'_>> {
+    pub fn compile(&mut self) -> Result<(), KayError<'_>> {
         let mut logger = CompilationLogger::new(self.verbosity);
         logger.step(&CHECKING, &self.src.path);
 
@@ -198,165 +144,18 @@ impl Compile {
 
 #[derive(Debug)]
 pub enum Kay {
-    Help(Help),
+    Version(Color),
+    Help(Color),
     // TODO(stefano): split into Compile and Run and make Run return the exitcode of the code it just run
     Compile(Compile),
 }
 
-impl From<KayArgs> for Kay {
-    fn from(args: KayArgs) -> Self {
-        let color = args.color.unwrap_or_default();
-        let verbosity = args.verbosity.unwrap_or_default();
-        let run_mode = args.run_mode.unwrap_or_default();
-        color.set();
-
-        return match run_mode {
-            RunMode::Help => Self::Help(Help { color, full: true }),
-            RunMode::Version => Self::Help(Help { color, full: false }),
-            RunMode::Check { src_path } => {
-                Self::Compile(Compile { src: src_path.into(), verbosity, kind: CompileKind::Check })
-            }
-            RunMode::Compile { src_path, out_path, run } => {
-                Self::Compile(Compile { src: src_path.into(), verbosity, kind: CompileKind::Compile { out_path, run } })
-            }
-        };
-    }
-}
-
-// Command line arguments parsing
 impl TryFrom<Vec<String>> for Kay {
     type Error = CliError;
 
     fn try_from(args: Vec<String>) -> Result<Self, Self::Error> {
-        let args_iter = args.iter().peekable();
-
-        let mut args = args_iter.clone();
-        let _ = args.next(); // skipping the name of this executable
-
-        Color::Auto.set();
-        let mut color_mode: Option<Color> = None;
-
-        while let Some(arg) = args.next() {
-            if arg == "-c" || arg == "--color" {
-                if let Some(mode) = color_mode {
-                    return Err(CliError { msg: format!("'{}' color mode already selected", mode).into() });
-                }
-
-                let Some(mode) = args.next() else {
-                    return Err(CliError { msg: "expected color mode".into() });
-                };
-
-                color_mode = match mode.as_str() {
-                    "auto" => Some(Color::Auto),
-                    "always" => Some(Color::Always),
-                    "never" => Some(Color::Never),
-                    _ => return Err(CliError { msg: "unrecognized color mode".into() }),
-                };
-            }
-        }
-
-        let color = color_mode.unwrap_or_default();
-        color.set();
-
-        let mut verbosity: Option<Verbosity> = None;
-        let mut run_mode: Option<RunMode> = None;
-
-        args = args_iter.clone();
-        let _ = args.next(); // skipping the name of this executable
-
-        while let Some(arg) = args.next() {
-            match arg.as_str() {
-                "-h" | "--help" => match run_mode {
-                    Some(RunMode::Help) => {
-                        return Err(CliError { msg: format!("'{}' help command already selected", arg).into() })
-                    }
-                    Some(RunMode::Version) => {
-                        return Err(CliError { msg: "help and version commands cannot be used together".into() })
-                    }
-                    _ => run_mode = Some(RunMode::Help),
-                },
-                "-v" | "--version" => match run_mode {
-                    Some(RunMode::Version) => {
-                        return Err(CliError { msg: format!("'{}' version command already selected", arg).into() })
-                    }
-                    Some(RunMode::Help) => {
-                        return Err(CliError { msg: "help and version commands cannot be used together".into() })
-                    }
-                    _ => run_mode = Some(RunMode::Version),
-                },
-                "check" | "compile" | "run" => {
-                    if let Some(RunMode::Check { .. } | RunMode::Compile { .. }) = run_mode {
-                        return Err(CliError { msg: format!("'{}' run mode already selected", arg).into() });
-                    }
-
-                    let src_path: PathBuf = match args.next() {
-                        Some(path) => path.into(),
-                        None => {
-                            return Err(CliError { msg: format!("missing source file path for '{}' mode", arg).into() })
-                        }
-                    };
-
-                    let mode = match arg.as_str() {
-                        "check" => RunMode::Check { src_path },
-                        "compile" | "run" => {
-                            let mut out: Option<PathBuf> = None;
-
-                            if let Some(out_flag) = args.peek() {
-                                if *out_flag == "-o" || *out_flag == "--output" {
-                                    let _ = args.next();
-
-                                    out = match args.next() {
-                                        Some(path) => Some(path.into()),
-                                        None => return Err(CliError { msg: "missing output folder path".into() }),
-                                    };
-                                }
-                            }
-
-                            match arg.as_str() {
-                                "compile" => RunMode::Compile { src_path, out_path: out, run: false },
-                                "run" => RunMode::Compile { src_path, out_path: out, run: true },
-                                _ => unreachable!(),
-                            }
-                        }
-                        _ => unreachable!(),
-                    };
-
-                    if let Some(RunMode::Help | RunMode::Version) = run_mode {
-                        // this is just to make sure that run modes commands are properly
-                        // formatted, so we do nothing in the case where the -h, --help, -v
-                        // or --version command was already selected
-                    } else {
-                        run_mode = Some(mode);
-                    }
-                }
-                "-q" | "--quiet" | "-V" | "--verbose" => {
-                    if let Some(mode) = verbosity {
-                        return Err(CliError { msg: format!("'{}' verbosity mode already selected", mode).into() });
-                    }
-
-                    verbosity = match arg.as_str() {
-                        "-q" | "--quiet" => Some(Verbosity::Quiet),
-                        "-V" | "--verbose" => Some(Verbosity::Verbose),
-                        _ => unreachable!(),
-                    };
-                }
-                "-o" | "--output" => {
-                    let Some(_) = args.next() else {
-                        return Err(CliError { msg: "missing output folder path".into() });
-                    };
-
-                    return Err(CliError {
-                        msg: "output folder option can only be used after a 'compile' or 'run' command".into(),
-                    });
-                }
-                "-c" | "--color" => {
-                    let _ = args.next();
-                }
-                _ => return Err(CliError { msg: format!("unrecognized option '{}'", arg).into() }),
-            }
-        }
-
-        return Ok(Self::from(KayArgs { color: Some(color), verbosity, run_mode }));
+        let args = KayArgs::try_from(args)?;
+        return Ok(Kay::from(args));
     }
 }
 
@@ -368,33 +167,38 @@ impl TryFrom<Args> for Kay {
     }
 }
 
-// factory methods
-impl Kay {
-    pub const fn help(color: Color) -> Help {
-        return Help { color, full: true };
-    }
+impl From<KayArgs> for Kay {
+    fn from(args: KayArgs) -> Self {
+        let color = args.color.unwrap_or_default();
+        let verbosity = args.verbosity.unwrap_or_default();
+        let run_mode = args.run_mode.unwrap_or_default();
+        color.set();
 
-    pub const fn version(color: Color) -> Help {
-        return Help { color, full: false };
-    }
-
-    pub fn check<P: AsRef<Path>>(path: P, verbosity: Verbosity) -> Compile {
-        return Compile { src: path.into(), verbosity, kind: CompileKind::Check };
-    }
-
-    pub fn compile<P: AsRef<Path>>(path: P, verbosity: Verbosity, out_path: Option<PathBuf>, run: bool) -> Compile {
-        return Compile { src: path.into(), verbosity, kind: CompileKind::Compile { out_path, run } };
+        return match run_mode {
+            RunMode::Version => Self::Version(color),
+            RunMode::Help => Self::Help(color),
+            RunMode::Check { src_path } => {
+                Self::Compile(Compile { src: src_path.into(), verbosity, kind: CompileKind::Check })
+            }
+            RunMode::Compile { src_path, out_path, run } => {
+                Self::Compile(Compile { src: src_path.into(), verbosity, kind: CompileKind::Compile { out_path, run } })
+            }
+        };
     }
 }
 
 impl Kay {
     pub fn execute(&mut self) -> Result<(), KayError<'_>> {
         return match self {
-            Self::Help(help) => {
-                help.execute();
+            Self::Version(color) => {
+                Version::print(*color);
                 Ok(())
             }
-            Self::Compile(compile) => compile.execute(),
+            Self::Help(color) => {
+                Help::print(*color);
+                Ok(())
+            }
+            Self::Compile(compile) => compile.compile(),
         };
     }
 }

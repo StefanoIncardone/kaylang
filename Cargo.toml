@@ -31,8 +31,9 @@ opt-level = 0
 # restriction = "warn"
 
 cargo = "forbid"
+manual_map = "allow"
 from_over_into = "allow"
-large-stack-arrays = "forbid"
+large_stack_arrays = "forbid"
 needless_return = "allow"
 too-many-arguments = "allow"
 zero_prefixed_literal = "allow"

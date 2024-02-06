@@ -45,7 +45,7 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
 
     pub(crate) fn compile(
         src: &'src SrcFile,
-        out_path: &Option<PathBuf>,
+        out_path: &'src Option<PathBuf>,
         ast: &'ast Vec<Scope<'src, 'tokens>>,
         logger: &mut CompilationLogger,
     ) -> Result<PathBuf, IoError> {

@@ -18,7 +18,7 @@ fn main() -> ExitCode {
     // args.push( "-V".to_string() );
 
     let mut kay = match Kay::try_from(args) {
-        Ok(kay) => kay,
+        Ok(args) => args,
         Err(err) => {
             eprintln!("{}", err);
             return ExitCode::FAILURE;
@@ -36,27 +36,32 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use std::{path::Path, process::ExitCode};
+    use std::{io, path::Path, process::ExitCode};
 
     use kaylang::*;
 
     #[allow(unused_mut)]
     #[test]
-    fn check_examples() -> ExitCode {
-        for src_file in Path::new("./examples").read_dir().unwrap() {
-            let src_path = src_file.unwrap().path();
+    fn check_examples() -> Result<ExitCode, io::Error> {
+        let src_files = Path::new("examples").read_dir()?;
+
+        for src_file in src_files {
+            let src_path = src_file?.path();
+
             if let Some(extension) = src_path.extension() {
                 if extension == "kay" {
                     // TODO(stefano): run the programs to check for any errors
-                    let mut check = Kay::check(src_path, Verbosity::Normal);
-                    if let Err(err) = check.execute() {
+                    let mut check =
+                        Compile { src: src_path.into(), verbosity: Verbosity::Normal, kind: CompileKind::Check };
+
+                    if let Err(err) = check.compile() {
                         eprint!("{}", err);
-                        return ExitCode::FAILURE;
+                        return Ok(ExitCode::FAILURE);
                     }
                 }
             }
         }
 
-        return ExitCode::SUCCESS;
+        return Ok(ExitCode::SUCCESS);
     }
 }

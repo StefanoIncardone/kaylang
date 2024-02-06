@@ -21,7 +21,7 @@ pub(crate) struct Position {
 }
 
 #[derive(Debug)]
-pub(crate) struct SrcFile {
+pub struct SrcFile {
     pub(crate) path: PathBuf,
     pub(crate) code: String,
     pub(crate) lines: Vec<Line>,
