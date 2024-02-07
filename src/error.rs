@@ -120,7 +120,6 @@ impl Display for CouldNotReadContents {
 
 impl std::error::Error for CouldNotReadContents {}
 
-// TODO(stefano): move errors to different file
 // TODO(stefano): create specilized instanced of specific errors
 #[derive(Debug)]
 pub struct CliError {

@@ -34,7 +34,7 @@ impl<P: AsRef<Path>> From<P> for SrcFile {
 }
 
 impl SrcFile {
-    pub(crate) fn parse(&mut self) -> Result<(), IoError> {
+    pub(crate) fn load(&mut self) -> Result<(), IoError> {
         let file = match File::open(&self.path) {
             Ok(f) => f,
             Err(err) => {

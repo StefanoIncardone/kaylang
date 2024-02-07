@@ -2,7 +2,7 @@ use std::{
     borrow::Cow,
     fs::File,
     io::{BufWriter, ErrorKind, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Command,
 };
 
@@ -10,8 +10,63 @@ use crate::{
     ast::{Expression, IfStatement, Loop, LoopCondition, Node, Scope, Type, TypeOf},
     error::IoError,
     lexer::{Literal, Op, Position, SrcFile},
-    logging::{CompilationLogger, ASM_GENERATION, ASSEMBLER, COMPILING, LINKER},
 };
+
+pub(crate) struct Assembler;
+
+impl Assembler {
+    pub(crate) fn assemble(asm_path: &Path, obj_path: &Path) -> Result<(), IoError> {
+        let nasm_args = ["-felf64", "-gdwarf", asm_path.to_str().unwrap(), "-o", obj_path.to_str().unwrap()];
+        match Command::new("nasm").args(nasm_args).output() {
+            Ok(nasm_out) => {
+                if !nasm_out.status.success() {
+                    return Err(IoError {
+                        kind: ErrorKind::InvalidData,
+                        msg: "nasm assembler failed".into(),
+                        cause: String::from_utf8(nasm_out.stderr).unwrap().into(),
+                    });
+                }
+            }
+            Err(err) => {
+                return Err(IoError {
+                    kind: err.kind(),
+                    msg: "could not create nasm assembler process".into(),
+                    cause: err.to_string().into(),
+                });
+            }
+        }
+
+        return Ok(());
+    }
+}
+
+pub(crate) struct Linker;
+
+impl Linker {
+    pub(crate) fn link(obj_path: &Path, exe_path: &Path) -> Result<(), IoError> {
+        let ld_args = [obj_path.to_str().unwrap(), "-o", exe_path.to_str().unwrap()];
+        match Command::new("ld").args(ld_args).output() {
+            Ok(ld_out) => {
+                if !ld_out.status.success() {
+                    return Err(IoError {
+                        kind: ErrorKind::InvalidData,
+                        msg: "ld linker failed".into(),
+                        cause: String::from_utf8(ld_out.stderr).unwrap().into(),
+                    });
+                }
+            }
+            Err(err) => {
+                return Err(IoError {
+                    kind: err.kind(),
+                    msg: "could not create ld linker process".into(),
+                    cause: err.to_string().into(),
+                });
+            }
+        }
+
+        return Ok(());
+    }
+}
 
 // TODO(stefano): introduce intermediate representation
 #[derive(Debug)]
@@ -47,8 +102,7 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
         src: &'src SrcFile,
         out_path: &'src Option<PathBuf>,
         ast: &'ast Vec<Scope<'src, 'tokens>>,
-        logger: &mut CompilationLogger,
-    ) -> Result<PathBuf, IoError> {
+    ) -> Result<(PathBuf, PathBuf, PathBuf), IoError> {
         let mut this = Compiler {
             src,
             out_path,
@@ -62,14 +116,11 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
             loop_counters: Vec::new(),
         };
 
-        logger.step(&COMPILING, &this.src.path);
-
         let (asm_path, obj_path, exe_path) = if let Some(out_path) = &this.out_path {
             match std::fs::create_dir_all(out_path) {
                 Ok(()) => {}
                 Err(err) if err.kind() == ErrorKind::AlreadyExists => {}
                 Err(err) => {
-                    logger.substep(&ASM_GENERATION);
                     return Err(IoError {
                         kind: err.kind(),
                         msg: format!("could not create output directory '{}'", out_path.display()).into(),
@@ -90,7 +141,6 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
         let asm_file = match File::create(&asm_path) {
             Ok(file) => file,
             Err(err) => {
-                logger.substep(&ASM_GENERATION);
                 return Err(IoError {
                     kind: err.kind(),
                     msg: format!("could not create file '{}'", asm_path.display()).into(),
@@ -103,52 +153,52 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
 
         this.rodata += &format!(
             r#" stdout: equ 1
- stderr: equ 2
- SYS_write: equ 1
- SYS_exit: equ 60
- EXIT_SUCCESS: equ 0
- EXIT_FAILURE: equ 1
+    stderr: equ 2
+    SYS_write: equ 1
+    SYS_exit: equ 60
+    EXIT_SUCCESS: equ 0
+    EXIT_FAILURE: equ 1
 
- CRASH: db "Crash: "
- CRASH_len: equ $ - CRASH
+    CRASH: db "Crash: "
+    CRASH_len: equ $ - CRASH
 
- _AT: db "at: "
- _AT_len: equ $ - _AT
+    _AT: db "at: "
+    _AT_len: equ $ - _AT
 
- attempt_division_by_zero: db "attempt to divide by zero", 10
- attempt_division_by_zero_len: equ $ - attempt_division_by_zero
+    attempt_division_by_zero: db "attempt to divide by zero", 10
+    attempt_division_by_zero_len: equ $ - attempt_division_by_zero
 
- attempt_modulo_zero: db "attempt to take the modulo zero of a number", 10
- attempt_modulo_zero_len: equ $ - attempt_modulo_zero
+    attempt_modulo_zero: db "attempt to take the modulo zero of a number", 10
+    attempt_modulo_zero_len: equ $ - attempt_modulo_zero
 
- attempt_exponent_negative: db "attempt to raise a number to a negative power", 10
- attempt_exponent_negative_len: equ $ - attempt_exponent_negative
+    attempt_exponent_negative: db "attempt to raise a number to a negative power", 10
+    attempt_exponent_negative_len: equ $ - attempt_exponent_negative
 
- attempt_array_index_underflow: db "negative array index", 10
- attempt_array_index_underflow_len: equ $ - attempt_array_index_underflow
+    attempt_array_index_underflow: db "negative array index", 10
+    attempt_array_index_underflow_len: equ $ - attempt_array_index_underflow
 
- attempt_array_index_overflow: db "array index out of bounds", 10
- attempt_array_index_overflow_len: equ $ - attempt_array_index_overflow
+    attempt_array_index_overflow: db "array index out of bounds", 10
+    attempt_array_index_overflow_len: equ $ - attempt_array_index_overflow
 
- file: db "{}:"
- file_len: equ $ - file
+    file: db "{}:"
+    file_len: equ $ - file
 
- INT_MIN: equ 1 << 63
- INT_MAX: equ ~INT_MIN
- INT_BITS: equ 64
+    INT_MIN: equ 1 << 63
+    INT_MAX: equ ~INT_MIN
+    INT_BITS: equ 64
 
- true: equ 1
- true_str: db "true"
- true_str_len: equ $ - true_str
+    true: equ 1
+    true_str: db "true"
+    true_str_len: equ $ - true_str
 
- false: equ 0
- false_str: db "false"
- false_str_len: equ $ - false_str
+    false: equ 0
+    false_str: db "false"
+    false_str_len: equ $ - false_str
 
- LESS: equ -1
- EQUAL: equ 0
- GREATER: equ 1"#,
-            src.path.to_str().unwrap()
+    LESS: equ -1
+    EQUAL: equ 0
+    GREATER: equ 1"#,
+            this.src.path.to_str().unwrap()
         );
 
         if this.ast.is_empty() {
@@ -219,324 +269,323 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
 section .text
 _start:
 {}
- mov rax, SYS_exit
- syscall
+    mov rax, SYS_exit
+    syscall
 
 
 crash_division_by_zero:
- mov rsi, attempt_division_by_zero
- mov rdx, attempt_division_by_zero_len
- jmp crash
+    mov rsi, attempt_division_by_zero
+    mov rdx, attempt_division_by_zero_len
+    jmp crash
 
 crash_modulo_zero:
- mov rsi, attempt_modulo_zero
- mov rdx, attempt_modulo_zero_len
- jmp crash
+    mov rsi, attempt_modulo_zero
+    mov rdx, attempt_modulo_zero_len
+    jmp crash
 
 crash_exponent_negative:
- mov rsi, attempt_exponent_negative
- mov rdx, attempt_exponent_negative_len
- jmp crash
+    mov rsi, attempt_exponent_negative
+    mov rdx, attempt_exponent_negative_len
+    jmp crash
 
 crash_array_index_underflow:
- mov rsi, attempt_array_index_underflow
- mov rdx, attempt_array_index_underflow_len
- jmp crash
+    mov rsi, attempt_array_index_underflow
+    mov rdx, attempt_array_index_underflow_len
+    jmp crash
 
 crash_array_index_overflow:
- mov rsi, attempt_array_index_overflow
- mov rdx, attempt_array_index_overflow_len
- jmp crash
+    mov rsi, attempt_array_index_overflow
+    mov rdx, attempt_array_index_overflow_len
+    jmp crash
 
 crash:
- push r8
- push rcx
- push rdx
- push rsi
+    push r8
+    push rcx
+    push rdx
+    push rsi
 
- mov rdi, stderr
- mov rsi, CRASH
- mov rdx, CRASH_len
- mov rax, SYS_write
- syscall
+    mov rdi, stderr
+    mov rsi, CRASH
+    mov rdx, CRASH_len
+    mov rax, SYS_write
+    syscall
 
- ; crash message
- mov rdi, stderr
- pop rsi ; crash message
- pop rdx ; crash message's length
- mov rax, SYS_write
- syscall
+    ; crash message
+    mov rdi, stderr
+    pop rsi ; crash message
+    pop rdx ; crash message's length
+    mov rax, SYS_write
+    syscall
 
- mov rdi, stderr
- mov rsi, _AT
- mov rdx, _AT_len
- mov rax, SYS_write
- syscall
+    mov rdi, stderr
+    mov rsi, _AT
+    mov rdx, _AT_len
+    mov rax, SYS_write
+    syscall
 
- ; file
- mov rdi, stderr
- mov rsi, file
- mov rdx, file_len
- mov rax, SYS_write
- syscall
+    ; file
+    mov rdi, stderr
+    mov rsi, file
+    mov rdx, file_len
+    mov rax, SYS_write
+    syscall
 
- ; line
- pop rdi
- call int_toStr
- mov rdi, stderr
- mov rsi, rax
- mov rax, SYS_write
- syscall
+    ; line
+    pop rdi
+    call int_toStr
+    mov rdi, stderr
+    mov rsi, rax
+    mov rax, SYS_write
+    syscall
 
- push ':'
- mov rdi, stderr
- mov rsi, rsp
- mov rdx, 1
- mov rax, SYS_write
- syscall
- pop rsi
+    push ':'
+    mov rdi, stderr
+    mov rsi, rsp
+    mov rdx, 1
+    mov rax, SYS_write
+    syscall
+    pop rsi
 
- ; column
- pop rdi
- call int_toStr
- mov rdi, stderr
- mov rsi, rax
- mov rax, SYS_write
- syscall
+    ; column
+    pop rdi
+    call int_toStr
+    mov rdi, stderr
+    mov rsi, rax
+    mov rax, SYS_write
+    syscall
 
- push 10
- mov rdi, stderr
- mov rsi, rsp
- mov rdx, 1
- mov rax, SYS_write
- syscall
- pop rsi
+    push 10
+    mov rdi, stderr
+    mov rsi, rsp
+    mov rdx, 1
+    mov rax, SYS_write
+    syscall
+    pop rsi
 
- mov rdi, EXIT_FAILURE
- jmp exit
+    mov rdi, EXIT_FAILURE
+    jmp exit
 
 memcopy:
- test rdx, rdx
- jz .done
- mov al, [rsi]
- mov [rdi], al
- inc rdi
- inc rsi
- dec rdx
- jmp memcopy
+    test rdx, rdx
+    jz .done
+    mov al, [rsi]
+    mov [rdi], al
+    inc rdi
+    inc rsi
+    dec rdx
+    jmp memcopy
 
 .done:
- ret
+    ret
 
 int_toStr:
- push rcx
+    push rcx
 
- mov rsi, 10
- mov rcx, int_str + INT_BITS - 1
+    mov rsi, 10
+    mov rcx, int_str + INT_BITS - 1
 
- mov rax, rdi
- cmp rax, 0
- je .write_zero
- jl .make_number_positive
- jg .next_digit
+    mov rax, rdi
+    cmp rax, 0
+    je .write_zero
+    jl .make_number_positive
+    jg .next_digit
 
 .write_zero:
- mov byte [rcx], '0'
- jmp .done
+    mov byte [rcx], '0'
+    jmp .done
 
 .make_number_positive:
- neg rax
+    neg rax
 
 .next_digit:
- xor rdx, rdx
- idiv rsi
+    xor rdx, rdx
+    idiv rsi
 
- add dl, '0'
- mov byte [rcx], dl
- dec rcx
+    add dl, '0'
+    mov byte [rcx], dl
+    dec rcx
 
- cmp rax, 0
- jne .next_digit
+    cmp rax, 0
+    jne .next_digit
 
- cmp rdi, 0
- jl .add_minus_sign
- inc rcx
- jmp .done
+    cmp rdi, 0
+    jl .add_minus_sign
+    inc rcx
+    jmp .done
 
 .add_minus_sign:
- mov byte [rcx], '-'
+    mov byte [rcx], '-'
 
 .done:
- mov rdx, int_str + INT_BITS
- sub rdx, rcx
+    mov rdx, int_str + INT_BITS
+    sub rdx, rcx
 
- mov rax, rcx
- pop rcx
- ret
+    mov rax, rcx
+    pop rcx
+    ret
 
- int_pow:
- cmp rsi, 0
- jl crash_exponent_negative
- jg .exponent_positive
- mov rax, 1
- ret
+    int_pow:
+    cmp rsi, 0
+    jl crash_exponent_negative
+    jg .exponent_positive
+    mov rax, 1
+    ret
 
- .exponent_positive:
- cmp rsi, 1
- jne .exponent_not_one
- mov rax, rdi
- ret
+    .exponent_positive:
+    cmp rsi, 1
+    jne .exponent_not_one
+    mov rax, rdi
+    ret
 
 .exponent_not_one:
- push rsi
+    push rsi
 
- mov rax, rdi
- mov rdx, 1
+    mov rax, rdi
+    mov rdx, 1
 
 .next_power:
- cmp rsi, 1
- jle .done
+    cmp rsi, 1
+    jle .done
 
- test rsi, 1
- jnz .exponent_odd
+    test rsi, 1
+    jnz .exponent_odd
 
- imul rax, rax
- shr rsi, 1
- jmp .next_power
+    imul rax, rax
+    shr rsi, 1
+    jmp .next_power
 
 .exponent_odd:
- imul rdx, rax
- imul rax, rax
+    imul rdx, rax
+    imul rax, rax
 
- dec rsi
- shr rsi, 1
- jmp .next_power
+    dec rsi
+    shr rsi, 1
+    jmp .next_power
 
 .done:
- imul rax, rdx
+    imul rax, rdx
 
- pop rsi
- ret
+    pop rsi
+    ret
 
 char_print:
- mov rsi, rdi
- mov rdi, stdout
- mov rdx, 1
- mov rax, SYS_write
- syscall
- ret
+    mov rsi, rdi
+    mov rdi, stdout
+    mov rdx, 1
+    mov rax, SYS_write
+    syscall
+    ret
 
 int_print:
- mov rdi, [rdi]
- call int_toStr
- mov rdi, stdout
- mov rsi, rax
- mov rax, SYS_write
- syscall
- ret
+    mov rdi, [rdi]
+    call int_toStr
+    mov rdi, stdout
+    mov rsi, rax
+    mov rax, SYS_write
+    syscall
+    ret
 
 bool_print:
- movzx rdi, byte [rdi]
- cmp rdi, true
- mov rsi, true_str
- mov rdi, false_str
- cmovne rsi, rdi
- mov rdx, true_str_len
- mov rdi, false_str_len
- cmovne rdx, rdi
- mov rdi, stdout
- mov rax, SYS_write
- syscall
- ret
+    movzx rdi, byte [rdi]
+    cmp rdi, true
+    mov rsi, true_str
+    mov rdi, false_str
+    cmovne rsi, rdi
+    mov rdx, true_str_len
+    mov rdi, false_str_len
+    cmovne rdx, rdi
+    mov rdi, stdout
+    mov rax, SYS_write
+    syscall
+    ret
 
 str_print:
- mov rsi, [rdi]
- mov rdx, [rdi + 8]
- mov rdi, stdout
- mov rax, SYS_write
- syscall
- ret
+    mov rsi, [rdi]
+    mov rdx, [rdi + 8]
+    mov rdi, stdout
+    mov rax, SYS_write
+    syscall
+    ret
 
 
 array_debug_print:
- push r12
- push r13
- push r14
- push r15
+    push r12
+    push r13
+    push r14
+    push r15
 
- mov r12, [rdi]
- lea r13, [rdi + 8]
- mov r14, rsi
- mov r15, rdx
+    mov r12, [rdi]
+    lea r13, [rdi + 8]
+    mov r14, rsi
+    mov r15, rdx
 
- push '['
- mov rdi, stdout
- mov rsi, rsp
- mov rdx, 1
- mov rax, SYS_write
- syscall
- pop rsi
+    push '['
+    mov rdi, stdout
+    mov rsi, rsp
+    mov rdx, 1
+    mov rax, SYS_write
+    syscall
+    pop rsi
 
- test r12, r12
- jz .done
+    test r12, r12
+    jz .done
 
- dec r12
- jz .last
+    dec r12
+    jz .last
 
 .next:
- mov rdi, r13
- call r15
+    mov rdi, r13
+    call r15
 
- push ','
- mov rdi, stdout
- mov rsi, rsp
- mov rdx, 1
- mov rax, SYS_write
- syscall
- pop rsi
+    push ','
+    mov rdi, stdout
+    mov rsi, rsp
+    mov rdx, 1
+    mov rax, SYS_write
+    syscall
+    pop rsi
 
- push ' '
- mov rdi, stdout
- mov rsi, rsp
- mov rdx, 1
- mov rax, SYS_write
- syscall
- pop rsi
+    push ' '
+    mov rdi, stdout
+    mov rsi, rsp
+    mov rdx, 1
+    mov rax, SYS_write
+    syscall
+    pop rsi
 
- add r13, r14
- dec r12
- jnz .next
+    add r13, r14
+    dec r12
+    jnz .next
 
 .last:
- mov rdi, r13
- call r15
+    mov rdi, r13
+    call r15
 
 .done:
- push ']'
- mov rdi, stdout
- mov rsi, rsp
- mov rdx, 1
- mov rax, SYS_write
- syscall
- pop rsi
+    push ']'
+    mov rdi, stdout
+    mov rsi, rsp
+    mov rdx, 1
+    mov rax, SYS_write
+    syscall
+    pop rsi
 
- pop r15
- pop r14
- pop r13
- pop r12
- ret
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    ret
 
 section .rodata
 {}
 
 section .data
- int_str: times INT_BITS db 0
+    int_str: times INT_BITS db 0
 ",
             this.asm, this.rodata
         );
 
         if let Err(err) = asm_writer.write_all(program.as_bytes()) {
-            logger.substep(&ASM_GENERATION);
             return Err(IoError {
                 kind: err.kind(),
                 msg: "writing assembly file failed".into(),
@@ -545,7 +594,6 @@ section .data
         }
 
         if let Err(err) = asm_writer.flush() {
-            logger.substep(&ASM_GENERATION);
             return Err(IoError {
                 kind: err.kind(),
                 msg: "writing assembly file failed".into(),
@@ -553,58 +601,7 @@ section .data
             });
         }
 
-        logger.substep(&ASM_GENERATION);
-
-        let nasm_args = ["-felf64", "-gdwarf", asm_path.to_str().unwrap(), "-o", obj_path.to_str().unwrap()];
-        match Command::new("nasm").args(nasm_args).output() {
-            Ok(nasm_out) => {
-                if !nasm_out.status.success() {
-                    logger.substep(&ASSEMBLER);
-                    return Err(IoError {
-                        kind: ErrorKind::InvalidData,
-                        msg: "nasm assembler failed".into(),
-                        cause: String::from_utf8(nasm_out.stderr).unwrap().into(),
-                    });
-                }
-            }
-            Err(err) => {
-                logger.substep(&ASSEMBLER);
-                return Err(IoError {
-                    kind: err.kind(),
-                    msg: "could not create nasm assembler process".into(),
-                    cause: err.to_string().into(),
-                });
-            }
-        }
-
-        logger.substep(&ASSEMBLER);
-
-        let ld_args = [obj_path.to_str().unwrap(), "-o", exe_path.to_str().unwrap()];
-        match Command::new("ld").args(ld_args).output() {
-            Ok(ld_out) => {
-                if !ld_out.status.success() {
-                    logger.substep(&LINKER);
-                    return Err(IoError {
-                        kind: ErrorKind::InvalidData,
-                        msg: "ld linker failed".into(),
-                        cause: String::from_utf8(ld_out.stderr).unwrap().into(),
-                    });
-                }
-            }
-            Err(err) => {
-                logger.substep(&LINKER);
-                return Err(IoError {
-                    kind: err.kind(),
-                    msg: "could not create ld linker process".into(),
-                    cause: err.to_string().into(),
-                });
-            }
-        };
-
-        logger.substep(&LINKER);
-        logger.substep_done();
-
-        return Ok(exe_path);
+        return Ok((asm_path, obj_path, exe_path));
     }
 }
 

@@ -4,6 +4,7 @@ use crate::{Color, Verbosity};
 
 // main compilation steps (displayed when verbosity level is normal or verbose)
 const STEP_OPT: Options = Options { fg: Fg::LightGreen, bg: Bg::Default, flags: Flag::Bold };
+pub(crate) const STEP_INDENT: usize = 0;
 pub(crate) const STEP_PADDING: usize = 9;
 
 pub(crate) static CHECKING: ColoredStr = ColoredStr { text: "Checking", opt: STEP_OPT };
@@ -13,8 +14,10 @@ pub(crate) static DONE: ColoredStr = ColoredStr { text: "Done", opt: STEP_OPT };
 
 // sub compilation steps (displayed when verbosity lever is verbose)
 const SUBSTEP_OPT: Options = Options { fg: Fg::LightBlue, bg: Bg::Default, flags: Flag::Bold };
+pub(crate) const SUBSTEP_INDENT: usize = 4;
 pub(crate) const SUBSTEP_PADDING: usize = 14;
 
+pub(crate) static LOADING_SOURCE: ColoredStr = ColoredStr { text: "Loding Source", opt: SUBSTEP_OPT };
 pub(crate) static LEXING: ColoredStr = ColoredStr { text: "Lexing", opt: SUBSTEP_OPT };
 pub(crate) static AST_BUILDING: ColoredStr = ColoredStr { text: "Ast building", opt: SUBSTEP_OPT };
 pub(crate) static ASM_GENERATION: ColoredStr = ColoredStr { text: "Asm Generation", opt: SUBSTEP_OPT };
@@ -213,71 +216,50 @@ impl Display for Colored {
     }
 }
 
-// TODO(stefano): move compilation steps measurements to individual parts (lexing, ast building, ...)
-pub(crate) struct CompilationLogger {
-    start_time: Instant,
-    step_time: Instant,
-    substep_time: Instant,
-    verbosity: Verbosity,
+pub(crate) fn info_step(step: &'static ColoredStr, path: &Path, verbosity: Verbosity) {
+    if let Verbosity::Quiet = verbosity {
+        return;
+    }
+
+    eprintln!("{:STEP_INDENT$}{:>STEP_PADDING$}: {}", "", step, path.display());
 }
 
-impl CompilationLogger {
-    pub(crate) fn new(verbosity: Verbosity) -> Self {
-        let now = Instant::now();
-        return Self { start_time: now, step_time: now, substep_time: now, verbosity };
-    }
+fn done(start_time: Instant, step: &'static ColoredStr, indent: usize, padding: usize) {
+    let elapsed_time = Colored {
+        text: format!("{}s", start_time.elapsed().as_secs_f64()),
+        opt: Options { fg: Fg::White, ..Default::default() },
+    };
 
-    pub(crate) fn step_display(&self, step: &'static ColoredStr, path: &Path) {
-        eprintln!("{:>STEP_PADDING$}: {}", step, path.display());
-    }
+    eprintln!("{:indent$}{:>padding$}: in {}", "", step, elapsed_time);
+}
 
-    pub(crate) fn substep_display(
-        &self,
-        start_time: &Instant,
-        indent: usize,
-        step: &'static ColoredStr,
-        padding: usize,
-    ) {
-        let elapsed_time = Colored {
-            text: format!("{}s", start_time.elapsed().as_secs_f64()),
-            opt: Options { fg: Fg::White, ..Default::default() },
-        };
+pub(crate) struct Step {
+    pub(crate) start_time: Instant,
+    pub(crate) verbosity: Verbosity,
+}
 
-        eprintln!("{:indent$}{:>padding$}: in {}", "", step, elapsed_time);
-    }
-
-    pub(crate) fn step(&mut self, step: &'static ColoredStr, path: &Path) {
-        match self.verbosity {
-            Verbosity::Quiet => {}
-            Verbosity::Normal | Verbosity::Verbose => self.step_display(step, path),
+impl Step {
+    pub(crate) fn done(self) {
+        if let Verbosity::Quiet = self.verbosity {
+            return;
         }
-    }
 
-    pub(crate) fn done(&mut self) {
-        match self.verbosity {
-            Verbosity::Quiet => {}
-            Verbosity::Normal | Verbosity::Verbose => self.substep_display(&self.start_time, 0, &DONE, STEP_PADDING),
-        }
+        done(self.start_time, &DONE, STEP_INDENT, STEP_PADDING);
     }
+}
 
-    pub(crate) fn substep(&mut self, step: &'static ColoredStr) {
-        match self.verbosity {
-            Verbosity::Quiet | Verbosity::Normal => {}
-            Verbosity::Verbose => {
-                self.substep_display(&self.substep_time, 4, step, SUBSTEP_PADDING);
-                self.substep_time = Instant::now();
-            }
-        }
-    }
+pub(crate) struct SubStep {
+    pub(crate) step: &'static ColoredStr,
+    pub(crate) start_time: Instant,
+    pub(crate) verbosity: Verbosity,
+}
 
-    pub(crate) fn substep_done(&mut self) {
-        match self.verbosity {
-            Verbosity::Quiet | Verbosity::Normal => {}
-            Verbosity::Verbose => {
-                self.substep_display(&self.step_time, 4, &SUBSTEP_DONE, SUBSTEP_PADDING);
-                let new_step_time = Instant::now();
-                (self.step_time, self.substep_time) = (new_step_time, new_step_time);
-            }
+impl SubStep {
+    pub(crate) fn done(self) {
+        if let Verbosity::Quiet | Verbosity::Normal = self.verbosity {
+            return;
         }
+
+        done(self.start_time, self.step, SUBSTEP_INDENT, SUBSTEP_PADDING);
     }
 }
