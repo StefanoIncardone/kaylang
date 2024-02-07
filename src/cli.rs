@@ -1,6 +1,87 @@
-use std::{env::Args, fmt::Display, path::PathBuf};
+use std::{env::Args, fmt::Display, io::IsTerminal, path::PathBuf};
 
-use crate::error::CliError;
+use crate::{
+    color::{Bg, Fg, Flag, Options},
+    error::CliError,
+};
+
+#[allow(non_upper_case_globals)]
+pub(crate) static mut display: fn(&str, Options, &mut std::fmt::Formatter<'_>) -> std::fmt::Result = print_color;
+
+pub(crate) fn set_stderr(color: Color) {
+    unsafe {
+        display = match color {
+            Color::Auto => {
+                if std::io::stderr().is_terminal() {
+                    print_color
+                } else {
+                    print_no_color
+                }
+            }
+            Color::Always => print_color,
+            Color::Never => print_no_color,
+        }
+    }
+}
+
+/// since printing version and help message are the only places where printing to stdoud is
+/// performed we are manually checking if stdout (overring stderr coloring modes) is in terminal
+/// mode until a way to separately print colored/non-colored output to stdout/stderr is found
+pub(crate) fn set_stdout(color: Color) {
+    unsafe {
+        display = match color {
+            Color::Auto => {
+                if std::io::stdout().is_terminal() {
+                    print_color
+                } else {
+                    print_no_color
+                }
+            }
+            Color::Always => print_color,
+            Color::Never => print_no_color,
+        }
+    }
+}
+
+fn print_no_color(text: &str, _: Options, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    return text.fmt(f);
+}
+
+fn print_color(text: &str, opt: Options, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    let mut codes = String::with_capacity(15);
+
+    if opt.fg != Fg::Default {
+        codes += &format!("{};", opt.fg as u8);
+    }
+    if opt.bg != Bg::Default {
+        codes += &format!("{};", opt.bg as u8);
+    }
+    if opt.flags & Flag::Bold != 0 {
+        codes += "1;";
+    }
+    if opt.flags & Flag::Underline != 0 {
+        codes += "4;";
+    }
+    if opt.flags & Flag::NoUnderline != 0 {
+        codes += "24;";
+    }
+    if opt.flags & Flag::ReverseText != 0 {
+        codes += "7;";
+    }
+    if opt.flags & Flag::PositiveText != 0 {
+        codes += "27;";
+    }
+
+    return if codes.is_empty() {
+        text.fmt(f)
+    } else {
+        let _last_semicolon = codes.pop();
+
+        write!(f, "\x1b[{}m", codes)?;
+        text.fmt(f)?;
+        write!(f, "\x1b[0m")
+    };
+}
 
 #[derive(Debug, Default, Clone, Copy)]
 pub enum Color {
@@ -94,7 +175,7 @@ impl TryFrom<Vec<String>> for KayArgs {
         let mut args = args_iter.clone();
         let _ = args.next(); // skipping the name of this executable
 
-        Color::Auto.set();
+        set_stderr(Color::Auto);
         let mut color_mode: Option<Color> = None;
 
         while let Some(arg) = args.next() {
@@ -117,7 +198,7 @@ impl TryFrom<Vec<String>> for KayArgs {
         }
 
         let color = color_mode.unwrap_or_default();
-        color.set();
+        set_stderr(color);
 
         let mut verbosity: Option<Verbosity> = None;
         let mut run_mode: Option<RunMode> = None;

@@ -6,8 +6,9 @@ use std::{
 };
 
 use crate::{
+    color::{Bg, Colored, Fg, Flag, Options},
     lexer::{Position, SrcFile},
-    logging::{Bg, Colored, Fg, Flag, Options, AT, BAR, CAUSE, ERROR},
+    logging::{AT, BAR, CAUSE, ERROR},
 };
 
 #[derive(Debug)]

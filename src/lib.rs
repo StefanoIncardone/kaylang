@@ -8,17 +8,19 @@ use std::{
 };
 
 use ast::Ast;
+use cli::{set_stderr, set_stdout};
 pub use cli::{Color, KayArgs, RunMode, Verbosity};
 use compiler::{Assembler, Compiler, Linker};
 use error::{CliError, IoError, KayError};
 use lexer::{Lexer, SrcFile};
 use logging::{
-    Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, FILE, LEXING, LINKER,
-    LOADING_SOURCE, MODE, OPTIONS, OUTPUT, PATH, RUNNING, RUN_MODE, SUBSTEP_DONE, VERSION,
+    Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, FILE, LEXING, LINKER, LOADING_SOURCE,
+    MODE, OPTIONS, OUTPUT, PATH, RUNNING, RUN_MODE, SUBSTEP_DONE, VERSION,
 };
 
 mod ast;
 mod cli;
+mod color;
 mod compiler;
 mod error;
 mod lexer;
@@ -29,7 +31,7 @@ pub struct Version;
 
 impl Version {
     pub fn print(color: Color) {
-        color.set_stdout();
+        set_stdout(color);
         println!("Kaylang compiler, version {}", VERSION);
     }
 }
@@ -223,7 +225,7 @@ impl From<KayArgs> for Kay {
         let color = args.color.unwrap_or_default();
         let verbosity = args.verbosity.unwrap_or_default();
         let run_mode = args.run_mode.unwrap_or_default();
-        color.set();
+        set_stderr(color);
 
         return match run_mode {
             RunMode::Version => Self::Version(color),
