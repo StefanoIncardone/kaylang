@@ -679,8 +679,8 @@ impl<'src> Lexer<'src> {
                     Ok(Some(TokenKind::Comment(comment)))
                 }
                 b'"' => {
-                    let mut errors: Vec<RawSyntaxError> = Vec::new();
-                    let mut text: Vec<u8> = Vec::new();
+                    let mut errors = Vec::<RawSyntaxError>::new();
+                    let mut text = Vec::<u8>::new();
 
                     loop {
                         let next = match self.next_in_str_literal()? {

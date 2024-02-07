@@ -7,7 +7,7 @@ use kaylang::Kay;
 
 fn main() -> ExitCode {
     #[allow(unused_mut)]
-    let mut args: Vec<String> = env::args().collect();
+    let mut args = env::args().collect::<Vec<String>>();
     // // to quickly debug
     // args.push( "-c".to_string() );
     // args.push( "auto".to_string() );
