@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    color::{Bg, Colored, Fg, Flag, Options},
+    color::{Bg, Colored, Fg, Flag},
     lexer::{Position, SrcFile},
     logging::{AT, BAR, CAUSE, ERROR},
 };
@@ -163,15 +163,10 @@ impl Display for SyntaxErrors<'_> {
             let line = &self.src.lines[error.line - 1];
             let line_text = &self.src.code[line.start..line.end];
 
-            let error_msg = Colored {
-                text: error.msg.to_string(),
-                opt: Options { fg: Fg::White, bg: Bg::Default, flags: Flag::Bold },
-            };
+            let error_msg = Colored { text: error.msg.to_string(), fg: Fg::White, bg: Bg::Default, flags: Flag::Bold };
 
-            let line_number_text = Colored {
-                text: error.line.to_string(),
-                opt: Options { fg: Fg::LightBlue, bg: Bg::Default, flags: Flag::Bold },
-            };
+            let line_number_text =
+                Colored { text: error.line.to_string(), fg: Fg::LightBlue, bg: Bg::Default, flags: Flag::Bold };
 
             let visualization_padding = line_number_text.text.len() + 1 + BAR.text.len();
             let at_padding = visualization_padding - 1;
@@ -181,7 +176,9 @@ impl Display for SyntaxErrors<'_> {
 
             let pointers_and_help_msg = Colored {
                 text: format!("{:>pointers_col$}{:^>pointers_len$} {}", "", "", error.help_msg),
-                opt: Options { fg: Fg::LightRed, bg: Bg::Default, flags: Flag::Bold },
+                fg: Fg::LightRed,
+                bg: Bg::Default,
+                flags: Flag::Bold,
             };
 
             writeln!(
@@ -236,22 +233,5 @@ impl Display for IoError {
             \n{}: {}",
             ERROR, self.msg, self.kind, CAUSE, self.cause
         );
-    }
-}
-
-#[derive(Debug)]
-pub enum KayError<'src> {
-    Src(IoError),
-    Syntax(SyntaxErrors<'src>),
-    Compilation(IoError),
-    Running(IoError),
-}
-
-impl Display for KayError<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return match self {
-            Self::Src(err) | Self::Compilation(err) | Self::Running(err) => write!(f, "{}", err),
-            Self::Syntax(err) => write!(f, "{}", err),
-        };
     }
 }

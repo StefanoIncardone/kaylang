@@ -1,10 +1,10 @@
 use std::fmt::Display;
 
-use crate::cli::display;
+use crate::logging::log;
 
 #[allow(dead_code)]
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub(crate) enum Fg {
+pub enum Fg {
     #[default]
     Default = 0,
     Black = 30,
@@ -27,7 +27,7 @@ pub(crate) enum Fg {
 
 #[allow(dead_code)]
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub(crate) enum Bg {
+pub enum Bg {
     #[default]
     Default = 0,
     Black = 40,
@@ -48,47 +48,44 @@ pub(crate) enum Bg {
     White = 107,
 }
 
-pub(crate) type Flags = u8;
-pub(crate) struct Flag;
+pub type Flags = u8;
+pub struct Flag;
 
 #[allow(non_upper_case_globals)]
 #[allow(dead_code)]
 impl Flag {
-    pub(crate) const Default: Flags = 0b0000_0000;
-    pub(crate) const Bold: Flags = 0b0000_0001;
-    pub(crate) const Underline: Flags = 0b0000_0010;
-    pub(crate) const NoUnderline: Flags = 0b0000_0100;
-    pub(crate) const ReverseText: Flags = 0b0000_1000;
-    pub(crate) const PositiveText: Flags = 0b0001_0000;
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-pub(crate) struct Options {
-    pub(crate) fg: Fg,
-    pub(crate) bg: Bg,
-    pub(crate) flags: Flags,
+    pub const Default: Flags = 0b0000_0000;
+    pub const Bold: Flags = 0b0000_0001;
+    pub const Underline: Flags = 0b0000_0010;
+    pub const NoUnderline: Flags = 0b0000_0100;
+    pub const ReverseText: Flags = 0b0000_1000;
+    pub const PositiveText: Flags = 0b0001_0000;
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct ColoredStr {
-    pub(crate) text: &'static str,
-    pub(crate) opt: Options,
+pub struct ColoredStr {
+    pub text: &'static str,
+    pub fg: Fg,
+    pub bg: Bg,
+    pub flags: Flags,
 }
 
 impl Display for ColoredStr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return unsafe { display(self.text, self.opt, f) };
+        return unsafe { log(self.text, self.fg, self.bg, self.flags, f) };
     }
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct Colored {
-    pub(crate) text: String,
-    pub(crate) opt: Options,
+pub struct Colored {
+    pub text: String,
+    pub fg: Fg,
+    pub bg: Bg,
+    pub flags: Flags,
 }
 
 impl Display for Colored {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return unsafe { display(&self.text, self.opt, f) };
+        return unsafe { log(&self.text, self.fg, self.bg, self.flags, f) };
     }
 }

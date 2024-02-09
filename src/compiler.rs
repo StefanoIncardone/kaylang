@@ -12,10 +12,11 @@ use crate::{
     lexer::{Literal, Op, Position, SrcFile},
 };
 
-pub(crate) struct Assembler;
+#[derive(Clone, Copy, Debug)]
+pub struct Assembler;
 
 impl Assembler {
-    pub(crate) fn assemble(asm_path: &Path, obj_path: &Path) -> Result<(), IoError> {
+    pub fn assemble(asm_path: &Path, obj_path: &Path) -> Result<(), IoError> {
         let nasm_args = ["-felf64", "-gdwarf", asm_path.to_str().unwrap(), "-o", obj_path.to_str().unwrap()];
         match Command::new("nasm").args(nasm_args).output() {
             Ok(nasm_out) => {
@@ -40,10 +41,11 @@ impl Assembler {
     }
 }
 
-pub(crate) struct Linker;
+#[derive(Clone, Copy, Debug)]
+pub struct Linker;
 
 impl Linker {
-    pub(crate) fn link(obj_path: &Path, exe_path: &Path) -> Result<(), IoError> {
+    pub fn link(obj_path: &Path, exe_path: &Path) -> Result<(), IoError> {
         let ld_args = [obj_path.to_str().unwrap(), "-o", exe_path.to_str().unwrap()];
         match Command::new("ld").args(ld_args).output() {
             Ok(ld_out) => {
@@ -77,11 +79,11 @@ pub(crate) struct Variable<'src: 'tokens, 'tokens: 'ast, 'ast> {
 }
 
 #[derive(Debug)]
-pub(crate) struct Compiler<'src: 'tokens, 'tokens: 'ast, 'ast> {
+pub struct Compiler<'src: 'tokens, 'tokens: 'ast, 'ast> {
     src: &'src SrcFile,
-    out_path: &'src Option<PathBuf>,
+    out_path: Option<&'src Path>,
 
-    ast: &'ast Vec<Scope<'tokens, 'src>>,
+    ast: &'ast [Scope<'tokens, 'src>],
 
     rodata: String,
     asm: String,
@@ -98,10 +100,10 @@ pub(crate) struct Compiler<'src: 'tokens, 'tokens: 'ast, 'ast> {
 impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
     const STACK_ALIGN: usize = core::mem::size_of::<usize>();
 
-    pub(crate) fn compile(
+    pub fn compile(
         src: &'src SrcFile,
-        out_path: &'src Option<PathBuf>,
-        ast: &'ast Vec<Scope<'src, 'tokens>>,
+        out_path: Option<&'src Path>,
+        ast: &'ast [Scope<'src, 'tokens>],
     ) -> Result<(PathBuf, PathBuf, PathBuf), IoError> {
         let mut this = Compiler {
             src,

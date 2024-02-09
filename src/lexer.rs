@@ -27,20 +27,16 @@ pub struct SrcFile {
     pub(crate) lines: Vec<Line>,
 }
 
-impl<P: AsRef<Path>> From<P> for SrcFile {
-    fn from(path: P) -> Self {
-        return Self { path: path.as_ref().to_owned(), code: String::new(), lines: Vec::new() };
-    }
-}
-
 impl SrcFile {
-    pub(crate) fn load(&mut self) -> Result<(), IoError> {
-        let file = match File::open(&self.path) {
+    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, IoError> {
+        let path = path.as_ref();
+
+        let file = match File::open(path) {
             Ok(f) => f,
             Err(err) => {
                 return Err(IoError {
                     kind: err.kind(),
-                    msg: format!("could not open '{}'", self.path.display()).into(),
+                    msg: format!("could not open '{}'", path.display()).into(),
                     cause: err.to_string().into(),
                 })
             }
@@ -52,61 +48,62 @@ impl SrcFile {
                 return Err(IoError {
                     kind: ErrorKind::InvalidInput,
                     msg: "invalid path".into(),
-                    cause: format!("expected a file but got directory '{}'", self.path.display()).into(),
+                    cause: format!("expected a file but got directory '{}'", path.display()).into(),
                 });
             }
             Err(err) => {
                 return Err(IoError {
                     kind: err.kind(),
-                    msg: format!("could not read metadata of '{}'", self.path.display()).into(),
+                    msg: format!("could not read metadata of '{}'", path.display()).into(),
                     cause: err.to_string().into(),
                 });
             }
         };
 
         // plus one to account for a possible phantom newline at the end
-        self.code.reserve_exact(file_len + 1);
+        let mut code = String::with_capacity(file_len + 1);
+        let mut lines = Vec::<Line>::new();
         let mut start = 0;
         let mut src = BufReader::new(file);
 
         loop {
-            let mut chars_read = match src.read_line(&mut self.code) {
+            let mut chars_read = match src.read_line(&mut code) {
                 Ok(0) => break,
                 Ok(read) => read,
                 Err(err) => {
                     return Err(IoError {
                         kind: err.kind(),
-                        msg: format!("could not read contents of '{}'", self.path.display()).into(),
+                        msg: format!("could not read contents of '{}'", path.display()).into(),
                         cause: err.to_string().into(),
                     })
                 }
             };
 
-            let mut end = self.code.len() - 1;
+            let mut end = code.len() - 1;
             if end > start {
-                if let cr @ b'\r' = &mut unsafe { self.code.as_bytes_mut() }[end - 1] {
+                if let cr @ b'\r' = &mut unsafe { code.as_bytes_mut() }[end - 1] {
                     *cr = b'\n';
-                    unsafe { self.code.as_mut_vec().set_len(end) };
+                    unsafe { code.as_mut_vec().set_len(end) };
                     end -= 1;
                     chars_read -= 1;
                 }
             }
 
-            self.lines.push(Line { start, end });
+            lines.push(Line { start, end });
             start += chars_read;
         }
 
         // it will make lexing simpler
-        if !self.code.is_empty() {
-            let last_char = self.code.len() - 1;
-            if self.code.as_bytes()[last_char] != b'\n' {
-                self.code.push('\n');
-                let last_line = self.lines.len() - 1;
-                self.lines[last_line].end += 1;
+        if !code.is_empty() {
+            let last_char = code.len() - 1;
+            if code.as_bytes()[last_char] != b'\n' {
+                code.push('\n');
+                let last_line = lines.len() - 1;
+                lines[last_line].end += 1;
             }
         }
 
-        return Ok(());
+        return Ok(Self { path: path.to_path_buf(), code, lines });
     }
 
     pub(crate) fn position(&self, col: usize) -> Position {
@@ -468,14 +465,14 @@ impl Len for TokenKind<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Token<'src> {
+pub struct Token<'src> {
     pub(crate) kind: TokenKind<'src>,
     pub(crate) col: usize,
     // pub(crate) len: usize,
 }
 
 #[derive(Debug)]
-pub(crate) struct Lexer<'src> {
+pub struct Lexer<'src> {
     src: &'src SrcFile,
 
     col: usize,
@@ -489,7 +486,7 @@ pub(crate) struct Lexer<'src> {
 }
 
 impl<'src> Lexer<'src> {
-    pub(crate) fn tokenize(src: &'src SrcFile) -> Result<Vec<Token<'src>>, SyntaxErrors<'src>> {
+    pub fn tokenize(src: &'src SrcFile) -> Result<Vec<Token<'src>>, SyntaxErrors<'src>> {
         if src.lines.is_empty() {
             return Ok(Vec::new());
         }

@@ -2,24 +2,23 @@
 
 use std::{
     env::Args,
+    fmt::Display,
     path::{Path, PathBuf},
     process::Command,
-    time::Instant,
 };
 
-use ast::Ast;
-use cli::{set_stderr, set_stdout};
-pub use cli::{Color, KayArgs, RunMode, Verbosity};
-use compiler::{Assembler, Compiler, Linker};
-use error::{CliError, IoError, KayError};
-use lexer::{Lexer, SrcFile};
-use logging::{
-    Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, FILE, LEXING, LINKER, LOADING_SOURCE,
-    MODE, OPTIONS, OUTPUT, PATH, RUNNING, RUN_MODE, SUBSTEP_DONE, VERSION,
+pub use ast::Ast;
+pub use color::{Bg, Colored, ColoredStr, Fg, Flag, Flags};
+pub use compiler::{Assembler, Compiler, Linker};
+pub use error::{CliError, IoError};
+pub use lexer::{Lexer, SrcFile};
+pub use logging::{
+    Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, DONE, LEXING, LINKER, LOADING_SOURCE,
+    RUNNING, SUBSTEP_DONE,
 };
+use logging::{FILE, MODE, OPTIONS, OUTPUT, PATH, RUN_MODE, VERSION};
 
 mod ast;
-mod cli;
 mod color;
 mod compiler;
 mod error;
@@ -31,7 +30,7 @@ pub struct Version;
 
 impl Version {
     pub fn print(color: Color) {
-        set_stdout(color);
+        color.set(std::io::stdout());
         println!("Kaylang compiler, version {}", VERSION);
     }
 }
@@ -48,7 +47,7 @@ impl Help {
 Usage: kay [{OPTIONS}] [{RUN_MODE}]
 
 {OPTIONS}:
--h, --help            Display this message
+-h, --help            Display this message (selected when no other run commands are provided)
 -v, --version         Display the compiler version
 -c, --color <{MODE}>    Wether to display colored output ({MODE}: auto (default), never, always)
 -q, --quiet           Don't display any diagnostic messages
@@ -66,192 +65,258 @@ run      <{FILE}> [{OUTPUT}]     Compile and run the generated executable
 }
 
 #[derive(Debug)]
-pub enum CompileKind {
-    Check,
-    Compile { out_path: Option<PathBuf>, run: bool },
-}
+pub struct Run;
 
-#[derive(Debug)]
-pub struct Compile {
-    pub src: SrcFile,
-    pub verbosity: Verbosity,
-    pub kind: CompileKind,
-}
-
-impl Compile {
-    pub fn compile(&mut self) -> Result<(), KayError<'_>> {
-        let compilation_step = Step { start_time: Instant::now(), verbosity: self.verbosity };
-
-        logging::info_step(&CHECKING, &self.src.path, self.verbosity);
-        let checking_sub_step = SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity: self.verbosity };
-
-        {
-            let loading_source_sub_step =
-                SubStep { step: &LOADING_SOURCE, start_time: Instant::now(), verbosity: self.verbosity };
-            let source_loading_result = self.src.load();
-            loading_source_sub_step.done();
-            match source_loading_result {
-                Ok(src) => src,
-                Err(err) => return Err(KayError::Src(err)),
-            };
-        }
-
-        let tokens = {
-            let lexing_sub_step = SubStep { step: &LEXING, start_time: Instant::now(), verbosity: self.verbosity };
-            let lexer_result = Lexer::tokenize(&self.src);
-            lexing_sub_step.done();
-            match lexer_result {
-                Ok(tokens) => tokens,
-                Err(err) => return Err(KayError::Syntax(err)),
+impl Run {
+    pub fn run(exe_path: &Path) -> Result<(), IoError> {
+        let mut executable = match Command::new(Path::new(".").join(exe_path)).spawn() {
+            Ok(executable) => executable,
+            Err(err) => {
+                return Err(IoError {
+                    kind: err.kind(),
+                    msg: format!("could not create executable process '{}'", exe_path.display()).into(),
+                    cause: err.to_string().into(),
+                })
             }
         };
 
-        let ast = {
-            let ast_building_sub_step =
-                SubStep { step: &AST_BUILDING, start_time: Instant::now(), verbosity: self.verbosity };
-            let ast_building_result = Ast::build(&self.src, &tokens);
-            ast_building_sub_step.done();
-            match ast_building_result {
-                Ok(ast) => ast,
-                Err(err) => return Err(KayError::Syntax(err)),
-            }
-        };
-
-        checking_sub_step.done();
-
-        match &self.kind {
-            CompileKind::Check => compilation_step.done(),
-            CompileKind::Compile { out_path, run } => {
-                logging::info_step(&COMPILING, &self.src.path, self.verbosity);
-                let compilation_sub_step =
-                    SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity: self.verbosity };
-
-                let (asm_path, obj_path, exe_path) = {
-                    let asm_generation_sub_step =
-                        SubStep { step: &ASM_GENERATION, start_time: Instant::now(), verbosity: self.verbosity };
-                    let asm_generation_result = Compiler::compile(&self.src, out_path, &ast);
-                    asm_generation_sub_step.done();
-                    match asm_generation_result {
-                        Ok(artifacts_path) => artifacts_path,
-                        Err(err) => return Err(KayError::Compilation(err)),
-                    }
-                };
-
-                {
-                    let assembler_sub_step =
-                        SubStep { step: &ASSEMBLER, start_time: Instant::now(), verbosity: self.verbosity };
-                    let assembler_result = Assembler::assemble(&asm_path, &obj_path);
-                    assembler_sub_step.done();
-                    match assembler_result {
-                        Ok(()) => {}
-                        Err(err) => return Err(KayError::Compilation(err)),
-                    }
-                }
-
-                {
-                    let linker_sub_step =
-                        SubStep { step: &LINKER, start_time: Instant::now(), verbosity: self.verbosity };
-                    let linker_result = Linker::link(&obj_path, &exe_path);
-                    linker_sub_step.done();
-                    match linker_result {
-                        Ok(()) => {}
-                        Err(err) => return Err(KayError::Compilation(err)),
-                    }
-                }
-
-                compilation_sub_step.done();
-
-                compilation_step.done();
-
-                if *run {
-                    logging::info_step(&RUNNING, &exe_path, self.verbosity);
-
-                    let mut executable = match Command::new(Path::new(".").join(&exe_path)).spawn() {
-                        Ok(executable) => executable,
-                        Err(err) => {
-                            return Err(KayError::Running(IoError {
-                                kind: err.kind(),
-                                msg: format!("could not create executable process '{}'", exe_path.display()).into(),
-                                cause: err.to_string().into(),
-                            }))
-                        }
-                    };
-
-                    match executable.wait() {
-                        Ok(_) => {}
-                        Err(err) => {
-                            return Err(KayError::Running(IoError {
-                                kind: err.kind(),
-                                msg: format!("could not run executable '{}'", exe_path.display()).into(),
-                                cause: err.to_string().into(),
-                            }))
-                        }
-                    }
-                }
+        match executable.wait() {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                return Err(IoError {
+                    kind: err.kind(),
+                    msg: format!("could not run executable '{}'", exe_path.display()).into(),
+                    cause: err.to_string().into(),
+                })
             }
         }
-
-        return Ok(());
     }
 }
 
-#[derive(Debug)]
-pub enum Kay {
-    Version(Color),
-    Help(Color),
-    // TODO(stefano): split into Compile and Run and make Run return the exitcode of the code it just run
-    Compile(Compile),
+#[derive(Debug, Default, Clone, Copy)]
+pub enum Color {
+    #[default]
+    Auto,
+    Always,
+    Never,
 }
 
-impl TryFrom<Vec<String>> for Kay {
+impl Display for Color {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        return match self {
+            Self::Always => write!(f, "always"),
+            Self::Auto => write!(f, "auto"),
+            Self::Never => write!(f, "never"),
+        };
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub enum Verbosity {
+    #[default]
+    Normal,
+    Quiet,
+    Verbose,
+}
+
+impl Display for Verbosity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        return match self {
+            Self::Quiet => write!(f, "quiet"),
+            Self::Normal => write!(f, "normal"),
+            Self::Verbose => write!(f, "verbose"),
+        };
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub enum RunMode {
+    #[default]
+    Help,
+    Version,
+    Check {
+        src_path: PathBuf,
+    },
+    Compile {
+        src_path: PathBuf,
+        out_path: Option<PathBuf>,
+    },
+    Run {
+        src_path: PathBuf,
+        out_path: Option<PathBuf>,
+    },
+}
+
+impl Display for RunMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        return match self {
+            Self::Help => write!(f, "help"),
+            Self::Version => write!(f, "version"),
+            Self::Check { src_path } => write!(f, "check {}", src_path.display()),
+            Self::Compile { src_path, out_path } => {
+                write!(f, "compile {} ", src_path.display())?;
+
+                if let Some(path) = out_path {
+                    write!(f, "-o {}", path.display())?
+                }
+
+                Ok(())
+            }
+            Self::Run { src_path, out_path } => {
+                write!(f, "run {} ", src_path.display())?;
+
+                if let Some(path) = out_path {
+                    write!(f, "-o {}", path.display())?
+                }
+
+                Ok(())
+            }
+        };
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct KayArgs {
+    pub color: Color,
+    pub verbosity: Verbosity,
+    pub run_mode: RunMode,
+}
+
+impl TryFrom<Vec<String>> for KayArgs {
     type Error = CliError;
 
     fn try_from(args: Vec<String>) -> Result<Self, Self::Error> {
-        let args = KayArgs::try_from(args)?;
-        return Ok(Kay::from(args));
+        let args_iter = args.iter().peekable();
+
+        let mut args = args_iter.clone();
+        let _ = args.next(); // skipping the name of this executable
+
+        Color::Auto.set(std::io::stderr());
+        let mut color: Option<Color> = None;
+
+        while let Some(arg) = args.next() {
+            if arg == "-c" || arg == "--color" {
+                if let Some(mode) = color {
+                    return Err(CliError { msg: format!("'{}' color mode already selected", mode).into() });
+                }
+
+                let Some(mode) = args.next() else {
+                    return Err(CliError { msg: "expected color mode".into() });
+                };
+
+                color = match mode.as_str() {
+                    "auto" => Some(Color::Auto),
+                    "always" => Some(Color::Always),
+                    "never" => Some(Color::Never),
+                    _ => return Err(CliError { msg: "unrecognized color mode".into() }),
+                };
+            }
+        }
+
+        let color = color.unwrap_or_default();
+        color.set(std::io::stderr());
+
+        let mut verbosity: Option<Verbosity> = None;
+        let mut run_mode: Option<RunMode> = None;
+
+        args = args_iter.clone();
+        let _ = args.next(); // skipping the name of this executable
+
+        while let Some(arg) = args.next() {
+            match arg.as_str() {
+                "-h" | "--help" => match run_mode {
+                    Some(RunMode::Help) => return Err(CliError { msg: "help command already selected".into() }),
+                    Some(RunMode::Version) => {
+                        return Err(CliError { msg: "help and version commands cannot be used together".into() })
+                    }
+                    _ => run_mode = Some(RunMode::Help),
+                },
+                "-v" | "--version" => match run_mode {
+                    Some(RunMode::Version) => return Err(CliError { msg: "version command already selected".into() }),
+                    Some(RunMode::Help) => {
+                        return Err(CliError { msg: "help and version commands cannot be used together".into() })
+                    }
+                    _ => run_mode = Some(RunMode::Version),
+                },
+                "check" | "compile" | "run" => {
+                    if let Some(RunMode::Check { .. } | RunMode::Compile { .. }) = run_mode {
+                        return Err(CliError { msg: format!("'{}' run mode already selected", arg).into() });
+                    }
+
+                    let src_path: PathBuf = match args.next() {
+                        Some(path) => path.into(),
+                        None => {
+                            return Err(CliError { msg: format!("missing source file path for '{}' mode", arg).into() })
+                        }
+                    };
+
+                    let mode = match arg.as_str() {
+                        "check" => RunMode::Check { src_path },
+                        "compile" | "run" => {
+                            let mut out: Option<PathBuf> = None;
+
+                            if let Some(out_flag) = args.peek() {
+                                if *out_flag == "-o" || *out_flag == "--output" {
+                                    let _ = args.next();
+
+                                    out = match args.next() {
+                                        Some(path) => Some(path.into()),
+                                        None => return Err(CliError { msg: "missing output folder path".into() }),
+                                    };
+                                }
+                            }
+
+                            match arg.as_str() {
+                                "compile" => RunMode::Compile { src_path, out_path: out },
+                                "run" => RunMode::Run { src_path, out_path: out },
+                                _ => unreachable!(),
+                            }
+                        }
+                        _ => unreachable!(),
+                    };
+
+                    if let Some(RunMode::Help | RunMode::Version) = run_mode {
+                        // this is just to make sure that run modes commands are properly formatted,
+                        // so we do nothing in the case where the -h, --help, -v or --version command was already selected
+                    } else {
+                        run_mode = Some(mode);
+                    }
+                }
+                "-q" | "--quiet" | "-V" | "--verbose" => {
+                    if let Some(mode) = verbosity {
+                        return Err(CliError { msg: format!("'{}' verbosity mode already selected", mode).into() });
+                    }
+
+                    verbosity = match arg.as_str() {
+                        "-q" | "--quiet" => Some(Verbosity::Quiet),
+                        "-V" | "--verbose" => Some(Verbosity::Verbose),
+                        _ => unreachable!(),
+                    };
+                }
+                "-o" | "--output" => {
+                    let Some(_) = args.next() else {
+                        return Err(CliError { msg: "missing output folder path".into() });
+                    };
+
+                    return Err(CliError {
+                        msg: "output folder option can only be used after a 'compile' or 'run' command".into(),
+                    });
+                }
+                "-c" | "--color" => {
+                    let _ = args.next();
+                }
+                _ => return Err(CliError { msg: format!("unrecognized option '{}'", arg).into() }),
+            }
+        }
+
+        return Ok(Self { color, verbosity: verbosity.unwrap_or_default(), run_mode: run_mode.unwrap_or_default() });
     }
 }
 
-impl TryFrom<Args> for Kay {
+impl TryFrom<Args> for KayArgs {
     type Error = CliError;
 
     fn try_from(args: Args) -> Result<Self, Self::Error> {
         return Self::try_from(args.collect::<Vec<String>>());
-    }
-}
-
-impl From<KayArgs> for Kay {
-    fn from(args: KayArgs) -> Self {
-        let color = args.color.unwrap_or_default();
-        let verbosity = args.verbosity.unwrap_or_default();
-        let run_mode = args.run_mode.unwrap_or_default();
-        set_stderr(color);
-
-        return match run_mode {
-            RunMode::Version => Self::Version(color),
-            RunMode::Help => Self::Help(color),
-            RunMode::Check { src_path } => {
-                Self::Compile(Compile { src: src_path.into(), verbosity, kind: CompileKind::Check })
-            }
-            RunMode::Compile { src_path, out_path, run } => {
-                Self::Compile(Compile { src: src_path.into(), verbosity, kind: CompileKind::Compile { out_path, run } })
-            }
-        };
-    }
-}
-
-impl Kay {
-    pub fn execute(&mut self) -> Result<(), KayError<'_>> {
-        return match self {
-            Self::Version(color) => {
-                Version::print(*color);
-                Ok(())
-            }
-            Self::Help(color) => {
-                Help::print(*color);
-                Ok(())
-            }
-            Self::Compile(compile) => compile.compile(),
-        };
     }
 }

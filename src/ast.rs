@@ -400,7 +400,7 @@ impl Display for Node<'_, '_> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Scope<'src: 'tokens, 'tokens> {
+pub struct Scope<'src: 'tokens, 'tokens> {
     pub(crate) parent: usize,
     pub(crate) types: Vec<Type>,
     pub(crate) variables: Vec<Variable<'src, 'tokens>>,
@@ -409,7 +409,7 @@ pub(crate) struct Scope<'src: 'tokens, 'tokens> {
 
 // IDEA(stefano): create Parser class that builds the AST, and then validate the AST afterwards
 #[derive(Debug)]
-pub(crate) struct Ast<'src: 'tokens, 'tokens> {
+pub struct Ast<'src: 'tokens, 'tokens> {
     src: &'src SrcFile,
 
     scopes: Vec<Scope<'src, 'tokens>>,
@@ -421,7 +421,7 @@ pub(crate) struct Ast<'src: 'tokens, 'tokens> {
 }
 
 impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
-    pub(crate) fn build(
+    pub fn build(
         src: &'src SrcFile,
         tokens: &'tokens [Token<'src>],
     ) -> Result<Vec<Scope<'src, 'tokens>>, SyntaxErrors<'src>> {

@@ -4,7 +4,7 @@
 
 ### 0.5.0
 
-- improved API for manualy creating a Kay instance
+- removed unneccessary abstraction over the entire API related to the compilation process
 - disallowed implicit conversions between strings and other types
     - corrected related bugs
 - arrays, array indexing
