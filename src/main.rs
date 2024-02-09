@@ -1,7 +1,7 @@
 use std::{env, process::ExitCode, time::Instant};
 
 use kaylang::{
-    Assembler, Ast, Compiler, Help, KayArgs, Lexer, Linker, Run, RunMode, SrcFile, Step, SubStep, Version,
+    Assembler, Ast, Compiler, Help, KayArgs, Linker, Run, RunMode, SrcFile, Step, SubStep, Tokenizer, Version,
     ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, LEXING, LINKER, LOADING_SOURCE, RUNNING,
     SUBSTEP_DONE,
 };
@@ -24,7 +24,7 @@ fn main() -> ExitCode {
         }
     };
 
-    color.set(std::io::stderr());
+    color.set(&std::io::stderr());
 
     match &run_mode {
         RunMode::Version => {
@@ -56,7 +56,7 @@ fn main() -> ExitCode {
 
             let tokens = {
                 let lexing_sub_step = SubStep { step: &LEXING, start_time: Instant::now(), verbosity };
-                let lexer_result = Lexer::tokenize(&src);
+                let lexer_result = Tokenizer::tokenize(&src);
                 lexing_sub_step.done();
                 match lexer_result {
                     Ok(tokens) => tokens,
@@ -159,7 +159,7 @@ mod tests {
     fn check_examples() -> Result<ExitCode, io::Error> {
         let verbosity = Verbosity::Normal;
         let color = Color::Auto;
-        color.set(std::io::stderr());
+        color.set(&std::io::stderr());
 
         let src_files = Path::new("examples").read_dir()?;
 
@@ -190,7 +190,7 @@ mod tests {
 
                     let tokens = {
                         let lexing_sub_step = SubStep { step: &LEXING, start_time: Instant::now(), verbosity };
-                        let lexer_result = Lexer::tokenize(&src);
+                        let lexer_result = Tokenizer::tokenize(&src);
                         lexing_sub_step.done();
                         match lexer_result {
                             Ok(tokens) => tokens,

@@ -2,7 +2,7 @@ use std::{borrow::Cow, fmt::Debug, fmt::Display};
 
 use crate::{
     error::{AddError, RawSyntaxError, SyntaxError, SyntaxErrors},
-    lexer::{BracketKind, Len, Literal, Mutability, Op, SrcFile, Token, TokenKind},
+    tokenizer::{BracketKind, Len, Literal, Mutability, Op, SrcFile, Token, TokenKind},
 };
 
 trait Bounded<'src: 'tokens, 'tokens> {

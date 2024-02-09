@@ -7,8 +7,8 @@ use std::{
 
 use crate::{
     color::{Bg, Colored, Fg, Flag},
-    lexer::{Position, SrcFile},
     logging::{AT, BAR, CAUSE, ERROR},
+    tokenizer::{Position, SrcFile},
 };
 
 #[derive(Debug)]

@@ -1,9 +1,9 @@
-use std::fmt::Display;
+use std::{fmt::Display, io::IsTerminal};
 
-use crate::logging::log;
+use crate::Color;
 
 #[allow(dead_code)]
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Fg {
     #[default]
     Default = 0,
@@ -26,7 +26,7 @@ pub enum Fg {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Bg {
     #[default]
     Default = 0,
@@ -60,6 +60,67 @@ impl Flag {
     pub const NoUnderline: Flags = 0b0000_0100;
     pub const ReverseText: Flags = 0b0000_1000;
     pub const PositiveText: Flags = 0b0001_0000;
+}
+
+#[allow(non_upper_case_globals)]
+pub(crate) static mut log: fn(&str, Fg, Bg, Flags, &mut std::fmt::Formatter<'_>) -> std::fmt::Result = log_color;
+
+impl Color {
+    pub fn set(self, sink: &impl IsTerminal) {
+        unsafe {
+            log = match self {
+                Self::Auto => {
+                    if sink.is_terminal() {
+                        log_color
+                    } else {
+                        log_no_color
+                    }
+                }
+                Self::Always => log_color,
+                Self::Never => log_no_color,
+            }
+        }
+    }
+}
+
+fn log_no_color(text: &str, _: Fg, _: Bg, _: Flags, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    return text.fmt(f);
+}
+
+fn log_color(text: &str, fg: Fg, bg: Bg, flags: Flags, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    let mut codes = String::with_capacity(15);
+
+    if fg != Fg::Default {
+        codes += &format!("{};", fg as u8);
+    }
+    if bg != Bg::Default {
+        codes += &format!("{};", bg as u8);
+    }
+    if flags & Flag::Bold != 0 {
+        codes += "1;";
+    }
+    if flags & Flag::Underline != 0 {
+        codes += "4;";
+    }
+    if flags & Flag::NoUnderline != 0 {
+        codes += "24;";
+    }
+    if flags & Flag::ReverseText != 0 {
+        codes += "7;";
+    }
+    if flags & Flag::PositiveText != 0 {
+        codes += "27;";
+    }
+
+    return if codes.is_empty() {
+        text.fmt(f)
+    } else {
+        let _last_semicolon = codes.pop();
+
+        write!(f, "\x1b[{}m", codes)?;
+        text.fmt(f)?;
+        write!(f, "\x1b[0m")
+    };
 }
 
 #[derive(Debug, Default)]

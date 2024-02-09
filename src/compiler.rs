@@ -9,7 +9,7 @@ use std::{
 use crate::{
     ast::{Expression, IfStatement, Loop, LoopCondition, Node, Scope, Type, TypeOf},
     error::IoError,
-    lexer::{Literal, Op, Position, SrcFile},
+    tokenizer::{Literal, Op, Position, SrcFile},
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -72,11 +72,13 @@ impl Linker {
 
 // TODO(stefano): introduce intermediate representation
 #[derive(Debug)]
-pub(crate) struct Variable<'src: 'tokens, 'tokens: 'ast, 'ast> {
+struct Variable<'src: 'tokens, 'tokens: 'ast, 'ast> {
     name: &'src str,
     value: &'ast Expression<'src, 'tokens>,
     offset: usize,
 }
+
+const STACK_ALIGN: usize = core::mem::size_of::<usize>();
 
 #[derive(Debug)]
 pub struct Compiler<'src: 'tokens, 'tokens: 'ast, 'ast> {
@@ -98,8 +100,6 @@ pub struct Compiler<'src: 'tokens, 'tokens: 'ast, 'ast> {
 
 // Generation of compilation artifacts (.asm, .o, executable)
 impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
-    const STACK_ALIGN: usize = core::mem::size_of::<usize>();
-
     pub fn compile(
         src: &'src SrcFile,
         out_path: Option<&'src Path>,
@@ -234,9 +234,9 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
             }
 
             if stack_size > 0 {
-                let misalignment = stack_size % Compiler::STACK_ALIGN;
+                let misalignment = stack_size % STACK_ALIGN;
                 let needs_padding = misalignment != 0;
-                let padding = needs_padding as usize * (Compiler::STACK_ALIGN - misalignment);
+                let padding = needs_padding as usize * (STACK_ALIGN - misalignment);
                 stack_size += padding;
 
                 this.asm += &format!(

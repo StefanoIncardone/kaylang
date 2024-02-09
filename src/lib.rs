@@ -11,26 +11,26 @@ pub use ast::Ast;
 pub use color::{Bg, Colored, ColoredStr, Fg, Flag, Flags};
 pub use compiler::{Assembler, Compiler, Linker};
 pub use error::{CliError, IoError};
-pub use lexer::{Lexer, SrcFile};
 pub use logging::{
     Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, DONE, LEXING, LINKER, LOADING_SOURCE,
     RUNNING, SUBSTEP_DONE,
 };
 use logging::{FILE, MODE, OPTIONS, OUTPUT, PATH, RUN_MODE, VERSION};
+pub use tokenizer::{SrcFile, Tokenizer};
 
 mod ast;
 mod color;
 mod compiler;
 mod error;
-mod lexer;
 mod logging;
+mod tokenizer;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Version;
 
 impl Version {
     pub fn print(color: Color) {
-        color.set(std::io::stdout());
+        color.set(&std::io::stdout());
         println!("Kaylang compiler, version {}", VERSION);
     }
 }
@@ -191,7 +191,7 @@ impl TryFrom<Vec<String>> for KayArgs {
         let mut args = args_iter.clone();
         let _ = args.next(); // skipping the name of this executable
 
-        Color::Auto.set(std::io::stderr());
+        Color::Auto.set(&std::io::stderr());
         let mut color: Option<Color> = None;
 
         while let Some(arg) = args.next() {
@@ -214,7 +214,7 @@ impl TryFrom<Vec<String>> for KayArgs {
         }
 
         let color = color.unwrap_or_default();
-        color.set(std::io::stderr());
+        color.set(&std::io::stderr());
 
         let mut verbosity: Option<Verbosity> = None;
         let mut run_mode: Option<RunMode> = None;

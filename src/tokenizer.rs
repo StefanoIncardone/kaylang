@@ -472,7 +472,7 @@ pub struct Token<'src> {
 }
 
 #[derive(Debug)]
-pub struct Lexer<'src> {
+pub struct Tokenizer<'src> {
     src: &'src SrcFile,
 
     col: usize,
@@ -485,7 +485,7 @@ pub struct Lexer<'src> {
     errors: Vec<SyntaxError>,
 }
 
-impl<'src> Lexer<'src> {
+impl<'src> Tokenizer<'src> {
     pub fn tokenize(src: &'src SrcFile) -> Result<Vec<Token<'src>>, SyntaxErrors<'src>> {
         if src.lines.is_empty() {
             return Ok(Vec::new());
@@ -1001,7 +1001,7 @@ impl<'src> Lexer<'src> {
 }
 
 // iteration of characters and lines
-impl<'src> Lexer<'src> {
+impl<'src> Tokenizer<'src> {
     fn next_line(&mut self) -> Option<&'src Line> {
         self.line_idx += 1;
         if self.line_idx >= self.src.lines.len() {
@@ -1050,7 +1050,7 @@ impl<'src> Lexer<'src> {
 }
 
 // character literals
-impl<'src> Lexer<'src> {
+impl<'src> Tokenizer<'src> {
     fn next_in_char_literal(&mut self) -> Result<u8, RawSyntaxError> {
         return match self.next()? {
             Some(next) => Ok(next),
@@ -1065,7 +1065,7 @@ impl<'src> Lexer<'src> {
 }
 
 // string literals
-impl<'src> Lexer<'src> {
+impl<'src> Tokenizer<'src> {
     fn next_in_str_literal(&mut self) -> Result<u8, RawSyntaxError> {
         return match self.next()? {
             Some(next) => Ok(next),
