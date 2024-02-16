@@ -102,7 +102,7 @@ fn main() -> ExitCode {
                 let (asm_path, obj_path, exe_path) = {
                     let asm_generation_sub_step =
                         SubStep { step: &ASM_GENERATION, start_time: Instant::now(), verbosity };
-                    let asm_generation_result = Compiler::compile(&src, out_path.as_deref(), &ast);
+                    let asm_generation_result = Compiler::compile(src_path, out_path.as_deref(), &ast);
                     asm_generation_sub_step.done();
                     match asm_generation_result {
                         Ok(artifacts_path) => artifacts_path,

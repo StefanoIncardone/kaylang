@@ -1,9 +1,6 @@
-// TODO(stefano): change &String to &str
-
 use crate::{
     ast::{Expression, IfStatement, Loop, LoopCondition, Node, Scope, Type, TypeOf},
     logging::{CAUSE, ERROR},
-    src_file::{Position, SrcFile},
     tokenizer::{Literal, Op},
 };
 use std::{
@@ -16,25 +13,24 @@ use std::{
 
 // TODO(stefano): introduce intermediate representation
 #[derive(Debug)]
-struct Variable<'src: 'tokens, 'tokens: 'ast, 'ast> {
+struct Variable<'src: 'ast, 'ast> {
     name: &'src str,
-    value: &'ast Expression<'src, 'tokens>,
+    value: &'ast Expression<'src>,
     offset: usize,
 }
 
 const STACK_ALIGN: usize = core::mem::size_of::<usize>();
 
 #[derive(Debug)]
-pub struct Compiler<'src: 'tokens, 'tokens: 'ast, 'ast> {
-    src: &'src SrcFile,
+pub struct Compiler<'src: 'ast, 'ast> {
     out_path: Option<&'src Path>,
 
-    ast: &'ast [Scope<'tokens, 'src>],
+    ast: &'ast [Scope<'src>],
 
     rodata: String,
     asm: String,
 
-    variables: Vec<Variable<'src, 'tokens, 'ast>>,
+    variables: Vec<Variable<'src, 'ast>>,
     strings: Vec<&'ast Vec<u8>>,
 
     if_counter: usize,
@@ -43,14 +39,13 @@ pub struct Compiler<'src: 'tokens, 'tokens: 'ast, 'ast> {
 }
 
 // Generation of compilation artifacts (.asm, .o, executable)
-impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
+impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
     pub fn compile(
-        src: &'src SrcFile,
+        src_path: &'src Path,
         out_path: Option<&'src Path>,
-        ast: &'ast [Scope<'src, 'tokens>],
+        ast: &'ast [Scope<'src>],
     ) -> Result<(PathBuf, PathBuf, PathBuf), Error> {
         let mut this = Compiler {
-            src,
             out_path,
             ast,
             rodata: String::new(),
@@ -70,12 +65,12 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
             }
 
             (
-                out_path.join(this.src.path.with_extension("asm").file_name().unwrap()),
-                out_path.join(this.src.path.with_extension("o").file_name().unwrap()),
-                out_path.join(this.src.path.with_extension("").file_name().unwrap()),
+                out_path.join(src_path.with_extension("asm").file_name().unwrap()),
+                out_path.join(src_path.with_extension("o").file_name().unwrap()),
+                out_path.join(src_path.with_extension("").file_name().unwrap()),
             )
         } else {
-            (this.src.path.with_extension("asm"), this.src.path.with_extension("o"), this.src.path.with_extension(""))
+            (src_path.with_extension("asm"), src_path.with_extension("o"), src_path.with_extension(""))
         };
 
         let asm_file = match File::create(&asm_path) {
@@ -130,7 +125,7 @@ false_str_len: equ $ - false_str
 LESS: equ -1
 EQUAL: equ 0
 GREATER: equ 1"#,
-            this.src.path.to_str().unwrap()
+            src_path.to_str().unwrap()
         );
 
         if this.ast.is_empty() {
@@ -531,8 +526,8 @@ section .data
 }
 
 // nodes
-impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
-    fn node(&mut self, node: &'ast Node<'src, 'tokens>) {
+impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
+    fn node(&mut self, node: &'ast Node<'src>) {
         match node {
             Node::Print(argument) => {
                 self.asm += &format!(" ; {}\n", node);
@@ -669,8 +664,8 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
 }
 
 // expressions
-impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
-    fn resolve(&self, name: &'src str) -> &Variable<'src, 'tokens, 'ast> {
+impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
+    fn resolve(&self, name: &'src str) -> &Variable<'src, 'ast> {
         for variable in &self.variables {
             if variable.name == name {
                 return variable;
@@ -709,7 +704,7 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
         string_idx
     }
 
-    fn expression(&mut self, expression: &'ast Expression<'src, 'tokens>) {
+    fn expression(&mut self, expression: &'ast Expression<'src>) {
         match expression {
             Expression::Literal(Literal::Int(value)) => self.asm += &format!(" mov rdi, {}\n", value),
             Expression::Literal(Literal::Char(code)) => self.asm += &format!(" mov rdi, {}\n", code),
@@ -765,26 +760,26 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
         }
     }
 
-    fn expression_factor(&mut self, factor: &'ast Expression<'src, 'tokens>, dst: &str) {
+    fn expression_factor(&mut self, factor: &'ast Expression<'src>, dst: &str) {
         match factor {
             Expression::Literal(Literal::Int(value)) => self.asm += &format!(" mov {}, {}\n", dst, value),
             Expression::Literal(Literal::Char(code)) => self.asm += &format!(" mov {}, {}\n", dst, code),
             Expression::Literal(Literal::Bool(value)) => self.asm += &format!(" mov {}, {}\n", dst, value),
             Expression::Literal(Literal::Str(_)) => unreachable!("strings cannot appear in expressions"),
-            Expression::Binary { lhs, op_col, op, rhs } => {
+            Expression::Binary { lhs, op_position, op, rhs } => {
                 let (lhs_reg, rhs_reg, op_asm): (&'static str, &'static str, Cow<'static, str>) = match op {
                     Op::Pow | Op::PowEquals => {
                         // todo!( "use rax and rdx for line and colum information" );
-                        let Position { line, col } = self.src.position(**op_col);
-
                         (
                             "rdi",
                             "rsi",
                             format!(
                                 " mov rcx, {line}\
-                            \n mov r8, {col}\
-                            \n call int_pow\
-                            \n mov rdi, rax\n"
+                                \n mov r8, {col}\
+                                \n call int_pow\
+                                \n mov rdi, rax\n",
+                                line = op_position.line,
+                                col = op_position.col
                             )
                             .into(),
                         )
@@ -792,21 +787,20 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                     Op::Times | Op::TimesEquals => ("rdi", "rsi", " imul rdi, rsi\n".into()),
                     Op::Divide | Op::DivideEquals => {
                         // todo!( "use rax and rdx for line and colum information" );
-
-                        let Position { line, col } = self.src.position(**op_col);
-
                         (
                             "rdi",
                             "rsi",
                             format!(
                                 " mov rcx, {line}\
-                            \n mov r8, {col}\
-                            \n test rsi, rsi\
-                            \n jz crash_division_by_zero\
-                            \n mov rax, rdi\
-                            \n xor rdx, rdx\
-                            \n idiv rsi\
-                            \n mov rdi, rax\n"
+                                \n mov r8, {col}\
+                                \n test rsi, rsi\
+                                \n jz crash_division_by_zero\
+                                \n mov rax, rdi\
+                                \n xor rdx, rdx\
+                                \n idiv rsi\
+                                \n mov rdi, rax\n",
+                                line = op_position.line,
+                                col = op_position.col
                             )
                             .into(),
                         )
@@ -814,20 +808,20 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                     Op::Remainder | Op::RemainderEquals => {
                         // todo!( "use rax and rdx for line and colum information" );
 
-                        let Position { line, col } = self.src.position(**op_col);
-
                         (
                             "rdi",
                             "rsi",
                             format!(
                                 " mov rcx, {line}\
-                            \n mov r8, {col}\
-                            \n test rsi, rsi\
-                            \n jz crash_modulo_zero\
-                            \n mov rax, rdi\
-                            \n xor rdx, rdx\
-                            \n idiv rsi\
-                            \n mov rdi, rdx\n"
+                                \n mov r8, {col}\
+                                \n test rsi, rsi\
+                                \n jz crash_modulo_zero\
+                                \n mov rax, rdi\
+                                \n xor rdx, rdx\
+                                \n idiv rsi\
+                                \n mov rdi, rdx\n",
+                                line = op_position.line,
+                                col = op_position.col,
                             )
                             .into(),
                         )
@@ -950,12 +944,11 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                 }
             }
             Expression::Array(_, _) => unreachable!("arrays cannot appear in expressions"),
-            Expression::ArrayIndex { array, typ, bracket_col, index } => {
+            Expression::ArrayIndex { array, typ, bracket_position, index } => {
                 self.expression(index);
 
                 let variable = self.resolve(array);
                 let offset = variable.offset;
-                let Position { line, col } = self.src.position(**bracket_col);
 
                 self.asm += &format!(
                     " mov rcx, {line}\
@@ -967,7 +960,9 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
                     \n jge crash_array_index_overflow\
                     \n imul {dst}, {}\n",
                     offset,
-                    typ.size()
+                    typ.size(),
+                    line = bracket_position.line,
+                    col = bracket_position.col,
                 );
 
                 match typ {
@@ -995,14 +990,14 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
 }
 
 // ifs and loops
-impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
-    fn iff(&mut self, iff: &'ast IfStatement<'src, 'tokens>, tag: &String, false_tag: &String) {
+impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
+    fn iff(&mut self, iff: &'ast IfStatement<'src>, tag: &str, false_tag: &str) {
         self.asm += &format!("{}:; {:?}\n", tag, iff.condition);
         self.condition(&iff.condition, false_tag);
         self.node(&iff.statement);
     }
 
-    fn looop(&mut self, looop: &'ast Loop<'src, 'tokens>, tag: &String, false_tag: &String) {
+    fn looop(&mut self, looop: &'ast Loop<'src>, tag: &str, false_tag: &str) {
         self.asm += &format!("{}:; {}\n", tag, looop);
         match &looop.condition {
             LoopCondition::Pre(condition) => {
@@ -1034,7 +1029,7 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
         }
     }
 
-    fn condition(&mut self, condition: &'ast Expression<'src, 'tokens>, false_tag: &String) {
+    fn condition(&mut self, condition: &'ast Expression<'src>, false_tag: &str) {
         match condition {
             Expression::Literal(Literal::Bool(value)) => {
                 self.asm += &format!(
@@ -1135,8 +1130,8 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
 }
 
 // assignments
-impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
-    fn assignment(&mut self, value: &'ast Expression<'src, 'tokens>, offset: usize) {
+impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
+    fn assignment(&mut self, value: &'ast Expression<'src>, offset: usize) {
         match value {
             Expression::Literal(Literal::Int(value)) => {
                 self.asm += &format!(
@@ -1255,8 +1250,8 @@ impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
 }
 
 // print statements
-impl<'src: 'tokens, 'tokens: 'ast, 'ast> Compiler<'src, 'tokens, 'ast> {
-    fn print(&mut self, value: &'ast Expression<'src, 'tokens>) {
+impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
+    fn print(&mut self, value: &'ast Expression<'src>) {
         match value.typ() {
             Type::Int => {
                 self.expression(value);
