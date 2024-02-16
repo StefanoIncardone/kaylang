@@ -1,36 +1,8 @@
-use std::{path::Path, time::Instant};
-
 use crate::{
-    color::{Bg, Colored, ColoredStr, Fg, Flag},
-    Flags, Verbosity,
+    color::{Bg, Colored, ColoredStr, Fg, Flag, Flags},
+    Verbosity,
 };
-
-// main compilation steps (displayed when verbosity level is normal or verbose)
-const STEP_FG: Fg = Fg::LightGreen;
-const STEP_BG: Bg = Bg::Default;
-const STEP_FLAGS: Flags = Flag::Bold;
-const STEP_INDENT: usize = 0;
-const STEP_PADDING: usize = 9;
-
-#[rustfmt::skip] pub static CHECKING:  ColoredStr = ColoredStr { text: "Checking",  fg: STEP_FG, bg: STEP_BG, flags: STEP_FLAGS };
-#[rustfmt::skip] pub static COMPILING: ColoredStr = ColoredStr { text: "Compiling", fg: STEP_FG, bg: STEP_BG, flags: STEP_FLAGS };
-#[rustfmt::skip] pub static RUNNING:   ColoredStr = ColoredStr { text: "Running",   fg: STEP_FG, bg: STEP_BG, flags: STEP_FLAGS };
-#[rustfmt::skip] pub static DONE:      ColoredStr = ColoredStr { text: "Done",      fg: STEP_FG, bg: STEP_BG, flags: STEP_FLAGS };
-
-// sub compilation steps (displayed when verbosity lever is verbose)
-const SUBSTEP_FG: Fg = Fg::LightBlue;
-const SUBSTEP_BG: Bg = Bg::Default;
-const SUBSTEP_FLAGS: Flags = Flag::Bold;
-const SUBSTEP_INDENT: usize = 4;
-const SUBSTEP_PADDING: usize = 14;
-
-#[rustfmt::skip] pub static LOADING_SOURCE: ColoredStr = ColoredStr { text: "Loding Source",  fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static LEXING:         ColoredStr = ColoredStr { text: "Lexing",         fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static AST_BUILDING:   ColoredStr = ColoredStr { text: "Ast building",   fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static ASM_GENERATION: ColoredStr = ColoredStr { text: "Asm Generation", fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static ASSEMBLER:      ColoredStr = ColoredStr { text: "Assembler",      fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static LINKER:         ColoredStr = ColoredStr { text: "Linker",         fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static SUBSTEP_DONE:   ColoredStr = ColoredStr { text: "Done",           fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+use std::{path::Path, time::Instant};
 
 // errors
 const ERR_FG: Fg = Fg::LightRed;
@@ -46,19 +18,6 @@ const BAR_FLAGS: Flags = Flag::Bold;
 #[rustfmt::skip] pub(crate) static AT:    ColoredStr = ColoredStr { text: "at",    fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 #[rustfmt::skip] pub(crate) static BAR:   ColoredStr = ColoredStr { text: "|",     fg: BAR_FG, bg: BAR_BG, flags: BAR_FLAGS };
 
-// help messages
-const HELP_FG: Fg = Fg::White;
-const HELP_BG: Bg = Bg::Default;
-const HELP_FLAGS: Flags = Flag::Bold;
-
-#[rustfmt::skip] pub(crate) static VERSION:  ColoredStr = ColoredStr { text: env!("CARGO_PKG_VERSION"), fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static OPTIONS:  ColoredStr = ColoredStr { text: "Options",                 fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static RUN_MODE: ColoredStr = ColoredStr { text: "Run mode",                fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static MODE:     ColoredStr = ColoredStr { text: "mode",                    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static FILE:     ColoredStr = ColoredStr { text: "file",                    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static PATH:     ColoredStr = ColoredStr { text: "path",                    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static OUTPUT:   ColoredStr = ColoredStr { text: "Output",                  fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-
 fn done(start_time: Instant, step: &ColoredStr, indent: usize, padding: usize) {
     let elapsed_time =
         Colored { text: format!("{}s", start_time.elapsed().as_secs_f32()), fg: Fg::White, ..Default::default() };
@@ -66,8 +25,20 @@ fn done(start_time: Instant, step: &ColoredStr, indent: usize, padding: usize) {
     eprintln!("{:indent$}{:>padding$}: in {}", "", step, elapsed_time);
 }
 
+// main compilation steps (displayed when verbosity level is normal or verbose)
+const STEP_FG: Fg = Fg::LightGreen;
+const STEP_BG: Bg = Bg::Default;
+const STEP_FLAGS: Flags = Flag::Bold;
+const STEP_INDENT: usize = 0;
+const STEP_PADDING: usize = 9;
+
+#[rustfmt::skip] pub static CHECKING:  ColoredStr = ColoredStr { text: "Checking",  fg: STEP_FG, bg: STEP_BG, flags: STEP_FLAGS };
+#[rustfmt::skip] pub static COMPILING: ColoredStr = ColoredStr { text: "Compiling", fg: STEP_FG, bg: STEP_BG, flags: STEP_FLAGS };
+#[rustfmt::skip] pub static RUNNING:   ColoredStr = ColoredStr { text: "Running",   fg: STEP_FG, bg: STEP_BG, flags: STEP_FLAGS };
+#[rustfmt::skip] pub static DONE:      ColoredStr = ColoredStr { text: "Done",      fg: STEP_FG, bg: STEP_BG, flags: STEP_FLAGS };
+
 pub struct Step {
-    pub start_time: Instant, // TODO(stefano): make private eventually
+    pub start_time: Instant,
     pub verbosity: Verbosity,
 }
 
@@ -89,9 +60,24 @@ impl Step {
     }
 }
 
+// sub compilation steps (displayed when verbosity lever is verbose)
+const SUBSTEP_FG: Fg = Fg::LightBlue;
+const SUBSTEP_BG: Bg = Bg::Default;
+const SUBSTEP_FLAGS: Flags = Flag::Bold;
+const SUBSTEP_INDENT: usize = 4;
+const SUBSTEP_PADDING: usize = 14;
+
+#[rustfmt::skip] pub static LOADING_SOURCE: ColoredStr = ColoredStr { text: "Loding Source",  fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static LEXING:         ColoredStr = ColoredStr { text: "Lexing",         fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static AST_BUILDING:   ColoredStr = ColoredStr { text: "Ast building",   fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static ASM_GENERATION: ColoredStr = ColoredStr { text: "Asm Generation", fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static ASSEMBLER:      ColoredStr = ColoredStr { text: "Assembler",      fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static LINKER:         ColoredStr = ColoredStr { text: "Linker",         fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static SUBSTEP_DONE:   ColoredStr = ColoredStr { text: "Done",           fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+
 pub struct SubStep {
     pub step: &'static ColoredStr,
-    pub start_time: Instant, // TODO(stefano): make private eventually
+    pub start_time: Instant,
     pub verbosity: Verbosity,
 }
 

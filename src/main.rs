@@ -1,10 +1,19 @@
-use std::{env, process::ExitCode, time::Instant};
-
 use kaylang::{
-    Assembler, Ast, Compiler, Help, KayArgs, Linker, Run, RunMode, SrcFile, Step, SubStep, Tokenizer, Version,
-    ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, LEXING, LINKER, LOADING_SOURCE, RUNNING,
-    SUBSTEP_DONE,
+    assembler::Assembler,
+    ast::Ast,
+    cli::Args,
+    compiler::Compiler,
+    linker::Linker,
+    logging::{
+        Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, LEXING, LINKER, LOADING_SOURCE,
+        RUNNING, SUBSTEP_DONE,
+    },
+    run::Run,
+    src_file::SrcFile,
+    tokenizer::Tokenizer,
+    Help, RunMode, Version,
 };
+use std::{env, process::ExitCode, time::Instant};
 
 fn main() -> ExitCode {
     #[allow(unused_mut)]
@@ -16,7 +25,7 @@ fn main() -> ExitCode {
     // args.push( "examples/out".to_string() );
     // args.push( "-V".to_string() );
 
-    let KayArgs { color, verbosity, run_mode } = match KayArgs::try_from(args) {
+    let Args { color, verbosity, run_mode } = match Args::try_from(args) {
         Ok(args) => args,
         Err(err) => {
             eprint!("{}", err);
@@ -28,11 +37,11 @@ fn main() -> ExitCode {
 
     match &run_mode {
         RunMode::Version => {
-            Version::print(color);
+            println!("{}", Version { color });
             return ExitCode::SUCCESS;
         }
         RunMode::Help => {
-            Help::print(color);
+            println!("{}", Help { color });
             return ExitCode::SUCCESS;
         }
         RunMode::Check { src_path } | RunMode::Compile { src_path, .. } | RunMode::Run { src_path, .. } => {
@@ -60,8 +69,10 @@ fn main() -> ExitCode {
                 lexing_sub_step.done();
                 match lexer_result {
                     Ok(tokens) => tokens,
-                    Err(err) => {
-                        eprint!("{}", err);
+                    Err(errors) => {
+                        for error in errors {
+                            eprintln!("{}", error);
+                        }
                         return ExitCode::FAILURE;
                     }
                 }
@@ -73,8 +84,10 @@ fn main() -> ExitCode {
                 ast_building_sub_step.done();
                 match ast_building_result {
                     Ok(ast) => ast,
-                    Err(err) => {
-                        eprint!("{}", err);
+                    Err(errors) => {
+                        for error in errors {
+                            eprintln!("{}", error);
+                        }
                         return ExitCode::FAILURE;
                     }
                 }
@@ -145,14 +158,20 @@ fn main() -> ExitCode {
         }
     }
 
-    return ExitCode::SUCCESS;
+    ExitCode::SUCCESS
 }
 
 #[cfg(test)]
 mod tests {
     use std::{io, path::Path, process::ExitCode, time::Instant};
 
-    use kaylang::*;
+    use kaylang::{
+        ast::Ast,
+        logging::{Step, SubStep, AST_BUILDING, CHECKING, LEXING, LOADING_SOURCE, SUBSTEP_DONE},
+        src_file::SrcFile,
+        tokenizer::Tokenizer,
+        Color, Verbosity,
+    };
 
     #[allow(unused_mut)]
     #[test]
@@ -194,8 +213,10 @@ mod tests {
                         lexing_sub_step.done();
                         match lexer_result {
                             Ok(tokens) => tokens,
-                            Err(err) => {
-                                eprint!("{}", err);
+                            Err(errors) => {
+                                for error in errors {
+                                    eprint!("{}", error);
+                                }
                                 return Ok(ExitCode::FAILURE);
                             }
                         }
@@ -208,8 +229,10 @@ mod tests {
                         ast_building_sub_step.done();
                         match ast_building_result {
                             Ok(ast) => ast,
-                            Err(err) => {
-                                eprint!("{}", err);
+                            Err(errors) => {
+                                for error in errors {
+                                    eprintln!("{}", error);
+                                }
                                 return Ok(ExitCode::FAILURE);
                             }
                         }
@@ -221,6 +244,6 @@ mod tests {
             }
         }
 
-        return Ok(ExitCode::SUCCESS);
+        Ok(ExitCode::SUCCESS)
     }
 }

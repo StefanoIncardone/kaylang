@@ -1,6 +1,5 @@
-use std::{fmt::Display, io::IsTerminal};
-
 use crate::Color;
+use std::{fmt::Display, io::IsTerminal};
 
 #[allow(dead_code)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -84,7 +83,7 @@ impl Color {
 }
 
 fn log_no_color(text: &str, _: Fg, _: Bg, _: Flags, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    return text.fmt(f);
+    text.fmt(f)
 }
 
 fn log_color(text: &str, fg: Fg, bg: Bg, flags: Flags, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -112,7 +111,7 @@ fn log_color(text: &str, fg: Fg, bg: Bg, flags: Flags, f: &mut std::fmt::Formatt
         codes += "27;";
     }
 
-    return if codes.is_empty() {
+    if codes.is_empty() {
         text.fmt(f)
     } else {
         let _last_semicolon = codes.pop();
@@ -120,7 +119,7 @@ fn log_color(text: &str, fg: Fg, bg: Bg, flags: Flags, f: &mut std::fmt::Formatt
         write!(f, "\x1b[{}m", codes)?;
         text.fmt(f)?;
         write!(f, "\x1b[0m")
-    };
+    }
 }
 
 #[derive(Debug, Default)]
@@ -133,7 +132,7 @@ pub struct ColoredStr {
 
 impl Display for ColoredStr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return unsafe { log(self.text, self.fg, self.bg, self.flags, f) };
+        unsafe { log(self.text, self.fg, self.bg, self.flags, f) }
     }
 }
 
@@ -147,6 +146,6 @@ pub struct Colored {
 
 impl Display for Colored {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return unsafe { log(&self.text, self.fg, self.bg, self.flags, f) };
+        unsafe { log(&self.text, self.fg, self.bg, self.flags, f) }
     }
 }

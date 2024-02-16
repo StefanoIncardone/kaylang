@@ -1,126 +1,14 @@
-use std::{
-    fmt::Display,
-    fs::File,
-    io::{BufRead, BufReader, ErrorKind},
-    num::IntErrorKind,
-    path::{Path, PathBuf},
+use crate::{
+    color::{Bg, Colored, Fg, Flag},
+    logging::{AT, BAR, ERROR},
+    src_file::{Line, Position, SrcFile},
 };
-
-use crate::error::{AddError, IoError, RawSyntaxError, SyntaxError, SyntaxErrors};
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Line {
-    pub(crate) start: usize, // inclusive
-    pub(crate) end: usize,   // not inclusive
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Position {
-    pub(crate) line: usize,
-    pub(crate) col: usize,
-}
-
-#[derive(Debug)]
-pub struct SrcFile {
-    pub(crate) path: PathBuf,
-    pub(crate) code: String,
-    pub(crate) lines: Vec<Line>,
-}
-
-impl SrcFile {
-    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, IoError> {
-        let path = path.as_ref();
-
-        let file = match File::open(path) {
-            Ok(f) => f,
-            Err(err) => {
-                return Err(IoError {
-                    kind: err.kind(),
-                    msg: format!("could not open '{}'", path.display()).into(),
-                    cause: err.to_string().into(),
-                })
-            }
-        };
-
-        let file_len = match file.metadata() {
-            Ok(metadata) if metadata.is_file() => metadata.len() as usize,
-            Ok(_) => {
-                return Err(IoError {
-                    kind: ErrorKind::InvalidInput,
-                    msg: "invalid path".into(),
-                    cause: format!("expected a file but got directory '{}'", path.display()).into(),
-                });
-            }
-            Err(err) => {
-                return Err(IoError {
-                    kind: err.kind(),
-                    msg: format!("could not read metadata of '{}'", path.display()).into(),
-                    cause: err.to_string().into(),
-                });
-            }
-        };
-
-        // plus one to account for a possible phantom newline at the end
-        let mut code = String::with_capacity(file_len + 1);
-        let mut lines = Vec::<Line>::new();
-        let mut start = 0;
-        let mut src = BufReader::new(file);
-
-        loop {
-            let mut chars_read = match src.read_line(&mut code) {
-                Ok(0) => break,
-                Ok(read) => read,
-                Err(err) => {
-                    return Err(IoError {
-                        kind: err.kind(),
-                        msg: format!("could not read contents of '{}'", path.display()).into(),
-                        cause: err.to_string().into(),
-                    })
-                }
-            };
-
-            let mut end = code.len() - 1;
-            if end > start {
-                if let cr @ b'\r' = &mut unsafe { code.as_bytes_mut() }[end - 1] {
-                    *cr = b'\n';
-                    unsafe { code.as_mut_vec().set_len(end) };
-                    end -= 1;
-                    chars_read -= 1;
-                }
-            }
-
-            lines.push(Line { start, end });
-            start += chars_read;
-        }
-
-        // it will make lexing simpler
-        if !code.is_empty() {
-            let last_char = code.len() - 1;
-            if code.as_bytes()[last_char] != b'\n' {
-                code.push('\n');
-                let last_line = lines.len() - 1;
-                lines[last_line].end += 1;
-            }
-        }
-
-        return Ok(Self { path: path.to_path_buf(), code, lines });
-    }
-
-    pub(crate) fn position(&self, col: usize) -> Position {
-        let mut left = 0;
-        let mut right = self.lines.len();
-        while left < right {
-            let middle = left + (right - left) / 2;
-            if col < self.lines[middle].end {
-                right = middle;
-            } else {
-                left = middle + 1;
-            }
-        }
-
-        return Position { line: left + 1, col: col + 1 - self.lines[left].start };
-    }
-}
+use std::{
+    borrow::Cow,
+    fmt::Display,
+    num::{IntErrorKind, ParseIntError},
+    path::Path,
+};
 
 pub(crate) trait Len {
     fn len(&self) -> usize;
@@ -138,7 +26,7 @@ pub(crate) enum Literal {
 
 impl Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return match self {
+        match self {
             Self::Int(value) => write!(f, "{}", value),
             Self::Char(code) => write!(f, "'{}'", code.escape_ascii()),
             Self::Bool(value) => write!(f, "{}", value),
@@ -149,23 +37,23 @@ impl Display for Literal {
                 }
                 write!(f, "\"")
             }
-        };
+        }
     }
 }
 
 impl Len for Literal {
     fn len(&self) -> usize {
-        return match self {
+        match self {
             Self::Int(value) => value.to_string().len(),
             Self::Char(value) => value.escape_ascii().len() + 2, // + 2 for the quotes
             Self::Bool(value) => value.to_string().len(),
             Self::Str(string) => string.len() + 2, // + 2 for the quotes
-        };
+        }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum Op {
+pub enum Op {
     // unary
     Not,
     // Minus can also be a unary operator
@@ -219,7 +107,7 @@ pub(crate) enum Op {
 
 impl Display for Op {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return match self {
+        match self {
             Self::Equals => write!(f, "="),
 
             Self::Not => write!(f, "!"),
@@ -259,13 +147,13 @@ impl Display for Op {
             Self::Less => write!(f, "<"),
             Self::LessOrEquals => write!(f, "<="),
             Self::Compare => write!(f, "<=>"),
-        };
+        }
     }
 }
 
 impl Len for Op {
     fn len(&self) -> usize {
-        return match self {
+        match self {
             Self::Equals => 1,
 
             Self::Not => 1,
@@ -305,7 +193,7 @@ impl Len for Op {
             Self::Less => 1,
             Self::LessOrEquals => 2,
             Self::Compare => 3,
-        };
+        }
     }
 }
 
@@ -317,24 +205,24 @@ pub(crate) enum Mutability {
 
 impl Display for Mutability {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return match self {
+        match self {
             Self::Let => write!(f, "let"),
             Self::Var => write!(f, "var"),
-        };
+        }
     }
 }
 
 impl Len for Mutability {
     fn len(&self) -> usize {
-        return match self {
+        match self {
             Self::Let => 3,
             Self::Var => 3,
-        };
+        }
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum BracketKind {
+pub enum BracketKind {
     OpenRound,
     CloseRound,
     OpenSquare,
@@ -345,27 +233,27 @@ pub(crate) enum BracketKind {
 
 impl Display for BracketKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return match self {
+        match self {
             Self::OpenRound => write!(f, "("),
             Self::CloseRound => write!(f, ")"),
             Self::OpenSquare => write!(f, "["),
             Self::CloseSquare => write!(f, "]"),
             Self::OpenCurly => write!(f, "{{"),
             Self::CloseCurly => write!(f, "}}"),
-        };
+        }
     }
 }
 
 impl Len for BracketKind {
     fn len(&self) -> usize {
-        return match self {
+        match self {
             Self::OpenRound => 1,
             Self::CloseRound => 1,
             Self::OpenSquare => 1,
             Self::CloseSquare => 1,
             Self::OpenCurly => 1,
             Self::CloseCurly => 1,
-        };
+        }
     }
 }
 
@@ -405,7 +293,7 @@ pub(crate) enum TokenKind<'src> {
 
 impl Display for TokenKind<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return match self {
+        match self {
             Self::Comment(text) => write!(f, "#{}", text),
             Self::Unexpected(text) => write!(f, "{}", text),
 
@@ -430,13 +318,13 @@ impl Display for TokenKind<'_> {
             Self::Loop => write!(f, "loop"),
             Self::Break => write!(f, "break"),
             Self::Continue => write!(f, "continue"),
-        };
+        }
     }
 }
 
 impl Len for TokenKind<'_> {
     fn len(&self) -> usize {
-        return match self {
+        match self {
             Self::Comment(text) => text.len(),
             Self::Unexpected(text) => text.len(),
 
@@ -460,7 +348,7 @@ impl Len for TokenKind<'_> {
             Self::Loop => 4,
             Self::Break => 5,
             Self::Continue => 8,
-        };
+        }
     }
 }
 
@@ -477,16 +365,18 @@ pub struct Tokenizer<'src> {
 
     col: usize,
     token_start_col: usize,
+
+    // TODO(stefano): replace these two fields with an iterator
     line_idx: usize,
     line: &'src Line,
 
     tokens: Vec<Token<'src>>,
     brackets: Vec<Bracket>,
-    errors: Vec<SyntaxError>,
+    errors: Vec<Error<'src>>,
 }
 
 impl<'src> Tokenizer<'src> {
-    pub fn tokenize(src: &'src SrcFile) -> Result<Vec<Token<'src>>, SyntaxErrors<'src>> {
+    pub fn tokenize(src: &'src SrcFile) -> Result<Vec<Token<'src>>, Vec<Error<'src>>> {
         if src.lines.is_empty() {
             return Ok(Vec::new());
         }
@@ -503,15 +393,11 @@ impl<'src> Tokenizer<'src> {
         };
 
         loop {
-            #[cfg(debug_assertions)]
-            #[allow(unused_variables)]
-            let line_text = &this.src.code[this.line.start..this.line.end];
-
             let token = match this.next_token() {
                 Ok(None) => break,
                 Ok(Some(kind)) => Token { kind, col: this.token_start_col },
                 Err(err) => {
-                    this.errors.add(this.src, err);
+                    this.errors.push(err);
                     let unexpected = &this.src.code[this.token_start_col..this.col];
                     Token { kind: TokenKind::Unexpected(unexpected), col: this.token_start_col }
                 }
@@ -522,27 +408,26 @@ impl<'src> Tokenizer<'src> {
 
         for bracket in &this.brackets {
             // there can only be open brackets at this point
-            this.errors.add(
+            this.errors.push(Error::new(
                 this.src,
-                RawSyntaxError {
-                    col: bracket.col,
-                    len: bracket.kind.len(),
-                    msg: "stray bracket".into(),
-                    help_msg: "was not closed".into(),
-                },
-            );
+                bracket.col,
+                bracket.kind.len(),
+                ErrorKind::UnclosedBracket(bracket.kind),
+            ));
         }
 
-        return if this.errors.is_empty() {
+        if this.errors.is_empty() {
             Ok(this.tokens)
         } else {
-            this.errors.sort_by(|e1, e2| e1.line.cmp(&e2.line));
-            Err(SyntaxErrors { src: this.src, errors: this.errors })
-        };
+            this.errors.sort_by(|e1, e2| e1.position.line.cmp(&e2.position.line));
+            Err(this.errors)
+        }
     }
+}
 
+impl<'src> Tokenizer<'src> {
     // this function exists just to be able to use the ? operator
-    fn next_token(&mut self) -> Result<Option<TokenKind<'src>>, RawSyntaxError> {
+    fn next_token(&mut self) -> Result<Option<TokenKind<'src>>, Error<'src>> {
         // this loop exists just to be able to use continues and breaks
         loop {
             self.token_start_col = self.col;
@@ -572,12 +457,12 @@ impl<'src> Tokenizer<'src> {
                     }
 
                     if contains_non_ascii {
-                        Err(RawSyntaxError {
-                            col: self.token_start_col,
-                            len: self.col - self.token_start_col + 1,
-                            msg: "invalid identifier".into(),
-                            help_msg: "contains non-ASCII characters".into(),
-                        })
+                        Err(Error::new(
+                            self.src,
+                            self.token_start_col,
+                            self.col - self.token_start_col + 1,
+                            ErrorKind::NonAsciiIdentifier,
+                        ))
                     } else {
                         let identifier = match &self.src.code[self.token_start_col..self.col] {
                             "let" => TokenKind::Definition(Mutability::Let),
@@ -598,7 +483,7 @@ impl<'src> Tokenizer<'src> {
                         Ok(Some(identifier))
                     }
                 }
-                // implement negative numbers
+                // TODO(stefano): implement negative numbers
                 b'0'..=b'9' => {
                     let mut contains_non_ascii = false;
                     loop {
@@ -615,55 +500,19 @@ impl<'src> Tokenizer<'src> {
                     let token_text = &self.src.code[self.token_start_col..self.col];
                     match token_text.parse() {
                         Ok(value) => Ok(Some(TokenKind::Literal(Literal::Int(value)))),
-                        Err(err) => match err.kind() {
-                            IntErrorKind::InvalidDigit => {
-                                if contains_non_ascii {
-                                    Err(RawSyntaxError {
-                                        col: self.token_start_col,
-                                        len: token_text.len(),
-                                        msg: "invalid number literal".into(),
-                                        help_msg: "contains non-ASCII characters".into(),
-                                    })
-                                } else {
-                                    Err(RawSyntaxError {
-                                        col: self.token_start_col,
-                                        len: token_text.len(),
-                                        msg: "invalid number literal".into(),
-                                        help_msg: "contains non-digit characters".into(),
-                                    })
-                                }
-                            }
-                            IntErrorKind::PosOverflow => Err(RawSyntaxError {
-                                col: self.token_start_col,
-                                len: token_text.len(),
-                                msg: "invalid number literal".into(),
-                                help_msg: format!(
-                                    "overflows a {} bit signed integer (over {})",
-                                    isize::BITS,
-                                    isize::MAX
-                                )
-                                .into(),
-                            }),
-                            IntErrorKind::NegOverflow => Err(RawSyntaxError {
-                                col: self.token_start_col,
-                                len: token_text.len(),
-                                msg: "invalid number literal".into(),
-                                help_msg: format!(
-                                    "underflows a {} bit signed integer (under {})",
-                                    isize::BITS,
-                                    isize::MIN
-                                )
-                                .into(),
-                            }),
-                            IntErrorKind::Empty => unreachable!("should never parse empty numbers"),
-                            IntErrorKind::Zero => unreachable!("numbers can also be zero"),
-                            _ => Err(RawSyntaxError {
-                                col: self.token_start_col,
-                                len: token_text.len(),
-                                msg: "invalid number literal".into(),
-                                help_msg: err.to_string().into(),
-                            }),
-                        },
+                        Err(err) => {
+                            let kind = match err.kind() {
+                                IntErrorKind::InvalidDigit if contains_non_ascii => ErrorKind::NonAsciiNumberLiteral,
+                                IntErrorKind::InvalidDigit => ErrorKind::NonDigitNumberLiteral,
+                                IntErrorKind::PosOverflow => ErrorKind::NumberLiteralOverflow,
+                                IntErrorKind::NegOverflow => ErrorKind::NumberLiteralUnderflow,
+                                IntErrorKind::Empty => unreachable!("should never parse empty numbers"),
+                                IntErrorKind::Zero => unreachable!("numbers can also be zero"),
+                                _ => ErrorKind::GenericInvalidNumberLiteral(err),
+                            };
+
+                            Err(Error::new(self.src, self.token_start_col, token_text.len(), kind))
+                        }
                     }
                 }
                 b'#' => {
@@ -676,8 +525,8 @@ impl<'src> Tokenizer<'src> {
                     Ok(Some(TokenKind::Comment(comment)))
                 }
                 b'"' => {
-                    let mut errors = Vec::<RawSyntaxError>::new();
-                    let mut text = Vec::<u8>::new();
+                    let mut errors = Vec::<Error<'src>>::new();
+                    let mut string_literal = Vec::<u8>::new();
 
                     loop {
                         let next = match self.next_in_str_literal()? {
@@ -689,37 +538,34 @@ impl<'src> Tokenizer<'src> {
                                 b'r' => Ok(b'\r'),
                                 b't' => Ok(b'\t'),
                                 b'0' => Ok(b'\0'),
-                                _ => Err(RawSyntaxError {
-                                    col: self.col,
-                                    len: 1,
-                                    msg: "invalid string character".into(),
-                                    help_msg: "unrecognized escape character".into(),
-                                }),
+                                unrecognized => Err(Error::new(
+                                    self.src,
+                                    self.col,
+                                    1,
+                                    ErrorKind::UnrecognizedStringEscapeCharacter(unrecognized),
+                                )),
                             },
-                            b'\x00'..=b'\x1F' | b'\x7F' => Err(RawSyntaxError {
-                                col: self.col,
-                                len: 1,
-                                msg: "invalid string literal".into(),
-                                help_msg: "cannot be a control character".into(),
-                            }),
+                            b'\x00'..=b'\x1F' | b'\x7F' => {
+                                Err(Error::new(self.src, self.col, 1, ErrorKind::ControlCharacterInStringLiteral))
+                            }
                             b'"' => break,
                             other => Ok(other),
                         };
 
                         match next {
-                            Ok(next_char) => text.push(next_char),
+                            Ok(next_char) => string_literal.push(next_char),
                             Err(err) => errors.push(err),
                         }
                     }
 
                     // after here there cannot be unclosed strings
                     if errors.is_empty() {
-                        Ok(Some(TokenKind::Literal(Literal::Str(text))))
+                        Ok(Some(TokenKind::Literal(Literal::Str(string_literal))))
                     } else {
                         // FIX(stefano): add proper multiple error handling
                         let last_error = errors.pop().unwrap();
                         for error in errors {
-                            self.errors.add(self.src, error);
+                            self.errors.push(error);
                         }
                         Err(last_error)
                     }
@@ -734,27 +580,17 @@ impl<'src> Tokenizer<'src> {
                             b'r' => Ok(b'\r'),
                             b't' => Ok(b'\t'),
                             b'0' => Ok(b'\0'),
-                            _ => Err(RawSyntaxError {
-                                col: self.col,
-                                len: 1,
-                                msg: "invalid character literal".into(),
-                                help_msg: "unrecognized escape character".into(),
-                            }),
+                            unrecognized => Err(Error::new(
+                                self.src,
+                                self.col,
+                                1,
+                                ErrorKind::UnrecognizedCharacterEscapeCharacter(unrecognized),
+                            )),
                         },
-                        b'\x00'..=b'\x1F' | b'\x7F' => Err(RawSyntaxError {
-                            col: self.col,
-                            len: 1,
-                            msg: "invalid character literal".into(),
-                            help_msg: "cannot be a control character".into(),
-                        }),
-                        b'\'' => {
-                            return Err(RawSyntaxError {
-                                col: self.token_start_col,
-                                len: 2,
-                                msg: "invalid character literal".into(),
-                                help_msg: "must not be empty".into(),
-                            })
+                        b'\x00'..=b'\x1F' | b'\x7F' => {
+                            Err(Error::new(self.src, self.col, 1, ErrorKind::ControlCharacterInCharacterLiteral))
                         }
+                        b'\'' => Err(Error::new(self.src, self.token_start_col, 2, ErrorKind::EmptyCharacterLiteral)),
                         ch => Ok(ch),
                     };
 
@@ -763,12 +599,12 @@ impl<'src> Tokenizer<'src> {
                             self.col += 1;
                             Ok(Some(TokenKind::Literal(Literal::Char(code?))))
                         }
-                        Some(_) | None => Err(RawSyntaxError {
-                            col: self.token_start_col,
-                            len: self.col - self.token_start_col + 1,
-                            msg: "invalid character literal".into(),
-                            help_msg: "missing closing single quote".into(),
-                        }),
+                        Some(_) | None => Err(Error::new(
+                            self.src,
+                            self.token_start_col,
+                            self.col - self.token_start_col + 1,
+                            ErrorKind::UnclosedCharacterLiteral,
+                        )),
                     }
                 }
                 b'(' => {
@@ -782,19 +618,19 @@ impl<'src> Tokenizer<'src> {
                         | BracketKind::CloseRound
                         | BracketKind::CloseCurly
                         | BracketKind::CloseSquare => Ok(Some(TokenKind::Bracket(BracketKind::CloseRound))),
-                        BracketKind::OpenCurly | BracketKind::OpenSquare => Err(RawSyntaxError {
-                            col: self.token_start_col,
-                            len: 1,
-                            msg: "stray bracket".into(),
-                            help_msg: "closes the wrong bracket".into(),
-                        }),
+                        actual @ (BracketKind::OpenCurly | BracketKind::OpenSquare) => Err(Error::new(
+                            self.src,
+                            self.token_start_col,
+                            1,
+                            ErrorKind::MismatchedBracket { expected: BracketKind::CloseRound, actual },
+                        )),
                     },
-                    None => Err(RawSyntaxError {
-                        col: self.token_start_col,
-                        len: 1,
-                        msg: "stray bracket".into(),
-                        help_msg: "was not opened before".into(),
-                    }),
+                    None => Err(Error::new(
+                        self.src,
+                        self.token_start_col,
+                        1,
+                        ErrorKind::UnopenedBracket(BracketKind::CloseRound),
+                    )),
                 },
                 b'[' => {
                     let kind = BracketKind::OpenSquare;
@@ -807,19 +643,19 @@ impl<'src> Tokenizer<'src> {
                         | BracketKind::CloseSquare
                         | BracketKind::CloseCurly
                         | BracketKind::CloseRound => Ok(Some(TokenKind::Bracket(BracketKind::CloseSquare))),
-                        BracketKind::OpenCurly | BracketKind::OpenRound => Err(RawSyntaxError {
-                            col: self.token_start_col,
-                            len: 1,
-                            msg: "stray bracket".into(),
-                            help_msg: "closes the wrong bracket".into(),
-                        }),
+                        actual @ (BracketKind::OpenCurly | BracketKind::OpenRound) => Err(Error::new(
+                            self.src,
+                            self.token_start_col,
+                            1,
+                            ErrorKind::MismatchedBracket { expected: BracketKind::CloseSquare, actual },
+                        )),
                     },
-                    None => Err(RawSyntaxError {
-                        col: self.token_start_col,
-                        len: 1,
-                        msg: "stray bracket".into(),
-                        help_msg: "was not opened before".into(),
-                    }),
+                    None => Err(Error::new(
+                        self.src,
+                        self.token_start_col,
+                        1,
+                        ErrorKind::UnopenedBracket(BracketKind::CloseSquare),
+                    )),
                 },
                 b'{' => {
                     let kind = BracketKind::OpenCurly;
@@ -832,19 +668,19 @@ impl<'src> Tokenizer<'src> {
                         | BracketKind::CloseCurly
                         | BracketKind::CloseRound
                         | BracketKind::CloseSquare => Ok(Some(TokenKind::Bracket(BracketKind::CloseCurly))),
-                        BracketKind::OpenRound | BracketKind::OpenSquare => Err(RawSyntaxError {
-                            col: self.token_start_col,
-                            len: 1,
-                            msg: "stray bracket".into(),
-                            help_msg: "closes the wrong bracket".into(),
-                        }),
+                        actual @ (BracketKind::OpenRound | BracketKind::OpenSquare) => Err(Error::new(
+                            self.src,
+                            self.token_start_col,
+                            1,
+                            ErrorKind::MismatchedBracket { expected: BracketKind::CloseCurly, actual },
+                        )),
                     },
-                    None => Err(RawSyntaxError {
-                        col: self.token_start_col,
-                        len: 1,
-                        msg: "stray bracket".into(),
-                        help_msg: "was not opened before".into(),
-                    }),
+                    None => Err(Error::new(
+                        self.src,
+                        self.token_start_col,
+                        1,
+                        ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
+                    )),
                 },
                 b':' => Ok(Some(TokenKind::Colon)),
                 b';' => Ok(Some(TokenKind::SemiColon)),
@@ -989,12 +825,9 @@ impl<'src> Tokenizer<'src> {
                     }
                     _ => Ok(Some(TokenKind::Op(Op::Less))),
                 },
-                _ => Err(RawSyntaxError {
-                    col: self.token_start_col,
-                    len: 1,
-                    msg: "unexpected character".into(),
-                    help_msg: "unrecognized".into(),
-                }),
+                unrecognized => {
+                    Err(Error::new(self.src, self.token_start_col, 1, ErrorKind::UnrecognizedCharacter(unrecognized)))
+                }
             };
         }
     }
@@ -1008,73 +841,206 @@ impl<'src> Tokenizer<'src> {
             return None;
         }
 
-        return Some(&self.src.lines[self.line_idx]);
+        Some(&self.src.lines[self.line_idx])
     }
 
     // FIX(stefano): properly handle non ASCII characters related errors and column advancing
     // IDEA(stefano): allow utf-8 characters in strings, characters
-    fn next(&mut self) -> Result<Option<u8>, RawSyntaxError> {
+    fn next(&mut self) -> Result<Option<u8>, Error<'src>> {
         if self.col >= self.src.code.len() {
             return Ok(None);
         }
 
-        let next = self.src.code.as_bytes()[self.col];
-        self.col += 1;
-        return match next {
-            ..=b'\x7F' => Ok(Some(next)),
-            _ => Err(RawSyntaxError {
-                col: self.col,
-                len: 1,
-                msg: "unrecognized character".into(),
-                help_msg: "not a valid ASCII character".into(),
-            }),
-        };
+        match self.src.code.as_bytes()[self.col] {
+            ascii @ ..=b'\x7F' => {
+                self.col += 1;
+                Ok(Some(ascii))
+            }
+            non_ascii => {
+                let non_ascii_col = self.col;
+                self.col += 1;
+
+                Err(Error::new(self.src, non_ascii_col, 1, ErrorKind::NonAsciiCharacter(non_ascii)))
+            }
+        }
     }
 
-    fn peek_next(&self) -> Result<Option<&'src u8>, RawSyntaxError> {
+    fn peek_next(&self) -> Result<Option<&'src u8>, Error<'src>> {
         if self.col >= self.src.code.len() {
             return Ok(None);
         }
 
-        let next = &self.src.code.as_bytes()[self.col];
-        return match next {
-            ..=b'\x7F' => Ok(Some(next)),
-            _ => Err(RawSyntaxError {
-                col: self.col,
-                len: 1,
-                msg: "unrecognized character".into(),
-                help_msg: "not a valid ASCII character".into(),
-            }),
-        };
+        match &self.src.code.as_bytes()[self.col] {
+            ascii @ ..=b'\x7F' => Ok(Some(ascii)),
+            non_ascii => Err(Error::new(self.src, self.col, 1, ErrorKind::NonAsciiCharacter(*non_ascii))),
+        }
     }
 }
 
 // character literals
 impl<'src> Tokenizer<'src> {
-    fn next_in_char_literal(&mut self) -> Result<u8, RawSyntaxError> {
-        return match self.next()? {
+    fn next_in_char_literal(&mut self) -> Result<u8, Error<'src>> {
+        match self.next()? {
             Some(next) => Ok(next),
-            None => Err(RawSyntaxError {
-                col: self.token_start_col,
-                len: self.col - self.token_start_col + 1,
-                msg: "invalid character literal".into(),
-                help_msg: "missing closing single quote".into(),
-            }),
-        };
+            None => Err(Error::new(
+                self.src,
+                self.token_start_col,
+                self.col - self.token_start_col + 1,
+                ErrorKind::UnclosedCharacterLiteral,
+            )),
+        }
     }
 }
 
 // string literals
 impl<'src> Tokenizer<'src> {
-    fn next_in_str_literal(&mut self) -> Result<u8, RawSyntaxError> {
-        return match self.next()? {
+    fn next_in_str_literal(&mut self) -> Result<u8, Error<'src>> {
+        match self.next()? {
             Some(next) => Ok(next),
-            None => Err(RawSyntaxError {
-                col: self.token_start_col,
-                len: self.col - self.token_start_col + 1,
-                msg: "invalid string literal".into(),
-                help_msg: "missing closing double quote".into(),
-            }),
-        };
+            None => Err(Error::new(
+                self.src,
+                self.token_start_col,
+                self.col - self.token_start_col + 1,
+                ErrorKind::UnclosedCharacterLiteral,
+            )),
+        }
     }
 }
+
+#[derive(Debug)]
+pub enum ErrorKind {
+    UnclosedBracket(BracketKind),
+    NonAsciiCharacter(u8),
+    UnclosedCharacterLiteral,
+    UnclosedStringLiteral,
+    NonAsciiIdentifier,
+    NonAsciiNumberLiteral,
+    NonDigitNumberLiteral,
+    NumberLiteralOverflow,
+    NumberLiteralUnderflow,
+    GenericInvalidNumberLiteral(ParseIntError),
+    UnrecognizedStringEscapeCharacter(u8),
+    ControlCharacterInStringLiteral,
+    UnrecognizedCharacterEscapeCharacter(u8),
+    ControlCharacterInCharacterLiteral,
+    EmptyCharacterLiteral,
+    MismatchedBracket { expected: BracketKind, actual: BracketKind },
+    UnopenedBracket(BracketKind),
+    UnrecognizedCharacter(u8),
+}
+
+#[derive(Debug)]
+pub struct Error<'src> {
+    pub path: &'src Path,
+    pub position: Position,
+    pub len: usize,
+    pub line_text: &'src str,
+    pub kind: ErrorKind,
+}
+
+impl<'src> Error<'src> {
+    fn new(src: &'src SrcFile, col: usize, len: usize, kind: ErrorKind) -> Self {
+        let position = src.position(col);
+        let line_text = src.line_text(position);
+        Self { path: &src.path, position, len, line_text, kind }
+    }
+}
+
+impl Display for Error<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (msg, help_msg): (Cow<'static, str>, Cow<'static, str>) = match &self.kind {
+            ErrorKind::UnclosedBracket(bracket) => {
+                (format!("unclosed '{}' bracket", bracket).into(), "was not closed".into())
+            }
+            ErrorKind::NonAsciiCharacter(ch) => {
+                (format!("unrecognized '{}' character", ch).into(), "not a valid ASCII character".into())
+            }
+            ErrorKind::UnclosedCharacterLiteral => {
+                ("invalid character literal".into(), "missing closing single quote".into())
+            }
+            ErrorKind::UnclosedStringLiteral => {
+                ("invalid string literal".into(), "missing closing double quote".into())
+            }
+            ErrorKind::NonAsciiIdentifier => ("invalid identifier".into(), "contains non-ASCII characters".into()),
+            ErrorKind::NonAsciiNumberLiteral => {
+                ("invalid number literal".into(), "contains non-ASCII characters".into())
+            }
+            ErrorKind::NonDigitNumberLiteral => {
+                ("invalid number literal".into(), "contains non-digit characters".into())
+            }
+            ErrorKind::NumberLiteralOverflow => (
+                "invalid number literal".into(),
+                format!("overflows a {} bit signed integer (over {})", isize::BITS, isize::MAX).into(),
+            ),
+            ErrorKind::NumberLiteralUnderflow => (
+                "invalid number literal".into(),
+                format!("underflows a {} bit signed integer (over {})", isize::BITS, isize::MIN).into(),
+            ),
+            ErrorKind::GenericInvalidNumberLiteral(err) => ("invalid number literal".into(), format!("{}", err).into()),
+            ErrorKind::UnrecognizedStringEscapeCharacter(ch) => {
+                ("invalid string literal".into(), format!("unrecognized '{}' escape character", ch).into())
+            }
+            ErrorKind::ControlCharacterInStringLiteral => {
+                ("invalid string literal".into(), "cannot be a control character".into())
+            }
+            ErrorKind::UnrecognizedCharacterEscapeCharacter(ch) => {
+                ("invalid character literal".into(), format!("unrecognized '{}' escape character", ch).into())
+            }
+            ErrorKind::ControlCharacterInCharacterLiteral => {
+                ("invalid character literal".into(), "cannot be a control character".into())
+            }
+            ErrorKind::EmptyCharacterLiteral => ("invalid character literal".into(), "must not be empty".into()),
+            ErrorKind::MismatchedBracket { expected, actual } => (
+                format!("mismatched '{}' bracket", actual).into(),
+                format!("closes the wrong bracket, expected a '{}' instead", expected).into(),
+            ),
+            ErrorKind::UnopenedBracket(bracket) => {
+                (format!("unopened '{}' bracket", bracket).into(), "was not opened before".into())
+            }
+            ErrorKind::UnrecognizedCharacter(ch) => {
+                (format!("unexpected character {}", ch).into(), "unrecognized".into())
+            }
+        };
+
+        let error_msg = Colored { text: msg.to_string(), fg: Fg::White, bg: Bg::Default, flags: Flag::Bold };
+
+        let line_number_text =
+            Colored { text: self.position.line.to_string(), fg: Fg::LightBlue, bg: Bg::Default, flags: Flag::Bold };
+
+        let visualization_padding = line_number_text.text.len() + 1 + BAR.text.len();
+        let at_padding = visualization_padding - 1;
+
+        let pointers_col = self.position.col - 1;
+        let pointers_len = self.len;
+
+        let pointers_and_help_msg = Colored {
+            text: format!("{:>pointers_col$}{:^>pointers_len$} {}", "", "", help_msg),
+            fg: Fg::LightRed,
+            bg: Bg::Default,
+            flags: Flag::Bold,
+        };
+
+        write!(
+            f,
+            "{}: {}\
+            \n{:>at_padding$}: {}:{}:{}\
+            \n{:>visualization_padding$}\
+            \n{} {} {}\
+            \n{:>visualization_padding$} {}",
+            ERROR,
+            error_msg,
+            AT,
+            self.path.display(),
+            self.position.line,
+            self.position.col,
+            BAR,
+            line_number_text,
+            BAR,
+            self.line_text,
+            BAR,
+            pointers_and_help_msg
+        )
+    }
+}
+
+impl std::error::Error for Error<'_> {}
