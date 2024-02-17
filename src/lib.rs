@@ -46,8 +46,6 @@ pub struct Help {
 
 impl Display for Help {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let version = Version { color: self.color };
-
         write!(
             f,
             r"{version}
@@ -67,7 +65,8 @@ compile  <{FILE}> [{OUTPUT}]     Compile the source code down to an executable
 run      <{FILE}> [{OUTPUT}]     Compile and run the generated executable
 
 {OUTPUT}:
--o, --output <{PATH}>       Folder to populate with compilation artifacts (.asm, .o, executable) (default: '.')"
+-o, --output <{PATH}>       Folder to populate with compilation artifacts (.asm, .o, executable) (default: '.')",
+            version = Version { color: self.color }
         )
     }
 }

@@ -10,16 +10,18 @@ use std::{
     path::Path,
 };
 
+// TODO(stefano): inline this struct in the AST struct
 #[derive(Debug)]
 struct Tokens<'src: 'tokens, 'tokens> {
     src: &'src SrcFile,
     token: usize,
     tokens: &'tokens [Token<'src>],
+    // TODO(stefano): try removing this option
     current: Option<&'tokens Token<'src>>,
 }
 
 impl<'src: 'tokens, 'tokens> Tokens<'src, 'tokens> {
-    fn new(src: &'src SrcFile, tokens: &'tokens [Token<'src>]) -> Self {
+    const fn new(src: &'src SrcFile, tokens: &'tokens [Token<'src>]) -> Self {
         let mut token = 0;
 
         // skipping to the first non-comment token
@@ -102,18 +104,17 @@ impl<'src: 'tokens, 'tokens> Bounded<'src, 'tokens> for Option<&'tokens Token<'s
         tokens: &mut Tokens<'src, 'tokens>,
         expected_before_eof: ExpectedBeforeEof,
     ) -> Result<&'tokens Token<'src>, Self::Error> {
-        match self {
-            Some(token) => Ok(token),
-            None => {
-                let previous = tokens.peek_previous();
-                Err(Error::new(
-                    tokens.src,
-                    previous.col,
-                    previous.kind.len(),
-                    ErrorKind::NoMoreTokens(expected_before_eof),
-                ))
-            }
-        }
+        let Some(token) = self else {
+            let previous = tokens.peek_previous();
+            return Err(Error::new(
+                tokens.src,
+                previous.col,
+                previous.kind.len(),
+                ErrorKind::NoMoreTokens(expected_before_eof),
+            ));
+        };
+
+        Ok(token)
     }
 }
 
@@ -157,7 +158,7 @@ impl Display for Type {
             Self::Char => write!(f, "char"),
             Self::Bool => write!(f, "bool"),
             Self::Str => write!(f, "str"),
-            Self::Array(len, typ) => write!(f, "{}[{}]", typ, len),
+            Self::Array(len, typ) => write!(f, "{typ}[{len}]"),
 
             Self::Infer => write!(f, "infer"),
         }
@@ -263,23 +264,24 @@ pub(crate) enum Expression<'src> {
 impl Debug for Expression<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Literal(literal) => write!(f, "{}", literal),
-            Self::Unary { op, operand } => write!(f, "{}{:?}", op, operand),
-            Self::Binary { lhs, op, rhs, .. } => write!(f, "({:?} {} {:?})", lhs, op, rhs),
-            Self::Identifier(name, _) => write!(f, "{}", name),
+            Self::Literal(literal) => write!(f, "{literal}"),
+            Self::Unary { op, operand } => write!(f, "{op}{operand:?}"),
+            Self::Binary { lhs, op, rhs, .. } => write!(f, "({lhs:?} {op} {rhs:?})"),
+            Self::Identifier(name, _) => write!(f, "{name}"),
             Self::Array(array, _) => {
                 write!(f, "[")?;
                 if !array.is_empty() {
-                    let max_size = array.len().min(5);
-                    for element in array.iter().take(max_size - 1) {
-                        write!(f, "{:?}, ", element)?;
+                    let mut elements = array.iter();
+                    let last = elements.next_back().unwrap(); // we have already checked for a non empty array
+                    for element in elements {
+                        write!(f, "{element:?}, ")?;
                     }
 
-                    write!(f, "{:?}", array[array.len() - 1])?;
+                    write!(f, "{last:?}")?;
                 }
                 write!(f, "]")
             }
-            Self::ArrayIndex { array, index, .. } => write!(f, "{}[ {:?} ]", array, index),
+            Self::ArrayIndex { array, index, .. } => write!(f, "{array}[{index:?}]"),
         }
     }
 }
@@ -332,7 +334,7 @@ pub(crate) struct IfStatement<'src> {
 
 impl Display for IfStatement<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "if {:?}", self.condition)
+        write!(f, "if {condition:?}", condition = self.condition)
     }
 }
 
@@ -359,8 +361,8 @@ pub(crate) struct Loop<'src> {
 impl Display for Loop<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.condition {
-            LoopCondition::Pre(condition) => write!(f, "loop {:?}", condition),
-            LoopCondition::Post(condition) => write!(f, "do loop {:?}", condition),
+            LoopCondition::Pre(condition) => write!(f, "loop {condition:?}"),
+            LoopCondition::Post(condition) => write!(f, "do loop {condition:?}"),
         }
     }
 }
@@ -391,12 +393,12 @@ impl Display for Node<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Semicolon => write!(f, ";"),
-            Self::Expression(expression) => write!(f, "{:?}", expression),
-            Self::Print(argument) => write!(f, "print {:?}", argument),
-            Self::Println(Some(arg)) => write!(f, "println {:?}", arg),
+            Self::Expression(expression) => write!(f, "{expression:?}"),
+            Self::Print(argument) => write!(f, "print {argument:?}"),
+            Self::Println(Some(arg)) => write!(f, "println {arg:?}"),
             Self::Println(None) => write!(f, "println"),
-            Self::If(iff) => write!(f, "{}", iff.ifs[0]),
-            Self::Loop(looop) => write!(f, "{}", looop),
+            Self::If(iff) => write!(f, "{iff}", iff = iff.ifs[0]),
+            Self::Loop(looop) => write!(f, "{looop}"),
             Self::Break => write!(f, "break"),
             Self::Continue => write!(f, "continue"),
 
@@ -960,7 +962,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                         self.tokens.src,
                         current_token.col,
                         current_token.kind.len(),
-                        ErrorKind::CannotInvertString,
+                        ErrorKind::CannotInvertArray,
                     )),
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 };
@@ -1917,10 +1919,10 @@ impl Display for Error<'_> {
             }
             ErrorKind::BlocksNotAllowed(context) => ("invalid statement".into(), context.to_string().into()),
             ErrorKind::UnopenedBracket(bracket) => {
-                ("invalid statement".into(), format!("'{}' bracket was not opened", bracket).into())
+                ("invalid statement".into(), format!("'{bracket}' bracket was not opened").into())
             }
             ErrorKind::UnclosedBracket(bracket) => {
-                ("invalid expression".into(), format!("'{}' bracket was not closed", bracket).into())
+                ("invalid expression".into(), format!("'{bracket}' bracket was not closed").into())
             }
             ErrorKind::TemporaryArrayNotSupportedYet => (
                 "invalid expression".into(),
@@ -1931,13 +1933,13 @@ impl Display for Error<'_> {
             }
             ErrorKind::MismatchedArrayElementType { expected, actual } => (
                 "invalid array element".into(),
-                format!("expected element of type '{}', but got '{}'", expected, actual).into(),
+                format!("expected element of type '{expected}', but got '{actual}'").into(),
             ),
             ErrorKind::StrayColon => ("invalid type annotation".into(), "stray colon".into()),
             ErrorKind::StrayComma => ("invalid array element separator".into(), "stray comma".into()),
             ErrorKind::StrayEquals => ("invalid assignment".into(), "stray assigment".into()),
             ErrorKind::StrayBinaryOperator(op) => {
-                ("invalid expression".into(), format!("stray '{}' operator", op).into())
+                ("invalid expression".into(), format!("stray '{op}' operator").into())
             }
             ErrorKind::VariableDefinitionNotAllowed(context) => {
                 ("invalid statement".into(), context.to_string().into())
@@ -1966,12 +1968,11 @@ impl Display for Error<'_> {
             }
             ErrorKind::VariableDefinitionTypeMismatch { expected, actual } => (
                 "invalid variable definition".into(),
-                format!("declared type of '{}' doesn't match value of type '{}'", expected, actual).into(),
+                format!("declared type of '{expected}' doesn't match value of type '{actual}'").into(),
             ),
             ErrorKind::VariableAssignmentTypeMismatch { expected, actual } => (
                 "invalid variable assignment".into(),
-                format!("trying to assign an expression of type '{}' to a variable of type '{}'", actual, expected)
-                    .into(),
+                format!("trying to assign an expression of type '{actual}' to a variable of type '{expected}'").into(),
             ),
             ErrorKind::VariableAsTypeAnnotationNotPreviouslyDefined => {
                 ("invalid type annotation".into(), "was not previously defined in this scope".into())
@@ -2054,7 +2055,7 @@ impl Display for Error<'_> {
         let pointers_len = self.len;
 
         let pointers_and_help_msg = Colored {
-            text: format!("{:>pointers_col$}{:^>pointers_len$} {}", "", "", help_msg),
+            text: format!("{:>pointers_col$}{:^>pointers_len$} {help_msg}", "", ""),
             fg: Fg::LightRed,
             bg: Bg::Default,
             flags: Flag::Bold,
@@ -2062,23 +2063,15 @@ impl Display for Error<'_> {
 
         write!(
             f,
-            "{}: {}\
-            \n{:>at_padding$}: {}:{}:{}\
-            \n{:>visualization_padding$}\
-            \n{} {} {}\
-            \n{:>visualization_padding$} {}",
-            ERROR,
-            error_msg,
-            AT,
-            self.path.display(),
-            self.position.line,
-            self.position.col,
-            BAR,
-            line_number_text,
-            BAR,
-            self.line_text,
-            BAR,
-            pointers_and_help_msg
+            "{ERROR}: {error_msg}\
+            \n{AT:>at_padding$}: {path}:{line}:{col}\
+            \n{BAR:>visualization_padding$}\
+            \n{line_number_text} {BAR} {line_text}\
+            \n{BAR:>visualization_padding$} {pointers_and_help_msg}",
+            path = self.path.display(),
+            line = self.position.line,
+            col = self.position.col,
+            line_text = self.line_text,
         )
     }
 }

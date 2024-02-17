@@ -28,7 +28,7 @@ fn main() -> ExitCode {
     let Args { color, verbosity, run_mode } = match Args::try_from(args) {
         Ok(args) => args,
         Err(err) => {
-            eprint!("{}", err);
+            eprint!("{err}");
             return ExitCode::FAILURE;
         }
     };
@@ -57,7 +57,7 @@ fn main() -> ExitCode {
                 match source_loading_result {
                     Ok(src) => src,
                     Err(err) => {
-                        eprint!("{}", err);
+                        eprintln!("{err}");
                         return ExitCode::FAILURE;
                     }
                 }
@@ -71,7 +71,7 @@ fn main() -> ExitCode {
                     Ok(tokens) => tokens,
                     Err(errors) => {
                         for error in errors {
-                            eprintln!("{}", error);
+                            eprintln!("{error}");
                         }
                         return ExitCode::FAILURE;
                     }
@@ -86,7 +86,7 @@ fn main() -> ExitCode {
                     Ok(ast) => ast,
                     Err(errors) => {
                         for error in errors {
-                            eprintln!("{}", error);
+                            eprintln!("{error}");
                         }
                         return ExitCode::FAILURE;
                     }
@@ -107,7 +107,7 @@ fn main() -> ExitCode {
                     match asm_generation_result {
                         Ok(artifacts_path) => artifacts_path,
                         Err(err) => {
-                            eprint!("{}", err);
+                            eprintln!("{err}");
                             return ExitCode::FAILURE;
                         }
                     }
@@ -120,7 +120,7 @@ fn main() -> ExitCode {
                     match assembler_result {
                         Ok(()) => {}
                         Err(err) => {
-                            eprint!("{}", err);
+                            eprintln!("{err}");
                             return ExitCode::FAILURE;
                         }
                     }
@@ -133,7 +133,7 @@ fn main() -> ExitCode {
                     match linker_result {
                         Ok(()) => {}
                         Err(err) => {
-                            eprint!("{}", err);
+                            eprintln!("{err}");
                             return ExitCode::FAILURE;
                         }
                     }
@@ -145,9 +145,9 @@ fn main() -> ExitCode {
                 if let RunMode::Run { .. } = run_mode {
                     Step::info(&RUNNING, &exe_path, verbosity);
                     match Run::run(&exe_path) {
-                        Ok(_) => {}
+                        Ok(()) => {}
                         Err(err) => {
-                            eprint!("{}", err);
+                            eprintln!("{err}");
                             return ExitCode::FAILURE;
                         }
                     }
@@ -201,7 +201,7 @@ mod tests {
                         match source_loading_result {
                             Ok(src) => src,
                             Err(err) => {
-                                eprint!("{}", err);
+                                eprintln!("{err}");
                                 return Ok(ExitCode::FAILURE);
                             }
                         }
@@ -215,7 +215,7 @@ mod tests {
                             Ok(tokens) => tokens,
                             Err(errors) => {
                                 for error in errors {
-                                    eprint!("{}", error);
+                                    eprintln!("{error}");
                                 }
                                 return Ok(ExitCode::FAILURE);
                             }
@@ -231,7 +231,7 @@ mod tests {
                             Ok(ast) => ast,
                             Err(errors) => {
                                 for error in errors {
-                                    eprintln!("{}", error);
+                                    eprintln!("{error}");
                                 }
                                 return Ok(ExitCode::FAILURE);
                             }

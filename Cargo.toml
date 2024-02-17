@@ -30,6 +30,7 @@ opt-level = 0
 # pedantic = "warn"
 # restriction = "warn"
 
+
 cargo = "forbid"
 manual_map = "allow"
 from_over_into = "allow"

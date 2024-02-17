@@ -90,10 +90,10 @@ fn log_color(text: &str, fg: Fg, bg: Bg, flags: Flags, f: &mut std::fmt::Formatt
     let mut codes = String::with_capacity(15);
 
     if fg != Fg::Default {
-        codes += &format!("{};", fg as u8);
+        codes += &format!("{fg};", fg = fg as u8);
     }
     if bg != Bg::Default {
-        codes += &format!("{};", bg as u8);
+        codes += &format!("{bg};", bg = bg as u8);
     }
     if flags & Flag::Bold != 0 {
         codes += "1;";
@@ -116,7 +116,7 @@ fn log_color(text: &str, fg: Fg, bg: Bg, flags: Flags, f: &mut std::fmt::Formatt
     } else {
         let _last_semicolon = codes.pop();
 
-        write!(f, "\x1b[{}m", codes)?;
+        write!(f, "\x1b[{codes}m")?;
         text.fmt(f)?;
         write!(f, "\x1b[0m")
     }

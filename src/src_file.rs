@@ -113,27 +113,28 @@ pub enum Error {
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let (msg, cause): (Cow<'static, str>, Cow<'static, str>) = match self {
-            Self::CouldNotOpen { err, path } => {
-                (format!("could not open '{}'", path.display()).into(), format!("{} ({})", err, err.kind()).into())
-            }
-            Self::ExpectedFile { path } => {
-                (format!("invalid path '{}'", path.display()).into(), "expected a file but got a directory".into())
-            }
+            Self::CouldNotOpen { err, path } => (
+                format!("could not open '{path}'", path = path.display()).into(),
+                format!("{err} ({kind})", kind = err.kind()).into(),
+            ),
+            Self::ExpectedFile { path } => (
+                format!("invalid path '{path}'", path = path.display()).into(),
+                "expected a file but got a directory".into(),
+            ),
             Self::CouldNotReadMetadata { err, path } => (
-                format!("could not read metadata of '{}'", path.display()).into(),
-                format!("{} ({})", err, err.kind()).into(),
+                format!("could not read metadata of '{path}'", path = path.display()).into(),
+                format!("{err} ({kind})", kind = err.kind()).into(),
             ),
             Self::CouldNotReadContents { err, path } => (
-                format!("could not read contents of '{}'", path.display()).into(),
-                format!("{} ({})", err, err.kind()).into(),
+                format!("could not read contents of '{path}'", path = path.display()).into(),
+                format!("{err} ({kind})", kind = err.kind()).into(),
             ),
         };
 
         write!(
             f,
-            "{}: {}\
-            \n{}: {}",
-            ERROR, msg, CAUSE, cause,
+            "{ERROR}: {msg}\
+            \n{CAUSE}: {cause}",
         )
     }
 }

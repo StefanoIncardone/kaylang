@@ -19,8 +19,11 @@ const BAR_FLAGS: Flags = Flag::Bold;
 #[rustfmt::skip] pub(crate) static BAR:   ColoredStr = ColoredStr { text: "|",     fg: BAR_FG, bg: BAR_BG, flags: BAR_FLAGS };
 
 fn done(start_time: Instant, step: &ColoredStr, indent: usize, padding: usize) {
-    let elapsed_time =
-        Colored { text: format!("{}s", start_time.elapsed().as_secs_f32()), fg: Fg::White, ..Default::default() };
+    let elapsed_time = Colored {
+        text: format!("{elapsed}s", elapsed = start_time.elapsed().as_secs_f32()),
+        fg: Fg::White,
+        ..Default::default()
+    };
 
     eprintln!("{:indent$}{:>padding$}: in {}", "", step, elapsed_time);
 }

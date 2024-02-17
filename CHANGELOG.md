@@ -7,7 +7,7 @@
 - removed unneccessary abstraction over the entire API related to the compilation process
 - disallowed implicit conversions between strings and other types
     - corrected related bugs
-- arrays, array indexing
+- introduced arrays
 
 
 ## 0.4

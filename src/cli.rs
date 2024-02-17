@@ -12,7 +12,7 @@ impl TryFrom<Vec<String>> for Args {
     type Error = Error;
 
     fn try_from(args: Vec<String>) -> Result<Self, Self::Error> {
-        let args_iter = args.iter().peekable();
+        let args_iter = args.iter();
 
         let mut args = args_iter.clone();
         let _ = args.next(); // skipping the name of this executable
@@ -34,9 +34,7 @@ impl TryFrom<Vec<String>> for Args {
                     "auto" => Some(Color::Auto),
                     "always" => Some(Color::Always),
                     "never" => Some(Color::Never),
-                    unrecognized => {
-                        return Err(Error::UnrecognizedColorMode { unrecognized: unrecognized.to_string() })
-                    }
+                    _ => return Err(Error::UnrecognizedColorMode { unrecognized: mode.clone() }),
                 };
             }
         }
@@ -47,7 +45,7 @@ impl TryFrom<Vec<String>> for Args {
         let mut verbosity: Option<Verbosity> = None;
         let mut run_mode: Option<RunMode> = None;
 
-        args = args_iter.clone();
+        let mut args = args_iter.clone().peekable();
         let _ = args.next(); // skipping the name of this executable
 
         while let Some(arg) = args.next() {
@@ -171,9 +169,7 @@ impl Display for Error {
         let msg: Cow<'static, str> = match self {
             Self::ColorModeAlreadySelected => "color mode selected more than once".into(),
             Self::MissingColorMode => "missing color mode after".into(),
-            Self::UnrecognizedColorMode { unrecognized } => {
-                format!("unrecognized color mode '{}'", unrecognized).into()
-            }
+            Self::UnrecognizedColorMode { unrecognized } => format!("unrecognized color mode '{unrecognized}'").into(),
 
             Self::VerbosityModeAlreadySelected => "verbosity mode selected more than once".into(),
 
@@ -183,22 +179,22 @@ impl Display for Error {
                 "help and version commands cannot be selected at the same time".into()
             }
 
-            Self::RunModeAlreadySelected { mode } => format!("'{}' run mode already selected", mode).into(),
+            Self::RunModeAlreadySelected { mode } => format!("'{mode}' run mode already selected").into(),
             Self::MissingSourceFilePathForRunMode { mode } => {
-                format!("missing source file path for '{}' mode", mode).into()
+                format!("missing source file path for '{mode}' mode").into()
             }
             Self::MissingOutputFolderPathForRunMode { mode } => {
-                format!("missing output folder path for '{}' mode", mode).into()
+                format!("missing output folder path for '{mode}' mode").into()
             }
             Self::MissingOutputFolderPath => "missing output folder path".into(),
             Self::StrayOutputFolderPath => {
                 "output folder path option can only be used after a 'compile' or 'run' command".into()
             }
 
-            Self::UnrecognizedFlag { flag } => format!("unrecognized flag '{}'", flag).into(),
+            Self::UnrecognizedFlag { flag } => format!("unrecognized flag '{flag}'").into(),
         };
 
-        write!(f, "{}: {}", ERROR, msg)
+        write!(f, "{ERROR}: {msg}")
     }
 }
 

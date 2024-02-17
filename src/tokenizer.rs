@@ -27,13 +27,13 @@ pub(crate) enum Literal {
 impl Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Int(value) => write!(f, "{}", value),
-            Self::Char(code) => write!(f, "'{}'", code.escape_ascii()),
-            Self::Bool(value) => write!(f, "{}", value),
+            Self::Int(value) => write!(f, "{value}"),
+            Self::Char(code) => write!(f, "'{code}'", code = code.escape_ascii()),
+            Self::Bool(value) => write!(f, "{value}"),
             Self::Str(string) => {
                 write!(f, "\"")?;
                 for character in string {
-                    write!(f, "{}", character.escape_ascii())?;
+                    write!(f, "{ch}", ch = character.escape_ascii())?;
                 }
                 write!(f, "\"")
             }
@@ -52,7 +52,7 @@ impl Len for Literal {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Op {
     // unary
     Not,
@@ -294,19 +294,19 @@ pub(crate) enum TokenKind<'src> {
 impl Display for TokenKind<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Comment(text) => write!(f, "#{}", text),
-            Self::Unexpected(text) => write!(f, "{}", text),
+            Self::Comment(text) => write!(f, "#{text}"),
+            Self::Unexpected(text) => write!(f, "{text}"),
 
-            Self::Bracket(bracket) => write!(f, "{}", bracket),
+            Self::Bracket(bracket) => write!(f, "{bracket}"),
             Self::Colon => write!(f, ":"),
             Self::SemiColon => write!(f, ";"),
             Self::Comma => write!(f, ","),
 
-            Self::Literal(literal) => write!(f, "{}", literal),
-            Self::Identifier(name) => write!(f, "{}", name),
-            Self::Definition(kind) => write!(f, "{}", kind),
+            Self::Literal(literal) => write!(f, "{literal}"),
+            Self::Identifier(name) => write!(f, "{name}"),
+            Self::Definition(kind) => write!(f, "{kind}"),
 
-            Self::Op(op) => write!(f, "{}", op),
+            Self::Op(op) => write!(f, "{op}"),
 
             Self::Print => write!(f, "print"),
             Self::PrintLn => write!(f, "println"),
@@ -563,7 +563,7 @@ impl<'src> Tokenizer<'src> {
                         Ok(Some(TokenKind::Literal(Literal::Str(string_literal))))
                     } else {
                         // FIX(stefano): add proper multiple error handling
-                        let last_error = errors.pop().unwrap();
+                        let last_error = errors.pop().unwrap(); // we have already made sure there are errors
                         for error in errors {
                             self.errors.push(error);
                         }
@@ -950,10 +950,10 @@ impl Display for Error<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let (msg, help_msg): (Cow<'static, str>, Cow<'static, str>) = match &self.kind {
             ErrorKind::UnclosedBracket(bracket) => {
-                (format!("unclosed '{}' bracket", bracket).into(), "was not closed".into())
+                (format!("unclosed '{bracket}' bracket").into(), "was not closed".into())
             }
             ErrorKind::NonAsciiCharacter(ch) => {
-                (format!("unrecognized '{}' character", ch).into(), "not a valid ASCII character".into())
+                (format!("unrecognized '{ch}' character").into(), "not a valid ASCII character".into())
             }
             ErrorKind::UnclosedCharacterLiteral => {
                 ("invalid character literal".into(), "missing closing single quote".into())
@@ -970,35 +970,37 @@ impl Display for Error<'_> {
             }
             ErrorKind::NumberLiteralOverflow => (
                 "invalid number literal".into(),
-                format!("overflows a {} bit signed integer (over {})", isize::BITS, isize::MAX).into(),
+                format!("overflows a {bits} bit signed integer (over {max})", bits = isize::BITS, max = isize::MAX)
+                    .into(),
             ),
             ErrorKind::NumberLiteralUnderflow => (
                 "invalid number literal".into(),
-                format!("underflows a {} bit signed integer (over {})", isize::BITS, isize::MIN).into(),
+                format!("underflows a {bits} bit signed integer (under {min})", bits = isize::BITS, min = isize::MIN)
+                    .into(),
             ),
-            ErrorKind::GenericInvalidNumberLiteral(err) => ("invalid number literal".into(), format!("{}", err).into()),
+            ErrorKind::GenericInvalidNumberLiteral(err) => ("invalid number literal".into(), format!("{err}").into()),
             ErrorKind::UnrecognizedStringEscapeCharacter(ch) => {
-                ("invalid string literal".into(), format!("unrecognized '{}' escape character", ch).into())
+                ("invalid string literal".into(), format!("unrecognized '{ch}' escape character").into())
             }
             ErrorKind::ControlCharacterInStringLiteral => {
                 ("invalid string literal".into(), "cannot be a control character".into())
             }
             ErrorKind::UnrecognizedCharacterEscapeCharacter(ch) => {
-                ("invalid character literal".into(), format!("unrecognized '{}' escape character", ch).into())
+                ("invalid character literal".into(), format!("unrecognized '{ch}' escape character").into())
             }
             ErrorKind::ControlCharacterInCharacterLiteral => {
                 ("invalid character literal".into(), "cannot be a control character".into())
             }
             ErrorKind::EmptyCharacterLiteral => ("invalid character literal".into(), "must not be empty".into()),
             ErrorKind::MismatchedBracket { expected, actual } => (
-                format!("mismatched '{}' bracket", actual).into(),
-                format!("closes the wrong bracket, expected a '{}' instead", expected).into(),
+                format!("mismatched '{actual}' bracket").into(),
+                format!("closes the wrong bracket, expected a '{expected}' instead").into(),
             ),
             ErrorKind::UnopenedBracket(bracket) => {
-                (format!("unopened '{}' bracket", bracket).into(), "was not opened before".into())
+                (format!("unopened '{bracket}' bracket").into(), "was not opened before".into())
             }
             ErrorKind::UnrecognizedCharacter(ch) => {
-                (format!("unexpected character {}", ch).into(), "unrecognized".into())
+                (format!("unexpected character {ch}").into(), "unrecognized".into())
             }
         };
 
@@ -1014,7 +1016,7 @@ impl Display for Error<'_> {
         let pointers_len = self.len;
 
         let pointers_and_help_msg = Colored {
-            text: format!("{:>pointers_col$}{:^>pointers_len$} {}", "", "", help_msg),
+            text: format!("{:>pointers_col$}{:^>pointers_len$} {help_msg}", "", ""),
             fg: Fg::LightRed,
             bg: Bg::Default,
             flags: Flag::Bold,
@@ -1022,23 +1024,15 @@ impl Display for Error<'_> {
 
         write!(
             f,
-            "{}: {}\
-            \n{:>at_padding$}: {}:{}:{}\
-            \n{:>visualization_padding$}\
-            \n{} {} {}\
-            \n{:>visualization_padding$} {}",
-            ERROR,
-            error_msg,
-            AT,
-            self.path.display(),
-            self.position.line,
-            self.position.col,
-            BAR,
-            line_number_text,
-            BAR,
-            self.line_text,
-            BAR,
-            pointers_and_help_msg
+            "{ERROR}: {error_msg}\
+            \n{AT:>at_padding$}: {path}:{line}:{col}\
+            \n{BAR:>visualization_padding$}\
+            \n{line_number_text} {BAR} {line_text}\
+            \n{BAR:>visualization_padding$} {pointers_and_help_msg}",
+            path = self.path.display(),
+            line = self.position.line,
+            col = self.position.col,
+            line_text = self.line_text,
         )
     }
 }
