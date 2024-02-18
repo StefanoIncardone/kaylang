@@ -10,7 +10,6 @@ use std::{
     path::Path,
 };
 
-
 // TODO(stefano): inline this struct in the AST struct
 #[derive(Debug)]
 struct Tokens<'src: 'tokens, 'tokens> {

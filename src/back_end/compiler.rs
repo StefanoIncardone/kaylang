@@ -1,5 +1,10 @@
-use crate::front_end::{ast::{Expression, IfStatement, Loop, LoopCondition, Node, Scope, Type, TypeOf}, tokenizer::{Literal, Op}};
-use crate::logging::{CAUSE, ERROR};
+use crate::{
+    front_end::{
+        ast::{Expression, IfStatement, Loop, LoopCondition, Node, Scope, Type, TypeOf},
+        tokenizer::{Literal, Op},
+    },
+    logging::{CAUSE, ERROR},
+};
 use std::{
     borrow::Cow,
     fmt::Display,
@@ -174,7 +179,6 @@ impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
 
             this.scope(0);
 
-
             if stack_size > 0 {
                 this.asm += &format!(
                     "\n add rsp, {stack_size}\
@@ -182,8 +186,7 @@ impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
                 );
             }
 
-            this.asm +=
-                " mov rdi, EXIT_SUCCESS\
+            this.asm += " mov rdi, EXIT_SUCCESS\
                 \n\
                 \nexit:";
         }
@@ -656,8 +659,7 @@ impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
                     self.print(arg);
                 }
 
-                self.asm +=
-                    " mov rdi, newline\
+                self.asm += " mov rdi, newline\
                     \n call char_print\n\n";
             }
             Node::If(if_statement) => {
@@ -1065,7 +1067,7 @@ impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
                 let offset = variable.offset;
                 let array_len = match variable.value {
                     Expression::Array(array, _) => array.len(),
-                    _ => unreachable!("only array are allowed in index espressions")
+                    _ => unreachable!("only array are allowed in index espressions"),
                 };
 
                 // NOTE(stefano): rsi is set before rdi because rdi is the standard place where results
@@ -1379,7 +1381,7 @@ impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
                     Type::Array(_, _) => unreachable!("nested arrays are not supported yet"),
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 }
-            },
+            }
             Type::Infer => unreachable!("should have been coerced to a concrete type"),
         }
     }
