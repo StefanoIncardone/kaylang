@@ -112,7 +112,7 @@ pub enum Error {
 
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (msg, cause): (Cow<'static, str>, Cow<'static, str>) = match self {
+        let (msg, cause): (Cow<'_, str>, Cow<'_, str>) = match self {
             Self::CouldNotOpen { err, path } => (
                 format!("could not open '{path}'", path = path.display()).into(),
                 format!("{err} ({kind})", kind = err.kind()).into(),

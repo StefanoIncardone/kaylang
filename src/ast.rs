@@ -1908,7 +1908,7 @@ impl<'src> Error<'src> {
 
 impl Display for Error<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (msg, help_msg): (Cow<'static, str>, Cow<'static, str>) = match &self.kind {
+        let (msg, help_msg): (Cow<'_, str>, Cow<'_, str>) = match &self.kind {
             ErrorKind::NoMoreTokens(kind) => (kind.to_string().into(), "no more tokens left after here".into()),
             ErrorKind::StrayElseBlock => ("invalid if statement".into(), "stray else block".into()),
             ErrorKind::BreakOutsideOfLoop => {

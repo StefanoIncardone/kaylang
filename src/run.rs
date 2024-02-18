@@ -38,7 +38,7 @@ pub enum Error {
 
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (msg, cause): (Cow<'static, str>, Cow<'static, str>) = match self {
+        let (msg, cause): (Cow<'_, str>, Cow<'_, str>) = match self {
             Self::NonUtf8Path { path } => {
                 ("invalid path".into(), format!("'{path}' contains non UTF8 characters", path = path.display()).into())
             }

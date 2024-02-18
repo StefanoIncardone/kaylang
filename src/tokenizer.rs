@@ -948,7 +948,7 @@ impl<'src> Error<'src> {
 
 impl Display for Error<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (msg, help_msg): (Cow<'static, str>, Cow<'static, str>) = match &self.kind {
+        let (msg, help_msg): (Cow<'_, str>, Cow<'_, str>) = match &self.kind {
             ErrorKind::UnclosedBracket(bracket) => {
                 (format!("unclosed '{bracket}' bracket").into(), "was not closed".into())
             }
