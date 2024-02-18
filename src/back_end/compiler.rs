@@ -1251,7 +1251,7 @@ impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
             }
             Expression::Literal(Literal::Char(code)) => self.asm += &format!(" mov byte [rbp + {offset}], {code}\n\n"),
             Expression::Literal(Literal::Bool(value)) => {
-                self.asm += &format!(" mov byte [rbp + {offset}], {value}\n\n")
+                self.asm += &format!(" mov byte [rbp + {offset}], {value}\n\n");
             }
             Expression::Literal(Literal::Str(string)) => {
                 let string_label_idx = self.string_label_idx(string);

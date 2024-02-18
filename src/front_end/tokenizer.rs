@@ -366,7 +366,6 @@ pub struct Tokenizer<'src> {
     col: usize,
     token_start_col: usize,
 
-    // TODO(stefano): replace these two fields with an iterator
     line_idx: usize,
     line: &'src Line,
 
@@ -436,7 +435,7 @@ impl<'src> Tokenizer<'src> {
 
                 // next line
                 Some(b'\n') => {
-                    if self.line_idx + 1 >= self.src.lines.len() {
+                    if self.line_idx >= self.src.lines.len() - 1 {
                         return Ok(None);
                     }
 
