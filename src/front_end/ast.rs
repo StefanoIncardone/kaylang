@@ -256,8 +256,6 @@ pub(crate) enum Expression<'src> {
     Binary { lhs: Box<Expression<'src>>, op_position: Position, op: Op, rhs: Box<Expression<'src>> },
     Identifier(&'src str, Type),
     Array(Vec<Expression<'src>>, Type),
-
-    // TODO(stefano): hard-code the length of the array that this index refers to
     ArrayIndex { array: &'src str, typ: Type, bracket_position: Position, index: Box<Expression<'src>> },
 }
 
@@ -492,7 +490,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                     self.scopes[self.scope].nodes.push(node);
                 }
                 Ok(None) => break,
-                // NOTE(stefano):only parsing until the first error until a fault tolerant parser is developed,
+                // NOTE(stefano): only parsing until the first error until a fault tolerant parser is developed,
                 // this is because the first truly relevant error is the first one, which in turn
                 // causes a ripple effect that propagates to the rest of the parsing, causing
                 // subsequent errors to be wrong
@@ -578,6 +576,10 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                     _ => Ok(Some(Node::Continue)),
                 }
             }
+            TokenKind::SemiColon => {
+                let _ = self.tokens.next();
+                Ok(Some(Node::Semicolon))
+            }
             TokenKind::Bracket(BracketKind::OpenCurly) => {
                 todo!("// TODO(stefano): check if we can ever reach this branch");
 
@@ -651,11 +653,6 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                     current_token.kind.len(),
                     ErrorKind::StrayBinaryOperator(op),
                 ))
-            }
-            // TODO(stefano): move this branch up top
-            TokenKind::SemiColon => {
-                let _ = self.tokens.next();
-                Ok(Some(Node::Semicolon))
             }
             TokenKind::Comment(_) => unreachable!("should be skipped by the token iterator"),
             TokenKind::Unexpected(_) => unreachable!("only valid tokens should be present"),

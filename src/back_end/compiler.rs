@@ -1070,9 +1070,6 @@ impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
                     _ => unreachable!("only array are allowed in index espressions"),
                 };
 
-                // NOTE(stefano): rsi is set before rdi because rdi is the standard place where results
-                // of expressions are put, it will probably get changed when new ways of dealing with
-                // expressions are developed
                 self.asm += &format!(
                     " push {dst}\
                     \n mov rdi, {dst}\

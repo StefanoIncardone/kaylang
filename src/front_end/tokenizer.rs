@@ -425,154 +425,118 @@ impl<'src> Tokenizer<'src> {
     }
 }
 
+// tokenization of src code
 impl<'src> Tokenizer<'src> {
-    // this function exists just to be able to use the ? operator
     fn next_token(&mut self) -> Result<Option<TokenKind<'src>>, Error<'src>> {
-        // this loop exists just to be able to use continues and breaks
-        loop {
+        let next = loop {
             self.token_start_col = self.col;
-            let Some(next) = self.next()? else { return Ok(None) };
-
-            return match next {
+            match self.next_character()? {
                 // ignore whitespace
-                b'\t' | b'\r' | b'\x0C' | b' ' => continue,
-                b'\n' => match self.next_line() {
-                    Some(line) => {
-                        self.line = line;
-                        continue;
-                    }
-                    None => return Ok(None),
-                },
-                b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
-                    let mut contains_non_ascii = false;
-                    loop {
-                        match self.peek_next() {
-                            Ok(Some(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => self.col += 1,
-                            Ok(Some(_) | None) => break,
-                            Err(_) => {
-                                contains_non_ascii = true;
-                                self.col += 1;
-                            }
-                        }
+                Some(b'\t' | b'\r' | b'\x0C' | b' ') => {}
+
+                // next line
+                Some(b'\n') => {
+                    self.line_idx += 1;
+                    if self.line_idx >= self.src.lines.len() {
+                        return Ok(None);
                     }
 
-                    if contains_non_ascii {
-                        Err(Error::new(
-                            self.src,
-                            self.token_start_col,
-                            self.col - self.token_start_col + 1,
-                            ErrorKind::NonAsciiIdentifier,
-                        ))
-                    } else {
-                        let identifier = match &self.src.code[self.token_start_col..self.col] {
-                            "let" => TokenKind::Definition(Mutability::Let),
-                            "var" => TokenKind::Definition(Mutability::Var),
-                            "print" => TokenKind::Print,
-                            "println" => TokenKind::PrintLn,
-                            "true" => TokenKind::True,
-                            "false" => TokenKind::False,
-                            "do" => TokenKind::Do,
-                            "if" => TokenKind::If,
-                            "else" => TokenKind::Else,
-                            "loop" => TokenKind::Loop,
-                            "break" => TokenKind::Break,
-                            "continue" => TokenKind::Continue,
-                            identifier => TokenKind::Identifier(identifier),
+                    self.line = &self.src.lines[self.line_idx];
+                }
+                Some(next) => break next,
+                None => return Ok(None),
+            }
+        };
+
+        match next {
+            b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
+                let mut contains_non_ascii = false;
+                loop {
+                    match self.peek_next_character() {
+                        Ok(Some(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => self.col += 1,
+                        Ok(Some(_) | None) => break,
+                        Err(_) => {
+                            contains_non_ascii = true;
+                            self.col += 1;
+                        }
+                    }
+                }
+
+                if contains_non_ascii {
+                    Err(Error::new(
+                        self.src,
+                        self.token_start_col,
+                        self.col - self.token_start_col + 1,
+                        ErrorKind::NonAsciiIdentifier,
+                    ))
+                } else {
+                    let identifier = match &self.src.code[self.token_start_col..self.col] {
+                        "let" => TokenKind::Definition(Mutability::Let),
+                        "var" => TokenKind::Definition(Mutability::Var),
+                        "print" => TokenKind::Print,
+                        "println" => TokenKind::PrintLn,
+                        "true" => TokenKind::True,
+                        "false" => TokenKind::False,
+                        "do" => TokenKind::Do,
+                        "if" => TokenKind::If,
+                        "else" => TokenKind::Else,
+                        "loop" => TokenKind::Loop,
+                        "break" => TokenKind::Break,
+                        "continue" => TokenKind::Continue,
+                        identifier => TokenKind::Identifier(identifier),
+                    };
+
+                    Ok(Some(identifier))
+                }
+            }
+            // TODO(stefano): implement negative numbers
+            b'0'..=b'9' => {
+                let mut contains_non_ascii = false;
+                loop {
+                    match self.peek_next_character() {
+                        Ok(Some(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => self.col += 1,
+                        Ok(Some(_) | None) => break,
+                        Err(_) => {
+                            contains_non_ascii = true;
+                            self.col += 1;
+                        }
+                    }
+                }
+
+                let token_text = &self.src.code[self.token_start_col..self.col];
+                match token_text.parse() {
+                    Ok(value) => Ok(Some(TokenKind::Literal(Literal::Int(value)))),
+                    Err(err) => {
+                        let kind = match err.kind() {
+                            IntErrorKind::InvalidDigit if contains_non_ascii => ErrorKind::NonAsciiNumberLiteral,
+                            IntErrorKind::InvalidDigit => ErrorKind::NonDigitNumberLiteral,
+                            IntErrorKind::PosOverflow => ErrorKind::NumberLiteralOverflow,
+                            IntErrorKind::NegOverflow => ErrorKind::NumberLiteralUnderflow,
+                            IntErrorKind::Empty => unreachable!("should never parse empty numbers"),
+                            IntErrorKind::Zero => unreachable!("numbers can also be zero"),
+                            _ => ErrorKind::GenericInvalidNumberLiteral(err),
                         };
 
-                        Ok(Some(identifier))
+                        Err(Error::new(self.src, self.token_start_col, token_text.len(), kind))
                     }
                 }
-                // TODO(stefano): implement negative numbers
-                b'0'..=b'9' => {
-                    let mut contains_non_ascii = false;
-                    loop {
-                        match self.peek_next() {
-                            Ok(Some(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => self.col += 1,
-                            Ok(Some(_) | None) => break,
-                            Err(_) => {
-                                contains_non_ascii = true;
-                                self.col += 1;
-                            }
-                        }
-                    }
+            }
+            b'#' => {
+                // consuming the rest of the characters in the current line
+                self.col = self.line.end;
 
-                    let token_text = &self.src.code[self.token_start_col..self.col];
-                    match token_text.parse() {
-                        Ok(value) => Ok(Some(TokenKind::Literal(Literal::Int(value)))),
-                        Err(err) => {
-                            let kind = match err.kind() {
-                                IntErrorKind::InvalidDigit if contains_non_ascii => ErrorKind::NonAsciiNumberLiteral,
-                                IntErrorKind::InvalidDigit => ErrorKind::NonDigitNumberLiteral,
-                                IntErrorKind::PosOverflow => ErrorKind::NumberLiteralOverflow,
-                                IntErrorKind::NegOverflow => ErrorKind::NumberLiteralUnderflow,
-                                IntErrorKind::Empty => unreachable!("should never parse empty numbers"),
-                                IntErrorKind::Zero => unreachable!("numbers can also be zero"),
-                                _ => ErrorKind::GenericInvalidNumberLiteral(err),
-                            };
+                // starting at token_start_col + 1 to ignore the hash symbol
+                let comment = &self.src.code[self.token_start_col + 1..self.col];
 
-                            Err(Error::new(self.src, self.token_start_col, token_text.len(), kind))
-                        }
-                    }
-                }
-                b'#' => {
-                    // consuming the rest of the characters in the current line
-                    self.col = self.line.end;
+                Ok(Some(TokenKind::Comment(comment)))
+            }
+            b'"' => {
+                let mut errors = Vec::<Error<'src>>::new();
+                let mut string_literal = Vec::<u8>::new();
 
-                    // starting at token_start_col + 1 to ignore the hash symbol
-                    let comment = &self.src.code[self.token_start_col + 1..self.col];
-
-                    Ok(Some(TokenKind::Comment(comment)))
-                }
-                b'"' => {
-                    let mut errors = Vec::<Error<'src>>::new();
-                    let mut string_literal = Vec::<u8>::new();
-
-                    loop {
-                        let next = match self.next_in_str_literal()? {
-                            b'\\' => match self.next_in_str_literal()? {
-                                b'\\' => Ok(b'\\'),
-                                b'\'' => Ok(b'\''),
-                                b'"' => Ok(b'"'),
-                                b'n' => Ok(b'\n'),
-                                b'r' => Ok(b'\r'),
-                                b't' => Ok(b'\t'),
-                                b'0' => Ok(b'\0'),
-                                unrecognized => Err(Error::new(
-                                    self.src,
-                                    self.col,
-                                    1,
-                                    ErrorKind::UnrecognizedStringEscapeCharacter(unrecognized),
-                                )),
-                            },
-                            b'\x00'..=b'\x1F' | b'\x7F' => {
-                                Err(Error::new(self.src, self.col, 1, ErrorKind::ControlCharacterInStringLiteral))
-                            }
-                            b'"' => break,
-                            other => Ok(other),
-                        };
-
-                        match next {
-                            Ok(next_char) => string_literal.push(next_char),
-                            Err(err) => errors.push(err),
-                        }
-                    }
-
-                    // after here there cannot be unclosed strings
-                    if errors.is_empty() {
-                        Ok(Some(TokenKind::Literal(Literal::Str(string_literal))))
-                    } else {
-                        // FIX(stefano): add proper multiple error handling
-                        let last_error = errors.pop().unwrap(); // we have already made sure there are errors
-                        for error in errors {
-                            self.errors.push(error);
-                        }
-                        Err(last_error)
-                    }
-                }
-                b'\'' => {
-                    let code = match self.next_in_char_literal()? {
-                        b'\\' => match self.next_in_char_literal()? {
+                loop {
+                    let next = match self.next_in_str_literal()? {
+                        b'\\' => match self.next_in_str_literal()? {
                             b'\\' => Ok(b'\\'),
                             b'\'' => Ok(b'\''),
                             b'"' => Ok(b'"'),
@@ -584,269 +548,301 @@ impl<'src> Tokenizer<'src> {
                                 self.src,
                                 self.col,
                                 1,
-                                ErrorKind::UnrecognizedCharacterEscapeCharacter(unrecognized),
+                                ErrorKind::UnrecognizedStringEscapeCharacter(unrecognized),
                             )),
                         },
                         b'\x00'..=b'\x1F' | b'\x7F' => {
-                            Err(Error::new(self.src, self.col, 1, ErrorKind::ControlCharacterInCharacterLiteral))
+                            Err(Error::new(self.src, self.col, 1, ErrorKind::ControlCharacterInStringLiteral))
                         }
-                        b'\'' => Err(Error::new(self.src, self.token_start_col, 2, ErrorKind::EmptyCharacterLiteral)),
-                        ch => Ok(ch),
+                        b'"' => break,
+                        other => Ok(other),
                     };
 
-                    match self.peek_next()? {
-                        Some(b'\'') => {
+                    match next {
+                        Ok(next_char) => string_literal.push(next_char),
+                        Err(err) => errors.push(err),
+                    }
+                }
+
+                // after here there cannot be unclosed strings
+                if errors.is_empty() {
+                    Ok(Some(TokenKind::Literal(Literal::Str(string_literal))))
+                } else {
+                    // FIX(stefano): add proper multiple error handling
+                    let last_error = errors.pop().unwrap(); // we have already made sure there are errors
+                    for error in errors {
+                        self.errors.push(error);
+                    }
+                    Err(last_error)
+                }
+            }
+            b'\'' => {
+                let code = match self.next_in_char_literal()? {
+                    b'\\' => match self.next_in_char_literal()? {
+                        b'\\' => Ok(b'\\'),
+                        b'\'' => Ok(b'\''),
+                        b'"' => Ok(b'"'),
+                        b'n' => Ok(b'\n'),
+                        b'r' => Ok(b'\r'),
+                        b't' => Ok(b'\t'),
+                        b'0' => Ok(b'\0'),
+                        unrecognized => Err(Error::new(
+                            self.src,
+                            self.col,
+                            1,
+                            ErrorKind::UnrecognizedCharacterEscapeCharacter(unrecognized),
+                        )),
+                    },
+                    b'\x00'..=b'\x1F' | b'\x7F' => {
+                        Err(Error::new(self.src, self.col, 1, ErrorKind::ControlCharacterInCharacterLiteral))
+                    }
+                    b'\'' => Err(Error::new(self.src, self.token_start_col, 2, ErrorKind::EmptyCharacterLiteral)),
+                    ch => Ok(ch),
+                };
+
+                match self.peek_next_character()? {
+                    Some(b'\'') => {
+                        self.col += 1;
+                        Ok(Some(TokenKind::Literal(Literal::Char(code?))))
+                    }
+                    Some(_) | None => Err(Error::new(
+                        self.src,
+                        self.token_start_col,
+                        self.col - self.token_start_col + 1,
+                        ErrorKind::UnclosedCharacterLiteral,
+                    )),
+                }
+            }
+            b'(' => {
+                let kind = BracketKind::OpenRound;
+                self.brackets.push(Bracket { col: self.token_start_col, kind });
+                Ok(Some(TokenKind::Bracket(kind)))
+            }
+            b')' => match self.brackets.pop() {
+                Some(bracket) => match bracket.kind {
+                    BracketKind::OpenRound
+                    | BracketKind::CloseRound
+                    | BracketKind::CloseCurly
+                    | BracketKind::CloseSquare => Ok(Some(TokenKind::Bracket(BracketKind::CloseRound))),
+                    actual @ (BracketKind::OpenCurly | BracketKind::OpenSquare) => Err(Error::new(
+                        self.src,
+                        self.token_start_col,
+                        1,
+                        ErrorKind::MismatchedBracket { expected: BracketKind::CloseRound, actual },
+                    )),
+                },
+                None => Err(Error::new(
+                    self.src,
+                    self.token_start_col,
+                    1,
+                    ErrorKind::UnopenedBracket(BracketKind::CloseRound),
+                )),
+            },
+            b'[' => {
+                let kind = BracketKind::OpenSquare;
+                self.brackets.push(Bracket { col: self.token_start_col, kind });
+                Ok(Some(TokenKind::Bracket(kind)))
+            }
+            b']' => match self.brackets.pop() {
+                Some(bracket) => match bracket.kind {
+                    BracketKind::OpenSquare
+                    | BracketKind::CloseSquare
+                    | BracketKind::CloseCurly
+                    | BracketKind::CloseRound => Ok(Some(TokenKind::Bracket(BracketKind::CloseSquare))),
+                    actual @ (BracketKind::OpenCurly | BracketKind::OpenRound) => Err(Error::new(
+                        self.src,
+                        self.token_start_col,
+                        1,
+                        ErrorKind::MismatchedBracket { expected: BracketKind::CloseSquare, actual },
+                    )),
+                },
+                None => Err(Error::new(
+                    self.src,
+                    self.token_start_col,
+                    1,
+                    ErrorKind::UnopenedBracket(BracketKind::CloseSquare),
+                )),
+            },
+            b'{' => {
+                let kind = BracketKind::OpenCurly;
+                self.brackets.push(Bracket { col: self.token_start_col, kind });
+                Ok(Some(TokenKind::Bracket(kind)))
+            }
+            b'}' => match self.brackets.pop() {
+                Some(bracket) => match bracket.kind {
+                    BracketKind::OpenCurly
+                    | BracketKind::CloseCurly
+                    | BracketKind::CloseRound
+                    | BracketKind::CloseSquare => Ok(Some(TokenKind::Bracket(BracketKind::CloseCurly))),
+                    actual @ (BracketKind::OpenRound | BracketKind::OpenSquare) => Err(Error::new(
+                        self.src,
+                        self.token_start_col,
+                        1,
+                        ErrorKind::MismatchedBracket { expected: BracketKind::CloseCurly, actual },
+                    )),
+                },
+                None => Err(Error::new(
+                    self.src,
+                    self.token_start_col,
+                    1,
+                    ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
+                )),
+            },
+            b':' => Ok(Some(TokenKind::Colon)),
+            b';' => Ok(Some(TokenKind::SemiColon)),
+            b',' => Ok(Some(TokenKind::Comma)),
+            b'!' => match self.peek_next_character()? {
+                Some(b'=') => {
+                    self.col += 1;
+                    Ok(Some(TokenKind::Op(Op::NotEquals)))
+                }
+                _ => Ok(Some(TokenKind::Op(Op::Not))),
+            },
+            b'*' => match self.peek_next_character()? {
+                Some(b'*') => {
+                    self.col += 1;
+                    match self.peek_next_character()? {
+                        Some(b'=') => {
                             self.col += 1;
-                            Ok(Some(TokenKind::Literal(Literal::Char(code?))))
+                            Ok(Some(TokenKind::Op(Op::PowEquals)))
                         }
-                        Some(_) | None => Err(Error::new(
-                            self.src,
-                            self.token_start_col,
-                            self.col - self.token_start_col + 1,
-                            ErrorKind::UnclosedCharacterLiteral,
-                        )),
+                        _ => Ok(Some(TokenKind::Op(Op::Pow))),
                     }
                 }
-                b'(' => {
-                    let kind = BracketKind::OpenRound;
-                    self.brackets.push(Bracket { col: self.token_start_col, kind });
-                    Ok(Some(TokenKind::Bracket(kind)))
+                Some(b'=') => {
+                    self.col += 1;
+                    Ok(Some(TokenKind::Op(Op::TimesEquals)))
                 }
-                b')' => match self.brackets.pop() {
-                    Some(bracket) => match bracket.kind {
-                        BracketKind::OpenRound
-                        | BracketKind::CloseRound
-                        | BracketKind::CloseCurly
-                        | BracketKind::CloseSquare => Ok(Some(TokenKind::Bracket(BracketKind::CloseRound))),
-                        actual @ (BracketKind::OpenCurly | BracketKind::OpenSquare) => Err(Error::new(
-                            self.src,
-                            self.token_start_col,
-                            1,
-                            ErrorKind::MismatchedBracket { expected: BracketKind::CloseRound, actual },
-                        )),
-                    },
-                    None => Err(Error::new(
-                        self.src,
-                        self.token_start_col,
-                        1,
-                        ErrorKind::UnopenedBracket(BracketKind::CloseRound),
-                    )),
-                },
-                b'[' => {
-                    let kind = BracketKind::OpenSquare;
-                    self.brackets.push(Bracket { col: self.token_start_col, kind });
-                    Ok(Some(TokenKind::Bracket(kind)))
+                _ => Ok(Some(TokenKind::Op(Op::Times))),
+            },
+            b'/' => match self.peek_next_character()? {
+                Some(b'=') => {
+                    self.col += 1;
+                    Ok(Some(TokenKind::Op(Op::DivideEquals)))
                 }
-                b']' => match self.brackets.pop() {
-                    Some(bracket) => match bracket.kind {
-                        BracketKind::OpenSquare
-                        | BracketKind::CloseSquare
-                        | BracketKind::CloseCurly
-                        | BracketKind::CloseRound => Ok(Some(TokenKind::Bracket(BracketKind::CloseSquare))),
-                        actual @ (BracketKind::OpenCurly | BracketKind::OpenRound) => Err(Error::new(
-                            self.src,
-                            self.token_start_col,
-                            1,
-                            ErrorKind::MismatchedBracket { expected: BracketKind::CloseSquare, actual },
-                        )),
-                    },
-                    None => Err(Error::new(
-                        self.src,
-                        self.token_start_col,
-                        1,
-                        ErrorKind::UnopenedBracket(BracketKind::CloseSquare),
-                    )),
-                },
-                b'{' => {
-                    let kind = BracketKind::OpenCurly;
-                    self.brackets.push(Bracket { col: self.token_start_col, kind });
-                    Ok(Some(TokenKind::Bracket(kind)))
+                _ => Ok(Some(TokenKind::Op(Op::Divide))),
+            },
+            b'%' => match self.peek_next_character()? {
+                Some(b'=') => {
+                    self.col += 1;
+                    Ok(Some(TokenKind::Op(Op::RemainderEquals)))
                 }
-                b'}' => match self.brackets.pop() {
-                    Some(bracket) => match bracket.kind {
-                        BracketKind::OpenCurly
-                        | BracketKind::CloseCurly
-                        | BracketKind::CloseRound
-                        | BracketKind::CloseSquare => Ok(Some(TokenKind::Bracket(BracketKind::CloseCurly))),
-                        actual @ (BracketKind::OpenRound | BracketKind::OpenSquare) => Err(Error::new(
-                            self.src,
-                            self.token_start_col,
-                            1,
-                            ErrorKind::MismatchedBracket { expected: BracketKind::CloseCurly, actual },
-                        )),
-                    },
-                    None => Err(Error::new(
-                        self.src,
-                        self.token_start_col,
-                        1,
-                        ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
-                    )),
-                },
-                b':' => Ok(Some(TokenKind::Colon)),
-                b';' => Ok(Some(TokenKind::SemiColon)),
-                b',' => Ok(Some(TokenKind::Comma)),
-                b'!' => match self.peek_next()? {
-                    Some(b'=') => {
-                        self.col += 1;
-                        Ok(Some(TokenKind::Op(Op::NotEquals)))
-                    }
-                    _ => Ok(Some(TokenKind::Op(Op::Not))),
-                },
-                b'*' => match self.peek_next()? {
-                    Some(b'*') => {
-                        self.col += 1;
-                        match self.peek_next()? {
-                            Some(b'=') => {
-                                self.col += 1;
-                                Ok(Some(TokenKind::Op(Op::PowEquals)))
-                            }
-                            _ => Ok(Some(TokenKind::Op(Op::Pow))),
-                        }
-                    }
-                    Some(b'=') => {
-                        self.col += 1;
-                        Ok(Some(TokenKind::Op(Op::TimesEquals)))
-                    }
-                    _ => Ok(Some(TokenKind::Op(Op::Times))),
-                },
-                b'/' => match self.peek_next()? {
-                    Some(b'=') => {
-                        self.col += 1;
-                        Ok(Some(TokenKind::Op(Op::DivideEquals)))
-                    }
-                    _ => Ok(Some(TokenKind::Op(Op::Divide))),
-                },
-                b'%' => match self.peek_next()? {
-                    Some(b'=') => {
-                        self.col += 1;
-                        Ok(Some(TokenKind::Op(Op::RemainderEquals)))
-                    }
-                    _ => Ok(Some(TokenKind::Op(Op::Remainder))),
-                },
-                b'+' => match self.peek_next()? {
-                    Some(b'=') => {
-                        self.col += 1;
-                        Ok(Some(TokenKind::Op(Op::PlusEquals)))
-                    }
-                    _ => Ok(Some(TokenKind::Op(Op::Plus))),
-                },
-                b'-' => match self.peek_next()? {
-                    Some(b'=') => {
-                        self.col += 1;
-                        Ok(Some(TokenKind::Op(Op::MinusEquals)))
-                    }
-                    _ => Ok(Some(TokenKind::Op(Op::Minus))),
-                },
-                b'&' => match self.peek_next()? {
-                    Some(b'&') => {
-                        self.col += 1;
-                        match self.peek_next()? {
-                            Some(b'=') => {
-                                self.col += 1;
-                                Ok(Some(TokenKind::Op(Op::AndEquals)))
-                            }
-                            _ => Ok(Some(TokenKind::Op(Op::And))),
-                        }
-                    }
-                    Some(b'=') => {
-                        self.col += 1;
-                        Ok(Some(TokenKind::Op(Op::BitAndEquals)))
-                    }
-                    _ => Ok(Some(TokenKind::Op(Op::BitAnd))),
-                },
-                b'^' => match self.peek_next()? {
-                    Some(b'=') => {
-                        self.col += 1;
-                        Ok(Some(TokenKind::Op(Op::BitXorEquals)))
-                    }
-                    _ => Ok(Some(TokenKind::Op(Op::BitXor))),
-                },
-                b'|' => match self.peek_next()? {
-                    Some(b'|') => {
-                        self.col += 1;
-                        match self.peek_next()? {
-                            Some(b'=') => {
-                                self.col += 1;
-                                Ok(Some(TokenKind::Op(Op::OrEquals)))
-                            }
-                            _ => Ok(Some(TokenKind::Op(Op::Or))),
-                        }
-                    }
-                    Some(b'=') => {
-                        self.col += 1;
-                        Ok(Some(TokenKind::Op(Op::BitOrEquals)))
-                    }
-                    _ => Ok(Some(TokenKind::Op(Op::BitOr))),
-                },
-                b'=' => match self.peek_next()? {
-                    Some(b'=') => {
-                        self.col += 1;
-                        Ok(Some(TokenKind::Op(Op::EqualsEquals)))
-                    }
-                    _ => Ok(Some(TokenKind::Op(Op::Equals))),
-                },
-                b'>' => match self.peek_next()? {
-                    Some(b'>') => {
-                        self.col += 1;
-                        match self.peek_next()? {
-                            Some(b'=') => {
-                                self.col += 1;
-                                Ok(Some(TokenKind::Op(Op::RightShiftEquals)))
-                            }
-                            _ => Ok(Some(TokenKind::Op(Op::RightShift))),
-                        }
-                    }
-                    Some(b'=') => {
-                        self.col += 1;
-                        Ok(Some(TokenKind::Op(Op::GreaterOrEquals)))
-                    }
-                    _ => Ok(Some(TokenKind::Op(Op::Greater))),
-                },
-                b'<' => match self.peek_next()? {
-                    Some(b'<') => {
-                        self.col += 1;
-                        match self.peek_next()? {
-                            Some(b'=') => {
-                                self.col += 1;
-                                Ok(Some(TokenKind::Op(Op::LeftShiftEquals)))
-                            }
-                            _ => Ok(Some(TokenKind::Op(Op::LeftShift))),
-                        }
-                    }
-                    Some(b'=') => {
-                        self.col += 1;
-                        match self.peek_next()? {
-                            Some(b'>') => {
-                                self.col += 1;
-                                Ok(Some(TokenKind::Op(Op::Compare)))
-                            }
-                            _ => Ok(Some(TokenKind::Op(Op::LessOrEquals))),
-                        }
-                    }
-                    _ => Ok(Some(TokenKind::Op(Op::Less))),
-                },
-                unrecognized => {
-                    Err(Error::new(self.src, self.token_start_col, 1, ErrorKind::UnrecognizedCharacter(unrecognized)))
+                _ => Ok(Some(TokenKind::Op(Op::Remainder))),
+            },
+            b'+' => match self.peek_next_character()? {
+                Some(b'=') => {
+                    self.col += 1;
+                    Ok(Some(TokenKind::Op(Op::PlusEquals)))
                 }
-            };
+                _ => Ok(Some(TokenKind::Op(Op::Plus))),
+            },
+            b'-' => match self.peek_next_character()? {
+                Some(b'=') => {
+                    self.col += 1;
+                    Ok(Some(TokenKind::Op(Op::MinusEquals)))
+                }
+                _ => Ok(Some(TokenKind::Op(Op::Minus))),
+            },
+            b'&' => match self.peek_next_character()? {
+                Some(b'&') => {
+                    self.col += 1;
+                    match self.peek_next_character()? {
+                        Some(b'=') => {
+                            self.col += 1;
+                            Ok(Some(TokenKind::Op(Op::AndEquals)))
+                        }
+                        _ => Ok(Some(TokenKind::Op(Op::And))),
+                    }
+                }
+                Some(b'=') => {
+                    self.col += 1;
+                    Ok(Some(TokenKind::Op(Op::BitAndEquals)))
+                }
+                _ => Ok(Some(TokenKind::Op(Op::BitAnd))),
+            },
+            b'^' => match self.peek_next_character()? {
+                Some(b'=') => {
+                    self.col += 1;
+                    Ok(Some(TokenKind::Op(Op::BitXorEquals)))
+                }
+                _ => Ok(Some(TokenKind::Op(Op::BitXor))),
+            },
+            b'|' => match self.peek_next_character()? {
+                Some(b'|') => {
+                    self.col += 1;
+                    match self.peek_next_character()? {
+                        Some(b'=') => {
+                            self.col += 1;
+                            Ok(Some(TokenKind::Op(Op::OrEquals)))
+                        }
+                        _ => Ok(Some(TokenKind::Op(Op::Or))),
+                    }
+                }
+                Some(b'=') => {
+                    self.col += 1;
+                    Ok(Some(TokenKind::Op(Op::BitOrEquals)))
+                }
+                _ => Ok(Some(TokenKind::Op(Op::BitOr))),
+            },
+            b'=' => match self.peek_next_character()? {
+                Some(b'=') => {
+                    self.col += 1;
+                    Ok(Some(TokenKind::Op(Op::EqualsEquals)))
+                }
+                _ => Ok(Some(TokenKind::Op(Op::Equals))),
+            },
+            b'>' => match self.peek_next_character()? {
+                Some(b'>') => {
+                    self.col += 1;
+                    match self.peek_next_character()? {
+                        Some(b'=') => {
+                            self.col += 1;
+                            Ok(Some(TokenKind::Op(Op::RightShiftEquals)))
+                        }
+                        _ => Ok(Some(TokenKind::Op(Op::RightShift))),
+                    }
+                }
+                Some(b'=') => {
+                    self.col += 1;
+                    Ok(Some(TokenKind::Op(Op::GreaterOrEquals)))
+                }
+                _ => Ok(Some(TokenKind::Op(Op::Greater))),
+            },
+            b'<' => match self.peek_next_character()? {
+                Some(b'<') => {
+                    self.col += 1;
+                    match self.peek_next_character()? {
+                        Some(b'=') => {
+                            self.col += 1;
+                            Ok(Some(TokenKind::Op(Op::LeftShiftEquals)))
+                        }
+                        _ => Ok(Some(TokenKind::Op(Op::LeftShift))),
+                    }
+                }
+                Some(b'=') => {
+                    self.col += 1;
+                    match self.peek_next_character()? {
+                        Some(b'>') => {
+                            self.col += 1;
+                            Ok(Some(TokenKind::Op(Op::Compare)))
+                        }
+                        _ => Ok(Some(TokenKind::Op(Op::LessOrEquals))),
+                    }
+                }
+                _ => Ok(Some(TokenKind::Op(Op::Less))),
+            },
+            unrecognized => {
+                Err(Error::new(self.src, self.token_start_col, 1, ErrorKind::UnrecognizedCharacter(unrecognized)))
+            }
         }
     }
 }
 
 // iteration of characters and lines
 impl<'src> Tokenizer<'src> {
-    fn next_line(&mut self) -> Option<&'src Line> {
-        self.line_idx += 1;
-        if self.line_idx >= self.src.lines.len() {
-            return None;
-        }
-
-        Some(&self.src.lines[self.line_idx])
-    }
-
     // FIX(stefano): properly handle non ASCII characters related errors and column advancing
     // IDEA(stefano): allow utf-8 characters in strings, characters
-    fn next(&mut self) -> Result<Option<u8>, Error<'src>> {
+    fn next_character(&mut self) -> Result<Option<u8>, Error<'src>> {
         if self.col >= self.src.code.len() {
             return Ok(None);
         }
@@ -865,7 +861,7 @@ impl<'src> Tokenizer<'src> {
         }
     }
 
-    fn peek_next(&self) -> Result<Option<&'src u8>, Error<'src>> {
+    fn peek_next_character(&self) -> Result<Option<&'src u8>, Error<'src>> {
         if self.col >= self.src.code.len() {
             return Ok(None);
         }
@@ -880,7 +876,7 @@ impl<'src> Tokenizer<'src> {
 // character literals
 impl<'src> Tokenizer<'src> {
     fn next_in_char_literal(&mut self) -> Result<u8, Error<'src>> {
-        match self.next()? {
+        match self.next_character()? {
             Some(next) => Ok(next),
             None => Err(Error::new(
                 self.src,
@@ -895,7 +891,7 @@ impl<'src> Tokenizer<'src> {
 // string literals
 impl<'src> Tokenizer<'src> {
     fn next_in_str_literal(&mut self) -> Result<u8, Error<'src>> {
-        match self.next()? {
+        match self.next_character()? {
             Some(next) => Ok(next),
             None => Err(Error::new(
                 self.src,
