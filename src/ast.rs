@@ -172,7 +172,7 @@ impl Type {
             Self::Char => core::mem::size_of::<u8>(),
             Self::Bool => core::mem::size_of::<bool>(),
             Self::Str => core::mem::size_of::<*const u8>() + core::mem::size_of::<usize>(),
-            Self::Array(len, typ) => typ.size() * len + core::mem::size_of::<isize>(),
+            Self::Array(len, typ) => typ.size() * len,
 
             Self::Infer => unreachable!("should have been coerced to a concrete type"),
         }
