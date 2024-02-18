@@ -1,17 +1,8 @@
 use kaylang::{
-    assembler::Assembler,
-    ast::Ast,
-    cli::Args,
-    compiler::Compiler,
-    linker::Linker,
-    logging::{
+    back_end::{assembler::Assembler, compiler::Compiler, linker::Linker}, cli::Args, front_end::{ast::Ast, tokenizer::Tokenizer}, logging::{
         Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, LEXING, LINKER, LOADING_SOURCE,
         RUNNING, SUBSTEP_DONE,
-    },
-    run::Run,
-    src_file::SrcFile,
-    tokenizer::Tokenizer,
-    Help, RunMode, Version,
+    }, run::Run, src_file::SrcFile, Help, RunMode, Version
 };
 use std::{env, process::ExitCode, time::Instant};
 
@@ -166,11 +157,7 @@ mod tests {
     use std::{io, path::Path, process::ExitCode, time::Instant};
 
     use kaylang::{
-        ast::Ast,
-        logging::{Step, SubStep, AST_BUILDING, CHECKING, LEXING, LOADING_SOURCE, SUBSTEP_DONE},
-        src_file::SrcFile,
-        tokenizer::Tokenizer,
-        Color, Verbosity,
+        front_end::{ast::Ast, tokenizer::Tokenizer}, logging::{Step, SubStep, AST_BUILDING, CHECKING, LEXING, LOADING_SOURCE, SUBSTEP_DONE}, src_file::SrcFile, Color, Verbosity
     };
 
     #[allow(unused_mut)]

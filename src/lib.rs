@@ -1,15 +1,12 @@
 // TODO(stefano): rename typ to type_ or something more consisten with other variable names
 
-pub mod assembler;
-pub mod ast;
+pub mod back_end;
+pub mod front_end;
 pub mod cli;
 pub mod color;
-pub mod compiler;
-pub mod linker;
 pub mod logging;
 pub mod run;
 pub mod src_file;
-pub mod tokenizer;
 
 use color::{Bg, ColoredStr, Fg, Flag, Flags};
 use std::{fmt::Display, path::PathBuf};

@@ -1,14 +1,15 @@
+use super::tokenizer::{BracketKind, Len, Literal, Mutability, Op, Token, TokenKind};
 use crate::{
     color::{Bg, Colored, Fg, Flag},
     logging::{AT, BAR, ERROR},
     src_file::{Position, SrcFile},
-    tokenizer::{BracketKind, Len, Literal, Mutability, Op, Token, TokenKind},
 };
 use std::{
     borrow::Cow,
     fmt::{Debug, Display},
     path::Path,
 };
+
 
 // TODO(stefano): inline this struct in the AST struct
 #[derive(Debug)]

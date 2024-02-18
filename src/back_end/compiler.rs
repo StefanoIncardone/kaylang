@@ -1,8 +1,5 @@
-use crate::{
-    ast::{Expression, IfStatement, Loop, LoopCondition, Node, Scope, Type, TypeOf},
-    logging::{CAUSE, ERROR},
-    tokenizer::{Literal, Op},
-};
+use crate::front_end::{ast::{Expression, IfStatement, Loop, LoopCondition, Node, Scope, Type, TypeOf}, tokenizer::{Literal, Op}};
+use crate::logging::{CAUSE, ERROR};
 use std::{
     borrow::Cow,
     fmt::Display,
