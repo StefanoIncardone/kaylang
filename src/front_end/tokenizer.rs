@@ -436,11 +436,11 @@ impl<'src> Tokenizer<'src> {
 
                 // next line
                 Some(b'\n') => {
-                    self.line_idx += 1;
-                    if self.line_idx >= self.src.lines.len() {
+                    if self.line_idx + 1 >= self.src.lines.len() {
                         return Ok(None);
                     }
 
+                    self.line_idx += 1;
                     self.line = &self.src.lines[self.line_idx];
                 }
                 Some(next) => break next,
