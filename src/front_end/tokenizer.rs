@@ -897,7 +897,7 @@ impl<'src> Tokenizer<'src> {
                 self.src,
                 self.token_start_col,
                 self.col - self.token_start_col + 1,
-                ErrorKind::UnclosedCharacterLiteral,
+                ErrorKind::UnclosedStringLiteral,
             )),
         }
     }
