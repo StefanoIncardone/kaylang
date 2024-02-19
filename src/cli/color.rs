@@ -123,29 +123,18 @@ fn log_color(text: &str, fg: Fg, bg: Bg, flags: Flags, f: &mut std::fmt::Formatt
 }
 
 #[derive(Debug, Default)]
-pub struct ColoredStr {
-    pub text: &'static str,
+pub struct Colored<Str: AsRef<str>> {
+    pub text: Str,
     pub fg: Fg,
     pub bg: Bg,
     pub flags: Flags,
 }
 
-impl Display for ColoredStr {
+impl<Str: AsRef<str>> Display for Colored<Str> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        unsafe { log(self.text, self.fg, self.bg, self.flags, f) }
+        unsafe { log(self.text.as_ref(), self.fg, self.bg, self.flags, f) }
     }
 }
 
-#[derive(Debug, Default)]
-pub struct Colored {
-    pub text: String,
-    pub fg: Fg,
-    pub bg: Bg,
-    pub flags: Flags,
-}
-
-impl Display for Colored {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        unsafe { log(&self.text, self.fg, self.bg, self.flags, f) }
-    }
-}
+pub type ColoredString = Colored<String>;
+pub type ColoredStr = Colored<&'static str>;
