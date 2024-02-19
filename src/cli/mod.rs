@@ -1,5 +1,9 @@
-use crate::{logging::ERROR, Color, RunMode, Verbosity};
+use self::logging::ERROR;
+use crate::{Color, RunMode, Verbosity};
 use std::{borrow::Cow, fmt::Display, path::PathBuf};
+
+pub mod color;
+pub mod logging;
 
 #[derive(Debug, Default, Clone)]
 pub struct Args {
@@ -166,7 +170,7 @@ pub enum Error {
 
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let msg: Cow<'static, str> = match self {
+        let msg: Cow<'_, str> = match self {
             Self::ColorModeAlreadySelected => "color mode selected more than once".into(),
             Self::MissingColorMode => "missing color mode after".into(),
             Self::UnrecognizedColorMode { unrecognized } => format!("unrecognized color mode '{unrecognized}'").into(),

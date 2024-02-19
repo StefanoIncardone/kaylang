@@ -1,8 +1,8 @@
 use super::{
+    src_file::{Position, SrcFile},
     tokenizer::{BracketKind, Len, Literal, Mutability, Op, Token, TokenKind},
     SyntaxError, SyntaxErrorInfo, SyntaxErrorKindInfo,
 };
-use crate::src_file::{Position, SrcFile};
 use std::fmt::{Debug, Display};
 
 pub(crate) trait TypeOf {
@@ -1761,136 +1761,130 @@ pub enum ErrorKind {
 impl SyntaxErrorKindInfo for ErrorKind {
     fn info(&self) -> SyntaxErrorInfo {
         let (msg, help_msg) = match &self {
-            ErrorKind::NoMoreTokens(kind) => (kind.to_string().into(), "no more tokens left after here".into()),
-            ErrorKind::StrayElseBlock => ("invalid if statement".into(), "stray else block".into()),
-            ErrorKind::BreakOutsideOfLoop => {
-                ("invalid break statement".into(), "cannot be used outside of loops".into())
-            }
-            ErrorKind::ContinueOutsideOfLoop => {
+            Self::NoMoreTokens(kind) => (kind.to_string().into(), "no more tokens left after here".into()),
+            Self::StrayElseBlock => ("invalid if statement".into(), "stray else block".into()),
+            Self::BreakOutsideOfLoop => ("invalid break statement".into(), "cannot be used outside of loops".into()),
+            Self::ContinueOutsideOfLoop => {
                 ("invalid continue statement".into(), "cannot be used outside of loops".into())
             }
-            ErrorKind::BlocksNotAllowed(context) => ("invalid statement".into(), context.to_string().into()),
-            ErrorKind::UnopenedBracket(bracket) => {
+            Self::BlocksNotAllowed(context) => ("invalid statement".into(), context.to_string().into()),
+            Self::UnopenedBracket(bracket) => {
                 ("invalid statement".into(), format!("'{bracket}' bracket was not opened").into())
             }
-            ErrorKind::UnclosedBracket(bracket) => {
+            Self::UnclosedBracket(bracket) => {
                 ("invalid expression".into(), format!("'{bracket}' bracket was not closed").into())
             }
-            ErrorKind::TemporaryArrayNotSupportedYet => (
+            Self::TemporaryArrayNotSupportedYet => (
                 "invalid expression".into(),
                 "temporary arrays are not supported yet, extract this to a variable first".into(),
             ),
-            ErrorKind::NestedArrayNotSupportedYet => {
+            Self::NestedArrayNotSupportedYet => {
                 ("invalid array element".into(), "nested arrays are not supported yet".into())
             }
-            ErrorKind::MismatchedArrayElementType { expected, actual } => (
+            Self::MismatchedArrayElementType { expected, actual } => (
                 "invalid array element".into(),
                 format!("expected element of type '{expected}', but got '{actual}'").into(),
             ),
-            ErrorKind::StrayColon => ("invalid type annotation".into(), "stray colon".into()),
-            ErrorKind::StrayComma => ("invalid array element separator".into(), "stray comma".into()),
-            ErrorKind::StrayEquals => ("invalid assignment".into(), "stray assigment".into()),
-            ErrorKind::StrayBinaryOperator(op) => {
-                ("invalid expression".into(), format!("stray '{op}' operator").into())
-            }
-            ErrorKind::VariableDefinitionNotAllowed(context) => {
-                ("invalid statement".into(), context.to_string().into())
-            }
-            ErrorKind::MissingSemicolon => ("invalid statement".into(), "expected semicolon after here".into()),
-            ErrorKind::MissingSquareBracketInArrayIndex => {
+            Self::StrayColon => ("invalid type annotation".into(), "stray colon".into()),
+            Self::StrayComma => ("invalid array element separator".into(), "stray comma".into()),
+            Self::StrayEquals => ("invalid assignment".into(), "stray assigment".into()),
+            Self::StrayBinaryOperator(op) => ("invalid expression".into(), format!("stray '{op}' operator").into()),
+            Self::VariableDefinitionNotAllowed(context) => ("invalid statement".into(), context.to_string().into()),
+            Self::MissingSemicolon => ("invalid statement".into(), "expected semicolon after here".into()),
+            Self::MissingSquareBracketInArrayIndex => {
                 ("invalid array index".into(), "must be followed by a close square bracket".into())
             }
-            ErrorKind::MissingSquareBracketInArrayTypeAnnotation => {
+            Self::MissingSquareBracketInArrayTypeAnnotation => {
                 ("invalid array type annotation".into(), "missing closing square bracket".into())
             }
-            ErrorKind::MissingArrayLength => {
+            Self::MissingArrayLength => {
                 ("invalid array type annotation".into(), "missing array length before this token".into())
             }
-            ErrorKind::NonLiteralIntegerArrayLength => {
+            Self::NonLiteralIntegerArrayLength => {
                 ("invalid array type annotation".into(), "must be a literal integer".into())
             }
-            ErrorKind::ExpectedIntegerExpressionInArrayIndex => {
+            Self::ExpectedIntegerExpressionInArrayIndex => {
                 ("invalid array index".into(), "must be followed by an integer expression".into())
             }
-            ErrorKind::VariableNotPreviouslyDefined => {
+            Self::VariableNotPreviouslyDefined => {
                 ("variable not defined".into(), "was not previously defined in this scope".into())
             }
-            ErrorKind::VariableRedefinition => {
+            Self::VariableRedefinition => {
                 ("variable redefinition".into(), "was previously defined in this scope".into())
             }
-            ErrorKind::VariableDefinitionTypeMismatch { expected, actual } => (
+            Self::VariableDefinitionTypeMismatch { expected, actual } => (
                 "invalid variable definition".into(),
                 format!("declared type of '{expected}' doesn't match value of type '{actual}'").into(),
             ),
-            ErrorKind::VariableAssignmentTypeMismatch { expected, actual } => (
+            Self::VariableAssignmentTypeMismatch { expected, actual } => (
                 "invalid variable assignment".into(),
                 format!("trying to assign an expression of type '{actual}' to a variable of type '{expected}'").into(),
             ),
-            ErrorKind::VariableAsTypeAnnotationNotPreviouslyDefined => {
+            Self::VariableAsTypeAnnotationNotPreviouslyDefined => {
                 ("invalid type annotation".into(), "was not previously defined in this scope".into())
             }
-            ErrorKind::ExpectedTypeName => ("invalid type annotation".into(), "expected type name after here".into()),
-            ErrorKind::ExpectedTypeAnnotation => (
+            Self::ExpectedTypeName => ("invalid type annotation".into(), "expected type name after here".into()),
+            Self::ExpectedTypeAnnotation => (
                 "invalid variable definition".into(),
                 "expected type annotation after here to infer the type of the variable".into(),
             ),
-            ErrorKind::ExpectedTypeAnnotationOrValue => (
+            Self::ExpectedTypeAnnotationOrValue => (
                 "invalid variable definition".into(),
                 "expected type annotation or value after here to infer the type of the variable".into(),
             ),
-            ErrorKind::TypeNameInExpressions => ("invalid expression".into(), "cannot be a type name".into()),
-            ErrorKind::TypeNameInVariableName => ("invalid variable name".into(), "cannot be a type name".into()),
-            ErrorKind::TypeNameInVariableReassignment => {
+            Self::TypeNameInExpressions => ("invalid expression".into(), "cannot be a type name".into()),
+            Self::TypeNameInVariableName => ("invalid variable name".into(), "cannot be a type name".into()),
+            Self::TypeNameInVariableReassignment => {
                 ("invalid variable assignment".into(), "cannot be a type name".into())
             }
-            ErrorKind::TryingToMutateImmutableVariable => {
+            Self::TryingToMutateImmutableVariable => {
                 ("invalid variable assignment".into(), "cannot mutate immutable variable".into())
             }
-            ErrorKind::ExpectedVariableName => ("invalid variable definition".into(), "expected variable name".into()),
-            ErrorKind::ExpectedEqualsOrSemicolonAfterVariableName => {
+            Self::ExpectedVariableName => ("invalid variable definition".into(), "expected variable name".into()),
+            Self::ExpectedEqualsOrSemicolonAfterVariableName => {
                 ("invalid variable definition".into(), "expected '=' or ';' after variable name".into())
             }
-            ErrorKind::ExpectedEqualsOrSemicolonAfterTypeAnnotation => {
+            Self::ExpectedEqualsOrSemicolonAfterTypeAnnotation => {
                 ("invalid variable definition".into(), "expected '=' or ';' after type annotation".into())
             }
-            ErrorKind::EmptyExpression => ("invalid expression".into(), "empty expressions are not allowed".into()),
-            ErrorKind::CannotNegateBoolean => (
+            Self::EmptyExpression => ("invalid expression".into(), "empty expressions are not allowed".into()),
+            Self::CannotNegateBoolean => (
                 "invalid expression".into(),
                 "cannot negate a boolean value, use the '!' operator instead to invert it".into(),
             ),
-            ErrorKind::CannotNegateString => ("invalid expression".into(), "cannot negate a string".into()),
-            ErrorKind::CannotNegateArray => ("invalid expression".into(), "cannot negate an array".into()),
-            ErrorKind::CannotInvertString => ("invalid expression".into(), "cannot invert a string".into()),
-            ErrorKind::CannotInvertArray => ("invalid expression".into(), "cannot invert an array".into()),
-            ErrorKind::KeywordInExpression => ("invalid expression".into(), "cannot be a keyword".into()),
-            ErrorKind::ExpectedOperand => {
+            Self::CannotNegateString => ("invalid expression".into(), "cannot negate a string".into()),
+            Self::CannotNegateArray => ("invalid expression".into(), "cannot negate an array".into()),
+            Self::CannotInvertString => ("invalid expression".into(), "cannot invert a string".into()),
+            Self::CannotInvertArray => ("invalid expression".into(), "cannot invert an array".into()),
+            Self::KeywordInExpression => ("invalid expression".into(), "cannot be a keyword".into()),
+            Self::ExpectedOperand => {
                 ("invalid expression".into(), "expected expression operand before this token".into())
             }
-            ErrorKind::StringsInExpression => {
+            Self::StringsInExpression => {
                 ("invalid expression".into(), "strings are not allowed inside expressions".into())
             }
-            ErrorKind::ChainedComparison => {
+            Self::ChainedComparison => {
                 ("invalid boolean expression".into(), "comparison operators cannot be chained".into())
             }
-            ErrorKind::NonBooleanLeftOperand => {
+            Self::NonBooleanLeftOperand => {
                 ("invalid boolean expression".into(), "must be preceded by a boolean expression".into())
             }
-            ErrorKind::NonBooleanRightOperand => {
+            Self::NonBooleanRightOperand => {
                 ("invalid boolean expression".into(), "must be followed by a boolean expression".into())
             }
-            ErrorKind::ExpectedBooleanExpressionInIfStatement => {
+            Self::ExpectedBooleanExpressionInIfStatement => {
                 ("invalid if statement".into(), "must be followed by a boolean expression".into())
             }
-            ErrorKind::ExpectedDoOrBlockAfterIfStatement => {
+            Self::ExpectedDoOrBlockAfterIfStatement => {
                 ("invalid if statement".into(), "must be followed by a do statement or a block".into())
             }
-            ErrorKind::ExpectedDoOrBlockOrIfStatementAfterIfStatement => {
+            Self::ExpectedDoOrBlockOrIfStatementAfterIfStatement => {
                 ("invalid if statement".into(), "must be followed by a do statement, a block or an if statement".into())
             }
-            ErrorKind::ExpectedBooleanExpressionInLoopStatement => {
+            Self::ExpectedBooleanExpressionInLoopStatement => {
                 ("invalid loop statement".into(), "must be followed by a boolean expression".into())
             }
-            ErrorKind::ExpectedDoOrBlockAfterLoopStatement => {
+            Self::ExpectedDoOrBlockAfterLoopStatement => {
                 ("invalid loop statement".into(), "must be followed by a do statement or a block".into())
             }
         };

@@ -1,7 +1,5 @@
-use crate::{
-    color::{Bg, Colored, ColoredStr, Fg, Flag, Flags},
-    Verbosity,
-};
+use super::color::{Bg, ColoredStr, Fg, Flag, Flags};
+use crate::{cli::color::Colored, Verbosity};
 use std::{path::Path, time::Instant};
 
 // errors

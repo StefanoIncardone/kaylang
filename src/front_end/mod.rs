@@ -1,7 +1,6 @@
-use crate::{
+use crate::cli::{
     color::{Bg, Colored, Fg, Flag},
     logging::{AT, BAR, ERROR},
-    src_file::{Position, SrcFile},
 };
 use std::{
     borrow::Cow,
@@ -9,7 +8,10 @@ use std::{
     path::Path,
 };
 
+use self::src_file::{Position, SrcFile};
+
 pub mod ast;
+pub mod src_file;
 pub mod tokenizer;
 
 #[derive(Debug)]

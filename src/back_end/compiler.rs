@@ -1,9 +1,9 @@
 use crate::{
+    cli::logging::{CAUSE, ERROR},
     front_end::{
         ast::{Expression, IfStatement, Loop, LoopCondition, Node, Scope, Type, TypeOf},
         tokenizer::{Literal, Op},
     },
-    logging::{CAUSE, ERROR},
 };
 use std::{
     borrow::Cow,

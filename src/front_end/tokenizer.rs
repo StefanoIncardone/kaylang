@@ -1,5 +1,7 @@
-use super::{SyntaxError, SyntaxErrorInfo, SyntaxErrorKindInfo};
-use crate::src_file::{Line, SrcFile};
+use super::{
+    src_file::{Line, SrcFile},
+    SyntaxError, SyntaxErrorInfo, SyntaxErrorKindInfo,
+};
 use std::{
     fmt::Display,
     num::{IntErrorKind, ParseIntError},
@@ -922,59 +924,49 @@ pub enum ErrorKind {
 impl SyntaxErrorKindInfo for ErrorKind {
     fn info(&self) -> SyntaxErrorInfo {
         let (msg, help_msg) = match &self {
-            ErrorKind::UnclosedBracket(bracket) => {
-                (format!("unclosed '{bracket}' bracket").into(), "was not closed".into())
-            }
-            ErrorKind::NonAsciiCharacter(ch) => {
+            Self::UnclosedBracket(bracket) => (format!("unclosed '{bracket}' bracket").into(), "was not closed".into()),
+            Self::NonAsciiCharacter(ch) => {
                 (format!("unrecognized '{ch}' character").into(), "not a valid ASCII character".into())
             }
-            ErrorKind::UnclosedCharacterLiteral => {
+            Self::UnclosedCharacterLiteral => {
                 ("invalid character literal".into(), "missing closing single quote".into())
             }
-            ErrorKind::UnclosedStringLiteral => {
-                ("invalid string literal".into(), "missing closing double quote".into())
-            }
-            ErrorKind::NonAsciiIdentifier => ("invalid identifier".into(), "contains non-ASCII characters".into()),
-            ErrorKind::NonAsciiNumberLiteral => {
-                ("invalid number literal".into(), "contains non-ASCII characters".into())
-            }
-            ErrorKind::NonDigitNumberLiteral => {
-                ("invalid number literal".into(), "contains non-digit characters".into())
-            }
-            ErrorKind::NumberLiteralOverflow => (
+            Self::UnclosedStringLiteral => ("invalid string literal".into(), "missing closing double quote".into()),
+            Self::NonAsciiIdentifier => ("invalid identifier".into(), "contains non-ASCII characters".into()),
+            Self::NonAsciiNumberLiteral => ("invalid number literal".into(), "contains non-ASCII characters".into()),
+            Self::NonDigitNumberLiteral => ("invalid number literal".into(), "contains non-digit characters".into()),
+            Self::NumberLiteralOverflow => (
                 "invalid number literal".into(),
                 format!("overflows a {bits} bit signed integer (over {max})", bits = isize::BITS, max = isize::MAX)
                     .into(),
             ),
-            ErrorKind::NumberLiteralUnderflow => (
+            Self::NumberLiteralUnderflow => (
                 "invalid number literal".into(),
                 format!("underflows a {bits} bit signed integer (under {min})", bits = isize::BITS, min = isize::MIN)
                     .into(),
             ),
-            ErrorKind::GenericInvalidNumberLiteral(err) => ("invalid number literal".into(), format!("{err}").into()),
-            ErrorKind::UnrecognizedStringEscapeCharacter(ch) => {
+            Self::GenericInvalidNumberLiteral(err) => ("invalid number literal".into(), format!("{err}").into()),
+            Self::UnrecognizedStringEscapeCharacter(ch) => {
                 ("invalid string literal".into(), format!("unrecognized '{ch}' escape character").into())
             }
-            ErrorKind::ControlCharacterInStringLiteral => {
+            Self::ControlCharacterInStringLiteral => {
                 ("invalid string literal".into(), "cannot be a control character".into())
             }
-            ErrorKind::UnrecognizedCharacterEscapeCharacter(ch) => {
+            Self::UnrecognizedCharacterEscapeCharacter(ch) => {
                 ("invalid character literal".into(), format!("unrecognized '{ch}' escape character").into())
             }
-            ErrorKind::ControlCharacterInCharacterLiteral => {
+            Self::ControlCharacterInCharacterLiteral => {
                 ("invalid character literal".into(), "cannot be a control character".into())
             }
-            ErrorKind::EmptyCharacterLiteral => ("invalid character literal".into(), "must not be empty".into()),
-            ErrorKind::MismatchedBracket { expected, actual } => (
+            Self::EmptyCharacterLiteral => ("invalid character literal".into(), "must not be empty".into()),
+            Self::MismatchedBracket { expected, actual } => (
                 format!("mismatched '{actual}' bracket").into(),
                 format!("closes the wrong bracket, expected a '{expected}' instead").into(),
             ),
-            ErrorKind::UnopenedBracket(bracket) => {
+            Self::UnopenedBracket(bracket) => {
                 (format!("unopened '{bracket}' bracket").into(), "was not opened before".into())
             }
-            ErrorKind::UnrecognizedCharacter(ch) => {
-                (format!("unexpected character {ch}").into(), "unrecognized".into())
-            }
+            Self::UnrecognizedCharacter(ch) => (format!("unexpected character {ch}").into(), "unrecognized".into()),
         };
 
         SyntaxErrorInfo { msg, help_msg }

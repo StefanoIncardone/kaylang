@@ -2,13 +2,9 @@
 
 pub mod back_end;
 pub mod cli;
-pub mod color;
 pub mod front_end;
-pub mod logging;
-pub mod run;
-pub mod src_file;
 
-use color::{Bg, ColoredStr, Fg, Flag, Flags};
+use cli::color::{Bg, ColoredStr, Fg, Flag, Flags};
 use std::{fmt::Display, path::PathBuf};
 
 // help and version messages
