@@ -358,7 +358,6 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
         if this.errors.is_empty() {
             Ok(this.scopes)
         } else {
-            this.errors.sort_by(|e1, e2| e1.position.line.cmp(&e2.position.line));
             Err(this.errors)
         }
     }

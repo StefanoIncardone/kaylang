@@ -25,7 +25,7 @@ pub trait SyntaxErrorKindInfo {
 }
 
 #[derive(Debug)]
-pub struct SyntaxError<'src, Kind: Debug + SyntaxErrorKindInfo> {
+pub struct SyntaxError<'src, Kind: SyntaxErrorKindInfo> {
     pub path: &'src Path,
     pub position: Position,
     pub len: usize,
@@ -33,15 +33,16 @@ pub struct SyntaxError<'src, Kind: Debug + SyntaxErrorKindInfo> {
     pub kind: Kind, // IDEA(stefano): split this into a msg enum and a help_msg enum
 }
 
-impl<'src, Kind: Debug + SyntaxErrorKindInfo> SyntaxError<'src, Kind> {
+impl<'src, Kind: SyntaxErrorKindInfo> SyntaxError<'src, Kind> {
     pub(crate) fn new(src: &'src SrcFile, col: usize, len: usize, kind: Kind) -> Self {
         let position = src.position(col);
-        let line_text = src.line_text(position);
+        let line = &src.lines[position.line - 1];
+        let line_text = &src.code[line.start..line.end];
         Self { path: &src.path, position, len, line_text, kind }
     }
 }
 
-impl<Kind: Debug + SyntaxErrorKindInfo> Display for SyntaxError<'_, Kind> {
+impl<Kind: SyntaxErrorKindInfo> Display for SyntaxError<'_, Kind> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let SyntaxErrorInfo { msg, help_msg } = self.kind.info();
 

@@ -388,18 +388,41 @@ impl<'src> Tokenizer<'src> {
             errors: Vec::new(),
         };
 
-        loop {
-            let token = match this.next_token() {
-                Ok(None) => break,
-                Ok(Some(kind)) => Token { kind, col: this.token_start_col },
-                Err(err) => {
-                    this.errors.push(err);
-                    let unexpected = &this.src.code[this.token_start_col..this.col];
-                    Token { kind: TokenKind::Unexpected(unexpected), col: this.token_start_col }
+        'tokenization: loop {
+            let token_kind_result = 'token_kind: loop {
+                this.token_start_col = this.col;
+                let next = match this.next_ascii_character() {
+                    Ok(Some(ch)) => ch,
+                    Ok(None) => break 'tokenization,
+                    Err(err) => break 'token_kind Err(err),
+                };
+
+                match next {
+                    // ignore whitespace
+                    b'\t' | b'\r' | b'\x0C' | b' ' => {}
+
+                    // next line
+                    b'\n' => {
+                        if this.line_idx >= this.src.lines.len() - 1 {
+                            break 'tokenization;
+                        }
+
+                        this.line_idx += 1;
+                        this.line = &this.src.lines[this.line_idx];
+                    }
+                    ch => break 'token_kind this.next_token(ch),
                 }
             };
 
-            this.tokens.push(token);
+            let kind = match token_kind_result {
+                Ok(kind) => kind,
+                Err(err) => {
+                    this.errors.push(err);
+                    TokenKind::Unexpected(&this.src.code[this.token_start_col..this.col])
+                }
+            };
+
+            this.tokens.push(Token { kind, col: this.token_start_col });
         }
 
         for bracket in &this.brackets {
@@ -415,7 +438,6 @@ impl<'src> Tokenizer<'src> {
         if this.errors.is_empty() {
             Ok(this.tokens)
         } else {
-            this.errors.sort_by(|e1, e2| e1.position.line.cmp(&e2.position.line));
             Err(this.errors)
         }
     }
@@ -423,32 +445,12 @@ impl<'src> Tokenizer<'src> {
 
 // tokenization of src code
 impl<'src> Tokenizer<'src> {
-    fn next_token(&mut self) -> Result<Option<TokenKind<'src>>, Error<'src>> {
-        let next = loop {
-            self.token_start_col = self.col;
-            match self.next_character()? {
-                // ignore whitespace
-                Some(b'\t' | b'\r' | b'\x0C' | b' ') => {}
-
-                // next line
-                Some(b'\n') => {
-                    if self.line_idx >= self.src.lines.len() - 1 {
-                        return Ok(None);
-                    }
-
-                    self.line_idx += 1;
-                    self.line = &self.src.lines[self.line_idx];
-                }
-                Some(next) => break next,
-                None => return Ok(None),
-            }
-        };
-
+    fn next_token(&mut self, next: u8) -> Result<TokenKind<'src>, Error<'src>> {
         match next {
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
                 let mut contains_non_ascii = false;
                 loop {
-                    match self.peek_next_character() {
+                    match self.peek_next_ascii_character() {
                         Ok(Some(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => self.col += 1,
                         Ok(Some(_) | None) => break,
                         Err(_) => {
@@ -482,14 +484,14 @@ impl<'src> Tokenizer<'src> {
                         identifier => TokenKind::Identifier(identifier),
                     };
 
-                    Ok(Some(identifier))
+                    Ok(identifier)
                 }
             }
             // TODO(stefano): implement negative numbers
             b'0'..=b'9' => {
                 let mut contains_non_ascii = false;
                 loop {
-                    match self.peek_next_character() {
+                    match self.peek_next_ascii_character() {
                         Ok(Some(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => self.col += 1,
                         Ok(Some(_) | None) => break,
                         Err(_) => {
@@ -501,7 +503,7 @@ impl<'src> Tokenizer<'src> {
 
                 let token_text = &self.src.code[self.token_start_col..self.col];
                 match token_text.parse() {
-                    Ok(value) => Ok(Some(TokenKind::Literal(Literal::Int(value)))),
+                    Ok(value) => Ok(TokenKind::Literal(Literal::Int(value))),
                     Err(err) => {
                         let kind = match err.kind() {
                             IntErrorKind::InvalidDigit if contains_non_ascii => ErrorKind::NonAsciiNumberLiteral,
@@ -518,13 +520,13 @@ impl<'src> Tokenizer<'src> {
                 }
             }
             b'#' => {
+                // ignoring the hash symbol
+                let comment = &self.src.code[self.col..self.line.end];
+
                 // consuming the rest of the characters in the current line
                 self.col = self.line.end;
 
-                // starting at token_start_col + 1 to ignore the hash symbol
-                let comment = &self.src.code[self.token_start_col + 1..self.col];
-
-                Ok(Some(TokenKind::Comment(comment)))
+                Ok(TokenKind::Comment(comment))
             }
             b'"' => {
                 let mut errors = Vec::<Error<'src>>::new();
@@ -544,7 +546,7 @@ impl<'src> Tokenizer<'src> {
                                 self.src,
                                 self.col,
                                 1,
-                                ErrorKind::UnrecognizedStringEscapeCharacter(unrecognized),
+                                ErrorKind::UnrecognizedStringEscapeCharacter(unrecognized as char),
                             )),
                         },
                         b'\x00'..=b'\x1F' | b'\x7F' => {
@@ -562,7 +564,7 @@ impl<'src> Tokenizer<'src> {
 
                 // after here there cannot be unclosed strings
                 if errors.is_empty() {
-                    Ok(Some(TokenKind::Literal(Literal::Str(string_literal))))
+                    Ok(TokenKind::Literal(Literal::Str(string_literal)))
                 } else {
                     // FIX(stefano): add proper multiple error handling
                     let last_error = errors.pop().unwrap(); // we have already made sure there are errors
@@ -586,7 +588,7 @@ impl<'src> Tokenizer<'src> {
                             self.src,
                             self.col,
                             1,
-                            ErrorKind::UnrecognizedCharacterEscapeCharacter(unrecognized),
+                            ErrorKind::UnrecognizedCharacterEscapeCharacter(unrecognized as char),
                         )),
                     },
                     b'\x00'..=b'\x1F' | b'\x7F' => {
@@ -596,10 +598,10 @@ impl<'src> Tokenizer<'src> {
                     ch => Ok(ch),
                 };
 
-                match self.peek_next_character()? {
+                match self.peek_next_ascii_character()? {
                     Some(b'\'') => {
                         self.col += 1;
-                        Ok(Some(TokenKind::Literal(Literal::Char(code?))))
+                        Ok(TokenKind::Literal(Literal::Char(code?)))
                     }
                     Some(_) | None => Err(Error::new(
                         self.src,
@@ -612,14 +614,14 @@ impl<'src> Tokenizer<'src> {
             b'(' => {
                 let kind = BracketKind::OpenRound;
                 self.brackets.push(Bracket { col: self.token_start_col, kind });
-                Ok(Some(TokenKind::Bracket(kind)))
+                Ok(TokenKind::Bracket(kind))
             }
             b')' => match self.brackets.pop() {
                 Some(bracket) => match bracket.kind {
                     BracketKind::OpenRound
                     | BracketKind::CloseRound
                     | BracketKind::CloseCurly
-                    | BracketKind::CloseSquare => Ok(Some(TokenKind::Bracket(BracketKind::CloseRound))),
+                    | BracketKind::CloseSquare => Ok(TokenKind::Bracket(BracketKind::CloseRound)),
                     actual @ (BracketKind::OpenCurly | BracketKind::OpenSquare) => Err(Error::new(
                         self.src,
                         self.token_start_col,
@@ -637,14 +639,14 @@ impl<'src> Tokenizer<'src> {
             b'[' => {
                 let kind = BracketKind::OpenSquare;
                 self.brackets.push(Bracket { col: self.token_start_col, kind });
-                Ok(Some(TokenKind::Bracket(kind)))
+                Ok(TokenKind::Bracket(kind))
             }
             b']' => match self.brackets.pop() {
                 Some(bracket) => match bracket.kind {
                     BracketKind::OpenSquare
                     | BracketKind::CloseSquare
                     | BracketKind::CloseCurly
-                    | BracketKind::CloseRound => Ok(Some(TokenKind::Bracket(BracketKind::CloseSquare))),
+                    | BracketKind::CloseRound => Ok(TokenKind::Bracket(BracketKind::CloseSquare)),
                     actual @ (BracketKind::OpenCurly | BracketKind::OpenRound) => Err(Error::new(
                         self.src,
                         self.token_start_col,
@@ -662,14 +664,14 @@ impl<'src> Tokenizer<'src> {
             b'{' => {
                 let kind = BracketKind::OpenCurly;
                 self.brackets.push(Bracket { col: self.token_start_col, kind });
-                Ok(Some(TokenKind::Bracket(kind)))
+                Ok(TokenKind::Bracket(kind))
             }
             b'}' => match self.brackets.pop() {
                 Some(bracket) => match bracket.kind {
                     BracketKind::OpenCurly
                     | BracketKind::CloseCurly
                     | BracketKind::CloseRound
-                    | BracketKind::CloseSquare => Ok(Some(TokenKind::Bracket(BracketKind::CloseCurly))),
+                    | BracketKind::CloseSquare => Ok(TokenKind::Bracket(BracketKind::CloseCurly)),
                     actual @ (BracketKind::OpenRound | BracketKind::OpenSquare) => Err(Error::new(
                         self.src,
                         self.token_start_col,
@@ -684,152 +686,155 @@ impl<'src> Tokenizer<'src> {
                     ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
                 )),
             },
-            b':' => Ok(Some(TokenKind::Colon)),
-            b';' => Ok(Some(TokenKind::SemiColon)),
-            b',' => Ok(Some(TokenKind::Comma)),
-            b'!' => match self.peek_next_character()? {
+            b':' => Ok(TokenKind::Colon),
+            b';' => Ok(TokenKind::SemiColon),
+            b',' => Ok(TokenKind::Comma),
+            b'!' => match self.peek_next_ascii_character()? {
                 Some(b'=') => {
                     self.col += 1;
-                    Ok(Some(TokenKind::Op(Op::NotEquals)))
+                    Ok(TokenKind::Op(Op::NotEquals))
                 }
-                _ => Ok(Some(TokenKind::Op(Op::Not))),
+                _ => Ok(TokenKind::Op(Op::Not)),
             },
-            b'*' => match self.peek_next_character()? {
+            b'*' => match self.peek_next_ascii_character()? {
                 Some(b'*') => {
                     self.col += 1;
-                    match self.peek_next_character()? {
+                    match self.peek_next_ascii_character()? {
                         Some(b'=') => {
                             self.col += 1;
-                            Ok(Some(TokenKind::Op(Op::PowEquals)))
+                            Ok(TokenKind::Op(Op::PowEquals))
                         }
-                        _ => Ok(Some(TokenKind::Op(Op::Pow))),
+                        _ => Ok(TokenKind::Op(Op::Pow)),
                     }
                 }
                 Some(b'=') => {
                     self.col += 1;
-                    Ok(Some(TokenKind::Op(Op::TimesEquals)))
+                    Ok(TokenKind::Op(Op::TimesEquals))
                 }
-                _ => Ok(Some(TokenKind::Op(Op::Times))),
+                _ => Ok(TokenKind::Op(Op::Times)),
             },
-            b'/' => match self.peek_next_character()? {
+            b'/' => match self.peek_next_ascii_character()? {
                 Some(b'=') => {
                     self.col += 1;
-                    Ok(Some(TokenKind::Op(Op::DivideEquals)))
+                    Ok(TokenKind::Op(Op::DivideEquals))
                 }
-                _ => Ok(Some(TokenKind::Op(Op::Divide))),
+                _ => Ok(TokenKind::Op(Op::Divide)),
             },
-            b'%' => match self.peek_next_character()? {
+            b'%' => match self.peek_next_ascii_character()? {
                 Some(b'=') => {
                     self.col += 1;
-                    Ok(Some(TokenKind::Op(Op::RemainderEquals)))
+                    Ok(TokenKind::Op(Op::RemainderEquals))
                 }
-                _ => Ok(Some(TokenKind::Op(Op::Remainder))),
+                _ => Ok(TokenKind::Op(Op::Remainder)),
             },
-            b'+' => match self.peek_next_character()? {
+            b'+' => match self.peek_next_ascii_character()? {
                 Some(b'=') => {
                     self.col += 1;
-                    Ok(Some(TokenKind::Op(Op::PlusEquals)))
+                    Ok(TokenKind::Op(Op::PlusEquals))
                 }
-                _ => Ok(Some(TokenKind::Op(Op::Plus))),
+                _ => Ok(TokenKind::Op(Op::Plus)),
             },
-            b'-' => match self.peek_next_character()? {
+            b'-' => match self.peek_next_ascii_character()? {
                 Some(b'=') => {
                     self.col += 1;
-                    Ok(Some(TokenKind::Op(Op::MinusEquals)))
+                    Ok(TokenKind::Op(Op::MinusEquals))
                 }
-                _ => Ok(Some(TokenKind::Op(Op::Minus))),
+                _ => Ok(TokenKind::Op(Op::Minus)),
             },
-            b'&' => match self.peek_next_character()? {
+            b'&' => match self.peek_next_ascii_character()? {
                 Some(b'&') => {
                     self.col += 1;
-                    match self.peek_next_character()? {
+                    match self.peek_next_ascii_character()? {
                         Some(b'=') => {
                             self.col += 1;
-                            Ok(Some(TokenKind::Op(Op::AndEquals)))
+                            Ok(TokenKind::Op(Op::AndEquals))
                         }
-                        _ => Ok(Some(TokenKind::Op(Op::And))),
+                        _ => Ok(TokenKind::Op(Op::And)),
                     }
                 }
                 Some(b'=') => {
                     self.col += 1;
-                    Ok(Some(TokenKind::Op(Op::BitAndEquals)))
+                    Ok(TokenKind::Op(Op::BitAndEquals))
                 }
-                _ => Ok(Some(TokenKind::Op(Op::BitAnd))),
+                _ => Ok(TokenKind::Op(Op::BitAnd)),
             },
-            b'^' => match self.peek_next_character()? {
+            b'^' => match self.peek_next_ascii_character()? {
                 Some(b'=') => {
                     self.col += 1;
-                    Ok(Some(TokenKind::Op(Op::BitXorEquals)))
+                    Ok(TokenKind::Op(Op::BitXorEquals))
                 }
-                _ => Ok(Some(TokenKind::Op(Op::BitXor))),
+                _ => Ok(TokenKind::Op(Op::BitXor)),
             },
-            b'|' => match self.peek_next_character()? {
+            b'|' => match self.peek_next_ascii_character()? {
                 Some(b'|') => {
                     self.col += 1;
-                    match self.peek_next_character()? {
+                    match self.peek_next_ascii_character()? {
                         Some(b'=') => {
                             self.col += 1;
-                            Ok(Some(TokenKind::Op(Op::OrEquals)))
+                            Ok(TokenKind::Op(Op::OrEquals))
                         }
-                        _ => Ok(Some(TokenKind::Op(Op::Or))),
+                        _ => Ok(TokenKind::Op(Op::Or)),
                     }
                 }
                 Some(b'=') => {
                     self.col += 1;
-                    Ok(Some(TokenKind::Op(Op::BitOrEquals)))
+                    Ok(TokenKind::Op(Op::BitOrEquals))
                 }
-                _ => Ok(Some(TokenKind::Op(Op::BitOr))),
+                _ => Ok(TokenKind::Op(Op::BitOr)),
             },
-            b'=' => match self.peek_next_character()? {
+            b'=' => match self.peek_next_ascii_character()? {
                 Some(b'=') => {
                     self.col += 1;
-                    Ok(Some(TokenKind::Op(Op::EqualsEquals)))
+                    Ok(TokenKind::Op(Op::EqualsEquals))
                 }
-                _ => Ok(Some(TokenKind::Op(Op::Equals))),
+                _ => Ok(TokenKind::Op(Op::Equals)),
             },
-            b'>' => match self.peek_next_character()? {
+            b'>' => match self.peek_next_ascii_character()? {
                 Some(b'>') => {
                     self.col += 1;
-                    match self.peek_next_character()? {
+                    match self.peek_next_ascii_character()? {
                         Some(b'=') => {
                             self.col += 1;
-                            Ok(Some(TokenKind::Op(Op::RightShiftEquals)))
+                            Ok(TokenKind::Op(Op::RightShiftEquals))
                         }
-                        _ => Ok(Some(TokenKind::Op(Op::RightShift))),
+                        _ => Ok(TokenKind::Op(Op::RightShift)),
                     }
                 }
                 Some(b'=') => {
                     self.col += 1;
-                    Ok(Some(TokenKind::Op(Op::GreaterOrEquals)))
+                    Ok(TokenKind::Op(Op::GreaterOrEquals))
                 }
-                _ => Ok(Some(TokenKind::Op(Op::Greater))),
+                _ => Ok(TokenKind::Op(Op::Greater)),
             },
-            b'<' => match self.peek_next_character()? {
+            b'<' => match self.peek_next_ascii_character()? {
                 Some(b'<') => {
                     self.col += 1;
-                    match self.peek_next_character()? {
+                    match self.peek_next_ascii_character()? {
                         Some(b'=') => {
                             self.col += 1;
-                            Ok(Some(TokenKind::Op(Op::LeftShiftEquals)))
+                            Ok(TokenKind::Op(Op::LeftShiftEquals))
                         }
-                        _ => Ok(Some(TokenKind::Op(Op::LeftShift))),
+                        _ => Ok(TokenKind::Op(Op::LeftShift)),
                     }
                 }
                 Some(b'=') => {
                     self.col += 1;
-                    match self.peek_next_character()? {
+                    match self.peek_next_ascii_character()? {
                         Some(b'>') => {
                             self.col += 1;
-                            Ok(Some(TokenKind::Op(Op::Compare)))
+                            Ok(TokenKind::Op(Op::Compare))
                         }
-                        _ => Ok(Some(TokenKind::Op(Op::LessOrEquals))),
+                        _ => Ok(TokenKind::Op(Op::LessOrEquals)),
                     }
                 }
-                _ => Ok(Some(TokenKind::Op(Op::Less))),
+                _ => Ok(TokenKind::Op(Op::Less)),
             },
-            unrecognized => {
-                Err(Error::new(self.src, self.token_start_col, 1, ErrorKind::UnrecognizedCharacter(unrecognized)))
-            }
+            unrecognized => Err(Error::new(
+                self.src,
+                self.token_start_col,
+                1,
+                ErrorKind::UnrecognizedCharacter(unrecognized as char),
+            )),
         }
     }
 }
@@ -838,7 +843,7 @@ impl<'src> Tokenizer<'src> {
 impl<'src> Tokenizer<'src> {
     // FIX(stefano): properly handle non ASCII characters related errors and column advancing
     // IDEA(stefano): allow utf-8 characters in strings, characters
-    fn next_character(&mut self) -> Result<Option<u8>, Error<'src>> {
+    fn next_ascii_character(&mut self) -> Result<Option<u8>, Error<'src>> {
         if self.col >= self.src.code.len() {
             return Ok(None);
         }
@@ -852,19 +857,19 @@ impl<'src> Tokenizer<'src> {
                 let non_ascii_col = self.col;
                 self.col += 1;
 
-                Err(Error::new(self.src, non_ascii_col, 1, ErrorKind::NonAsciiCharacter(non_ascii)))
+                Err(Error::new(self.src, non_ascii_col, 1, ErrorKind::NonAsciiCharacter(non_ascii as char)))
             }
         }
     }
 
-    fn peek_next_character(&self) -> Result<Option<&'src u8>, Error<'src>> {
+    fn peek_next_ascii_character(&self) -> Result<Option<&'src u8>, Error<'src>> {
         if self.col >= self.src.code.len() {
             return Ok(None);
         }
 
         match &self.src.code.as_bytes()[self.col] {
             ascii @ ..=b'\x7F' => Ok(Some(ascii)),
-            non_ascii => Err(Error::new(self.src, self.col, 1, ErrorKind::NonAsciiCharacter(*non_ascii))),
+            non_ascii => Err(Error::new(self.src, self.col, 1, ErrorKind::NonAsciiCharacter(*non_ascii as char))),
         }
     }
 }
@@ -872,7 +877,7 @@ impl<'src> Tokenizer<'src> {
 // character literals
 impl<'src> Tokenizer<'src> {
     fn next_in_char_literal(&mut self) -> Result<u8, Error<'src>> {
-        match self.next_character()? {
+        match self.next_ascii_character()? {
             Some(next) => Ok(next),
             None => Err(Error::new(
                 self.src,
@@ -887,7 +892,7 @@ impl<'src> Tokenizer<'src> {
 // string literals
 impl<'src> Tokenizer<'src> {
     fn next_in_str_literal(&mut self) -> Result<u8, Error<'src>> {
-        match self.next_character()? {
+        match self.next_ascii_character()? {
             Some(next) => Ok(next),
             None => Err(Error::new(
                 self.src,
@@ -902,7 +907,7 @@ impl<'src> Tokenizer<'src> {
 #[derive(Debug)]
 pub enum ErrorKind {
     UnclosedBracket(BracketKind),
-    NonAsciiCharacter(u8),
+    NonAsciiCharacter(char),
     UnclosedCharacterLiteral,
     UnclosedStringLiteral,
     NonAsciiIdentifier,
@@ -911,14 +916,14 @@ pub enum ErrorKind {
     NumberLiteralOverflow,
     NumberLiteralUnderflow,
     GenericInvalidNumberLiteral(ParseIntError),
-    UnrecognizedStringEscapeCharacter(u8),
+    UnrecognizedStringEscapeCharacter(char),
     ControlCharacterInStringLiteral,
-    UnrecognizedCharacterEscapeCharacter(u8),
+    UnrecognizedCharacterEscapeCharacter(char),
     ControlCharacterInCharacterLiteral,
     EmptyCharacterLiteral,
     MismatchedBracket { expected: BracketKind, actual: BracketKind },
     UnopenedBracket(BracketKind),
-    UnrecognizedCharacter(u8),
+    UnrecognizedCharacter(char),
 }
 
 impl SyntaxErrorKindInfo for ErrorKind {
@@ -966,7 +971,7 @@ impl SyntaxErrorKindInfo for ErrorKind {
             Self::UnopenedBracket(bracket) => {
                 (format!("unopened '{bracket}' bracket").into(), "was not opened before".into())
             }
-            Self::UnrecognizedCharacter(ch) => (format!("unexpected character {ch}").into(), "unrecognized".into()),
+            Self::UnrecognizedCharacter(ch) => (format!("unrecognized character '{ch}'").into(), "unrecognized".into()),
         };
 
         SyntaxErrorInfo { msg, help_msg }

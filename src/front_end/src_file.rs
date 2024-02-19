@@ -7,13 +7,16 @@ use std::{
     path::{Path, PathBuf},
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Line {
-    pub(crate) start: usize, // inclusive
-    pub(crate) end: usize,   // not inclusive
+    /// inclusive
+    pub(crate) start: usize,
+
+    /// not inclusive
+    pub(crate) end: usize,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Position {
     pub line: usize,
     pub col: usize,
@@ -94,11 +97,6 @@ impl SrcFile {
         }
 
         Position { line: left + 1, col: col + 1 - self.lines[left].start }
-    }
-
-    pub(crate) fn line_text(&self, position: Position) -> &str {
-        let line = &self.lines[position.line - 1];
-        &self.code[line.start..line.end]
     }
 }
 
