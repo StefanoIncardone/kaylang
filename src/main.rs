@@ -67,8 +67,9 @@ fn main() -> ExitCode {
                 match lexer_result {
                     Ok(tokens) => tokens,
                     Err(errors) => {
+                        eprintln!();
                         for error in errors {
-                            eprintln!("{error}");
+                            eprintln!("{error}\n");
                         }
                         return ExitCode::FAILURE;
                     }
@@ -82,8 +83,9 @@ fn main() -> ExitCode {
                 match ast_building_result {
                     Ok(ast) => ast,
                     Err(errors) => {
+                        eprintln!();
                         for error in errors {
-                            eprintln!("{error}");
+                            eprintln!("{error}\n");
                         }
                         return ExitCode::FAILURE;
                     }
@@ -209,8 +211,9 @@ mod tests {
                         match lexer_result {
                             Ok(tokens) => tokens,
                             Err(errors) => {
+                                eprintln!();
                                 for error in errors {
-                                    eprintln!("{error}");
+                                    eprintln!("{error}\n");
                                 }
                                 return Ok(ExitCode::FAILURE);
                             }
@@ -225,8 +228,9 @@ mod tests {
                         match ast_building_result {
                             Ok(ast) => ast,
                             Err(errors) => {
+                                eprintln!();
                                 for error in errors {
-                                    eprintln!("{error}");
+                                    eprintln!("{error}\n");
                                 }
                                 return Ok(ExitCode::FAILURE);
                             }

@@ -8,6 +8,7 @@
 - disallowed implicit conversions between strings and other types
     - corrected related bugs
 - introduced arrays
+- changes in the assembly code generation
 
 
 ## 0.4
