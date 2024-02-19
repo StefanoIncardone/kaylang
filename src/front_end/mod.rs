@@ -16,8 +16,8 @@ pub mod tokenizer;
 
 #[derive(Debug)]
 pub struct SyntaxErrorInfo {
-    msg: Cow<'static, str>,
-    help_msg: Cow<'static, str>,
+    pub msg: Cow<'static, str>,
+    pub help_msg: Cow<'static, str>,
 }
 
 pub trait SyntaxErrorKindInfo {
@@ -30,7 +30,7 @@ pub struct SyntaxError<'src, Kind: Debug + SyntaxErrorKindInfo> {
     pub position: Position,
     pub len: usize,
     pub line_text: &'src str,
-    pub kind: Kind,
+    pub kind: Kind, // IDEA(stefano): split this into a msg enum and a help_msg enum
 }
 
 impl<'src, Kind: Debug + SyntaxErrorKindInfo> SyntaxError<'src, Kind> {
