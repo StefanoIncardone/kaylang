@@ -523,7 +523,8 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 None => Ok(Some(Node::Expression(self.expression()?))),
             },
             TokenKind::Definition(_) => Ok(Some(self.variable_definition()?)),
-            TokenKind::Print | TokenKind::PrintLn => Ok(Some(self.print()?)),
+            TokenKind::Print => Ok(Some(self.print()?)),
+            TokenKind::PrintLn => Ok(Some(self.println()?)),
             TokenKind::If => Ok(Some(self.iff()?)),
             TokenKind::Else => {
                 let _ = self.next_token();
@@ -1467,12 +1468,24 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 // print statements
 impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
     fn print(&mut self) -> Result<Node<'src>, Error<'src>> {
-        let print_token = &self.tokens[self.token];
-        if let TokenKind::PrintLn = print_token.kind {
-            if let Some(&Token { kind: TokenKind::SemiColon, .. }) = self.peek_next_token() {
-                let _ = self.next_token();
-                return Ok(Node::Println(None));
-            }
+        let start_of_expression_token = self.next_token_bounded(ExpectedBeforeEof::Expression)?;
+        let argument = self.expression()?;
+        if let Expression::Array(_, _) = argument {
+            return Err(Error::new(
+                self.src,
+                start_of_expression_token.col,
+                start_of_expression_token.kind.len(),
+                ErrorKind::TemporaryArrayNotSupportedYet,
+            ));
+        }
+
+        Ok(Node::Print(argument))
+    }
+
+    fn println(&mut self) -> Result<Node<'src>, Error<'src>> {
+        if let Some(&Token { kind: TokenKind::SemiColon, .. }) = self.peek_next_token() {
+            let _ = self.next_token();
+            return Ok(Node::Println(None));
         }
 
         let start_of_expression_token = self.next_token_bounded(ExpectedBeforeEof::Expression)?;
@@ -1486,11 +1499,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
             ));
         }
 
-        match print_token.kind {
-            TokenKind::Print => Ok(Node::Print(argument)),
-            TokenKind::PrintLn => Ok(Node::Println(Some(argument))),
-            _ => unreachable!("cannot be different from 'print' or 'println'"),
-        }
+        Ok(Node::Println(Some(argument)))
     }
 }
 
