@@ -49,24 +49,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New operators
 
 ### Changed
-## 0.4.0 - 2023-11-03
 
-### Added
-
-- New operators
-
-### Changed
-
-- Old operators
-- Renamed language to `kay`
 - Old operators
 - Renamed language to `kay`
 
 
 ## 0.3.2 - 2023-11-03
-## 0.3.2 - 2023-11-03
 
-### Added
 ### Added
 
 - do-loop loops (i.e.: C-style do-while loops)
@@ -74,21 +63,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## 0.3.1 - 2023-10-31
 
 ### Added
-## 0.3.1 - 2023-10-31
-
-### Added
-
-- Type annotations
-- Default values
-
-## 0.3.0 - 2023-10-29
-
-### Added
-
-- Printing of the compiler version
-- Compilation output folder
-
-### Changed
 
 - Type annotations
 - Default values
@@ -109,18 +83,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `interpret` mode
 - Blocks in single statement contexts
-- `do` keyword for single statements instead of `:`
-
-### Removed
-
-- `interpret` mode
-- Blocks in single statement contexts
 
 
 ## 0.2.6 - 2023-10-20
-## 0.2.6 - 2023-10-20
 
-### Added
 ### Added
 
 - single statement if statement and for loops: `do` keyword
@@ -128,16 +94,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## 0.2.5 - 2023-10-14
 
 ### Added
-## 0.2.5 - 2023-10-14
-
-### Added
 
 - UTF-8 support in comments
-- UTF-8 support in comments
 
-## 0.2.4 - 2023-08-28
-
-### Added
 ## 0.2.4 - 2023-08-28
 
 ### Added
@@ -147,28 +106,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## 0.2.3 - 2024-08-28
 
 ### Added
-## 0.2.3 - 2024-08-28
 
-### Added
-
-- Unary operators
 - Unary operators
 
 ## 0.2.2 - 2024-08-16
 
 ### Added
-## 0.2.2 - 2024-08-16
-
-### Added
 
 - C-style while loops: `for` keyword
-- C-style while loops: `for` keyword
 
-## 0.2.1 - 2024-08-01
-
-### Added
-
-- In-place math assignments (i.e.: `i += 1`)
 ## 0.2.1 - 2024-08-01
 
 ### Added
@@ -180,20 +126,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Variable reassignment bug
-## 0.2.0 - 2024-08-01
 
-### Fixed
-
-- Variable reassignment bug
-
-### Removed
-
-- `const` variables
-
-
-## 0.1.9 - 2023-07-30
-
-### Added
 ### Removed
 
 - `const` variables
@@ -208,49 +141,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## 0.1.8 - 2023-07-17
 
 ### Added
-## 0.1.8 - 2023-07-17
 
-### Added
-
-- Scopes
 - Scopes
 
 ## 0.1.7 - 2023-07-08
 
 ### Added
-## 0.1.7 - 2023-07-08
 
-### Added
-
-- String literals
 - String literals
 
 ## 0.1.6 - 2023-07-01
 
 ### Added
-## 0.1.6 - 2023-07-01
 
-### Added
-
-- Mutable variables: `var`
 - Mutable variables: `var`
 - `println` keyword
 
 ## 0.1.5 - 2023-06-28
 
 ### Added
-## 0.1.5 - 2023-06-28
-
-### Added
 
 - Booleans, `true` and `false` are now keywords
 - Comparison operators
-- Booleans, `true` and `false` are now keywords
-- Comparison operators
 
-## 0.1.4 - 2023-06-06
-
-### Added
 ## 0.1.4 - 2023-06-06
 
 ### Added
@@ -261,15 +174,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## 0.1.3 - 2023-05-22
 
 ### Added
-## 0.1.3 - 2023-05-22
-
-### Added
 
 - character literals
 
-## 0.1.2 - 2023-05-19
-
-### Added
 ## 0.1.2 - 2023-05-19
 
 ### Added
@@ -281,16 +188,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## 0.1.1 - 2023-05-14
 
 ### Added
-## 0.1.1 - 2023-05-14
-
-### Added
 
 - printing of numbers as ascii characters
 - order of operations and parenthesis in math expressions
 
-## 0.1.0 - 2023-05-08
-
-### Added
 ## 0.1.0 - 2023-05-08
 
 ### Added
