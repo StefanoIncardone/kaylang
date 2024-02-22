@@ -1,7 +1,7 @@
 use crate::{
     cli::logging::{CAUSE, ERROR},
     front_end::{
-        ast::{Expression, IfStatement, Loop, LoopCondition, Node, Scope, Type, TypeOf},
+        ast::{Expression, IfStatement, LoopCondition, Node, Scope, Type, TypeOf},
         tokenizer::{Literal, Op},
     },
 };
@@ -669,9 +669,8 @@ impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
                 let mut ifs = if_statement.ifs.iter();
                 let first_if = ifs.next().unwrap();
 
-                // NOTE(stefano): call ifs.next_back() to get the last else if and match on that instead of
-                // checking for the len() of the ifs
-                let (has_else_ifs, has_else) = (if_statement.ifs.len() > 1, if_statement.els.is_some());
+                let has_else_ifs = if_statement.ifs.len() > 1;
+                let has_else = if_statement.els.is_some();
 
                 // compiling the if branch
                 let if_tag = format!("if_{if_counter}");
@@ -728,7 +727,37 @@ impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
 
                 self.loop_counters.push(self.loop_counter);
                 self.loop_counter += 1;
-                self.looop(looop, &loop_tag, &loop_end_tag);
+
+                self.asm += &format!("{loop_tag}:; {looop}\n");
+                match &looop.condition {
+                    LoopCondition::Pre(condition) => {
+                        self.condition(condition, &loop_end_tag);
+                        self.node(&looop.statement);
+                    }
+                    LoopCondition::Post(condition) => {
+                        // NOTE(stefano): by inverting the jmp instruction and jumping to the start of the loop we can
+                        // avoid compiling an extra jmp instruction:
+                        //     mov rdi, [rbp + 0]
+                        //     mov rsi, 10
+                        //     cmp rdi, rsi
+                        //     jge loop_0_end
+
+                        //     jmp loop_0
+                        //     loop_0_end:
+
+                        // what we actually want:
+                        //     mov rdi, [rbp + 0]
+                        //     mov rsi, 10
+                        //     cmp rdi, rsi
+                        //     jl loop_0
+
+                        //     loop_0_end:
+                        //
+                        self.node(&looop.statement);
+                        self.condition(condition, &loop_end_tag);
+                    }
+                }
+
                 let _ = self.loop_counters.pop();
 
                 self.asm += &format!(
@@ -1109,38 +1138,6 @@ impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
         self.asm += &format!("{tag}:; {condition:?}\n", condition = iff.condition);
         self.condition(&iff.condition, false_tag);
         self.node(&iff.statement);
-    }
-
-    fn looop(&mut self, looop: &'ast Loop<'src>, tag: &str, false_tag: &str) {
-        self.asm += &format!("{tag}:; {looop}\n");
-        match &looop.condition {
-            LoopCondition::Pre(condition) => {
-                self.condition(condition, false_tag);
-                self.node(&looop.statement);
-            }
-            LoopCondition::Post(condition) => {
-                // NOTE(stefano): by inverting the jmp instruction and jumping to the start of the loop we can
-                // avoid compiling an extra jmp instruction:
-                //     mov rdi, [rbp + 0]
-                //     mov rsi, 10
-                //     cmp rdi, rsi
-                //     jge loop_0_end
-
-                //     jmp loop_0
-                //     loop_0_end:
-
-                // what we actually want:
-                //     mov rdi, [rbp + 0]
-                //     mov rsi, 10
-                //     cmp rdi, rsi
-                //     jl loop_0
-
-                //     loop_0_end:
-                //
-                self.node(&looop.statement);
-                self.condition(condition, false_tag);
-            }
-        }
     }
 
     fn condition(&mut self, condition: &'ast Expression<'src>, false_tag: &str) {
