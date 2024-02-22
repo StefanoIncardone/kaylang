@@ -568,26 +568,22 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 Ok(Some(Node::Semicolon))
             }
             TokenKind::Bracket(BracketKind::OpenCurly) => {
-                todo!("// TODO(stefano): check if we can ever reach this branch");
-
-                // let _ = self.next_token();
-                // Err(Error::new(
-                //     self.src,
-                //     current_token.col,
-                //     current_token.kind.len(),
-                //     ErrorKind::BlocksNotAllowed(BlocksNotAllowedIn::DoStatement),
-                // ))
+                let _ = self.next_token();
+                Err(Error::new(
+                    self.src,
+                    current_token.col,
+                    current_token.kind.len(),
+                    ErrorKind::BlocksNotAllowed(BlocksNotAllowedIn::DoStatement),
+                ))
             }
             TokenKind::Bracket(BracketKind::CloseCurly) => {
-                todo!("// TODO(stefano): check if we can ever reach this branch");
-
-                // let _ = self.next_token();
-                // Err(Error::new(
-                //     self.src,
-                //     current_token.col,
-                //     current_token.kind.len(),
-                //     ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
-                // ))
+                let _ = self.next_token();
+                Err(Error::new(
+                    self.src,
+                    current_token.col,
+                    current_token.kind.len(),
+                    ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
+                ))
             }
             TokenKind::Bracket(BracketKind::OpenSquare) => {
                 let _ = self.expression()?;
@@ -599,26 +595,22 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 ))
             }
             TokenKind::Bracket(BracketKind::CloseSquare) => {
-                todo!("// TODO(stefano): check if we can ever reach this branch");
-
-                // let _ = self.next_token();
-                // Err(Error::new(
-                //     self.src,
-                //     current_token.col,
-                //     current_token.kind.len(),
-                //     ErrorKind::UnopenedBracket(BracketKind::CloseSquare),
-                // ))
+                let _ = self.next_token();
+                Err(Error::new(
+                    self.src,
+                    current_token.col,
+                    current_token.kind.len(),
+                    ErrorKind::UnopenedBracket(BracketKind::CloseSquare),
+                ))
             }
             TokenKind::Bracket(BracketKind::CloseRound) => {
-                todo!("// TODO(stefano): check if we can ever reach this branch");
-
-                // let _ = self.next_token();
-                // Err(Error::new(
-                //     self.src,
-                //     current_token.col,
-                //     current_token.kind.len(),
-                //     ErrorKind::UnopenedBracket(BracketKind::CloseRound),
-                // ))
+                let _ = self.next_token();
+                Err(Error::new(
+                    self.src,
+                    current_token.col,
+                    current_token.kind.len(),
+                    ErrorKind::UnopenedBracket(BracketKind::CloseRound),
+                ))
             }
             TokenKind::Colon => {
                 let _ = self.next_token();
@@ -1416,6 +1408,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
             ));
         }
 
+        // we checked for the presence of an op token before the call to this function
         let op_token = self.next_token().unwrap();
 
         let _ = self.next_token();
