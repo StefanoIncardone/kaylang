@@ -441,10 +441,7 @@ impl<'src> Tokenizer<'src> {
             Err(this.errors)
         }
     }
-}
 
-// tokenization of src code
-impl<'src> Tokenizer<'src> {
     fn next_token(&mut self, next: u8) -> Result<TokenKind<'src>, Error<'src>> {
         match next {
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => {

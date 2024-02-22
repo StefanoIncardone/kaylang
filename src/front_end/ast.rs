@@ -361,89 +361,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
             Err(this.errors)
         }
     }
-}
 
-// iteration over tokens
-impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
-    fn current_token_bounded(&self, expected: ExpectedBeforeEof) -> Result<&'tokens Token<'src>, Error<'src>> {
-        match self.tokens.get(self.token) {
-            Some(token) => Ok(token),
-            None => {
-                let previous = self.peek_previous_token();
-                Err(Error::new(self.src, previous.col, previous.kind.len(), ErrorKind::NoMoreTokens(expected)))
-            }
-        }
-    }
-
-    fn next_token(&mut self) -> Option<&'tokens Token<'src>> {
-        loop {
-            if self.token >= self.tokens.len() - 1 {
-                self.token = self.tokens.len();
-                break None;
-            }
-
-            self.token += 1;
-            let next = &self.tokens[self.token];
-            let TokenKind::Comment(_) = next.kind else {
-                return Some(next);
-            };
-        }
-    }
-
-    fn next_token_bounded(
-        &mut self,
-        expected_before_eof: ExpectedBeforeEof,
-    ) -> Result<&'tokens Token<'src>, Error<'src>> {
-        loop {
-            if self.token >= self.tokens.len() - 1 {
-                let previous = &self.tokens[self.token];
-                self.token = self.tokens.len();
-                return Err(Error::new(
-                    self.src,
-                    previous.col,
-                    previous.kind.len(),
-                    ErrorKind::NoMoreTokens(expected_before_eof),
-                ));
-            }
-
-            self.token += 1;
-            let next = &self.tokens[self.token];
-            let TokenKind::Comment(_) = next.kind else {
-                return Ok(next);
-            };
-        }
-    }
-
-    const fn peek_next_token(&self) -> Option<&'tokens Token<'src>> {
-        let mut current_token = self.token;
-        loop {
-            if current_token >= self.tokens.len() - 1 {
-                return None;
-            }
-
-            current_token += 1;
-            let next = &self.tokens[current_token];
-            let TokenKind::Comment(_) = next.kind else {
-                return Some(next);
-            };
-        }
-    }
-
-    // Note: this function is always called when underflowing the tokens array is nevere the case, so there is no need for bounds checking
-    const fn peek_previous_token(&self) -> &'tokens Token<'src> {
-        let mut current_token = self.token;
-        loop {
-            current_token -= 1;
-            let previous = &self.tokens[current_token];
-            let TokenKind::Comment(_) = previous.kind else {
-                return previous;
-            };
-        }
-    }
-}
-
-// parsing of nodes
-impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
     fn parse_scope(&mut self) {
         loop {
             match self.parse_single_any() {
@@ -687,6 +605,85 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                 Ok(None)
             }
             _ => self.parse_single_statement(),
+        }
+    }
+}
+
+// iteration over tokens
+impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
+    fn current_token_bounded(&self, expected: ExpectedBeforeEof) -> Result<&'tokens Token<'src>, Error<'src>> {
+        match self.tokens.get(self.token) {
+            Some(token) => Ok(token),
+            None => {
+                let previous = self.peek_previous_token();
+                Err(Error::new(self.src, previous.col, previous.kind.len(), ErrorKind::NoMoreTokens(expected)))
+            }
+        }
+    }
+
+    fn next_token(&mut self) -> Option<&'tokens Token<'src>> {
+        loop {
+            if self.token >= self.tokens.len() - 1 {
+                self.token = self.tokens.len();
+                break None;
+            }
+
+            self.token += 1;
+            let next = &self.tokens[self.token];
+            let TokenKind::Comment(_) = next.kind else {
+                return Some(next);
+            };
+        }
+    }
+
+    fn next_token_bounded(
+        &mut self,
+        expected_before_eof: ExpectedBeforeEof,
+    ) -> Result<&'tokens Token<'src>, Error<'src>> {
+        loop {
+            if self.token >= self.tokens.len() - 1 {
+                let previous = &self.tokens[self.token];
+                self.token = self.tokens.len();
+                return Err(Error::new(
+                    self.src,
+                    previous.col,
+                    previous.kind.len(),
+                    ErrorKind::NoMoreTokens(expected_before_eof),
+                ));
+            }
+
+            self.token += 1;
+            let next = &self.tokens[self.token];
+            let TokenKind::Comment(_) = next.kind else {
+                return Ok(next);
+            };
+        }
+    }
+
+    const fn peek_next_token(&self) -> Option<&'tokens Token<'src>> {
+        let mut current_token = self.token;
+        loop {
+            if current_token >= self.tokens.len() - 1 {
+                return None;
+            }
+
+            current_token += 1;
+            let next = &self.tokens[current_token];
+            let TokenKind::Comment(_) = next.kind else {
+                return Some(next);
+            };
+        }
+    }
+
+    // Note: this function is always called when underflowing the tokens array is nevere the case, so there is no need for bounds checking
+    const fn peek_previous_token(&self) -> &'tokens Token<'src> {
+        let mut current_token = self.token;
+        loop {
+            current_token -= 1;
+            let previous = &self.tokens[current_token];
+            let TokenKind::Comment(_) = previous.kind else {
+                return previous;
+            };
         }
     }
 }
