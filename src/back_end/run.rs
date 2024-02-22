@@ -1,7 +1,5 @@
-use crate::cli::logging::{CAUSE, ERROR};
+use super::{BackEndError, BackEndErrorInfo, BackEndErrorKindInfo};
 use std::{
-    borrow::Cow,
-    fmt::Display,
     io,
     path::{Path, PathBuf},
     process::Command,
@@ -14,31 +12,31 @@ impl Run {
     pub fn run(exe_path: &Path) -> Result<(), Error> {
         let exe_path = match exe_path.to_str() {
             Some(exe_path) => Path::new(".").join(exe_path),
-            None => return Err(Error::NonUtf8Path { path: exe_path.to_path_buf() }),
+            None => return Err(Error { kind: ErrorKind::NonUtf8Path { path: exe_path.to_path_buf() } }),
         };
 
         let mut executable = match Command::new(&exe_path).spawn() {
             Ok(executable) => executable,
-            Err(err) => return Err(Error::CouldNotCreateExecutableProcess { err, path: exe_path }),
+            Err(err) => return Err(Error { kind: ErrorKind::CouldNotCreateExecutableProcess { err, path: exe_path } }),
         };
 
         match executable.wait() {
             Ok(_) => Ok(()),
-            Err(err) => Err(Error::CouldNotRunExecutable { err, path: exe_path }),
+            Err(err) => Err(Error { kind: ErrorKind::CouldNotRunExecutable { err, path: exe_path } }),
         }
     }
 }
 
 #[derive(Debug)]
-pub enum Error {
+pub enum ErrorKind {
     NonUtf8Path { path: PathBuf },
     CouldNotCreateExecutableProcess { err: io::Error, path: PathBuf },
     CouldNotRunExecutable { err: io::Error, path: PathBuf },
 }
 
-impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (msg, cause): (Cow<'_, str>, Cow<'_, str>) = match self {
+impl BackEndErrorKindInfo for ErrorKind {
+    fn info(&self) -> BackEndErrorInfo {
+        let (msg, cause) = match self {
             Self::NonUtf8Path { path } => {
                 ("invalid path".into(), format!("'{path}' contains non UTF8 characters", path = path.display()).into())
             }
@@ -52,12 +50,8 @@ impl Display for Error {
             ),
         };
 
-        write!(
-            f,
-            "{ERROR}: {msg}\
-            \n{CAUSE}: {cause}"
-        )
+        BackEndErrorInfo { msg, cause }
     }
 }
 
-impl std::error::Error for Error {}
+pub type Error = BackEndError<ErrorKind>;

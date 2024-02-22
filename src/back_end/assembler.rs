@@ -1,7 +1,5 @@
-use crate::cli::logging::{CAUSE, ERROR};
+use super::{BackEndError, BackEndErrorInfo, BackEndErrorKindInfo};
 use std::{
-    borrow::Cow,
-    fmt::Display,
     io,
     path::{Path, PathBuf},
     process::Command,
@@ -12,42 +10,45 @@ pub struct Assembler;
 
 impl Assembler {
     pub fn assemble(asm_path: &Path, obj_path: &Path) -> Result<(), Error> {
-        let Some(asm_path) = asm_path.to_str() else { return Err(Error::NonUtf8Path { path: asm_path.to_path_buf() }) };
-        let Some(obj_path) = obj_path.to_str() else { return Err(Error::NonUtf8Path { path: obj_path.to_path_buf() }) };
+        let Some(asm_path) = asm_path.to_str() else {
+            return Err(Error { kind: ErrorKind::NonUtf8Path { path: asm_path.to_path_buf() } });
+        };
+
+        let Some(obj_path) = obj_path.to_str() else {
+            return Err(Error { kind: ErrorKind::NonUtf8Path { path: obj_path.to_path_buf() } });
+        };
 
         match Command::new("nasm").args(["-felf64", "-gdwarf", asm_path, "-o", obj_path]).output() {
-            Ok(nasm_out) if !nasm_out.status.success() => Err(Error::Failed { output: nasm_out.stderr }),
+            Ok(nasm_out) if !nasm_out.status.success() => {
+                Err(Error { kind: ErrorKind::Failed { output: nasm_out.stderr } })
+            }
             Ok(_) => Ok(()),
-            Err(err) => Err(Error::CouldNotCreateProcess { err }),
+            Err(err) => Err(Error { kind: ErrorKind::CouldNotCreateProcess { err } }),
         }
     }
 }
 
 #[derive(Debug)]
-pub enum Error {
+pub enum ErrorKind {
     NonUtf8Path { path: PathBuf },
     CouldNotCreateProcess { err: io::Error },
     Failed { output: Vec<u8> },
 }
 
-impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (msg, cause): (Cow<'_, str>, Cow<'_, str>) = match self {
+impl BackEndErrorKindInfo for ErrorKind {
+    fn info(&self) -> BackEndErrorInfo {
+        let (msg, cause) = match self {
             Self::NonUtf8Path { path } => {
                 ("invalid path".into(), format!("'{path}' contains non UTF8 characters", path = path.display()).into())
             }
             Self::CouldNotCreateProcess { err } => {
                 ("could not create assembler process".into(), format!("{err} ({kind})", kind = err.kind()).into())
             }
-            Self::Failed { output } => ("assembler failed".into(), String::from_utf8_lossy(output)),
+            Self::Failed { output } => ("assembler failed".into(), String::from_utf8_lossy(output).into_owned().into()),
         };
 
-        write!(
-            f,
-            "{ERROR}: {msg}\
-            \n{CAUSE}: {cause}"
-        )
+        BackEndErrorInfo { msg, cause }
     }
 }
 
-impl std::error::Error for Error {}
+pub type Error = BackEndError<ErrorKind>;

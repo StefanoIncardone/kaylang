@@ -30,7 +30,7 @@ pub struct SyntaxError<'src, Kind: SyntaxErrorKindInfo> {
     pub position: Position,
     pub len: usize,
     pub line_text: &'src str,
-    pub kind: Kind, // IDEA(stefano): split this into a msg enum and a help_msg enum
+    pub kind: Kind,
 }
 
 impl<'src, Kind: SyntaxErrorKindInfo> SyntaxError<'src, Kind> {

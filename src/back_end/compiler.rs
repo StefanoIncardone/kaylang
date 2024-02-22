@@ -1,15 +1,12 @@
-use crate::{
-    cli::logging::{CAUSE, ERROR},
-    front_end::{
-        ast::{Expression, IfStatement, LoopCondition, Node, Scope, Type, TypeOf},
-        tokenizer::{Literal, Op},
-    },
+use super::{BackEndError, BackEndErrorInfo, BackEndErrorKindInfo};
+use crate::front_end::{
+    ast::{Expression, IfStatement, LoopCondition, Node, Scope, Type, TypeOf},
+    tokenizer::{Literal, Op},
 };
 use std::{
     borrow::Cow,
-    fmt::Display,
     fs::File,
-    io::{self, BufWriter, ErrorKind, Write},
+    io::{self, BufWriter, Write},
     path::{Path, PathBuf},
 };
 
@@ -53,8 +50,12 @@ impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
             if let Some(out_path) = out_path {
                 match std::fs::create_dir_all(out_path) {
                     Ok(()) => {}
-                    Err(err) if err.kind() == ErrorKind::AlreadyExists => {}
-                    Err(err) => return Err(Error::CouldNotCreateOutputDirectory { err, path: out_path.to_path_buf() }),
+                    Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
+                    Err(err) => {
+                        return Err(Error {
+                            kind: ErrorKind::CouldNotCreateOutputDirectory { err, path: out_path.to_path_buf() },
+                        });
+                    }
                 }
 
                 asm_path = out_path.join(asm_path.file_name().unwrap());
@@ -67,7 +68,7 @@ impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
 
         let asm_file = match File::create(&asm_path) {
             Ok(file) => file,
-            Err(err) => return Err(Error::CouldNotCreateFile { err, path: asm_path }),
+            Err(err) => return Err(Error { kind: ErrorKind::CouldNotCreateFile { err, path: asm_path } }),
         };
 
         let mut this = Compiler {
@@ -634,11 +635,11 @@ section .data
 
         let mut asm_writer = BufWriter::new(asm_file);
         if let Err(err) = asm_writer.write_all(program.as_bytes()) {
-            return Err(Error::WritingAssemblyFailed { err });
+            return Err(Error { kind: ErrorKind::WritingAssemblyFailed { err } });
         }
 
         if let Err(err) = asm_writer.flush() {
-            return Err(Error::WritingAssemblyFailed { err });
+            return Err(Error { kind: ErrorKind::WritingAssemblyFailed { err } });
         }
 
         Ok((asm_path, obj_path, exe_path))
@@ -1382,16 +1383,16 @@ impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
 }
 
 #[derive(Debug)]
-pub enum Error {
+pub enum ErrorKind {
     NonUtf8Path { path: PathBuf },
     CouldNotCreateOutputDirectory { err: io::Error, path: PathBuf },
     CouldNotCreateFile { err: io::Error, path: PathBuf },
     WritingAssemblyFailed { err: io::Error },
 }
 
-impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (msg, cause): (Cow<'_, str>, Cow<'_, str>) = match self {
+impl BackEndErrorKindInfo for ErrorKind {
+    fn info(&self) -> BackEndErrorInfo {
+        let (msg, cause) = match self {
             Self::NonUtf8Path { path } => {
                 ("invalid path".into(), format!("'{path}' contains non UTF8 characters", path = path.display()).into())
             }
@@ -1408,12 +1409,8 @@ impl Display for Error {
             }
         };
 
-        write!(
-            f,
-            "{ERROR}: {msg}\
-            \n{CAUSE}: {cause}"
-        )
+        BackEndErrorInfo { msg, cause }
     }
 }
 
-impl std::error::Error for Error {}
+pub type Error = BackEndError<ErrorKind>;

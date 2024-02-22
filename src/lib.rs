@@ -1,3 +1,5 @@
+// IDEA(stefano): split error kind into kind and msg/cause/... enums
+
 pub mod back_end;
 pub mod cli;
 pub mod front_end;
