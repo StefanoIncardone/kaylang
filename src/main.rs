@@ -28,7 +28,7 @@ fn main() -> ExitCode {
     let Args { color, verbosity, run_mode } = match Args::try_from(args) {
         Ok(args) => args,
         Err(err) => {
-            eprint!("{err}");
+            eprintln!("{err}");
             return ExitCode::FAILURE;
         }
     };
