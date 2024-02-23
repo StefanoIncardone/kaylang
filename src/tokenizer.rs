@@ -353,7 +353,6 @@ impl Len for TokenKind<'_> {
 pub struct Token<'src> {
     pub(crate) kind: TokenKind<'src>,
     pub(crate) col: usize,
-    // pub(crate) len: usize,
 }
 
 #[derive(Debug)]
@@ -389,12 +388,12 @@ impl<'src> Tokenizer<'src> {
         };
 
         'tokenization: loop {
-            let token_kind_result = 'token_kind: loop {
+            let token_kind_result = 'skip_whitespace: loop {
                 this.token_start_col = this.col;
                 let next = match this.next_ascii_character() {
                     Ok(Some(ch)) => ch,
                     Ok(None) => break 'tokenization,
-                    Err(err) => break 'token_kind Err(err),
+                    Err(err) => break 'skip_whitespace Err(err),
                 };
 
                 match next {
@@ -410,7 +409,7 @@ impl<'src> Tokenizer<'src> {
                         this.line_idx += 1;
                         this.line = &this.src.lines[this.line_idx];
                     }
-                    ch => break 'token_kind this.next_token(ch),
+                    ch => break 'skip_whitespace this.next_token(ch),
                 }
             };
 
@@ -540,8 +539,8 @@ impl<'src> Tokenizer<'src> {
                             b'0' => Ok(b'\0'),
                             unrecognized => Err(Error::new(
                                 self.src,
-                                self.col,
-                                1,
+                                self.col - 2,
+                                2,
                                 ErrorKind::UnrecognizedStringEscapeCharacter(unrecognized as char),
                             )),
                         },
@@ -877,7 +876,7 @@ impl<'src> Tokenizer<'src> {
             Some(b'\n') | None => Err(Error::new(
                 self.src,
                 self.token_start_col,
-                self.col - self.token_start_col,
+                self.col - self.token_start_col - 1,
                 ErrorKind::UnclosedCharacterLiteral,
             )),
             Some(next) => Ok(next),
@@ -892,7 +891,7 @@ impl<'src> Tokenizer<'src> {
             Some(b'\n') | None => Err(Error::new(
                 self.src,
                 self.token_start_col,
-                self.col - self.token_start_col,
+                self.col - self.token_start_col - 1,
                 ErrorKind::UnclosedStringLiteral,
             )),
             Some(next) => Ok(next),
