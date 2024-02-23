@@ -484,7 +484,6 @@ impl<'src> Tokenizer<'src> {
                     Ok(identifier)
                 }
             }
-            // TODO(stefano): implement negative numbers
             b'0'..=b'9' => {
                 let mut contains_non_ascii = false;
                 loop {

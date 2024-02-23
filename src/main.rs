@@ -188,7 +188,6 @@ mod tests {
 
             if let Some(extension) = src_path.extension() {
                 if extension == "kay" {
-                    // TODO(stefano): run the programs to check for any errors
                     let compilation_step = Step { start_time: Instant::now(), verbosity };
 
                     Step::info(&CHECKING, &src_path, verbosity);
