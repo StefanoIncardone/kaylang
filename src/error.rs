@@ -1,3 +1,5 @@
+// IDEA(stefano): split error kind enums/structs into kind and msg/cause/... enums
+
 use crate::{
     color::{Bg, Colored, Fg, Flag},
     logging::{AT, BAR, CAUSE, ERROR},
@@ -9,22 +11,24 @@ use std::{
     path::Path,
 };
 
+pub trait ErrorInfo {
+    type Info;
+
+    fn info(&self) -> Self::Info;
+}
+
 #[derive(Debug)]
 pub struct BackEndErrorInfo {
     pub msg: Cow<'static, str>,
     pub cause: Cow<'static, str>,
 }
 
-pub trait BackEndErrorKindInfo {
-    fn info(&self) -> BackEndErrorInfo;
-}
-
 #[derive(Debug)]
-pub struct BackEndError<Kind: BackEndErrorKindInfo> {
+pub struct BackEndError<Kind: ErrorInfo> {
     pub kind: Kind,
 }
 
-impl<Kind: BackEndErrorKindInfo> Display for BackEndError<Kind> {
+impl<Kind: ErrorInfo<Info = BackEndErrorInfo>> Display for BackEndError<Kind> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let BackEndErrorInfo { msg, cause } = self.kind.info();
 
@@ -36,7 +40,52 @@ impl<Kind: BackEndErrorKindInfo> Display for BackEndError<Kind> {
     }
 }
 
-impl<Kind: Debug + BackEndErrorKindInfo> std::error::Error for BackEndError<Kind> {}
+impl<Kind: Debug + ErrorInfo<Info = BackEndErrorInfo>> std::error::Error for BackEndError<Kind> {}
+
+#[derive(Debug)]
+pub struct SrcFileErrorInfo {
+    pub msg: Cow<'static, str>,
+    pub cause: Cow<'static, str>,
+}
+
+#[derive(Debug)]
+pub struct SrcFileError<Kind: ErrorInfo> {
+    pub kind: Kind,
+}
+
+impl<Kind: ErrorInfo<Info = SrcFileErrorInfo>> Display for SrcFileError<Kind> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let SrcFileErrorInfo { msg, cause } = self.kind.info();
+
+        write!(
+            f,
+            "{ERROR}: {msg}\
+            \n{CAUSE}: {cause}"
+        )
+    }
+}
+
+impl<Kind: Debug + ErrorInfo<Info = SrcFileErrorInfo>> std::error::Error for SrcFileError<Kind> {}
+
+#[derive(Debug)]
+pub struct CliErrorInfo {
+    pub msg: Cow<'static, str>,
+}
+
+#[derive(Debug)]
+pub struct CliError<Kind: ErrorInfo> {
+    pub kind: Kind,
+}
+
+impl<Kind: ErrorInfo<Info = CliErrorInfo>> Display for CliError<Kind> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let CliErrorInfo { msg } = self.kind.info();
+
+        write!(f, "{ERROR}: {msg}")
+    }
+}
+
+impl<Kind: Debug + ErrorInfo<Info = CliErrorInfo>> std::error::Error for CliError<Kind> {}
 
 #[derive(Debug)]
 pub struct SyntaxErrorInfo {
@@ -44,12 +93,8 @@ pub struct SyntaxErrorInfo {
     pub help_msg: Cow<'static, str>,
 }
 
-pub trait SyntaxErrorKindInfo {
-    fn info(&self) -> SyntaxErrorInfo;
-}
-
 #[derive(Debug)]
-pub struct SyntaxError<'src, Kind: SyntaxErrorKindInfo> {
+pub struct SyntaxError<'src, Kind: ErrorInfo> {
     pub path: &'src Path,
     pub position: Position,
     pub len: usize,
@@ -57,7 +102,7 @@ pub struct SyntaxError<'src, Kind: SyntaxErrorKindInfo> {
     pub kind: Kind,
 }
 
-impl<'src, Kind: SyntaxErrorKindInfo> SyntaxError<'src, Kind> {
+impl<'src, Kind: ErrorInfo> SyntaxError<'src, Kind> {
     pub(crate) fn new(src: &'src SrcFile, col: usize, len: usize, kind: Kind) -> Self {
         let position = src.position(col);
         let line = &src.lines[position.line - 1];
@@ -66,7 +111,7 @@ impl<'src, Kind: SyntaxErrorKindInfo> SyntaxError<'src, Kind> {
     }
 }
 
-impl<Kind: SyntaxErrorKindInfo> Display for SyntaxError<'_, Kind> {
+impl<Kind: ErrorInfo<Info = SyntaxErrorInfo>> Display for SyntaxError<'_, Kind> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let SyntaxErrorInfo { msg, help_msg } = self.kind.info();
 
@@ -99,4 +144,4 @@ impl<Kind: SyntaxErrorKindInfo> Display for SyntaxError<'_, Kind> {
     }
 }
 
-impl<Kind: Debug + SyntaxErrorKindInfo> std::error::Error for SyntaxError<'_, Kind> {}
+impl<Kind: Debug + ErrorInfo<Info = SyntaxErrorInfo>> std::error::Error for SyntaxError<'_, Kind> {}

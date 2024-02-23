@@ -1,4 +1,4 @@
-use crate::error::{BackEndError, BackEndErrorInfo, BackEndErrorKindInfo};
+use crate::error::{BackEndError, BackEndErrorInfo, ErrorInfo};
 use std::{
     io,
     path::{Path, PathBuf},
@@ -33,8 +33,10 @@ pub enum ErrorKind {
     Failed { output: Vec<u8> },
 }
 
-impl BackEndErrorKindInfo for ErrorKind {
-    fn info(&self) -> BackEndErrorInfo {
+impl ErrorInfo for ErrorKind {
+    type Info = BackEndErrorInfo;
+
+    fn info(&self) -> Self::Info {
         let (msg, cause) = match self {
             Self::NonUtf8Path { path } => {
                 ("invalid path".into(), format!("'{path}' contains non UTF8 characters", path = path.display()).into())
@@ -45,7 +47,7 @@ impl BackEndErrorKindInfo for ErrorKind {
             Self::Failed { output } => ("linker failed".into(), String::from_utf8_lossy(output).into_owned().into()),
         };
 
-        BackEndErrorInfo { msg, cause }
+        Self::Info { msg, cause }
     }
 }
 

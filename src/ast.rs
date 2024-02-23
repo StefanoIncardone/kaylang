@@ -1,5 +1,7 @@
+use crate::error::ErrorInfo;
+
 use super::{
-    error::{SyntaxError, SyntaxErrorInfo, SyntaxErrorKindInfo},
+    error::{SyntaxError, SyntaxErrorInfo},
     src_file::{Position, SrcFile},
     tokenizer::{BracketKind, Len, Literal, Mutability, Op, Token, TokenKind},
 };
@@ -17,6 +19,8 @@ pub enum Type {
     Char,
     Bool,
     Str,
+
+    // TODO(stefano): enforce a max length
     Array(usize, Box<Type>),
 }
 
@@ -1753,8 +1757,10 @@ pub enum ErrorKind {
     ExpectedDoOrBlockAfterLoopStatement,
 }
 
-impl SyntaxErrorKindInfo for ErrorKind {
-    fn info(&self) -> SyntaxErrorInfo {
+impl ErrorInfo for ErrorKind {
+    type Info = SyntaxErrorInfo;
+
+    fn info(&self) -> Self::Info {
         let (msg, help_msg) = match &self {
             Self::NoMoreTokens(kind) => (kind.to_string().into(), "no more tokens left after here".into()),
             Self::StrayElseBlock => ("invalid if statement".into(), "stray else block".into()),
@@ -1884,7 +1890,7 @@ impl SyntaxErrorKindInfo for ErrorKind {
             }
         };
 
-        SyntaxErrorInfo { msg, help_msg }
+        Self::Info { msg, help_msg }
     }
 }
 

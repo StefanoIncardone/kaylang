@@ -1,6 +1,6 @@
 use crate::{
     ast::{Expression, IfStatement, LoopCondition, Node, Scope, Type, TypeOf},
-    error::{BackEndError, BackEndErrorInfo, BackEndErrorKindInfo},
+    error::{BackEndError, BackEndErrorInfo, ErrorInfo},
     tokenizer::{Literal, Op},
 };
 use std::{
@@ -1391,8 +1391,10 @@ pub enum ErrorKind {
     WritingAssemblyFailed { err: io::Error },
 }
 
-impl BackEndErrorKindInfo for ErrorKind {
-    fn info(&self) -> BackEndErrorInfo {
+impl ErrorInfo for ErrorKind {
+    type Info = BackEndErrorInfo;
+
+    fn info(&self) -> Self::Info {
         let (msg, cause) = match self {
             Self::NonUtf8Path { path } => {
                 ("invalid path".into(), format!("'{path}' contains non UTF8 characters", path = path.display()).into())
@@ -1410,7 +1412,7 @@ impl BackEndErrorKindInfo for ErrorKind {
             }
         };
 
-        BackEndErrorInfo { msg, cause }
+        Self::Info { msg, cause }
     }
 }
 

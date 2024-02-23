@@ -1,4 +1,4 @@
-use crate::error::{BackEndError, BackEndErrorInfo, BackEndErrorKindInfo};
+use crate::error::{BackEndError, BackEndErrorInfo, ErrorInfo};
 use std::{
     io,
     path::{Path, PathBuf},
@@ -34,8 +34,10 @@ pub enum ErrorKind {
     CouldNotRunExecutable { err: io::Error, path: PathBuf },
 }
 
-impl BackEndErrorKindInfo for ErrorKind {
-    fn info(&self) -> BackEndErrorInfo {
+impl ErrorInfo for ErrorKind {
+    type Info = BackEndErrorInfo;
+
+    fn info(&self) -> Self::Info {
         let (msg, cause) = match self {
             Self::NonUtf8Path { path } => {
                 ("invalid path".into(), format!("'{path}' contains non UTF8 characters", path = path.display()).into())
@@ -50,7 +52,7 @@ impl BackEndErrorKindInfo for ErrorKind {
             ),
         };
 
-        BackEndErrorInfo { msg, cause }
+        Self::Info { msg, cause }
     }
 }
 

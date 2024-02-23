@@ -1,5 +1,5 @@
 use crate::{
-    error::{SyntaxError, SyntaxErrorInfo, SyntaxErrorKindInfo},
+    error::{ErrorInfo, SyntaxError, SyntaxErrorInfo},
     src_file::{Line, SrcFile},
 };
 use std::{
@@ -922,8 +922,10 @@ pub enum ErrorKind {
     UnrecognizedCharacter(char),
 }
 
-impl SyntaxErrorKindInfo for ErrorKind {
-    fn info(&self) -> SyntaxErrorInfo {
+impl ErrorInfo for ErrorKind {
+    type Info = SyntaxErrorInfo;
+
+    fn info(&self) -> Self::Info {
         let (msg, help_msg) = match &self {
             Self::UnclosedBracket(bracket) => (format!("unclosed '{bracket}' bracket").into(), "was not closed".into()),
             Self::NonAsciiCharacter(ch) => {
@@ -970,7 +972,7 @@ impl SyntaxErrorKindInfo for ErrorKind {
             Self::UnrecognizedCharacter(ch) => (format!("unrecognized character '{ch}'").into(), "unrecognized".into()),
         };
 
-        SyntaxErrorInfo { msg, help_msg }
+        Self::Info { msg, help_msg }
     }
 }
 

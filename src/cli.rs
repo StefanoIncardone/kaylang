@@ -1,5 +1,8 @@
-use crate::{logging::ERROR, Color, RunMode, Verbosity};
-use std::{borrow::Cow, fmt::Display, path::PathBuf};
+use crate::{
+    error::{CliError, CliErrorInfo, ErrorInfo},
+    Color, RunMode, Verbosity,
+};
+use std::path::PathBuf;
 
 #[derive(Debug, Default, Clone)]
 pub struct Args {
@@ -23,18 +26,18 @@ impl TryFrom<Vec<String>> for Args {
         while let Some(arg) = args.next() {
             if arg == "-c" || arg == "--color" {
                 if let Some(_mode) = color {
-                    return Err(Error::ColorModeAlreadySelected);
+                    return Err(Error { kind: ErrorKind::ColorModeAlreadySelected });
                 }
 
                 let Some(mode) = args.next() else {
-                    return Err(Error::MissingColorMode);
+                    return Err(Error { kind: ErrorKind::MissingColorMode });
                 };
 
                 color = match mode.as_str() {
                     "auto" => Some(Color::Auto),
                     "always" => Some(Color::Always),
                     "never" => Some(Color::Never),
-                    _ => return Err(Error::UnrecognizedColorMode { unrecognized: mode.clone() }),
+                    _ => return Err(Error { kind: ErrorKind::UnrecognizedColorMode { unrecognized: mode.clone() } }),
                 };
             }
         }
@@ -52,7 +55,7 @@ impl TryFrom<Vec<String>> for Args {
             match arg.as_str() {
                 "-q" | "--quiet" | "-V" | "--verbose" => {
                     if let Some(_mode) = verbosity {
-                        return Err(Error::VerbosityModeAlreadySelected);
+                        return Err(Error { kind: ErrorKind::VerbosityModeAlreadySelected });
                     }
 
                     verbosity = match arg.as_str() {
@@ -62,23 +65,29 @@ impl TryFrom<Vec<String>> for Args {
                     };
                 }
                 "-h" | "--help" => match run_mode {
-                    Some(RunMode::Help) => return Err(Error::HelpCommandAlreadySelected),
-                    Some(RunMode::Version) => return Err(Error::HelpAndVersionCommandSelected),
+                    Some(RunMode::Help) => return Err(Error { kind: ErrorKind::HelpCommandAlreadySelected }),
+                    Some(RunMode::Version) => return Err(Error { kind: ErrorKind::HelpAndVersionCommandSelected }),
                     _ => run_mode = Some(RunMode::Help),
                 },
                 "-v" | "--version" => match run_mode {
-                    Some(RunMode::Version) => return Err(Error::VersionCommandAlreadySelected),
-                    Some(RunMode::Help) => return Err(Error::HelpAndVersionCommandSelected),
+                    Some(RunMode::Version) => return Err(Error { kind: ErrorKind::VersionCommandAlreadySelected }),
+                    Some(RunMode::Help) => return Err(Error { kind: ErrorKind::HelpAndVersionCommandSelected }),
                     _ => run_mode = Some(RunMode::Version),
                 },
                 run_mode_str @ ("check" | "compile" | "run") => {
                     if let Some(RunMode::Check { .. } | RunMode::Compile { .. } | RunMode::Run { .. }) = run_mode {
-                        return Err(Error::RunModeAlreadySelected { mode: run_mode_str.to_string() });
+                        return Err(Error {
+                            kind: ErrorKind::RunModeAlreadySelected { mode: run_mode_str.to_string() },
+                        });
                     }
 
                     let src_path: PathBuf = match args.next() {
                         Some(path) => path.into(),
-                        None => return Err(Error::MissingSourceFilePathForRunMode { mode: run_mode_str.to_string() }),
+                        None => {
+                            return Err(Error {
+                                kind: ErrorKind::MissingSourceFilePathForRunMode { mode: run_mode_str.to_string() },
+                            })
+                        }
                     };
 
                     let mode = match arg.as_str() {
@@ -93,8 +102,10 @@ impl TryFrom<Vec<String>> for Args {
                                     out = match args.next() {
                                         Some(path) => Some(path.into()),
                                         None => {
-                                            return Err(Error::MissingOutputFolderPathForRunMode {
-                                                mode: run_mode_str.to_string(),
+                                            return Err(Error {
+                                                kind: ErrorKind::MissingOutputFolderPathForRunMode {
+                                                    mode: run_mode_str.to_string(),
+                                                },
                                             })
                                         }
                                     };
@@ -119,15 +130,17 @@ impl TryFrom<Vec<String>> for Args {
                 }
                 "-o" | "--output" => {
                     let Some(_) = args.next() else {
-                        return Err(Error::MissingOutputFolderPath);
+                        return Err(Error { kind: ErrorKind::MissingOutputFolderPath });
                     };
 
-                    return Err(Error::StrayOutputFolderPath);
+                    return Err(Error { kind: ErrorKind::StrayOutputFolderPath });
                 }
                 "-c" | "--color" => {
                     let _ = args.next();
                 }
-                unrecognized => return Err(Error::UnrecognizedFlag { flag: unrecognized.to_string() }),
+                unrecognized => {
+                    return Err(Error { kind: ErrorKind::UnrecognizedFlag { flag: unrecognized.to_string() } })
+                }
             }
         }
 
@@ -144,7 +157,7 @@ impl TryFrom<std::env::Args> for Args {
 }
 
 #[derive(Debug)]
-pub enum Error {
+pub enum ErrorKind {
     ColorModeAlreadySelected,
     MissingColorMode,
     UnrecognizedColorMode { unrecognized: String },
@@ -164,9 +177,11 @@ pub enum Error {
     UnrecognizedFlag { flag: String },
 }
 
-impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let msg: Cow<'_, str> = match self {
+impl ErrorInfo for ErrorKind {
+    type Info = CliErrorInfo;
+
+    fn info(&self) -> Self::Info {
+        let msg = match self {
             Self::ColorModeAlreadySelected => "color mode selected more than once".into(),
             Self::MissingColorMode => "missing color mode after".into(),
             Self::UnrecognizedColorMode { unrecognized } => format!("unrecognized color mode '{unrecognized}'").into(),
@@ -194,8 +209,8 @@ impl Display for Error {
             Self::UnrecognizedFlag { flag } => format!("unrecognized flag '{flag}'").into(),
         };
 
-        write!(f, "{ERROR}: {msg}")
+        Self::Info { msg }
     }
 }
 
-impl std::error::Error for Error {}
+pub type Error = CliError<ErrorKind>;

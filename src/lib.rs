@@ -1,5 +1,3 @@
-// IDEA(stefano): split error kind into kind and msg/cause/... enums
-
 pub mod assembler;
 pub mod ast;
 pub mod cli;

@@ -1,7 +1,5 @@
-use crate::logging::{CAUSE, ERROR};
+use crate::error::{ErrorInfo, SrcFileError, SrcFileErrorInfo};
 use std::{
-    borrow::Cow,
-    fmt::Display,
     fs::File,
     io::{self, BufRead, BufReader},
     path::{Path, PathBuf},
@@ -35,13 +33,13 @@ impl SrcFile {
 
         let file = match File::open(&path) {
             Ok(f) => f,
-            Err(err) => return Err(Error::CouldNotOpen { err, path }),
+            Err(err) => return Err(Error { kind: ErrorKind::CouldNotOpen { err, path } }),
         };
 
         let file_len = match file.metadata() {
             Ok(metadata) if metadata.is_file() => metadata.len() as usize,
-            Ok(_) => return Err(Error::ExpectedFile { path }),
-            Err(err) => return Err(Error::CouldNotReadMetadata { err, path }),
+            Ok(_) => return Err(Error { kind: ErrorKind::ExpectedFile { path } }),
+            Err(err) => return Err(Error { kind: ErrorKind::CouldNotReadMetadata { err, path } }),
         };
 
         // plus one to account for a possible phantom newline at the end
@@ -54,7 +52,7 @@ impl SrcFile {
             let mut chars_read = match src.read_line(&mut code) {
                 Ok(0) => break,
                 Ok(read) => read,
-                Err(err) => return Err(Error::CouldNotReadContents { err, path }),
+                Err(err) => return Err(Error { kind: ErrorKind::CouldNotReadContents { err, path } }),
             };
 
             let mut end = code.len() - 1;
@@ -101,16 +99,18 @@ impl SrcFile {
 }
 
 #[derive(Debug)]
-pub enum Error {
+pub enum ErrorKind {
     CouldNotOpen { err: io::Error, path: PathBuf },
     ExpectedFile { path: PathBuf },
     CouldNotReadMetadata { err: io::Error, path: PathBuf },
     CouldNotReadContents { err: io::Error, path: PathBuf },
 }
 
-impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (msg, cause): (Cow<'_, str>, Cow<'_, str>) = match self {
+impl ErrorInfo for ErrorKind {
+    type Info = SrcFileErrorInfo;
+
+    fn info(&self) -> Self::Info {
+        let (msg, cause) = match self {
             Self::CouldNotOpen { err, path } => (
                 format!("could not open '{path}'", path = path.display()).into(),
                 format!("{err} ({kind})", kind = err.kind()).into(),
@@ -129,12 +129,8 @@ impl Display for Error {
             ),
         };
 
-        write!(
-            f,
-            "{ERROR}: {msg}\
-            \n{CAUSE}: {cause}",
-        )
+        Self::Info { msg, cause }
     }
 }
 
-impl std::error::Error for Error {}
+pub type Error = SrcFileError<ErrorKind>;
