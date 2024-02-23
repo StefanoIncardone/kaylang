@@ -1,13 +1,16 @@
 use kaylang::{
-    back_end::{assembler::Assembler, compiler::Compiler, linker::Linker, run::Run},
-    cli::{
-        logging::{
-            Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, LEXING, LINKER,
-            LOADING_SOURCE, RUNNING, SUBSTEP_DONE,
-        },
-        Args,
+    assembler::Assembler,
+    ast::Ast,
+    cli::Args,
+    compiler::Compiler,
+    linker::Linker,
+    logging::{
+        Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, LEXING, LINKER, LOADING_SOURCE,
+        RUNNING, SUBSTEP_DONE,
     },
-    front_end::{ast::Ast, src_file::SrcFile, tokenizer::Tokenizer},
+    run::Run,
+    src_file::SrcFile,
+    tokenizer::Tokenizer,
     Help, RunMode, Version,
 };
 use std::{env, process::ExitCode, time::Instant};
@@ -163,8 +166,10 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use kaylang::{
-        cli::logging::{Step, SubStep, AST_BUILDING, CHECKING, LEXING, LOADING_SOURCE, SUBSTEP_DONE},
-        front_end::{ast::Ast, src_file::SrcFile, tokenizer::Tokenizer},
+        ast::Ast,
+        logging::{Step, SubStep, AST_BUILDING, CHECKING, LEXING, LOADING_SOURCE, SUBSTEP_DONE},
+        src_file::SrcFile,
+        tokenizer::Tokenizer,
         Color, Verbosity,
     };
     use std::{io, path::Path, process::ExitCode, time::Instant};

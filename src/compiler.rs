@@ -1,6 +1,6 @@
-use super::{BackEndError, BackEndErrorInfo, BackEndErrorKindInfo};
-use crate::front_end::{
+use crate::{
     ast::{Expression, IfStatement, LoopCondition, Node, Scope, Type, TypeOf},
+    error::{BackEndError, BackEndErrorInfo, BackEndErrorKindInfo},
     tokenizer::{Literal, Op},
 };
 use std::{

@@ -1,6 +1,6 @@
-use super::{
+use crate::{
+    error::{SyntaxError, SyntaxErrorInfo, SyntaxErrorKindInfo},
     src_file::{Line, SrcFile},
-    SyntaxError, SyntaxErrorInfo, SyntaxErrorKindInfo,
 };
 use std::{
     fmt::Display,

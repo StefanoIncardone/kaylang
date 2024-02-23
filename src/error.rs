@@ -1,6 +1,7 @@
-use crate::cli::{
+use crate::{
     color::{Bg, Colored, Fg, Flag},
-    logging::{AT, BAR, ERROR},
+    logging::{AT, BAR, CAUSE, ERROR},
+    src_file::{Position, SrcFile},
 };
 use std::{
     borrow::Cow,
@@ -8,11 +9,34 @@ use std::{
     path::Path,
 };
 
-use self::src_file::{Position, SrcFile};
+#[derive(Debug)]
+pub struct BackEndErrorInfo {
+    pub msg: Cow<'static, str>,
+    pub cause: Cow<'static, str>,
+}
 
-pub mod ast;
-pub mod src_file;
-pub mod tokenizer;
+pub trait BackEndErrorKindInfo {
+    fn info(&self) -> BackEndErrorInfo;
+}
+
+#[derive(Debug)]
+pub struct BackEndError<Kind: BackEndErrorKindInfo> {
+    pub kind: Kind,
+}
+
+impl<Kind: BackEndErrorKindInfo> Display for BackEndError<Kind> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let BackEndErrorInfo { msg, cause } = self.kind.info();
+
+        write!(
+            f,
+            "{ERROR}: {msg}\
+            \n{CAUSE}: {cause}"
+        )
+    }
+}
+
+impl<Kind: Debug + BackEndErrorKindInfo> std::error::Error for BackEndError<Kind> {}
 
 #[derive(Debug)]
 pub struct SyntaxErrorInfo {

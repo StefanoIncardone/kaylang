@@ -1,10 +1,18 @@
 // IDEA(stefano): split error kind into kind and msg/cause/... enums
 
-pub mod back_end;
+pub mod assembler;
+pub mod ast;
 pub mod cli;
-pub mod front_end;
+pub mod color;
+pub mod compiler;
+pub mod error;
+pub mod linker;
+pub mod logging;
+pub mod run;
+pub mod src_file;
+pub mod tokenizer;
 
-use cli::color::{Bg, ColoredStr, Fg, Flag, Flags};
+use color::{Bg, ColoredStr, Fg, Flag, Flags};
 use std::{fmt::Display, path::PathBuf};
 
 // help and version messages

@@ -1,9 +1,5 @@
-use self::logging::ERROR;
-use crate::{Color, RunMode, Verbosity};
+use crate::{logging::ERROR, Color, RunMode, Verbosity};
 use std::{borrow::Cow, fmt::Display, path::PathBuf};
-
-pub mod color;
-pub mod logging;
 
 #[derive(Debug, Default, Clone)]
 pub struct Args {

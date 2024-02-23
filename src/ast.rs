@@ -1,7 +1,7 @@
 use super::{
+    error::{SyntaxError, SyntaxErrorInfo, SyntaxErrorKindInfo},
     src_file::{Position, SrcFile},
     tokenizer::{BracketKind, Len, Literal, Mutability, Op, Token, TokenKind},
-    SyntaxError, SyntaxErrorInfo, SyntaxErrorKindInfo,
 };
 use std::fmt::{Debug, Display};
 
@@ -1250,10 +1250,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
                                             kind: TokenKind::Bracket(BracketKind::CloseSquare),
                                             ..
                                         },
-                                    ) => Ok(Some((
-                                        close_square_bracket_token,
-                                        Type::Array(len.try_into().unwrap(), array_type),
-                                    ))),
+                                    ) => Ok(Some((close_square_bracket_token, Type::Array(len as usize, array_type)))),
                                     Some(_) | None => Err(Error::new(
                                         self.src,
                                         open_square_bracket_token.col,

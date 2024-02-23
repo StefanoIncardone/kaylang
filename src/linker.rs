@@ -1,4 +1,4 @@
-use super::{BackEndError, BackEndErrorInfo, BackEndErrorKindInfo};
+use crate::error::{BackEndError, BackEndErrorInfo, BackEndErrorKindInfo};
 use std::{
     io,
     path::{Path, PathBuf},
@@ -6,22 +6,20 @@ use std::{
 };
 
 #[derive(Clone, Copy, Debug)]
-pub struct Assembler;
+pub struct Linker;
 
-impl Assembler {
-    pub fn assemble(asm_path: &Path, obj_path: &Path) -> Result<(), Error> {
-        let Some(asm_path) = asm_path.to_str() else {
-            return Err(Error { kind: ErrorKind::NonUtf8Path { path: asm_path.to_path_buf() } });
-        };
-
+impl Linker {
+    pub fn link(obj_path: &Path, exe_path: &Path) -> Result<(), Error> {
         let Some(obj_path) = obj_path.to_str() else {
             return Err(Error { kind: ErrorKind::NonUtf8Path { path: obj_path.to_path_buf() } });
         };
 
-        match Command::new("nasm").args(["-felf64", "-gdwarf", asm_path, "-o", obj_path]).output() {
-            Ok(nasm_out) if !nasm_out.status.success() => {
-                Err(Error { kind: ErrorKind::Failed { output: nasm_out.stderr } })
-            }
+        let Some(exe_path) = exe_path.to_str() else {
+            return Err(Error { kind: ErrorKind::NonUtf8Path { path: exe_path.to_path_buf() } });
+        };
+
+        match Command::new("ld").args([obj_path, "-o", exe_path]).output() {
+            Ok(ld_out) if !ld_out.status.success() => Err(Error { kind: ErrorKind::Failed { output: ld_out.stderr } }),
             Ok(_) => Ok(()),
             Err(err) => Err(Error { kind: ErrorKind::CouldNotCreateProcess { err } }),
         }
@@ -42,9 +40,9 @@ impl BackEndErrorKindInfo for ErrorKind {
                 ("invalid path".into(), format!("'{path}' contains non UTF8 characters", path = path.display()).into())
             }
             Self::CouldNotCreateProcess { err } => {
-                ("could not create assembler process".into(), format!("{err} ({kind})", kind = err.kind()).into())
+                ("could not create linker process".into(), format!("{err} ({kind})", kind = err.kind()).into())
             }
-            Self::Failed { output } => ("assembler failed".into(), String::from_utf8_lossy(output).into_owned().into()),
+            Self::Failed { output } => ("linker failed".into(), String::from_utf8_lossy(output).into_owned().into()),
         };
 
         BackEndErrorInfo { msg, cause }

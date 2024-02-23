@@ -1,4 +1,4 @@
-use crate::cli::logging::{CAUSE, ERROR};
+use crate::logging::{CAUSE, ERROR};
 use std::{
     borrow::Cow,
     fmt::Display,
