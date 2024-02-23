@@ -50,112 +50,100 @@ fn main() -> ExitCode {
             Step::info(&CHECKING, src_path, verbosity);
             let checking_sub_step = SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
 
-            let src = {
-                let loading_source_sub_step = SubStep { step: &LOADING_SOURCE, start_time: Instant::now(), verbosity };
-                let source_loading_result = SrcFile::load(src_path);
-                loading_source_sub_step.done();
-                match source_loading_result {
-                    Ok(src) => src,
-                    Err(err) => {
-                        eprintln!("{err}");
-                        return ExitCode::FAILURE;
-                    }
+            let loading_source_sub_step = SubStep { step: &LOADING_SOURCE, start_time: Instant::now(), verbosity };
+            let source_loading_result = SrcFile::load(src_path);
+            loading_source_sub_step.done();
+            let src = match source_loading_result {
+                Ok(src) => src,
+                Err(err) => {
+                    eprintln!("{err}");
+                    return ExitCode::FAILURE;
                 }
             };
 
-            let tokens = {
-                let lexing_sub_step = SubStep { step: &LEXING, start_time: Instant::now(), verbosity };
-                let lexer_result = Tokenizer::tokenize(&src);
-                lexing_sub_step.done();
-                match lexer_result {
-                    Ok(tokens) => tokens,
-                    Err(errors) => {
-                        eprintln!();
-                        for error in errors {
-                            eprintln!("{error}\n");
-                        }
-                        return ExitCode::FAILURE;
+            let lexing_sub_step = SubStep { step: &LEXING, start_time: Instant::now(), verbosity };
+            let lexer_result = Tokenizer::tokenize(&src);
+            lexing_sub_step.done();
+            let tokens = match lexer_result {
+                Ok(tokens) => tokens,
+                Err(errors) => {
+                    eprintln!();
+                    for error in errors {
+                        eprintln!("{error}\n");
                     }
+                    return ExitCode::FAILURE;
                 }
             };
 
-            let ast = {
-                let ast_building_sub_step = SubStep { step: &AST_BUILDING, start_time: Instant::now(), verbosity };
-                let ast_building_result = Ast::build(&src, &tokens);
-                ast_building_sub_step.done();
-                match ast_building_result {
-                    Ok(ast) => ast,
-                    Err(errors) => {
-                        eprintln!();
-                        for error in errors {
-                            eprintln!("{error}\n");
-                        }
-                        return ExitCode::FAILURE;
+            let ast_building_sub_step = SubStep { step: &AST_BUILDING, start_time: Instant::now(), verbosity };
+            let ast_building_result = Ast::build(&src, &tokens);
+            ast_building_sub_step.done();
+            let ast = match ast_building_result {
+                Ok(ast) => ast,
+                Err(errors) => {
+                    eprintln!();
+                    for error in errors {
+                        eprintln!("{error}\n");
                     }
+                    return ExitCode::FAILURE;
                 }
             };
 
             checking_sub_step.done();
 
-            if let RunMode::Compile { out_path, .. } | RunMode::Run { out_path, .. } = &run_mode {
-                Step::info(&COMPILING, src_path, verbosity);
-                let compilation_sub_step = SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
-
-                let (asm_path, obj_path, exe_path) = {
-                    let asm_generation_sub_step =
-                        SubStep { step: &ASM_GENERATION, start_time: Instant::now(), verbosity };
-                    let asm_generation_result = Compiler::compile(src_path, out_path.as_deref(), &ast);
-                    asm_generation_sub_step.done();
-                    match asm_generation_result {
-                        Ok(artifacts_path) => artifacts_path,
-                        Err(err) => {
-                            eprintln!("{err}");
-                            return ExitCode::FAILURE;
-                        }
-                    }
-                };
-
-                {
-                    let assembler_sub_step = SubStep { step: &ASSEMBLER, start_time: Instant::now(), verbosity };
-                    let assembler_result = Assembler::assemble(&asm_path, &obj_path);
-                    assembler_sub_step.done();
-                    match assembler_result {
-                        Ok(()) => {}
-                        Err(err) => {
-                            eprintln!("{err}");
-                            return ExitCode::FAILURE;
-                        }
-                    }
-                }
-
-                {
-                    let linker_sub_step = SubStep { step: &LINKER, start_time: Instant::now(), verbosity };
-                    let linker_result = Linker::link(&obj_path, &exe_path);
-                    linker_sub_step.done();
-                    match linker_result {
-                        Ok(()) => {}
-                        Err(err) => {
-                            eprintln!("{err}");
-                            return ExitCode::FAILURE;
-                        }
-                    }
-                }
-
-                compilation_sub_step.done();
+            let (RunMode::Compile { out_path, .. } | RunMode::Run { out_path, .. }) = &run_mode else {
                 execution_step.done();
+                return ExitCode::SUCCESS;
+            };
 
-                if let RunMode::Run { .. } = run_mode {
-                    Step::info(&RUNNING, &exe_path, verbosity);
-                    match Run::run(&exe_path) {
-                        Ok(()) => {}
-                        Err(err) => {
-                            eprintln!("{err}");
-                            return ExitCode::FAILURE;
-                        }
+            Step::info(&COMPILING, src_path, verbosity);
+            let compilation_sub_step = SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
+
+            let asm_generation_sub_step = SubStep { step: &ASM_GENERATION, start_time: Instant::now(), verbosity };
+            let asm_generation_result = Compiler::compile(src_path, out_path.as_deref(), &ast);
+            asm_generation_sub_step.done();
+            let (asm_path, obj_path, exe_path) = match asm_generation_result {
+                Ok(artifacts_path) => artifacts_path,
+                Err(err) => {
+                    eprintln!("{err}");
+                    return ExitCode::FAILURE;
+                }
+            };
+
+            let assembler_sub_step = SubStep { step: &ASSEMBLER, start_time: Instant::now(), verbosity };
+            let assembler_result = Assembler::assemble(&asm_path, &obj_path);
+            assembler_sub_step.done();
+            match assembler_result {
+                Ok(()) => {}
+                Err(err) => {
+                    eprintln!("{err}");
+                    return ExitCode::FAILURE;
+                }
+            }
+
+            let linker_sub_step = SubStep { step: &LINKER, start_time: Instant::now(), verbosity };
+            let linker_result = Linker::link(&obj_path, &exe_path);
+            linker_sub_step.done();
+            match linker_result {
+                Ok(()) => {}
+                Err(err) => {
+                    eprintln!("{err}");
+                    return ExitCode::FAILURE;
+                }
+            }
+
+            compilation_sub_step.done();
+            execution_step.done();
+
+            if let RunMode::Run { .. } = run_mode {
+                Step::info(&RUNNING, &exe_path, verbosity);
+                match Run::run(&exe_path) {
+                    Ok(()) => {}
+                    Err(err) => {
+                        eprintln!("{err}");
+                        return ExitCode::FAILURE;
                     }
                 }
-            } else {
-                execution_step.done();
             }
         }
     }
@@ -185,65 +173,60 @@ mod tests {
 
         for src_file in src_files {
             let src_path = src_file?.path();
+            let Some(extension) = src_path.extension() else {
+                continue;
+            };
 
-            if let Some(extension) = src_path.extension() {
-                if extension == "kay" {
-                    let compilation_step = Step { start_time: Instant::now(), verbosity };
+            if extension != "kay" {
+                continue;
+            };
 
-                    Step::info(&CHECKING, &src_path, verbosity);
-                    let checking_sub_step = SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
+            let execution_step = Step { start_time: Instant::now(), verbosity };
 
-                    let src = {
-                        let loading_source_sub_step =
-                            SubStep { step: &LOADING_SOURCE, start_time: Instant::now(), verbosity };
-                        let source_loading_result = SrcFile::load(src_path);
-                        loading_source_sub_step.done();
-                        match source_loading_result {
-                            Ok(src) => src,
-                            Err(err) => {
-                                eprintln!("{err}");
-                                return Ok(ExitCode::FAILURE);
-                            }
-                        }
-                    };
+            Step::info(&CHECKING, &src_path, verbosity);
+            let checking_sub_step = SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
 
-                    let tokens = {
-                        let lexing_sub_step = SubStep { step: &LEXING, start_time: Instant::now(), verbosity };
-                        let lexer_result = Tokenizer::tokenize(&src);
-                        lexing_sub_step.done();
-                        match lexer_result {
-                            Ok(tokens) => tokens,
-                            Err(errors) => {
-                                eprintln!();
-                                for error in errors {
-                                    eprintln!("{error}\n");
-                                }
-                                return Ok(ExitCode::FAILURE);
-                            }
-                        }
-                    };
-
-                    let _ast = {
-                        let ast_building_sub_step =
-                            SubStep { step: &AST_BUILDING, start_time: Instant::now(), verbosity };
-                        let ast_building_result = Ast::build(&src, &tokens);
-                        ast_building_sub_step.done();
-                        match ast_building_result {
-                            Ok(ast) => ast,
-                            Err(errors) => {
-                                eprintln!();
-                                for error in errors {
-                                    eprintln!("{error}\n");
-                                }
-                                return Ok(ExitCode::FAILURE);
-                            }
-                        }
-                    };
-
-                    checking_sub_step.done();
-                    compilation_step.done();
+            let loading_source_sub_step = SubStep { step: &LOADING_SOURCE, start_time: Instant::now(), verbosity };
+            let source_loading_result = SrcFile::load(src_path);
+            loading_source_sub_step.done();
+            let src = match source_loading_result {
+                Ok(src) => src,
+                Err(err) => {
+                    eprintln!("{err}");
+                    return Ok(ExitCode::FAILURE);
                 }
-            }
+            };
+
+            let lexing_sub_step = SubStep { step: &LEXING, start_time: Instant::now(), verbosity };
+            let lexer_result = Tokenizer::tokenize(&src);
+            lexing_sub_step.done();
+            let tokens = match lexer_result {
+                Ok(tokens) => tokens,
+                Err(errors) => {
+                    eprintln!();
+                    for error in errors {
+                        eprintln!("{error}\n");
+                    }
+                    return Ok(ExitCode::FAILURE);
+                }
+            };
+
+            let ast_building_sub_step = SubStep { step: &AST_BUILDING, start_time: Instant::now(), verbosity };
+            let ast_building_result = Ast::build(&src, &tokens);
+            ast_building_sub_step.done();
+            let _ast = match ast_building_result {
+                Ok(ast) => ast,
+                Err(errors) => {
+                    eprintln!();
+                    for error in errors {
+                        eprintln!("{error}\n");
+                    }
+                    return Ok(ExitCode::FAILURE);
+                }
+            };
+
+            checking_sub_step.done();
+            execution_step.done();
         }
 
         Ok(ExitCode::SUCCESS)
