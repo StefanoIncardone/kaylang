@@ -872,14 +872,17 @@ impl<'src> Tokenizer<'src> {
 // character literals
 impl<'src> Tokenizer<'src> {
     fn next_in_char_literal(&mut self) -> Result<u8, Error<'src>> {
-        match self.next_ascii_character()? {
+        match self.peek_next_ascii_character()? {
             Some(b'\n') | None => Err(Error::new(
                 self.src,
                 self.token_start_col,
-                self.col - self.token_start_col - 1,
+                self.col - self.token_start_col,
                 ErrorKind::UnclosedCharacterLiteral,
             )),
-            Some(next) => Ok(next),
+            Some(next) => {
+                self.col += 1;
+                Ok(*next)
+            },
         }
     }
 }
@@ -887,14 +890,17 @@ impl<'src> Tokenizer<'src> {
 // string literals
 impl<'src> Tokenizer<'src> {
     fn next_in_str_literal(&mut self) -> Result<u8, Error<'src>> {
-        match self.next_ascii_character()? {
+        match self.peek_next_ascii_character()? {
             Some(b'\n') | None => Err(Error::new(
                 self.src,
                 self.token_start_col,
-                self.col - self.token_start_col - 1,
+                self.col - self.token_start_col,
                 ErrorKind::UnclosedStringLiteral,
             )),
-            Some(next) => Ok(next),
+            Some(next) => {
+                self.col += 1;
+                Ok(*next)
+            },
         }
     }
 }
