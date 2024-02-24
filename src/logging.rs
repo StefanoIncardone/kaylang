@@ -69,7 +69,7 @@ const SUBSTEP_INDENT: usize = 4;
 const SUBSTEP_PADDING: usize = 14;
 
 #[rustfmt::skip] pub static LOADING_SOURCE: ColoredStr = ColoredStr { text: "Loding Source",  fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static LEXING:         ColoredStr = ColoredStr { text: "Lexing",         fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static TOKENIZATION:   ColoredStr = ColoredStr { text: "Tokenizing",     fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
 #[rustfmt::skip] pub static AST_BUILDING:   ColoredStr = ColoredStr { text: "Ast building",   fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
 #[rustfmt::skip] pub static ASM_GENERATION: ColoredStr = ColoredStr { text: "Asm Generation", fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
 #[rustfmt::skip] pub static ASSEMBLER:      ColoredStr = ColoredStr { text: "Assembler",      fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };

@@ -5,7 +5,7 @@ use kaylang::{
     compiler::Compiler,
     linker::Linker,
     logging::{
-        Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, LEXING, LINKER, LOADING_SOURCE,
+        Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, TOKENIZATION, LINKER, LOADING_SOURCE,
         RUNNING, SUBSTEP_DONE,
     },
     run::Run,
@@ -61,7 +61,7 @@ fn main() -> ExitCode {
                 }
             };
 
-            let lexing_sub_step = SubStep { step: &LEXING, start_time: Instant::now(), verbosity };
+            let lexing_sub_step = SubStep { step: &TOKENIZATION, start_time: Instant::now(), verbosity };
             let lexer_result = Tokenizer::tokenize(&src);
             lexing_sub_step.done();
             let tokens = match lexer_result {
@@ -155,7 +155,7 @@ fn main() -> ExitCode {
 mod tests {
     use kaylang::{
         ast::Ast,
-        logging::{Step, SubStep, AST_BUILDING, CHECKING, LEXING, LOADING_SOURCE, SUBSTEP_DONE},
+        logging::{Step, SubStep, AST_BUILDING, CHECKING, TOKENIZATION, LOADING_SOURCE, SUBSTEP_DONE},
         src_file::SrcFile,
         tokenizer::Tokenizer,
         Color, Verbosity,
@@ -197,7 +197,7 @@ mod tests {
                 }
             };
 
-            let lexing_sub_step = SubStep { step: &LEXING, start_time: Instant::now(), verbosity };
+            let lexing_sub_step = SubStep { step: &TOKENIZATION, start_time: Instant::now(), verbosity };
             let lexer_result = Tokenizer::tokenize(&src);
             lexing_sub_step.done();
             let tokens = match lexer_result {
