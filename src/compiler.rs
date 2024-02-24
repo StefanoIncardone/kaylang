@@ -12,7 +12,7 @@ use std::{
 
 // TODO(stefano): introduce intermediate representation
 #[derive(Debug)]
-struct Variable<'src: 'ast, 'ast> {
+struct Variable<'src, 'ast: 'src> {
     name: &'src str,
     value: &'ast Expression<'src>,
     offset: usize,
@@ -21,7 +21,7 @@ struct Variable<'src: 'ast, 'ast> {
 const STACK_ALIGN: usize = core::mem::size_of::<usize>();
 
 #[derive(Debug)]
-pub struct Compiler<'src: 'ast, 'ast> {
+pub struct Compiler<'src, 'ast: 'src> {
     ast: &'ast [Scope<'src>],
 
     rodata: String,
@@ -36,7 +36,7 @@ pub struct Compiler<'src: 'ast, 'ast> {
 }
 
 // Generation of compilation artifacts (.asm, .o, executable)
-impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
+impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     pub fn compile(
         src_path: &'src Path,
         out_path: Option<&'src Path>,
@@ -647,7 +647,7 @@ section .data
 }
 
 // nodes
-impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
+impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn node(&mut self, node: &'ast Node<'src>) {
         match node {
             Node::Print(argument) => {
@@ -808,7 +808,7 @@ impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
 }
 
 // expressions
-impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
+impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn resolve(&self, name: &'src str) -> &Variable<'src, 'ast> {
         for variable in &self.variables {
             if variable.name == name {
@@ -1135,7 +1135,7 @@ impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
 }
 
 // ifs and loops
-impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
+impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn iff(&mut self, iff: &'ast IfStatement<'src>, tag: &str, false_tag: &str) {
         self.asm += &format!("{tag}:; {condition:?}\n", condition = iff.condition);
         self.condition(&iff.condition, false_tag);
@@ -1239,7 +1239,7 @@ impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
 }
 
 // assignments
-impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
+impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn assignment(&mut self, value: &'ast Expression<'src>, offset: usize) {
         match value {
             Expression::Literal(Literal::Int(value)) => {
@@ -1338,7 +1338,7 @@ impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
 }
 
 // print statements
-impl<'src: 'ast, 'ast> Compiler<'src, 'ast> {
+impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn print(&mut self, value: &'ast Expression<'src>) {
         match value.typ() {
             Type::Int => {

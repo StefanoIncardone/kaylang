@@ -307,7 +307,7 @@ pub struct Scope<'src> {
 
 // IDEA(stefano): create Parser class that builds the AST, and then validate the AST afterwards
 #[derive(Debug)]
-pub struct Ast<'src: 'tokens, 'tokens> {
+pub struct Ast<'src, 'tokens: 'src> {
     src: &'src SrcFile,
 
     token: usize,
@@ -321,7 +321,7 @@ pub struct Ast<'src: 'tokens, 'tokens> {
     errors: Vec<Error<'src>>,
 }
 
-impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     pub fn build(src: &'src SrcFile, tokens: &'tokens [Token<'src>]) -> Result<Vec<Scope<'src>>, Vec<Error<'src>>> {
         if tokens.is_empty() {
             return Ok(Vec::new());
@@ -614,7 +614,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 }
 
 // iteration over tokens
-impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn current_token_bounded(&self, expected: ExpectedBeforeEof) -> Result<&'tokens Token<'src>, Error<'src>> {
         match self.tokens.get(self.token) {
             Some(token) => Ok(token),
@@ -693,7 +693,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 }
 
 // semicolons
-impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn semicolon(&mut self) -> Result<(), Error<'src>> {
         let semicolon_token = self.current_token_bounded(ExpectedBeforeEof::Semicolon)?;
         if let TokenKind::SemiColon = &semicolon_token.kind {
@@ -707,7 +707,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 }
 
 // expressions
-impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn operator(&mut self, ops: &[Op]) -> Result<Option<(&'tokens Token<'src>, Op)>, Error<'src>> {
         let current_token = self.current_token_bounded(ExpectedBeforeEof::OperatorOrSemicolon)?;
         match current_token.kind {
@@ -1194,7 +1194,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 }
 
 // variables and types
-impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn resolve_variable(
         &self,
         name: &'src str,
@@ -1457,7 +1457,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 }
 
 // print statements
-impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn print(&mut self) -> Result<Node<'src>, Error<'src>> {
         let start_of_expression_token = self.next_token_bounded(ExpectedBeforeEof::Expression)?;
         let argument = self.expression()?;
@@ -1495,7 +1495,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 }
 
 // if statements
-impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn iff(&mut self) -> Result<Node<'src>, Error<'src>> {
         let mut if_statement = If { ifs: Vec::new(), els: None };
 
@@ -1575,7 +1575,7 @@ impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
 }
 
 // for statements
-impl<'src: 'tokens, 'tokens> Ast<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn loop_statement(&mut self) -> Result<Node<'src>, Error<'src>> {
         let do_token = &self.tokens[self.token];
         let loop_token = match do_token.kind {
