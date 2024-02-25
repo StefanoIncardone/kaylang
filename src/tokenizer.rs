@@ -458,31 +458,31 @@ impl<'src> Tokenizer<'src> {
                 }
 
                 if contains_non_ascii {
-                    Err(Error::new(
+                    return Err(Error::new(
                         self.src,
                         self.token_start_col,
                         self.col - self.token_start_col + 1,
                         ErrorKind::NonAsciiIdentifier,
-                    ))
-                } else {
-                    let identifier = match &self.src.code[self.token_start_col..self.col] {
-                        "let" => TokenKind::Definition(Mutability::Let),
-                        "var" => TokenKind::Definition(Mutability::Var),
-                        "print" => TokenKind::Print,
-                        "println" => TokenKind::PrintLn,
-                        "true" => TokenKind::True,
-                        "false" => TokenKind::False,
-                        "do" => TokenKind::Do,
-                        "if" => TokenKind::If,
-                        "else" => TokenKind::Else,
-                        "loop" => TokenKind::Loop,
-                        "break" => TokenKind::Break,
-                        "continue" => TokenKind::Continue,
-                        identifier => TokenKind::Identifier(identifier),
-                    };
-
-                    Ok(identifier)
+                    ));
                 }
+
+                let identifier = match &self.src.code[self.token_start_col..self.col] {
+                    "let" => TokenKind::Definition(Mutability::Let),
+                    "var" => TokenKind::Definition(Mutability::Var),
+                    "print" => TokenKind::Print,
+                    "println" => TokenKind::PrintLn,
+                    "true" => TokenKind::True,
+                    "false" => TokenKind::False,
+                    "do" => TokenKind::Do,
+                    "if" => TokenKind::If,
+                    "else" => TokenKind::Else,
+                    "loop" => TokenKind::Loop,
+                    "break" => TokenKind::Break,
+                    "continue" => TokenKind::Continue,
+                    identifier => TokenKind::Identifier(identifier),
+                };
+
+                Ok(identifier)
             }
             b'0'..=b'9' => {
                 let mut contains_non_ascii = false;
@@ -594,18 +594,17 @@ impl<'src> Tokenizer<'src> {
                     ch => Ok(ch),
                 };
 
-                match self.peek_next_ascii_character()? {
-                    Some(b'\'') => {
-                        self.col += 1;
-                        Ok(TokenKind::Literal(Literal::Char(code?)))
-                    }
-                    Some(_) | None => Err(Error::new(
+                let Some(b'\'') = self.peek_next_ascii_character()? else {
+                    return Err(Error::new(
                         self.src,
                         self.token_start_col,
                         self.col - self.token_start_col,
                         ErrorKind::UnclosedCharacterLiteral,
-                    )),
-                }
+                    ));
+                };
+
+                self.col += 1;
+                Ok(TokenKind::Literal(Literal::Char(code?)))
             }
             b'(' => {
                 let kind = BracketKind::OpenRound;
