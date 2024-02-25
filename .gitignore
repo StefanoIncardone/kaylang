@@ -1,5 +1,7 @@
 /.vscode
 
+*.tldr
+
 /target
 
 /asm
