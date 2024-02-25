@@ -1,0 +1,47 @@
+# PROBLEM: Amicable Numbers (https://projecteuler.net/problem=21)
+# Let d(n) be defined as the sum of proper divisors of n (numbers less than n which divide evenly
+# into n).
+# If d(a) = b and d(b) = a, where a != b, then a and b are an amicable pair and each of a and b are
+# called amicable numbers.
+# For example, the proper divisors of 220 are 1, 2, 4, 5, 10, 11, 20, 22, 44, 55 and 110; therefore
+# d(220) = 284. The proper divisors of 284 are 1, 2, 4, 71 and 142; so d(284) = 220.
+
+# QUESTION:
+# Evaluate the sum of all the amicable numbers under 10000.
+
+# ANSWER:
+# 31626
+
+
+let MAX = 10000;
+var sum_of_amicable_numbers = 0;
+
+var number = 1;
+loop number < MAX {
+    var sum_of_divisor = 0;
+    var number_copy = number;
+
+    var divisor = 1;
+    loop divisor <= number_copy / 2 {
+        if number_copy % divisor == 0 do sum_of_divisor += divisor;
+        divisor += 1;
+    }
+
+    var second_sum_of_divisors = 0;
+    var second_number = sum_of_divisor;
+
+    divisor = 1;
+    loop divisor <= second_number / 2 {
+        if second_number % divisor == 0 do second_sum_of_divisors += divisor;
+        divisor += 1;
+    }
+
+    if second_sum_of_divisors == number && sum_of_divisor != second_sum_of_divisors {
+        print "number: "; print number; print " -> "; print sum_of_divisor; print " -> "; println second_sum_of_divisors;
+        sum_of_amicable_numbers += number;
+    }
+    number += 1;
+}
+
+println;
+println sum_of_amicable_numbers;
