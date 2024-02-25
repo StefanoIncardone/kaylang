@@ -5,8 +5,8 @@ use kaylang::{
     compiler::Compiler,
     linker::Linker,
     logging::{
-        Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, TOKENIZATION, LINKER, LOADING_SOURCE,
-        RUNNING, SUBSTEP_DONE,
+        Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, LINKER, LOADING_SOURCE, RUNNING,
+        SUBSTEP_DONE, TOKENIZATION,
     },
     run::Run,
     src_file::SrcFile,
@@ -155,7 +155,7 @@ fn main() -> ExitCode {
 mod tests {
     use kaylang::{
         ast::Ast,
-        logging::{Step, SubStep, AST_BUILDING, CHECKING, TOKENIZATION, LOADING_SOURCE, SUBSTEP_DONE},
+        logging::{Step, SubStep, AST_BUILDING, CHECKING, LOADING_SOURCE, SUBSTEP_DONE, TOKENIZATION},
         src_file::SrcFile,
         tokenizer::Tokenizer,
         Color, Verbosity,
