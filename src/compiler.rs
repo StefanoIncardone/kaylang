@@ -958,7 +958,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             "rsi",
                             format!(
                                 " push rdi\
-                                \n mov rdi, rsi
+                                \n mov rdi, rsi\
                                 \n mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call assert_modulo_not_zero\
