@@ -270,12 +270,12 @@ crash:
  mov rdi, EXIT_FAILURE
  jmp exit
 
-; fn assert_array_idx_in_range(idx: int @rdi, array_len: uint @rsi, line: uint @rdx, col: uint @rcx)
+; fn assert_array_idx_in_range(array_len: uint @rdi, idx: int @rdi, line: uint @rdx, col: uint @rcx)
 assert_array_idx_in_range:
- cmp rdi, 0
+ cmp rsi, 0
  jl .underflow
 
- cmp rdi, rsi
+ cmp rsi, rdi
  jge .overflow
 
  ret
@@ -860,7 +860,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 );
             }
             Expression::Binary { .. } => self.expression_factor(expression, "rdi"),
-            Expression::Identifier(name, typ) => {
+            Expression::Identifier { name, typ } => {
                 let variable = self.resolve(name);
                 let offset = variable.offset;
                 match typ {
@@ -873,7 +873,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             ptr_offset = Type::Int.size()
                         );
                     }
-                    Type::Array(_, _) => unreachable!("arrays cannot appear in expressions"),
+                    Type::Array { .. } => unreachable!("arrays cannot appear in expressions"),
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 }
             }
@@ -883,7 +883,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     Op::Not => match operand.typ() {
                         Type::Bool => self.asm += " xor dil, 1\n",
                         Type::Int | Type::Char => self.asm += " not rdi\n",
-                        Type::Array(_, _) => unreachable!("cannot invert array values"),
+                        Type::Array { .. } => unreachable!("cannot invert array values"),
                         Type::Str => unreachable!("cannot invert string values"),
                         Type::Infer => unreachable!("should have been coerced to a concrete type"),
                     },
@@ -891,8 +891,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     _ => unreachable!("'Not' and 'Minus' are the only unary operators"),
                 }
             }
-            Expression::Array(array, _) => {
-                for element in array {
+            Expression::Array { elements, .. } => {
+                for element in elements {
                     self.expression(element);
                 }
             }
@@ -1063,7 +1063,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 self.asm += &format!("{op_asm}\n");
             }
-            Expression::Identifier(name, typ) => {
+            Expression::Identifier { name, typ } => {
                 let variable = self.resolve(name);
                 let offset = variable.offset;
                 match typ {
@@ -1071,7 +1071,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     Type::Char | Type::Bool => {
                         self.asm += &format!(" movzx {dst}, byte [rbp + {offset}]\n");
                     }
-                    Type::Array(_, _) => unreachable!("arrays cannot appear in expressions"),
+                    Type::Array { .. } => unreachable!("arrays cannot appear in expressions"),
                     Type::Str => unreachable!("strings cannot appear in expressions"),
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 }
@@ -1082,7 +1082,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     Op::Not => match operand.typ() {
                         Type::Bool => self.asm += " xor dil, 1\n",
                         Type::Int | Type::Char => self.asm += " not rdi\n",
-                        Type::Array(_, _) => unreachable!("cannot invert array values"),
+                        Type::Array { .. } => unreachable!("cannot invert array values"),
                         Type::Str => unreachable!("cannot invert string values"),
                         Type::Infer => unreachable!("should have been coerced to a concrete type"),
                     },
@@ -1090,44 +1090,78 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     _ => unreachable!("'Not' and 'Minus' are the only unary operators"),
                 }
             }
-            Expression::Array(_, _) => unreachable!("arrays cannot appear in expressions"),
-            Expression::ArrayIndex { array, typ, bracket_position, index } => {
+            Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
+            Expression::ArrayIndex { var_name, element_type, bracket_position, index } => {
                 self.expression(index);
 
-                let variable = self.resolve(array);
+                let variable = self.resolve(var_name);
                 let offset = variable.offset;
-                let array_len = match variable.value {
-                    Expression::Array(array, _) => array.len(),
-                    _ => unreachable!("only array are allowed in index espressions"),
-                };
+                let variable_value = variable.value;
+                let variable_typ = variable_value.typ();
 
-                self.asm += &format!(
-                    " push {dst}\
-                    \n mov rdi, {dst}\
-                    \n mov rsi, {array_len}\
-                    \n mov rdx, {line}\
-                    \n mov rcx, {col}\
-                    \n call assert_array_idx_in_range\
-                    \n pop {dst}\n\n",
-                    line = bracket_position.line,
-                    col = bracket_position.col,
-                );
-
-                let typ_size = typ.size();
-                match typ {
-                    Type::Int => self.asm += &format!(" mov rdi, [rbp + {offset} + {dst} * {typ_size}]\n"),
-                    Type::Char | Type::Bool => {
-                        self.asm += &format!(" movzx rdi, byte [rbp + {offset} + {dst} * {typ_size}]\n");
-                    }
+                match variable_typ {
                     Type::Str => {
+                        self.asm += &format!(" mov r8, {dst}\n\n");
+
+                        // Note: indexing into an array of strings
+                        if let Expression::ArrayIndex { element_type: Type::Str, .. } = variable_value {
+                            self.asm += &format!(
+                                " mov rdi, [rbp + {offset}]\
+                                \n mov rsi, [rbp + {offset} + {ptr_offset}]\n",
+                                ptr_offset = Type::Int.size()
+                            );
+                        } else {
+                            self.expression(variable_value);
+                        }
+
                         self.asm += &format!(
-                            " mov rdi, [rbp + {offset} + {dst} * {typ_size}]\
-                            \n mov rsi, [rbp + {offset} + {dst} * {typ_size} + {ptr_offset}]\n",
-                            ptr_offset = Type::Int.size()
+                            " push rsi\
+                            \n\
+                            \n mov rsi, r8\
+                            \n mov rdx, {line}\
+                            \n mov rcx, {col}\
+                            \n call assert_array_idx_in_range\
+                            \n pop rdx\
+                            \n\
+                            \n movzx rdi, byte [rdx + r8]\n",
+                            line = bracket_position.line,
+                            col = bracket_position.col,
                         );
                     }
-                    Type::Array(_, _) => unreachable!("arrays cannot appear in expressions"),
-                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                    Type::Array { len, .. } => {
+                        self.asm += &format!(
+                            " push {dst}\
+                            \n\
+                            \n mov rsi, {dst}\
+                            \n mov rdi, {len}\
+                            \n mov rdx, {line}\
+                            \n mov rcx, {col}\
+                            \n call assert_array_idx_in_range\
+                            \n pop rdx\n",
+                            line = bracket_position.line,
+                            col = bracket_position.col,
+                        );
+
+                        match element_type {
+                            Type::Int => self.asm += &format!("\n mov rdi, [rbp + {offset} + rdx]\n"),
+                            Type::Char | Type::Bool => {
+                                self.asm += &format!("\n movzx rdi, byte [rbp + {offset} + rdx]\n");
+                            }
+                            Type::Str => {
+                                self.asm += &format!(
+                                    " imul rdx, {typ_size}\
+                                    \n\
+                                    \n mov rdi, [rbp + {offset} + rdx]\
+                                    \n mov rsi, [rbp + {offset} + rdx + {ptr_offset}]\n",
+                                    typ_size = element_type.size(),
+                                    ptr_offset = Type::Int.size()
+                                );
+                            }
+                            Type::Array { .. } => unreachable!("arrays cannot appear in expressions"),
+                            Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                        }
+                    }
+                    _ => unreachable!("only arrays and strings are allowed in index espressions"),
                 }
             }
         }
@@ -1161,7 +1195,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         self.expression_factor(lhs, "rdi");
                         self.asm += " push rdi\n\n";
                         self.expression_factor(rhs, "rsi");
-                        self.asm += " mov rsi, rdi\n pop rdi\n";
+                        self.asm += " mov rsi, rdi\
+                                \n pop rdi\n";
                     }
                     _ => {
                         self.expression_factor(lhs, "rdi");
@@ -1208,7 +1243,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 self.asm += &format!(" {false_tag}\n\n");
             }
-            Expression::Identifier(name, _) => {
+            Expression::Identifier { name, .. } => {
                 let variable = self.resolve(name);
                 self.asm += &format!(
                     " mov dil, [rbp + {offset}]\
@@ -1226,7 +1261,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n jz {false_tag}\n\n"
                 );
             }
-            Expression::Array(_, _) => unreachable!("arrays cannot appear in conditions"),
+            Expression::Array { .. } => unreachable!("arrays cannot appear in conditions"),
             Expression::ArrayIndex { .. } => {
                 self.expression(condition);
                 self.asm += &format!(
@@ -1265,12 +1300,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 match value.typ() {
                     Type::Int => self.asm += &format!(" mov [rbp + {offset}], rdi\n\n"),
                     Type::Char | Type::Bool => self.asm += &format!(" mov [rbp + {offset}], dil\n\n"),
-                    Type::Array(_, _) => unreachable!("arrays cannot appear in expressions"),
+                    Type::Array { .. } => unreachable!("arrays cannot appear in expressions"),
                     Type::Str => unreachable!("strings cannot appear in expressions"),
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 }
             }
-            Expression::Identifier(name, typ) => match typ {
+            Expression::Identifier { name, typ } => match typ {
                 Type::Int => {
                     self.expression(value);
                     self.asm += &format!(" mov [rbp + {offset}], rdi\n\n");
@@ -1287,16 +1322,16 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         ptr_offset = Type::Int.size()
                     );
                 }
-                Type::Array(len, typ) => {
+                Type::Array { len, elements_type } => {
                     let array = self.resolve(name);
                     self.asm += &format!(
                         " lea rdi, [rbp + {dst_offset}]\
                         \n lea rsi, [rbp + {src_offset}]\
-                        \n mov rdx, {len} * {typ_size}\
+                        \n mov rdx, {len} * {elements_type_size}\
                         \n call memcopy\n\n",
                         dst_offset = offset,
                         src_offset = array.offset,
-                        typ_size = typ.size(),
+                        elements_type_size = elements_type.size(),
                     );
                 }
                 Type::Infer => unreachable!("should have been coerced to a concrete type"),
@@ -1306,20 +1341,20 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 match value.typ() {
                     Type::Int => self.asm += &format!(" mov [rbp + {offset}], rdi\n\n"),
                     Type::Char | Type::Bool => self.asm += &format!(" mov [rbp + {offset}], dil\n\n"),
-                    Type::Array(_, _) => unreachable!("cannot invert nor negate array values"),
+                    Type::Array { .. } => unreachable!("cannot invert nor negate array values"),
                     Type::Str => unreachable!("cannot invert nor negate string values"),
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 }
             }
-            Expression::Array(array, typ) => {
-                let typ_size = typ.size();
-                for (idx, element) in array.iter().enumerate() {
+            Expression::Array { elements, elements_type } => {
+                let typ_size = elements_type.size();
+                for (idx, element) in elements.iter().enumerate() {
                     self.assignment(element, offset + idx * typ_size);
                 }
             }
-            Expression::ArrayIndex { typ, .. } => {
+            Expression::ArrayIndex { element_type, .. } => {
                 self.expression(value);
-                match typ {
+                match element_type {
                     Type::Int => self.asm += &format!("\n mov [rbp + {offset}], rdi\n\n"),
                     Type::Char | Type::Bool => self.asm += &format!("\n mov [rbp + {offset}], dil\n\n"),
                     Type::Str => {
@@ -1329,7 +1364,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             ptr_offset = Type::Int.size()
                         );
                     }
-                    Type::Array(_, _) => unreachable!("nested arrays are not supported yet"),
+                    Type::Array { .. } => unreachable!("nested arrays are not supported yet"),
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 }
             }
@@ -1357,9 +1392,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.expression(value);
                 self.asm += " call str_print\n\n";
             }
-            Type::Array(len, typ) => {
+            Type::Array { len, elements_type } => {
                 let variable = match value {
-                    Expression::Identifier(name, _) => self.resolve(name),
+                    Expression::Identifier { name, .. } => self.resolve(name),
                     _ => unreachable!("only array variables can appear here"),
                 };
 
@@ -1369,12 +1404,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     offset = variable.offset
                 );
 
-                match &*typ {
+                match &*elements_type {
                     Type::Int => self.asm += " call int_array_debug_print\n\n",
                     Type::Char => self.asm += " call char_array_debug_print\n\n",
                     Type::Bool => self.asm += " call bool_array_debug_print\n\n",
                     Type::Str => self.asm += " call str_array_debug_print\n\n",
-                    Type::Array(_, _) => unreachable!("nested arrays are not supported yet"),
+                    Type::Array { .. } => unreachable!("nested arrays are not supported yet"),
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 }
             }

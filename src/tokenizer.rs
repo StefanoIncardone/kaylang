@@ -400,6 +400,7 @@ impl<'src> Tokenizer<'src> {
                     // ignore whitespace
                     b'\t' | b'\r' | b'\x0C' | b' ' => {}
 
+                    // IDEA(stefano): integrate this check in the next_ascii_character function
                     // next line
                     b'\n' => {
                         if this.line_idx >= this.src.lines.len() - 1 {
@@ -882,7 +883,7 @@ impl<'src> Tokenizer<'src> {
             Some(next) => {
                 self.col += 1;
                 Ok(*next)
-            },
+            }
         }
     }
 }
@@ -900,7 +901,7 @@ impl<'src> Tokenizer<'src> {
             Some(next) => {
                 self.col += 1;
                 Ok(*next)
-            },
+            }
         }
     }
 }

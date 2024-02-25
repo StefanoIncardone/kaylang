@@ -1,10 +1,9 @@
-use crate::error::ErrorInfo;
-
 use super::{
     error::{SyntaxError, SyntaxErrorInfo},
     src_file::{Position, SrcFile},
     tokenizer::{BracketKind, Len, Literal, Mutability, Op, Token, TokenKind},
 };
+use crate::error::ErrorInfo;
 use std::fmt::{Debug, Display};
 
 pub(crate) trait TypeOf {
@@ -21,7 +20,7 @@ pub enum Type {
     Str,
 
     // TODO(stefano): enforce a max length
-    Array(usize, Box<Type>),
+    Array { len: usize, elements_type: Box<Type> },
 }
 
 impl PartialEq for Type {
@@ -33,8 +32,8 @@ impl PartialEq for Type {
             | (Self::Bool, Self::Bool)
             | (Self::Str, Self::Str) => true,
 
-            (Self::Array(array_len_1, array_typ_1), Self::Array(array_len_2, array_typ_2)) => {
-                array_len_1 == array_len_2 && array_typ_1 == array_typ_2
+            (Self::Array { len: len_1, elements_type: typ_1 }, Self::Array { len: len_2, elements_type: typ_2 }) => {
+                len_1 == len_2 && typ_1 == typ_2
             }
 
             _ => false,
@@ -49,7 +48,7 @@ impl Display for Type {
             Self::Char => write!(f, "char"),
             Self::Bool => write!(f, "bool"),
             Self::Str => write!(f, "str"),
-            Self::Array(len, typ) => write!(f, "{typ}[{len}]"),
+            Self::Array { len, elements_type } => write!(f, "{elements_type}[{len}]"),
 
             Self::Infer => write!(f, "infer"),
         }
@@ -63,7 +62,7 @@ impl Type {
             Self::Char => core::mem::size_of::<u8>(),
             Self::Bool => core::mem::size_of::<bool>(),
             Self::Str => core::mem::size_of::<*const u8>() + core::mem::size_of::<usize>(),
-            Self::Array(len, typ) => typ.size() * len,
+            Self::Array { len, elements_type } => elements_type.size() * len,
 
             Self::Infer => unreachable!("should have been coerced to a concrete type"),
         }
@@ -72,14 +71,14 @@ impl Type {
     pub(crate) fn should_be_inferred(&self) -> bool {
         match self {
             Self::Infer => true,
-            Self::Array(_, typ) => typ.should_be_inferred(),
+            Self::Array { elements_type, .. } => elements_type.should_be_inferred(),
             Self::Int | Self::Char | Self::Bool | Self::Str => false,
         }
     }
 
     pub(crate) fn inner(&self) -> Self {
         match self {
-            Self::Array(_, typ) => typ.inner(),
+            Self::Array { elements_type, .. } => elements_type.inner(),
             _ => self.clone(),
         }
     }
@@ -145,9 +144,9 @@ pub(crate) enum Expression<'src> {
     Literal(Literal),
     Unary { op: Op, operand: Box<Expression<'src>> },
     Binary { lhs: Box<Expression<'src>>, op_position: Position, op: Op, rhs: Box<Expression<'src>> },
-    Identifier(&'src str, Type),
-    Array(Vec<Expression<'src>>, Type),
-    ArrayIndex { array: &'src str, typ: Type, bracket_position: Position, index: Box<Expression<'src>> },
+    Identifier { name: &'src str, typ: Type },
+    Array { elements: Vec<Expression<'src>>, elements_type: Type },
+    ArrayIndex { var_name: &'src str, element_type: Type, bracket_position: Position, index: Box<Expression<'src>> },
 }
 
 impl Debug for Expression<'_> {
@@ -156,13 +155,13 @@ impl Debug for Expression<'_> {
             Self::Literal(literal) => write!(f, "{literal}"),
             Self::Unary { op, operand } => write!(f, "{op}{operand:?}"),
             Self::Binary { lhs, op, rhs, .. } => write!(f, "({lhs:?} {op} {rhs:?})"),
-            Self::Identifier(name, _) => write!(f, "{name}"),
-            Self::Array(array, _) => {
+            Self::Identifier { name, .. } => write!(f, "{name}"),
+            Self::Array { elements, .. } => {
                 write!(f, "[")?;
-                if !array.is_empty() {
-                    let mut elements = array.iter();
-                    let last = elements.next_back().unwrap(); // we have already checked for a non empty array
-                    for element in elements {
+                if !elements.is_empty() {
+                    let mut elements_iter = elements.iter();
+                    let last = elements_iter.next_back().unwrap(); // we have already checked for a non empty array
+                    for element in elements_iter {
                         write!(f, "{element:?}, ")?;
                     }
 
@@ -170,7 +169,7 @@ impl Debug for Expression<'_> {
                 }
                 write!(f, "]")
             }
-            Self::ArrayIndex { array, index, .. } => write!(f, "{array}[{index:?}]"),
+            Self::ArrayIndex { var_name, index, .. } => write!(f, "{var_name}[{index:?}]"),
         }
     }
 }
@@ -181,9 +180,11 @@ impl TypeOf for Expression<'_> {
             Self::Literal(literal) => literal.typ(),
             Self::Unary { operand, .. } => operand.typ(),
             Self::Binary { op, .. } => op.typ(),
-            Self::Identifier(_, typ) => typ.clone(),
-            Self::Array(array, typ) => Type::Array(array.len(), Box::new(typ.clone())),
-            Self::ArrayIndex { typ, .. } => typ.clone(),
+            Self::Identifier { typ, .. } => typ.clone(),
+            Self::Array { elements, elements_type } => {
+                Type::Array { len: elements.len(), elements_type: Box::new(elements_type.clone()) }
+            }
+            Self::ArrayIndex { element_type, .. } => element_type.clone(),
         }
     }
 }
@@ -195,13 +196,13 @@ impl From<Type> for Expression<'_> {
             Type::Char => Self::Literal(Literal::Char(0)),
             Type::Int => Self::Literal(Literal::Int(0)),
             Type::Str => Self::Literal(Literal::Str(Vec::new())),
-            Type::Array(len, typ) => {
-                let mut array = Vec::<Expression<'_>>::with_capacity(len);
+            Type::Array { len, elements_type } => {
+                let mut elements = Vec::<Expression<'_>>::with_capacity(len);
                 for _ in 1..len {
-                    let inner_typ = *typ.clone();
-                    array.push(inner_typ.into());
+                    let inner_typ = *elements_type.clone();
+                    elements.push(inner_typ.into());
                 }
-                Self::Array(array, *typ)
+                Self::Array { elements, elements_type: *elements_type }
             }
             Type::Infer => unreachable!("should have been coerced to a concrete type"),
         }
@@ -732,9 +733,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::Identifier(name) => match self.resolve_type(name) {
                 None => match self.resolve_variable(name) {
                     Some((_, _, var)) => match self.peek_next_token() {
+                        // TODO(stefano): extract index parsing function
                         Some(open_bracket_token @ Token { kind: TokenKind::Bracket(BracketKind::OpenSquare), .. }) => {
-                            let array = var.name;
-                            let array_typ = var.value.typ().inner();
+                            let var_name = var.name;
+                            let variable_typ = var.value.typ();
 
                             let _open_square = self.next_token();
                             let _start_of_index = self.next_token();
@@ -746,12 +748,37 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                                         self.current_token_bounded(ExpectedBeforeEof::ClosingSquareBracket)?;
 
                                     if let TokenKind::Bracket(BracketKind::CloseSquare) = after_index_token.kind {
-                                        Ok(Expression::ArrayIndex {
-                                            array,
-                                            typ: array_typ,
-                                            bracket_position: self.src.position(open_bracket_token.col),
-                                            index: Box::new(index),
-                                        })
+                                        match variable_typ {
+                                            Type::Array { elements_type, .. } => match *elements_type {
+                                                // TODO(stefano): check for indexing directly into an element of type string
+                                                Type::Int | Type::Bool | Type::Infer | Type::Char | Type::Str => {
+                                                    Ok(Expression::ArrayIndex {
+                                                        var_name,
+                                                        element_type: *elements_type,
+                                                        bracket_position: self.src.position(open_bracket_token.col),
+                                                        index: Box::new(index),
+                                                    })
+                                                }
+                                                Type::Array { .. } => Err(Error::new(
+                                                    self.src,
+                                                    current_token.col,
+                                                    current_token.kind.len(),
+                                                    ErrorKind::NestedArrayNotSupportedYet,
+                                                )),
+                                            },
+                                            Type::Str => Ok(Expression::ArrayIndex {
+                                                var_name,
+                                                element_type: Type::Char,
+                                                bracket_position: self.src.position(open_bracket_token.col),
+                                                index: Box::new(index),
+                                            }),
+                                            Type::Int | Type::Bool | Type::Infer | Type::Char => Err(Error::new(
+                                                self.src,
+                                                current_token.col,
+                                                current_token.kind.len(),
+                                                ErrorKind::CannotIndexNonArrayType(variable_typ),
+                                            )),
+                                        }
                                     } else {
                                         let before_index_token = self.peek_previous_token();
                                         Err(Error::new(
@@ -762,7 +789,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                                         ))
                                     }
                                 }
-                                Type::Array(_, _) | Type::Bool | Type::Infer | Type::Char | Type::Str => {
+                                Type::Array { .. } | Type::Bool | Type::Infer | Type::Char | Type::Str => {
                                     Err(Error::new(
                                         self.src,
                                         open_bracket_token.col,
@@ -772,7 +799,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                                 }
                             }
                         }
-                        Some(_) | None => Ok(Expression::Identifier(var.name, var.value.typ())),
+                        Some(_) | None => Ok(Expression::Identifier { name: var.name, typ: var.value.typ() }),
                     },
                     None => Err(Error::new(
                         self.src,
@@ -813,20 +840,20 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             }
             TokenKind::Bracket(BracketKind::OpenSquare) => 'array: {
                 let _ = self.next_token();
-                let mut array = Vec::<Expression<'src>>::new();
-                let mut array_typ = Type::Infer;
+                let mut elements = Vec::<Expression<'src>>::new();
+                let mut elements_type = Type::Infer;
 
                 loop {
                     let element_token =
                         self.current_token_bounded(ExpectedBeforeEof::ArrayElementOrClosingSquareBracket)?;
 
                     if let TokenKind::Bracket(BracketKind::CloseSquare) = element_token.kind {
-                        break 'array Ok(Expression::Array(array, array_typ));
+                        break 'array Ok(Expression::Array { elements, elements_type });
                     }
 
                     let element = self.expression()?;
-                    match (&array_typ, element.typ()) {
-                        (_, Type::Array(_, _)) => {
+                    match (&elements_type, element.typ()) {
+                        (_, Type::Array { .. }) => {
                             break 'array Err(Error::new(
                                 self.src,
                                 element_token.col,
@@ -835,8 +862,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             ))
                         }
                         (Type::Infer, other) => {
-                            array_typ = other;
-                            array.push(element);
+                            elements_type = other;
+                            elements.push(element);
                         }
                         (expected, actual) if *expected != actual => {
                             break 'array Err(Error::new(
@@ -846,7 +873,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                                 ErrorKind::MismatchedArrayElementType { expected: expected.clone(), actual },
                             ))
                         }
-                        (_, _) => array.push(element),
+                        (_, _) => elements.push(element),
                     }
 
                     let comma_token = self.current_token_bounded(ExpectedBeforeEof::CommaOrClosingSquareBracket)?;
@@ -885,7 +912,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         current_token.kind.len(),
                         ErrorKind::CannotNegateString,
                     )),
-                    Type::Array(_, _) => Err(Error::new(
+                    Type::Array { .. } => Err(Error::new(
                         self.src,
                         current_token.col,
                         current_token.kind.len(),
@@ -917,7 +944,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         current_token.kind.len(),
                         ErrorKind::CannotInvertString,
                     )),
-                    Type::Array(_, _) => Err(Error::new(
+                    Type::Array { .. } => Err(Error::new(
                         self.src,
                         current_token.col,
                         current_token.kind.len(),
@@ -1244,7 +1271,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                                 kind: TokenKind::Bracket(BracketKind::OpenSquare), ..
                             },
                         ) => {
-                            let array_type = Box::new(typ.clone());
+                            let elements_type = Box::new(typ.clone());
                             let _ = self.next_token();
                             let len_token = self.next_token_bounded(ExpectedBeforeEof::ArrayLength)?;
                             match len_token.kind {
@@ -1254,7 +1281,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                                             kind: TokenKind::Bracket(BracketKind::CloseSquare),
                                             ..
                                         },
-                                    ) => Ok(Some((close_square_bracket_token, Type::Array(len as usize, array_type)))),
+                                    ) => Ok(Some((
+                                        close_square_bracket_token,
+                                        Type::Array { len: len as usize, elements_type },
+                                    ))),
                                     Some(_) | None => Err(Error::new(
                                         self.src,
                                         open_square_bracket_token.col,
@@ -1350,8 +1380,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         match expression {
             Some(mut value) => {
                 if let Some((token, typ)) = &annotation {
-                    if let Expression::Array(_, array_typ @ Type::Infer) = &mut value {
-                        *array_typ = typ.inner();
+                    if let Expression::Array { elements_type, .. } = &mut value {
+                        if let Type::Infer = elements_type {
+                            *elements_type = typ.inner();
+                        }
                     }
 
                     if *typ != value.typ() {
@@ -1423,7 +1455,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     let value = match &op_token.kind {
                         TokenKind::Op(Op::Equals) => rhs,
                         TokenKind::Op(op) => Expression::Binary {
-                            lhs: Box::new(Expression::Identifier(name, op.typ())),
+                            lhs: Box::new(Expression::Identifier { name, typ: op.typ() }),
                             op_position: self.src.position(op_token.col),
                             op: *op,
                             rhs: Box::new(rhs),
@@ -1461,7 +1493,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn print(&mut self) -> Result<Node<'src>, Error<'src>> {
         let start_of_expression_token = self.next_token_bounded(ExpectedBeforeEof::Expression)?;
         let argument = self.expression()?;
-        if let Expression::Array(_, _) = argument {
+        if let Expression::Array { .. } = argument {
             return Err(Error::new(
                 self.src,
                 start_of_expression_token.col,
@@ -1481,7 +1513,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         let start_of_expression_token = self.next_token_bounded(ExpectedBeforeEof::Expression)?;
         let argument = self.expression()?;
-        if let Expression::Array(_, _) = argument {
+        if let Expression::Array { .. } = argument {
             return Err(Error::new(
                 self.src,
                 start_of_expression_token.col,
@@ -1505,7 +1537,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             let expression = self.expression()?;
             let condition = match &expression.typ() {
                 Type::Bool => Ok(expression),
-                Type::Char | Type::Int | Type::Str | Type::Array(_, _) | Type::Infer => Err(Error::new(
+                Type::Char | Type::Int | Type::Str | Type::Array { .. } | Type::Infer => Err(Error::new(
                     self.src,
                     if_token.col,
                     if_token.kind.len(),
@@ -1587,7 +1619,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let expression = self.expression()?;
         let condition = match &expression.typ() {
             Type::Bool => Ok(expression),
-            Type::Char | Type::Int | Type::Str | Type::Array(_, _) | Type::Infer => Err(Error::new(
+            Type::Char | Type::Int | Type::Str | Type::Array { .. } | Type::Infer => Err(Error::new(
                 self.src,
                 loop_token.col,
                 loop_token.kind.len(),
@@ -1755,6 +1787,7 @@ pub enum ErrorKind {
     ExpectedDoOrBlockOrIfStatementAfterIfStatement,
     ExpectedBooleanExpressionInLoopStatement,
     ExpectedDoOrBlockAfterLoopStatement,
+    CannotIndexNonArrayType(Type),
 }
 
 impl ErrorInfo for ErrorKind {
@@ -1887,6 +1920,9 @@ impl ErrorInfo for ErrorKind {
             }
             Self::ExpectedDoOrBlockAfterLoopStatement => {
                 ("invalid loop statement".into(), "must be followed by a do statement or a block".into())
+            }
+            Self::CannotIndexNonArrayType(typ) => {
+                ("invalid expression".into(), format!("cannot index into a value of type '{typ}'").into())
             }
         };
 

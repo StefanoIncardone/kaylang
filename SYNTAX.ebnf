@@ -12,7 +12,7 @@ identifier        = "_" | "A".."Z" | "a".."z", [{"_" | "A".."Z" | "a".."z" | dig
 
 (* expressions must be of the same type *)
 array       = "[", [{expression}], "]";
-array_index = array, "[", integer_expression, "]";
+array_index = identifier, "[", integer_expression, "]";
 
 (* from highest precedence to lowest *)
 int_factor                = ["-" | "!"], (number_literal | character_literal | identifier | ("(", integer_expression, ")"));
@@ -35,7 +35,7 @@ or_expression             = and_expression, ["||", and_expression];
 boolean_expression        = or_expression;
 integer_expression        = bitor_expression;
 string_expression         = string_literal;
-expression                = boolean_expression | integer_expression | string_expression;
+expression                = boolean_expression | integer_expression | string_expression | array | array_index;
 
 type = identifier;
 variable_declaration =
@@ -56,4 +56,3 @@ loop  = ["do"], "loop", boolean_expression, (("do", statement, ";") | scope);
 
 statement = expression | print | variable_declaration | variable_reassignment | if | loop;
 scope     = "{", [{line_comment | statement | scope}], "}";
-program   = [{line_comment | statement | scope}];

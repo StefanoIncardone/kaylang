@@ -263,5 +263,10 @@ Arrays are a collection of values of the same type under a single variable
 
 ```kay
 let i = [1, 2, 3, 4];
-println i[ 2 ]; # zero-based indexing
+println i[2]; # zero-based indexing
+
+let hello = "hello";
+println hello[2]; # strings can be indexed to access individual characters
+
+println [1, 2, 3]; # Error: temporary arrays are not supported yet, so they need to be extracted into variables first
 ```
