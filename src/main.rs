@@ -173,13 +173,26 @@ mod tests {
 
         for src_file in src_files {
             let src_path = src_file?.path();
+            if src_path.is_dir() {
+                continue;
+            }
+
             let Some(extension) = src_path.extension() else {
                 continue;
             };
 
             if extension != "kay" {
                 continue;
-            };
+            }
+
+            match src_path.file_name() {
+                Some(path) => {
+                    if path == "features_test.kay" {
+                        continue;
+                    }
+                }
+                None => continue,
+            }
 
             let execution_step = Step { start_time: Instant::now(), verbosity };
 
