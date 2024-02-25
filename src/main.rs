@@ -190,7 +190,7 @@ mod tests {
                     if path == "features_test.kay" {
                         continue;
                     }
-                },
+                }
                 None => continue,
             }
 

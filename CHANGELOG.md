@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - String characters indexing
 
+### Fixed
+
+- Disallowed strings and arrays in math expressions
+
 ## 0.5.0 - 2024-02-23
 
 ### Added

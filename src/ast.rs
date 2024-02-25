@@ -708,6 +708,36 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
 // expressions
 impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
+    fn assert_lhs_is_not_string_or_array(
+        &self,
+        op_token: &'tokens Token<'src>,
+        lhs: &Expression<'src>,
+    ) -> Result<(), Error<'src>> {
+        if let Type::Str = lhs.typ() {
+            return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::StringLeftOperand));
+        }
+        if let Type::Array { .. } = lhs.typ() {
+            return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::ArrayLeftOperand));
+        }
+
+        Ok(())
+    }
+
+    fn assert_rhs_is_not_string_or_array(
+        &self,
+        op_token: &'tokens Token<'src>,
+        rhs: &Expression<'src>,
+    ) -> Result<(), Error<'src>> {
+        if let Type::Str = rhs.typ() {
+            return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::StringRightOperand));
+        }
+        if let Type::Array { .. } = rhs.typ() {
+            return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::ArrayRightOperand));
+        }
+
+        Ok(())
+    }
+
     fn operator(&mut self, ops: &[Op]) -> Result<Option<(&'tokens Token<'src>, Op)>, Error<'src>> {
         let current_token = self.current_token_bounded(ExpectedBeforeEof::OperatorOrSemicolon)?;
         let TokenKind::Op(op) = current_token.kind else {
@@ -972,10 +1002,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let mut lhs = self.primary_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::Pow])? {
+            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+
             let rhs = self.primary_expression()?;
-            if matches!(lhs.typ(), Type::Str) || matches!(rhs.typ(), Type::Str) {
-                return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::StringsInExpression));
-            }
+            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
@@ -992,10 +1022,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let mut lhs = self.exponentiative_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::Times, Op::Divide, Op::Remainder])? {
+            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+
             let rhs = self.exponentiative_expression()?;
-            if matches!(lhs.typ(), Type::Str) || matches!(rhs.typ(), Type::Str) {
-                return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::StringsInExpression));
-            }
+            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
@@ -1012,10 +1042,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let mut lhs = self.multiplicative_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::Plus, Op::Minus])? {
+            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+
             let rhs = self.multiplicative_expression()?;
-            if matches!(lhs.typ(), Type::Str) || matches!(rhs.typ(), Type::Str) {
-                return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::StringsInExpression));
-            }
+            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
@@ -1032,10 +1062,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let mut lhs = self.additive_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::LeftShift, Op::RightShift])? {
+            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+
             let rhs = self.additive_expression()?;
-            if matches!(lhs.typ(), Type::Str) || matches!(rhs.typ(), Type::Str) {
-                return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::StringsInExpression));
-            }
+            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
@@ -1052,10 +1082,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let mut lhs = self.shift_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitAnd])? {
+            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+
             let rhs = self.shift_expression()?;
-            if matches!(lhs.typ(), Type::Str) || matches!(rhs.typ(), Type::Str) {
-                return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::StringsInExpression));
-            }
+            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
@@ -1072,10 +1102,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let mut lhs = self.bitand_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitXor])? {
+            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+
             let rhs = self.bitand_expression()?;
-            if matches!(lhs.typ(), Type::Str) || matches!(rhs.typ(), Type::Str) {
-                return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::StringsInExpression));
-            }
+            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
@@ -1092,10 +1122,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let mut lhs = self.bitxor_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitOr])? {
+            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+
             let rhs = self.bitxor_expression()?;
-            if matches!(lhs.typ(), Type::Str) || matches!(rhs.typ(), Type::Str) {
-                return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::StringsInExpression));
-            }
+            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
@@ -1112,10 +1142,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let mut lhs = self.bitor_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::Compare])? {
+            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+
             let rhs = self.bitor_expression()?;
-            if matches!(lhs.typ(), Type::Str) || matches!(rhs.typ(), Type::Str) {
-                return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::StringsInExpression));
-            }
+            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
@@ -1135,7 +1165,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         let mut is_chained = false;
         while let Some((op_token, op)) = self.operator(&ops)? {
+            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+
             let rhs = self.comparative_expression()?;
+            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             if is_chained {
                 return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::ChainedComparison));
@@ -1758,7 +1791,10 @@ pub enum ErrorKind {
     CannotInvertArray,
     KeywordInExpression,
     ExpectedOperand,
-    StringsInExpression, // TODO(breaking)(stefano): split into StringLeftOperand and StringRightOperand
+    StringLeftOperand,
+    StringRightOperand,
+    ArrayLeftOperand,
+    ArrayRightOperand,
     ChainedComparison,
     NonBooleanLeftOperand,
     NonBooleanRightOperand,
@@ -1874,9 +1910,10 @@ impl ErrorInfo for ErrorKind {
             Self::ExpectedOperand => {
                 ("invalid expression".into(), "expected expression operand before this token".into())
             }
-            Self::StringsInExpression => {
-                ("invalid expression".into(), "strings are not allowed inside expressions".into())
-            }
+            Self::StringLeftOperand => ("invalid expression".into(), "cannot be preceded by a string".into()),
+            Self::StringRightOperand => ("invalid expression".into(), "cannot be followed by a string".into()),
+            Self::ArrayLeftOperand => ("invalid expression".into(), "cannot be preceded by an array".into()),
+            Self::ArrayRightOperand => ("invalid expression".into(), "cannot be followed by an array".into()),
             Self::ChainedComparison => {
                 ("invalid boolean expression".into(), "comparison operators cannot be chained".into())
             }
