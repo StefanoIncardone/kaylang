@@ -619,3 +619,26 @@ let answer = _21 * 2;
 # or allow for stuff like this, where a trailing underscore would indicate that this is an identifier instead of a number
 let 21_ = 9 + 10;
 ```
+
+## Integer bits access
+
+Allow integers to be treated as arrays of bits and use the array index notation to access specific bits.
+All results are still integers but with at most a single bit set to 1:
+
+```kay
+let i = 5; # 0b0101
+let first_bit = i[0]; # 0b0101
+                      #      ^
+
+println first_bit; # 0b0001
+
+let second_bit = i[1]; # 0b0101
+                       #     ^
+
+println second_bit; # 0b0000, since we selected a bit that was set to 0
+
+let third_bit = i[2]; # 0b0101
+                      #    ^
+
+println third_bit; # 0b0100
+```
