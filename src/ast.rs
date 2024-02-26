@@ -784,39 +784,39 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             ));
         };
 
-        let elements_type = match var_typ {
-            Type::Array { elements_type, .. } => elements_type,
-            Type::Str => {
-                return Ok(Expression::ArrayIndex {
+        match var_typ {
+            Type::Array { elements_type, .. } => match *elements_type {
+                Type::Int | Type::Bool | Type::Infer | Type::Char | Type::Str => Ok(Expression::ArrayIndex {
                     var_name,
-                    element_type: Type::Char,
+                    element_type: *elements_type,
                     bracket_position: self.src.position(open_bracket_token.col),
                     index: Box::new(index),
-                })
-            }
-            Type::Int | Type::Bool | Type::Infer | Type::Char => {
-                return Err(Error::new(
+                }),
+                Type::Array { .. } => Err(Error::new(
                     self.src,
                     current_token.col,
                     current_token.kind.len(),
-                    ErrorKind::CannotIndexNonArrayType(var_typ),
-                ))
-            }
-        };
-
-        match *elements_type {
-            Type::Int | Type::Bool | Type::Infer | Type::Char | Type::Str => Ok(Expression::ArrayIndex {
+                    ErrorKind::NestedArrayNotSupportedYet,
+                )),
+            },
+            Type::Str => Ok(Expression::ArrayIndex {
                 var_name,
-                element_type: *elements_type,
+                element_type: Type::Char,
                 bracket_position: self.src.position(open_bracket_token.col),
                 index: Box::new(index),
             }),
-            Type::Array { .. } => Err(Error::new(
+            Type::Int => Ok(Expression::ArrayIndex {
+                var_name,
+                element_type: Type::Int,
+                bracket_position: self.src.position(open_bracket_token.col),
+                index: Box::new(index)
+            }),
+            Type::Bool | Type::Infer | Type::Char => Err(Error::new(
                 self.src,
                 current_token.col,
                 current_token.kind.len(),
-                ErrorKind::NestedArrayNotSupportedYet,
-            )),
+                ErrorKind::CannotIndexNonArrayType(var_typ),
+            ))
         }
     }
 

@@ -1,6 +1,6 @@
 [package]
 name = "kaylang"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2021"
 authors = ["Stefano Incardone"]
 categories = ["compilers", "command-line-utilities"]

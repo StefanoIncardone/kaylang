@@ -256,8 +256,8 @@ impl Len for BracketKind {
 
 #[derive(Debug)]
 struct Bracket {
-    col: usize,
     kind: BracketKind,
+    col: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -608,7 +608,7 @@ impl<'src> Tokenizer<'src> {
             }
             b'(' => {
                 let kind = BracketKind::OpenRound;
-                self.brackets.push(Bracket { col: self.token_start_col, kind });
+                self.brackets.push(Bracket { kind, col: self.token_start_col });
                 Ok(TokenKind::Bracket(kind))
             }
             b')' => match self.brackets.pop() {
@@ -633,7 +633,7 @@ impl<'src> Tokenizer<'src> {
             },
             b'[' => {
                 let kind = BracketKind::OpenSquare;
-                self.brackets.push(Bracket { col: self.token_start_col, kind });
+                self.brackets.push(Bracket { kind, col: self.token_start_col });
                 Ok(TokenKind::Bracket(kind))
             }
             b']' => match self.brackets.pop() {
@@ -658,7 +658,7 @@ impl<'src> Tokenizer<'src> {
             },
             b'{' => {
                 let kind = BracketKind::OpenCurly;
-                self.brackets.push(Bracket { col: self.token_start_col, kind });
+                self.brackets.push(Bracket { kind, col: self.token_start_col });
                 Ok(TokenKind::Bracket(kind))
             }
             b'}' => match self.brackets.pop() {

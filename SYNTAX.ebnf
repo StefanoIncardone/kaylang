@@ -15,7 +15,7 @@ array       = "[", [{expression}], "]";
 array_index = identifier, "[", integer_expression, "]";
 
 (* from highest precedence to lowest *)
-int_factor                = ["-" | "!"], (number_literal | character_literal | identifier | ("(", integer_expression, ")"));
+int_factor                = ["-" | "!"], (number_literal | character_literal | identifier | ("(", integer_expression, ")") | array_index);
 boolean_factor            = ["!"], (boolean_literal | identifier | ("(", boolean_expression, ")"));
 
 primary_expression        = int_factor | boolean_factor | character_literal | ("(", expression, ")");
@@ -33,17 +33,12 @@ and_expression            = comparison_expression, ["&&", comparison_expression]
 or_expression             = and_expression, ["||", and_expression];
 
 boolean_expression        = or_expression;
-integer_expression        = bitor_expression;
+integer_expression        = comparative_expression;
 string_expression         = string_literal;
 expression                = boolean_expression | integer_expression | string_expression | array | array_index;
 
 type = identifier;
-variable_declaration =
-    ("let" | "var"), identifier, (
-        (":", type)                       (* type-specific default initialization *)
-        | ([":", type], "=", expression)  (* regular declaration (explicit/inferred type)*)
-    ),
-    ";";
+variable_declaration = ("let" | "var"), identifier, [[":", type], "=", expression], ";";
 
 variable_reassignment =
     identifier,

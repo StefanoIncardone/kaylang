@@ -113,6 +113,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
  attempt_array_index_overflow: db "array index out of bounds"
  attempt_array_index_overflow_len: equ $ - attempt_array_index_overflow
 
+ attempt_int_bit_array_index_underflow: db "negative int bit array index"
+ attempt_int_bit_array_index_underflow_len: equ $ - attempt_int_bit_array_index_underflow
+
+ attempt_int_bit_array_index_overflow: db "int bit array index out of bounds"
+ attempt_int_bit_array_index_overflow_len: equ $ - attempt_int_bit_array_index_overflow
+
  file: db "{src_path}:"
  file_len: equ $ - file
 
@@ -270,7 +276,7 @@ crash:
  mov rdi, EXIT_FAILURE
  jmp exit
 
-; fn assert_array_idx_in_range(array_len: uint @rdi, idx: int @rdi, line: uint @rdx, col: uint @rcx)
+; fn assert_array_idx_in_range(array_len: uint @rdi, idx: int @rsi, line: uint @rdx, col: uint @rcx)
 assert_array_idx_in_range:
  cmp rsi, 0
  jl .underflow
@@ -288,6 +294,26 @@ assert_array_idx_in_range:
 .overflow:
  mov rdi, attempt_array_index_overflow_len
  mov rsi, attempt_array_index_overflow
+ jmp crash
+
+; fn assert_int_bit_array_idx_in_range(array_len: uint @rdi, idx: int @rsi, line: uint @rdx, col: uint @rcx)
+assert_int_bit_array_idx_in_range:
+ cmp rsi, 0
+ jl .underflow
+
+ cmp rsi, rdi
+ jge .overflow
+
+ ret
+
+.underflow:
+ mov rdi, attempt_int_bit_array_index_underflow_len
+ mov rsi, attempt_int_bit_array_index_underflow
+ jmp crash
+
+.overflow:
+ mov rdi, attempt_int_bit_array_index_overflow_len
+ mov rsi, attempt_int_bit_array_index_overflow
  jmp crash
 
 ; fn assert_denominator_not_zero(denominator: int @rdi, line: uint @rdx, col: uint @rcx)
@@ -1038,8 +1064,20 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     Op::Or | Op::OrEquals | Op::BitOr | Op::BitOrEquals => ("rdi", "rsi", " or rdi, rsi\n".into()),
 
                     Op::BitXor | Op::BitXorEquals => ("rdi", "rsi", " xor rdi, rsi\n".into()),
-                    Op::LeftShift | Op::LeftShiftEquals => ("rdi", "rsi", " shl rdi, rsi\n".into()),
-                    Op::RightShift | Op::RightShiftEquals => ("rdi", "rsi", " shr rdi, rsi\n".into()),
+                    Op::LeftShift | Op::LeftShiftEquals => (
+                        "rdi",
+                        "rsi",
+                        " mov cl, sil\
+                        \n shl rdi, cl\n"
+                            .into()
+                    ),
+                    Op::RightShift | Op::RightShiftEquals => (
+                        "rdi",
+                        "rsi",
+                        " mov cl, sil\
+                        \n shr rdi, cl\n"
+                            .into()
+                    ),
                     Op::Equals => unreachable!("should not be present in the ast"),
                     Op::Not => unreachable!("should only appear in unary expressions"),
                 };
@@ -1161,7 +1199,29 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             Type::Infer => unreachable!("should have been coerced to a concrete type"),
                         }
                     }
-                    _ => unreachable!("only arrays and strings are allowed in index espressions"),
+                    Type::Int => match element_type {
+                        Type::Int => {
+                            self.asm += &format!(
+                                " mov rsi, {dst}\
+                                \n mov rdi, INT_BITS\
+                                \n mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call assert_int_bit_array_idx_in_range\
+                                \n\
+                                \n mov cl, sil\
+                                \n mov rsi, 1\
+                                \n shl rsi, cl\
+                                \n mov rdi, [rbp + {offset}]\
+                                \n and rdi, rsi\
+                                \n",
+                                line = bracket_position.line,
+                                col = bracket_position.col,
+                            );
+                        },
+                        _ => unreachable!("only integers can be treated as bit arrays"),
+                    }
+                    Type::Bool | Type::Char => unreachable!("only arrays, strings and integers are allowed in index espressions"),
+                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 }
             }
         }
