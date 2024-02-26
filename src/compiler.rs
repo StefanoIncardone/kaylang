@@ -750,47 +750,30 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             }
             Node::Loop(looop) => {
                 let loop_tag = format!("loop_{idx}", idx = self.loop_counter);
-                let loop_end_tag = format!("loop_{idx}_end", idx = self.loop_counter);
 
                 self.loop_counters.push(self.loop_counter);
                 self.loop_counter += 1;
 
                 self.asm += &format!("{loop_tag}:; {looop}\n");
                 match &looop.condition {
-                    LoopCondition::Pre(condition) => {
+                    LoopCondition::Loop(condition) => {
+                        let loop_end_tag = format!("loop_{idx}_end", idx = self.loop_counter);
+
                         self.condition(condition, &loop_end_tag);
                         self.node(&looop.statement);
+
+                        self.asm += &format!(
+                            " jmp {loop_tag}\
+                            \n{loop_end_tag}:\n\n"
+                        );
                     }
-                    LoopCondition::Post(condition) => {
-                        // NOTE(stefano): by inverting the jmp instruction and jumping to the start of the loop we can
-                        // avoid compiling an extra jmp instruction:
-                        //     mov rdi, [rbp + 0]
-                        //     mov rsi, 10
-                        //     cmp rdi, rsi
-                        //     jge loop_0_end
-
-                        //     jmp loop_0
-                        //     loop_0_end:
-
-                        // what we actually want:
-                        //     mov rdi, [rbp + 0]
-                        //     mov rsi, 10
-                        //     cmp rdi, rsi
-                        //     jl loop_0
-
-                        //     loop_0_end:
-                        //
+                    LoopCondition::DoLoop(condition) => {
                         self.node(&looop.statement);
-                        self.condition(condition, &loop_end_tag);
+                        self.condition_reversed(condition, &loop_tag);
                     }
                 }
 
                 let _ = self.loop_counters.pop();
-
-                self.asm += &format!(
-                    " jmp {loop_tag}\
-                    \n{loop_end_tag}:\n\n"
-                );
             }
             Node::Definition(scope, variable) => {
                 let ast_variable = &self.ast[*scope].variables[*variable];
@@ -1069,14 +1052,14 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         "rsi",
                         " mov cl, sil\
                         \n shl rdi, cl\n"
-                            .into()
+                            .into(),
                     ),
                     Op::RightShift | Op::RightShiftEquals => (
                         "rdi",
                         "rsi",
                         " mov cl, sil\
                         \n shr rdi, cl\n"
-                            .into()
+                            .into(),
                     ),
                     Op::Equals => unreachable!("should not be present in the ast"),
                     Op::Not => unreachable!("should only appear in unary expressions"),
@@ -1217,23 +1200,16 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 line = bracket_position.line,
                                 col = bracket_position.col,
                             );
-                        },
+                        }
                         _ => unreachable!("only integers can be treated as bit arrays"),
+                    },
+                    Type::Bool | Type::Char => {
+                        unreachable!("only arrays, strings and integers are allowed in index espressions")
                     }
-                    Type::Bool | Type::Char => unreachable!("only arrays, strings and integers are allowed in index espressions"),
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 }
             }
         }
-    }
-}
-
-// ifs and loops
-impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
-    fn iff(&mut self, iff: &'ast IfStatement<'src>, tag: &str, false_tag: &str) {
-        self.asm += &format!("{tag}:; {condition:?}\n", condition = iff.condition);
-        self.condition(&iff.condition, false_tag);
-        self.node(&iff.statement);
     }
 
     fn condition(&mut self, condition: &'ast Expression<'src>, false_tag: &str) {
@@ -1330,6 +1306,111 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 );
             }
         }
+    }
+
+    fn condition_reversed(&mut self, condition: &'ast Expression<'src>, true_tag: &str) {
+        match condition {
+            Expression::Literal(Literal::Bool(value)) => {
+                self.asm += &format!(
+                    " mov dil, {bool}\
+                    \n cmp dil, true\
+                    \n je {true_tag}\n\n",
+                    bool = usize::from(*value)
+                );
+            }
+            Expression::Literal(Literal::Int(_) | Literal::Char(_) | Literal::Str(_)) => {
+                unreachable!("non-boolean expressions should not appear here")
+            }
+            Expression::Binary { lhs, op, rhs, .. } => {
+                match &**rhs {
+                    Expression::Binary { .. } | Expression::Unary { .. } => {
+                        self.expression_factor(lhs, "rdi");
+                        self.asm += " push rdi\n\n";
+                        self.expression_factor(rhs, "rsi");
+                        self.asm += " mov rsi, rdi\
+                                \n pop rdi\n";
+                    }
+                    _ => {
+                        self.expression_factor(lhs, "rdi");
+                        self.expression_factor(rhs, "rsi");
+                    }
+                }
+
+                match op {
+                    Op::EqualsEquals => self.asm += " cmp rdi, rsi\n je",
+                    Op::NotEquals => self.asm += " cmp rdi, rsi\n jne",
+                    Op::Greater => self.asm += " cmp rdi, rsi\n jg",
+                    Op::GreaterOrEquals => self.asm += " cmp rdi, rsi\n jge",
+                    Op::Less => self.asm += " cmp rdi, rsi\n jl",
+                    Op::LessOrEquals => self.asm += " cmp rdi, rsi\n jle",
+                    Op::And | Op::AndEquals => self.asm += " and rdi, rsi\n jnz",
+                    Op::Or | Op::OrEquals => self.asm += " or rdi, rsi\n jnz",
+
+                    Op::Equals
+                    | Op::Pow
+                    | Op::PowEquals
+                    | Op::Times
+                    | Op::TimesEquals
+                    | Op::Divide
+                    | Op::DivideEquals
+                    | Op::Remainder
+                    | Op::RemainderEquals
+                    | Op::Plus
+                    | Op::PlusEquals
+                    | Op::Minus
+                    | Op::MinusEquals
+                    | Op::Compare
+                    | Op::Not
+                    | Op::BitAnd
+                    | Op::BitAndEquals
+                    | Op::BitOr
+                    | Op::BitOrEquals
+                    | Op::BitXor
+                    | Op::BitXorEquals
+                    | Op::LeftShift
+                    | Op::LeftShiftEquals
+                    | Op::RightShift
+                    | Op::RightShiftEquals => unreachable!("non-boolean operators should not appear here"),
+                }
+
+                self.asm += &format!(" {true_tag}\n\n");
+            }
+            Expression::Identifier { name, .. } => {
+                let variable = self.resolve(name);
+                self.asm += &format!(
+                    " mov dil, [rbp + {offset}]\
+                    \n cmp dil, true\
+                    \n je {true_tag}\n\n",
+                    offset = variable.offset
+                );
+            }
+            Expression::Unary { .. } => {
+                self.expression(condition);
+
+                // we can only have boolean expressions at this point, so it's safe to ignore the integer negation case
+                self.asm += &format!(
+                    " xor dil, 1\
+                    \n jnz {true_tag}\n\n"
+                );
+            }
+            Expression::Array { .. } => unreachable!("arrays cannot appear in conditions"),
+            Expression::ArrayIndex { .. } => {
+                self.expression(condition);
+                self.asm += &format!(
+                    " cmp dil, true\
+                    \n je {true_tag}\n\n"
+                );
+            }
+        }
+    }
+}
+
+// ifs
+impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
+    fn iff(&mut self, iff: &'ast IfStatement<'src>, tag: &str, false_tag: &str) {
+        self.asm += &format!("{tag}:; {condition:?}\n", condition = iff.condition);
+        self.condition(&iff.condition, false_tag);
+        self.node(&iff.statement);
     }
 }
 

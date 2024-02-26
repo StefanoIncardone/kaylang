@@ -237,8 +237,8 @@ pub(crate) struct If<'src> {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) enum LoopCondition<'src> {
-    Pre(Expression<'src>),
-    Post(Expression<'src>),
+    Loop(Expression<'src>),
+    DoLoop(Expression<'src>),
 }
 
 #[allow(dead_code)]
@@ -251,8 +251,8 @@ pub(crate) struct Loop<'src> {
 impl Display for Loop<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.condition {
-            LoopCondition::Pre(condition) => write!(f, "loop {condition:?}"),
-            LoopCondition::Post(condition) => write!(f, "do loop {condition:?}"),
+            LoopCondition::Loop(condition) => write!(f, "loop {condition:?}"),
+            LoopCondition::DoLoop(condition) => write!(f, "do loop {condition:?}"),
         }
     }
 }
@@ -809,14 +809,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 var_name,
                 element_type: Type::Int,
                 bracket_position: self.src.position(open_bracket_token.col),
-                index: Box::new(index)
+                index: Box::new(index),
             }),
             Type::Bool | Type::Infer | Type::Char => Err(Error::new(
                 self.src,
                 current_token.col,
                 current_token.kind.len(),
                 ErrorKind::CannotIndexNonArrayType(var_typ),
-            ))
+            )),
         }
     }
 
@@ -1665,9 +1665,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let condition = condition?;
         let statement = statement?;
         let condition = if let TokenKind::Do = do_token.kind {
-            LoopCondition::Post(Expression::Unary { op: Op::Not, operand: Box::new(condition) })
+            LoopCondition::DoLoop(condition)
         } else {
-            LoopCondition::Pre(condition)
+            LoopCondition::Loop(condition)
         };
 
         Ok(Node::Loop(Loop { condition, statement: Box::new(statement) }))

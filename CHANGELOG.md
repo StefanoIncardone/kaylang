@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Accessing of individual bits for integer values
 
+### Changed
+
+- Improved do-loop code generation
+
 ### Fixed
 
 - Corrected code generation related to shift operations
