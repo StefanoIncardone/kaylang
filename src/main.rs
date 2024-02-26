@@ -148,7 +148,9 @@ fn main() -> ExitCode {
         }
     }
 
-    ExitCode::SUCCESS
+    // NOTE(stefano): vscode debug won't start without an explicit return, for some reason: "fatal runtime error: assertion failed: signal(libc::SIGPIPE, handler) != libc::SIG_ERR"
+    #[allow(clippy::needless_return)]
+    return ExitCode::SUCCESS;
 }
 
 #[cfg(test)]
