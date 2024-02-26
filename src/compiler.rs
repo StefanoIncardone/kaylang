@@ -750,6 +750,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             }
             Node::Loop(looop) => {
                 let loop_tag = format!("loop_{idx}", idx = self.loop_counter);
+                let loop_end_tag = format!("loop_{idx}_end", idx = self.loop_counter);
 
                 self.loop_counters.push(self.loop_counter);
                 self.loop_counter += 1;
@@ -757,8 +758,6 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.asm += &format!("{loop_tag}:; {looop}\n");
                 match &looop.condition {
                     LoopCondition::Loop(condition) => {
-                        let loop_end_tag = format!("loop_{idx}_end", idx = self.loop_counter);
-
                         self.condition(condition, &loop_end_tag);
                         self.node(&looop.statement);
 
