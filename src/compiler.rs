@@ -830,25 +830,16 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn string_label_idx(&mut self, string: &'ast Vec<u8>) -> usize {
         let mut string_idx = 0;
         for string_label in &self.strings {
-            if string == *string_label {
+            if std::ptr::eq(string, *string_label) {
                 return string_idx;
             }
             string_idx += 1;
         }
 
-        let mut string_text = String::with_capacity(string.len() + 2);
-        string_text.push('`');
-        for ch in string {
-            string_text.extend((*ch as char).escape_default());
-        }
-        string_text.push('`');
-
-        let label = format!("str_{string_idx}");
-        let len_label = format!("str_{string_idx}_len");
-
         self.rodata += &format!(
-            "\n\n {label}: db {string_text}\
-            \n {len_label}: equ $ - {label}"
+            "\n\n str_{string_idx}: db `{string_bytes}`\
+            \n str_{string_idx}_len: equ $ - str_{string_idx}",
+            string_bytes = String::from_utf8(string.clone()).unwrap()
         );
 
         self.strings.push(string);
