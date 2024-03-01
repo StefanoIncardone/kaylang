@@ -367,10 +367,8 @@ pub struct Token<'src> {
 pub struct Tokenizer<'src> {
     src: &'src SrcFile,
 
-    byte_col: usize,
-    char_col: usize,
-    token_start_byte_col: usize,
-    token_start_char_col: usize,
+    col: usize,
+    token_start_col: usize,
 
     line_idx: usize,
     line: &'src Line,
@@ -388,10 +386,8 @@ impl<'src> Tokenizer<'src> {
 
         let mut this = Self {
             src,
-            byte_col: 0,
-            char_col: 0,
-            token_start_byte_col: 0,
-            token_start_char_col: 0,
+            col: 0,
+            token_start_col: 0,
             line_idx: 0,
             line: &src.lines[0],
             tokens: Vec::new(),
@@ -401,8 +397,7 @@ impl<'src> Tokenizer<'src> {
 
         'tokenization: loop {
             let token_kind_result = 'skip_whitespace: loop {
-                this.token_start_byte_col = this.byte_col;
-                this.token_start_char_col = this.char_col;
+                this.token_start_col = this.col;
 
                 let next = match this.next_ascii_char() {
                     Ok(Some(ch)) => ch,
@@ -431,11 +426,11 @@ impl<'src> Tokenizer<'src> {
                 Ok(kind) => kind,
                 Err(err) => {
                     this.errors.push(err);
-                    TokenKind::Unexpected(&this.src.code[this.token_start_byte_col..this.byte_col])
+                    TokenKind::Unexpected(&this.src.code[this.token_start_col..this.col])
                 }
             };
 
-            this.tokens.push(Token { kind, col: this.token_start_byte_col });
+            this.tokens.push(Token { kind, col: this.token_start_col });
         }
 
         for bracket in &this.brackets {
@@ -458,26 +453,29 @@ impl<'src> Tokenizer<'src> {
 }
 
 // TODO(stefano): own utf8 parsing
+// TODO(stefano): properly handle multi-char utf8 characters (i.e. emojis)
 // TODO(stefano): allow utf-8 characters in strings, characters
 // iteration of characters
 impl<'src> Tokenizer<'src> {
+    fn token_len(&self) -> usize {
+        self.src.code[self.token_start_col..self.col].chars().count()
+    }
+
     fn next_ascii_char(&mut self) -> Result<Option<u8>, Error<'src>> {
-        let Some(next) = self.src.code.as_bytes().get(self.byte_col) else {
+        let Some(next) = self.src.code.as_bytes().get(self.col) else {
             return Ok(None);
         };
 
         match next {
             ascii @ ..=b'\x7F' => {
-                self.byte_col += 1;
-                self.char_col += 1;
+                self.col += 1;
                 Ok(Some(*ascii))
             }
             _non_ascii => {
-                let rest_of_line = &self.src.code[self.byte_col..self.line.end];
+                let rest_of_line = &self.src.code[self.col..self.line.end];
                 let non_ascii_char = rest_of_line.chars().next().unwrap();
-                let non_ascii_col = self.byte_col;
-                self.byte_col += non_ascii_char.len_utf8();
-                self.char_col += 1;
+                let non_ascii_col = self.col;
+                self.col += non_ascii_char.len_utf8();
                 Err(Error::new_with_line_idx(
                     self.src,
                     self.line_idx,
@@ -490,40 +488,38 @@ impl<'src> Tokenizer<'src> {
     }
 
     fn next_utf8_char(&mut self) -> Option<char> {
-        let Some(next) = self.src.code.as_bytes().get(self.byte_col) else {
+        let Some(next) = self.src.code.as_bytes().get(self.col) else {
             return None;
         };
 
         match next {
             ascii @ ..=b'\x7F' => {
-                self.byte_col += 1;
-                self.char_col += 1;
+                self.col += 1;
                 Some(*ascii as char)
             }
             _non_ascii => {
-                let rest_of_line = &self.src.code[self.byte_col..self.line.end];
+                let rest_of_line = &self.src.code[self.col..self.line.end];
                 let non_ascii_char = rest_of_line.chars().next().unwrap();
-                self.byte_col += non_ascii_char.len_utf8();
-                self.char_col += 1;
+                self.col += non_ascii_char.len_utf8();
                 Some(non_ascii_char)
             }
         }
     }
 
     fn peek_next_ascii_char(&self) -> Result<Option<&'src u8>, Error<'src>> {
-        let Some(next) = self.src.code.as_bytes().get(self.byte_col) else {
+        let Some(next) = self.src.code.as_bytes().get(self.col) else {
             return Ok(None);
         };
 
         match next {
             ascii @ ..=b'\x7F' => Ok(Some(ascii)),
             _non_ascii => {
-                let rest_of_line = &self.src.code[self.byte_col..self.line.end];
+                let rest_of_line = &self.src.code[self.col..self.line.end];
                 let non_ascii_char = rest_of_line.chars().next().unwrap();
                 Err(Error::new_with_line_idx(
                     self.src,
                     self.line_idx,
-                    self.byte_col,
+                    self.col,
                     1,
                     ErrorKind::NonAsciiCharacter(non_ascii_char),
                 ))
@@ -532,14 +528,14 @@ impl<'src> Tokenizer<'src> {
     }
 
     fn peek_next_utf8_char(&mut self) -> Option<char> {
-        let Some(next) = self.src.code.as_bytes().get(self.byte_col) else {
+        let Some(next) = self.src.code.as_bytes().get(self.col) else {
             return None;
         };
 
         match next {
             ascii @ ..=b'\x7F' => Some(*ascii as char),
             _non_ascii => {
-                let rest_of_line = &self.src.code[self.byte_col..self.line.end];
+                let rest_of_line = &self.src.code[self.col..self.line.end];
                 let non_ascii_char = rest_of_line.chars().next().unwrap();
                 Some(non_ascii_char)
             }
@@ -547,25 +543,23 @@ impl<'src> Tokenizer<'src> {
     }
 
     fn next_in_char_literal(&mut self) -> Result<u8, Error<'src>> {
-        match self.src.code.as_bytes().get(self.byte_col) {
+        match self.src.code.as_bytes().get(self.col) {
             Some(b'\n') | None => Err(Error::new_with_line_idx(
                 self.src,
                 self.line_idx,
-                self.token_start_byte_col,
-                self.char_col - self.token_start_char_col,
+                self.token_start_col,
+                self.token_len(),
                 ErrorKind::UnclosedCharacterLiteral,
             )),
             Some(ascii @ ..=b'\x7F') => {
-                self.byte_col += 1;
-                self.char_col += 1;
+                self.col += 1;
                 Ok(*ascii)
             }
             Some(_non_ascii) => {
-                let rest_of_line = &self.src.code[self.byte_col..self.line.end];
+                let rest_of_line = &self.src.code[self.col..self.line.end];
                 let non_ascii_char = rest_of_line.chars().next().unwrap();
-                let non_ascii_col = self.byte_col;
-                self.byte_col += non_ascii_char.len_utf8();
-                self.char_col += 1;
+                let non_ascii_col = self.col;
+                self.col += non_ascii_char.len_utf8();
                 Err(Error::new_with_line_idx(
                     self.src,
                     self.line_idx,
@@ -578,25 +572,23 @@ impl<'src> Tokenizer<'src> {
     }
 
     fn next_in_str_literal(&mut self) -> Result<u8, Error<'src>> {
-        match self.src.code.as_bytes().get(self.byte_col) {
+        match self.src.code.as_bytes().get(self.col) {
             Some(b'\n') | None => Err(Error::new_with_line_idx(
                 self.src,
                 self.line_idx,
-                self.token_start_byte_col,
-                self.char_col - self.token_start_char_col,
+                self.token_start_col,
+                self.token_len(),
                 ErrorKind::UnclosedStringLiteral,
             )),
             Some(ascii @ ..=b'\x7F') => {
-                self.byte_col += 1;
-                self.char_col += 1;
+                self.col += 1;
                 Ok(*ascii)
             }
             Some(_non_ascii) => {
-                let rest_of_line = &self.src.code[self.byte_col..self.line.end];
+                let rest_of_line = &self.src.code[self.col..self.line.end];
                 let non_ascii_char = rest_of_line.chars().next().unwrap();
-                let non_ascii_col = self.byte_col;
-                self.byte_col += non_ascii_char.len_utf8();
-                self.char_col += 1;
+                let non_ascii_col = self.col;
+                self.col += non_ascii_char.len_utf8();
                 Err(Error::new_with_line_idx(
                     self.src,
                     self.line_idx,
@@ -628,13 +620,13 @@ impl<'src> Tokenizer<'src> {
                     return Err(Error::new_with_line_idx(
                         self.src,
                         self.line_idx,
-                        self.token_start_byte_col,
-                        self.char_col - self.token_start_char_col,
+                        self.token_start_col,
+                        self.token_len(),
                         ErrorKind::NonAsciiIdentifier,
                     ));
                 }
 
-                let identifier = match &self.src.code[self.token_start_byte_col..self.byte_col] {
+                let identifier = match &self.src.code[self.token_start_col..self.col] {
                     "let" => TokenKind::Definition(Mutability::Let),
                     "var" => TokenKind::Definition(Mutability::Var),
                     "print" => TokenKind::Print,
@@ -664,7 +656,7 @@ impl<'src> Tokenizer<'src> {
                     let _ = self.next_ascii_char();
                 }
 
-                let token_text = &self.src.code[self.token_start_byte_col..self.byte_col];
+                let token_text = &self.src.code[self.token_start_col..self.col];
                 match token_text.parse() {
                     Ok(value) => Ok(TokenKind::Literal(Literal::Int(value))),
                     Err(err) => {
@@ -681,8 +673,8 @@ impl<'src> Tokenizer<'src> {
                         Err(Error::new_with_line_idx(
                             self.src,
                             self.line_idx,
-                            self.token_start_byte_col,
-                            self.char_col - self.token_start_char_col,
+                            self.token_start_col,
+                            self.token_len(),
                             kind,
                         ))
                     }
@@ -690,7 +682,7 @@ impl<'src> Tokenizer<'src> {
             }
             b'#' => {
                 // ignoring the hash symbol
-                let comment = &self.src.code[self.byte_col..self.line.end];
+                let comment = &self.src.code[self.col..self.line.end];
 
                 // consuming the rest of the characters in the current line
                 loop {
@@ -720,7 +712,7 @@ impl<'src> Tokenizer<'src> {
                                 self.errors.push(Error::new_with_line_idx(
                                     self.src,
                                     self.line_idx,
-                                    self.byte_col - 2,
+                                    self.col - 2,
                                     2,
                                     ErrorKind::UnrecognizedStringEscapeCharacter(unrecognized as char),
                                 ));
@@ -732,7 +724,7 @@ impl<'src> Tokenizer<'src> {
                             self.errors.push(Error::new_with_line_idx(
                                 self.src,
                                 self.line_idx,
-                                self.byte_col - 1,
+                                self.col - 1,
                                 1,
                                 ErrorKind::ControlCharacterInStringLiteral,
                             ));
@@ -766,7 +758,7 @@ impl<'src> Tokenizer<'src> {
                         unrecognized => Err(Error::new_with_line_idx(
                             self.src,
                             self.line_idx,
-                            self.byte_col - 2,
+                            self.col - 2,
                             2,
                             ErrorKind::UnrecognizedCharacterEscapeCharacter(unrecognized as char),
                         )),
@@ -774,14 +766,14 @@ impl<'src> Tokenizer<'src> {
                     b'\x00'..=b'\x1F' | b'\x7F' => Err(Error::new_with_line_idx(
                         self.src,
                         self.line_idx,
-                        self.byte_col - 1,
+                        self.col - 1,
                         1,
                         ErrorKind::ControlCharacterInCharacterLiteral,
                     )),
                     b'\'' => Err(Error::new_with_line_idx(
                         self.src,
                         self.line_idx,
-                        self.token_start_byte_col,
+                        self.token_start_col,
                         2,
                         ErrorKind::EmptyCharacterLiteral,
                     )),
@@ -792,19 +784,18 @@ impl<'src> Tokenizer<'src> {
                     return Err(Error::new_with_line_idx(
                         self.src,
                         self.line_idx,
-                        self.token_start_byte_col,
-                        self.char_col - self.token_start_char_col,
+                        self.token_start_col,
+                        self.token_len(),
                         ErrorKind::UnclosedCharacterLiteral,
                     ));
                 };
 
-                self.byte_col += 1;
-                self.char_col += 1;
+                self.col += 1;
                 Ok(TokenKind::Literal(Literal::Char(code?)))
             }
             b'(' => {
                 let kind = BracketKind::OpenRound;
-                self.brackets.push(Bracket { kind, col: self.token_start_byte_col, line_idx: self.line_idx });
+                self.brackets.push(Bracket { kind, col: self.token_start_col, line_idx: self.line_idx });
                 Ok(TokenKind::Bracket(kind))
             }
             b')' => match self.brackets.pop() {
@@ -816,7 +807,7 @@ impl<'src> Tokenizer<'src> {
                     actual @ (BracketKind::OpenCurly | BracketKind::OpenSquare) => Err(Error::new_with_line_idx(
                         self.src,
                         self.line_idx,
-                        self.token_start_byte_col,
+                        self.token_start_col,
                         1,
                         ErrorKind::MismatchedBracket { expected: BracketKind::CloseRound, actual },
                     )),
@@ -824,14 +815,14 @@ impl<'src> Tokenizer<'src> {
                 None => Err(Error::new_with_line_idx(
                     self.src,
                     self.line_idx,
-                    self.token_start_byte_col,
+                    self.token_start_col,
                     1,
                     ErrorKind::UnopenedBracket(BracketKind::CloseRound),
                 )),
             },
             b'[' => {
                 let kind = BracketKind::OpenSquare;
-                self.brackets.push(Bracket { kind, col: self.token_start_byte_col, line_idx: self.line_idx });
+                self.brackets.push(Bracket { kind, col: self.token_start_col, line_idx: self.line_idx });
                 Ok(TokenKind::Bracket(kind))
             }
             b']' => match self.brackets.pop() {
@@ -843,7 +834,7 @@ impl<'src> Tokenizer<'src> {
                     actual @ (BracketKind::OpenCurly | BracketKind::OpenRound) => Err(Error::new_with_line_idx(
                         self.src,
                         self.line_idx,
-                        self.token_start_byte_col,
+                        self.token_start_col,
                         1,
                         ErrorKind::MismatchedBracket { expected: BracketKind::CloseSquare, actual },
                     )),
@@ -851,14 +842,14 @@ impl<'src> Tokenizer<'src> {
                 None => Err(Error::new_with_line_idx(
                     self.src,
                     self.line_idx,
-                    self.token_start_byte_col,
+                    self.token_start_col,
                     1,
                     ErrorKind::UnopenedBracket(BracketKind::CloseSquare),
                 )),
             },
             b'{' => {
                 let kind = BracketKind::OpenCurly;
-                self.brackets.push(Bracket { kind, col: self.token_start_byte_col, line_idx: self.line_idx });
+                self.brackets.push(Bracket { kind, col: self.token_start_col, line_idx: self.line_idx });
                 Ok(TokenKind::Bracket(kind))
             }
             b'}' => match self.brackets.pop() {
@@ -870,7 +861,7 @@ impl<'src> Tokenizer<'src> {
                     actual @ (BracketKind::OpenRound | BracketKind::OpenSquare) => Err(Error::new_with_line_idx(
                         self.src,
                         self.line_idx,
-                        self.token_start_byte_col,
+                        self.token_start_col,
                         1,
                         ErrorKind::MismatchedBracket { expected: BracketKind::CloseCurly, actual },
                     )),
@@ -878,7 +869,7 @@ impl<'src> Tokenizer<'src> {
                 None => Err(Error::new_with_line_idx(
                     self.src,
                     self.line_idx,
-                    self.token_start_byte_col,
+                    self.token_start_col,
                     1,
                     ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
                 )),
@@ -888,160 +879,137 @@ impl<'src> Tokenizer<'src> {
             b',' => Ok(TokenKind::Comma),
             b'!' => match self.peek_next_utf8_char() {
                 Some('=') => {
-                    self.byte_col += 1;
-                    self.char_col += 1;
+                    self.col += 1;
                     Ok(TokenKind::Op(Op::NotEquals))
                 }
                 _ => Ok(TokenKind::Op(Op::Not)),
             },
             b'*' => match self.peek_next_utf8_char() {
                 Some('*') => {
-                    self.byte_col += 1;
-                    self.char_col += 1;
+                    self.col += 1;
                     match self.peek_next_utf8_char() {
                         Some('=') => {
-                            self.byte_col += 1;
-                            self.char_col += 1;
+                            self.col += 1;
                             Ok(TokenKind::Op(Op::PowEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::Pow)),
                     }
                 }
                 Some('=') => {
-                    self.byte_col += 1;
-                    self.char_col += 1;
+                    self.col += 1;
                     Ok(TokenKind::Op(Op::TimesEquals))
                 }
                 _ => Ok(TokenKind::Op(Op::Times)),
             },
             b'/' => match self.peek_next_utf8_char() {
                 Some('=') => {
-                    self.byte_col += 1;
-                    self.char_col += 1;
+                    self.col += 1;
                     Ok(TokenKind::Op(Op::DivideEquals))
                 }
                 _ => Ok(TokenKind::Op(Op::Divide)),
             },
             b'%' => match self.peek_next_utf8_char() {
                 Some('=') => {
-                    self.byte_col += 1;
-                    self.char_col += 1;
+                    self.col += 1;
                     Ok(TokenKind::Op(Op::RemainderEquals))
                 }
                 _ => Ok(TokenKind::Op(Op::Remainder)),
             },
             b'+' => match self.peek_next_utf8_char() {
                 Some('=') => {
-                    self.byte_col += 1;
-                    self.char_col += 1;
+                    self.col += 1;
                     Ok(TokenKind::Op(Op::PlusEquals))
                 }
                 _ => Ok(TokenKind::Op(Op::Plus)),
             },
             b'-' => match self.peek_next_utf8_char() {
                 Some('=') => {
-                    self.byte_col += 1;
-                    self.char_col += 1;
+                    self.col += 1;
                     Ok(TokenKind::Op(Op::MinusEquals))
                 }
                 _ => Ok(TokenKind::Op(Op::Minus)),
             },
             b'&' => match self.peek_next_utf8_char() {
                 Some('&') => {
-                    self.byte_col += 1;
-                    self.char_col += 1;
+                    self.col += 1;
                     match self.peek_next_utf8_char() {
                         Some('=') => {
-                            self.byte_col += 1;
-                            self.char_col += 1;
+                            self.col += 1;
                             Ok(TokenKind::Op(Op::AndEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::And)),
                     }
                 }
                 Some('=') => {
-                    self.byte_col += 1;
-                    self.char_col += 1;
+                    self.col += 1;
                     Ok(TokenKind::Op(Op::BitAndEquals))
                 }
                 _ => Ok(TokenKind::Op(Op::BitAnd)),
             },
             b'^' => match self.peek_next_utf8_char() {
                 Some('=') => {
-                    self.byte_col += 1;
-                    self.char_col += 1;
+                    self.col += 1;
                     Ok(TokenKind::Op(Op::BitXorEquals))
                 }
                 _ => Ok(TokenKind::Op(Op::BitXor)),
             },
             b'|' => match self.peek_next_utf8_char() {
                 Some('|') => {
-                    self.byte_col += 1;
-                    self.char_col += 1;
+                    self.col += 1;
                     match self.peek_next_utf8_char() {
                         Some('=') => {
-                            self.byte_col += 1;
-                            self.char_col += 1;
+                            self.col += 1;
                             Ok(TokenKind::Op(Op::OrEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::Or)),
                     }
                 }
                 Some('=') => {
-                    self.byte_col += 1;
-                    self.char_col += 1;
+                    self.col += 1;
                     Ok(TokenKind::Op(Op::BitOrEquals))
                 }
                 _ => Ok(TokenKind::Op(Op::BitOr)),
             },
             b'=' => match self.peek_next_utf8_char() {
                 Some('=') => {
-                    self.byte_col += 1;
-                    self.char_col += 1;
+                    self.col += 1;
                     Ok(TokenKind::Op(Op::EqualsEquals))
                 }
                 _ => Ok(TokenKind::Op(Op::Equals)),
             },
             b'>' => match self.peek_next_utf8_char() {
                 Some('>') => {
-                    self.byte_col += 1;
-                    self.char_col += 1;
+                    self.col += 1;
                     match self.peek_next_utf8_char() {
                         Some('=') => {
-                            self.byte_col += 1;
-                            self.char_col += 1;
+                            self.col += 1;
                             Ok(TokenKind::Op(Op::RightShiftEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::RightShift)),
                     }
                 }
                 Some('=') => {
-                    self.byte_col += 1;
-                    self.char_col += 1;
+                    self.col += 1;
                     Ok(TokenKind::Op(Op::GreaterOrEquals))
                 }
                 _ => Ok(TokenKind::Op(Op::Greater)),
             },
             b'<' => match self.peek_next_utf8_char() {
                 Some('<') => {
-                    self.byte_col += 1;
-                    self.char_col += 1;
+                    self.col += 1;
                     match self.peek_next_utf8_char() {
                         Some('=') => {
-                            self.byte_col += 1;
-                            self.char_col += 1;
+                            self.col += 1;
                             Ok(TokenKind::Op(Op::LeftShiftEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::LeftShift)),
                     }
                 }
                 Some('=') => {
-                    self.byte_col += 1;
-                    self.char_col += 1;
+                    self.col += 1;
                     match self.peek_next_utf8_char() {
                         Some('>') => {
-                            self.byte_col += 1;
-                            self.char_col += 1;
+                            self.col += 1;
                             Ok(TokenKind::Op(Op::Compare))
                         }
                         _ => Ok(TokenKind::Op(Op::LessOrEquals)),
@@ -1052,7 +1020,7 @@ impl<'src> Tokenizer<'src> {
             unrecognized => Err(Error::new_with_line_idx(
                 self.src,
                 self.line_idx,
-                self.token_start_byte_col,
+                self.token_start_col,
                 1,
                 ErrorKind::UnrecognizedCharacter(unrecognized as char),
             )),
