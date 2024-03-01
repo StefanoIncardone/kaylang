@@ -1,7 +1,7 @@
 use super::{
     error::{SyntaxError, SyntaxErrorInfo},
     src_file::{Position, SrcFile},
-    tokenizer::{BracketKind, Len, Literal, Mutability, Op, Token, TokenKind},
+    tokenizer::{BracketKind, Literal, Mutability, Op, SrcCodeLen, Token, TokenKind},
 };
 use crate::error::ErrorInfo;
 use std::fmt::{Debug, Display};
@@ -451,7 +451,12 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::If => Ok(Some(self.iff()?)),
             TokenKind::Else => {
                 let _ = self.next_token();
-                Err(Error::new(self.src, current_token.col, current_token.kind.len(), ErrorKind::StrayElseBlock))
+                Err(Error::new(
+                    self.src,
+                    current_token.col,
+                    current_token.kind.src_code_len(),
+                    ErrorKind::StrayElseBlock,
+                ))
             }
             TokenKind::Do | TokenKind::Loop => {
                 self.loop_depth += 1;
@@ -468,7 +473,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     0 => Err(Error::new(
                         self.src,
                         current_token.col,
-                        current_token.kind.len(),
+                        current_token.kind.src_code_len(),
                         ErrorKind::BreakOutsideOfLoop,
                     )),
                     _ => Ok(Some(Node::Break)),
@@ -480,7 +485,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     0 => Err(Error::new(
                         self.src,
                         current_token.col,
-                        current_token.kind.len(),
+                        current_token.kind.src_code_len(),
                         ErrorKind::ContinueOutsideOfLoop,
                     )),
                     _ => Ok(Some(Node::Continue)),
@@ -495,7 +500,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 Err(Error::new(
                     self.src,
                     current_token.col,
-                    current_token.kind.len(),
+                    current_token.kind.src_code_len(),
                     ErrorKind::BlocksNotAllowed(BlocksNotAllowedIn::DoStatement),
                 ))
             }
@@ -504,7 +509,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 Err(Error::new(
                     self.src,
                     current_token.col,
-                    current_token.kind.len(),
+                    current_token.kind.src_code_len(),
                     ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
                 ))
             }
@@ -513,7 +518,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 Err(Error::new(
                     self.src,
                     current_token.col,
-                    current_token.kind.len(),
+                    current_token.kind.src_code_len(),
                     ErrorKind::TemporaryArrayNotSupportedYet,
                 ))
             }
@@ -522,7 +527,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 Err(Error::new(
                     self.src,
                     current_token.col,
-                    current_token.kind.len(),
+                    current_token.kind.src_code_len(),
                     ErrorKind::UnopenedBracket(BracketKind::CloseSquare),
                 ))
             }
@@ -531,28 +536,28 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 Err(Error::new(
                     self.src,
                     current_token.col,
-                    current_token.kind.len(),
+                    current_token.kind.src_code_len(),
                     ErrorKind::UnopenedBracket(BracketKind::CloseRound),
                 ))
             }
             TokenKind::Colon => {
                 let _ = self.next_token();
-                Err(Error::new(self.src, current_token.col, current_token.kind.len(), ErrorKind::StrayColon))
+                Err(Error::new(self.src, current_token.col, current_token.kind.src_code_len(), ErrorKind::StrayColon))
             }
             TokenKind::Comma => {
                 let _ = self.next_token();
-                Err(Error::new(self.src, current_token.col, current_token.kind.len(), ErrorKind::StrayComma))
+                Err(Error::new(self.src, current_token.col, current_token.kind.src_code_len(), ErrorKind::StrayComma))
             }
             TokenKind::Op(Op::Equals) => {
                 let _ = self.next_token();
-                Err(Error::new(self.src, current_token.col, current_token.kind.len(), ErrorKind::StrayEquals))
+                Err(Error::new(self.src, current_token.col, current_token.kind.src_code_len(), ErrorKind::StrayEquals))
             }
             TokenKind::Op(op) => {
                 let _ = self.next_token();
                 Err(Error::new(
                     self.src,
                     current_token.col,
-                    current_token.kind.len(),
+                    current_token.kind.src_code_len(),
                     ErrorKind::StrayBinaryOperator(op),
                 ))
             }
@@ -569,7 +574,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 Err(Error::new(
                     self.src,
                     current_token.col,
-                    current_token.kind.len(),
+                    current_token.kind.src_code_len(),
                     ErrorKind::BlocksNotAllowed(BlocksNotAllowedIn::DoStatement),
                 ))
             }
@@ -578,7 +583,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 Err(Error::new(
                     self.src,
                     current_token.col,
-                    current_token.kind.len(),
+                    current_token.kind.src_code_len(),
                     ErrorKind::VariableDefinitionNotAllowed(VariableDefinitionNotAllowedIn::DoStatement),
                 ))
             }
@@ -619,7 +624,12 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn current_token_bounded(&self, expected: ExpectedBeforeEof) -> Result<&'tokens Token<'src>, Error<'src>> {
         let Some(token) = self.tokens.get(self.token) else {
             let previous = self.peek_previous_token();
-            return Err(Error::new(self.src, previous.col, previous.kind.len(), ErrorKind::NoMoreTokens(expected)));
+            return Err(Error::new(
+                self.src,
+                previous.col,
+                previous.kind.src_code_len(),
+                ErrorKind::NoMoreTokens(expected),
+            ));
         };
 
         Ok(token)
@@ -651,7 +661,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 return Err(Error::new(
                     self.src,
                     previous.col,
-                    previous.kind.len(),
+                    previous.kind.src_code_len(),
                     ErrorKind::NoMoreTokens(expected_before_eof),
                 ));
             }
@@ -701,7 +711,12 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             Ok(())
         } else {
             let previous_token = self.peek_previous_token();
-            Err(Error::new(self.src, previous_token.col, previous_token.kind.len(), ErrorKind::MissingSemicolon))
+            Err(Error::new(
+                self.src,
+                previous_token.col,
+                previous_token.kind.src_code_len(),
+                ErrorKind::MissingSemicolon,
+            ))
         }
     }
 }
@@ -714,10 +729,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         lhs: &Expression<'src>,
     ) -> Result<(), Error<'src>> {
         if let Type::Str = lhs.typ() {
-            return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::StringLeftOperand));
+            return Err(Error::new(self.src, op_token.col, op_token.kind.src_code_len(), ErrorKind::StringLeftOperand));
         }
         if let Type::Array { .. } = lhs.typ() {
-            return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::ArrayLeftOperand));
+            return Err(Error::new(self.src, op_token.col, op_token.kind.src_code_len(), ErrorKind::ArrayLeftOperand));
         }
 
         Ok(())
@@ -729,10 +744,15 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         rhs: &Expression<'src>,
     ) -> Result<(), Error<'src>> {
         if let Type::Str = rhs.typ() {
-            return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::StringRightOperand));
+            return Err(Error::new(
+                self.src,
+                op_token.col,
+                op_token.kind.src_code_len(),
+                ErrorKind::StringRightOperand,
+            ));
         }
         if let Type::Array { .. } = rhs.typ() {
-            return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::ArrayRightOperand));
+            return Err(Error::new(self.src, op_token.col, op_token.kind.src_code_len(), ErrorKind::ArrayRightOperand));
         }
 
         Ok(())
@@ -768,7 +788,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             return Err(Error::new(
                 self.src,
                 open_bracket_token.col,
-                open_bracket_token.kind.len(),
+                open_bracket_token.kind.src_code_len(),
                 ErrorKind::ExpectedIntegerExpressionInArrayIndex,
             ));
         };
@@ -779,7 +799,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             return Err(Error::new(
                 self.src,
                 before_index_token.col,
-                before_index_token.kind.len(),
+                before_index_token.kind.src_code_len(),
                 ErrorKind::MissingSquareBracketInArrayIndex,
             ));
         };
@@ -789,32 +809,32 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 Type::Int | Type::Bool | Type::Infer | Type::Char | Type::Str => Ok(Expression::ArrayIndex {
                     var_name,
                     element_type: *elements_type,
-                    bracket_position: self.src.position(open_bracket_token.col),
+                    bracket_position: self.src.position(open_bracket_token.col).0,
                     index: Box::new(index),
                 }),
                 Type::Array { .. } => Err(Error::new(
                     self.src,
                     current_token.col,
-                    current_token.kind.len(),
+                    current_token.kind.src_code_len(),
                     ErrorKind::NestedArrayNotSupportedYet,
                 )),
             },
             Type::Str => Ok(Expression::ArrayIndex {
                 var_name,
                 element_type: Type::Char,
-                bracket_position: self.src.position(open_bracket_token.col),
+                bracket_position: self.src.position(open_bracket_token.col).0,
                 index: Box::new(index),
             }),
             Type::Int => Ok(Expression::ArrayIndex {
                 var_name,
                 element_type: Type::Int,
-                bracket_position: self.src.position(open_bracket_token.col),
+                bracket_position: self.src.position(open_bracket_token.col).0,
                 index: Box::new(index),
             }),
             Type::Bool | Type::Infer | Type::Char => Err(Error::new(
                 self.src,
                 current_token.col,
-                current_token.kind.len(),
+                current_token.kind.src_code_len(),
                 ErrorKind::CannotIndexNonArrayType(var_typ),
             )),
         }
@@ -832,14 +852,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     None => Err(Error::new(
                         self.src,
                         current_token.col,
-                        current_token.kind.len(),
+                        current_token.kind.src_code_len(),
                         ErrorKind::VariableNotPreviouslyDefined,
                     )),
                 },
                 Some(_) => Err(Error::new(
                     self.src,
                     current_token.col,
-                    current_token.kind.len(),
+                    current_token.kind.src_code_len(),
                     ErrorKind::TypeNameInExpressions,
                 )),
             },
@@ -849,7 +869,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     break 'parenthesis Err(Error::new(
                         self.src,
                         expression_start_token.col,
-                        expression_start_token.kind.len(),
+                        expression_start_token.kind.src_code_len(),
                         ErrorKind::EmptyExpression,
                     ));
                 }
@@ -861,7 +881,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     _ => Err(Error::new(
                         self.src,
                         current_token.col,
-                        current_token.kind.len(),
+                        current_token.kind.src_code_len(),
                         ErrorKind::UnclosedBracket(*open_bracket_kind),
                     )),
                 }
@@ -885,7 +905,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             break 'array Err(Error::new(
                                 self.src,
                                 element_token.col,
-                                element_token.kind.len(),
+                                element_token.kind.src_code_len(),
                                 ErrorKind::NestedArrayNotSupportedYet,
                             ))
                         }
@@ -897,7 +917,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             break 'array Err(Error::new(
                                 self.src,
                                 element_token.col,
-                                element_token.kind.len(),
+                                element_token.kind.src_code_len(),
                                 ErrorKind::MismatchedArrayElementType { expected: expected.clone(), actual },
                             ))
                         }
@@ -931,19 +951,19 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     Type::Bool => Err(Error::new(
                         self.src,
                         current_token.col,
-                        current_token.kind.len(),
+                        current_token.kind.src_code_len(),
                         ErrorKind::CannotNegateBoolean,
                     )),
                     Type::Str => Err(Error::new(
                         self.src,
                         current_token.col,
-                        current_token.kind.len(),
+                        current_token.kind.src_code_len(),
                         ErrorKind::CannotNegateString,
                     )),
                     Type::Array { .. } => Err(Error::new(
                         self.src,
                         current_token.col,
-                        current_token.kind.len(),
+                        current_token.kind.src_code_len(),
                         ErrorKind::CannotNegateArray,
                     )),
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
@@ -969,13 +989,13 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     Type::Str => Err(Error::new(
                         self.src,
                         current_token.col,
-                        current_token.kind.len(),
+                        current_token.kind.src_code_len(),
                         ErrorKind::CannotInvertString,
                     )),
                     Type::Array { .. } => Err(Error::new(
                         self.src,
                         current_token.col,
-                        current_token.kind.len(),
+                        current_token.kind.src_code_len(),
                         ErrorKind::CannotInvertArray,
                     )),
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
@@ -988,10 +1008,18 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Else
             | TokenKind::Loop
             | TokenKind::Break
-            | TokenKind::Continue => {
-                Err(Error::new(self.src, current_token.col, current_token.kind.len(), ErrorKind::KeywordInExpression))
-            }
-            _ => Err(Error::new(self.src, current_token.col, current_token.kind.len(), ErrorKind::ExpectedOperand)),
+            | TokenKind::Continue => Err(Error::new(
+                self.src,
+                current_token.col,
+                current_token.kind.src_code_len(),
+                ErrorKind::KeywordInExpression,
+            )),
+            _ => Err(Error::new(
+                self.src,
+                current_token.col,
+                current_token.kind.src_code_len(),
+                ErrorKind::ExpectedOperand,
+            )),
         };
 
         let _ = self.next_token();
@@ -1009,7 +1037,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col),
+                op_position: self.src.position(op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1029,7 +1057,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col),
+                op_position: self.src.position(op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1049,7 +1077,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col),
+                op_position: self.src.position(op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1069,7 +1097,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col),
+                op_position: self.src.position(op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1089,7 +1117,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col),
+                op_position: self.src.position(op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1109,7 +1137,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col),
+                op_position: self.src.position(op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1129,7 +1157,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col),
+                op_position: self.src.position(op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1149,7 +1177,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col),
+                op_position: self.src.position(op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1171,13 +1199,18 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             if is_chained {
-                return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::ChainedComparison));
+                return Err(Error::new(
+                    self.src,
+                    op_token.col,
+                    op_token.kind.src_code_len(),
+                    ErrorKind::ChainedComparison,
+                ));
             }
             is_chained = true;
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col),
+                op_position: self.src.position(op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1191,17 +1224,27 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         while let Some((op_token, op)) = self.operator(&[Op::And])? {
             let Type::Bool = lhs.typ() else {
-                return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::NonBooleanLeftOperand));
+                return Err(Error::new(
+                    self.src,
+                    op_token.col,
+                    op_token.kind.src_code_len(),
+                    ErrorKind::NonBooleanLeftOperand,
+                ));
             };
 
             let rhs = self.comparison_expression()?;
             let Type::Bool = rhs.typ() else {
-                return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::NonBooleanRightOperand));
+                return Err(Error::new(
+                    self.src,
+                    op_token.col,
+                    op_token.kind.src_code_len(),
+                    ErrorKind::NonBooleanRightOperand,
+                ));
             };
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col),
+                op_position: self.src.position(op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1215,17 +1258,27 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         while let Some((op_token, op)) = self.operator(&[Op::Or])? {
             let Type::Bool = lhs.typ() else {
-                return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::NonBooleanLeftOperand));
+                return Err(Error::new(
+                    self.src,
+                    op_token.col,
+                    op_token.kind.src_code_len(),
+                    ErrorKind::NonBooleanLeftOperand,
+                ));
             };
 
             let rhs = self.and_expression()?;
             let Type::Bool = rhs.typ() else {
-                return Err(Error::new(self.src, op_token.col, op_token.kind.len(), ErrorKind::NonBooleanRightOperand));
+                return Err(Error::new(
+                    self.src,
+                    op_token.col,
+                    op_token.kind.src_code_len(),
+                    ErrorKind::NonBooleanRightOperand,
+                ));
             };
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col),
+                op_position: self.src.position(op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1291,7 +1344,12 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         let type_token = self.next_token_bounded(ExpectedBeforeEof::TypeAnnotation)?;
         let TokenKind::Identifier(type_name) = type_token.kind else {
-            return Err(Error::new(self.src, colon_token.col, colon_token.kind.len(), ErrorKind::ExpectedTypeName));
+            return Err(Error::new(
+                self.src,
+                colon_token.col,
+                colon_token.kind.src_code_len(),
+                ErrorKind::ExpectedTypeName,
+            ));
         };
 
         let Some(typ) = self.resolve_type(type_name) else {
@@ -1300,7 +1358,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 None => Err(Error::new(
                     self.src,
                     type_token.col,
-                    type_token.kind.len(),
+                    type_token.kind.src_code_len(),
                     ErrorKind::VariableAsTypeAnnotationNotPreviouslyDefined,
                 )),
             };
@@ -1319,13 +1377,18 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let len = match len_token.kind {
             TokenKind::Literal(Literal::Int(len)) => len,
             TokenKind::Bracket(BracketKind::CloseSquare) => {
-                return Err(Error::new(self.src, len_token.col, len_token.kind.len(), ErrorKind::MissingArrayLength))
+                return Err(Error::new(
+                    self.src,
+                    len_token.col,
+                    len_token.kind.src_code_len(),
+                    ErrorKind::MissingArrayLength,
+                ))
             }
             _ => {
                 return Err(Error::new(
                     self.src,
                     len_token.col,
-                    len_token.kind.len(),
+                    len_token.kind.src_code_len(),
                     ErrorKind::NonLiteralIntegerArrayLength,
                 ))
             }
@@ -1338,7 +1401,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             Some(_) | None => Err(Error::new(
                 self.src,
                 open_square_bracket_token.col,
-                open_square_bracket_token.kind.len(),
+                open_square_bracket_token.kind.src_code_len(),
                 ErrorKind::MissingSquareBracketInArrayTypeAnnotation,
             )),
         }
@@ -1354,11 +1417,19 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let name = match &name_token.kind {
             TokenKind::Identifier(name) => match self.resolve_type(name) {
                 None => Ok(name),
-                Some(_) => {
-                    Err(Error::new(self.src, name_token.col, name_token.kind.len(), ErrorKind::TypeNameInVariableName))
-                }
+                Some(_) => Err(Error::new(
+                    self.src,
+                    name_token.col,
+                    name_token.kind.src_code_len(),
+                    ErrorKind::TypeNameInVariableName,
+                )),
             },
-            _ => Err(Error::new(self.src, name_token.col, name_token.kind.len(), ErrorKind::ExpectedVariableName)),
+            _ => Err(Error::new(
+                self.src,
+                name_token.col,
+                name_token.kind.src_code_len(),
+                ErrorKind::ExpectedVariableName,
+            )),
         };
         let name = name?;
 
@@ -1378,13 +1449,13 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 None => Err(Error::new(
                     self.src,
                     name_token.col,
-                    name_token.kind.len(),
+                    name_token.kind.src_code_len(),
                     ErrorKind::ExpectedEqualsOrSemicolonAfterVariableName,
                 )),
                 Some((annotation_token, _)) => Err(Error::new(
                     self.src,
                     annotation_token.col,
-                    annotation_token.kind.len(),
+                    annotation_token.kind.src_code_len(),
                     ErrorKind::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
                 )),
             },
@@ -1392,7 +1463,12 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let expression = expression?;
 
         if self.resolve_variable(name).is_some() {
-            return Err(Error::new(self.src, name_token.col, name_token.kind.len(), ErrorKind::VariableRedefinition));
+            return Err(Error::new(
+                self.src,
+                name_token.col,
+                name_token.kind.src_code_len(),
+                ErrorKind::VariableRedefinition,
+            ));
         }
 
         match expression {
@@ -1408,7 +1484,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         return Err(Error::new(
                             self.src,
                             token.col,
-                            token.kind.len(),
+                            token.kind.src_code_len(),
                             ErrorKind::VariableDefinitionTypeMismatch { expected: typ.clone(), actual: value.typ() },
                         ));
                     }
@@ -1416,7 +1492,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     return Err(Error::new(
                         self.src,
                         name_token.col,
-                        name_token.kind.len(),
+                        name_token.kind.src_code_len(),
                         ErrorKind::ExpectedTypeAnnotation,
                     ));
                 }
@@ -1434,7 +1510,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 None => Err(Error::new(
                     self.src,
                     name_token.col,
-                    name_token.kind.len(),
+                    name_token.kind.src_code_len(),
                     ErrorKind::ExpectedTypeAnnotationOrValue,
                 )),
             },
@@ -1451,7 +1527,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             return Err(Error::new(
                 self.src,
                 name_token.col,
-                name_token.kind.len(),
+                name_token.kind.src_code_len(),
                 ErrorKind::TypeNameInVariableReassignment,
             ));
         }
@@ -1466,7 +1542,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 Mutability::Let => Err(Error::new(
                     self.src,
                     name_token.col,
-                    name_token.kind.len(),
+                    name_token.kind.src_code_len(),
                     ErrorKind::TryingToMutateImmutableVariable,
                 )),
                 Mutability::Var => {
@@ -1474,7 +1550,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         TokenKind::Op(Op::Equals) => rhs,
                         TokenKind::Op(op) => Expression::Binary {
                             lhs: Box::new(Expression::Identifier { name, typ: op.typ() }),
-                            op_position: self.src.position(op_token.col),
+                            op_position: self.src.position(op_token.col).0,
                             op: *op,
                             rhs: Box::new(rhs),
                         },
@@ -1487,7 +1563,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         Err(Error::new(
                             self.src,
                             name_token.col,
-                            name_token.kind.len(),
+                            name_token.kind.src_code_len(),
                             ErrorKind::VariableAssignmentTypeMismatch {
                                 expected: var.value.typ(),
                                 actual: value.typ(),
@@ -1499,7 +1575,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             None => Err(Error::new(
                 self.src,
                 name_token.col,
-                name_token.kind.len(),
+                name_token.kind.src_code_len(),
                 ErrorKind::VariableNotPreviouslyDefined,
             )),
         }
@@ -1533,7 +1609,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Err(Error::new(
             self.src,
             start_of_expression_token.col,
-            start_of_expression_token.kind.len(),
+            start_of_expression_token.kind.src_code_len(),
             ErrorKind::TemporaryArrayNotSupportedYet,
         ))
     }
@@ -1553,7 +1629,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 Type::Char | Type::Int | Type::Str | Type::Array { .. } | Type::Infer => Err(Error::new(
                     self.src,
                     if_token.col,
-                    if_token.kind.len(),
+                    if_token.kind.src_code_len(),
                     ErrorKind::ExpectedBooleanExpressionInIfStatement,
                 )),
             };
@@ -1575,7 +1651,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     Err(Error::new(
                         self.src,
                         before_curly_bracket_token.col,
-                        before_curly_bracket_token.kind.len(),
+                        before_curly_bracket_token.kind.src_code_len(),
                         ErrorKind::ExpectedDoOrBlockAfterIfStatement,
                     ))
                 }
@@ -1606,7 +1682,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     _ => Err(Error::new(
                         self.src,
                         else_token.col,
-                        else_token.kind.len(),
+                        else_token.kind.src_code_len(),
                         ErrorKind::ExpectedDoOrBlockOrIfStatementAfterIfStatement,
                     )),
                 };
@@ -1635,7 +1711,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             Type::Char | Type::Int | Type::Str | Type::Array { .. } | Type::Infer => Err(Error::new(
                 self.src,
                 loop_token.col,
-                loop_token.kind.len(),
+                loop_token.kind.src_code_len(),
                 ErrorKind::ExpectedBooleanExpressionInLoopStatement,
             )),
         };
@@ -1656,7 +1732,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 Err(Error::new(
                     self.src,
                     before_curly_bracket_token.col,
-                    before_curly_bracket_token.kind.len(),
+                    before_curly_bracket_token.kind.src_code_len(),
                     ErrorKind::ExpectedBooleanExpressionInLoopStatement,
                 ))
             }

@@ -104,9 +104,12 @@ pub struct SyntaxError<'src, Kind: ErrorInfo> {
 
 impl<'src, Kind: ErrorInfo> SyntaxError<'src, Kind> {
     pub(crate) fn new(src: &'src SrcFile, col: usize, len: usize, kind: Kind) -> Self {
-        let position = src.position(col);
-        let line = &src.lines[position.line - 1];
-        let line_text = &src.code[line.start..line.end];
+        let (position, line_text) = src.position(col);
+        Self { path: &src.path, position, len, line_text, kind }
+    }
+
+    pub(crate) fn new_with_line_idx(src: &'src SrcFile, line_idx: usize, col: usize, len: usize, kind: Kind) -> Self {
+        let (position, line_text) = src.position_with_line_idx(line_idx, col);
         Self { path: &src.path, position, len, line_text, kind }
     }
 }

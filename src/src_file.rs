@@ -28,6 +28,7 @@ pub struct SrcFile {
 }
 
 impl SrcFile {
+    // TODO(stefano): replace indentation tabs with spaces
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
         let path = path.as_ref().to_path_buf();
 
@@ -82,7 +83,7 @@ impl SrcFile {
         Ok(Self { path, code, lines })
     }
 
-    pub(crate) fn position(&self, col: usize) -> Position {
+    pub(crate) fn position(&self, col: usize) -> (Position, &str) {
         let mut left = 0;
         let mut right = self.lines.len();
         while left < right {
@@ -94,7 +95,22 @@ impl SrcFile {
             }
         }
 
-        Position { line: left + 1, col: col + 1 - self.lines[left].start }
+        self.position_with_line_idx(left, col)
+    }
+
+    pub(crate) fn position_with_line_idx(&self, line_idx: usize, col: usize) -> (Position, &str) {
+        let line = &self.lines[line_idx];
+        let line_text = &self.code[line.start..line.end];
+        let target_col = col - line.start;
+        let mut display_col = 0;
+        for (idx, _) in line_text.char_indices() {
+            display_col += 1;
+            if idx == target_col {
+                break;
+            }
+        }
+
+        (Position { line: line_idx + 1, col: display_col }, line_text)
     }
 }
 
