@@ -1,5 +1,5 @@
 use crate::{
-    error::{CliError, CliErrorInfo, ErrorInfo},
+    error::{CliError, CliErrorInfo, CliErrorKind, ErrorInfo},
     Color, RunMode, Verbosity,
 };
 use std::path::PathBuf;
@@ -26,18 +26,20 @@ impl TryFrom<Vec<String>> for Args {
         while let Some(arg) = args.next() {
             if arg == "-c" || arg == "--color" {
                 if let Some(_mode) = color {
-                    return Err(Error { kind: ErrorKind::ColorModeAlreadySelected });
+                    return Err(CliError { kind: ErrorKind::ColorModeAlreadySelected });
                 }
 
                 let Some(mode) = args.next() else {
-                    return Err(Error { kind: ErrorKind::MissingColorMode });
+                    return Err(CliError { kind: ErrorKind::MissingColorMode });
                 };
 
                 color = match mode.as_str() {
                     "auto" => Some(Color::Auto),
                     "always" => Some(Color::Always),
                     "never" => Some(Color::Never),
-                    _ => return Err(Error { kind: ErrorKind::UnrecognizedColorMode { unrecognized: mode.clone() } }),
+                    _ => {
+                        return Err(CliError { kind: ErrorKind::UnrecognizedColorMode { unrecognized: mode.clone() } })
+                    }
                 };
             }
         }
@@ -55,7 +57,7 @@ impl TryFrom<Vec<String>> for Args {
             match arg.as_str() {
                 "-q" | "--quiet" | "-V" | "--verbose" => {
                     if let Some(_mode) = verbosity {
-                        return Err(Error { kind: ErrorKind::VerbosityModeAlreadySelected });
+                        return Err(CliError { kind: ErrorKind::VerbosityModeAlreadySelected });
                     }
 
                     verbosity = match arg.as_str() {
@@ -65,18 +67,18 @@ impl TryFrom<Vec<String>> for Args {
                     };
                 }
                 "-h" | "--help" => match run_mode {
-                    Some(RunMode::Help) => return Err(Error { kind: ErrorKind::HelpCommandAlreadySelected }),
-                    Some(RunMode::Version) => return Err(Error { kind: ErrorKind::HelpAndVersionCommandSelected }),
+                    Some(RunMode::Help) => return Err(CliError { kind: ErrorKind::HelpCommandAlreadySelected }),
+                    Some(RunMode::Version) => return Err(CliError { kind: ErrorKind::HelpAndVersionCommandSelected }),
                     _ => run_mode = Some(RunMode::Help),
                 },
                 "-v" | "--version" => match run_mode {
-                    Some(RunMode::Version) => return Err(Error { kind: ErrorKind::VersionCommandAlreadySelected }),
-                    Some(RunMode::Help) => return Err(Error { kind: ErrorKind::HelpAndVersionCommandSelected }),
+                    Some(RunMode::Version) => return Err(CliError { kind: ErrorKind::VersionCommandAlreadySelected }),
+                    Some(RunMode::Help) => return Err(CliError { kind: ErrorKind::HelpAndVersionCommandSelected }),
                     _ => run_mode = Some(RunMode::Version),
                 },
                 run_mode_str @ ("check" | "compile" | "run") => {
                     if let Some(RunMode::Check { .. } | RunMode::Compile { .. } | RunMode::Run { .. }) = run_mode {
-                        return Err(Error {
+                        return Err(CliError {
                             kind: ErrorKind::RunModeAlreadySelected { mode: run_mode_str.to_string() },
                         });
                     }
@@ -84,7 +86,7 @@ impl TryFrom<Vec<String>> for Args {
                     let src_path: PathBuf = match args.next() {
                         Some(path) => path.into(),
                         None => {
-                            return Err(Error {
+                            return Err(CliError {
                                 kind: ErrorKind::MissingSourceFilePathForRunMode { mode: run_mode_str.to_string() },
                             })
                         }
@@ -102,7 +104,7 @@ impl TryFrom<Vec<String>> for Args {
                                     out = match args.next() {
                                         Some(path) => Some(path.into()),
                                         None => {
-                                            return Err(Error {
+                                            return Err(CliError {
                                                 kind: ErrorKind::MissingOutputFolderPathForRunMode {
                                                     mode: run_mode_str.to_string(),
                                                 },
@@ -130,16 +132,16 @@ impl TryFrom<Vec<String>> for Args {
                 }
                 "-o" | "--output" => {
                     let Some(_) = args.next() else {
-                        return Err(Error { kind: ErrorKind::MissingOutputFolderPath });
+                        return Err(CliError { kind: ErrorKind::MissingOutputFolderPath });
                     };
 
-                    return Err(Error { kind: ErrorKind::StrayOutputFolderPath });
+                    return Err(CliError { kind: ErrorKind::StrayOutputFolderPath });
                 }
                 "-c" | "--color" => {
                     let _ = args.next();
                 }
                 unrecognized => {
-                    return Err(Error { kind: ErrorKind::UnrecognizedFlag { flag: unrecognized.to_string() } })
+                    return Err(CliError { kind: ErrorKind::UnrecognizedFlag { flag: unrecognized.to_string() } })
                 }
             }
         }
@@ -149,14 +151,14 @@ impl TryFrom<Vec<String>> for Args {
 }
 
 impl TryFrom<std::env::Args> for Args {
-    type Error = Error;
+    type Error = CliError<ErrorKind>;
 
     fn try_from(args: std::env::Args) -> Result<Self, Self::Error> {
         Self::try_from(args.collect::<Vec<String>>())
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ErrorKind {
     ColorModeAlreadySelected,
     MissingColorMode,
@@ -213,4 +215,7 @@ impl ErrorInfo for ErrorKind {
     }
 }
 
+impl CliErrorKind for ErrorKind {}
+
+#[deprecated(since = "0.5.3", note = "will be removed to allow for more explicit function signatures")]
 pub type Error = CliError<ErrorKind>;

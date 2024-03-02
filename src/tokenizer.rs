@@ -1,5 +1,5 @@
 use crate::{
-    error::{ErrorInfo, SyntaxError, SyntaxErrorInfo},
+    error::{ErrorInfo, RawSyntaxError, SyntaxError, SyntaxErrorInfo, SyntaxErrorKind, SyntaxErrors},
     src_file::{Line, SrcFile},
 };
 use std::{
@@ -265,7 +265,6 @@ impl SrcCodeLen for BracketKind {
 struct Bracket {
     kind: BracketKind,
     col: usize,
-    line_idx: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -375,7 +374,7 @@ pub struct Tokenizer<'src> {
 
     tokens: Vec<Token<'src>>,
     brackets: Vec<Bracket>,
-    errors: Vec<Error<'src>>,
+    errors: Vec<RawSyntaxError<ErrorKind>>,
 }
 
 impl<'src> Tokenizer<'src> {
@@ -435,19 +434,18 @@ impl<'src> Tokenizer<'src> {
 
         for bracket in &this.brackets {
             // there can only be open brackets at this point
-            this.errors.push(Error::new_with_line_idx(
-                this.src,
-                bracket.line_idx,
-                bracket.col,
-                1,
-                ErrorKind::UnclosedBracket(bracket.kind),
-            ));
+            this.errors.push(RawSyntaxError {
+                kind: ErrorKind::UnclosedBracket(bracket.kind),
+                col: bracket.col,
+                len: 1,
+            });
         }
 
         if this.errors.is_empty() {
             Ok(this.tokens)
         } else {
-            Err(this.errors)
+            let errors = SyntaxErrors { src, raw_errors: this.errors };
+            Err(errors.iter().collect())
         }
     }
 }
@@ -461,7 +459,7 @@ impl<'src> Tokenizer<'src> {
         self.src.code[self.token_start_col..self.col].chars().count()
     }
 
-    fn next_ascii_char(&mut self) -> Result<Option<u8>, Error<'src>> {
+    fn next_ascii_char(&mut self) -> Result<Option<u8>, RawSyntaxError<ErrorKind>> {
         let Some(next) = self.src.code.as_bytes().get(self.col) else {
             return Ok(None);
         };
@@ -476,13 +474,7 @@ impl<'src> Tokenizer<'src> {
                 let non_ascii_char = rest_of_line.chars().next().unwrap();
                 let non_ascii_col = self.col;
                 self.col += non_ascii_char.len_utf8();
-                Err(Error::new_with_line_idx(
-                    self.src,
-                    self.line_idx,
-                    non_ascii_col,
-                    1,
-                    ErrorKind::NonAsciiCharacter(non_ascii_char),
-                ))
+                Err(RawSyntaxError { kind: ErrorKind::NonAsciiCharacter(non_ascii_char), col: non_ascii_col, len: 1 })
             }
         }
     }
@@ -506,7 +498,7 @@ impl<'src> Tokenizer<'src> {
         }
     }
 
-    fn peek_next_ascii_char(&self) -> Result<Option<&'src u8>, Error<'src>> {
+    fn peek_next_ascii_char(&self) -> Result<Option<&'src u8>, RawSyntaxError<ErrorKind>> {
         let Some(next) = self.src.code.as_bytes().get(self.col) else {
             return Ok(None);
         };
@@ -516,13 +508,7 @@ impl<'src> Tokenizer<'src> {
             _non_ascii => {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
                 let non_ascii_char = rest_of_line.chars().next().unwrap();
-                Err(Error::new_with_line_idx(
-                    self.src,
-                    self.line_idx,
-                    self.col,
-                    1,
-                    ErrorKind::NonAsciiCharacter(non_ascii_char),
-                ))
+                Err(RawSyntaxError { kind: ErrorKind::NonAsciiCharacter(non_ascii_char), col: self.col, len: 1 })
             }
         }
     }
@@ -542,15 +528,13 @@ impl<'src> Tokenizer<'src> {
         }
     }
 
-    fn next_in_char_literal(&mut self) -> Result<u8, Error<'src>> {
+    fn next_in_char_literal(&mut self) -> Result<u8, RawSyntaxError<ErrorKind>> {
         match self.src.code.as_bytes().get(self.col) {
-            Some(b'\n') | None => Err(Error::new_with_line_idx(
-                self.src,
-                self.line_idx,
-                self.token_start_col,
-                self.token_len(),
-                ErrorKind::UnclosedCharacterLiteral,
-            )),
+            Some(b'\n') | None => Err(RawSyntaxError {
+                kind: ErrorKind::UnclosedCharacterLiteral,
+                col: self.token_start_col,
+                len: self.token_len(),
+            }),
             Some(ascii @ ..=b'\x7F') => {
                 self.col += 1;
                 Ok(*ascii)
@@ -560,26 +544,18 @@ impl<'src> Tokenizer<'src> {
                 let non_ascii_char = rest_of_line.chars().next().unwrap();
                 let non_ascii_col = self.col;
                 self.col += non_ascii_char.len_utf8();
-                Err(Error::new_with_line_idx(
-                    self.src,
-                    self.line_idx,
-                    non_ascii_col,
-                    1,
-                    ErrorKind::NonAsciiCharacter(non_ascii_char),
-                ))
+                Err(RawSyntaxError { kind: ErrorKind::NonAsciiCharacter(non_ascii_char), col: non_ascii_col, len: 1 })
             }
         }
     }
 
-    fn next_in_str_literal(&mut self) -> Result<u8, Error<'src>> {
+    fn next_in_str_literal(&mut self) -> Result<u8, RawSyntaxError<ErrorKind>> {
         match self.src.code.as_bytes().get(self.col) {
-            Some(b'\n') | None => Err(Error::new_with_line_idx(
-                self.src,
-                self.line_idx,
-                self.token_start_col,
-                self.token_len(),
-                ErrorKind::UnclosedStringLiteral,
-            )),
+            Some(b'\n') | None => Err(RawSyntaxError {
+                kind: ErrorKind::UnclosedStringLiteral,
+                col: self.token_start_col,
+                len: self.token_len(),
+            }),
             Some(ascii @ ..=b'\x7F') => {
                 self.col += 1;
                 Ok(*ascii)
@@ -589,20 +565,14 @@ impl<'src> Tokenizer<'src> {
                 let non_ascii_char = rest_of_line.chars().next().unwrap();
                 let non_ascii_col = self.col;
                 self.col += non_ascii_char.len_utf8();
-                Err(Error::new_with_line_idx(
-                    self.src,
-                    self.line_idx,
-                    non_ascii_col,
-                    1,
-                    ErrorKind::NonAsciiCharacter(non_ascii_char),
-                ))
+                Err(RawSyntaxError { kind: ErrorKind::NonAsciiCharacter(non_ascii_char), col: non_ascii_col, len: 1 })
             }
         }
     }
 }
 
 impl<'src> Tokenizer<'src> {
-    fn next_token(&mut self, next: u8) -> Result<TokenKind<'src>, Error<'src>> {
+    fn next_token(&mut self, next: u8) -> Result<TokenKind<'src>, RawSyntaxError<ErrorKind>> {
         match next {
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
                 let mut contains_non_ascii = false;
@@ -617,13 +587,11 @@ impl<'src> Tokenizer<'src> {
                 }
 
                 if contains_non_ascii {
-                    return Err(Error::new_with_line_idx(
-                        self.src,
-                        self.line_idx,
-                        self.token_start_col,
-                        self.token_len(),
-                        ErrorKind::NonAsciiIdentifier,
-                    ));
+                    return Err(RawSyntaxError {
+                        kind: ErrorKind::NonAsciiIdentifier,
+                        col: self.token_start_col,
+                        len: self.token_len(),
+                    });
                 }
 
                 let identifier = match &self.src.code[self.token_start_col..self.col] {
@@ -670,13 +638,7 @@ impl<'src> Tokenizer<'src> {
                             _ => ErrorKind::GenericInvalidNumberLiteral(err),
                         };
 
-                        Err(Error::new_with_line_idx(
-                            self.src,
-                            self.line_idx,
-                            self.token_start_col,
-                            self.token_len(),
-                            kind,
-                        ))
+                        Err(RawSyntaxError { kind, col: self.token_start_col, len: self.token_len() })
                     }
                 }
             }
@@ -709,25 +671,21 @@ impl<'src> Tokenizer<'src> {
                             b't' => b'\t',
                             b'0' => b'\0',
                             unrecognized => {
-                                self.errors.push(Error::new_with_line_idx(
-                                    self.src,
-                                    self.line_idx,
-                                    self.col - 2,
-                                    2,
-                                    ErrorKind::UnrecognizedStringEscapeCharacter(unrecognized as char),
-                                ));
+                                self.errors.push(RawSyntaxError {
+                                    kind: ErrorKind::UnrecognizedStringEscapeCharacter(unrecognized as char),
+                                    col: self.col - 2,
+                                    len: 2,
+                                });
                                 string_literal.push(b'\\');
                                 unrecognized
                             }
                         },
                         control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                            self.errors.push(Error::new_with_line_idx(
-                                self.src,
-                                self.line_idx,
-                                self.col - 1,
-                                1,
-                                ErrorKind::ControlCharacterInStringLiteral,
-                            ));
+                            self.errors.push(RawSyntaxError {
+                                kind: ErrorKind::ControlCharacterInStringLiteral,
+                                col: self.col - 1,
+                                len: 1,
+                            });
                             control
                         }
                         b'"' => break,
@@ -755,39 +713,31 @@ impl<'src> Tokenizer<'src> {
                         b'r' => Ok(b'\r'),
                         b't' => Ok(b'\t'),
                         b'0' => Ok(b'\0'),
-                        unrecognized => Err(Error::new_with_line_idx(
-                            self.src,
-                            self.line_idx,
-                            self.col - 2,
-                            2,
-                            ErrorKind::UnrecognizedCharacterEscapeCharacter(unrecognized as char),
-                        )),
+                        unrecognized => Err(RawSyntaxError {
+                            kind: ErrorKind::UnrecognizedCharacterEscapeCharacter(unrecognized as char),
+                            col: self.col - 2,
+                            len: 2,
+                        }),
                     },
-                    b'\x00'..=b'\x1F' | b'\x7F' => Err(Error::new_with_line_idx(
-                        self.src,
-                        self.line_idx,
-                        self.col - 1,
-                        1,
-                        ErrorKind::ControlCharacterInCharacterLiteral,
-                    )),
-                    b'\'' => Err(Error::new_with_line_idx(
-                        self.src,
-                        self.line_idx,
-                        self.token_start_col,
-                        2,
-                        ErrorKind::EmptyCharacterLiteral,
-                    )),
+                    b'\x00'..=b'\x1F' | b'\x7F' => Err(RawSyntaxError {
+                        kind: ErrorKind::ControlCharacterInCharacterLiteral,
+                        col: self.col - 1,
+                        len: 1,
+                    }),
+                    b'\'' => Err(RawSyntaxError {
+                        kind: ErrorKind::EmptyCharacterLiteral,
+                        col: self.token_start_col,
+                        len: 2,
+                    }),
                     ch => Ok(ch),
                 };
 
                 let Some(b'\'') = self.peek_next_ascii_char()? else {
-                    return Err(Error::new_with_line_idx(
-                        self.src,
-                        self.line_idx,
-                        self.token_start_col,
-                        self.token_len(),
-                        ErrorKind::UnclosedCharacterLiteral,
-                    ));
+                    return Err(RawSyntaxError {
+                        kind: ErrorKind::UnclosedCharacterLiteral,
+                        col: self.token_start_col,
+                        len: self.token_len(),
+                    });
                 };
 
                 self.col += 1;
@@ -795,7 +745,7 @@ impl<'src> Tokenizer<'src> {
             }
             b'(' => {
                 let kind = BracketKind::OpenRound;
-                self.brackets.push(Bracket { kind, col: self.token_start_col, line_idx: self.line_idx });
+                self.brackets.push(Bracket { kind, col: self.token_start_col });
                 Ok(TokenKind::Bracket(kind))
             }
             b')' => match self.brackets.pop() {
@@ -804,25 +754,21 @@ impl<'src> Tokenizer<'src> {
                     | BracketKind::CloseRound
                     | BracketKind::CloseCurly
                     | BracketKind::CloseSquare => Ok(TokenKind::Bracket(BracketKind::CloseRound)),
-                    actual @ (BracketKind::OpenCurly | BracketKind::OpenSquare) => Err(Error::new_with_line_idx(
-                        self.src,
-                        self.line_idx,
-                        self.token_start_col,
-                        1,
-                        ErrorKind::MismatchedBracket { expected: BracketKind::CloseRound, actual },
-                    )),
+                    actual @ (BracketKind::OpenCurly | BracketKind::OpenSquare) => Err(RawSyntaxError {
+                        kind: ErrorKind::MismatchedBracket { expected: BracketKind::CloseRound, actual },
+                        col: self.token_start_col,
+                        len: 1,
+                    }),
                 },
-                None => Err(Error::new_with_line_idx(
-                    self.src,
-                    self.line_idx,
-                    self.token_start_col,
-                    1,
-                    ErrorKind::UnopenedBracket(BracketKind::CloseRound),
-                )),
+                None => Err(RawSyntaxError {
+                    kind: ErrorKind::UnopenedBracket(BracketKind::CloseRound),
+                    col: self.token_start_col,
+                    len: 1,
+                }),
             },
             b'[' => {
                 let kind = BracketKind::OpenSquare;
-                self.brackets.push(Bracket { kind, col: self.token_start_col, line_idx: self.line_idx });
+                self.brackets.push(Bracket { kind, col: self.token_start_col });
                 Ok(TokenKind::Bracket(kind))
             }
             b']' => match self.brackets.pop() {
@@ -831,25 +777,21 @@ impl<'src> Tokenizer<'src> {
                     | BracketKind::CloseSquare
                     | BracketKind::CloseCurly
                     | BracketKind::CloseRound => Ok(TokenKind::Bracket(BracketKind::CloseSquare)),
-                    actual @ (BracketKind::OpenCurly | BracketKind::OpenRound) => Err(Error::new_with_line_idx(
-                        self.src,
-                        self.line_idx,
-                        self.token_start_col,
-                        1,
-                        ErrorKind::MismatchedBracket { expected: BracketKind::CloseSquare, actual },
-                    )),
+                    actual @ (BracketKind::OpenCurly | BracketKind::OpenRound) => Err(RawSyntaxError {
+                        kind: ErrorKind::MismatchedBracket { expected: BracketKind::CloseSquare, actual },
+                        col: self.token_start_col,
+                        len: 1,
+                    }),
                 },
-                None => Err(Error::new_with_line_idx(
-                    self.src,
-                    self.line_idx,
-                    self.token_start_col,
-                    1,
-                    ErrorKind::UnopenedBracket(BracketKind::CloseSquare),
-                )),
+                None => Err(RawSyntaxError {
+                    kind: ErrorKind::UnopenedBracket(BracketKind::CloseSquare),
+                    col: self.token_start_col,
+                    len: 1,
+                }),
             },
             b'{' => {
                 let kind = BracketKind::OpenCurly;
-                self.brackets.push(Bracket { kind, col: self.token_start_col, line_idx: self.line_idx });
+                self.brackets.push(Bracket { kind, col: self.token_start_col });
                 Ok(TokenKind::Bracket(kind))
             }
             b'}' => match self.brackets.pop() {
@@ -858,21 +800,17 @@ impl<'src> Tokenizer<'src> {
                     | BracketKind::CloseCurly
                     | BracketKind::CloseRound
                     | BracketKind::CloseSquare => Ok(TokenKind::Bracket(BracketKind::CloseCurly)),
-                    actual @ (BracketKind::OpenRound | BracketKind::OpenSquare) => Err(Error::new_with_line_idx(
-                        self.src,
-                        self.line_idx,
-                        self.token_start_col,
-                        1,
-                        ErrorKind::MismatchedBracket { expected: BracketKind::CloseCurly, actual },
-                    )),
+                    actual @ (BracketKind::OpenRound | BracketKind::OpenSquare) => Err(RawSyntaxError {
+                        kind: ErrorKind::MismatchedBracket { expected: BracketKind::CloseCurly, actual },
+                        col: self.token_start_col,
+                        len: 1,
+                    }),
                 },
-                None => Err(Error::new_with_line_idx(
-                    self.src,
-                    self.line_idx,
-                    self.token_start_col,
-                    1,
-                    ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
-                )),
+                None => Err(RawSyntaxError {
+                    kind: ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
+                    col: self.token_start_col,
+                    len: 1,
+                }),
             },
             b':' => Ok(TokenKind::Colon),
             b';' => Ok(TokenKind::SemiColon),
@@ -1017,18 +955,16 @@ impl<'src> Tokenizer<'src> {
                 }
                 _ => Ok(TokenKind::Op(Op::Less)),
             },
-            unrecognized => Err(Error::new_with_line_idx(
-                self.src,
-                self.line_idx,
-                self.token_start_col,
-                1,
-                ErrorKind::UnrecognizedCharacter(unrecognized as char),
-            )),
+            unrecognized => Err(RawSyntaxError {
+                kind: ErrorKind::UnrecognizedCharacter(unrecognized as char),
+                col: self.token_start_col,
+                len: 1,
+            }),
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ErrorKind {
     UnclosedBracket(BracketKind),
     NonAsciiCharacter(char),
@@ -1108,4 +1044,7 @@ impl ErrorInfo for ErrorKind {
     }
 }
 
+impl SyntaxErrorKind for ErrorKind {}
+
+#[deprecated(since = "0.5.3", note = "will be removed to allow for more explicit function signatures")]
 pub type Error<'src> = SyntaxError<'src, ErrorKind>;

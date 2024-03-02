@@ -8,7 +8,10 @@ use crate::{
 use std::{
     borrow::Cow,
     fmt::{Debug, Display},
+    iter::FusedIterator,
     path::Path,
+    slice::Iter,
+    vec::IntoIter,
 };
 
 pub trait ErrorInfo {
@@ -17,18 +20,20 @@ pub trait ErrorInfo {
     fn info(&self) -> Self::Info;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BackEndErrorInfo {
     pub msg: Cow<'static, str>,
     pub cause: Cow<'static, str>,
 }
 
+pub trait BackEndErrorKind: Debug + ErrorInfo<Info = BackEndErrorInfo> {}
+
 #[derive(Debug)]
-pub struct BackEndError<Kind: ErrorInfo> {
-    pub kind: Kind,
+pub struct BackEndError<K: BackEndErrorKind> {
+    pub kind: K,
 }
 
-impl<Kind: ErrorInfo<Info = BackEndErrorInfo>> Display for BackEndError<Kind> {
+impl<K: BackEndErrorKind> Display for BackEndError<K> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let BackEndErrorInfo { msg, cause } = self.kind.info();
 
@@ -40,20 +45,22 @@ impl<Kind: ErrorInfo<Info = BackEndErrorInfo>> Display for BackEndError<Kind> {
     }
 }
 
-impl<Kind: Debug + ErrorInfo<Info = BackEndErrorInfo>> std::error::Error for BackEndError<Kind> {}
+impl<K: BackEndErrorKind> std::error::Error for BackEndError<K> {}
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SrcFileErrorInfo {
     pub msg: Cow<'static, str>,
     pub cause: Cow<'static, str>,
 }
 
+pub trait SrcFileErrorKind: Debug + ErrorInfo<Info = SrcFileErrorInfo> {}
+
 #[derive(Debug)]
-pub struct SrcFileError<Kind: ErrorInfo> {
-    pub kind: Kind,
+pub struct SrcFileError<K: SrcFileErrorKind> {
+    pub kind: K,
 }
 
-impl<Kind: ErrorInfo<Info = SrcFileErrorInfo>> Display for SrcFileError<Kind> {
+impl<K: SrcFileErrorKind> Display for SrcFileError<K> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let SrcFileErrorInfo { msg, cause } = self.kind.info();
 
@@ -65,19 +72,21 @@ impl<Kind: ErrorInfo<Info = SrcFileErrorInfo>> Display for SrcFileError<Kind> {
     }
 }
 
-impl<Kind: Debug + ErrorInfo<Info = SrcFileErrorInfo>> std::error::Error for SrcFileError<Kind> {}
+impl<K: SrcFileErrorKind> std::error::Error for SrcFileError<K> {}
 
-#[derive(Debug)]
+pub trait CliErrorKind: Debug + Clone + ErrorInfo<Info = CliErrorInfo> {}
+
+#[derive(Debug, Clone)]
 pub struct CliErrorInfo {
     pub msg: Cow<'static, str>,
 }
 
-#[derive(Debug)]
-pub struct CliError<Kind: ErrorInfo> {
-    pub kind: Kind,
+#[derive(Debug, Clone)]
+pub struct CliError<K: CliErrorKind> {
+    pub kind: K,
 }
 
-impl<Kind: ErrorInfo<Info = CliErrorInfo>> Display for CliError<Kind> {
+impl<K: CliErrorKind> Display for CliError<K> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let CliErrorInfo { msg } = self.kind.info();
 
@@ -85,36 +94,178 @@ impl<Kind: ErrorInfo<Info = CliErrorInfo>> Display for CliError<Kind> {
     }
 }
 
-impl<Kind: Debug + ErrorInfo<Info = CliErrorInfo>> std::error::Error for CliError<Kind> {}
+impl<K: CliErrorKind> std::error::Error for CliError<K> {}
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SyntaxErrorInfo {
     pub msg: Cow<'static, str>,
     pub help_msg: Cow<'static, str>,
 }
 
+pub trait SyntaxErrorKind: Debug + Clone + ErrorInfo<Info = SyntaxErrorInfo> {}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RawSyntaxError<K: SyntaxErrorKind> {
+    pub(crate) kind: K,
+    /// absolute source code byte position
+    pub(crate) col: usize,
+    pub(crate) len: usize,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SyntaxErrorsIter<'err, 'src: 'err, K: SyntaxErrorKind> {
+    pub(crate) src: &'src SrcFile,
+    pub(crate) raw_errors: Iter<'err, RawSyntaxError<K>>,
+}
+
+impl<'err, 'src: 'err, K: SyntaxErrorKind> Iterator for SyntaxErrorsIter<'err, 'src, K> {
+    type Item = SyntaxError<'src, K>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let raw_error = self.raw_errors.next()?;
+        Some(SyntaxError::from_raw(self.src, raw_error))
+    }
+}
+
+impl<'err, 'src: 'err, K: SyntaxErrorKind> DoubleEndedIterator for SyntaxErrorsIter<'err, 'src, K> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let raw_error = self.raw_errors.next_back()?;
+        Some(SyntaxError::from_raw(self.src, raw_error))
+    }
+}
+
+impl<'err, 'src: 'err, K: SyntaxErrorKind> ExactSizeIterator for SyntaxErrorsIter<'err, 'src, K> {
+    fn len(&self) -> usize {
+        self.raw_errors.len()
+    }
+}
+
+impl<'err, 'src: 'err, K: SyntaxErrorKind> FusedIterator for SyntaxErrorsIter<'err, 'src, K> {}
+
+#[allow(dead_code)]
+impl<'err, 'src: 'err, K: SyntaxErrorKind> SyntaxErrorsIter<'err, 'src, K> {
+    pub(crate) fn src(&self) -> &SrcFile {
+        self.src
+    }
+
+    pub(crate) fn as_raw(&self) -> &[RawSyntaxError<K>] {
+        self.raw_errors.as_slice()
+    }
+
+    pub(crate) fn into_raw(self) -> Vec<RawSyntaxError<K>> {
+        self.raw_errors.cloned().collect()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SyntaxErrorsIntoIter<'src, K: SyntaxErrorKind> {
+    pub(crate) src: &'src SrcFile,
+    pub(crate) raw_errors: IntoIter<RawSyntaxError<K>>,
+}
+
+impl<'src, K: SyntaxErrorKind> Iterator for SyntaxErrorsIntoIter<'src, K> {
+    type Item = SyntaxError<'src, K>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let raw_error = self.raw_errors.next()?;
+        Some(SyntaxError::from_raw(self.src, &raw_error))
+    }
+}
+
+impl<'src, K: SyntaxErrorKind> DoubleEndedIterator for SyntaxErrorsIntoIter<'src, K> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let raw_error = self.raw_errors.next_back()?;
+        Some(SyntaxError::from_raw(self.src, &raw_error))
+    }
+}
+
+impl<'src, K: SyntaxErrorKind> ExactSizeIterator for SyntaxErrorsIntoIter<'src, K> {
+    fn len(&self) -> usize {
+        self.raw_errors.len()
+    }
+}
+
+impl<'src, K: SyntaxErrorKind> FusedIterator for SyntaxErrorsIntoIter<'src, K> {}
+
+#[allow(dead_code)]
+impl<'src, K: SyntaxErrorKind> SyntaxErrorsIntoIter<'src, K> {
+    pub(crate) fn src(&self) -> &SrcFile {
+        self.src
+    }
+
+    pub(crate) fn as_raw(&self) -> &[RawSyntaxError<K>] {
+        self.raw_errors.as_slice()
+    }
+
+    pub(crate) fn as_mut_raw(&mut self) -> &mut [RawSyntaxError<K>] {
+        self.raw_errors.as_mut_slice()
+    }
+
+    pub(crate) fn into_raw(self) -> Vec<RawSyntaxError<K>> {
+        self.raw_errors.collect()
+    }
+}
+
 #[derive(Debug)]
-pub struct SyntaxError<'src, Kind: ErrorInfo> {
+pub(crate) struct SyntaxErrors<'src, K: SyntaxErrorKind> {
+    pub(crate) src: &'src SrcFile,
+    pub(crate) raw_errors: Vec<RawSyntaxError<K>>,
+}
+
+impl<'src, K: SyntaxErrorKind> IntoIterator for SyntaxErrors<'src, K> {
+    type IntoIter = SyntaxErrorsIntoIter<'src, K>;
+    type Item = SyntaxError<'src, K>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Self::IntoIter { src: self.src, raw_errors: self.raw_errors.into_iter() }
+    }
+}
+
+#[allow(dead_code)]
+impl<'src, K: SyntaxErrorKind> SyntaxErrors<'src, K> {
+    pub(crate) fn iter(&self) -> SyntaxErrorsIter<'_, 'src, K> {
+        SyntaxErrorsIter { src: self.src, raw_errors: self.raw_errors.iter() }
+    }
+
+    pub(crate) fn get(&self, idx: usize) -> Option<SyntaxError<'src, K>> {
+        let raw_error = self.raw_errors.get(idx)?;
+        Some(SyntaxError::from_raw(self.src, raw_error))
+    }
+
+    pub(crate) fn src(&self) -> &SrcFile {
+        self.src
+    }
+
+    pub(crate) fn as_raw(&self) -> &[RawSyntaxError<K>] {
+        &self.raw_errors
+    }
+
+    pub(crate) fn as_mut_raw(&mut self) -> &mut [RawSyntaxError<K>] {
+        &mut self.raw_errors
+    }
+
+    pub(crate) fn into_raw(self) -> Vec<RawSyntaxError<K>> {
+        self.raw_errors
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SyntaxError<'src, K: SyntaxErrorKind> {
     pub path: &'src Path,
     pub position: Position,
     pub len: usize,
     pub line_text: &'src str,
-    pub kind: Kind,
+    pub kind: K,
 }
 
-impl<'src, Kind: ErrorInfo> SyntaxError<'src, Kind> {
-    pub(crate) fn new(src: &'src SrcFile, col: usize, len: usize, kind: Kind) -> Self {
-        let (position, line_text) = src.position(col);
-        Self { path: &src.path, position, len, line_text, kind }
-    }
-
-    pub(crate) fn new_with_line_idx(src: &'src SrcFile, line_idx: usize, col: usize, len: usize, kind: Kind) -> Self {
-        let (position, line_text) = src.position_with_line_idx(line_idx, col);
-        Self { path: &src.path, position, len, line_text, kind }
+impl<'src, K: SyntaxErrorKind> SyntaxError<'src, K> {
+    pub(crate) fn from_raw(src: &'src SrcFile, raw: &RawSyntaxError<K>) -> Self {
+        let (position, line_text) = Position::new(src, raw.col);
+        Self { path: &src.path, position, len: raw.len, line_text, kind: raw.kind.clone() }
     }
 }
 
-impl<Kind: ErrorInfo<Info = SyntaxErrorInfo>> Display for SyntaxError<'_, Kind> {
+impl<K: SyntaxErrorKind> Display for SyntaxError<'_, K> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let SyntaxErrorInfo { msg, help_msg } = self.kind.info();
 
@@ -147,4 +298,4 @@ impl<Kind: ErrorInfo<Info = SyntaxErrorInfo>> Display for SyntaxError<'_, Kind> 
     }
 }
 
-impl<Kind: Debug + ErrorInfo<Info = SyntaxErrorInfo>> std::error::Error for SyntaxError<'_, Kind> {}
+impl<K: SyntaxErrorKind> std::error::Error for SyntaxError<'_, K> {}

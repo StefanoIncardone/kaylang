@@ -1,4 +1,4 @@
-use crate::error::{ErrorInfo, SrcFileError, SrcFileErrorInfo};
+use crate::error::{ErrorInfo, SrcFileError, SrcFileErrorInfo, SrcFileErrorKind};
 use std::{
     fs::File,
     io::{self, BufRead, BufReader},
@@ -20,6 +20,38 @@ pub struct Position {
     pub col: usize,
 }
 
+impl<'src> Position {
+    pub(crate) fn new(src: &'src SrcFile, col: usize) -> (Self, &'src str) {
+        let mut left = 0;
+        let mut right = src.lines.len();
+        while left < right {
+            let middle = left + (right - left) / 2;
+            if col < src.lines[middle].end {
+                right = middle;
+            } else {
+                left = middle + 1;
+            }
+        }
+
+        Self::new_with_line_idx(src, left, col)
+    }
+
+    pub(crate) fn new_with_line_idx(src: &'src SrcFile, line_idx: usize, col: usize) -> (Self, &'src str) {
+        let line = &src.lines[line_idx];
+        let line_text = &src.code[line.start..line.end];
+        let target_col = col - line.start;
+        let mut display_col = 0;
+        for (idx, _) in line_text.char_indices() {
+            display_col += 1;
+            if idx == target_col {
+                break;
+            }
+        }
+
+        (Self { line: line_idx + 1, col: display_col }, line_text)
+    }
+}
+
 #[derive(Debug)]
 pub struct SrcFile {
     pub(crate) path: PathBuf,
@@ -34,13 +66,13 @@ impl SrcFile {
 
         let file = match File::open(&path) {
             Ok(f) => f,
-            Err(err) => return Err(Error { kind: ErrorKind::CouldNotOpen { err, path } }),
+            Err(err) => return Err(SrcFileError { kind: ErrorKind::CouldNotOpen { err, path } }),
         };
 
         let file_len = match file.metadata() {
             Ok(metadata) if metadata.is_file() => metadata.len() as usize,
-            Ok(_) => return Err(Error { kind: ErrorKind::ExpectedFile { path } }),
-            Err(err) => return Err(Error { kind: ErrorKind::CouldNotReadMetadata { err, path } }),
+            Ok(_) => return Err(SrcFileError { kind: ErrorKind::ExpectedFile { path } }),
+            Err(err) => return Err(SrcFileError { kind: ErrorKind::CouldNotReadMetadata { err, path } }),
         };
 
         // plus one to account for a possible phantom newline at the end
@@ -53,7 +85,7 @@ impl SrcFile {
             let mut chars_read = match src.read_line(&mut code) {
                 Ok(0) => break,
                 Ok(read) => read,
-                Err(err) => return Err(Error { kind: ErrorKind::CouldNotReadContents { err, path } }),
+                Err(err) => return Err(SrcFileError { kind: ErrorKind::CouldNotReadContents { err, path } }),
             };
 
             let mut end = code.len() - 1;
@@ -81,36 +113,6 @@ impl SrcFile {
         }
 
         Ok(Self { path, code, lines })
-    }
-
-    pub(crate) fn position(&self, col: usize) -> (Position, &str) {
-        let mut left = 0;
-        let mut right = self.lines.len();
-        while left < right {
-            let middle = left + (right - left) / 2;
-            if col < self.lines[middle].end {
-                right = middle;
-            } else {
-                left = middle + 1;
-            }
-        }
-
-        self.position_with_line_idx(left, col)
-    }
-
-    pub(crate) fn position_with_line_idx(&self, line_idx: usize, col: usize) -> (Position, &str) {
-        let line = &self.lines[line_idx];
-        let line_text = &self.code[line.start..line.end];
-        let target_col = col - line.start;
-        let mut display_col = 0;
-        for (idx, _) in line_text.char_indices() {
-            display_col += 1;
-            if idx == target_col {
-                break;
-            }
-        }
-
-        (Position { line: line_idx + 1, col: display_col }, line_text)
     }
 }
 
@@ -149,4 +151,7 @@ impl ErrorInfo for ErrorKind {
     }
 }
 
+impl SrcFileErrorKind for ErrorKind {}
+
+#[deprecated(since = "0.5.3", note = "will be removed to allow for more explicit function signatures")]
 pub type Error = SrcFileError<ErrorKind>;

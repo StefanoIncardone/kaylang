@@ -1,6 +1,6 @@
 use crate::{
     ast::{Expression, IfStatement, LoopCondition, Node, Scope, Type, TypeOf},
-    error::{BackEndError, BackEndErrorInfo, ErrorInfo},
+    error::{BackEndError, BackEndErrorInfo, BackEndErrorKind, ErrorInfo},
     tokenizer::{Literal, Op},
 };
 use std::{
@@ -52,7 +52,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     Ok(()) => {}
                     Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
                     Err(err) => {
-                        return Err(Error {
+                        return Err(BackEndError {
                             kind: ErrorKind::CouldNotCreateOutputDirectory { err, path: out_path.to_path_buf() },
                         });
                     }
@@ -68,7 +68,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
         let asm_file = match File::create(&asm_path) {
             Ok(file) => file,
-            Err(err) => return Err(Error { kind: ErrorKind::CouldNotCreateFile { err, path: asm_path } }),
+            Err(err) => return Err(BackEndError { kind: ErrorKind::CouldNotCreateFile { err, path: asm_path } }),
         };
 
         let mut this = Compiler {
@@ -661,11 +661,11 @@ section .data
 
         let mut asm_writer = BufWriter::new(asm_file);
         if let Err(err) = asm_writer.write_all(program.as_bytes()) {
-            return Err(Error { kind: ErrorKind::WritingAssemblyFailed { err } });
+            return Err(BackEndError { kind: ErrorKind::WritingAssemblyFailed { err } });
         }
 
         if let Err(err) = asm_writer.flush() {
-            return Err(Error { kind: ErrorKind::WritingAssemblyFailed { err } });
+            return Err(BackEndError { kind: ErrorKind::WritingAssemblyFailed { err } });
         }
 
         Ok((asm_path, obj_path, exe_path))
@@ -906,7 +906,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Literal(Literal::Bool(value)) => self.asm += &format!(" mov {dst}, {value}\n"),
             Expression::Literal(Literal::Str(_)) => unreachable!("strings cannot appear in expressions"),
             Expression::Binary { lhs, op_position, op, rhs } => {
-                let (lhs_reg, rhs_reg, op_asm): (&'static str, &'static str, Cow<'static, str>) = match op {
+                let (lhs_reg, rhs_reg, op_asm): (&str, &str, Cow<'_, str>) = match op {
                     Op::Pow | Op::PowEquals => {
                         // todo!( "use rax and rdx for line and colum information" );
                         (
@@ -1582,4 +1582,7 @@ impl ErrorInfo for ErrorKind {
     }
 }
 
+impl BackEndErrorKind for ErrorKind {}
+
+#[deprecated(since = "0.5.3", note = "will be removed to allow for more explicit function signatures")]
 pub type Error = BackEndError<ErrorKind>;

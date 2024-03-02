@@ -10,7 +10,7 @@ pub mod run;
 pub mod src_file;
 pub mod tokenizer;
 
-use color::{Bg, ColoredStr, Fg, Flag, Flags};
+use color::{Bg, Colored, Fg, Flag, Flags};
 use std::{fmt::Display, path::PathBuf};
 
 // help and version messages
@@ -18,13 +18,13 @@ const HELP_FG: Fg = Fg::White;
 const HELP_BG: Bg = Bg::Default;
 const HELP_FLAGS: Flags = Flag::Bold;
 
-#[rustfmt::skip] pub(crate) static VERSION:  ColoredStr = ColoredStr { text: env!("CARGO_PKG_VERSION"), fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static OPTIONS:  ColoredStr = ColoredStr { text: "Options",                 fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static RUN_MODE: ColoredStr = ColoredStr { text: "Run mode",                fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static MODE:     ColoredStr = ColoredStr { text: "mode",                    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static FILE:     ColoredStr = ColoredStr { text: "file",                    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static PATH:     ColoredStr = ColoredStr { text: "path",                    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static OUTPUT:   ColoredStr = ColoredStr { text: "Output",                  fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+#[rustfmt::skip] pub(crate) static VERSION:  Colored<&str> = Colored { text: env!("CARGO_PKG_VERSION"), fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+#[rustfmt::skip] pub(crate) static OPTIONS:  Colored<&str> = Colored { text: "Options",                 fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+#[rustfmt::skip] pub(crate) static RUN_MODE: Colored<&str> = Colored { text: "Run mode",                fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+#[rustfmt::skip] pub(crate) static MODE:     Colored<&str> = Colored { text: "mode",                    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+#[rustfmt::skip] pub(crate) static FILE:     Colored<&str> = Colored { text: "file",                    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+#[rustfmt::skip] pub(crate) static PATH:     Colored<&str> = Colored { text: "path",                    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+#[rustfmt::skip] pub(crate) static OUTPUT:   Colored<&str> = Colored { text: "Output",                  fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
 
 #[derive(Clone, Copy, Debug)]
 pub struct Version {

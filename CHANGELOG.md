@@ -11,6 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Temporary values (arrays)
 
 
+## 0.5.3 - 2024-03-02
+
+### Added
+
+- Traits for defining specific `ErrorKind` enums
+
+### Changed
+
+- `ErrorKind` enums have more clear trait bounds, such as Debug and Clone (where possible)
+- Internal code structure improvements
+- Improvements to error messages when tokenizing UTF-8 characters
+
+### Deprecated
+
+- `Error`, `ColoredString` and `ColoredStr` type aliases: removed in favor of more explicit type
+signatures
+- Syntax errors will now be returned in a wrapper around a lightweight 'raw' form and methods are
+going to be provided to lazily construct full syntax errors
+
 ## 0.5.2 - 2024-02-26
 
 ### Added

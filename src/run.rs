@@ -1,4 +1,4 @@
-use crate::error::{BackEndError, BackEndErrorInfo, ErrorInfo};
+use crate::error::{BackEndError, BackEndErrorInfo, BackEndErrorKind, ErrorInfo};
 use std::{
     io,
     path::{Path, PathBuf},
@@ -12,17 +12,19 @@ impl Run {
     pub fn run(exe_path: &Path) -> Result<(), Error> {
         let exe_path = match exe_path.to_str() {
             Some(exe_path) => Path::new(".").join(exe_path),
-            None => return Err(Error { kind: ErrorKind::NonUtf8Path { path: exe_path.to_path_buf() } }),
+            None => return Err(BackEndError { kind: ErrorKind::NonUtf8Path { path: exe_path.to_path_buf() } }),
         };
 
         let mut executable = match Command::new(&exe_path).spawn() {
             Ok(executable) => executable,
-            Err(err) => return Err(Error { kind: ErrorKind::CouldNotCreateExecutableProcess { err, path: exe_path } }),
+            Err(err) => {
+                return Err(BackEndError { kind: ErrorKind::CouldNotCreateExecutableProcess { err, path: exe_path } })
+            }
         };
 
         match executable.wait() {
             Ok(_) => Ok(()),
-            Err(err) => Err(Error { kind: ErrorKind::CouldNotRunExecutable { err, path: exe_path } }),
+            Err(err) => Err(BackEndError { kind: ErrorKind::CouldNotRunExecutable { err, path: exe_path } }),
         }
     }
 }
@@ -56,4 +58,7 @@ impl ErrorInfo for ErrorKind {
     }
 }
 
+impl BackEndErrorKind for ErrorKind {}
+
+#[deprecated(since = "0.5.3", note = "will be removed to allow for more explicit function signatures")]
 pub type Error = BackEndError<ErrorKind>;

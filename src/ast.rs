@@ -3,7 +3,7 @@ use super::{
     src_file::{Position, SrcFile},
     tokenizer::{BracketKind, Literal, Mutability, Op, SrcCodeLen, Token, TokenKind},
 };
-use crate::error::ErrorInfo;
+use crate::error::{ErrorInfo, RawSyntaxError, SyntaxErrorKind, SyntaxErrors};
 use std::fmt::{Debug, Display};
 
 pub(crate) trait TypeOf {
@@ -319,7 +319,7 @@ pub struct Ast<'src, 'tokens: 'src> {
 
     loop_depth: usize,
 
-    errors: Vec<Error<'src>>,
+    errors: Vec<RawSyntaxError<ErrorKind>>,
 }
 
 impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
@@ -363,7 +363,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         if this.errors.is_empty() {
             Ok(this.scopes)
         } else {
-            Err(this.errors)
+            let errors = SyntaxErrors { src, raw_errors: this.errors };
+            Err(errors.iter().collect())
         }
     }
 
@@ -414,7 +415,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         }
     }
 
-    fn parse_single_statement(&mut self) -> Result<Option<Node<'src>>, Error<'src>> {
+    fn parse_single_statement(&mut self) -> Result<Option<Node<'src>>, RawSyntaxError<ErrorKind>> {
         let Some(current_token) = self.tokens.get(self.token) else { return Ok(None) };
 
         match current_token.kind {
@@ -451,12 +452,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::If => Ok(Some(self.iff()?)),
             TokenKind::Else => {
                 let _ = self.next_token();
-                Err(Error::new(
-                    self.src,
-                    current_token.col,
-                    current_token.kind.src_code_len(),
-                    ErrorKind::StrayElseBlock,
-                ))
+                Err(RawSyntaxError {
+                    kind: ErrorKind::StrayElseBlock,
+                    col: current_token.col,
+                    len: current_token.kind.src_code_len(),
+                })
             }
             TokenKind::Do | TokenKind::Loop => {
                 self.loop_depth += 1;
@@ -470,24 +470,22 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::Break => {
                 let _ = self.next_token();
                 match self.loop_depth {
-                    0 => Err(Error::new(
-                        self.src,
-                        current_token.col,
-                        current_token.kind.src_code_len(),
-                        ErrorKind::BreakOutsideOfLoop,
-                    )),
+                    0 => Err(RawSyntaxError {
+                        kind: ErrorKind::BreakOutsideOfLoop,
+                        col: current_token.col,
+                        len: current_token.kind.src_code_len(),
+                    }),
                     _ => Ok(Some(Node::Break)),
                 }
             }
             TokenKind::Continue => {
                 let _ = self.next_token();
                 match self.loop_depth {
-                    0 => Err(Error::new(
-                        self.src,
-                        current_token.col,
-                        current_token.kind.src_code_len(),
-                        ErrorKind::ContinueOutsideOfLoop,
-                    )),
+                    0 => Err(RawSyntaxError {
+                        kind: ErrorKind::ContinueOutsideOfLoop,
+                        col: current_token.col,
+                        len: current_token.kind.src_code_len(),
+                    }),
                     _ => Ok(Some(Node::Continue)),
                 }
             }
@@ -497,101 +495,105 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             }
             TokenKind::Bracket(BracketKind::OpenCurly) => {
                 let _ = self.next_token();
-                Err(Error::new(
-                    self.src,
-                    current_token.col,
-                    current_token.kind.src_code_len(),
-                    ErrorKind::BlocksNotAllowed(BlocksNotAllowedIn::DoStatement),
-                ))
+                Err(RawSyntaxError {
+                    kind: ErrorKind::BlocksNotAllowed(BlocksNotAllowedIn::DoStatement),
+                    col: current_token.col,
+                    len: current_token.kind.src_code_len(),
+                })
             }
             TokenKind::Bracket(BracketKind::CloseCurly) => {
                 let _ = self.next_token();
-                Err(Error::new(
-                    self.src,
-                    current_token.col,
-                    current_token.kind.src_code_len(),
-                    ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
-                ))
+                Err(RawSyntaxError {
+                    kind: ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
+                    col: current_token.col,
+                    len: current_token.kind.src_code_len(),
+                })
             }
             TokenKind::Bracket(BracketKind::OpenSquare) => {
                 let _ = self.expression()?;
-                Err(Error::new(
-                    self.src,
-                    current_token.col,
-                    current_token.kind.src_code_len(),
-                    ErrorKind::TemporaryArrayNotSupportedYet,
-                ))
+                Err(RawSyntaxError {
+                    kind: ErrorKind::TemporaryArrayNotSupportedYet,
+                    col: current_token.col,
+                    len: current_token.kind.src_code_len(),
+                })
             }
             TokenKind::Bracket(BracketKind::CloseSquare) => {
                 let _ = self.next_token();
-                Err(Error::new(
-                    self.src,
-                    current_token.col,
-                    current_token.kind.src_code_len(),
-                    ErrorKind::UnopenedBracket(BracketKind::CloseSquare),
-                ))
+                Err(RawSyntaxError {
+                    kind: ErrorKind::UnopenedBracket(BracketKind::CloseSquare),
+                    col: current_token.col,
+                    len: current_token.kind.src_code_len(),
+                })
             }
             TokenKind::Bracket(BracketKind::CloseRound) => {
                 let _ = self.next_token();
-                Err(Error::new(
-                    self.src,
-                    current_token.col,
-                    current_token.kind.src_code_len(),
-                    ErrorKind::UnopenedBracket(BracketKind::CloseRound),
-                ))
+                Err(RawSyntaxError {
+                    kind: ErrorKind::UnopenedBracket(BracketKind::CloseRound),
+                    col: current_token.col,
+                    len: current_token.kind.src_code_len(),
+                })
             }
             TokenKind::Colon => {
                 let _ = self.next_token();
-                Err(Error::new(self.src, current_token.col, current_token.kind.src_code_len(), ErrorKind::StrayColon))
+                Err(RawSyntaxError {
+                    kind: ErrorKind::StrayColon,
+                    col: current_token.col,
+                    len: current_token.kind.src_code_len(),
+                })
             }
             TokenKind::Comma => {
                 let _ = self.next_token();
-                Err(Error::new(self.src, current_token.col, current_token.kind.src_code_len(), ErrorKind::StrayComma))
+                Err(RawSyntaxError {
+                    kind: ErrorKind::StrayComma,
+                    col: current_token.col,
+                    len: current_token.kind.src_code_len(),
+                })
             }
             TokenKind::Op(Op::Equals) => {
                 let _ = self.next_token();
-                Err(Error::new(self.src, current_token.col, current_token.kind.src_code_len(), ErrorKind::StrayEquals))
+                Err(RawSyntaxError {
+                    kind: ErrorKind::StrayEquals,
+                    col: current_token.col,
+                    len: current_token.kind.src_code_len(),
+                })
             }
             TokenKind::Op(op) => {
                 let _ = self.next_token();
-                Err(Error::new(
-                    self.src,
-                    current_token.col,
-                    current_token.kind.src_code_len(),
-                    ErrorKind::StrayBinaryOperator(op),
-                ))
+                Err(RawSyntaxError {
+                    kind: ErrorKind::StrayBinaryOperator(op),
+                    col: current_token.col,
+                    len: current_token.kind.src_code_len(),
+                })
             }
             TokenKind::Comment(_) => unreachable!("should be skipped by the token iterator"),
             TokenKind::Unexpected(_) => unreachable!("only valid tokens should be present"),
         }
     }
 
-    fn parse_do_single_statement(&mut self) -> Result<Option<Node<'src>>, Error<'src>> {
+    fn parse_do_single_statement(&mut self) -> Result<Option<Node<'src>>, RawSyntaxError<ErrorKind>> {
         let current_token = self.next_token_bounded(ExpectedBeforeEof::StatementAfterDo)?;
         match current_token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
                 let _ = self.next_token();
-                Err(Error::new(
-                    self.src,
-                    current_token.col,
-                    current_token.kind.src_code_len(),
-                    ErrorKind::BlocksNotAllowed(BlocksNotAllowedIn::DoStatement),
-                ))
+                Err(RawSyntaxError {
+                    kind: ErrorKind::BlocksNotAllowed(BlocksNotAllowedIn::DoStatement),
+                    col: current_token.col,
+                    len: current_token.kind.src_code_len(),
+                })
             }
             TokenKind::Definition(_) => {
                 let _ = self.next_token();
-                Err(Error::new(
-                    self.src,
-                    current_token.col,
-                    current_token.kind.src_code_len(),
-                    ErrorKind::VariableDefinitionNotAllowed(VariableDefinitionNotAllowedIn::DoStatement),
-                ))
+                Err(RawSyntaxError {
+                    kind: ErrorKind::VariableDefinitionNotAllowed(VariableDefinitionNotAllowedIn::DoStatement),
+                    col: current_token.col,
+                    len: current_token.kind.src_code_len(),
+                })
             }
             _ => self.parse_single_statement(),
         }
     }
 
-    fn parse_single_any(&mut self) -> Result<Option<Node<'src>>, Error<'src>> {
+    fn parse_single_any(&mut self) -> Result<Option<Node<'src>>, RawSyntaxError<ErrorKind>> {
         let Some(current_token) = self.tokens.get(self.token) else { return Ok(None) };
 
         match current_token.kind {
@@ -621,15 +623,17 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
 // iteration over tokens
 impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
-    fn current_token_bounded(&self, expected: ExpectedBeforeEof) -> Result<&'tokens Token<'src>, Error<'src>> {
+    fn current_token_bounded(
+        &self,
+        expected: ExpectedBeforeEof,
+    ) -> Result<&'tokens Token<'src>, RawSyntaxError<ErrorKind>> {
         let Some(token) = self.tokens.get(self.token) else {
             let previous = self.peek_previous_token();
-            return Err(Error::new(
-                self.src,
-                previous.col,
-                previous.kind.src_code_len(),
-                ErrorKind::NoMoreTokens(expected),
-            ));
+            return Err(RawSyntaxError {
+                kind: ErrorKind::NoMoreTokens(expected),
+                col: previous.col,
+                len: previous.kind.src_code_len(),
+            });
         };
 
         Ok(token)
@@ -653,17 +657,16 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn next_token_bounded(
         &mut self,
         expected_before_eof: ExpectedBeforeEof,
-    ) -> Result<&'tokens Token<'src>, Error<'src>> {
+    ) -> Result<&'tokens Token<'src>, RawSyntaxError<ErrorKind>> {
         loop {
             if self.token >= self.tokens.len() - 1 {
                 let previous = &self.tokens[self.token];
                 self.token = self.tokens.len();
-                return Err(Error::new(
-                    self.src,
-                    previous.col,
-                    previous.kind.src_code_len(),
-                    ErrorKind::NoMoreTokens(expected_before_eof),
-                ));
+                return Err(RawSyntaxError {
+                    kind: ErrorKind::NoMoreTokens(expected_before_eof),
+                    col: previous.col,
+                    len: previous.kind.src_code_len(),
+                });
             }
 
             self.token += 1;
@@ -704,19 +707,18 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
 // semicolons
 impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
-    fn semicolon(&mut self) -> Result<(), Error<'src>> {
+    fn semicolon(&mut self) -> Result<(), RawSyntaxError<ErrorKind>> {
         let semicolon_token = self.current_token_bounded(ExpectedBeforeEof::Semicolon)?;
         if let TokenKind::SemiColon = &semicolon_token.kind {
             let _ = self.next_token();
             Ok(())
         } else {
             let previous_token = self.peek_previous_token();
-            Err(Error::new(
-                self.src,
-                previous_token.col,
-                previous_token.kind.src_code_len(),
-                ErrorKind::MissingSemicolon,
-            ))
+            Err(RawSyntaxError {
+                kind: ErrorKind::MissingSemicolon,
+                col: previous_token.col,
+                len: previous_token.kind.src_code_len(),
+            })
         }
     }
 }
@@ -724,41 +726,50 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 // expressions
 impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn assert_lhs_is_not_string_or_array(
-        &self,
         op_token: &'tokens Token<'src>,
         lhs: &Expression<'src>,
-    ) -> Result<(), Error<'src>> {
+    ) -> Result<(), RawSyntaxError<ErrorKind>> {
         if let Type::Str = lhs.typ() {
-            return Err(Error::new(self.src, op_token.col, op_token.kind.src_code_len(), ErrorKind::StringLeftOperand));
+            return Err(RawSyntaxError {
+                kind: ErrorKind::StringLeftOperand,
+                col: op_token.col,
+                len: op_token.kind.src_code_len(),
+            });
         }
         if let Type::Array { .. } = lhs.typ() {
-            return Err(Error::new(self.src, op_token.col, op_token.kind.src_code_len(), ErrorKind::ArrayLeftOperand));
+            return Err(RawSyntaxError {
+                kind: ErrorKind::ArrayLeftOperand,
+                col: op_token.col,
+                len: op_token.kind.src_code_len(),
+            });
         }
 
         Ok(())
     }
 
     fn assert_rhs_is_not_string_or_array(
-        &self,
         op_token: &'tokens Token<'src>,
         rhs: &Expression<'src>,
-    ) -> Result<(), Error<'src>> {
+    ) -> Result<(), RawSyntaxError<ErrorKind>> {
         if let Type::Str = rhs.typ() {
-            return Err(Error::new(
-                self.src,
-                op_token.col,
-                op_token.kind.src_code_len(),
-                ErrorKind::StringRightOperand,
-            ));
+            return Err(RawSyntaxError {
+                kind: ErrorKind::StringRightOperand,
+                col: op_token.col,
+                len: op_token.kind.src_code_len(),
+            });
         }
         if let Type::Array { .. } = rhs.typ() {
-            return Err(Error::new(self.src, op_token.col, op_token.kind.src_code_len(), ErrorKind::ArrayRightOperand));
+            return Err(RawSyntaxError {
+                kind: ErrorKind::ArrayRightOperand,
+                col: op_token.col,
+                len: op_token.kind.src_code_len(),
+            });
         }
 
         Ok(())
     }
 
-    fn operator(&mut self, ops: &[Op]) -> Result<Option<(&'tokens Token<'src>, Op)>, Error<'src>> {
+    fn operator(&mut self, ops: &[Op]) -> Result<Option<(&'tokens Token<'src>, Op)>, RawSyntaxError<ErrorKind>> {
         let current_token = self.current_token_bounded(ExpectedBeforeEof::OperatorOrSemicolon)?;
         let TokenKind::Op(op) = current_token.kind else {
             return Ok(None);
@@ -772,7 +783,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         }
     }
 
-    fn index(&mut self, var_name: &'src str, var_typ: Type) -> Result<Expression<'src>, Error<'src>> {
+    fn index(&mut self, var_name: &'src str, var_typ: Type) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
         let current_token = &self.tokens[self.token];
         let Some(open_bracket_token @ Token { kind: TokenKind::Bracket(BracketKind::OpenSquare), .. }) =
             self.peek_next_token()
@@ -785,23 +796,21 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         let index = self.expression()?;
         let Type::Int = index.typ() else {
-            return Err(Error::new(
-                self.src,
-                open_bracket_token.col,
-                open_bracket_token.kind.src_code_len(),
-                ErrorKind::ExpectedIntegerExpressionInArrayIndex,
-            ));
+            return Err(RawSyntaxError {
+                kind: ErrorKind::ExpectedIntegerExpressionInArrayIndex,
+                col: open_bracket_token.col,
+                len: open_bracket_token.kind.src_code_len(),
+            });
         };
 
         let after_index_token = self.current_token_bounded(ExpectedBeforeEof::ClosingSquareBracket)?;
         let TokenKind::Bracket(BracketKind::CloseSquare) = after_index_token.kind else {
             let before_index_token = self.peek_previous_token();
-            return Err(Error::new(
-                self.src,
-                before_index_token.col,
-                before_index_token.kind.src_code_len(),
-                ErrorKind::MissingSquareBracketInArrayIndex,
-            ));
+            return Err(RawSyntaxError {
+                kind: ErrorKind::MissingSquareBracketInArrayIndex,
+                col: before_index_token.col,
+                len: before_index_token.kind.src_code_len(),
+            });
         };
 
         match var_typ {
@@ -809,38 +818,36 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 Type::Int | Type::Bool | Type::Infer | Type::Char | Type::Str => Ok(Expression::ArrayIndex {
                     var_name,
                     element_type: *elements_type,
-                    bracket_position: self.src.position(open_bracket_token.col).0,
+                    bracket_position: Position::new(self.src, open_bracket_token.col).0,
                     index: Box::new(index),
                 }),
-                Type::Array { .. } => Err(Error::new(
-                    self.src,
-                    current_token.col,
-                    current_token.kind.src_code_len(),
-                    ErrorKind::NestedArrayNotSupportedYet,
-                )),
+                Type::Array { .. } => Err(RawSyntaxError {
+                    kind: ErrorKind::NestedArrayNotSupportedYet,
+                    col: current_token.col,
+                    len: current_token.kind.src_code_len(),
+                }),
             },
             Type::Str => Ok(Expression::ArrayIndex {
                 var_name,
                 element_type: Type::Char,
-                bracket_position: self.src.position(open_bracket_token.col).0,
+                bracket_position: Position::new(self.src, open_bracket_token.col).0,
                 index: Box::new(index),
             }),
             Type::Int => Ok(Expression::ArrayIndex {
                 var_name,
                 element_type: Type::Int,
-                bracket_position: self.src.position(open_bracket_token.col).0,
+                bracket_position: Position::new(self.src, open_bracket_token.col).0,
                 index: Box::new(index),
             }),
-            Type::Bool | Type::Infer | Type::Char => Err(Error::new(
-                self.src,
-                current_token.col,
-                current_token.kind.src_code_len(),
-                ErrorKind::CannotIndexNonArrayType(var_typ),
-            )),
+            Type::Bool | Type::Infer | Type::Char => Err(RawSyntaxError {
+                kind: ErrorKind::CannotIndexNonArrayType(var_typ),
+                col: current_token.col,
+                len: current_token.kind.src_code_len(),
+            }),
         }
     }
 
-    fn primary_expression(&mut self) -> Result<Expression<'src>, Error<'src>> {
+    fn primary_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
         let current_token = self.current_token_bounded(ExpectedBeforeEof::Expression)?;
         let factor = match &current_token.kind {
             TokenKind::Literal(literal) => Ok(Expression::Literal(literal.clone())),
@@ -849,41 +856,37 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::Identifier(name) => match self.resolve_type(name) {
                 None => match self.resolve_variable(name) {
                     Some((_, _, var)) => self.index(var.name, var.value.typ()),
-                    None => Err(Error::new(
-                        self.src,
-                        current_token.col,
-                        current_token.kind.src_code_len(),
-                        ErrorKind::VariableNotPreviouslyDefined,
-                    )),
+                    None => Err(RawSyntaxError {
+                        kind: ErrorKind::VariableNotPreviouslyDefined,
+                        col: current_token.col,
+                        len: current_token.kind.src_code_len(),
+                    }),
                 },
-                Some(_) => Err(Error::new(
-                    self.src,
-                    current_token.col,
-                    current_token.kind.src_code_len(),
-                    ErrorKind::TypeNameInExpressions,
-                )),
+                Some(_) => Err(RawSyntaxError {
+                    kind: ErrorKind::TypeNameInExpressions,
+                    col: current_token.col,
+                    len: current_token.kind.src_code_len(),
+                }),
             },
             TokenKind::Bracket(open_bracket_kind @ BracketKind::OpenRound) => 'parenthesis: {
                 let expression_start_token = self.next_token_bounded(ExpectedBeforeEof::Expression)?;
                 if let TokenKind::Bracket(BracketKind::CloseRound) = expression_start_token.kind {
-                    break 'parenthesis Err(Error::new(
-                        self.src,
-                        expression_start_token.col,
-                        expression_start_token.kind.src_code_len(),
-                        ErrorKind::EmptyExpression,
-                    ));
+                    break 'parenthesis Err(RawSyntaxError {
+                        kind: ErrorKind::EmptyExpression,
+                        col: expression_start_token.col,
+                        len: expression_start_token.kind.src_code_len(),
+                    });
                 }
 
                 let expression = self.expression()?;
                 let close_bracket_token = self.current_token_bounded(ExpectedBeforeEof::ClosingRoundBracket)?;
                 match close_bracket_token.kind {
                     TokenKind::Bracket(BracketKind::CloseRound) => Ok(expression),
-                    _ => Err(Error::new(
-                        self.src,
-                        current_token.col,
-                        current_token.kind.src_code_len(),
-                        ErrorKind::UnclosedBracket(*open_bracket_kind),
-                    )),
+                    _ => Err(RawSyntaxError {
+                        kind: ErrorKind::UnclosedBracket(*open_bracket_kind),
+                        col: current_token.col,
+                        len: current_token.kind.src_code_len(),
+                    }),
                 }
             }
             TokenKind::Bracket(BracketKind::OpenSquare) => 'array: {
@@ -902,24 +905,22 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     let element = self.expression()?;
                     match (&elements_type, element.typ()) {
                         (_, Type::Array { .. }) => {
-                            break 'array Err(Error::new(
-                                self.src,
-                                element_token.col,
-                                element_token.kind.src_code_len(),
-                                ErrorKind::NestedArrayNotSupportedYet,
-                            ))
+                            break 'array Err(RawSyntaxError {
+                                kind: ErrorKind::NestedArrayNotSupportedYet,
+                                col: element_token.col,
+                                len: element_token.kind.src_code_len(),
+                            })
                         }
                         (Type::Infer, other) => {
                             elements_type = other;
                             elements.push(element);
                         }
                         (expected, actual) if *expected != actual => {
-                            break 'array Err(Error::new(
-                                self.src,
-                                element_token.col,
-                                element_token.kind.src_code_len(),
-                                ErrorKind::MismatchedArrayElementType { expected: expected.clone(), actual },
-                            ))
+                            break 'array Err(RawSyntaxError {
+                                kind: ErrorKind::MismatchedArrayElementType { expected: expected.clone(), actual },
+                                col: element_token.col,
+                                len: element_token.kind.src_code_len(),
+                            })
                         }
                         (_, _) => elements.push(element),
                     }
@@ -948,24 +949,21 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    Type::Bool => Err(Error::new(
-                        self.src,
-                        current_token.col,
-                        current_token.kind.src_code_len(),
-                        ErrorKind::CannotNegateBoolean,
-                    )),
-                    Type::Str => Err(Error::new(
-                        self.src,
-                        current_token.col,
-                        current_token.kind.src_code_len(),
-                        ErrorKind::CannotNegateString,
-                    )),
-                    Type::Array { .. } => Err(Error::new(
-                        self.src,
-                        current_token.col,
-                        current_token.kind.src_code_len(),
-                        ErrorKind::CannotNegateArray,
-                    )),
+                    Type::Bool => Err(RawSyntaxError {
+                        kind: ErrorKind::CannotNegateBoolean,
+                        col: current_token.col,
+                        len: current_token.kind.src_code_len(),
+                    }),
+                    Type::Str => Err(RawSyntaxError {
+                        kind: ErrorKind::CannotNegateString,
+                        col: current_token.col,
+                        len: current_token.kind.src_code_len(),
+                    }),
+                    Type::Array { .. } => Err(RawSyntaxError {
+                        kind: ErrorKind::CannotNegateArray,
+                        col: current_token.col,
+                        len: current_token.kind.src_code_len(),
+                    }),
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 };
             }
@@ -986,18 +984,16 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    Type::Str => Err(Error::new(
-                        self.src,
-                        current_token.col,
-                        current_token.kind.src_code_len(),
-                        ErrorKind::CannotInvertString,
-                    )),
-                    Type::Array { .. } => Err(Error::new(
-                        self.src,
-                        current_token.col,
-                        current_token.kind.src_code_len(),
-                        ErrorKind::CannotInvertArray,
-                    )),
+                    Type::Str => Err(RawSyntaxError {
+                        kind: ErrorKind::CannotInvertString,
+                        col: current_token.col,
+                        len: current_token.kind.src_code_len(),
+                    }),
+                    Type::Array { .. } => Err(RawSyntaxError {
+                        kind: ErrorKind::CannotInvertArray,
+                        col: current_token.col,
+                        len: current_token.kind.src_code_len(),
+                    }),
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 };
             }
@@ -1008,36 +1004,34 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Else
             | TokenKind::Loop
             | TokenKind::Break
-            | TokenKind::Continue => Err(Error::new(
-                self.src,
-                current_token.col,
-                current_token.kind.src_code_len(),
-                ErrorKind::KeywordInExpression,
-            )),
-            _ => Err(Error::new(
-                self.src,
-                current_token.col,
-                current_token.kind.src_code_len(),
-                ErrorKind::ExpectedOperand,
-            )),
+            | TokenKind::Continue => Err(RawSyntaxError {
+                kind: ErrorKind::KeywordInExpression,
+                col: current_token.col,
+                len: current_token.kind.src_code_len(),
+            }),
+            _ => Err(RawSyntaxError {
+                kind: ErrorKind::ExpectedOperand,
+                col: current_token.col,
+                len: current_token.kind.src_code_len(),
+            }),
         };
 
         let _ = self.next_token();
         factor
     }
 
-    fn exponentiative_expression(&mut self) -> Result<Expression<'src>, Error<'src>> {
+    fn exponentiative_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
         let mut lhs = self.primary_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::Pow])? {
-            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+            Self::assert_lhs_is_not_string_or_array(op_token, &lhs)?;
 
             let rhs = self.primary_expression()?;
-            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
+            Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col).0,
+                op_position: Position::new(self.src, op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1046,18 +1040,18 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    fn multiplicative_expression(&mut self) -> Result<Expression<'src>, Error<'src>> {
+    fn multiplicative_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
         let mut lhs = self.exponentiative_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::Times, Op::Divide, Op::Remainder])? {
-            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+            Self::assert_lhs_is_not_string_or_array(op_token, &lhs)?;
 
             let rhs = self.exponentiative_expression()?;
-            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
+            Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col).0,
+                op_position: Position::new(self.src, op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1066,18 +1060,18 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    fn additive_expression(&mut self) -> Result<Expression<'src>, Error<'src>> {
+    fn additive_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
         let mut lhs = self.multiplicative_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::Plus, Op::Minus])? {
-            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+            Self::assert_lhs_is_not_string_or_array(op_token, &lhs)?;
 
             let rhs = self.multiplicative_expression()?;
-            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
+            Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col).0,
+                op_position: Position::new(self.src, op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1086,18 +1080,18 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    fn shift_expression(&mut self) -> Result<Expression<'src>, Error<'src>> {
+    fn shift_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
         let mut lhs = self.additive_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::LeftShift, Op::RightShift])? {
-            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+            Self::assert_lhs_is_not_string_or_array(op_token, &lhs)?;
 
             let rhs = self.additive_expression()?;
-            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
+            Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col).0,
+                op_position: Position::new(self.src, op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1106,18 +1100,18 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    fn bitand_expression(&mut self) -> Result<Expression<'src>, Error<'src>> {
+    fn bitand_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
         let mut lhs = self.shift_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitAnd])? {
-            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+            Self::assert_lhs_is_not_string_or_array(op_token, &lhs)?;
 
             let rhs = self.shift_expression()?;
-            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
+            Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col).0,
+                op_position: Position::new(self.src, op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1126,18 +1120,18 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    fn bitxor_expression(&mut self) -> Result<Expression<'src>, Error<'src>> {
+    fn bitxor_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
         let mut lhs = self.bitand_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitXor])? {
-            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+            Self::assert_lhs_is_not_string_or_array(op_token, &lhs)?;
 
             let rhs = self.bitand_expression()?;
-            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
+            Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col).0,
+                op_position: Position::new(self.src, op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1146,18 +1140,18 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    fn bitor_expression(&mut self) -> Result<Expression<'src>, Error<'src>> {
+    fn bitor_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
         let mut lhs = self.bitxor_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitOr])? {
-            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+            Self::assert_lhs_is_not_string_or_array(op_token, &lhs)?;
 
             let rhs = self.bitxor_expression()?;
-            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
+            Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col).0,
+                op_position: Position::new(self.src, op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1166,18 +1160,18 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    fn comparative_expression(&mut self) -> Result<Expression<'src>, Error<'src>> {
+    fn comparative_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
         let mut lhs = self.bitor_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::Compare])? {
-            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+            Self::assert_lhs_is_not_string_or_array(op_token, &lhs)?;
 
             let rhs = self.bitor_expression()?;
-            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
+            Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col).0,
+                op_position: Position::new(self.src, op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1186,31 +1180,30 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    fn comparison_expression(&mut self) -> Result<Expression<'src>, Error<'src>> {
+    fn comparison_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
         let mut lhs = self.comparative_expression()?;
 
         let ops = [Op::EqualsEquals, Op::NotEquals, Op::Greater, Op::GreaterOrEquals, Op::Less, Op::LessOrEquals];
 
         let mut is_chained = false;
         while let Some((op_token, op)) = self.operator(&ops)? {
-            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+            Self::assert_lhs_is_not_string_or_array(op_token, &lhs)?;
 
             let rhs = self.comparative_expression()?;
-            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
+            Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             if is_chained {
-                return Err(Error::new(
-                    self.src,
-                    op_token.col,
-                    op_token.kind.src_code_len(),
-                    ErrorKind::ChainedComparison,
-                ));
+                return Err(RawSyntaxError {
+                    kind: ErrorKind::ChainedComparison,
+                    col: op_token.col,
+                    len: op_token.kind.src_code_len(),
+                });
             }
             is_chained = true;
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col).0,
+                op_position: Position::new(self.src, op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1219,32 +1212,30 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    fn and_expression(&mut self) -> Result<Expression<'src>, Error<'src>> {
+    fn and_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
         let mut lhs = self.comparison_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::And])? {
             let Type::Bool = lhs.typ() else {
-                return Err(Error::new(
-                    self.src,
-                    op_token.col,
-                    op_token.kind.src_code_len(),
-                    ErrorKind::NonBooleanLeftOperand,
-                ));
+                return Err(RawSyntaxError {
+                    kind: ErrorKind::NonBooleanLeftOperand,
+                    col: op_token.col,
+                    len: op_token.kind.src_code_len(),
+                });
             };
 
             let rhs = self.comparison_expression()?;
             let Type::Bool = rhs.typ() else {
-                return Err(Error::new(
-                    self.src,
-                    op_token.col,
-                    op_token.kind.src_code_len(),
-                    ErrorKind::NonBooleanRightOperand,
-                ));
+                return Err(RawSyntaxError {
+                    kind: ErrorKind::NonBooleanRightOperand,
+                    col: op_token.col,
+                    len: op_token.kind.src_code_len(),
+                });
             };
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col).0,
+                op_position: Position::new(self.src, op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1253,32 +1244,30 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    fn or_expression(&mut self) -> Result<Expression<'src>, Error<'src>> {
+    fn or_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
         let mut lhs = self.and_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::Or])? {
             let Type::Bool = lhs.typ() else {
-                return Err(Error::new(
-                    self.src,
-                    op_token.col,
-                    op_token.kind.src_code_len(),
-                    ErrorKind::NonBooleanLeftOperand,
-                ));
+                return Err(RawSyntaxError {
+                    kind: ErrorKind::NonBooleanLeftOperand,
+                    col: op_token.col,
+                    len: op_token.kind.src_code_len(),
+                });
             };
 
             let rhs = self.and_expression()?;
             let Type::Bool = rhs.typ() else {
-                return Err(Error::new(
-                    self.src,
-                    op_token.col,
-                    op_token.kind.src_code_len(),
-                    ErrorKind::NonBooleanRightOperand,
-                ));
+                return Err(RawSyntaxError {
+                    kind: ErrorKind::NonBooleanRightOperand,
+                    col: op_token.col,
+                    len: op_token.kind.src_code_len(),
+                });
             };
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: self.src.position(op_token.col).0,
+                op_position: Position::new(self.src, op_token.col).0,
                 op,
                 rhs: Box::new(rhs),
             };
@@ -1291,7 +1280,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     // TODO(stefano): disallow implicit conversions
     // IDEA(stefano): introduce casting operators
     // TODO(stefano): implement boolean operator chaining
-    fn expression(&mut self) -> Result<Expression<'src>, Error<'src>> {
+    fn expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
         self.or_expression()
     }
 }
@@ -1335,7 +1324,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         }
     }
 
-    fn type_annotation(&mut self) -> Result<Option<(&'tokens Token<'src>, Type)>, Error<'src>> {
+    fn type_annotation(&mut self) -> Result<Option<(&'tokens Token<'src>, Type)>, RawSyntaxError<ErrorKind>> {
         let colon_token = self.next_token_bounded(ExpectedBeforeEof::TypeAnnotationOrVariableDefinition)?;
         let TokenKind::Colon = colon_token.kind else {
             self.token -= 1;
@@ -1344,23 +1333,21 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         let type_token = self.next_token_bounded(ExpectedBeforeEof::TypeAnnotation)?;
         let TokenKind::Identifier(type_name) = type_token.kind else {
-            return Err(Error::new(
-                self.src,
-                colon_token.col,
-                colon_token.kind.src_code_len(),
-                ErrorKind::ExpectedTypeName,
-            ));
+            return Err(RawSyntaxError {
+                kind: ErrorKind::ExpectedTypeName,
+                col: colon_token.col,
+                len: colon_token.kind.src_code_len(),
+            });
         };
 
         let Some(typ) = self.resolve_type(type_name) else {
             return match self.resolve_variable(type_name) {
                 Some((_, _, var)) => Ok(Some((type_token, var.value.typ()))),
-                None => Err(Error::new(
-                    self.src,
-                    type_token.col,
-                    type_token.kind.src_code_len(),
-                    ErrorKind::VariableAsTypeAnnotationNotPreviouslyDefined,
-                )),
+                None => Err(RawSyntaxError {
+                    kind: ErrorKind::VariableAsTypeAnnotationNotPreviouslyDefined,
+                    col: type_token.col,
+                    len: type_token.kind.src_code_len(),
+                }),
             };
         };
 
@@ -1377,20 +1364,18 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let len = match len_token.kind {
             TokenKind::Literal(Literal::Int(len)) => len,
             TokenKind::Bracket(BracketKind::CloseSquare) => {
-                return Err(Error::new(
-                    self.src,
-                    len_token.col,
-                    len_token.kind.src_code_len(),
-                    ErrorKind::MissingArrayLength,
-                ))
+                return Err(RawSyntaxError {
+                    kind: ErrorKind::MissingArrayLength,
+                    col: len_token.col,
+                    len: len_token.kind.src_code_len(),
+                })
             }
             _ => {
-                return Err(Error::new(
-                    self.src,
-                    len_token.col,
-                    len_token.kind.src_code_len(),
-                    ErrorKind::NonLiteralIntegerArrayLength,
-                ))
+                return Err(RawSyntaxError {
+                    kind: ErrorKind::NonLiteralIntegerArrayLength,
+                    col: len_token.col,
+                    len: len_token.kind.src_code_len(),
+                })
             }
         };
 
@@ -1398,16 +1383,15 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             Some(close_square_bracket_token @ Token { kind: TokenKind::Bracket(BracketKind::CloseSquare), .. }) => {
                 Ok(Some((close_square_bracket_token, Type::Array { len: len as usize, elements_type })))
             }
-            Some(_) | None => Err(Error::new(
-                self.src,
-                open_square_bracket_token.col,
-                open_square_bracket_token.kind.src_code_len(),
-                ErrorKind::MissingSquareBracketInArrayTypeAnnotation,
-            )),
+            Some(_) | None => Err(RawSyntaxError {
+                kind: ErrorKind::MissingSquareBracketInArrayTypeAnnotation,
+                col: open_square_bracket_token.col,
+                len: open_square_bracket_token.kind.src_code_len(),
+            }),
         }
     }
 
-    fn variable_definition(&mut self) -> Result<Node<'src>, Error<'src>> {
+    fn variable_definition(&mut self) -> Result<Node<'src>, RawSyntaxError<ErrorKind>> {
         let definition_token = &self.tokens[self.token];
         let TokenKind::Definition(mutability) = definition_token.kind else {
             unreachable!("cannot be anything different from 'let' or 'var'");
@@ -1417,19 +1401,17 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let name = match &name_token.kind {
             TokenKind::Identifier(name) => match self.resolve_type(name) {
                 None => Ok(name),
-                Some(_) => Err(Error::new(
-                    self.src,
-                    name_token.col,
-                    name_token.kind.src_code_len(),
-                    ErrorKind::TypeNameInVariableName,
-                )),
+                Some(_) => Err(RawSyntaxError {
+                    kind: ErrorKind::TypeNameInVariableName,
+                    col: name_token.col,
+                    len: name_token.kind.src_code_len(),
+                }),
             },
-            _ => Err(Error::new(
-                self.src,
-                name_token.col,
-                name_token.kind.src_code_len(),
-                ErrorKind::ExpectedVariableName,
-            )),
+            _ => Err(RawSyntaxError {
+                kind: ErrorKind::ExpectedVariableName,
+                col: name_token.col,
+                len: name_token.kind.src_code_len(),
+            }),
         };
         let name = name?;
 
@@ -1446,29 +1428,26 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             }
             TokenKind::SemiColon => Ok(None),
             _ => match annotation {
-                None => Err(Error::new(
-                    self.src,
-                    name_token.col,
-                    name_token.kind.src_code_len(),
-                    ErrorKind::ExpectedEqualsOrSemicolonAfterVariableName,
-                )),
-                Some((annotation_token, _)) => Err(Error::new(
-                    self.src,
-                    annotation_token.col,
-                    annotation_token.kind.src_code_len(),
-                    ErrorKind::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
-                )),
+                None => Err(RawSyntaxError {
+                    kind: ErrorKind::ExpectedEqualsOrSemicolonAfterVariableName,
+                    col: name_token.col,
+                    len: name_token.kind.src_code_len(),
+                }),
+                Some((annotation_token, _)) => Err(RawSyntaxError {
+                    kind: ErrorKind::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
+                    col: annotation_token.col,
+                    len: annotation_token.kind.src_code_len(),
+                }),
             },
         };
         let expression = expression?;
 
         if self.resolve_variable(name).is_some() {
-            return Err(Error::new(
-                self.src,
-                name_token.col,
-                name_token.kind.src_code_len(),
-                ErrorKind::VariableRedefinition,
-            ));
+            return Err(RawSyntaxError {
+                kind: ErrorKind::VariableRedefinition,
+                col: name_token.col,
+                len: name_token.kind.src_code_len(),
+            });
         }
 
         match expression {
@@ -1481,20 +1460,21 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     }
 
                     if *typ != value.typ() {
-                        return Err(Error::new(
-                            self.src,
-                            token.col,
-                            token.kind.src_code_len(),
-                            ErrorKind::VariableDefinitionTypeMismatch { expected: typ.clone(), actual: value.typ() },
-                        ));
+                        return Err(RawSyntaxError {
+                            kind: ErrorKind::VariableDefinitionTypeMismatch {
+                                expected: typ.clone(),
+                                actual: value.typ(),
+                            },
+                            col: token.col,
+                            len: token.kind.src_code_len(),
+                        });
                     }
                 } else if value.typ().should_be_inferred() {
-                    return Err(Error::new(
-                        self.src,
-                        name_token.col,
-                        name_token.kind.src_code_len(),
-                        ErrorKind::ExpectedTypeAnnotation,
-                    ));
+                    return Err(RawSyntaxError {
+                        kind: ErrorKind::ExpectedTypeAnnotation,
+                        col: name_token.col,
+                        len: name_token.kind.src_code_len(),
+                    });
                 }
 
                 let variables = &mut self.scopes[self.scope].variables;
@@ -1507,29 +1487,27 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     variables.push(Variable { mutability, name, value: typ.into() });
                     Ok(Node::Definition(self.scope, variables.len() - 1))
                 }
-                None => Err(Error::new(
-                    self.src,
-                    name_token.col,
-                    name_token.kind.src_code_len(),
-                    ErrorKind::ExpectedTypeAnnotationOrValue,
-                )),
+                None => Err(RawSyntaxError {
+                    kind: ErrorKind::ExpectedTypeAnnotationOrValue,
+                    col: name_token.col,
+                    len: name_token.kind.src_code_len(),
+                }),
             },
         }
     }
 
-    fn variable_reassignment(&mut self) -> Result<Node<'src>, Error<'src>> {
+    fn variable_reassignment(&mut self) -> Result<Node<'src>, RawSyntaxError<ErrorKind>> {
         let name_token = &self.tokens[self.token];
         let TokenKind::Identifier(name) = name_token.kind else {
             unreachable!("cannot be different from an identifier");
         };
 
         if self.resolve_type(name).is_some() {
-            return Err(Error::new(
-                self.src,
-                name_token.col,
-                name_token.kind.src_code_len(),
-                ErrorKind::TypeNameInVariableReassignment,
-            ));
+            return Err(RawSyntaxError {
+                kind: ErrorKind::TypeNameInVariableReassignment,
+                col: name_token.col,
+                len: name_token.kind.src_code_len(),
+            });
         }
 
         // we checked for the presence of an op token before the call to this function
@@ -1539,18 +1517,17 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let rhs = self.expression()?;
         match self.resolve_variable(name) {
             Some((scope_idx, var_idx, var)) => match var.mutability {
-                Mutability::Let => Err(Error::new(
-                    self.src,
-                    name_token.col,
-                    name_token.kind.src_code_len(),
-                    ErrorKind::TryingToMutateImmutableVariable,
-                )),
+                Mutability::Let => Err(RawSyntaxError {
+                    kind: ErrorKind::TryingToMutateImmutableVariable,
+                    col: name_token.col,
+                    len: name_token.kind.src_code_len(),
+                }),
                 Mutability::Var => {
                     let value = match &op_token.kind {
                         TokenKind::Op(Op::Equals) => rhs,
                         TokenKind::Op(op) => Expression::Binary {
                             lhs: Box::new(Expression::Identifier { name, typ: op.typ() }),
-                            op_position: self.src.position(op_token.col).0,
+                            op_position: Position::new(self.src, op_token.col).0,
                             op: *op,
                             rhs: Box::new(rhs),
                         },
@@ -1560,36 +1537,34 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     if var.value.typ() == value.typ() {
                         Ok(Node::Assignment(scope_idx, var_idx, value))
                     } else {
-                        Err(Error::new(
-                            self.src,
-                            name_token.col,
-                            name_token.kind.src_code_len(),
-                            ErrorKind::VariableAssignmentTypeMismatch {
+                        Err(RawSyntaxError {
+                            kind: ErrorKind::VariableAssignmentTypeMismatch {
                                 expected: var.value.typ(),
                                 actual: value.typ(),
                             },
-                        ))
+                            col: name_token.col,
+                            len: name_token.kind.src_code_len(),
+                        })
                     }
                 }
             },
-            None => Err(Error::new(
-                self.src,
-                name_token.col,
-                name_token.kind.src_code_len(),
-                ErrorKind::VariableNotPreviouslyDefined,
-            )),
+            None => Err(RawSyntaxError {
+                kind: ErrorKind::VariableNotPreviouslyDefined,
+                col: name_token.col,
+                len: name_token.kind.src_code_len(),
+            }),
         }
     }
 }
 
 // print statements
 impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
-    fn print(&mut self) -> Result<Node<'src>, Error<'src>> {
+    fn print(&mut self) -> Result<Node<'src>, RawSyntaxError<ErrorKind>> {
         let arg = self.print_arg()?;
         Ok(Node::Print(arg))
     }
 
-    fn println(&mut self) -> Result<Node<'src>, Error<'src>> {
+    fn println(&mut self) -> Result<Node<'src>, RawSyntaxError<ErrorKind>> {
         if let Some(&Token { kind: TokenKind::SemiColon, .. }) = self.peek_next_token() {
             let _ = self.next_token();
             return Ok(Node::Println(None));
@@ -1599,25 +1574,24 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(Node::Println(Some(arg)))
     }
 
-    fn print_arg(&mut self) -> Result<Expression<'src>, Error<'src>> {
+    fn print_arg(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
         let start_of_expression_token = self.next_token_bounded(ExpectedBeforeEof::Expression)?;
         let argument = self.expression()?;
         let Expression::Array { .. } = argument else {
             return Ok(argument);
         };
 
-        Err(Error::new(
-            self.src,
-            start_of_expression_token.col,
-            start_of_expression_token.kind.src_code_len(),
-            ErrorKind::TemporaryArrayNotSupportedYet,
-        ))
+        Err(RawSyntaxError {
+            kind: ErrorKind::TemporaryArrayNotSupportedYet,
+            col: start_of_expression_token.col,
+            len: start_of_expression_token.kind.src_code_len(),
+        })
     }
 }
 
 // if statements
 impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
-    fn iff(&mut self) -> Result<Node<'src>, Error<'src>> {
+    fn iff(&mut self) -> Result<Node<'src>, RawSyntaxError<ErrorKind>> {
         let mut if_statement = If { ifs: Vec::new(), els: None };
 
         'iff: while let Some(if_token) = self.tokens.get(self.token) {
@@ -1626,12 +1600,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             let expression = self.expression()?;
             let condition = match &expression.typ() {
                 Type::Bool => Ok(expression),
-                Type::Char | Type::Int | Type::Str | Type::Array { .. } | Type::Infer => Err(Error::new(
-                    self.src,
-                    if_token.col,
-                    if_token.kind.src_code_len(),
-                    ErrorKind::ExpectedBooleanExpressionInIfStatement,
-                )),
+                Type::Char | Type::Int | Type::Str | Type::Array { .. } | Type::Infer => Err(RawSyntaxError {
+                    kind: ErrorKind::ExpectedBooleanExpressionInIfStatement,
+                    col: if_token.col,
+                    len: if_token.kind.src_code_len(),
+                }),
             };
 
             let condition = condition?;
@@ -1648,12 +1621,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 }
                 _ => {
                     let before_curly_bracket_token = self.peek_previous_token();
-                    Err(Error::new(
-                        self.src,
-                        before_curly_bracket_token.col,
-                        before_curly_bracket_token.kind.src_code_len(),
-                        ErrorKind::ExpectedDoOrBlockAfterIfStatement,
-                    ))
+                    Err(RawSyntaxError {
+                        kind: ErrorKind::ExpectedDoOrBlockAfterIfStatement,
+                        col: before_curly_bracket_token.col,
+                        len: before_curly_bracket_token.kind.src_code_len(),
+                    })
                 }
             };
 
@@ -1679,12 +1651,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         break 'iff;
                     }
                     TokenKind::If => break,
-                    _ => Err(Error::new(
-                        self.src,
-                        else_token.col,
-                        else_token.kind.src_code_len(),
-                        ErrorKind::ExpectedDoOrBlockOrIfStatementAfterIfStatement,
-                    )),
+                    _ => Err(RawSyntaxError {
+                        kind: ErrorKind::ExpectedDoOrBlockOrIfStatementAfterIfStatement,
+                        col: else_token.col,
+                        len: else_token.kind.src_code_len(),
+                    }),
                 };
 
                 else_if?;
@@ -1697,7 +1668,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
 // for statements
 impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
-    fn loop_statement(&mut self) -> Result<Node<'src>, Error<'src>> {
+    fn loop_statement(&mut self) -> Result<Node<'src>, RawSyntaxError<ErrorKind>> {
         let do_token = &self.tokens[self.token];
         let loop_token = match do_token.kind {
             TokenKind::Do => self.next_token_bounded(ExpectedBeforeEof::LoopStatement)?,
@@ -1708,12 +1679,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let expression = self.expression()?;
         let condition = match &expression.typ() {
             Type::Bool => Ok(expression),
-            Type::Char | Type::Int | Type::Str | Type::Array { .. } | Type::Infer => Err(Error::new(
-                self.src,
-                loop_token.col,
-                loop_token.kind.src_code_len(),
-                ErrorKind::ExpectedBooleanExpressionInLoopStatement,
-            )),
+            Type::Char | Type::Int | Type::Str | Type::Array { .. } | Type::Infer => Err(RawSyntaxError {
+                kind: ErrorKind::ExpectedBooleanExpressionInLoopStatement,
+                col: loop_token.col,
+                len: loop_token.kind.src_code_len(),
+            }),
         };
 
         let after_condition_token = self.current_token_bounded(ExpectedBeforeEof::DoOrBlock)?;
@@ -1729,12 +1699,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             }
             _ => {
                 let before_curly_bracket_token = self.peek_previous_token();
-                Err(Error::new(
-                    self.src,
-                    before_curly_bracket_token.col,
-                    before_curly_bracket_token.kind.src_code_len(),
-                    ErrorKind::ExpectedBooleanExpressionInLoopStatement,
-                ))
+                Err(RawSyntaxError {
+                    kind: ErrorKind::ExpectedBooleanExpressionInLoopStatement,
+                    col: before_curly_bracket_token.col,
+                    len: before_curly_bracket_token.kind.src_code_len(),
+                })
             }
         };
 
@@ -1750,7 +1719,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ExpectedBeforeEof {
     StatementAfterDo,
     Semicolon,
@@ -1795,7 +1764,7 @@ impl Display for ExpectedBeforeEof {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BlocksNotAllowedIn {
     DoStatement,
 }
@@ -1808,7 +1777,7 @@ impl Display for BlocksNotAllowedIn {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum VariableDefinitionNotAllowedIn {
     DoStatement,
 }
@@ -1821,7 +1790,7 @@ impl Display for VariableDefinitionNotAllowedIn {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ErrorKind {
     NoMoreTokens(ExpectedBeforeEof),
     StrayElseBlock,
@@ -2023,4 +1992,7 @@ impl ErrorInfo for ErrorKind {
     }
 }
 
+impl SyntaxErrorKind for ErrorKind {}
+
+#[deprecated(since = "0.5.3", note = "will be removed to allow for more explicit function signatures")]
 pub type Error<'src> = SyntaxError<'src, ErrorKind>;

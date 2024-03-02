@@ -1,6 +1,6 @@
 [package]
 name = "kaylang"
-version = "0.5.2"
+version = "0.5.3"
 edition = "2021"
 authors = ["Stefano Incardone"]
 categories = ["compilers", "command-line-utilities"]
@@ -40,7 +40,7 @@ manual_let_else = "warn"
 no_effect_undescore_binding = "warn"
 
 [lints.rust]
-deprecated = "forbid"
+deprecated = "warn"
 absolute_paths_not_starting_with_crate = "forbid"
 elided-lifetimes-in-paths = "warn"
 keyword_idents = "forbid"
