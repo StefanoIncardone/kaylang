@@ -4,33 +4,31 @@ Experimenting with programming languages and exploring how to create one.
 
 **IMPORTANT**: The language could change at any moment for now
 
-## Language Features
-
 see the [full language syntax](SYNTAX.ebnf)
 
-### Run modes
+## Run modes
 
 - `check`: to check the source code for correctness
 - `compile`: to compile the program down to a binary executable
 - `run`: to compile and run the generated binary executable
 
-### UTF-8 support
+## UTF-8 support
 
 only supporting ASCII (`[32, 126]`) characters for now, UTF-8 characters are only supported in comments
 
-### Comments
+## Comments
 
 line comments start with `#` and ignore everything until the end of the line
 
-### Integers
+## Integers
 
 Integers are 64 bit base 10 number literals.
 
-### Booleans
+## Booleans
 
 Boolean values are `true` and `false`, being functionally equivalent to `1` and `0` when used inside math expressions
 
-### Characters
+## Characters
 
 Character literals are surrounded by `'`: `'B'`
 These are the available escaped characters:
@@ -43,11 +41,11 @@ These are the available escaped characters:
 - tab: `\t`
 - null character: `\0`
 
-### Strings
+## Strings
 
 String literals are surrounded by `"` and contain any number of regular or escaped characters: `"Hello\nWorld!"`
 
-### Expressions
+## Expressions
 
 **Note** boolean expressions implicit convert to `1` if `true` or `0` if `false` inside math expressions,
 
@@ -81,7 +79,7 @@ Expressions follow this order of operations (precedence from highest to lowest):
 - all *op*= variations (i.e.: `+=`, `-=`, ...)
 
 
-### Variables
+## Variables
 
 Variable names can be made of (but not starting with) numbers, underscores and letters
 
@@ -110,7 +108,7 @@ let error;      # will result in an error asking for an explicit type annotation
 let zero: int;  # will have the default value for a variable of type int, which is 0
 ```
 
-### Printing
+## Printing
 
 The only way to print values is using the temporary intrinsics `print` or `println` keywords
 
@@ -124,7 +122,7 @@ print 42;
 println; # this will just print a newline
 ```
 
-### Scopes
+## Scopes
 
 They are enclosed by `{` and `}`, and contain a series of statements
 variables are only accessible in the scope they were defined in
@@ -153,7 +151,7 @@ print "ten in the inner scope = "; println ten;
 print "nine in the inner scope = "; println nine;
 ```
 
-### If statements
+## If statements
 
 Executes a block of code based on a condition
 
@@ -202,7 +200,7 @@ Executes a block of code based on a condition
     else do println "too bad!";
     ```
 
-### Loops
+## Loops
 
 Executes a block until a condition is not satisfied
 
@@ -234,7 +232,7 @@ do loop false do j += 1;
 println j; # will print 1 since the increment inside the loop was executed at least once
 ```
 
-#### break and continue statements
+### break and continue statements
 
 They can be used to alter the normal flow of the program
 
@@ -248,7 +246,7 @@ loop i < 10 {
 }
 ```
 
-### Semicolons
+## Semicolons
 
 Semicolons are reguired after statements.
 
@@ -257,7 +255,7 @@ print "Hello "; # required semicolon
 println "World!";
 ```
 
-### Arrays
+## Arrays
 
 Arrays are a collection of values of the same type under a single variable
 
@@ -265,8 +263,28 @@ Arrays are a collection of values of the same type under a single variable
 let i = [1, 2, 3, 4];
 println i[2]; # zero-based indexing
 
+println [1, 2, 3]; # Error: temporary arrays are not supported yet, so they need to be extracted into variables first
+
 let hello = "hello";
 println hello[2]; # strings can be indexed to access individual characters
+```
 
-println [1, 2, 3]; # Error: temporary arrays are not supported yet, so they need to be extracted into variables first
+### Bit field access
+
+Integers can be treated as bit arrays and can therefore be indexed like regular arrays, where the
+value of the indexed type is an other integer with at most a single bit set to 1
+
+```kay
+let five = 5; # 0101
+println five[0]; # 0001 -> 1
+                 # 0101
+                 #    ^
+
+println five[1]; # 0000 -> 0
+                 # 0101
+                 #   ^
+
+println five[2]; # 0100 -> 4
+                 # 0101
+                 #   ^
 ```
