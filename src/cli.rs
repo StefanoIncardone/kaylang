@@ -12,7 +12,7 @@ pub struct Args {
 }
 
 impl TryFrom<Vec<String>> for Args {
-    type Error = Error;
+    type Error = CliError<ErrorKind>;
 
     fn try_from(args: Vec<String>) -> Result<Self, Self::Error> {
         let args_iter = args.iter();
