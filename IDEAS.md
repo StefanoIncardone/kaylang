@@ -60,45 +60,13 @@ have them as built-in operators or just implement them as functions
     |-19| == 19
     ```
 
-- floor, enclosed by `|\` and `/|`, and have to be written as a single token, so `| \` and `/ |` are not valid
+    or with the usage of the `+` sign:
 
     ```kay
-    |\19.3/| == 19
-    |\-19.3/| == -20
+    let negative = -19;
+    let positive = +negative; # 19
     ```
 
-- ceil, enclosed by `|/` and `\|`, and have to be written as a single token, so `| /` and `\ |` are not valid
-
-    ```kay
-    |/19.3\| == 20
-    |/-19.3\| == -19
-    ```
-
-- is multiple of: `%%`
-
-    ```kay
-    let number = 42;
-    if number %% 2 { # desugars to number % 2 == 0
-        println "even";
-    }
-    else {
-        println "odd";
-    }
-    ```
-
-- boolean expressions chaining
-
-    ```kay
-    let n = 42;
-    # find apropriate syntax
-    if n == 19, 21, 42 || 71 < n <= 138 { # desugars to n == 19 || n == 21 || n == 42 || (71 < n && n <= 138)
-        println "nice";
-    }
-
-    if n %% 2, 6, 14 { # desugars to n % 2 == 0 || n % 6 == 0 || n % 14 == 0
-        println "multiple of 2, 6 or 14";
-    }
-    ```
 
 ## Strings
 
@@ -120,9 +88,6 @@ have them as built-in operators or just implement them as functions
 stack-allocated collection of a compile time known fixed amount of elements:
 
 ```kay
-# uninizialized arrays must specify their lengths and will contain garbage
-let codes: int[3];
-
 # initial capacity cannot be specified from variables
 let capacity = 19;
 let code: int[capacity]; # error
@@ -618,27 +583,4 @@ let answer = _21 * 2;
 
 # or allow for stuff like this, where a trailing underscore would indicate that this is an identifier instead of a number
 let 21_ = 9 + 10;
-```
-
-## Integer bits access
-
-Allow integers to be treated as arrays of bits and use the array index notation to access specific bits.
-All results are still integers but with at most a single bit set to 1:
-
-```kay
-let i = 5; # 0b0101
-let first_bit = i[0]; # 0b0101
-                      #      ^
-
-println first_bit; # 0b0001
-
-let second_bit = i[1]; # 0b0101
-                       #     ^
-
-println second_bit; # 0b0000, since we selected a bit that was set to 0
-
-let third_bit = i[2]; # 0b0101
-                      #    ^
-
-println third_bit; # 0b0100
 ```
