@@ -81,6 +81,8 @@ pub struct CliErrorInfo {
     pub msg: Cow<'static, str>,
 }
 
+// TODO(stefano): add information about the command line arguments and pointers to the place where
+// the error occured (akin to syntax errors)
 #[derive(Debug, Clone)]
 pub struct CliError<K: CliErrorKind> {
     pub kind: K,

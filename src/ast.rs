@@ -82,6 +82,19 @@ impl Type {
             _ => self.clone(),
         }
     }
+
+    pub(crate) fn can_be_compared_to(&self, other: &Type) -> bool {
+        match (self, other) {
+            (Self::Str, Self::Str) | (Self::Int | Self::Bool | Self::Char, Self::Int | Self::Bool | Self::Char) => true,
+
+            (Self::Str, _)
+            | (_, Self::Str)
+            | (Self::Array { .. }, _)
+            | (_, Self::Array { .. })
+            | (Self::Infer, _)
+            | (_, Self::Infer) => false,
+        }
+    }
 }
 
 impl TypeOf for Literal {
@@ -1164,10 +1177,17 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let mut lhs = self.bitor_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::Compare])? {
-            Self::assert_lhs_is_not_string_or_array(op_token, &lhs)?;
-
             let rhs = self.bitor_expression()?;
-            Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
+
+            let lhs_typ = lhs.typ();
+            let rhs_typ = rhs.typ();
+            if !lhs_typ.can_be_compared_to(&rhs_typ) {
+                return Err(RawSyntaxError {
+                    kind: ErrorKind::CannotCompareOperands { lhs_typ, rhs_typ },
+                    col: op_token.col,
+                    len: op_token.kind.src_code_len(),
+                });
+            }
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
@@ -1187,10 +1207,17 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         let mut is_chained = false;
         while let Some((op_token, op)) = self.operator(&ops)? {
-            Self::assert_lhs_is_not_string_or_array(op_token, &lhs)?;
-
             let rhs = self.comparative_expression()?;
-            Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
+
+            let lhs_typ = lhs.typ();
+            let rhs_typ = rhs.typ();
+            if !lhs_typ.can_be_compared_to(&rhs_typ) {
+                return Err(RawSyntaxError {
+                    kind: ErrorKind::CannotCompareOperands { lhs_typ, rhs_typ },
+                    col: op_token.col,
+                    len: op_token.kind.src_code_len(),
+                });
+            }
 
             if is_chained {
                 return Err(RawSyntaxError {
@@ -1278,8 +1305,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
     // TODO(stefano): implement boolean operators for strings
     // TODO(stefano): disallow implicit conversions
-    // IDEA(stefano): introduce casting operators
-    // TODO(stefano): implement boolean operator chaining
+    // TODO(stefano): introduce casting operators
     fn expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
         self.or_expression()
     }
@@ -1849,6 +1875,7 @@ pub enum ErrorKind {
     ExpectedBooleanExpressionInLoopStatement,
     ExpectedDoOrBlockAfterLoopStatement,
     CannotIndexNonArrayType(Type),
+    CannotCompareOperands { lhs_typ: Type, rhs_typ: Type },
 }
 
 impl ErrorInfo for ErrorKind {
@@ -1986,6 +2013,10 @@ impl ErrorInfo for ErrorKind {
             Self::CannotIndexNonArrayType(typ) => {
                 ("invalid expression".into(), format!("cannot index into a value of type '{typ}'").into())
             }
+            Self::CannotCompareOperands { lhs_typ, rhs_typ } => (
+                "invalid expression".into(),
+                format!("cannot compare left operand of type '{lhs_typ}' to right operand of type '{rhs_typ}'").into(),
+            ),
         };
 
         Self::Info { msg, help_msg }
