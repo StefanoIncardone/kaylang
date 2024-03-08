@@ -1,6 +1,5 @@
 // IDEA(stefano): reserve space for the biggest temporary value and reuse as necessary, to allow for stuff like this
 // TODO(stefano): introduce intermediate representation
-// IDEA(stefano): introduce "intrinsics functions" that put arguments in registers different for the conventions (for speed reasons)
 
 use crate::{
     ast::{self, Expression, IfStatement, LoopCondition, Node, Scope, Type, TypeOf},
@@ -637,12 +636,12 @@ crash:
  mov rdi, EXIT_FAILURE
  jmp exit
 
-; fn assert_array_idx_in_range(array_len: uint @rdi, idx: int @rsi, line: uint @rdx, col: uint @rcx)
+; fn assert_array_idx_in_range(idx: int @rdi, array_len: uint @rsi, line: uint @rdx, col: uint @rcx)
 assert_array_idx_in_range:
- cmp rsi, 0
+ cmp rdi, 0
  jl .underflow
 
- cmp rsi, rdi
+ cmp rdi, rsi
  jge .overflow
 
  ret
@@ -657,12 +656,12 @@ assert_array_idx_in_range:
  mov rsi, attempt_array_idx_overflow
  jmp crash
 
-; fn assert_int_bit_idx_in_range(bits: uint @rdi, idx: int @rsi, line: uint @rdx, col: uint @rcx)
+; fn assert_int_bit_idx_in_range(idx: int @rdi, bits: uint @rsi, line: uint @rdx, col: uint @rcx)
 assert_int_bit_idx_in_range:
- cmp rsi, 0
+ cmp rdi, 0
  jl .underflow
 
- cmp rsi, rdi
+ cmp rdi, rsi
  jge .overflow
 
  ret
@@ -677,12 +676,12 @@ assert_int_bit_idx_in_range:
  mov rsi, attempt_int_bit_idx_overflow
  jmp crash
 
-; fn assert_str_idx_in_range(str_len: uint @rdi, idx: int @rsi, line: uint @rdx, col: uint @rcx)
+; fn assert_str_idx_in_range(idx: int @rdi, str_len: uint @rsi, line: uint @rdx, col: uint @rcx)
 assert_str_idx_in_range:
- cmp rsi, 0
+ cmp rdi, 0
  jl .underflow
 
- cmp rsi, rdi
+ cmp rdi, rsi
  jge .overflow
 
  ret
@@ -697,9 +696,9 @@ assert_str_idx_in_range:
  mov rsi, attempt_str_idx_overflow
  jmp crash
 
-; fn assert_denominator_not_zero(denominator: int @rdi, line: uint @rdx, col: uint @rcx)
+; fn assert_denominator_not_zero(_dummy: @rdi, denominator: int @rsi, line: uint @rdx, col: uint @rcx)
 assert_denominator_not_zero:
- test rdi, rdi
+ test rsi, rsi
  jz .denominator_zero
 
  ret
@@ -709,9 +708,9 @@ assert_denominator_not_zero:
  mov rsi, attempt_division_by_zero
  jmp crash
 
-; fn assert_modulo_not_zero(modulo: int @rdi, line: uint @rdx, col: uint @rcx)
+; fn assert_modulo_not_zero(_dummy: @rdi, modulo: int @rsi, line: uint @rdx, col: uint @rcx)
 assert_modulo_not_zero:
- test rdi, rdi
+ test rsi, rsi
  jz .modulo_zero
 
  ret
@@ -721,9 +720,9 @@ assert_modulo_not_zero:
  mov rsi, attempt_modulo_zero
  jmp crash
 
-; fn assert_exponent_is_positive(exponent: int @rdi, line: uint @rdx, col: uint @rcx)
+; fn assert_exponent_is_positive(_dummy: @rdi, exponent: int @rsi, line: uint @rdx, col: uint @rcx)
 assert_exponent_is_positive:
- cmp rdi, 0
+ cmp rsi, 0
  jl .exponent_negative
 
  ret
@@ -838,10 +837,10 @@ int_array_debug_print:
  test r8, r8
  jz .done
 
+.next:
  dec r8
  jz .last
 
-.next:
  mov rdi, [r9]
  call int_print
 
@@ -852,8 +851,7 @@ int_array_debug_print:
  call char_print
 
  add r9, 8
- dec r8
- jnz .next
+ jmp .next
 
 .last:
  mov rdi, [r9]
@@ -887,10 +885,10 @@ char_array_debug_print:
  test r8, r8
  jz .done
 
+.next:
  dec r8
  jz .last
 
-.next:
  mov dil, [r9]
  call char_print
 
@@ -901,8 +899,7 @@ char_array_debug_print:
  call char_print
 
  inc r9
- dec r8
- jnz .next
+ jmp .next
 
 .last:
  mov dil, [r9]
@@ -940,10 +937,10 @@ bool_array_debug_print:
  test r8, r8
  jz .done
 
+.next:
  dec r8
  jz .last
 
-.next:
  mov dil, [r9]
  call bool_print
 
@@ -954,8 +951,7 @@ bool_array_debug_print:
  call char_print
 
  inc r9
- dec r8
- jnz .next
+ jmp .next
 
 .last:
  mov dil, [r9]
@@ -1025,10 +1021,10 @@ str_array_debug_print:
  test r8, r8
  jz .done
 
+.next:
  dec r8
  jz .last
 
-.next:
  mov rdi, [r9]
  mov rsi, [r9 + 8]
  call str_print
@@ -1040,8 +1036,7 @@ str_array_debug_print:
  call char_print
 
  add r9, 16
- dec r8
- jnz .next
+ jmp .next
 
 .last:
  mov rdi, [r9]
@@ -1355,7 +1350,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     Dst::Reg(_) => unreachable!(),
                 },
             },
-            // NOTE(stefano): hard-coding rdi/rsi for the first and second operand until a better way to manage dst and src are developed
+            // NOTE(stefano): hard-coding the first and second operand until a better way to manage dst and src are developed
             Expression::Binary { lhs, op_position, op, rhs } => {
                 let (lhs_dst, rhs_dst, op_asm): (Dst, Dst, Cow<'_, str>) = match (lhs.typ(), rhs.typ()) {
                     (Type::Str, Type::Str) => match op {
@@ -1451,12 +1446,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             Dst::Reg(Rdi),
                             Dst::Reg(Rsi),
                             format!(
-                                " push rdi\
-                                \n mov rdi, rsi\
-                                \n mov rdx, {line}\
+                                " mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call assert_exponent_is_positive\
-                                \n pop rdi\
                                 \n call int_pow\
                                 \n mov rdi, rax",
                                 line = op_position.line,
@@ -1469,12 +1461,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             Dst::Reg(Rdi),
                             Dst::Reg(Rsi),
                             format!(
-                                " push rdi\
-                                \n mov rdi, rsi\
-                                \n mov rdx, {line}\
+                                " mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call assert_denominator_not_zero\
-                                \n pop rax\
+                                \n mov rax, rdi\
                                 \n xor rdx, rdx\
                                 \n idiv rsi\
                                 \n mov rdi, rax",
@@ -1487,12 +1477,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             Dst::Reg(Rdi),
                             Dst::Reg(Rsi),
                             format!(
-                                " push rdi\
-                                \n mov rdi, rsi\
-                                \n mov rdx, {line}\
+                                " mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call assert_modulo_not_zero\
-                                \n pop rax\
+                                \n mov rax, rdi\
                                 \n xor rdx, rdx\
                                 \n idiv rsi\
                                 \n mov rdi, rdx",
@@ -1683,35 +1671,33 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 match variable_typ {
                     Type::Str => {
                         self.asm += &format!(
-                            " mov rsi, rdi\
-                            \n mov rdi, [rbp + {offset}]\
+                            " mov rsi, [rbp + {offset}]\
                             \n mov rdx, {line}\
                             \n mov rcx, {col}\
                             \n call assert_str_idx_in_range\
-                            \n mov rdi, [rbp + {offset} + {ptr_offset} + rsi]\
-                            \n mov rdi, [rdi + rsi]\n\n",
+                            \n mov rsi, [rbp + {offset} + {ptr_offset}]\
+                            \n movzx rdi, byte [rsi + rdi]\n\n",
                             ptr_offset = Type::Int.size()
                         );
                     }
                     Type::Array { len: array_len, .. } => {
                         self.asm += &format!(
-                            " mov rsi, rdi\
-                            \n mov rdi, {array_len}\
+                            " mov rsi, {array_len}\
                             \n mov rdx, {line}\
                             \n mov rcx, {col}\
                             \n call assert_array_idx_in_range\n"
                         );
 
                         match element_type {
-                            Type::Int => self.asm += &format!(" mov rdi, [rbp + {offset} + rsi * 8]\n\n"),
+                            Type::Int => self.asm += &format!(" mov rdi, [rbp + {offset} + rdi * 8]\n\n"),
                             Type::Char | Type::Bool => {
-                                self.asm += &format!(" movzx rdi, byte [rbp + {offset} + rsi]\n\n");
+                                self.asm += &format!(" movzx rdi, byte [rbp + {offset} + rdi]\n\n");
                             }
                             Type::Str => {
                                 self.asm += &format!(
-                                    " imul rsi, {typ_size}\
-                                    \n mov rdi, [rbp + {offset} + rsi]\
-                                    \n mov rsi, [rbp + {offset} + {ptr_offset} + rsi]\n\n",
+                                    " imul rdi, {typ_size}\
+                                    \n mov rsi, [rbp + {offset} + {ptr_offset} + rdi]\
+                                    \n mov rdi, [rbp + {offset} + rdi]\n\n",
                                     typ_size = element_type.size(),
                                     ptr_offset = Type::Int.size()
                                 );
@@ -1722,11 +1708,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
                     Type::Int => {
                         self.asm += &format!(
-                            " mov rsi, rdi\
-                            \n mov rdi, INT_BITS\
+                            " mov rsi, INT_BITS\
                             \n mov rdx, {line}\
                             \n mov rcx, {col}\
                             \n call assert_int_bit_idx_in_range\
+                            \n mov rsi, rdi\
                             \n mov cl, sil\
                             \n mov rsi, 1\
                             \n shl rsi, cl\
