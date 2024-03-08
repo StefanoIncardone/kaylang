@@ -369,7 +369,7 @@ pub struct Tokenizer<'src> {
     col: usize,
     token_start_col: usize,
 
-    line_idx: usize,
+    line_index: usize,
     line: &'src Line,
 
     tokens: Vec<Token<'src>>,
@@ -387,7 +387,7 @@ impl<'src> Tokenizer<'src> {
             src,
             col: 0,
             token_start_col: 0,
-            line_idx: 0,
+            line_index: 0,
             line: &src.lines[0],
             tokens: Vec::new(),
             brackets: Vec::new(),
@@ -410,12 +410,12 @@ impl<'src> Tokenizer<'src> {
 
                     // next line
                     b'\n' => {
-                        if this.line_idx >= this.src.lines.len() - 1 {
+                        if this.line_index >= this.src.lines.len() - 1 {
                             break 'tokenization;
                         }
 
-                        this.line_idx += 1;
-                        this.line = &this.src.lines[this.line_idx];
+                        this.line_index += 1;
+                        this.line = &this.src.lines[this.line_index];
                     }
                     ch => break 'skip_whitespace this.next_token(ch),
                 }

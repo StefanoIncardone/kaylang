@@ -513,19 +513,18 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 \n mov rdi, EXIT_SUCCESS";
         } else {
             for scope in this.ast {
-                for variable in &scope.variables {
-                    this.variables.push(Variable { inner: variable, offset: 0 /* placeholder */ });
+                for var in &scope.variables {
+                    this.variables.push(Variable { inner: var, offset: 0 /* placeholder */ });
                 }
             }
 
-            this.variables.sort_by(|variable_1, variable_2| {
-                variable_1.inner.value.typ().size().cmp(&variable_2.inner.value.typ().size()).reverse()
-            });
+            this.variables
+                .sort_by(|var_1, var_2| var_1.inner.value.typ().size().cmp(&var_2.inner.value.typ().size()).reverse());
 
             let mut stack_size = 0;
-            for variable in &mut this.variables {
-                variable.offset = stack_size;
-                stack_size += variable.inner.value.typ().size();
+            for var in &mut this.variables {
+                var.offset = stack_size;
+                stack_size += var.inner.value.typ().size();
             }
 
             if stack_size > 0 {
@@ -636,8 +635,8 @@ crash:
  mov rdi, EXIT_FAILURE
  jmp exit
 
-; fn assert_array_idx_in_range(idx: int @rdi, array_len: uint @rsi, line: uint @rdx, col: uint @rcx)
-assert_array_idx_in_range:
+; fn assert_array_index_in_range(index: int @rdi, array_len: uint @rsi, line: uint @rdx, col: uint @rcx)
+assert_array_index_in_range:
  cmp rdi, 0
  jl .underflow
 
@@ -647,17 +646,17 @@ assert_array_idx_in_range:
  ret
 
 .underflow:
- mov rdi, attempt_array_idx_underflow_len
- mov rsi, attempt_array_idx_underflow
+ mov rdi, attempt_array_index_underflow_len
+ mov rsi, attempt_array_index_underflow
  jmp crash
 
 .overflow:
- mov rdi, attempt_array_idx_overflow_len
- mov rsi, attempt_array_idx_overflow
+ mov rdi, attempt_array_index_overflow_len
+ mov rsi, attempt_array_index_overflow
  jmp crash
 
-; fn assert_int_bit_idx_in_range(idx: int @rdi, bits: uint @rsi, line: uint @rdx, col: uint @rcx)
-assert_int_bit_idx_in_range:
+; fn assert_int_bit_index_in_range(index: int @rdi, bits: uint @rsi, line: uint @rdx, col: uint @rcx)
+assert_int_bit_index_in_range:
  cmp rdi, 0
  jl .underflow
 
@@ -667,17 +666,17 @@ assert_int_bit_idx_in_range:
  ret
 
 .underflow:
- mov rdi, attempt_int_bit_idx_underflow_len
- mov rsi, attempt_int_bit_idx_underflow
+ mov rdi, attempt_int_bit_index_underflow_len
+ mov rsi, attempt_int_bit_index_underflow
  jmp crash
 
 .overflow:
- mov rdi, attempt_int_bit_idx_overflow_len
- mov rsi, attempt_int_bit_idx_overflow
+ mov rdi, attempt_int_bit_index_overflow_len
+ mov rsi, attempt_int_bit_index_overflow
  jmp crash
 
-; fn assert_str_idx_in_range(idx: int @rdi, str_len: uint @rsi, line: uint @rdx, col: uint @rcx)
-assert_str_idx_in_range:
+; fn assert_str_index_in_range(index: int @rdi, str_len: uint @rsi, line: uint @rdx, col: uint @rcx)
+assert_str_index_in_range:
  cmp rdi, 0
  jl .underflow
 
@@ -687,13 +686,13 @@ assert_str_idx_in_range:
  ret
 
 .underflow:
- mov rdi, attempt_str_idx_underflow_len
- mov rsi, attempt_str_idx_underflow
+ mov rdi, attempt_str_index_underflow_len
+ mov rsi, attempt_str_index_underflow
  jmp crash
 
 .overflow:
- mov rdi, attempt_str_idx_overflow_len
- mov rsi, attempt_str_idx_overflow
+ mov rdi, attempt_str_index_overflow_len
+ mov rsi, attempt_str_index_overflow
  jmp crash
 
 ; fn assert_denominator_not_zero(_dummy: @rdi, denominator: int @rsi, line: uint @rdx, col: uint @rcx)
@@ -1075,23 +1074,23 @@ section .rodata
  attempt_exponent_negative: db "attempt to raise a number to a negative power"
  attempt_exponent_negative_len: equ $ - attempt_exponent_negative
 
- attempt_array_idx_underflow: db "negative array index"
- attempt_array_idx_underflow_len: equ $ - attempt_array_idx_underflow
+ attempt_array_index_underflow: db "negative array index"
+ attempt_array_index_underflow_len: equ $ - attempt_array_index_underflow
 
- attempt_array_idx_overflow: db "array index out of bounds"
- attempt_array_idx_overflow_len: equ $ - attempt_array_idx_overflow
+ attempt_array_index_overflow: db "array index out of bounds"
+ attempt_array_index_overflow_len: equ $ - attempt_array_index_overflow
 
- attempt_int_bit_idx_underflow: db "negative int bit array index"
- attempt_int_bit_idx_underflow_len: equ $ - attempt_int_bit_idx_underflow
+ attempt_int_bit_index_underflow: db "negative int bit array index"
+ attempt_int_bit_index_underflow_len: equ $ - attempt_int_bit_index_underflow
 
- attempt_int_bit_idx_overflow: db "int bit array index out of bounds"
- attempt_int_bit_idx_overflow_len: equ $ - attempt_int_bit_idx_overflow
+ attempt_int_bit_index_overflow: db "int bit array index out of bounds"
+ attempt_int_bit_index_overflow_len: equ $ - attempt_int_bit_index_overflow
 
- attempt_str_idx_underflow: db "negative string index"
- attempt_str_idx_underflow_len: equ $ - attempt_str_idx_underflow
+ attempt_str_index_underflow: db "negative string index"
+ attempt_str_index_underflow_len: equ $ - attempt_str_index_underflow
 
- attempt_str_idx_overflow: db "string index out of bounds"
- attempt_str_idx_overflow_len: equ $ - attempt_str_idx_overflow
+ attempt_str_index_overflow: db "string index out of bounds"
+ attempt_str_index_overflow_len: equ $ - attempt_str_index_overflow
 
  file: db "{src_path}"
  file_len: equ $ - file
@@ -1163,7 +1162,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 // compiling the if branch
                 let if_tag = format!("if_{if_counter}");
-                let (if_false_tag, if_end_tag_idx) = if has_else_ifs {
+                let (if_false_tag, if_end_tag_index) = if has_else_ifs {
                     (format!("if_{if_counter}_else_if_0"), Some(if_counter))
                 } else if has_else {
                     (format!("if_{if_counter}_else"), Some(if_counter))
@@ -1172,29 +1171,29 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 };
 
                 self.iff(first_if, &if_tag, &if_false_tag);
-                if let Some(idx) = if_end_tag_idx {
-                    self.asm += &format!(" jmp if_{idx}_end\n\n");
+                if let Some(index) = if_end_tag_index {
+                    self.asm += &format!(" jmp if_{index}_end\n\n");
                 }
 
                 // compiling the else if branches
                 if has_else_ifs {
                     let last_else_if = ifs.next_back().unwrap();
                     let else_if_end_tag = format!(" jmp if_{if_counter}_end\n\n");
-                    let mut else_if_tag_idx = 0;
+                    let mut else_if_tag_index = 0;
 
                     for else_if in ifs {
-                        let else_if_tag = format!("if_{if_counter}_else_if_{else_if_tag_idx}");
+                        let else_if_tag = format!("if_{if_counter}_else_if_{else_if_tag_index}");
                         let else_if_false_tag = format!(
-                            "if_{if_counter}_else_if_{else_if_false_idx}",
-                            else_if_false_idx = else_if_tag_idx + 1
+                            "if_{if_counter}_else_if_{else_if_false_index}",
+                            else_if_false_index = else_if_tag_index + 1
                         );
 
                         self.iff(else_if, &else_if_tag, &else_if_false_tag);
                         self.asm += &else_if_end_tag;
-                        else_if_tag_idx += 1;
+                        else_if_tag_index += 1;
                     }
 
-                    let else_if_tag = format!("if_{if_counter}_else_if_{else_if_tag_idx}");
+                    let else_if_tag = format!("if_{if_counter}_else_if_{else_if_tag_index}");
                     let else_if_false_tag =
                         if has_else { format!("if_{if_counter}_else") } else { format!("if_{if_counter}_end") };
 
@@ -1211,8 +1210,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.asm += &format!("if_{if_counter}_end:\n");
             }
             Node::Loop(looop) => {
-                let loop_tag = format!("loop_{idx}", idx = self.loop_counter);
-                let loop_end_tag = format!("loop_{idx}_end", idx = self.loop_counter);
+                let loop_tag = format!("loop_{index}", index = self.loop_counter);
+                let loop_end_tag = format!("loop_{index}_end", index = self.loop_counter);
 
                 self.loop_counters.push(self.loop_counter);
                 self.loop_counter += 1;
@@ -1236,41 +1235,42 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 let _ = self.loop_counters.pop();
             }
-            Node::Definition(scope, variable) => {
-                let ast_variable = &self.ast[*scope].variables[*variable];
-                let name = ast_variable.name;
-                let value = &ast_variable.value;
+            Node::Definition { scope_index, var_index } => {
+                let ast_var = &self.ast[*scope_index].variables[*var_index];
+                let name = ast_var.name;
+                let value = &ast_var.value;
 
-                let variable = self.resolve(name);
-                let offset = variable.offset;
+                let var = self.resolve(name);
+                let dst_offset = var.offset;
 
                 self.asm += &format!(" ; {name} = {value:?}\n");
-                self.assignment(value, offset);
+                self.assignment(value, dst_offset);
             }
-            Node::Assignment(scope, variable, new_value) => {
-                let ast_variable = &self.ast[*scope].variables[*variable];
-                let name = ast_variable.name;
+            Node::Assignment { scope_index, var_index, new_value } => {
+                let ast_var = &self.ast[*scope_index].variables[*var_index];
+                let name = ast_var.name;
 
-                let variable = self.resolve(name);
-                let offset = variable.offset;
+                let var = self.resolve(name);
+                let dst_offset = var.offset;
 
                 self.asm += &format!(" ; {name} = {new_value:?}\n");
-                self.assignment(new_value, offset);
+                self.assignment(new_value, dst_offset);
             }
-            Node::Scope(inner) => self.scope(*inner),
+            Node::Scope { index } => self.scope(*index),
             Node::Expression(expression) => self.expression(expression, Dst::of(&expression.typ())),
             Node::Break => {
-                self.asm += &format!(" jmp loop_{idx}_end\n\n", idx = self.loop_counters[self.loop_counters.len() - 1]);
+                self.asm +=
+                    &format!(" jmp loop_{index}_end\n\n", index = self.loop_counters[self.loop_counters.len() - 1]);
             }
             Node::Continue => {
-                self.asm += &format!(" jmp loop_{idx}\n\n", idx = self.loop_counters[self.loop_counters.len() - 1]);
+                self.asm += &format!(" jmp loop_{index}\n\n", index = self.loop_counters[self.loop_counters.len() - 1]);
             }
             Node::Semicolon => unreachable!("should not be present in the ast"),
         }
     }
 
-    fn scope(&mut self, scope_idx: usize) {
-        let scope = &self.ast[scope_idx];
+    fn scope(&mut self, scope_index: usize) {
+        let scope = &self.ast[scope_index];
         for node in &scope.nodes {
             self.node(node);
         }
@@ -1296,32 +1296,32 @@ impl Dst {
 // expressions
 impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn resolve(&self, name: &'src str) -> &Variable<'src, 'ast> {
-        for variable in &self.variables {
-            if variable.inner.name == name {
-                return variable;
+        for var in &self.variables {
+            if var.inner.name == name {
+                return var;
             }
         }
 
         unreachable!("should always find a variable");
     }
 
-    fn string_label_idx(&mut self, string: &'ast Vec<u8>) -> usize {
-        let mut string_idx = 0;
+    fn string_label_index(&mut self, string: &'ast Vec<u8>) -> usize {
+        let mut string_index = 0;
         for string_label in &self.strings {
             if std::ptr::eq(string, *string_label) {
-                return string_idx;
+                return string_index;
             }
-            string_idx += 1;
+            string_index += 1;
         }
 
         self.string_labels += &format!(
-            "\n str_{string_idx}: db `{string_bytes}`\
-            \n str_{string_idx}_len: equ $ - str_{string_idx}\n",
+            "\n str_{string_index}: db `{string_bytes}`\
+            \n str_{string_index}_len: equ $ - str_{string_index}\n",
             string_bytes = unsafe { String::from_utf8_unchecked(string.clone()) }
         );
 
         self.strings.push(string);
-        string_idx
+        string_index
     }
 
     fn expression(&mut self, factor: &'ast Expression<'src>, dst: Dst) {
@@ -1341,10 +1341,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 },
                 Literal::Str(value) => match dst {
                     Dst::LenPtr { len, ptr } => {
-                        let string_label_idx = self.string_label_idx(value);
+                        let string_label_index = self.string_label_index(value);
                         self.asm += &format!(
-                            " mov {len}, str_{string_label_idx}_len\
-                            \n mov {ptr}, str_{string_label_idx}\n"
+                            " mov {len}, str_{string_label_index}_len\
+                            \n mov {ptr}, str_{string_label_index}\n"
                         );
                     }
                     Dst::Reg(_) => unreachable!(),
@@ -1602,22 +1602,22 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.asm += &format!("{op_asm}\n\n");
             }
             Expression::Identifier { name, typ } => {
-                let variable = self.resolve(name);
-                let offset = variable.offset;
+                let var = self.resolve(name);
+                let var_offset = var.offset;
                 match typ {
                     Type::Int => match dst {
-                        Dst::Reg(reg) => self.asm += &format!(" mov {reg}, [rbp + {offset}]\n"),
+                        Dst::Reg(reg) => self.asm += &format!(" mov {reg}, [rbp + {var_offset}]\n"),
                         Dst::LenPtr { .. } => unreachable!(),
                     },
                     Type::Char | Type::Bool => match dst {
-                        Dst::Reg(reg) => self.asm += &format!(" movzx {reg}, byte [rbp + {offset}]\n"),
+                        Dst::Reg(reg) => self.asm += &format!(" movzx {reg}, byte [rbp + {var_offset}]\n"),
                         Dst::LenPtr { .. } => unreachable!(),
                     },
                     Type::Str => match dst {
                         Dst::LenPtr { len, ptr } => {
                             self.asm += &format!(
-                                " mov {len}, [rbp + {offset}]\
-                                \n mov {ptr}, [rbp + {offset} + {ptr_offset}]\n",
+                                " mov {len}, [rbp + {var_offset}]\
+                                \n mov {ptr}, [rbp + {var_offset} + {ptr_offset}]\n",
                                 ptr_offset = Type::Int.size()
                             );
                         }
@@ -1627,8 +1627,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Dst::LenPtr { len, ptr } => {
                             self.asm += &format!(
                                 " mov {len}, {array_len}\
-                                \n lea {ptr}, [rbp + {offset}]\n",
-                                offset = variable.offset
+                                \n lea {ptr}, [rbp + {var_offset}]\n"
                             );
                         }
                         Dst::Reg(_) => unreachable!(),
@@ -1658,24 +1657,23 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 }
             }
             Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
-            Expression::ArrayIndex { var_name, element_type, bracket_position, index } => {
+            Expression::ArrayIndex { var_name, typ, bracket_position, index } => {
                 self.expression(index, Dst::Reg(Rdi));
 
                 let line = bracket_position.line;
                 let col = bracket_position.col;
-                let variable = self.resolve(var_name);
-                let offset = variable.offset;
-                let variable_value = &variable.inner.value;
-                let variable_typ = variable_value.typ();
+                let var = self.resolve(var_name);
+                let var_offset = var.offset;
+                let var_typ = var.inner.value.typ();
 
-                match variable_typ {
+                match var_typ {
                     Type::Str => {
                         self.asm += &format!(
-                            " mov rsi, [rbp + {offset}]\
+                            " mov rsi, [rbp + {var_offset}]\
                             \n mov rdx, {line}\
                             \n mov rcx, {col}\
-                            \n call assert_str_idx_in_range\
-                            \n mov rsi, [rbp + {offset} + {ptr_offset}]\
+                            \n call assert_str_index_in_range\
+                            \n mov rsi, [rbp + {var_offset} + {ptr_offset}]\
                             \n movzx rdi, byte [rsi + rdi]\n\n",
                             ptr_offset = Type::Int.size()
                         );
@@ -1685,20 +1683,20 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             " mov rsi, {array_len}\
                             \n mov rdx, {line}\
                             \n mov rcx, {col}\
-                            \n call assert_array_idx_in_range\n"
+                            \n call assert_array_index_in_range\n"
                         );
 
-                        match element_type {
-                            Type::Int => self.asm += &format!(" mov rdi, [rbp + {offset} + rdi * 8]\n\n"),
+                        match typ {
+                            Type::Int => self.asm += &format!(" mov rdi, [rbp + {var_offset} + rdi * 8]\n\n"),
                             Type::Char | Type::Bool => {
-                                self.asm += &format!(" movzx rdi, byte [rbp + {offset} + rdi]\n\n");
+                                self.asm += &format!(" movzx rdi, byte [rbp + {var_offset} + rdi]\n\n");
                             }
                             Type::Str => {
                                 self.asm += &format!(
                                     " imul rdi, {typ_size}\
-                                    \n mov rsi, [rbp + {offset} + {ptr_offset} + rdi]\
-                                    \n mov rdi, [rbp + {offset} + rdi]\n\n",
-                                    typ_size = element_type.size(),
+                                    \n mov rsi, [rbp + {var_offset} + {ptr_offset} + rdi]\
+                                    \n mov rdi, [rbp + {var_offset} + rdi]\n\n",
+                                    typ_size = typ.size(),
                                     ptr_offset = Type::Int.size()
                                 );
                             }
@@ -1711,12 +1709,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             " mov rsi, INT_BITS\
                             \n mov rdx, {line}\
                             \n mov rcx, {col}\
-                            \n call assert_int_bit_idx_in_range\
+                            \n call assert_int_bit_index_in_range\
                             \n mov rsi, rdi\
                             \n mov cl, sil\
                             \n mov rsi, 1\
                             \n shl rsi, cl\
-                            \n mov rdi, [rbp + {offset}]\
+                            \n mov rdi, [rbp + {var_offset}]\
                             \n and rdi, rsi\n\n"
                         );
                     }
@@ -1798,12 +1796,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.asm += &format!(" {false_tag}\n\n");
             }
             Expression::Identifier { name, .. } => {
-                let variable = self.resolve(name);
+                let var = self.resolve(name);
+                let var_offset = var.offset;
                 self.asm += &format!(
-                    " mov dil, [rbp + {offset}]\
+                    " mov dil, [rbp + {var_offset}]\
                     \n cmp dil, true\
-                    \n jne {false_tag}\n\n",
-                    offset = variable.offset
+                    \n jne {false_tag}\n\n"
                 );
             }
             Expression::Unary { operand, .. } => {
@@ -1895,12 +1893,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.asm += &format!(" {true_tag}\n\n");
             }
             Expression::Identifier { name, .. } => {
-                let variable = self.resolve(name);
+                let var = self.resolve(name);
+                let var_offset = var.offset;
                 self.asm += &format!(
-                    " mov dil, [rbp + {offset}]\
+                    " mov dil, [rbp + {var_offset}]\
                     \n cmp dil, true\
-                    \n je {true_tag}\n\n",
-                    offset = variable.offset
+                    \n je {true_tag}\n\n"
                 );
             }
             Expression::Unary { operand, .. } => {
@@ -1923,22 +1921,22 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         }
     }
 
-    fn assignment(&mut self, value: &'ast Expression<'src>, offset: usize) {
+    fn assignment(&mut self, value: &'ast Expression<'src>, dst_offset: usize) {
         match value {
             Expression::Literal(literal) => match literal {
                 Literal::Int(value) => {
                     self.asm += &format!(
                         " mov rdi, {value}\
-                        \n mov [rbp + {offset}], rdi\n\n"
+                        \n mov [rbp + {dst_offset}], rdi\n\n"
                     );
                 }
-                Literal::Char(code) => self.asm += &format!(" mov byte [rbp + {offset}], {code}\n\n"),
-                Literal::Bool(value) => self.asm += &format!(" mov byte [rbp + {offset}], {value}\n\n"),
+                Literal::Char(code) => self.asm += &format!(" mov byte [rbp + {dst_offset}], {code}\n\n"),
+                Literal::Bool(value) => self.asm += &format!(" mov byte [rbp + {dst_offset}], {value}\n\n"),
                 Literal::Str(string) => {
-                    let string_label_idx = self.string_label_idx(string);
+                    let string_label_index = self.string_label_index(string);
                     self.asm += &format!(
-                        " mov qword [rbp + {offset}], str_{string_label_idx}_len\
-                        \n mov qword [rbp + {offset} + {ptr_offset}], str_{string_label_idx}\n\n",
+                        " mov qword [rbp + {dst_offset}], str_{string_label_index}_len\
+                        \n mov qword [rbp + {dst_offset} + {ptr_offset}], str_{string_label_index}\n\n",
                         ptr_offset = Type::Int.size()
                     );
                 }
@@ -1947,45 +1945,45 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.expression(value, Dst::Reg(Rdi));
 
                 match value.typ() {
-                    Type::Int => self.asm += &format!(" mov [rbp + {offset}], rdi\n\n"),
-                    Type::Char | Type::Bool => self.asm += &format!(" mov [rbp + {offset}], dil\n\n"),
+                    Type::Int => self.asm += &format!(" mov [rbp + {dst_offset}], rdi\n\n"),
+                    Type::Char | Type::Bool => self.asm += &format!(" mov [rbp + {dst_offset}], dil\n\n"),
                     Type::Array { .. } => unreachable!("arrays cannot appear in expressions"),
                     Type::Str => unreachable!("strings cannot appear in expressions"),
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 }
             }
             Expression::Identifier { name, typ } => {
-                let variable = self.resolve(name);
-                let src_offset = variable.offset;
+                let var = self.resolve(name);
+                let src_offset = var.offset;
                 match typ {
                     Type::Int => {
                         self.asm += &format!(
                             " mov rdi, [rbp + {src_offset}]\
-                            \n mov [rbp + {offset}], rdi\n\n"
+                            \n mov [rbp + {dst_offset}], rdi\n\n"
                         );
                     }
                     Type::Char | Type::Bool => {
                         self.asm += &format!(
                             " movzx rdi, byte [rbp + {src_offset}]\
-                            \n mov [rbp + {offset}], dil\n\n"
+                            \n mov [rbp + {dst_offset}], dil\n\n"
                         );
                     }
                     Type::Str => {
                         self.asm += &format!(
                             " mov rdi, [rbp + {src_offset}]\
                             \n mov rsi, [rbp + {src_offset} + {ptr_offset}]\
-                            \n mov [rbp + {offset}], rdi\
-                            \n mov [rbp + {offset} + {ptr_offset}], rsi\n\n",
+                            \n mov [rbp + {dst_offset}], rdi\
+                            \n mov [rbp + {dst_offset} + {ptr_offset}], rsi\n\n",
                             ptr_offset = Type::Int.size()
                         );
                     }
-                    Type::Array { len, elements_type } => {
+                    Type::Array { typ: array_typ, len } => {
                         self.asm += &format!(
-                            " lea rdi, [rbp + {offset}]\
+                            " lea rdi, [rbp + {dst_offset}]\
                             \n lea rsi, [rbp + {src_offset}]\
-                            \n mov rcx, {len} * {elements_type_size}\
+                            \n mov rcx, {array_typ_size} * {len}\
                             \n rep movsb\n\n",
-                            elements_type_size = elements_type.size(),
+                            array_typ_size = array_typ.size(),
                         );
                     }
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
@@ -1999,19 +1997,19 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Type::Bool => {
                             self.asm += &format!(
                                 " xor rdi, 1\
-                                \n mov [rbp + {offset}], dil\n\n"
+                                \n mov [rbp + {dst_offset}], dil\n\n"
                             );
                         }
                         Type::Char => {
                             self.asm += &format!(
                                 " not rdi\
-                                \n mov [rbp + {offset}], dil\n\n"
+                                \n mov [rbp + {dst_offset}], dil\n\n"
                             )
                         }
                         Type::Int => {
                             self.asm += &format!(
                                 " not rdi\
-                                \n mov [rbp + {offset}], rdi\n\n"
+                                \n mov [rbp + {dst_offset}], rdi\n\n"
                             )
                         }
                         Type::Array { .. } => unreachable!("cannot invert array values"),
@@ -2022,13 +2020,13 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Type::Char => {
                             self.asm += &format!(
                                 " neg rdi\
-                                \n mov [rbp + {offset}], dil\n\n"
+                                \n mov [rbp + {dst_offset}], dil\n\n"
                             )
                         }
                         Type::Int => {
                             self.asm += &format!(
                                 " neg rdi\
-                                \n mov [rbp + {offset}], rdi\n\n"
+                                \n mov [rbp + {dst_offset}], rdi\n\n"
                             )
                         }
                         Type::Bool => unreachable!("cannot negate boolean values"),
@@ -2039,22 +2037,22 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     _ => unreachable!("'Not' and 'Minus' are the only unary operators"),
                 }
             }
-            Expression::Array { elements, elements_type } => {
-                let typ_size = elements_type.size();
-                for (idx, element) in elements.iter().enumerate() {
-                    self.assignment(element, offset + idx * typ_size);
+            Expression::Array { typ, items } => {
+                let typ_size = typ.size();
+                for (index, item) in items.iter().enumerate() {
+                    self.assignment(item, dst_offset + index * typ_size);
                 }
             }
-            Expression::ArrayIndex { element_type, .. } => {
-                self.expression(value, Dst::of(element_type));
+            Expression::ArrayIndex { typ, .. } => {
+                self.expression(value, Dst::of(typ));
 
-                match element_type {
-                    Type::Int => self.asm += &format!(" mov [rbp + {offset}], rdi\n\n"),
-                    Type::Char | Type::Bool => self.asm += &format!(" mov [rbp + {offset}], dil\n\n"),
+                match typ {
+                    Type::Int => self.asm += &format!(" mov [rbp + {dst_offset}], rdi\n\n"),
+                    Type::Char | Type::Bool => self.asm += &format!(" mov [rbp + {dst_offset}], dil\n\n"),
                     Type::Str => {
                         self.asm += &format!(
-                            " mov [rbp + {offset}], rdi\
-                            \n mov [rbp + {offset} + {ptr_offset}], rsi\n\n",
+                            " mov [rbp + {dst_offset}], rdi\
+                            \n mov [rbp + {dst_offset} + {ptr_offset}], rsi\n\n",
                             ptr_offset = Type::Int.size()
                         );
                     }
@@ -2086,7 +2084,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Type::Char => self.asm += " call char_print\n\n",
             Type::Bool => self.asm += " call bool_print\n\n",
             Type::Str => self.asm += " call str_print\n\n",
-            Type::Array { elements_type, .. } => match &*elements_type {
+            Type::Array { typ, .. } => match &*typ {
                 Type::Int => self.asm += " call int_array_debug_print\n\n",
                 Type::Char => self.asm += " call char_array_debug_print\n\n",
                 Type::Bool => self.asm += " call bool_array_debug_print\n\n",

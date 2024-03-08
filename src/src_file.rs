@@ -33,22 +33,22 @@ impl<'src> Position {
             }
         }
 
-        Self::new_with_line_idx(src, left, col)
+        Self::new_with_line_index(src, left, col)
     }
 
-    pub(crate) fn new_with_line_idx(src: &'src SrcFile, line_idx: usize, col: usize) -> (Self, &'src str) {
-        let line = &src.lines[line_idx];
+    pub(crate) fn new_with_line_index(src: &'src SrcFile, line_index: usize, col: usize) -> (Self, &'src str) {
+        let line = &src.lines[line_index];
         let line_text = &src.code[line.start..line.end];
         let target_col = col - line.start;
         let mut display_col = 0;
-        for (idx, _) in line_text.char_indices() {
+        for (index, _) in line_text.char_indices() {
             display_col += 1;
-            if idx == target_col {
+            if index == target_col {
                 break;
             }
         }
 
-        (Self { line: line_idx + 1, col: display_col }, line_text)
+        (Self { line: line_index + 1, col: display_col }, line_text)
     }
 }
 

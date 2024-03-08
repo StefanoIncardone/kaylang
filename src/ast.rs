@@ -20,7 +20,8 @@ pub enum Type {
     Str,
 
     // TODO(stefano): enforce a max length
-    Array { len: usize, elements_type: Box<Type> },
+    // TODO(breaking)(stefano): make typ the first field
+    Array { len: usize, typ: Box<Type> },
 }
 
 impl PartialEq for Type {
@@ -32,8 +33,8 @@ impl PartialEq for Type {
             | (Self::Bool, Self::Bool)
             | (Self::Str, Self::Str) => true,
 
-            (Self::Array { len: len_1, elements_type: typ_1 }, Self::Array { len: len_2, elements_type: typ_2 }) => {
-                len_1 == len_2 && typ_1 == typ_2
+            (Self::Array { typ: typ_1, len: len_1 }, Self::Array { typ: typ_2, len: len_2 }) => {
+                typ_1 == typ_2 && len_1 == len_2
             }
 
             _ => false,
@@ -48,7 +49,7 @@ impl Display for Type {
             Self::Char => write!(f, "char"),
             Self::Bool => write!(f, "bool"),
             Self::Str => write!(f, "str"),
-            Self::Array { len, elements_type } => write!(f, "{elements_type}[{len}]"),
+            Self::Array { typ, len } => write!(f, "{typ}[{len}]"),
 
             Self::Infer => write!(f, "infer"),
         }
@@ -62,7 +63,7 @@ impl Type {
             Self::Char => core::mem::size_of::<u8>(),
             Self::Bool => core::mem::size_of::<bool>(),
             Self::Str => core::mem::size_of::<*const u8>() + core::mem::size_of::<usize>(),
-            Self::Array { len, elements_type } => elements_type.size() * len,
+            Self::Array { typ, len } => typ.size() * len,
 
             Self::Infer => unreachable!("should have been coerced to a concrete type"),
         }
@@ -71,14 +72,14 @@ impl Type {
     pub(crate) fn should_be_inferred(&self) -> bool {
         match self {
             Self::Infer => true,
-            Self::Array { elements_type, .. } => elements_type.should_be_inferred(),
+            Self::Array { typ, .. } => typ.should_be_inferred(),
             Self::Int | Self::Char | Self::Bool | Self::Str => false,
         }
     }
 
     pub(crate) fn inner(&self) -> Self {
         match self {
-            Self::Array { elements_type, .. } => elements_type.inner(),
+            Self::Array { typ, .. } => typ.inner(),
             _ => self.clone(),
         }
     }
@@ -158,8 +159,9 @@ pub(crate) enum Expression<'src> {
     Unary { op: Op, operand: Box<Expression<'src>> },
     Binary { lhs: Box<Expression<'src>>, op_position: Position, op: Op, rhs: Box<Expression<'src>> },
     Identifier { name: &'src str, typ: Type },
-    Array { elements: Vec<Expression<'src>>, elements_type: Type },
-    ArrayIndex { var_name: &'src str, element_type: Type, bracket_position: Position, index: Box<Expression<'src>> },
+    // TODO(breaking)(stefano): make typ the first field
+    Array { items: Vec<Expression<'src>>, typ: Type },
+    ArrayIndex { var_name: &'src str, typ: Type, bracket_position: Position, index: Box<Expression<'src>> },
 }
 
 impl Debug for Expression<'_> {
@@ -169,13 +171,13 @@ impl Debug for Expression<'_> {
             Self::Unary { op, operand } => write!(f, "{op}{operand:?}"),
             Self::Binary { lhs, op, rhs, .. } => write!(f, "({lhs:?} {op} {rhs:?})"),
             Self::Identifier { name, .. } => write!(f, "{name}"),
-            Self::Array { elements, .. } => {
+            Self::Array { items, .. } => {
                 write!(f, "[")?;
-                if !elements.is_empty() {
-                    let mut elements_iter = elements.iter();
-                    let last = elements_iter.next_back().unwrap(); // we have already checked for a non empty array
-                    for element in elements_iter {
-                        write!(f, "{element:?}, ")?;
+                if !items.is_empty() {
+                    let mut items_iter = items.iter();
+                    let last = items_iter.next_back().unwrap(); // we have already checked for a non empty array
+                    for item in items_iter {
+                        write!(f, "{item:?}, ")?;
                     }
 
                     write!(f, "{last:?}")?;
@@ -194,10 +196,8 @@ impl TypeOf for Expression<'_> {
             Self::Unary { operand, .. } => operand.typ(),
             Self::Binary { op, .. } => op.typ(),
             Self::Identifier { typ, .. } => typ.clone(),
-            Self::Array { elements, elements_type } => {
-                Type::Array { len: elements.len(), elements_type: Box::new(elements_type.clone()) }
-            }
-            Self::ArrayIndex { element_type, .. } => element_type.clone(),
+            Self::Array { typ, items } => Type::Array { typ: Box::new(typ.clone()), len: items.len() },
+            Self::ArrayIndex { typ, .. } => typ.clone(),
         }
     }
 }
@@ -209,13 +209,13 @@ impl From<Type> for Expression<'_> {
             Type::Char => Self::Literal(Literal::Char(0)),
             Type::Int => Self::Literal(Literal::Int(0)),
             Type::Str => Self::Literal(Literal::Str(Vec::new())),
-            Type::Array { len, elements_type } => {
-                let mut elements = Vec::<Expression<'_>>::with_capacity(len);
+            Type::Array { typ, len } => {
+                let mut items = Vec::<Expression<'_>>::with_capacity(len);
                 for _ in 0..=len {
-                    let inner_typ = *elements_type.clone();
-                    elements.push(inner_typ.into());
+                    let inner_typ = *typ.clone();
+                    items.push(inner_typ.into());
                 }
-                Self::Array { elements, elements_type: *elements_type }
+                Self::Array { typ: *typ, items }
             }
             Type::Infer => unreachable!("should have been coerced to a concrete type"),
         }
@@ -285,10 +285,10 @@ pub(crate) enum Node<'src> {
     Break,
     Continue,
 
-    Definition(usize /* scope idx */, usize /* variable idx */),
-    Assignment(usize /* scope idx */, usize /* variable idx */, Expression<'src>),
+    Definition { scope_index: usize, var_index: usize },
+    Assignment { scope_index: usize, var_index: usize, new_value: Expression<'src> },
 
-    Scope(usize),
+    Scope { index: usize },
 }
 
 impl Display for Node<'_> {
@@ -304,7 +304,7 @@ impl Display for Node<'_> {
             Self::Break => write!(f, "break"),
             Self::Continue => write!(f, "continue"),
 
-            Self::Definition(_, _) | Self::Assignment(_, _, _) | Self::Scope(_) => {
+            Self::Definition { .. } | Self::Assignment { .. } | Self::Scope { .. } => {
                 unreachable!("should never be displayed")
             }
         }
@@ -327,7 +327,7 @@ pub struct Ast<'src, 'tokens: 'src> {
     token: usize,
     tokens: &'tokens [Token<'src>],
 
-    scope: usize,
+    scope_index: usize,
     scopes: Vec<Scope<'src>>,
 
     loop_depth: usize,
@@ -360,7 +360,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             src,
             token,
             tokens,
-            scope: 0,
+            scope_index: 0,
             scopes: vec![Scope {
                 parent: 0,
                 types: vec![Type::Int, Type::Char, Type::Bool, Type::Str],
@@ -390,8 +390,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         Node::Semicolon => continue,
 
                         // check to see if a terminating semicolon is present
-                        Node::Definition(_, _)
-                        | Node::Assignment(_, _, _)
+                        Node::Definition { .. }
+                        | Node::Assignment { .. }
                         | Node::Expression(_)
                         | Node::Break
                         | Node::Continue
@@ -407,10 +407,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         }
 
                         // no need to check for a terminating semicolon
-                        Node::If(_) | Node::Loop(_) | Node::Scope(_) => {}
+                        Node::If(_) | Node::Loop(_) | Node::Scope { .. } => {}
                     }
 
-                    self.scopes[self.scope].nodes.push(node);
+                    self.scopes[self.scope_index].nodes.push(node);
                 }
                 Ok(None) => break,
                 // NOTE(stefano): only parsing until the first error until a fault tolerant parser is developed,
@@ -611,21 +611,21 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         match current_token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
-                let new_scope = self.scopes.len();
+                let new_scope_index = self.scopes.len();
                 self.scopes.push(Scope {
-                    parent: self.scope,
+                    parent: self.scope_index,
                     types: Vec::new(),
                     variables: Vec::new(),
                     nodes: Vec::new(),
                 });
-                self.scope = new_scope;
+                self.scope_index = new_scope_index;
 
                 let _ = self.next_token();
                 self.parse_scope();
-                Ok(Some(Node::Scope(new_scope)))
+                Ok(Some(Node::Scope { index: new_scope_index }))
             }
             TokenKind::Bracket(BracketKind::CloseCurly) => {
-                self.scope = self.scopes[self.scope].parent;
+                self.scope_index = self.scopes[self.scope_index].parent;
                 let _ = self.next_token();
                 Ok(None)
             }
@@ -827,10 +827,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         };
 
         match var_typ {
-            Type::Array { elements_type, .. } => match *elements_type {
+            Type::Array { typ, .. } => match &*typ {
                 Type::Int | Type::Bool | Type::Infer | Type::Char | Type::Str => Ok(Expression::ArrayIndex {
                     var_name,
-                    element_type: *elements_type,
+                    typ: *typ,
                     bracket_position: Position::new(self.src, open_bracket_token.col).0,
                     index: Box::new(index),
                 }),
@@ -842,13 +842,13 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             },
             Type::Str => Ok(Expression::ArrayIndex {
                 var_name,
-                element_type: Type::Char,
+                typ: Type::Char,
                 bracket_position: Position::new(self.src, open_bracket_token.col).0,
                 index: Box::new(index),
             }),
             Type::Int => Ok(Expression::ArrayIndex {
                 var_name,
-                element_type: Type::Int,
+                typ: Type::Int,
                 bracket_position: Position::new(self.src, open_bracket_token.col).0,
                 index: Box::new(index),
             }),
@@ -904,38 +904,38 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             }
             TokenKind::Bracket(BracketKind::OpenSquare) => 'array: {
                 let _ = self.next_token();
-                let mut elements = Vec::<Expression<'src>>::new();
-                let mut elements_type = Type::Infer;
+                let mut items = Vec::<Expression<'src>>::new();
+                let mut items_typ = Type::Infer;
 
                 loop {
-                    let element_token =
+                    let item_token =
                         self.current_token_bounded(ExpectedBeforeEof::ArrayElementOrClosingSquareBracket)?;
 
-                    if let TokenKind::Bracket(BracketKind::CloseSquare) = element_token.kind {
-                        break 'array Ok(Expression::Array { elements, elements_type });
+                    if let TokenKind::Bracket(BracketKind::CloseSquare) = item_token.kind {
+                        break 'array Ok(Expression::Array { typ: items_typ, items });
                     }
 
-                    let element = self.expression()?;
-                    match (&elements_type, element.typ()) {
+                    let item = self.expression()?;
+                    match (&items_typ, item.typ()) {
                         (_, Type::Array { .. }) => {
                             break 'array Err(RawSyntaxError {
                                 kind: ErrorKind::NestedArrayNotSupportedYet,
-                                col: element_token.col,
-                                len: element_token.kind.src_code_len(),
+                                col: item_token.col,
+                                len: item_token.kind.src_code_len(),
                             })
                         }
                         (Type::Infer, other) => {
-                            elements_type = other;
-                            elements.push(element);
+                            items_typ = other;
+                            items.push(item);
                         }
                         (expected, actual) if *expected != actual => {
                             break 'array Err(RawSyntaxError {
                                 kind: ErrorKind::MismatchedArrayElementType { expected: expected.clone(), actual },
-                                col: element_token.col,
-                                len: element_token.kind.src_code_len(),
+                                col: item_token.col,
+                                len: item_token.kind.src_code_len(),
                             })
                         }
-                        (_, _) => elements.push(element),
+                        (_, _) => items.push(item),
                     }
 
                     let comma_token = self.current_token_bounded(ExpectedBeforeEof::CommaOrClosingSquareBracket)?;
@@ -1316,17 +1316,17 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn resolve_variable(
         &self,
         name: &'src str,
-    ) -> Option<(usize /* scope idx */, usize /* variable idx */, &Variable<'src>)> {
-        let mut scope_idx = self.scope;
+    ) -> Option<(usize /* scope index */, usize /* variable index */, &Variable<'src>)> {
+        let mut scope_index = self.scope_index;
         loop {
-            let scope = &self.scopes[scope_idx];
-            for (variable_idx, variable) in scope.variables.iter().enumerate() {
-                if variable.name == name {
-                    return Some((scope_idx, variable_idx, variable));
+            let scope = &self.scopes[scope_index];
+            for (var_index, var) in scope.variables.iter().enumerate() {
+                if var.name == name {
+                    return Some((scope_index, var_index, var));
                 }
             }
 
-            scope_idx = match scope_idx {
+            scope_index = match scope_index {
                 0 => return None,
                 _ => scope.parent,
             };
@@ -1334,16 +1334,16 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     }
 
     fn resolve_type(&self, name: &'src str) -> Option<&Type> {
-        let mut scope_idx = self.scope;
+        let mut scope_index = self.scope_index;
         loop {
-            let scope = &self.scopes[scope_idx];
+            let scope = &self.scopes[scope_index];
             for typ in &scope.types {
                 if typ.to_string() == name {
                     return Some(typ);
                 }
             }
 
-            scope_idx = match scope_idx {
+            scope_index = match scope_index {
                 0 => return None,
                 _ => scope.parent,
             };
@@ -1383,12 +1383,12 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             return Ok(Some((type_token, typ.clone())));
         };
 
-        let elements_type = Box::new(typ.clone());
+        let typ = Box::new(typ.clone());
         let _open_square_bracket = self.next_token();
 
         let len_token = self.next_token_bounded(ExpectedBeforeEof::ArrayLength)?;
         let len = match len_token.kind {
-            TokenKind::Literal(Literal::Int(len)) => len,
+            TokenKind::Literal(Literal::Int(len)) => len as usize,
             TokenKind::Bracket(BracketKind::CloseSquare) => {
                 return Err(RawSyntaxError {
                     kind: ErrorKind::MissingArrayLength,
@@ -1407,7 +1407,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         match self.next_token() {
             Some(close_square_bracket_token @ Token { kind: TokenKind::Bracket(BracketKind::CloseSquare), .. }) => {
-                Ok(Some((close_square_bracket_token, Type::Array { len: len as usize, elements_type })))
+                Ok(Some((close_square_bracket_token, Type::Array { typ, len })))
             }
             Some(_) | None => Err(RawSyntaxError {
                 kind: ErrorKind::MissingSquareBracketInArrayTypeAnnotation,
@@ -1478,17 +1478,17 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         match expression {
             Some(mut value) => {
-                if let Some((token, typ)) = &annotation {
-                    if let Expression::Array { elements_type, .. } = &mut value {
-                        if let Type::Infer = elements_type {
-                            *elements_type = typ.inner();
+                if let Some((token, annotation_typ)) = &annotation {
+                    if let Expression::Array { typ, .. } = &mut value {
+                        if let Type::Infer = typ {
+                            *typ = annotation_typ.inner();
                         }
                     }
 
-                    if *typ != value.typ() {
+                    if *annotation_typ != value.typ() {
                         return Err(RawSyntaxError {
                             kind: ErrorKind::VariableDefinitionTypeMismatch {
-                                expected: typ.clone(),
+                                expected: annotation_typ.clone(),
                                 actual: value.typ(),
                             },
                             col: token.col,
@@ -1503,15 +1503,15 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     });
                 }
 
-                let variables = &mut self.scopes[self.scope].variables;
+                let variables = &mut self.scopes[self.scope_index].variables;
                 variables.push(Variable { mutability, name, value });
-                Ok(Node::Definition(self.scope, variables.len() - 1))
+                Ok(Node::Definition { scope_index: self.scope_index, var_index: variables.len() - 1 })
             }
             None => match annotation {
                 Some((_, typ)) => {
-                    let variables = &mut self.scopes[self.scope].variables;
+                    let variables = &mut self.scopes[self.scope_index].variables;
                     variables.push(Variable { mutability, name, value: typ.into() });
-                    Ok(Node::Definition(self.scope, variables.len() - 1))
+                    Ok(Node::Definition { scope_index: self.scope_index, var_index: variables.len() - 1 })
                 }
                 None => Err(RawSyntaxError {
                     kind: ErrorKind::ExpectedTypeAnnotationOrValue,
@@ -1542,14 +1542,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let _ = self.next_token();
         let rhs = self.expression()?;
         match self.resolve_variable(name) {
-            Some((scope_idx, var_idx, var)) => match var.mutability {
+            Some((scope_index, var_index, var)) => match var.mutability {
                 Mutability::Let => Err(RawSyntaxError {
                     kind: ErrorKind::TryingToMutateImmutableVariable,
                     col: name_token.col,
                     len: name_token.kind.src_code_len(),
                 }),
                 Mutability::Var => {
-                    let value = match &op_token.kind {
+                    let new_value = match &op_token.kind {
                         TokenKind::Op(Op::Equals) => rhs,
                         TokenKind::Op(op) => Expression::Binary {
                             lhs: Box::new(Expression::Identifier { name, typ: op.typ() }),
@@ -1560,13 +1560,13 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         _ => unreachable!("cannot be different from an operator"),
                     };
 
-                    if var.value.typ() == value.typ() {
-                        Ok(Node::Assignment(scope_idx, var_idx, value))
+                    if var.value.typ() == new_value.typ() {
+                        Ok(Node::Assignment { scope_index, var_index, new_value })
                     } else {
                         Err(RawSyntaxError {
                             kind: ErrorKind::VariableAssignmentTypeMismatch {
                                 expected: var.value.typ(),
-                                actual: value.typ(),
+                                actual: new_value.typ(),
                             },
                             col: name_token.col,
                             len: name_token.kind.src_code_len(),
@@ -1776,7 +1776,7 @@ impl Display for ExpectedBeforeEof {
             Self::BooleanExpression => write!(f, "expected boolean expression"),
             Self::ClosingSquareBracket => write!(f, "expected closing square bracket"),
             Self::ClosingRoundBracket => write!(f, "expected closing round bracket"),
-            Self::ArrayElementOrClosingSquareBracket => write!(f, "expected array element or closing square bracket"),
+            Self::ArrayElementOrClosingSquareBracket => write!(f, "expected array item or closing square bracket"),
             Self::CommaOrClosingSquareBracket => write!(f, "expected comma or closing square bracket"),
             Self::TypeAnnotationOrVariableDefinition => write!(f, "expected type annotation or variable definition"),
             Self::TypeAnnotation => write!(f, "expected type annotation"),
@@ -1901,14 +1901,13 @@ impl ErrorInfo for ErrorKind {
                 "temporary arrays are not supported yet, extract this to a variable first".into(),
             ),
             Self::NestedArrayNotSupportedYet => {
-                ("invalid array element".into(), "nested arrays are not supported yet".into())
+                ("invalid array item".into(), "nested arrays are not supported yet".into())
             }
-            Self::MismatchedArrayElementType { expected, actual } => (
-                "invalid array element".into(),
-                format!("expected element of type '{expected}', but got '{actual}'").into(),
-            ),
+            Self::MismatchedArrayElementType { expected, actual } => {
+                ("invalid array item".into(), format!("expected item of type '{expected}', but got '{actual}'").into())
+            }
             Self::StrayColon => ("invalid type annotation".into(), "stray colon".into()),
-            Self::StrayComma => ("invalid array element separator".into(), "stray comma".into()),
+            Self::StrayComma => ("invalid array item separator".into(), "stray comma".into()),
             Self::StrayEquals => ("invalid assignment".into(), "stray assigment".into()),
             Self::StrayBinaryOperator(op) => ("invalid expression".into(), format!("stray '{op}' operator").into()),
             Self::VariableDefinitionNotAllowed(context) => ("invalid statement".into(), context.to_string().into()),

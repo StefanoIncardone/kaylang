@@ -229,8 +229,8 @@ impl<'src, K: SyntaxErrorKind> SyntaxErrors<'src, K> {
         SyntaxErrorsIter { src: self.src, raw_errors: self.raw_errors.iter() }
     }
 
-    pub(crate) fn get(&self, idx: usize) -> Option<SyntaxError<'src, K>> {
-        let raw_error = self.raw_errors.get(idx)?;
+    pub(crate) fn get(&self, index: usize) -> Option<SyntaxError<'src, K>> {
+        let raw_error = self.raw_errors.get(index)?;
         Some(SyntaxError::from_raw(self.src, raw_error))
     }
 
