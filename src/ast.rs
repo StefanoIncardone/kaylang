@@ -88,6 +88,11 @@ impl Type {
         match (self, other) {
             (Self::Str, Self::Str) | (Self::Int | Self::Bool | Self::Char, Self::Int | Self::Bool | Self::Char) => true,
 
+            (Self::Array { typ: typ_1, len: len_1 }, Self::Array { typ: typ_2, len: len_2 }) => {
+                // comparing empty arrays makes no sense, so it's not going to be allowed
+                *len_1 != 0 && *len_2 != 0 && typ_1 == typ_2 && len_1 == len_2
+            }
+
             (Self::Str, _)
             | (_, Self::Str)
             | (Self::Array { .. }, _)
@@ -1073,6 +1078,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
+    // TODO(breaking)(stefano): make the plus operator as the abs operator
     fn additive_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
         let mut lhs = self.multiplicative_expression()?;
 
@@ -1173,6 +1179,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
+    // TODO(breaking)(stefano): make this have the same precedence as other comparison operators
     fn comparative_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
         let mut lhs = self.bitor_expression()?;
 
