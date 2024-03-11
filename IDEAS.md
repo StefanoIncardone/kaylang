@@ -9,8 +9,6 @@ From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProj
 ## Loops/ifs/switches
 
 - loops and ifs similar to Odin's [for loops](https://odin-lang.org/docs/overview/#for-statement) and [if statements](https://odin-lang.org/docs/overview/#if-statement)
-- do-loop loops, only for C-style while loops
-    - cannot be used with infinite loops or with C-style for loops
 
 ### switch statements
 
@@ -61,6 +59,13 @@ add [Zig inspired arithmetic operators](https://ziglang.org/documentation/master
     ```kay
     let negative = -19;
     let positive = +negative; # 19
+    ```
+
+    ```nasm
+    mov rax, rdi
+    sar rax, INT_BITS - 1
+    xor rdi, rax
+    sub rdi, rax
     ```
 
 

@@ -11,9 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Temporary values
 - Shortcircuted and/or operators
 - Unsigned integers
-- UTF-8 characters in string and characters
-- Casting operator and removal of implicit conversions
+- UTF-8/UTF-16/UTF-32 characters and string literals
 - Type aliases and distinct types
+- **BREAKING**: Bit-casting operator and removal of implicit conversions
+- **BREAKING**: `+` to be repurposed as the unary absolute value:
+
+    ```kay
+    let negative = -19;
+    let positive = +negative; # 19
+    ```
 
 
 ## 0.6.0 -
@@ -30,7 +36,7 @@ Changes to the ABI would **not** be considered breaking since no stable ABI is d
 
 - String and Array comparison operators (i.e.: `<=>`, `==`, `!=`, `<`, `<=`, `>`, `>=`)
 - Raw string literals: `r"hello\nworld"` where `\n` would not get escaped
-- **BREAKING** New Error kinds when trying to compare values of incompatible types
+- **BREAKING**: New Error kinds when trying to compare values of incompatible types
 
 ### Changed
 
@@ -45,6 +51,7 @@ Changes to the ABI would **not** be considered breaking since no stable ABI is d
 ### Fixed
 
 - Bug in string literals compilation when escaped characters where present
+- Bug in expressions code generations
 
 
 ## 0.5.3 - 2024-03-02

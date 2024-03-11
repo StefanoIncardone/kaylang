@@ -1431,7 +1431,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         };
 
         let name_token = self.next_token_bounded(ExpectedBeforeEof::Identifier)?;
-        let name = match &name_token.kind {
+        let name = match name_token.kind {
             TokenKind::Identifier(name) => match self.resolve_type(name) {
                 None => Ok(name),
                 Some(_) => Err(RawSyntaxError {

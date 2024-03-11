@@ -1442,6 +1442,58 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         string_index
     }
 
+    fn rhs_requires_saving_of_lhs(rhs: &'ast Expression<'src>) -> bool {
+        match rhs {
+            Expression::Binary { .. } | Expression::ArrayIndex { .. } => true,
+            Expression::Unary { operand, .. } => Self::rhs_requires_saving_of_lhs(operand),
+            Expression::Literal(_) | Expression::Identifier { .. } => false,
+            Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
+        }
+    }
+
+    fn binary_expression(
+        &mut self,
+        lhs: &'ast Expression<'src>,
+        rhs: &'ast Expression<'src>,
+        lhs_dst: Dst,
+        rhs_dst: Dst,
+    ) {
+        self.expression(lhs, lhs_dst);
+        if !Self::rhs_requires_saving_of_lhs(rhs) {
+            self.expression(rhs, rhs_dst);
+            return;
+        }
+
+        match lhs_dst {
+            Dst::Reg(reg) => self.asm += &format!(" push {reg}\n\n"),
+            Dst::LenPtr { len, ptr } => {
+                self.asm += &format!(
+                    " push {len}\
+                    \n push {ptr}\n\n"
+                );
+            }
+        }
+
+        self.expression(rhs, lhs_dst);
+        match (rhs_dst, lhs_dst) {
+            (Dst::Reg(rhs_reg), Dst::Reg(lhs_reg)) => {
+                self.asm += &format!(
+                    " mov {rhs_reg}, {lhs_reg}\
+                    \n pop {lhs_reg}\n\n"
+                );
+            }
+            (Dst::LenPtr { len: rhs_len, ptr: rhs_ptr }, Dst::LenPtr { len: lhs_len, ptr: lhs_ptr }) => {
+                self.asm += &format!(
+                    " mov {rhs_len}, {lhs_len}\
+                    \n mov {rhs_ptr}, {lhs_ptr}\
+                    \n pop {lhs_ptr}\
+                    \n pop {lhs_len}\n\n"
+                );
+            }
+            _ => unreachable!(),
+        }
+    }
+
     fn expression(&mut self, factor: &'ast Expression<'src>, dst: Dst) {
         match factor {
             Expression::Literal(literal) => match literal {
@@ -1945,34 +1997,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     (Type::Infer, _) | (_, Type::Infer) => unreachable!("should have been coerced to a concrete type"),
                 };
 
-                match &**rhs {
-                    Expression::Binary { .. } | Expression::Unary { .. } | Expression::ArrayIndex { .. } => {
-                        self.expression(lhs, lhs_dst);
-                        match lhs_dst {
-                            Dst::Reg(_) => self.asm += " push rdi\n\n",
-                            Dst::LenPtr { .. } => {
-                                self.asm += " push rdi\
-                                    \n push rsi\n\n";
-                            }
-                        }
-
-                        self.expression(rhs, rhs_dst);
-                        match rhs_dst {
-                            Dst::Reg(_) => self.asm += " pop rdi\n\n",
-                            Dst::LenPtr { .. } => {
-                                self.asm += " mov rdx, rdi\
-                                    \n mov rcx, rsi\
-                                    \n pop rsi\
-                                    \n pop rdi\n\n";
-                            }
-                        }
-                    }
-                    Expression::Literal(_) | Expression::Identifier { .. } => {
-                        self.expression(lhs, lhs_dst);
-                        self.expression(rhs, rhs_dst);
-                    }
-                    Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
-                }
+                self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
 
                 self.asm += &format!("{op_asm}\n\n");
             }
@@ -2013,16 +2038,20 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Unary { op, operand } => {
                 self.expression(operand, dst);
 
+                let Dst::Reg(reg) = dst else {
+                    unreachable!();
+                };
+
                 match op {
                     Op::Not => match operand.typ() {
-                        Type::Bool => self.asm += " xor rdi, 1\n",
-                        Type::Int | Type::Ascii => self.asm += " not rdi\n",
+                        Type::Bool => self.asm += &format!(" xor {reg}, 1\n"),
+                        Type::Int | Type::Ascii => self.asm += &format!(" not {reg}\n"),
                         Type::Array { .. } => unreachable!("cannot invert array values"),
                         Type::Str => unreachable!("cannot invert string values"),
                         Type::Infer => unreachable!("should have been coerced to a concrete type"),
                     },
                     Op::Minus => match operand.typ() {
-                        Type::Int | Type::Ascii => self.asm += " neg rdi\n",
+                        Type::Int | Type::Ascii => self.asm += &format!(" neg {reg}\n"),
                         Type::Bool => unreachable!("cannot negate boolean values"),
                         Type::Array { .. } => unreachable!("cannot negate array values"),
                         Type::Str => unreachable!("cannot negate string values"),
@@ -2116,44 +2145,19 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 unreachable!("non-boolean expressions not allowed in conditions")
             }
             Expression::Binary { lhs, op, rhs, .. } => {
-                match &**rhs {
-                    Expression::Binary { .. } | Expression::Unary { .. } | Expression::ArrayIndex { .. } => {
-                        let lhs_dst = match lhs.typ() {
-                            Type::Int | Type::Ascii | Type::Bool => Dst::Reg(Rdi),
-                            Type::Str | Type::Array { .. } => Dst::LenPtr { len: Rdi, ptr: Rsi },
-                            Type::Infer => unreachable!("should have been coerced to a concrete type"),
-                        };
-                        self.expression(lhs, lhs_dst);
-                        match lhs_dst {
-                            Dst::Reg(_) => self.asm += " push rdi\n\n",
-                            Dst::LenPtr { .. } => {
-                                self.asm += " push rdi\
-                                    \n push rsi\n\n";
-                            }
-                        }
+                let lhs_dst = match lhs.typ() {
+                    Type::Int | Type::Ascii | Type::Bool => Dst::Reg(Rdi),
+                    Type::Str | Type::Array { .. } => Dst::LenPtr { len: Rdi, ptr: Rsi },
+                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                };
 
-                        let rhs_dst = match rhs.typ() {
-                            Type::Int | Type::Ascii | Type::Bool => Dst::Reg(Rsi),
-                            Type::Str | Type::Array { .. } => Dst::LenPtr { len: Rdx, ptr: Rcx },
-                            Type::Infer => unreachable!("should have been coerced to a concrete type"),
-                        };
-                        self.expression(rhs, rhs_dst);
-                        match rhs_dst {
-                            Dst::Reg(_) => self.asm += " pop rdi\n\n",
-                            Dst::LenPtr { .. } => {
-                                self.asm += " mov rdx, rdi\
-                                    \n mov rcx, rsi\
-                                    \n pop rsi\
-                                    \n pop rdi\n\n";
-                            }
-                        }
-                    }
-                    Expression::Literal(_) | Expression::Identifier { .. } => {
-                        self.expression(lhs, Dst::Reg(Rdi));
-                        self.expression(rhs, Dst::Reg(Rsi));
-                    }
-                    Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
-                }
+                let rhs_dst = match rhs.typ() {
+                    Type::Int | Type::Ascii | Type::Bool => Dst::Reg(Rsi),
+                    Type::Str | Type::Array { .. } => Dst::LenPtr { len: Rdx, ptr: Rcx },
+                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                };
+
+                self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
 
                 match op {
                     Op::EqualsEquals => self.asm += " cmp rdi, rsi\n jne",
@@ -2237,36 +2241,19 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 unreachable!("non-boolean expressions should not appear here")
             }
             Expression::Binary { lhs, op, rhs, .. } => {
-                match &**rhs {
-                    Expression::Binary { .. } | Expression::Unary { .. } | Expression::ArrayIndex { .. } => {
-                        let lhs_dst = Dst::of(&lhs.typ());
-                        self.expression(lhs, lhs_dst);
-                        match lhs_dst {
-                            Dst::Reg(_) => self.asm += " push rdi\n\n",
-                            Dst::LenPtr { .. } => {
-                                self.asm += " push rdi\
-                                    \n push rsi\n\n";
-                            }
-                        }
+                let lhs_dst = match lhs.typ() {
+                    Type::Int | Type::Ascii | Type::Bool => Dst::Reg(Rdi),
+                    Type::Str | Type::Array { .. } => Dst::LenPtr { len: Rdi, ptr: Rsi },
+                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                };
 
-                        let rhs_dst = Dst::of(&rhs.typ());
-                        self.expression(rhs, rhs_dst);
-                        match rhs_dst {
-                            Dst::Reg(_) => self.asm += " pop rdi\n\n",
-                            Dst::LenPtr { .. } => {
-                                self.asm += " mov rdx, rdi\
-                                    \n mov rcx, rsi\
-                                    \n pop rsi\
-                                    \n pop rdi\n\n";
-                            }
-                        }
-                    }
-                    Expression::Literal(_) | Expression::Identifier { .. } => {
-                        self.expression(lhs, Dst::Reg(Rdi));
-                        self.expression(rhs, Dst::Reg(Rsi));
-                    }
-                    Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
-                }
+                let rhs_dst = match rhs.typ() {
+                    Type::Int | Type::Ascii | Type::Bool => Dst::Reg(Rsi),
+                    Type::Str | Type::Array { .. } => Dst::LenPtr { len: Rdx, ptr: Rcx },
+                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                };
+
+                self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
 
                 match op {
                     Op::EqualsEquals => self.asm += " cmp rdi, rsi\n je",
