@@ -3,7 +3,10 @@ use super::{
     src_file::{Position, SrcFile},
     tokenizer::{BracketKind, Literal, Mutability, Op, SrcCodeLen, Token, TokenKind},
 };
-use crate::{error::{ErrorInfo, RawSyntaxError, SyntaxErrorKind, SyntaxErrors}, tokenizer::{ascii, int, uint}};
+use crate::{
+    error::{ErrorInfo, RawSyntaxError, SyntaxErrorKind, SyntaxErrors},
+    tokenizer::{ascii, int, uint},
+};
 use std::fmt::{Debug, Display};
 
 pub(crate) trait TypeOf {
@@ -83,7 +86,9 @@ impl Type {
 
     pub(crate) fn can_be_compared_to(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Str, Self::Str) | (Self::Int | Self::Bool | Self::Ascii, Self::Int | Self::Bool | Self::Ascii) => true,
+            (Self::Str, Self::Str) | (Self::Int | Self::Bool | Self::Ascii, Self::Int | Self::Bool | Self::Ascii) => {
+                true
+            }
 
             (Self::Array { typ: typ_1, len: len_1 }, Self::Array { typ: typ_2, len: len_2 }) => {
                 // comparing empty arrays makes no sense, so it's not going to be allowed
@@ -334,7 +339,10 @@ pub struct Ast<'src, 'tokens: 'src> {
 }
 
 impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
-    pub fn build(src: &'src SrcFile, tokens: &'tokens [Token<'src>]) -> Result<Vec<Scope<'src>>, Vec<SyntaxError<'src, ErrorKind>>> {
+    pub fn build(
+        src: &'src SrcFile,
+        tokens: &'tokens [Token<'src>],
+    ) -> Result<Vec<Scope<'src>>, Vec<SyntaxError<'src, ErrorKind>>> {
         if tokens.is_empty() {
             return Ok(Vec::new());
         }

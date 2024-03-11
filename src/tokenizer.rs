@@ -470,7 +470,6 @@ impl<'src> Tokenizer<'src> {
 
 // TODO(stefano): own utf8 parsing
 // TODO(stefano): properly handle multi-char utf8 characters (i.e. emojis)
-// TODO(stefano): allow utf-8 characters in strings, characters
 // iteration of characters
 impl<'src> Tokenizer<'src> {
     fn token_len(&self) -> usize {
@@ -662,9 +661,9 @@ impl<'src> Tokenizer<'src> {
                     } else {
                         Ok(TokenKind::Literal(Literal::Str(raw_string_literal)))
                     }
-                },
+                }
                 _ => self.identifier(),
-            }
+            },
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.identifier(),
             b'0'..=b'9' => {
                 let mut contains_non_ascii = false;

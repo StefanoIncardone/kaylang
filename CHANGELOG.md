@@ -46,6 +46,7 @@ Changes to the ABI would **not** be considered breaking since no stable ABI is d
 
 - Bug in string literals compilation when escaped characters where present
 
+
 ## 0.5.3 - 2024-03-02
 
 ### Added
