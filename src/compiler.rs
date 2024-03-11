@@ -1431,10 +1431,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             string_index += 1;
         }
 
+        let string_bytes = unsafe { String::from_utf8_unchecked(string.clone()) };
+        let string_chars = string_bytes.escape_debug();
         self.string_labels += &format!(
-            "\n str_{string_index}: db `{string_bytes}`\
+            "\n str_{string_index}: db `{string_chars}`\
             \n str_{string_index}_len: equ $ - str_{string_index}\n",
-            string_bytes = unsafe { String::from_utf8_unchecked(string.clone()) }
         );
 
         self.strings.push(string);

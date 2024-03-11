@@ -590,46 +590,82 @@ impl<'src> Tokenizer<'src> {
 }
 
 impl<'src> Tokenizer<'src> {
+    fn identifier(&mut self) -> Result<TokenKind<'src>, RawSyntaxError<ErrorKind>> {
+        let mut contains_non_ascii = false;
+        loop {
+            match self.peek_next_ascii_char() {
+                Ok(Some(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {}
+                Ok(Some(_) | None) => break,
+                Err(_) => contains_non_ascii = true,
+            }
+
+            let _ = self.next_ascii_char();
+        }
+
+        if contains_non_ascii {
+            return Err(RawSyntaxError {
+                kind: ErrorKind::NonAsciiIdentifier,
+                col: self.token_start_col,
+                len: self.token_len(),
+            });
+        }
+
+        let identifier = match &self.src.code[self.token_start_col..self.col] {
+            "let" => TokenKind::Definition(Mutability::Let),
+            "var" => TokenKind::Definition(Mutability::Var),
+            "print" => TokenKind::Print,
+            "println" => TokenKind::PrintLn,
+            "true" => TokenKind::True,
+            "false" => TokenKind::False,
+            "do" => TokenKind::Do,
+            "if" => TokenKind::If,
+            "else" => TokenKind::Else,
+            "loop" => TokenKind::Loop,
+            "break" => TokenKind::Break,
+            "continue" => TokenKind::Continue,
+            identifier => TokenKind::Identifier(identifier),
+        };
+
+        Ok(identifier)
+    }
+
     fn next_token(&mut self, next: ascii) -> Result<TokenKind<'src>, RawSyntaxError<ErrorKind>> {
         match next {
-            b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
-                let mut contains_non_ascii = false;
-                loop {
-                    match self.peek_next_ascii_char() {
-                        Ok(Some(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {}
-                        Ok(Some(_) | None) => break,
-                        Err(_) => contains_non_ascii = true,
+            b'r' => match self.peek_next_utf8_char() {
+                Some('"') => {
+                    self.col += 1;
+
+                    let previous_error_count = self.errors.len();
+                    let mut raw_string_literal = Vec::<ascii>::new();
+
+                    loop {
+                        let next = match self.next_in_ascii_str_literal()? {
+                            control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
+                                self.errors.push(RawSyntaxError {
+                                    kind: ErrorKind::ControlCharacterInStringLiteral,
+                                    col: self.col - 1,
+                                    len: 1,
+                                });
+                                control
+                            }
+                            b'"' => break,
+                            ch => ch,
+                        };
+
+                        raw_string_literal.push(next);
                     }
 
-                    let _ = self.next_ascii_char();
-                }
-
-                if contains_non_ascii {
-                    return Err(RawSyntaxError {
-                        kind: ErrorKind::NonAsciiIdentifier,
-                        col: self.token_start_col,
-                        len: self.token_len(),
-                    });
-                }
-
-                let identifier = match &self.src.code[self.token_start_col..self.col] {
-                    "let" => TokenKind::Definition(Mutability::Let),
-                    "var" => TokenKind::Definition(Mutability::Var),
-                    "print" => TokenKind::Print,
-                    "println" => TokenKind::PrintLn,
-                    "true" => TokenKind::True,
-                    "false" => TokenKind::False,
-                    "do" => TokenKind::Do,
-                    "if" => TokenKind::If,
-                    "else" => TokenKind::Else,
-                    "loop" => TokenKind::Loop,
-                    "break" => TokenKind::Break,
-                    "continue" => TokenKind::Continue,
-                    identifier => TokenKind::Identifier(identifier),
-                };
-
-                Ok(identifier)
+                    if self.errors.len() > previous_error_count {
+                        // SAFETY: we are now sure that at least one error has occured, so we can safely unwrap
+                        let last_error = self.errors.pop().unwrap();
+                        Err(last_error)
+                    } else {
+                        Ok(TokenKind::Literal(Literal::Str(raw_string_literal)))
+                    }
+                },
+                _ => self.identifier(),
             }
+            b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.identifier(),
             b'0'..=b'9' => {
                 let mut contains_non_ascii = false;
                 loop {

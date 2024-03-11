@@ -29,6 +29,7 @@ Changes to the ABI would **not** be considered breaking since no stable ABI is d
 ### Added
 
 - String and Array comparison operators (i.e.: `<=>`, `==`, `!=`, `<`, `<=`, `>`, `>=`)
+- Raw string literals: `r"hello\nworld"` where `\n` would not get escaped
 - **BREAKING** New Error kinds when trying to compare values of incompatible types
 
 ### Changed
@@ -40,6 +41,10 @@ Changes to the ABI would **not** be considered breaking since no stable ABI is d
 ### Removed
 
 - Error type aliases, to allow for more explicit type signatures
+
+### Fixed
+
+- Bug in string literals compilation when escaped characters where present
 
 ## 0.5.3 - 2024-03-02
 
