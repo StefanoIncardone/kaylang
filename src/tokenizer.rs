@@ -9,7 +9,6 @@ use std::{
     num::{IntErrorKind, ParseIntError},
 };
 
-// TODO(stefano): inline this trait inside the TokenKind
 pub(crate) trait SrcCodeLen {
     fn src_code_len(&self) -> usize;
 }

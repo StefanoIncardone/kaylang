@@ -1463,15 +1463,6 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         string_index
     }
 
-    fn rhs_requires_saving_of_lhs(rhs: &'ast Expression<'src>) -> bool {
-        match rhs {
-            Expression::Binary { .. } | Expression::ArrayIndex { .. } => true,
-            Expression::Unary { operand, .. } => Self::rhs_requires_saving_of_lhs(operand),
-            Expression::Literal(_) | Expression::Identifier { .. } => false,
-            Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
-        }
-    }
-
     fn binary_expression_dst_and_asm(
         lhs: &'ast Expression<'src>,
         op_position: Position,
@@ -2020,7 +2011,20 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         rhs_dst: Dst,
     ) {
         self.expression(lhs, lhs_dst);
-        if !Self::rhs_requires_saving_of_lhs(rhs) {
+
+        let mut rhs_saved = rhs;
+        let rhs_requires_saving_of_lhs = 'requires_saving: loop {
+            match rhs_saved {
+                Expression::Binary { .. }
+                | Expression::ArrayIndex { .. } => break 'requires_saving true,
+                Expression::Literal(_)
+                | Expression::Identifier { .. } => break 'requires_saving false,
+                Expression::Unary { operand, .. } => rhs_saved = operand,
+                Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
+            }
+        };
+
+        if !rhs_requires_saving_of_lhs {
             self.expression(rhs, rhs_dst);
             return;
         }
