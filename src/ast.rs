@@ -84,7 +84,7 @@ impl Type {
         }
     }
 
-    pub(crate) fn can_be_compared_to(&self, other: &Type) -> bool {
+    pub(crate) fn can_be_compared_to(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Str, Self::Str) | (Self::Int | Self::Bool | Self::Char, Self::Int | Self::Bool | Self::Char) => true,
 
@@ -93,12 +93,8 @@ impl Type {
                 *len_1 != 0 && *len_2 != 0 && typ_1 == typ_2 && len_1 == len_2
             }
 
-            (Self::Str, _)
-            | (_, Self::Str)
-            | (Self::Array { .. }, _)
-            | (_, Self::Array { .. })
-            | (Self::Infer, _)
-            | (_, Self::Infer) => false,
+            (Self::Str | Self::Array { .. } | Self::Infer, _)
+            | (_, Self::Str | Self::Array { .. } | Self::Infer) => false,
         }
     }
 }

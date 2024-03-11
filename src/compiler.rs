@@ -446,6 +446,568 @@ struct Variable<'src, 'ast: 'src> {
 
 const STACK_ALIGN: usize = core::mem::size_of::<usize>();
 
+static CRASH_ASM: &str = {
+    r"; fn crash(msg: str @rdi:rsi, line: uint @rdx, col: uint @rcx)
+crash:
+ mov r8, rdi; msg_len: uint
+ mov r9, rsi; msg_ptr: ascii*
+ mov r10, rdx; line: uint
+ mov r11, rcx; col: uint
+
+ mov rdi, CRASH_len
+ mov rsi, CRASH
+ call str_print
+
+ mov dil, ':'
+ call char_print
+
+ mov dil, ' '
+ call char_print
+
+ ; crash message
+ mov rdi, r8
+ mov rsi, r9
+ call str_print
+
+ mov dil, newline
+ call char_print
+
+ mov rdi, _AT_len
+ mov rsi, _AT
+ call str_print
+
+ mov dil, ':'
+ call char_print
+
+ mov dil, ' '
+ call char_print
+
+ ; file
+ mov rdi, file_len
+ mov rsi, file
+ call str_print
+
+ mov dil, ':'
+ call char_print
+
+ ; line
+ mov rdi, r10
+ call int_to_str
+ mov rdi, rdx
+ mov rsi, rax
+ call str_print
+
+ mov dil, ':'
+ call char_print
+
+ ; column
+ mov rdi, r11
+ call int_to_str
+ mov rdi, rdx
+ mov rsi, rax
+ call str_print
+
+ mov dil, newline
+ call char_print
+
+ mov rdi, EXIT_FAILURE
+ jmp exit"
+};
+
+static ASSERT_ARRAY_INDEX_IN_RANGE_ASM: &str = {
+    r"; fn assert_array_index_in_range(index: int @rdi, array_len: uint @rsi, line: uint @rdx, col: uint @rcx)
+assert_array_index_in_range:
+ cmp rdi, 0
+ jl .underflow
+
+ cmp rdi, rsi
+ jge .overflow
+
+ ret
+
+.underflow:
+ mov rdi, attempt_array_index_underflow_len
+ mov rsi, attempt_array_index_underflow
+ jmp crash
+
+.overflow:
+ mov rdi, attempt_array_index_overflow_len
+ mov rsi, attempt_array_index_overflow
+ jmp crash"
+};
+
+static ASSERT_INT_BIT_INDEX_IN_RANGE_ASM: &str = {
+    r"; fn assert_int_bit_index_in_range(index: int @rdi, bits: uint @rsi, line: uint @rdx, col: uint @rcx)
+assert_int_bit_index_in_range:
+ cmp rdi, 0
+ jl .underflow
+
+ cmp rdi, rsi
+ jge .overflow
+
+ ret
+
+.underflow:
+ mov rdi, attempt_int_bit_index_underflow_len
+ mov rsi, attempt_int_bit_index_underflow
+ jmp crash
+
+.overflow:
+ mov rdi, attempt_int_bit_index_overflow_len
+ mov rsi, attempt_int_bit_index_overflow
+ jmp crash"
+};
+
+static ASSERT_STR_INDEX_IN_RANGE_ASM: &str = {
+    r"; fn assert_str_index_in_range(index: int @rdi, str_len: uint @rsi, line: uint @rdx, col: uint @rcx)
+assert_str_index_in_range:
+ cmp rdi, 0
+ jl .underflow
+
+ cmp rdi, rsi
+ jge .overflow
+
+ ret
+
+.underflow:
+ mov rdi, attempt_str_index_underflow_len
+ mov rsi, attempt_str_index_underflow
+ jmp crash
+
+.overflow:
+ mov rdi, attempt_str_index_overflow_len
+ mov rsi, attempt_str_index_overflow
+ jmp crash"
+};
+
+static ASSERT_DENOMINATOR_NOT_ZERO_ASM: &str = {
+    r"; fn assert_denominator_not_zero(_dummy: @rdi, denominator: int @rsi, line: uint @rdx, col: uint @rcx)
+assert_denominator_not_zero:
+ test rsi, rsi
+ jz .denominator_zero
+
+ ret
+
+.denominator_zero:
+ mov rdi, attempt_division_by_zero_len
+ mov rsi, attempt_division_by_zero
+ jmp crash"
+};
+
+static ASSERT_MODULO_NOT_ZERO_ASM: &str = {
+    r"; fn assert_modulo_not_zero(_dummy: @rdi, modulo: int @rsi, line: uint @rdx, col: uint @rcx)
+assert_modulo_not_zero:
+ test rsi, rsi
+ jz .modulo_zero
+
+ ret
+
+.modulo_zero:
+ mov rdi, attempt_modulo_zero_len
+ mov rsi, attempt_modulo_zero
+ jmp crash"
+};
+
+static ASSERT_EXPONENT_IS_POSITIVE_ASM: &str = {
+    r"; fn assert_exponent_is_positive(_dummy: @rdi, exponent: int @rsi, line: uint @rdx, col: uint @rcx)
+assert_exponent_is_positive:
+ cmp rsi, 0
+ jl .exponent_negative
+
+ ret
+
+.exponent_negative:
+ mov rdi, attempt_exponent_negative_len
+ mov rsi, attempt_exponent_negative
+ jmp crash"
+};
+
+static INT_TO_STR_ASM: &str = {
+    r"; fn int_str: str @rax:rdx = int_to_str(self: int @rdi)
+int_to_str:
+ mov rsi, 10
+ mov rcx, int_str + INT_BITS - 1
+
+ mov rax, rdi
+ cmp rax, 0
+ je .write_zero
+ jl .make_number_positive
+ jg .next_digit
+
+.write_zero:
+ mov byte [rcx], '0'
+ jmp .done
+
+.make_number_positive:
+ neg rax
+
+.next_digit:
+ xor rdx, rdx
+ idiv rsi
+
+ add dl, '0'
+ mov byte [rcx], dl
+ dec rcx
+
+ cmp rax, 0
+ jne .next_digit
+
+ cmp rdi, 0
+ jl .add_minus_sign
+ inc rcx
+ jmp .done
+
+.add_minus_sign:
+ mov byte [rcx], '-'
+
+.done:
+ mov rdx, int_str + INT_BITS
+ sub rdx, rcx
+
+ mov rax, rcx
+ ret"
+};
+
+static INT_POW_ASM: &str = {
+    r"; fn result: int @rax = int_pow(self: int @rdi, exponent: int @rsi, line: uint @rdx, col: uint @rcx)
+int_pow:
+ cmp rsi, 0
+ jg .exponent_positive
+ mov rax, 1
+ ret
+
+.exponent_positive:
+ cmp rsi, 1
+ jne .exponent_not_one
+ mov rax, rdi
+ ret
+
+.exponent_not_one:
+ mov rax, rdi
+ mov rdx, 1
+
+.next_power:
+ cmp rsi, 1
+ jle .done
+
+ test rsi, 1
+ jnz .exponent_odd
+
+ imul rax, rax
+ shr rsi, 1
+ jmp .next_power
+
+.exponent_odd:
+ imul rdx, rax
+ imul rax, rax
+
+ dec rsi
+ shr rsi, 1
+ jmp .next_power
+
+.done:
+ imul rax, rdx
+
+ ret"
+};
+
+static INT_PRINT_ASM: &str = {
+    r"; fn int_print(self: int @rdi)
+int_print:
+ call int_to_str
+ mov rdi, stdout
+ mov rsi, rax
+ mov rax, SYS_write
+ syscall
+ ret"
+};
+
+static INT_ARRAY_DEBUG_PRINT_ASM: &str = {
+    r"; fn int_array_debug_print(self: int[]& @rdi:rsi)
+int_array_debug_print:
+ mov r8, rdi; len: uint
+ mov r9, rsi; array_ptr: int[]*
+
+ mov dil, '['
+ call char_print
+
+ test r8, r8
+ jz .done
+
+.next:
+ dec r8
+ jz .last
+
+ mov rdi, [r9]
+ call int_print
+
+ mov dil, ','
+ call char_print
+
+ mov dil, ' '
+ call char_print
+
+ add r9, 8
+ jmp .next
+
+.last:
+ mov rdi, [r9]
+ call int_print
+
+.done:
+ mov dil, ']'
+ call char_print
+
+ ret"
+};
+
+static CHAR_PRINT_ASM: &str = {
+    r"; fn char_print(self: char @dil)
+char_print:
+ push di
+ mov rsi, rsp
+ mov rdi, stdout
+ mov rdx, 1
+ mov rax, SYS_write
+ syscall
+ pop di
+ ret"
+};
+
+static CHAR_ARRAY_DEBUG_PRINT_ASM: &str = {
+    r"; fn char_array_debug_print(self: char[]& @rdi:rsi)
+char_array_debug_print:
+ mov r8, rdi; len: uint
+ mov r9, rsi; array_ptr: char[]*
+
+ mov dil, '['
+ call char_print
+
+ test r8, r8
+ jz .done
+
+.next:
+ dec r8
+ jz .last
+
+ mov dil, [r9]
+ call char_print
+
+ mov dil, ','
+ call char_print
+
+ mov dil, ' '
+ call char_print
+
+ inc r9
+ jmp .next
+
+.last:
+ mov dil, [r9]
+ call char_print
+
+.done:
+ mov dil, ']'
+ call char_print
+
+ ret"
+};
+
+static BOOL_PRINT_ASM: &str = {
+    r"; fn bool_print(self: bool @dil)
+bool_print:
+ cmp dil, true
+ mov rsi, true_str
+ mov rdi, false_str
+ cmovne rsi, rdi
+ mov rdx, true_str_len
+ mov rdi, false_str_len
+ cmovne rdx, rdi
+
+ mov rdi, stdout
+ mov rax, SYS_write
+ syscall
+ ret"
+};
+
+static BOOL_ARRAY_DEBUG_PRINT_ASM: &str = {
+    r"; fn bool_array_debug_print(self: bool[]& @rdi:rsi)
+bool_array_debug_print:
+ mov r8, rdi; len: uint
+ mov r9, rsi; array_ptr: bool[]*
+
+ mov dil, '['
+ call char_print
+
+ test r8, r8
+ jz .done
+
+.next:
+ dec r8
+ jz .last
+
+ mov dil, [r9]
+ call bool_print
+
+ mov dil, ','
+ call char_print
+
+ mov dil, ' '
+ call char_print
+
+ inc r9
+ jmp .next
+
+.last:
+ mov dil, [r9]
+ call bool_print
+
+.done:
+ mov dil, ']'
+ call char_print
+
+ ret"
+};
+
+static STR_CMP_ASM: &str = {
+    r"; fn cmp: int @rax = str_cmp(self: str @rdi:rsi, other: @rdx:rcx)
+str_cmp:
+ mov rax, rdi
+ sub rax, rdx
+ cmovb rdx, rdi
+
+ mov rdi, rcx
+ mov rcx, rdx
+ repe cmpsb
+ je .eq
+ mov rax, LESS
+ mov rsi, GREATER
+ cmovg rax, rsi
+ ret
+
+.eq:
+ cmp rax, 0
+ mov rax, LESS
+ mov rsi, EQUAL
+ cmove rax, rsi
+ mov rsi, GREATER
+ cmovg rax, rsi
+ ret"
+};
+
+static STR_EQ_ASM: &str = {
+    r"; fn equals: bool @al = str_eq(self: str @rdi:rsi, other: @rdx:rcx)
+str_eq:
+ cmp rdi, rdx
+ jne .done
+
+ mov rdi, rcx
+ mov rcx, rdx
+ repe cmpsb
+
+.done:
+ mov rax, false
+ sete al
+ ret
+
+; fn str_print(self: str @rdi:rsi)
+str_print:
+ mov rdx, rdi
+ mov rdi, stdout
+ mov rax, SYS_write
+ syscall
+ ret"
+};
+
+static STR_ARRAY_CMP_ASM: &str = {
+    r"; fn cmp: int @rax = str_array_cmp[N: uint @rdi](self: str[N]* @rdi:rsi, other: str[N]* @_rdx:rcx)
+str_array_cmp:
+ mov r8, rsi; self_ptr: str[]*
+ mov r9, rcx; other_ptr: str[]*
+ mov r10, rdi; N: uint
+
+.next:
+ mov rdi, [r8]
+ mov rsi, [r8 + 8]
+ mov rdx, [r9]
+ mov rcx, [r9 + 8]
+ call str_cmp
+ je .eq
+ ret
+
+.eq:
+ add r8, 16
+ add r9, 16
+ dec r10
+ jnz .next
+ ret"
+};
+
+static STR_ARRAY_EQ_ASM: &str = {
+    r"; fn equals: bool @al = str_array_eq[N: uint @rdi](self: str[N]* @rdi:rsi, other: str[N]* @_rdx:rcx)
+str_array_eq:
+ mov r8, rsi; self_ptr: str[]*
+ mov r9, rcx; other_ptr: str[]*
+ mov r10, rdi; N: uint
+
+.next:
+ mov rdi, [r8]
+ mov rsi, [r8 + 8]
+ mov rdx, [r9]
+ mov rcx, [r9 + 8]
+ call str_eq
+ je .eq
+ ret
+
+.eq:
+ add r8, 16
+ add r9, 16
+ dec r10
+ jnz .next
+ ret"
+};
+
+static STR_ARRAY_DEBUG_PRINT_ASM: &str = {
+    r"; fn str_array_debug_print(self: str[]& @rdi:rsi)
+str_array_debug_print:
+ mov r8, rdi; len: uint
+ mov r9, rsi; array_ptr: str[]*
+
+ mov dil, '['
+ call char_print
+
+ test r8, r8
+ jz .done
+
+.next:
+ dec r8
+ jz .last
+
+ mov rdi, [r9]
+ mov rsi, [r9 + 8]
+ call str_print
+
+ mov dil, ','
+ call char_print
+
+ mov dil, ' '
+ call char_print
+
+ add r9, 16
+ jmp .next
+
+.last:
+ mov rdi, [r9]
+ mov rsi, [r9 + 8]
+ call str_print
+
+.done:
+ mov dil, ']'
+ call char_print
+
+ ret"
+};
+
 #[derive(Debug)]
 pub struct Compiler<'src, 'ast: 'src> {
     ast: &'ast [Scope<'src>],
@@ -563,527 +1125,45 @@ _start:
  mov rax, SYS_exit
  syscall
 
-; fn crash(msg: str @rdi:rsi, line: uint @rdx, col: uint @rcx)
-crash:
- mov r8, rdi; msg_len: uint
- mov r9, rsi; msg_ptr: ascii*
- mov r10, rdx; line: uint
- mov r11, rcx; col: uint
+{CRASH_ASM}
 
- mov rdi, CRASH_len
- mov rsi, CRASH
- call str_print
+{ASSERT_ARRAY_INDEX_IN_RANGE_ASM}
 
- mov dil, ':'
- call char_print
+{ASSERT_INT_BIT_INDEX_IN_RANGE_ASM}
 
- mov dil, ' '
- call char_print
+{ASSERT_STR_INDEX_IN_RANGE_ASM}
 
- ; crash message
- mov rdi, r8
- mov rsi, r9
- call str_print
+{ASSERT_DENOMINATOR_NOT_ZERO_ASM}
 
- mov dil, newline
- call char_print
+{ASSERT_MODULO_NOT_ZERO_ASM}
 
- mov rdi, _AT_len
- mov rsi, _AT
- call str_print
+{ASSERT_EXPONENT_IS_POSITIVE_ASM}
 
- mov dil, ':'
- call char_print
+{INT_TO_STR_ASM}
 
- mov dil, ' '
- call char_print
+{INT_POW_ASM}
 
- ; file
- mov rdi, file_len
- mov rsi, file
- call str_print
+{INT_PRINT_ASM}
 
- mov dil, ':'
- call char_print
+{INT_ARRAY_DEBUG_PRINT_ASM}
 
- ; line
- mov rdi, r10
- call int_to_str
- mov rdi, rdx
- mov rsi, rax
- call str_print
+{CHAR_PRINT_ASM}
 
- mov dil, ':'
- call char_print
+{CHAR_ARRAY_DEBUG_PRINT_ASM}
 
- ; column
- mov rdi, r11
- call int_to_str
- mov rdi, rdx
- mov rsi, rax
- call str_print
+{BOOL_PRINT_ASM}
 
- mov dil, newline
- call char_print
+{BOOL_ARRAY_DEBUG_PRINT_ASM}
 
- mov rdi, EXIT_FAILURE
- jmp exit
+{STR_CMP_ASM}
 
-; fn assert_array_index_in_range(index: int @rdi, array_len: uint @rsi, line: uint @rdx, col: uint @rcx)
-assert_array_index_in_range:
- cmp rdi, 0
- jl .underflow
+{STR_EQ_ASM}
 
- cmp rdi, rsi
- jge .overflow
+{STR_ARRAY_CMP_ASM}
 
- ret
+{STR_ARRAY_EQ_ASM}
 
-.underflow:
- mov rdi, attempt_array_index_underflow_len
- mov rsi, attempt_array_index_underflow
- jmp crash
-
-.overflow:
- mov rdi, attempt_array_index_overflow_len
- mov rsi, attempt_array_index_overflow
- jmp crash
-
-; fn assert_int_bit_index_in_range(index: int @rdi, bits: uint @rsi, line: uint @rdx, col: uint @rcx)
-assert_int_bit_index_in_range:
- cmp rdi, 0
- jl .underflow
-
- cmp rdi, rsi
- jge .overflow
-
- ret
-
-.underflow:
- mov rdi, attempt_int_bit_index_underflow_len
- mov rsi, attempt_int_bit_index_underflow
- jmp crash
-
-.overflow:
- mov rdi, attempt_int_bit_index_overflow_len
- mov rsi, attempt_int_bit_index_overflow
- jmp crash
-
-; fn assert_str_index_in_range(index: int @rdi, str_len: uint @rsi, line: uint @rdx, col: uint @rcx)
-assert_str_index_in_range:
- cmp rdi, 0
- jl .underflow
-
- cmp rdi, rsi
- jge .overflow
-
- ret
-
-.underflow:
- mov rdi, attempt_str_index_underflow_len
- mov rsi, attempt_str_index_underflow
- jmp crash
-
-.overflow:
- mov rdi, attempt_str_index_overflow_len
- mov rsi, attempt_str_index_overflow
- jmp crash
-
-; fn assert_denominator_not_zero(_dummy: @rdi, denominator: int @rsi, line: uint @rdx, col: uint @rcx)
-assert_denominator_not_zero:
- test rsi, rsi
- jz .denominator_zero
-
- ret
-
-.denominator_zero:
- mov rdi, attempt_division_by_zero_len
- mov rsi, attempt_division_by_zero
- jmp crash
-
-; fn assert_modulo_not_zero(_dummy: @rdi, modulo: int @rsi, line: uint @rdx, col: uint @rcx)
-assert_modulo_not_zero:
- test rsi, rsi
- jz .modulo_zero
-
- ret
-
-.modulo_zero:
- mov rdi, attempt_modulo_zero_len
- mov rsi, attempt_modulo_zero
- jmp crash
-
-; fn assert_exponent_is_positive(_dummy: @rdi, exponent: int @rsi, line: uint @rdx, col: uint @rcx)
-assert_exponent_is_positive:
- cmp rsi, 0
- jl .exponent_negative
-
- ret
-
-.exponent_negative:
- mov rdi, attempt_exponent_negative_len
- mov rsi, attempt_exponent_negative
- jmp crash
-
-; fn int_str: str @rax:rdx = int_to_str(self: int @rdi)
-int_to_str:
- mov rsi, 10
- mov rcx, int_str + INT_BITS - 1
-
- mov rax, rdi
- cmp rax, 0
- je .write_zero
- jl .make_number_positive
- jg .next_digit
-
-.write_zero:
- mov byte [rcx], '0'
- jmp .done
-
-.make_number_positive:
- neg rax
-
-.next_digit:
- xor rdx, rdx
- idiv rsi
-
- add dl, '0'
- mov byte [rcx], dl
- dec rcx
-
- cmp rax, 0
- jne .next_digit
-
- cmp rdi, 0
- jl .add_minus_sign
- inc rcx
- jmp .done
-
-.add_minus_sign:
- mov byte [rcx], '-'
-
-.done:
- mov rdx, int_str + INT_BITS
- sub rdx, rcx
-
- mov rax, rcx
- ret
-
-; fn result: int @rax = int_pow(self: int @rdi, exponent: int @rsi, line: uint @rdx, col: uint @rcx)
-int_pow:
- cmp rsi, 0
- jg .exponent_positive
- mov rax, 1
- ret
-
-.exponent_positive:
- cmp rsi, 1
- jne .exponent_not_one
- mov rax, rdi
- ret
-
-.exponent_not_one:
- mov rax, rdi
- mov rdx, 1
-
-.next_power:
- cmp rsi, 1
- jle .done
-
- test rsi, 1
- jnz .exponent_odd
-
- imul rax, rax
- shr rsi, 1
- jmp .next_power
-
-.exponent_odd:
- imul rdx, rax
- imul rax, rax
-
- dec rsi
- shr rsi, 1
- jmp .next_power
-
-.done:
- imul rax, rdx
-
- ret
-
-; fn int_print(self: int @rdi)
-int_print:
- call int_to_str
- mov rdi, stdout
- mov rsi, rax
- mov rax, SYS_write
- syscall
- ret
-
-; fn int_array_debug_print(self: int[]& @rdi:rsi)
-int_array_debug_print:
- mov r8, rdi; len: uint
- mov r9, rsi; array_ptr: int[]*
-
- mov dil, '['
- call char_print
-
- test r8, r8
- jz .done
-
-.next:
- dec r8
- jz .last
-
- mov rdi, [r9]
- call int_print
-
- mov dil, ','
- call char_print
-
- mov dil, ' '
- call char_print
-
- add r9, 8
- jmp .next
-
-.last:
- mov rdi, [r9]
- call int_print
-
-.done:
- mov dil, ']'
- call char_print
-
- ret
-
-; fn char_print(self: char @dil)
-char_print:
- push di
- mov rsi, rsp
- mov rdi, stdout
- mov rdx, 1
- mov rax, SYS_write
- syscall
- pop di
- ret
-
-; fn char_array_debug_print(self: char[]& @rdi:rsi)
-char_array_debug_print:
- mov r8, rdi; len: uint
- mov r9, rsi; array_ptr: char[]*
-
- mov dil, '['
- call char_print
-
- test r8, r8
- jz .done
-
-.next:
- dec r8
- jz .last
-
- mov dil, [r9]
- call char_print
-
- mov dil, ','
- call char_print
-
- mov dil, ' '
- call char_print
-
- inc r9
- jmp .next
-
-.last:
- mov dil, [r9]
- call char_print
-
-.done:
- mov dil, ']'
- call char_print
-
- ret
-
-; fn bool_print(self: bool @dil)
-bool_print:
- cmp dil, true
- mov rsi, true_str
- mov rdi, false_str
- cmovne rsi, rdi
- mov rdx, true_str_len
- mov rdi, false_str_len
- cmovne rdx, rdi
-
- mov rdi, stdout
- mov rax, SYS_write
- syscall
- ret
-
-; fn bool_array_debug_print(self: bool[]& @rdi:rsi)
-bool_array_debug_print:
- mov r8, rdi; len: uint
- mov r9, rsi; array_ptr: bool[]*
-
- mov dil, '['
- call char_print
-
- test r8, r8
- jz .done
-
-.next:
- dec r8
- jz .last
-
- mov dil, [r9]
- call bool_print
-
- mov dil, ','
- call char_print
-
- mov dil, ' '
- call char_print
-
- inc r9
- jmp .next
-
-.last:
- mov dil, [r9]
- call bool_print
-
-.done:
- mov dil, ']'
- call char_print
-
- ret
-
-; fn cmp: int @rax = str_cmp(self: str @rdi:rsi, other: @rdx:rcx)
-str_cmp:
- mov rax, rdi
- sub rax, rdx
- cmovb rdx, rdi
-
- mov rdi, rcx
- mov rcx, rdx
- repe cmpsb
- je .eq
- mov rax, LESS
- mov rsi, GREATER
- cmovg rax, rsi
- ret
-
-.eq:
- cmp rax, 0
- mov rax, LESS
- mov rsi, EQUAL
- cmove rax, rsi
- mov rsi, GREATER
- cmovg rax, rsi
- ret
-
-; fn equals: bool @al = str_eq(self: str @rdi:rsi, other: @rdx:rcx)
-str_eq:
- cmp rdi, rdx
- jne .done
-
- mov rdi, rcx
- mov rcx, rdx
- repe cmpsb
-
-.done:
- mov rax, false
- sete al
- ret
-
-; fn str_print(self: str @rdi:rsi)
-str_print:
- mov rdx, rdi
- mov rdi, stdout
- mov rax, SYS_write
- syscall
- ret
-
-; fn cmp: int @rax = str_array_cmp[N: uint @rdi](self: str[N]* @rdi:rsi, other: str[N]* @_rdx:rcx)
-str_array_cmp:
- mov r8, rsi; self_ptr: str[]*
- mov r9, rcx; other_ptr: str[]*
- mov r10, rdi; N: uint
-
-.next:
- mov rdi, [r8]
- mov rsi, [r8 + 8]
- mov rdx, [r9]
- mov rcx, [r9 + 8]
- call str_cmp
- je .eq
- ret
-
-.eq:
- add r8, 16
- add r9, 16
- dec r10
- jnz .next
- ret
-
-; fn equals: bool @al = str_array_eq[N: uint @rdi](self: str[N]* @rdi:rsi, other: str[N]* @_rdx:rcx)
-str_array_eq:
- mov r8, rsi; self_ptr: str[]*
- mov r9, rcx; other_ptr: str[]*
- mov r10, rdi; N: uint
-
-.next:
- mov rdi, [r8]
- mov rsi, [r8 + 8]
- mov rdx, [r9]
- mov rcx, [r9 + 8]
- call str_eq
- je .eq
- ret
-
-.eq:
- add r8, 16
- add r9, 16
- dec r10
- jnz .next
- ret
-
-; fn str_array_debug_print(self: str[]& @rdi:rsi)
-str_array_debug_print:
- mov r8, rdi; len: uint
- mov r9, rsi; array_ptr: str[]*
-
- mov dil, '['
- call char_print
-
- test r8, r8
- jz .done
-
-.next:
- dec r8
- jz .last
-
- mov rdi, [r9]
- mov rsi, [r9 + 8]
- call str_print
-
- mov dil, ','
- call char_print
-
- mov dil, ' '
- call char_print
-
- add r9, 16
- jmp .next
-
-.last:
- mov rdi, [r9]
- mov rsi, [r9 + 8]
- call str_print
-
-.done:
- mov dil, ']'
- call char_print
-
- ret
+{STR_ARRAY_DEBUG_PRINT_ASM}
 
 
 section .rodata
@@ -1871,7 +1951,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             Dst::Reg(_) => self.asm += " push rdi\n\n",
                             Dst::LenPtr { .. } => {
                                 self.asm += " push rdi\
-                                    \n push rsi\n\n"
+                                    \n push rsi\n\n";
                             }
                         }
 
@@ -1882,7 +1962,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 self.asm += " mov rdx, rdi\
                                     \n mov rcx, rsi\
                                     \n pop rsi\
-                                    \n pop rdi\n\n"
+                                    \n pop rdi\n\n";
                             }
                         }
                     }
@@ -2047,7 +2127,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             Dst::Reg(_) => self.asm += " push rdi\n\n",
                             Dst::LenPtr { .. } => {
                                 self.asm += " push rdi\
-                                    \n push rsi\n\n"
+                                    \n push rsi\n\n";
                             }
                         }
 
@@ -2063,7 +2143,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 self.asm += " mov rdx, rdi\
                                     \n mov rcx, rsi\
                                     \n pop rsi\
-                                    \n pop rdi\n\n"
+                                    \n pop rdi\n\n";
                             }
                         }
                     }
@@ -2164,7 +2244,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             Dst::Reg(_) => self.asm += " push rdi\n\n",
                             Dst::LenPtr { .. } => {
                                 self.asm += " push rdi\
-                                    \n push rsi\n\n"
+                                    \n push rsi\n\n";
                             }
                         }
 
@@ -2176,7 +2256,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 self.asm += " mov rdx, rdi\
                                     \n mov rcx, rsi\
                                     \n pop rsi\
-                                    \n pop rdi\n\n"
+                                    \n pop rdi\n\n";
                             }
                         }
                     }
@@ -2338,13 +2418,13 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             self.asm += &format!(
                                 " not rdi\
                                 \n mov [rbp + {dst_offset}], dil\n\n"
-                            )
+                            );
                         }
                         Type::Int => {
                             self.asm += &format!(
                                 " not rdi\
                                 \n mov [rbp + {dst_offset}], rdi\n\n"
-                            )
+                            );
                         }
                         Type::Array { .. } => unreachable!("cannot invert array values"),
                         Type::Str => unreachable!("cannot invert string values"),
@@ -2355,13 +2435,13 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             self.asm += &format!(
                                 " neg rdi\
                                 \n mov [rbp + {dst_offset}], dil\n\n"
-                            )
+                            );
                         }
                         Type::Int => {
                             self.asm += &format!(
                                 " neg rdi\
                                 \n mov [rbp + {dst_offset}], rdi\n\n"
-                            )
+                            );
                         }
                         Type::Bool => unreachable!("cannot negate boolean values"),
                         Type::Array { .. } => unreachable!("cannot negate array values"),
