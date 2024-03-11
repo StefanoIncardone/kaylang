@@ -271,8 +271,21 @@ impl<K: SyntaxErrorKind> Display for SyntaxError<'_, K> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let SyntaxErrorInfo { msg, help_msg } = self.kind.info();
 
-        let line_number = self.position.line.to_string();
-        let line_number_padding = line_number.len() + 1 + BAR.text.len();
+        let error_msg = Colored { text: msg, fg: Fg::White, bg: Bg::Default, flags: Flag::Bold };
+        let line_number = Colored {
+            text: self.position.line.to_string(),
+            fg: Fg::LightBlue,
+            bg: Bg::Default,
+            flags: Flag::Bold,
+        };
+        let line_number_padding = line_number.text.len() + 1 + BAR.text.len();
+        let at_padding = line_number_padding - 1;
+        let pointers_and_help_msg = Colored {
+            text: format!("{spaces:^>len$} {help_msg}", spaces = "", len = self.len),
+            fg: Fg::LightRed,
+            bg: Bg::Default,
+            flags: Flag::Bold,
+        };
 
         write!(
             f,
@@ -281,21 +294,12 @@ impl<K: SyntaxErrorKind> Display for SyntaxError<'_, K> {
             \n{BAR:>line_number_padding$}\
             \n{line_number} {BAR} {line_text}\
             \n{BAR:>line_number_padding$} {spaces:>pointers_padding$}{pointers_and_help_msg}",
-            error_msg = Colored { text: msg, fg: Fg::White, bg: Bg::Default, flags: Flag::Bold },
-            at_padding = line_number_padding - 1,
             path = self.path.display(),
             line = self.position.line,
             col = self.position.col,
-            line_number = Colored { text: line_number, fg: Fg::LightBlue, bg: Bg::Default, flags: Flag::Bold },
             line_text = self.line_text,
             spaces = "",
             pointers_padding = self.position.col - 1,
-            pointers_and_help_msg = Colored {
-                text: format!("{spaces:^>len$} {help_msg}", spaces = "", len = self.len),
-                fg: Fg::LightRed,
-                bg: Bg::Default,
-                flags: Flag::Bold,
-            }
         )
     }
 }

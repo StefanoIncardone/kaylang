@@ -36,7 +36,11 @@ impl<'src> Position {
         Self::new_with_line_index(src, left, col)
     }
 
-    pub(crate) fn new_with_line_index(src: &'src SrcFile, line_index: usize, col: usize) -> (Self, &'src str) {
+    pub(crate) fn new_with_line_index(
+        src: &'src SrcFile,
+        line_index: usize,
+        col: usize,
+    ) -> (Self, &'src str) {
         let line = &src.lines[line_index];
         let line_text = &src.code[line.start..line.end];
         let target_col = col - line.start;
@@ -72,7 +76,9 @@ impl SrcFile {
         let file_len = match file.metadata() {
             Ok(metadata) if metadata.is_file() => metadata.len() as usize,
             Ok(_) => return Err(SrcFileError { kind: ErrorKind::ExpectedFile { path } }),
-            Err(err) => return Err(SrcFileError { kind: ErrorKind::CouldNotReadMetadata { err, path } }),
+            Err(err) => {
+                return Err(SrcFileError { kind: ErrorKind::CouldNotReadMetadata { err, path } })
+            }
         };
 
         // plus one to account for a possible phantom newline at the end
@@ -85,7 +91,11 @@ impl SrcFile {
             let mut chars_read = match src.read_line(&mut code) {
                 Ok(0) => break,
                 Ok(read) => read,
-                Err(err) => return Err(SrcFileError { kind: ErrorKind::CouldNotReadContents { err, path } }),
+                Err(err) => {
+                    return Err(SrcFileError {
+                        kind: ErrorKind::CouldNotReadContents { err, path },
+                    })
+                }
             };
 
             let mut end = code.len() - 1;

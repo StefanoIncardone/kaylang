@@ -4,6 +4,7 @@
 use crate::{
     ast::{self, Expression, IfStatement, LoopCondition, Node, Scope, Type, TypeOf},
     error::{BackEndError, BackEndErrorInfo, BackEndErrorKind, ErrorInfo},
+    src_file::Position,
     tokenizer::{Literal, Op},
 };
 use std::{
@@ -256,7 +257,9 @@ impl Into<Option<Reg8h>> for Reg64 {
     #[inline(always)]
     fn into(self) -> Option<Reg8h> {
         match self {
-            Self::Rax | Self::Rbx | Self::Rcx | Self::Rdx => unsafe { Some(std::mem::transmute(self)) },
+            Self::Rax | Self::Rbx | Self::Rcx | Self::Rdx => unsafe {
+                Some(std::mem::transmute(self))
+            },
             Self::Rsi
             | Self::Rdi
             | Self::Rbp
@@ -298,7 +301,9 @@ impl Into<Option<Reg8h>> for Reg32 {
     #[inline(always)]
     fn into(self) -> Option<Reg8h> {
         match self {
-            Self::Eax | Self::Ebx | Self::Ecx | Self::Edx => unsafe { Some(std::mem::transmute(self)) },
+            Self::Eax | Self::Ebx | Self::Ecx | Self::Edx => unsafe {
+                Some(std::mem::transmute(self))
+            },
             Self::Esi
             | Self::Edi
             | Self::Ebp
@@ -1041,7 +1046,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
                     Err(err) => {
                         return Err(BackEndError {
-                            kind: ErrorKind::CouldNotCreateOutputDirectory { err, path: out_path.to_path_buf() },
+                            kind: ErrorKind::CouldNotCreateOutputDirectory {
+                                err,
+                                path: out_path.to_path_buf(),
+                            },
                         });
                     }
                 }
@@ -1056,7 +1064,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
         let asm_file = match File::create(&asm_path) {
             Ok(file) => file,
-            Err(err) => return Err(BackEndError { kind: ErrorKind::CouldNotCreateFile { err, path: asm_path } }),
+            Err(err) => {
+                return Err(BackEndError {
+                    kind: ErrorKind::CouldNotCreateFile { err, path: asm_path },
+                })
+            }
         };
 
         let mut this = Compiler {
@@ -1080,8 +1092,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 }
             }
 
-            this.variables
-                .sort_by(|var_1, var_2| var_1.inner.value.typ().size().cmp(&var_2.inner.value.typ().size()).reverse());
+            this.variables.sort_by(|var_1, var_2| {
+                var_1.inner.value.typ().size().cmp(&var_2.inner.value.typ().size()).reverse()
+            });
 
             let mut stack_size = 0;
             for var in &mut this.variables {
@@ -1311,8 +1324,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
 
                     let else_if_tag = format!("if_{if_counter}_else_if_{else_if_tag_index}");
-                    let else_if_false_tag =
-                        if has_else { format!("if_{if_counter}_else") } else { format!("if_{if_counter}_end") };
+                    let else_if_false_tag = if has_else {
+                        format!("if_{if_counter}_else")
+                    } else {
+                        format!("if_{if_counter}_end")
+                    };
 
                     self.iff(last_else_if, &else_if_tag, &else_if_false_tag);
                     self.asm += &else_if_end_tag;
@@ -1376,11 +1392,16 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Node::Scope { index } => self.scope(*index),
             Node::Expression(expression) => self.expression(expression, Dst::of(&expression.typ())),
             Node::Break => {
-                self.asm +=
-                    &format!(" jmp loop_{index}_end\n\n", index = self.loop_counters[self.loop_counters.len() - 1]);
+                self.asm += &format!(
+                    " jmp loop_{index}_end\n\n",
+                    index = self.loop_counters[self.loop_counters.len() - 1]
+                );
             }
             Node::Continue => {
-                self.asm += &format!(" jmp loop_{index}\n\n", index = self.loop_counters[self.loop_counters.len() - 1]);
+                self.asm += &format!(
+                    " jmp loop_{index}\n\n",
+                    index = self.loop_counters[self.loop_counters.len() - 1]
+                );
             }
             Node::Semicolon => unreachable!("should not be present in the ast"),
         }
@@ -1451,6 +1472,546 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         }
     }
 
+    fn binary_expression_dst_and_asm(
+        lhs: &'ast Expression<'src>,
+        op_position: Position,
+        op: Op,
+        rhs: &'ast Expression<'src>,
+    ) -> (Dst, Dst, Cow<'static, str>) {
+        match (lhs.typ(), rhs.typ()) {
+            (Type::Str, Type::Str) => match op {
+                Op::EqualsEquals => (
+                    Dst::LenPtr { len: Rdi, ptr: Rsi },
+                    Dst::LenPtr { len: Rdx, ptr: Rcx },
+                    " call str_eq\
+                    \n movzx rdi, al"
+                        .into(),
+                ),
+                Op::NotEquals => (
+                    Dst::LenPtr { len: Rdi, ptr: Rsi },
+                    Dst::LenPtr { len: Rdx, ptr: Rcx },
+                    " call str_eq\
+                    \n xor rax, 1\
+                    \n movzx rdi, al"
+                        .into(),
+                ),
+                Op::Greater => (
+                    Dst::LenPtr { len: Rdi, ptr: Rsi },
+                    Dst::LenPtr { len: Rdx, ptr: Rcx },
+                    " call str_cmp\
+                    \n cmp rax, EQUAL\
+                    \n mov rdi, false\
+                    \n setg dil"
+                        .into(),
+                ),
+                Op::GreaterOrEquals => (
+                    Dst::LenPtr { len: Rdi, ptr: Rsi },
+                    Dst::LenPtr { len: Rdx, ptr: Rcx },
+                    " call str_cmp\
+                    \n cmp rax, EQUAL\
+                    \n mov rdi, false\
+                    \n setge dil"
+                        .into(),
+                ),
+                Op::Less => (
+                    Dst::LenPtr { len: Rdi, ptr: Rsi },
+                    Dst::LenPtr { len: Rdx, ptr: Rcx },
+                    " call str_cmp\
+                    \n cmp rax, EQUAL\
+                    \n mov rdi, false\
+                    \n setl dil"
+                        .into(),
+                ),
+                Op::LessOrEquals => (
+                    Dst::LenPtr { len: Rdi, ptr: Rsi },
+                    Dst::LenPtr { len: Rdx, ptr: Rcx },
+                    " call str_cmp\
+                    \n cmp rax, EQUAL\
+                    \n mov rdi, false\
+                    \n setle dil"
+                        .into(),
+                ),
+                Op::Compare => (
+                    Dst::LenPtr { len: Rdi, ptr: Rsi },
+                    Dst::LenPtr { len: Rdx, ptr: Rcx },
+                    " call str_cmp\
+                    \n mov rdi, rax"
+                        .into(),
+                ),
+                Op::Pow
+                | Op::PowEquals
+                | Op::Times
+                | Op::TimesEquals
+                | Op::Divide
+                | Op::DivideEquals
+                | Op::Remainder
+                | Op::RemainderEquals
+                | Op::Plus
+                | Op::PlusEquals
+                | Op::Minus
+                | Op::MinusEquals
+                | Op::And
+                | Op::AndEquals
+                | Op::BitAnd
+                | Op::BitAndEquals
+                | Op::Or
+                | Op::OrEquals
+                | Op::BitOr
+                | Op::BitOrEquals
+                | Op::BitXor
+                | Op::BitXorEquals
+                | Op::LeftShift
+                | Op::LeftShiftEquals
+                | Op::RightShift
+                | Op::RightShiftEquals => {
+                    unreachable!("math operation not allowed on strings")
+                }
+                Op::Equals => unreachable!("should not be present in the ast"),
+                Op::Not => unreachable!("should only appear in unary expressions"),
+            },
+            // Note: we can only compare non-empty arrays of the same type and length, so
+            // its safe to only match on the first array type and not to check for empty arrays
+            (Type::Array { typ, .. }, Type::Array { .. }) => match op {
+                Op::EqualsEquals => {
+                    let eq_fn = match &*typ {
+                        Type::Int => {
+                            " mov rdi, rcx\
+                            \n mov rcx, rdx\
+                            \n repe cmpsq\
+                            \n mov rdi, false\
+                            \n sete dil"
+                        }
+                        Type::Ascii | Type::Bool => {
+                            " mov rdi, rcx\
+                            \n mov rcx, rdx\
+                            \n repe cmpsb\
+                            \n mov rdi, false\
+                            \n sete dil"
+                        }
+                        Type::Str => {
+                            " call str_array_eq\
+                            \n movzx rdi, al"
+                        }
+                        Type::Array { .. } => {
+                            unreachable!("nested arrays not supported yet")
+                        }
+                        Type::Infer => {
+                            unreachable!("should have been coerced to a concrete type")
+                        }
+                    };
+
+                    (
+                        Dst::LenPtr { len: Rdi, ptr: Rsi },
+                        Dst::LenPtr { len: Rdx, ptr: Rcx },
+                        eq_fn.into(),
+                    )
+                }
+                Op::NotEquals => {
+                    let eq_fn = match &*typ {
+                        Type::Int => {
+                            " mov rdi, rcx\
+                            \n mov rcx, rdx\
+                            \n repe cmpsq\
+                            \n mov rdi, false\
+                            \n setne dil"
+                        }
+                        Type::Ascii | Type::Bool => {
+                            " mov rdi, rcx\
+                            \n mov rcx, rdx\
+                            \n repe cmpsb\
+                            \n mov rdi, false\
+                            \n setne dil"
+                        }
+                        Type::Str => {
+                            " cmp str_array_eq\
+                            \n xor rax, 1\
+                            \n movzx rdi, al"
+                        }
+                        Type::Array { .. } => {
+                            unreachable!("nested arrays not supported yet")
+                        }
+                        Type::Infer => {
+                            unreachable!("should have been coerced to a concrete type")
+                        }
+                    };
+
+                    (
+                        Dst::LenPtr { len: Rdi, ptr: Rsi },
+                        Dst::LenPtr { len: Rdx, ptr: Rcx },
+                        eq_fn.into(),
+                    )
+                }
+                Op::Greater => {
+                    let eq_fn = match &*typ {
+                        Type::Int => {
+                            " mov rdi, rcx\
+                            \n mov rcx, rdx\
+                            \n repe cmpsq\
+                            \n mov rdi, false\
+                            \n setg dil"
+                        }
+                        Type::Ascii | Type::Bool => {
+                            " mov rdi, rcx\
+                            \n mov rcx, rdx\
+                            \n repe cmpsb\
+                            \n mov rdi, false\
+                            \n setg dil"
+                        }
+                        Type::Str => {
+                            " call str_array_cmp\
+                            \n cmp rax, EQUAL\
+                            \n mov rdi, false\
+                            \n setg dil"
+                        }
+                        Type::Array { .. } => {
+                            unreachable!("nested arrays not supported yet")
+                        }
+                        Type::Infer => {
+                            unreachable!("should have been coerced to a concrete type")
+                        }
+                    };
+
+                    (
+                        Dst::LenPtr { len: Rdi, ptr: Rsi },
+                        Dst::LenPtr { len: Rdx, ptr: Rcx },
+                        eq_fn.into(),
+                    )
+                }
+                Op::GreaterOrEquals => {
+                    let eq_fn = match &*typ {
+                        Type::Int => {
+                            " mov rdi, rcx\
+                            \n mov rcx, rdx\
+                            \n repe cmpsq\
+                            \n mov rdi, false\
+                            \n setge dil"
+                        }
+                        Type::Ascii | Type::Bool => {
+                            " mov rdi, rcx\
+                            \n mov rcx, rdx\
+                            \n repe cmpsb\
+                            \n mov rdi, false\
+                            \n setge dil"
+                        }
+                        Type::Str => {
+                            " call str_array_cmp\
+                            \n cmp rax, EQUAL\
+                            \n mov rdi, false\
+                            \n setge dil"
+                        }
+                        Type::Array { .. } => {
+                            unreachable!("nested arrays not supported yet")
+                        }
+                        Type::Infer => {
+                            unreachable!("should have been coerced to a concrete type")
+                        }
+                    };
+
+                    (
+                        Dst::LenPtr { len: Rdi, ptr: Rsi },
+                        Dst::LenPtr { len: Rdx, ptr: Rcx },
+                        eq_fn.into(),
+                    )
+                }
+                Op::Less => {
+                    let eq_fn = match &*typ {
+                        Type::Int => {
+                            " mov rdi, rcx\
+                            \n mov rcx, rdx\
+                            \n repe cmpsq\
+                            \n mov rdi, false\
+                            \n setl dil"
+                        }
+                        Type::Ascii | Type::Bool => {
+                            " mov rdi, rcx\
+                            \n mov rcx, rdx\
+                            \n repe cmpsb\
+                            \n mov rdi, false\
+                            \n setl dil"
+                        }
+                        Type::Str => {
+                            " call str_array_cmp\
+                            \n cmp rax, EQUAL\
+                            \n mov rdi, false\
+                            \n setl dil"
+                        }
+                        Type::Array { .. } => {
+                            unreachable!("nested arrays not supported yet")
+                        }
+                        Type::Infer => {
+                            unreachable!("should have been coerced to a concrete type")
+                        }
+                    };
+
+                    (
+                        Dst::LenPtr { len: Rdi, ptr: Rsi },
+                        Dst::LenPtr { len: Rdx, ptr: Rcx },
+                        eq_fn.into(),
+                    )
+                }
+                Op::LessOrEquals => {
+                    let eq_fn = match &*typ {
+                        Type::Int => {
+                            " mov rdi, rcx\
+                            \n mov rcx, rdx\
+                            \n repe cmpsq\
+                            \n mov rdi, false\
+                            \n setle dil"
+                        }
+                        Type::Ascii | Type::Bool => {
+                            " mov rdi, rcx\
+                            \n mov rcx, rdx\
+                            \n repe cmpsb\
+                            \n mov rdi, false\
+                            \n setle dil"
+                        }
+                        Type::Str => {
+                            " call str_array_cmp\
+                            \n cmp rax, EQUAL\
+                            \n mov rdi, false\
+                            \n setle dil"
+                        }
+                        Type::Array { .. } => {
+                            unreachable!("nested arrays not supported yet")
+                        }
+                        Type::Infer => {
+                            unreachable!("should have been coerced to a concrete type")
+                        }
+                    };
+
+                    (
+                        Dst::LenPtr { len: Rdi, ptr: Rsi },
+                        Dst::LenPtr { len: Rdx, ptr: Rcx },
+                        eq_fn.into(),
+                    )
+                }
+                Op::Compare => {
+                    let eq_fn = match &*typ {
+                        Type::Int => {
+                            " mov rdi, rcx\
+                            \n mov rcx, rdx\
+                            \n repe cmpsq\
+                            \n mov rdi, LESS\
+                            \n mov rsi, EQUAL\
+                            \n cmove rdi, rsi\
+                            \n mov rsi, GREATER\
+                            \n cmovg rdi, rsi"
+                        }
+                        Type::Ascii | Type::Bool => {
+                            " mov rdi, rcx\
+                            \n mov rcx, rdx\
+                            \n repe cmpsb\
+                            \n mov rdi, LESS\
+                            \n mov rsi, EQUAL\
+                            \n cmove rdi, rsi\
+                            \n mov rsi, GREATER\
+                            \n cmovg rdi, rsi"
+                        }
+                        Type::Str => {
+                            " call str_array_cmp\
+                            \n mov rdi, rax"
+                        }
+                        Type::Array { .. } => {
+                            unreachable!("nested arrays not supported yet")
+                        }
+                        Type::Infer => {
+                            unreachable!("should have been coerced to a concrete type")
+                        }
+                    };
+
+                    (
+                        Dst::LenPtr { len: Rdi, ptr: Rsi },
+                        Dst::LenPtr { len: Rdx, ptr: Rcx },
+                        eq_fn.into(),
+                    )
+                }
+                Op::Pow
+                | Op::PowEquals
+                | Op::Times
+                | Op::TimesEquals
+                | Op::Divide
+                | Op::DivideEquals
+                | Op::Remainder
+                | Op::RemainderEquals
+                | Op::Plus
+                | Op::PlusEquals
+                | Op::Minus
+                | Op::MinusEquals
+                | Op::And
+                | Op::AndEquals
+                | Op::BitAnd
+                | Op::BitAndEquals
+                | Op::Or
+                | Op::OrEquals
+                | Op::BitOr
+                | Op::BitOrEquals
+                | Op::BitXor
+                | Op::BitXorEquals
+                | Op::LeftShift
+                | Op::LeftShiftEquals
+                | Op::RightShift
+                | Op::RightShiftEquals => {
+                    unreachable!("math operation not allowed on arrays")
+                }
+                Op::Equals => unreachable!("should not be present in the ast"),
+                Op::Not => unreachable!("should only appear in unary expressions"),
+            },
+            (Type::Int | Type::Bool | Type::Ascii, Type::Int | Type::Bool | Type::Ascii) => {
+                match op {
+                    Op::Pow | Op::PowEquals => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        format!(
+                            " mov rdx, {line}\
+                        \n mov rcx, {col}\
+                        \n call assert_exponent_is_positive\
+                        \n call int_pow\
+                        \n mov rdi, rax",
+                            line = op_position.line,
+                            col = op_position.col
+                        )
+                        .into(),
+                    ),
+                    Op::Times | Op::TimesEquals => {
+                        (Dst::Reg(Rdi), Dst::Reg(Rsi), " imul rdi, rsi".into())
+                    }
+                    Op::Divide | Op::DivideEquals => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        format!(
+                            " mov rdx, {line}\
+                        \n mov rcx, {col}\
+                        \n call assert_denominator_not_zero\
+                        \n mov rax, rdi\
+                        \n xor rdx, rdx\
+                        \n idiv rsi\
+                        \n mov rdi, rax",
+                            line = op_position.line,
+                            col = op_position.col
+                        )
+                        .into(),
+                    ),
+                    Op::Remainder | Op::RemainderEquals => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        format!(
+                            " mov rdx, {line}\
+                        \n mov rcx, {col}\
+                        \n call assert_modulo_not_zero\
+                        \n mov rax, rdi\
+                        \n xor rdx, rdx\
+                        \n idiv rsi\
+                        \n mov rdi, rdx",
+                            line = op_position.line,
+                            col = op_position.col,
+                        )
+                        .into(),
+                    ),
+                    Op::Plus | Op::PlusEquals => {
+                        (Dst::Reg(Rdi), Dst::Reg(Rsi), " add rdi, rsi".into())
+                    }
+                    Op::Minus | Op::MinusEquals => {
+                        (Dst::Reg(Rdi), Dst::Reg(Rsi), " sub rdi, rsi".into())
+                    }
+                    Op::EqualsEquals => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        " cmp rdi, rsi\
+                    \n mov rdi, false\
+                    \n sete dil"
+                            .into(),
+                    ),
+                    Op::NotEquals => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        " cmp rdi, rsi\
+                    \n mov rdi, false\
+                    \n setne dil"
+                            .into(),
+                    ),
+                    Op::Greater => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        " cmp rdi, rsi\
+                    \n mov rdi, false\
+                    \n setg dil"
+                            .into(),
+                    ),
+                    Op::GreaterOrEquals => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        " cmp rdi, rsi\
+                    \n mov rdi, false\
+                    \n setge dil"
+                            .into(),
+                    ),
+                    Op::Less => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        " cmp rdi, rsi\
+                    \n mov rdi, false\
+                    \n setl dil"
+                            .into(),
+                    ),
+                    Op::LessOrEquals => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        " cmp rdi, rsi\
+                    \n mov rdi, false\
+                    \n setle dil"
+                            .into(),
+                    ),
+                    Op::Compare => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        " cmp rdi, rsi\
+                    \n mov rdi, LESS\
+                    \n mov rsi, EQUAL\
+                    \n cmove rdi, rsi\
+                    \n mov rsi, GREATER\
+                    \n cmovg rdi, rsi"
+                            .into(),
+                    ),
+                    Op::And | Op::AndEquals | Op::BitAnd | Op::BitAndEquals => {
+                        (Dst::Reg(Rdi), Dst::Reg(Rsi), " and rdi, rsi".into())
+                    }
+                    Op::Or | Op::OrEquals | Op::BitOr | Op::BitOrEquals => {
+                        (Dst::Reg(Rdi), Dst::Reg(Rsi), " or rdi, rsi".into())
+                    }
+
+                    Op::BitXor | Op::BitXorEquals => {
+                        (Dst::Reg(Rdi), Dst::Reg(Rsi), " xor rdi, rsi".into())
+                    }
+                    Op::LeftShift | Op::LeftShiftEquals => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        " mov cl, sil\
+                    \n shl rdi, cl"
+                            .into(),
+                    ),
+                    Op::RightShift | Op::RightShiftEquals => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        " mov cl, sil\
+                    \n shr rdi, cl"
+                            .into(),
+                    ),
+                    Op::Equals => unreachable!("should not be present in the ast"),
+                    Op::Not => unreachable!("should only appear in unary expressions"),
+                }
+            }
+            (Type::Str, _) | (_, Type::Str) => {
+                unreachable!("cannot compare strings and non strings")
+            }
+            (Type::Array { .. }, _) | (_, Type::Array { .. }) => {
+                unreachable!("cannot compare arrays and non arrays")
+            }
+            (Type::Infer, _) | (_, Type::Infer) => {
+                unreachable!("should have been coerced to a concrete type")
+            }
+        }
+    }
+
     fn binary_expression(
         &mut self,
         lhs: &'ast Expression<'src>,
@@ -1482,7 +2043,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n pop {lhs_reg}\n\n"
                 );
             }
-            (Dst::LenPtr { len: rhs_len, ptr: rhs_ptr }, Dst::LenPtr { len: lhs_len, ptr: lhs_ptr }) => {
+            (
+                Dst::LenPtr { len: rhs_len, ptr: rhs_ptr },
+                Dst::LenPtr { len: lhs_len, ptr: lhs_ptr },
+            ) => {
                 self.asm += &format!(
                     " mov {rhs_len}, {lhs_len}\
                     \n mov {rhs_ptr}, {lhs_ptr}\
@@ -1538,464 +2102,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             // sub rdx, rcx
             // dec rdx
             Expression::Binary { lhs, op_position, op, rhs } => {
-                let (lhs_dst, rhs_dst, op_asm): (Dst, Dst, Cow<'_, str>) = match (lhs.typ(), rhs.typ()) {
-                    (Type::Str, Type::Str) => match op {
-                        Op::EqualsEquals => (
-                            Dst::LenPtr { len: Rdi, ptr: Rsi },
-                            Dst::LenPtr { len: Rdx, ptr: Rcx },
-                            " call str_eq\
-                            \n movzx rdi, al"
-                                .into(),
-                        ),
-                        Op::NotEquals => (
-                            Dst::LenPtr { len: Rdi, ptr: Rsi },
-                            Dst::LenPtr { len: Rdx, ptr: Rcx },
-                            " call str_eq\
-                            \n xor rax, 1\
-                            \n movzx rdi, al"
-                                .into(),
-                        ),
-                        Op::Greater => (
-                            Dst::LenPtr { len: Rdi, ptr: Rsi },
-                            Dst::LenPtr { len: Rdx, ptr: Rcx },
-                            " call str_cmp\
-                            \n cmp rax, EQUAL\
-                            \n mov rdi, false\
-                            \n setg dil"
-                                .into(),
-                        ),
-                        Op::GreaterOrEquals => (
-                            Dst::LenPtr { len: Rdi, ptr: Rsi },
-                            Dst::LenPtr { len: Rdx, ptr: Rcx },
-                            " call str_cmp\
-                            \n cmp rax, EQUAL\
-                            \n mov rdi, false\
-                            \n setge dil"
-                                .into(),
-                        ),
-                        Op::Less => (
-                            Dst::LenPtr { len: Rdi, ptr: Rsi },
-                            Dst::LenPtr { len: Rdx, ptr: Rcx },
-                            " call str_cmp\
-                            \n cmp rax, EQUAL\
-                            \n mov rdi, false\
-                            \n setl dil"
-                                .into(),
-                        ),
-                        Op::LessOrEquals => (
-                            Dst::LenPtr { len: Rdi, ptr: Rsi },
-                            Dst::LenPtr { len: Rdx, ptr: Rcx },
-                            " call str_cmp\
-                            \n cmp rax, EQUAL\
-                            \n mov rdi, false\
-                            \n setle dil"
-                                .into(),
-                        ),
-                        Op::Compare => (
-                            Dst::LenPtr { len: Rdi, ptr: Rsi },
-                            Dst::LenPtr { len: Rdx, ptr: Rcx },
-                            " call str_cmp\
-                            \n mov rdi, rax"
-                                .into(),
-                        ),
-                        Op::Pow
-                        | Op::PowEquals
-                        | Op::Times
-                        | Op::TimesEquals
-                        | Op::Divide
-                        | Op::DivideEquals
-                        | Op::Remainder
-                        | Op::RemainderEquals
-                        | Op::Plus
-                        | Op::PlusEquals
-                        | Op::Minus
-                        | Op::MinusEquals
-                        | Op::And
-                        | Op::AndEquals
-                        | Op::BitAnd
-                        | Op::BitAndEquals
-                        | Op::Or
-                        | Op::OrEquals
-                        | Op::BitOr
-                        | Op::BitOrEquals
-                        | Op::BitXor
-                        | Op::BitXorEquals
-                        | Op::LeftShift
-                        | Op::LeftShiftEquals
-                        | Op::RightShift
-                        | Op::RightShiftEquals => unreachable!("math operation not allowed on strings"),
-                        Op::Equals => unreachable!("should not be present in the ast"),
-                        Op::Not => unreachable!("should only appear in unary expressions"),
-                    },
-                    // Note: we can only compare non-empty arrays of the same type and length, so
-                    // its safe to only match on the first array type and not to check for empty arrays
-                    (Type::Array { typ, .. }, Type::Array { .. }) => match op {
-                        Op::EqualsEquals => {
-                            let eq_fn = match &*typ {
-                                Type::Int => {
-                                    " mov rdi, rcx\
-                                    \n mov rcx, rdx\
-                                    \n repe cmpsq\
-                                    \n mov rdi, false\
-                                    \n sete dil"
-                                }
-                                Type::Ascii | Type::Bool => {
-                                    " mov rdi, rcx\
-                                    \n mov rcx, rdx\
-                                    \n repe cmpsb\
-                                    \n mov rdi, false\
-                                    \n sete dil"
-                                }
-                                Type::Str => {
-                                    " call str_array_eq\
-                                    \n movzx rdi, al"
-                                }
-                                Type::Array { .. } => unreachable!("nested arrays not supported yet"),
-                                Type::Infer => unreachable!("should have been coerced to a concrete type"),
-                            };
-
-                            (Dst::LenPtr { len: Rdi, ptr: Rsi }, Dst::LenPtr { len: Rdx, ptr: Rcx }, eq_fn.into())
-                        }
-                        Op::NotEquals => {
-                            let eq_fn = match &*typ {
-                                Type::Int => {
-                                    " mov rdi, rcx\
-                                    \n mov rcx, rdx\
-                                    \n repe cmpsq\
-                                    \n mov rdi, false\
-                                    \n setne dil"
-                                }
-                                Type::Ascii | Type::Bool => {
-                                    " mov rdi, rcx\
-                                    \n mov rcx, rdx\
-                                    \n repe cmpsb\
-                                    \n mov rdi, false\
-                                    \n setne dil"
-                                }
-                                Type::Str => {
-                                    " cmp str_array_eq\
-                                    \n xor rax, 1\
-                                    \n movzx rdi, al"
-                                }
-                                Type::Array { .. } => unreachable!("nested arrays not supported yet"),
-                                Type::Infer => unreachable!("should have been coerced to a concrete type"),
-                            };
-
-                            (Dst::LenPtr { len: Rdi, ptr: Rsi }, Dst::LenPtr { len: Rdx, ptr: Rcx }, eq_fn.into())
-                        }
-                        Op::Greater => {
-                            let eq_fn = match &*typ {
-                                Type::Int => {
-                                    " mov rdi, rcx\
-                                    \n mov rcx, rdx\
-                                    \n repe cmpsq\
-                                    \n mov rdi, false\
-                                    \n setg dil"
-                                }
-                                Type::Ascii | Type::Bool => {
-                                    " mov rdi, rcx\
-                                    \n mov rcx, rdx\
-                                    \n repe cmpsb\
-                                    \n mov rdi, false\
-                                    \n setg dil"
-                                }
-                                Type::Str => {
-                                    " call str_array_cmp\
-                                    \n cmp rax, EQUAL\
-                                    \n mov rdi, false\
-                                    \n setg dil"
-                                }
-                                Type::Array { .. } => unreachable!("nested arrays not supported yet"),
-                                Type::Infer => unreachable!("should have been coerced to a concrete type"),
-                            };
-
-                            (Dst::LenPtr { len: Rdi, ptr: Rsi }, Dst::LenPtr { len: Rdx, ptr: Rcx }, eq_fn.into())
-                        }
-                        Op::GreaterOrEquals => {
-                            let eq_fn = match &*typ {
-                                Type::Int => {
-                                    " mov rdi, rcx\
-                                    \n mov rcx, rdx\
-                                    \n repe cmpsq\
-                                    \n mov rdi, false\
-                                    \n setge dil"
-                                }
-                                Type::Ascii | Type::Bool => {
-                                    " mov rdi, rcx\
-                                    \n mov rcx, rdx\
-                                    \n repe cmpsb\
-                                    \n mov rdi, false\
-                                    \n setge dil"
-                                }
-                                Type::Str => {
-                                    " call str_array_cmp\
-                                    \n cmp rax, EQUAL\
-                                    \n mov rdi, false\
-                                    \n setge dil"
-                                }
-                                Type::Array { .. } => unreachable!("nested arrays not supported yet"),
-                                Type::Infer => unreachable!("should have been coerced to a concrete type"),
-                            };
-
-                            (Dst::LenPtr { len: Rdi, ptr: Rsi }, Dst::LenPtr { len: Rdx, ptr: Rcx }, eq_fn.into())
-                        }
-                        Op::Less => {
-                            let eq_fn = match &*typ {
-                                Type::Int => {
-                                    " mov rdi, rcx\
-                                    \n mov rcx, rdx\
-                                    \n repe cmpsq\
-                                    \n mov rdi, false\
-                                    \n setl dil"
-                                }
-                                Type::Ascii | Type::Bool => {
-                                    " mov rdi, rcx\
-                                    \n mov rcx, rdx\
-                                    \n repe cmpsb\
-                                    \n mov rdi, false\
-                                    \n setl dil"
-                                }
-                                Type::Str => {
-                                    " call str_array_cmp\
-                                    \n cmp rax, EQUAL\
-                                    \n mov rdi, false\
-                                    \n setl dil"
-                                }
-                                Type::Array { .. } => unreachable!("nested arrays not supported yet"),
-                                Type::Infer => unreachable!("should have been coerced to a concrete type"),
-                            };
-
-                            (Dst::LenPtr { len: Rdi, ptr: Rsi }, Dst::LenPtr { len: Rdx, ptr: Rcx }, eq_fn.into())
-                        }
-                        Op::LessOrEquals => {
-                            let eq_fn = match &*typ {
-                                Type::Int => {
-                                    " mov rdi, rcx\
-                                    \n mov rcx, rdx\
-                                    \n repe cmpsq\
-                                    \n mov rdi, false\
-                                    \n setle dil"
-                                }
-                                Type::Ascii | Type::Bool => {
-                                    " mov rdi, rcx\
-                                    \n mov rcx, rdx\
-                                    \n repe cmpsb\
-                                    \n mov rdi, false\
-                                    \n setle dil"
-                                }
-                                Type::Str => {
-                                    " call str_array_cmp\
-                                    \n cmp rax, EQUAL\
-                                    \n mov rdi, false\
-                                    \n setle dil"
-                                }
-                                Type::Array { .. } => unreachable!("nested arrays not supported yet"),
-                                Type::Infer => unreachable!("should have been coerced to a concrete type"),
-                            };
-
-                            (Dst::LenPtr { len: Rdi, ptr: Rsi }, Dst::LenPtr { len: Rdx, ptr: Rcx }, eq_fn.into())
-                        }
-                        Op::Compare => {
-                            let eq_fn = match &*typ {
-                                Type::Int => {
-                                    " mov rdi, rcx\
-                                    \n mov rcx, rdx\
-                                    \n repe cmpsq\
-                                    \n mov rdi, LESS\
-                                    \n mov rsi, EQUAL\
-                                    \n cmove rdi, rsi\
-                                    \n mov rsi, GREATER\
-                                    \n cmovg rdi, rsi"
-                                }
-                                Type::Ascii | Type::Bool => {
-                                    " mov rdi, rcx\
-                                    \n mov rcx, rdx\
-                                    \n repe cmpsb\
-                                    \n mov rdi, LESS\
-                                    \n mov rsi, EQUAL\
-                                    \n cmove rdi, rsi\
-                                    \n mov rsi, GREATER\
-                                    \n cmovg rdi, rsi"
-                                }
-                                Type::Str => {
-                                    " call str_array_cmp\
-                                    \n mov rdi, rax"
-                                }
-                                Type::Array { .. } => unreachable!("nested arrays not supported yet"),
-                                Type::Infer => unreachable!("should have been coerced to a concrete type"),
-                            };
-
-                            (Dst::LenPtr { len: Rdi, ptr: Rsi }, Dst::LenPtr { len: Rdx, ptr: Rcx }, eq_fn.into())
-                        }
-                        Op::Pow
-                        | Op::PowEquals
-                        | Op::Times
-                        | Op::TimesEquals
-                        | Op::Divide
-                        | Op::DivideEquals
-                        | Op::Remainder
-                        | Op::RemainderEquals
-                        | Op::Plus
-                        | Op::PlusEquals
-                        | Op::Minus
-                        | Op::MinusEquals
-                        | Op::And
-                        | Op::AndEquals
-                        | Op::BitAnd
-                        | Op::BitAndEquals
-                        | Op::Or
-                        | Op::OrEquals
-                        | Op::BitOr
-                        | Op::BitOrEquals
-                        | Op::BitXor
-                        | Op::BitXorEquals
-                        | Op::LeftShift
-                        | Op::LeftShiftEquals
-                        | Op::RightShift
-                        | Op::RightShiftEquals => unreachable!("math operation not allowed on arrays"),
-                        Op::Equals => unreachable!("should not be present in the ast"),
-                        Op::Not => unreachable!("should only appear in unary expressions"),
-                    },
-                    (Type::Int | Type::Bool | Type::Ascii, Type::Int | Type::Bool | Type::Ascii) => match op {
-                        Op::Pow | Op::PowEquals => (
-                            Dst::Reg(Rdi),
-                            Dst::Reg(Rsi),
-                            format!(
-                                " mov rdx, {line}\
-                                \n mov rcx, {col}\
-                                \n call assert_exponent_is_positive\
-                                \n call int_pow\
-                                \n mov rdi, rax",
-                                line = op_position.line,
-                                col = op_position.col
-                            )
-                            .into(),
-                        ),
-                        Op::Times | Op::TimesEquals => (Dst::Reg(Rdi), Dst::Reg(Rsi), " imul rdi, rsi".into()),
-                        Op::Divide | Op::DivideEquals => (
-                            Dst::Reg(Rdi),
-                            Dst::Reg(Rsi),
-                            format!(
-                                " mov rdx, {line}\
-                                \n mov rcx, {col}\
-                                \n call assert_denominator_not_zero\
-                                \n mov rax, rdi\
-                                \n xor rdx, rdx\
-                                \n idiv rsi\
-                                \n mov rdi, rax",
-                                line = op_position.line,
-                                col = op_position.col
-                            )
-                            .into(),
-                        ),
-                        Op::Remainder | Op::RemainderEquals => (
-                            Dst::Reg(Rdi),
-                            Dst::Reg(Rsi),
-                            format!(
-                                " mov rdx, {line}\
-                                \n mov rcx, {col}\
-                                \n call assert_modulo_not_zero\
-                                \n mov rax, rdi\
-                                \n xor rdx, rdx\
-                                \n idiv rsi\
-                                \n mov rdi, rdx",
-                                line = op_position.line,
-                                col = op_position.col,
-                            )
-                            .into(),
-                        ),
-                        Op::Plus | Op::PlusEquals => (Dst::Reg(Rdi), Dst::Reg(Rsi), " add rdi, rsi".into()),
-                        Op::Minus | Op::MinusEquals => (Dst::Reg(Rdi), Dst::Reg(Rsi), " sub rdi, rsi".into()),
-                        Op::EqualsEquals => (
-                            Dst::Reg(Rdi),
-                            Dst::Reg(Rsi),
-                            " cmp rdi, rsi\
-                            \n mov rdi, false\
-                            \n sete dil"
-                                .into(),
-                        ),
-                        Op::NotEquals => (
-                            Dst::Reg(Rdi),
-                            Dst::Reg(Rsi),
-                            " cmp rdi, rsi\
-                            \n mov rdi, false\
-                            \n setne dil"
-                                .into(),
-                        ),
-                        Op::Greater => (
-                            Dst::Reg(Rdi),
-                            Dst::Reg(Rsi),
-                            " cmp rdi, rsi\
-                            \n mov rdi, false\
-                            \n setg dil"
-                                .into(),
-                        ),
-                        Op::GreaterOrEquals => (
-                            Dst::Reg(Rdi),
-                            Dst::Reg(Rsi),
-                            " cmp rdi, rsi\
-                            \n mov rdi, false\
-                            \n setge dil"
-                                .into(),
-                        ),
-                        Op::Less => (
-                            Dst::Reg(Rdi),
-                            Dst::Reg(Rsi),
-                            " cmp rdi, rsi\
-                            \n mov rdi, false\
-                            \n setl dil"
-                                .into(),
-                        ),
-                        Op::LessOrEquals => (
-                            Dst::Reg(Rdi),
-                            Dst::Reg(Rsi),
-                            " cmp rdi, rsi\
-                            \n mov rdi, false\
-                            \n setle dil"
-                                .into(),
-                        ),
-                        Op::Compare => (
-                            Dst::Reg(Rdi),
-                            Dst::Reg(Rsi),
-                            " cmp rdi, rsi\
-                            \n mov rdi, LESS\
-                            \n mov rsi, EQUAL\
-                            \n cmove rdi, rsi\
-                            \n mov rsi, GREATER\
-                            \n cmovg rdi, rsi"
-                                .into(),
-                        ),
-                        Op::And | Op::AndEquals | Op::BitAnd | Op::BitAndEquals => {
-                            (Dst::Reg(Rdi), Dst::Reg(Rsi), " and rdi, rsi".into())
-                        }
-                        Op::Or | Op::OrEquals | Op::BitOr | Op::BitOrEquals => {
-                            (Dst::Reg(Rdi), Dst::Reg(Rsi), " or rdi, rsi".into())
-                        }
-
-                        Op::BitXor | Op::BitXorEquals => (Dst::Reg(Rdi), Dst::Reg(Rsi), " xor rdi, rsi".into()),
-                        Op::LeftShift | Op::LeftShiftEquals => (
-                            Dst::Reg(Rdi),
-                            Dst::Reg(Rsi),
-                            " mov cl, sil\
-                            \n shl rdi, cl"
-                                .into(),
-                        ),
-                        Op::RightShift | Op::RightShiftEquals => (
-                            Dst::Reg(Rdi),
-                            Dst::Reg(Rsi),
-                            " mov cl, sil\
-                            \n shr rdi, cl"
-                                .into(),
-                        ),
-                        Op::Equals => unreachable!("should not be present in the ast"),
-                        Op::Not => unreachable!("should only appear in unary expressions"),
-                    },
-                    (Type::Str, _) | (_, Type::Str) => unreachable!("cannot compare strings and non strings"),
-                    (Type::Array { .. }, _) | (_, Type::Array { .. }) => {
-                        unreachable!("cannot compare arrays and non arrays")
-                    }
-                    (Type::Infer, _) | (_, Type::Infer) => unreachable!("should have been coerced to a concrete type"),
-                };
+                let (lhs_dst, rhs_dst, op_asm) =
+                    Self::binary_expression_dst_and_asm(lhs, *op_position, *op, rhs);
 
                 self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
 
@@ -2010,7 +2118,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Dst::LenPtr { .. } => unreachable!(),
                     },
                     Type::Ascii | Type::Bool => match dst {
-                        Dst::Reg(reg) => self.asm += &format!(" movzx {reg}, byte [rbp + {var_offset}]\n"),
+                        Dst::Reg(reg) => {
+                            self.asm += &format!(" movzx {reg}, byte [rbp + {var_offset}]\n")
+                        }
                         Dst::LenPtr { .. } => unreachable!(),
                     },
                     Type::Str => match dst {
@@ -2091,9 +2201,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         );
 
                         match typ {
-                            Type::Int => self.asm += &format!(" mov rdi, [rbp + {var_offset} + rdi * 8]\n\n"),
+                            Type::Int => {
+                                self.asm += &format!(" mov rdi, [rbp + {var_offset} + rdi * 8]\n\n")
+                            }
                             Type::Ascii | Type::Bool => {
-                                self.asm += &format!(" movzx rdi, byte [rbp + {var_offset} + rdi]\n\n");
+                                self.asm +=
+                                    &format!(" movzx rdi, byte [rbp + {var_offset} + rdi]\n\n");
                             }
                             Type::Str => {
                                 self.asm += &format!(
@@ -2104,8 +2217,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     ptr_offset = Type::Int.size()
                                 );
                             }
-                            Type::Array { .. } => unreachable!("arrays cannot appear in expressions"),
-                            Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                            Type::Array { .. } => {
+                                unreachable!("arrays cannot appear in expressions")
+                            }
+                            Type::Infer => {
+                                unreachable!("should have been coerced to a concrete type")
+                            }
                         }
                     }
                     Type::Int => {
@@ -2123,7 +2240,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         );
                     }
                     Type::Bool | Type::Ascii => {
-                        unreachable!("only arrays, strings and integers are allowed in index espressions")
+                        unreachable!(
+                            "only arrays, strings and integers are allowed in index espressions"
+                        )
                     }
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 }
@@ -2193,7 +2312,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     | Op::LeftShift
                     | Op::LeftShiftEquals
                     | Op::RightShift
-                    | Op::RightShiftEquals => unreachable!("non-boolean operators should not appear here"),
+                    | Op::RightShiftEquals => {
+                        unreachable!("non-boolean operators should not appear here")
+                    }
                 }
 
                 self.asm += &format!(" {false_tag}\n\n");
@@ -2289,7 +2410,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     | Op::LeftShift
                     | Op::LeftShiftEquals
                     | Op::RightShift
-                    | Op::RightShiftEquals => unreachable!("non-boolean operators should not appear here"),
+                    | Op::RightShiftEquals => {
+                        unreachable!("non-boolean operators should not appear here")
+                    }
                 }
 
                 self.asm += &format!(" {true_tag}\n\n");
@@ -2332,8 +2455,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         \n mov [rbp + {dst_offset}], rdi\n\n"
                     );
                 }
-                Literal::Ascii(ascii) => self.asm += &format!(" mov byte [rbp + {dst_offset}], {ascii}\n\n"),
-                Literal::Bool(value) => self.asm += &format!(" mov byte [rbp + {dst_offset}], {value}\n\n"),
+                Literal::Ascii(ascii) => {
+                    self.asm += &format!(" mov byte [rbp + {dst_offset}], {ascii}\n\n")
+                }
+                Literal::Bool(value) => {
+                    self.asm += &format!(" mov byte [rbp + {dst_offset}], {value}\n\n")
+                }
                 Literal::Str(string) => {
                     let string_label_index = self.string_label_index(string);
                     self.asm += &format!(
@@ -2348,7 +2475,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 match value.typ() {
                     Type::Int => self.asm += &format!(" mov [rbp + {dst_offset}], rdi\n\n"),
-                    Type::Ascii | Type::Bool => self.asm += &format!(" mov [rbp + {dst_offset}], dil\n\n"),
+                    Type::Ascii | Type::Bool => {
+                        self.asm += &format!(" mov [rbp + {dst_offset}], dil\n\n")
+                    }
                     Type::Array { .. } => unreachable!("arrays cannot appear in expressions"),
                     Type::Str => unreachable!("strings cannot appear in expressions"),
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
@@ -2450,7 +2579,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 match typ {
                     Type::Int => self.asm += &format!(" mov [rbp + {dst_offset}], rdi\n\n"),
-                    Type::Ascii | Type::Bool => self.asm += &format!(" mov [rbp + {dst_offset}], dil\n\n"),
+                    Type::Ascii | Type::Bool => {
+                        self.asm += &format!(" mov [rbp + {dst_offset}], dil\n\n")
+                    }
                     Type::Str => {
                         self.asm += &format!(
                             " mov [rbp + {dst_offset}], rdi\
@@ -2512,9 +2643,10 @@ impl ErrorInfo for ErrorKind {
 
     fn info(&self) -> Self::Info {
         let (msg, cause) = match self {
-            Self::NonUtf8Path { path } => {
-                ("invalid path".into(), format!("'{path}' contains non UTF8 characters", path = path.display()).into())
-            }
+            Self::NonUtf8Path { path } => (
+                "invalid path".into(),
+                format!("'{path}' contains non UTF8 characters", path = path.display()).into(),
+            ),
             Self::CouldNotCreateOutputDirectory { err, path } => (
                 format!("could not create output directory '{path}'", path = path.display()).into(),
                 format!("{err} ({kind})", kind = err.kind()).into(),
@@ -2523,9 +2655,10 @@ impl ErrorInfo for ErrorKind {
                 format!("could not create file '{path}'", path = path.display()).into(),
                 format!("{err} ({kind})", kind = err.kind()).into(),
             ),
-            Self::WritingAssemblyFailed { err } => {
-                ("writing assembly file failed".into(), format!("{err} ({kind})", kind = err.kind()).into())
-            }
+            Self::WritingAssemblyFailed { err } => (
+                "writing assembly file failed".into(),
+                format!("{err} ({kind})", kind = err.kind()).into(),
+            ),
         };
 
         Self::Info { msg, cause }

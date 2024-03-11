@@ -38,7 +38,9 @@ impl TryFrom<Vec<String>> for Args {
                     "always" => Some(Color::Always),
                     "never" => Some(Color::Never),
                     _ => {
-                        return Err(CliError { kind: ErrorKind::UnrecognizedColorMode { unrecognized: mode.clone() } })
+                        return Err(CliError {
+                            kind: ErrorKind::UnrecognizedColorMode { unrecognized: mode.clone() },
+                        })
                     }
                 };
             }
@@ -67,30 +69,44 @@ impl TryFrom<Vec<String>> for Args {
                     };
                 }
                 "-h" | "--help" => match run_mode {
-                    Some(RunMode::Help) => return Err(CliError { kind: ErrorKind::HelpCommandAlreadySelected }),
-                    Some(RunMode::Version) => return Err(CliError { kind: ErrorKind::HelpAndVersionCommandSelected }),
+                    Some(RunMode::Help) => {
+                        return Err(CliError { kind: ErrorKind::HelpCommandAlreadySelected })
+                    }
+                    Some(RunMode::Version) => {
+                        return Err(CliError { kind: ErrorKind::HelpAndVersionCommandSelected })
+                    }
                     _ => run_mode = Some(RunMode::Help),
                 },
                 "-v" | "--version" => match run_mode {
-                    Some(RunMode::Version) => return Err(CliError { kind: ErrorKind::VersionCommandAlreadySelected }),
-                    Some(RunMode::Help) => return Err(CliError { kind: ErrorKind::HelpAndVersionCommandSelected }),
+                    Some(RunMode::Version) => {
+                        return Err(CliError { kind: ErrorKind::VersionCommandAlreadySelected })
+                    }
+                    Some(RunMode::Help) => {
+                        return Err(CliError { kind: ErrorKind::HelpAndVersionCommandSelected })
+                    }
                     _ => run_mode = Some(RunMode::Version),
                 },
                 run_mode_str @ ("check" | "compile" | "run") => {
-                    if let Some(RunMode::Check { .. } | RunMode::Compile { .. } | RunMode::Run { .. }) = run_mode {
+                    if let Some(
+                        RunMode::Check { .. } | RunMode::Compile { .. } | RunMode::Run { .. },
+                    ) = run_mode
+                    {
                         return Err(CliError {
-                            kind: ErrorKind::RunModeAlreadySelected { mode: run_mode_str.to_string() },
+                            kind: ErrorKind::RunModeAlreadySelected {
+                                mode: run_mode_str.to_string(),
+                            },
                         });
                     }
 
-                    let src_path: PathBuf = match args.next() {
-                        Some(path) => path.into(),
-                        None => {
-                            return Err(CliError {
-                                kind: ErrorKind::MissingSourceFilePathForRunMode { mode: run_mode_str.to_string() },
-                            })
-                        }
+                    let Some(path) = args.next() else {
+                        return Err(CliError {
+                            kind: ErrorKind::MissingSourceFilePathForRunMode {
+                                mode: run_mode_str.to_string(),
+                            },
+                        });
                     };
+
+                    let src_path: PathBuf = path.into();
 
                     let mode = match arg.as_str() {
                         "check" => RunMode::Check { src_path },
@@ -101,16 +117,15 @@ impl TryFrom<Vec<String>> for Args {
                                 if *out_flag == "-o" || *out_flag == "--output" {
                                     let _ = args.next();
 
-                                    out = match args.next() {
-                                        Some(path) => Some(path.into()),
-                                        None => {
-                                            return Err(CliError {
-                                                kind: ErrorKind::MissingOutputFolderPathForRunMode {
-                                                    mode: run_mode_str.to_string(),
-                                                },
-                                            })
-                                        }
+                                    let Some(path) = args.next() else {
+                                        return Err(CliError {
+                                            kind: ErrorKind::MissingOutputFolderPathForRunMode {
+                                                mode: run_mode_str.to_string(),
+                                            },
+                                        });
                                     };
+
+                                    out = Some(path.into());
                                 }
                             }
 
@@ -141,12 +156,18 @@ impl TryFrom<Vec<String>> for Args {
                     let _ = args.next();
                 }
                 unrecognized => {
-                    return Err(CliError { kind: ErrorKind::UnrecognizedFlag { flag: unrecognized.to_string() } })
+                    return Err(CliError {
+                        kind: ErrorKind::UnrecognizedFlag { flag: unrecognized.to_string() },
+                    })
                 }
             }
         }
 
-        Ok(Self { color, verbosity: verbosity.unwrap_or_default(), run_mode: run_mode.unwrap_or_default() })
+        Ok(Self {
+            color,
+            verbosity: verbosity.unwrap_or_default(),
+            run_mode: run_mode.unwrap_or_default(),
+        })
     }
 }
 
@@ -186,7 +207,9 @@ impl ErrorInfo for ErrorKind {
         let msg = match self {
             Self::ColorModeAlreadySelected => "color mode selected more than once".into(),
             Self::MissingColorMode => "missing color mode after".into(),
-            Self::UnrecognizedColorMode { unrecognized } => format!("unrecognized color mode '{unrecognized}'").into(),
+            Self::UnrecognizedColorMode { unrecognized } => {
+                format!("unrecognized color mode '{unrecognized}'").into()
+            }
 
             Self::VerbosityModeAlreadySelected => "verbosity mode selected more than once".into(),
 
@@ -196,7 +219,9 @@ impl ErrorInfo for ErrorKind {
                 "help and version commands cannot be selected at the same time".into()
             }
 
-            Self::RunModeAlreadySelected { mode } => format!("'{mode}' run mode already selected").into(),
+            Self::RunModeAlreadySelected { mode } => {
+                format!("'{mode}' run mode already selected").into()
+            }
             Self::MissingSourceFilePathForRunMode { mode } => {
                 format!("missing source file path for '{mode}' mode").into()
             }
@@ -205,7 +230,8 @@ impl ErrorInfo for ErrorKind {
             }
             Self::MissingOutputFolderPath => "missing output folder path".into(),
             Self::StrayOutputFolderPath => {
-                "output folder path option can only be used after a 'compile' or 'run' command".into()
+                "output folder path option can only be used after a 'compile' or 'run' command"
+                    .into()
             }
 
             Self::UnrecognizedFlag { flag } => format!("unrecognized flag '{flag}'").into(),

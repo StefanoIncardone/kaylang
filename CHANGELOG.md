@@ -40,6 +40,7 @@ Changes to the ABI would **not** be considered breaking since no stable ABI is d
 
 ### Changed
 
+- Maximum line length bumped down to 100 characters
 - Improved code generation
 - Consistency of enum's field order
 - **BREAKING**: `char` type renamed to `ascii`

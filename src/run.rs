@@ -12,19 +12,27 @@ impl Run {
     pub fn run(exe_path: &Path) -> Result<(), BackEndError<ErrorKind>> {
         let exe_path = match exe_path.to_str() {
             Some(exe_path) => Path::new(".").join(exe_path),
-            None => return Err(BackEndError { kind: ErrorKind::NonUtf8Path { path: exe_path.to_path_buf() } }),
+            None => {
+                return Err(BackEndError {
+                    kind: ErrorKind::NonUtf8Path { path: exe_path.to_path_buf() },
+                })
+            }
         };
 
         let mut executable = match Command::new(&exe_path).spawn() {
             Ok(executable) => executable,
             Err(err) => {
-                return Err(BackEndError { kind: ErrorKind::CouldNotCreateExecutableProcess { err, path: exe_path } })
+                return Err(BackEndError {
+                    kind: ErrorKind::CouldNotCreateExecutableProcess { err, path: exe_path },
+                })
             }
         };
 
         match executable.wait() {
             Ok(_) => Ok(()),
-            Err(err) => Err(BackEndError { kind: ErrorKind::CouldNotRunExecutable { err, path: exe_path } }),
+            Err(err) => {
+                Err(BackEndError { kind: ErrorKind::CouldNotRunExecutable { err, path: exe_path } })
+            }
         }
     }
 }
@@ -41,11 +49,13 @@ impl ErrorInfo for ErrorKind {
 
     fn info(&self) -> Self::Info {
         let (msg, cause) = match self {
-            Self::NonUtf8Path { path } => {
-                ("invalid path".into(), format!("'{path}' contains non UTF8 characters", path = path.display()).into())
-            }
+            Self::NonUtf8Path { path } => (
+                "invalid path".into(),
+                format!("'{path}' contains non UTF8 characters", path = path.display()).into(),
+            ),
             Self::CouldNotCreateExecutableProcess { err, path } => (
-                format!("could not create executable process '{path}'", path = path.display()).into(),
+                format!("could not create executable process '{path}'", path = path.display())
+                    .into(),
                 format!("{err} ({kind})", kind = err.kind()).into(),
             ),
             Self::CouldNotRunExecutable { err, path } => (

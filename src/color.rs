@@ -62,7 +62,13 @@ impl Flag {
 }
 
 #[allow(non_upper_case_globals)]
-pub(crate) static mut log: fn(&str, Fg, Bg, Flags, &mut std::fmt::Formatter<'_>) -> std::fmt::Result = log_color;
+pub(crate) static mut log: fn(
+    &str,
+    Fg,
+    Bg,
+    Flags,
+    &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result = log_color;
 
 impl Color {
     pub fn set(self, sink: &impl IsTerminal) {
@@ -82,11 +88,23 @@ impl Color {
     }
 }
 
-fn log_no_color(text: &str, _: Fg, _: Bg, _: Flags, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+fn log_no_color(
+    text: &str,
+    _: Fg,
+    _: Bg,
+    _: Flags,
+    f: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
     text.fmt(f)
 }
 
-fn log_color(text: &str, fg: Fg, bg: Bg, flags: Flags, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+fn log_color(
+    text: &str,
+    fg: Fg,
+    bg: Bg,
+    flags: Flags,
+    f: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
     let mut codes = String::with_capacity(15);
 
     if fg != Fg::Default {

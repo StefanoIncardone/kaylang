@@ -5,8 +5,8 @@ use kaylang::{
     compiler::Compiler,
     linker::Linker,
     logging::{
-        Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, LINKER, LOADING_SOURCE, RUNNING,
-        SUBSTEP_DONE, TOKENIZATION,
+        Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, LINKER,
+        LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
     },
     run::Run,
     src_file::SrcFile,
@@ -44,13 +44,17 @@ fn main() -> ExitCode {
             println!("{}", Help { color });
             return ExitCode::SUCCESS;
         }
-        RunMode::Check { src_path } | RunMode::Compile { src_path, .. } | RunMode::Run { src_path, .. } => {
+        RunMode::Check { src_path }
+        | RunMode::Compile { src_path, .. }
+        | RunMode::Run { src_path, .. } => {
             let execution_step = Step { start_time: Instant::now(), verbosity };
 
             Step::info(&CHECKING, src_path, verbosity);
-            let checking_sub_step = SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
+            let checking_sub_step =
+                SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
 
-            let loading_source_sub_step = SubStep { step: &LOADING_SOURCE, start_time: Instant::now(), verbosity };
+            let loading_source_sub_step =
+                SubStep { step: &LOADING_SOURCE, start_time: Instant::now(), verbosity };
             let source_loading_result = SrcFile::load(src_path);
             loading_source_sub_step.done();
             let src = match source_loading_result {
@@ -61,7 +65,8 @@ fn main() -> ExitCode {
                 }
             };
 
-            let lexing_sub_step = SubStep { step: &TOKENIZATION, start_time: Instant::now(), verbosity };
+            let lexing_sub_step =
+                SubStep { step: &TOKENIZATION, start_time: Instant::now(), verbosity };
             let lexer_result = Tokenizer::tokenize(&src);
             lexing_sub_step.done();
             let tokens = match lexer_result {
@@ -75,7 +80,8 @@ fn main() -> ExitCode {
                 }
             };
 
-            let ast_building_sub_step = SubStep { step: &AST_BUILDING, start_time: Instant::now(), verbosity };
+            let ast_building_sub_step =
+                SubStep { step: &AST_BUILDING, start_time: Instant::now(), verbosity };
             let ast_building_result = Ast::build(&src, &tokens);
             ast_building_sub_step.done();
             let ast = match ast_building_result {
@@ -91,15 +97,18 @@ fn main() -> ExitCode {
 
             checking_sub_step.done();
 
-            let (RunMode::Compile { out_path, .. } | RunMode::Run { out_path, .. }) = &run_mode else {
+            let (RunMode::Compile { out_path, .. } | RunMode::Run { out_path, .. }) = &run_mode
+            else {
                 execution_step.done();
                 return ExitCode::SUCCESS;
             };
 
             Step::info(&COMPILING, src_path, verbosity);
-            let compilation_sub_step = SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
+            let compilation_sub_step =
+                SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
 
-            let asm_generation_sub_step = SubStep { step: &ASM_GENERATION, start_time: Instant::now(), verbosity };
+            let asm_generation_sub_step =
+                SubStep { step: &ASM_GENERATION, start_time: Instant::now(), verbosity };
             let asm_generation_result = Compiler::compile(src_path, out_path.as_deref(), &ast);
             asm_generation_sub_step.done();
             let (asm_path, obj_path, exe_path) = match asm_generation_result {
@@ -110,7 +119,8 @@ fn main() -> ExitCode {
                 }
             };
 
-            let assembler_sub_step = SubStep { step: &ASSEMBLER, start_time: Instant::now(), verbosity };
+            let assembler_sub_step =
+                SubStep { step: &ASSEMBLER, start_time: Instant::now(), verbosity };
             let assembler_result = Assembler::assemble(&asm_path, &obj_path);
             assembler_sub_step.done();
             match assembler_result {
@@ -155,7 +165,9 @@ fn main() -> ExitCode {
 mod tests {
     use kaylang::{
         ast::Ast,
-        logging::{Step, SubStep, AST_BUILDING, CHECKING, LOADING_SOURCE, SUBSTEP_DONE, TOKENIZATION},
+        logging::{
+            Step, SubStep, AST_BUILDING, CHECKING, LOADING_SOURCE, SUBSTEP_DONE, TOKENIZATION,
+        },
         src_file::SrcFile,
         tokenizer::Tokenizer,
         Color, Verbosity,
@@ -197,9 +209,11 @@ mod tests {
             let execution_step = Step { start_time: Instant::now(), verbosity };
 
             Step::info(&CHECKING, &src_path, verbosity);
-            let checking_sub_step = SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
+            let checking_sub_step =
+                SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
 
-            let loading_source_sub_step = SubStep { step: &LOADING_SOURCE, start_time: Instant::now(), verbosity };
+            let loading_source_sub_step =
+                SubStep { step: &LOADING_SOURCE, start_time: Instant::now(), verbosity };
             let source_loading_result = SrcFile::load(src_path);
             loading_source_sub_step.done();
             let src = match source_loading_result {
@@ -210,7 +224,8 @@ mod tests {
                 }
             };
 
-            let lexing_sub_step = SubStep { step: &TOKENIZATION, start_time: Instant::now(), verbosity };
+            let lexing_sub_step =
+                SubStep { step: &TOKENIZATION, start_time: Instant::now(), verbosity };
             let lexer_result = Tokenizer::tokenize(&src);
             lexing_sub_step.done();
             let tokens = match lexer_result {
@@ -224,7 +239,8 @@ mod tests {
                 }
             };
 
-            let ast_building_sub_step = SubStep { step: &AST_BUILDING, start_time: Instant::now(), verbosity };
+            let ast_building_sub_step =
+                SubStep { step: &AST_BUILDING, start_time: Instant::now(), verbosity };
             let ast_building_result = Ast::build(&src, &tokens);
             ast_building_sub_step.done();
             let _ast = match ast_building_result {

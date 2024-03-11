@@ -11,11 +11,15 @@ pub struct Linker;
 impl Linker {
     pub fn link(obj_path: &Path, exe_path: &Path) -> Result<(), BackEndError<ErrorKind>> {
         let Some(obj_path) = obj_path.to_str() else {
-            return Err(BackEndError { kind: ErrorKind::NonUtf8Path { path: obj_path.to_path_buf() } });
+            return Err(BackEndError {
+                kind: ErrorKind::NonUtf8Path { path: obj_path.to_path_buf() },
+            });
         };
 
         let Some(exe_path) = exe_path.to_str() else {
-            return Err(BackEndError { kind: ErrorKind::NonUtf8Path { path: exe_path.to_path_buf() } });
+            return Err(BackEndError {
+                kind: ErrorKind::NonUtf8Path { path: exe_path.to_path_buf() },
+            });
         };
 
         match Command::new("ld").args([obj_path, "-o", exe_path]).output() {
@@ -40,13 +44,17 @@ impl ErrorInfo for ErrorKind {
 
     fn info(&self) -> Self::Info {
         let (msg, cause) = match self {
-            Self::NonUtf8Path { path } => {
-                ("invalid path".into(), format!("'{path}' contains non UTF8 characters", path = path.display()).into())
+            Self::NonUtf8Path { path } => (
+                "invalid path".into(),
+                format!("'{path}' contains non UTF8 characters", path = path.display()).into(),
+            ),
+            Self::CouldNotCreateProcess { err } => (
+                "could not create linker process".into(),
+                format!("{err} ({kind})", kind = err.kind()).into(),
+            ),
+            Self::Failed { output } => {
+                ("linker failed".into(), String::from_utf8_lossy(output).into_owned().into())
             }
-            Self::CouldNotCreateProcess { err } => {
-                ("could not create linker process".into(), format!("{err} ({kind})", kind = err.kind()).into())
-            }
-            Self::Failed { output } => ("linker failed".into(), String::from_utf8_lossy(output).into_owned().into()),
         };
 
         Self::Info { msg, cause }
