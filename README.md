@@ -45,6 +45,9 @@ These are the available escaped characters:
 
 String literals are surrounded by `"` and contain any number of regular or escaped characters: `"Hello\nWorld!"`
 
+Can be compared to other strings following the [Lexicographic order](https://en.wikipedia.org/wiki/Lexicographic_order)
+using the `<=>`, `==`, `!=`, `>`, `>=`, `<`, `<=` operators
+
 ## Expressions
 
 **Note** boolean expressions implicit convert to `1` if `true` or `0` if `false` inside math expressions,
@@ -56,7 +59,9 @@ println 1 + false; # will print 1 (1 + false -> 1 + 0)
 
 Expressions follow this order of operations (precedence from highest to lowest):
 
-- unary minus `-`, unary not `!`: integer negation and boolean inversion/bitwise not as unary operators
+- unary minus `-`, unary not `!`:
+    - integer negation: `-4`
+    - bitwise bit one's complement: `!4 # 0100 -> !0100 == 1011`
 - round brackets `(`, `)`
 - binary exponentiation `**`
 - binary multiplication `*`, binary division `/` and binary remainder `%`
@@ -258,6 +263,10 @@ println "World!";
 ## Arrays
 
 Arrays are a collection of values of the same type under a single variable
+
+Non-empty arrays can be compared to other arrays of the same type following the
+[Lexicographic order](https://en.wikipedia.org/wiki/Lexicographic_order)
+using the `<=>`, `==`, `!=`, `>`, `>=`, `<`, `<=` operators
 
 ```kay
 let i = [1, 2, 3, 4];

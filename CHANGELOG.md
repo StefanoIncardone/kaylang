@@ -8,14 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-- Temporary values (arrays)
-- Boolean operators for strings and arrays according to the [Lexicographical comparison](https://doc.rust-lang.org/std/cmp/trait.Ord.html#lexicographical-comparison)
+- Temporary values
 - Shortcircuted and/or operators
 - Unsigned integers
 - UTF-8 characters in string and characters
 - Casting operator and removal of implicit conversions
 - Type aliases and distinct types
 
+
+## 0.5.4 -
+
+### Added
+
+- String and Array comparison operators (i.e.: `<=>`, `==`, `!=`, `<`, `<=`, `>`, `>=`)
+
+### Changed
+
+- Improved code generation
 
 ## 0.5.3 - 2024-03-02
 

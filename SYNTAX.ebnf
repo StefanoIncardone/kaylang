@@ -13,6 +13,7 @@ identifier        = "_" | "A".."Z" | "a".."z", [{"_" | "A".."Z" | "a".."z" | dig
 (* expressions must be of the same type *)
 array       = "[", [{expression}], "]";
 array_index = identifier, "[", integer_expression, "]";
+array_variable = identifier;
 
 (* from highest precedence to lowest *)
 int_factor                = ["-" | "!"], (number_literal | character_literal | identifier | ("(", integer_expression, ")") | array_index);
@@ -34,15 +35,16 @@ or_expression             = and_expression, ["||", and_expression];
 
 boolean_expression        = or_expression;
 integer_expression        = comparative_expression;
-string_expression         = string_literal;
-expression                = boolean_expression | integer_expression | string_expression | array | array_index;
+string_expression         = string_literal, ("<=>" | "==" | "!=" | ">" | ">=" | "<" | "<="), string_literal;
+array_expression          = array_variable, ("<=>" | "==" | "!=" | ">" | ">=" | "<" | "<="), array_variable;
+expression                = boolean_expression | integer_expression | string_literal | string_expression | array | array_index | array_expression;
 
 type = identifier;
 variable_declaration = ("let" | "var"), identifier, [[":", type], "=", expression], ";";
 
 variable_reassignment =
     identifier,
-    ("=" | "**=" | "*=" | "/=" | "%=" | "+=" | "-=" | "<<=" | ">>=" | "&=" | "^=" | "|=" | "&&=" | "^^=" | "||="),
+    ("=" | "**=" | "*=" | "/=" | "%=" | "+=" | "-=" | "<<=" | ">>=" | "&=" | "^=" | "|=" | "&&=" | "||="),
     expression, ";";
 
 print = (("print", expression) | ("println", [expression])), ";";

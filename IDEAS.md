@@ -35,17 +35,20 @@ else    do println "too bad";
 
 - allow variables to be mutated only `once` or in special places
 
-## Unchecked/Checked
+## Operators
+
+add [Zig inspired arithmetic operators](https://ziglang.org/documentation/master/#Operators)
+
+### Unchecked/Checked
 
 - unchecked (+, -, /, ... ): overflow will wrap, division by zero will crash
 - checked (++, --, //, ...):
     - overflow/underflow may return both the result and the overflow of the addition
     - division will return either the result or an error value
 - maybe have a compiler flag to use checked/unchecked operators
+- maybe have them as built-in operators or just implement them as functions
 
-## Operators
-
-have them as built-in operators or just implement them as functions
+### New ones
 
 - divmod:
 
@@ -53,14 +56,7 @@ have them as built-in operators or just implement them as functions
     let division, remainder = 3 /% 2; # will result in 1, 1
     ```
 
-- absolute value, enclosed by a `|`:
-
-    ```kay
-    |19| == 19
-    |-19| == 19
-    ```
-
-    or with the usage of the `+` sign:
+- absolute value, using the `+` operator (since it's basically useless inside normal expressions):
 
     ```kay
     let negative = -19;
@@ -82,6 +78,21 @@ have them as built-in operators or just implement them as functions
 - options can appear in any order right before the opening quote, but only once:
     - `frm"`, `fr"`, `rm"` are valid
     - `frrm`, `ff "`, `r "` are not valid
+- ascii/utf strings and chars (need to decide on proper names):
+
+    | type name  | type    | type size (bytes) | example  | notes                                 |
+    | :--------- | :------ | :---------------- | :------- | :------------------------------------ |
+    | ascii char | `ascii` | 1                 | `'h'`    | guaranteed to be valid ascii and utf8 |
+    | utf8 char  | `utf8`  | 4                 | `u8'è'`  | guaranteed to be valid utf8           |
+    | utf16 char | `utf16` | 4                 | `u16'è'` | guaranteed to be valid utf16          |
+    | utf32 char | `utf32` | 4                 | `u32'è'` | guaranteed to be valid utf32          |
+
+    | type name    | type     | pointer type | type size (bytes)              | example      | notes                                          |
+    | :----------- | :------- | :----------- | :----------------------------- | :----------- | :--------------------------------------------- |
+    | ascii string | `str`    | ascii\*      | 1 \* len                       | `"hello"`    | guaranteed to be a valid ascii and utf8 string |
+    | utf8 string  | `u8str`  | utf8\*       | 1 to 4 \* len (in code points) | `u8"hellò"`  |                                                |
+    | utf16 string | `u16str` | utf16\*      | 2 or 4 \* len (in code points) | `u16"hellò"` |                                                |
+    | utf32 string | `u32str` | utf32\*      | 4 \* len                       | `u32"hellò"` |                                                |
 
 ## Arrays
 
@@ -122,7 +133,7 @@ let codes: int[19] = [
 and expand on them:
 
 ```kay
-let codes: int[19] = [.. = 0] # every element will contain the value 0
+let codes: int[19] = [0] # every element will contain the value 0
 ```
 
 ## Dynamic array (Lists)
@@ -148,12 +159,12 @@ they can be manipulated in different ways (syntax yet to be dicided):
 maybe have unchecked and checked versions)
 
 ```kay
-codes.append( 3 ); # adding an element to the end
+codes.append(3); # adding an element to the end
 codes.pop();
 
-codes.insert( 2, 4 ) # inserting an element at index 2
+codes.insert(2, 4) # inserting an element at index 2
 
-codes.remove( 3 ); # removing at index 3
+codes.remove(3); # removing at index 3
 ```
 
 ## Aliases
@@ -170,6 +181,58 @@ ability to create distinct types, which are considered entirely different types:
 
 ```kay
 type byte = u8;
+```
+
+## Type unions
+
+ability to create a type with a "tag" discriminating which type is currently active
+
+```kay
+type int_or_bool = int | bool;
+
+let x: int_or_bool = 1;
+
+if x is int {
+    # x type is now inferred as int
+} else {
+    # x type is now inferred as bool
+}
+
+let y: int | bool = true; # type unions can also be implicit
+```
+
+type unions can be used with if-case expressions:
+
+```kay
+let s0 = "franco";
+let s1 = "giovasanni";
+let s2 = "aldo";
+
+let s3 = "franco";
+let s4 = "giovanni";
+let s5 = "aldo";
+
+let b = ["hello", "from", "kay"];
+let a = ["hello", "from", "stefano"];
+
+if array_eq(a, b)
+case let mismatch: none do println("equals"); # would not be reached since there was a mismatch
+else let mismatch: uint do println(f"mismatch at index {mismatch}"); # mismatch would have the value of 2
+
+fn mimatch_index: uint? = str_array_eq[T: type, N: uint](dst: T[N]*, src: T[N]*) {
+    loop var i = N; i > 0; i -= 1 {
+        if dst* != src* {
+            return i;
+        }
+
+        # incrementing the pointer based on the pointer size
+        # so a pointer to an array would get incremented by the size of a single element
+        dst += 1;
+        src += 1;
+    }
+
+    return none;
+}
 ```
 
 ## Structs
@@ -202,23 +265,29 @@ inheritance is just syntactic sugar, this allows for any extended type to be pas
 the fields defined in the base type:
 
 ```kay
-struct RGBA_unnamed {
-    using RGB,
-    a: u8
-}
+struct RGBA {
+    rgb: using RGB,
 
-# the above type is equivalent to
-struct RBGA {
-    r: u8,
-    g: u8,
-    b: u8,
+    # these fields (of the used RGB struct are implicitly added)
+    # r: u8,
+    # g: u8,
+    # b: u8,
+
     a: u8,
 }
 
-# or we can give a name to the "extension" and acces the RGB fields as rgb.r, rgb.g, rgb.b
-struct RGBA_named {
-    rgb: using RGB,
-    a: u8
+# the above type is equivalent to:
+struct RGBA {
+    union {
+        rgb: RGB,
+        struct {
+            r: u8,
+            g: u8,
+            b: u8,
+        }
+    }
+
+    a: u8,
 }
 
 # Multiple extension are not allowed
@@ -228,44 +297,32 @@ struct RGBA {
     a: u8
 }
 
-struct RGBA {
-    using RGB,
-    rgb2: using RGB, # not allowed
-    a: u8
-}
+let rgb = RGB { r = 255, g = 255, b = 255 };
 
-struct RGBA {
-    using RGB,
-    using RGB, # not allowed
-    a: u8
-}
+# this
+let rgba: RGBA = rgb;
 
-let rgba: RGBA_unnamed = rgb;
+# is equivalent to:
+let rgba = RGBA { r = rgb.r, g = rgb.g, b = rgb.b, a = 0 };
 
-# any extra fields will be default initialized;
-let rgba = RGBA_unnamed { r = rgb.r, g = rgb.g, b = rgb.b, a = 0 };
+# otherwise to:
+let rgba = RGBA { rgb = rgb, a = 0 };
 
-# otherwise
-let rgba = RGBA_unnamed { rgb = rgb, a = 255 };
-
-# for named extensions
-let rgba: RGBA_named = rgb;
-
-# any extra fields will be default initialized;
-let rgba = RGBA_named { rgb = rgb, a = 0 };
-
-# otherwise
-let rgba = RGBA_named { rgb, a = 255 };
+# or to:
+let rgba = RGBA {
+    rgb, # field with same name shorthand
+    a = 0,
+};
 ```
 
 if we have a function defined for the "base" struct only the "base" part of the struct will be passed:
 
 ```kay
 # so this
-function_for_RGB( rgba );
+function_for_RGB(rgba);
 
 # is desugared to
-function_for_RGB( rgba.rgb );
+function_for_RGB(rgba.rgb);
 ```
 
 if we dont explicity extend inside a struct it's going to result in an error
@@ -278,12 +335,12 @@ struct RGB {
 }
 
 struct RGBA {
-    rgb: RGB, # no explicit "extend"
+    rgb: RGB, # no explicit "using"
     a: u8,
 }
 
-function_for_RGB( rgb ); # works
-function_for_RGB( rgba ); # doesn't work
+function_for_RGB(rgba.rgb); # works
+function_for_RGB(rgba); # doesn't work
 ```
 
 ## Enum
@@ -292,9 +349,9 @@ collection of constant values:
 
 ```kay
 enum Colors: u32 { # optional data type
-    # default value for when converting from integers that don't match the actual enum value
+    # default value for when converting from u32s that don't match the actual enum value
     # for example converting from 0x00ff00 will result in GREEN being chosen
-    # when converting from 0x00beef will result in RED being chosen
+    # when converting from 0x00beef will result in RED being chosen or the returning of an error
     default RED = 0xff0000,
     GREEN = 0x00ff00,
     BLUE = 0x0000ff,
@@ -308,8 +365,8 @@ Rust-like collection of variants:
 ```kay
 union Statement {
     Empty,
-    Single( Node ),
-    Multiple( Node[] ),
+    Single(Node),
+    Multiple(Node[]),
 }
 ```
 
@@ -323,8 +380,6 @@ let r = red.0;
 let g = red.1;
 let b = red.2;
 ```
-
-## multiple return types that need to be checked
 
 ## Pointers
 
@@ -381,8 +436,78 @@ maybe = option^;
 maybe = ^option; # or like this
 ```
 
+## Bit-casts
 
-## no or close to no implicit conversions, or just where it makes sense (i.e. u8 -> u16, int -> float)
+ability to define/overload the casting operator for specific types.
+types with explicit conversions can be bit-casted to other types when possible
+
+```kay
+struct RGBA like u32 {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+}
+
+# or
+struct RGBA as u32 {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+}
+
+# or
+struct RGBA alias u32 {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+}
+
+# basically equivalent to
+union RGBA {
+    rgba: u32,
+    struct {
+        r: u8,
+        g: u8,
+        b: u8,
+        a: u8,
+    }
+}
+
+# this would result in a type size mismatch, or in some other constrait (need to be defined) being broken
+struct RGBA like u8 {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+}
+```
+
+when bit casts are used inside expressions they incour in no performance penalty, as the compiler would just
+treat the values are of different types:
+
+```kay
+let rgba: RGBA;
+let rgba_u32: u32 = rgba as u32; # bit-casting should be a nop, in this case just a plain copy or rgba memory
+
+let red = RGBA { r = 255 };
+let green = RGBA { g = 255 };
+
+# the compiler would treat this as RGBA + RGBA
+let red_plus_green = red + green;
+
+# while this would be treated as u32 + u32 and no conversion code would be run
+let red_plus_green = red as u32 + green as u32;
+
+# so it avoids this
+var red_plus_green: RGBA;
+red_plus_green.r = red.r + green.r;
+red_plus_green.g = red.g + green.g;
+red_plus_green.b = red.b + green.b;
+red_plus_green.a = red.a + green.b;
+```
 
 ## compile time constants and functions excution
 
