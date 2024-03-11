@@ -69,7 +69,6 @@ add [Zig inspired arithmetic operators](https://ziglang.org/documentation/master
 - immutable strings are surrounded by `"`: `"hello world"`
 - mutable strings (like string builders) are surrounded by `` ` ``: `` `hello world` ``
     - seamlees way to convert from one string type to another
-- raw strings are prefixed by a `r`: `r"\this wo\n't be escaped"`
 - multiline strings are prefixed by a `m`, or by multiple quotes like in Java:
     - lines will have newline characters appended to them unless they end in a `\`, which can be escaped using a `\\`
     - whitespace will be preserved (except before the closing quote) and leading whitespace is calculated based on the

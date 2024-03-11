@@ -1029,7 +1029,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         src_path: &'src Path,
         out_path: Option<&'src Path>,
         ast: &'ast [Scope<'src>],
-    ) -> Result<(PathBuf, PathBuf, PathBuf), Error> {
+    ) -> Result<(PathBuf, PathBuf, PathBuf), BackEndError<ErrorKind>> {
         let (asm_path, obj_path, exe_path) = {
             let mut asm_path = src_path.with_extension("asm");
             let mut obj_path = src_path.with_extension("o");
@@ -1403,7 +1403,7 @@ enum Dst {
 impl Dst {
     fn of(typ: &Type) -> Self {
         match typ {
-            Type::Int | Type::Char | Type::Bool => Self::Reg(Rdi),
+            Type::Int | Type::Ascii | Type::Bool => Self::Reg(Rdi),
             Type::Str | Type::Array { .. } => Self::LenPtr { len: Rdi, ptr: Rsi },
             Type::Infer => unreachable!("should have been coerced to a concrete type"),
         }
@@ -1448,8 +1448,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     Dst::Reg(reg) => self.asm += &format!(" mov {reg}, {value}\n"),
                     Dst::LenPtr { .. } => unreachable!(),
                 },
-                Literal::Char(value) => match dst {
-                    Dst::Reg(reg) => self.asm += &format!(" mov {reg}, {value}\n"),
+                Literal::Ascii(ascii) => match dst {
+                    Dst::Reg(reg) => self.asm += &format!(" mov {reg}, {ascii}\n"),
                     Dst::LenPtr { .. } => unreachable!(),
                 },
                 Literal::Bool(value) => match dst {
@@ -1586,7 +1586,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     \n mov rdi, false\
                                     \n sete dil"
                                 }
-                                Type::Char | Type::Bool => {
+                                Type::Ascii | Type::Bool => {
                                     " mov rdi, rcx\
                                     \n mov rcx, rdx\
                                     \n repe cmpsb\
@@ -1612,7 +1612,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     \n mov rdi, false\
                                     \n setne dil"
                                 }
-                                Type::Char | Type::Bool => {
+                                Type::Ascii | Type::Bool => {
                                     " mov rdi, rcx\
                                     \n mov rcx, rdx\
                                     \n repe cmpsb\
@@ -1639,7 +1639,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     \n mov rdi, false\
                                     \n setg dil"
                                 }
-                                Type::Char | Type::Bool => {
+                                Type::Ascii | Type::Bool => {
                                     " mov rdi, rcx\
                                     \n mov rcx, rdx\
                                     \n repe cmpsb\
@@ -1667,7 +1667,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     \n mov rdi, false\
                                     \n setge dil"
                                 }
-                                Type::Char | Type::Bool => {
+                                Type::Ascii | Type::Bool => {
                                     " mov rdi, rcx\
                                     \n mov rcx, rdx\
                                     \n repe cmpsb\
@@ -1695,7 +1695,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     \n mov rdi, false\
                                     \n setl dil"
                                 }
-                                Type::Char | Type::Bool => {
+                                Type::Ascii | Type::Bool => {
                                     " mov rdi, rcx\
                                     \n mov rcx, rdx\
                                     \n repe cmpsb\
@@ -1723,7 +1723,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     \n mov rdi, false\
                                     \n setle dil"
                                 }
-                                Type::Char | Type::Bool => {
+                                Type::Ascii | Type::Bool => {
                                     " mov rdi, rcx\
                                     \n mov rcx, rdx\
                                     \n repe cmpsb\
@@ -1754,7 +1754,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     \n mov rsi, GREATER\
                                     \n cmovg rdi, rsi"
                                 }
-                                Type::Char | Type::Bool => {
+                                Type::Ascii | Type::Bool => {
                                     " mov rdi, rcx\
                                     \n mov rcx, rdx\
                                     \n repe cmpsb\
@@ -1803,7 +1803,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Op::Equals => unreachable!("should not be present in the ast"),
                         Op::Not => unreachable!("should only appear in unary expressions"),
                     },
-                    (Type::Int | Type::Bool | Type::Char, Type::Int | Type::Bool | Type::Char) => match op {
+                    (Type::Int | Type::Bool | Type::Ascii, Type::Int | Type::Bool | Type::Ascii) => match op {
                         Op::Pow | Op::PowEquals => (
                             Dst::Reg(Rdi),
                             Dst::Reg(Rsi),
@@ -1975,7 +1975,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 self.asm += &format!("{op_asm}\n\n");
             }
-            Expression::Identifier { name, typ } => {
+            Expression::Identifier { typ, name } => {
                 let var = self.resolve(name);
                 let var_offset = var.offset;
                 match typ {
@@ -1983,7 +1983,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Dst::Reg(reg) => self.asm += &format!(" mov {reg}, [rbp + {var_offset}]\n"),
                         Dst::LenPtr { .. } => unreachable!(),
                     },
-                    Type::Char | Type::Bool => match dst {
+                    Type::Ascii | Type::Bool => match dst {
                         Dst::Reg(reg) => self.asm += &format!(" movzx {reg}, byte [rbp + {var_offset}]\n"),
                         Dst::LenPtr { .. } => unreachable!(),
                     },
@@ -2015,13 +2015,13 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 match op {
                     Op::Not => match operand.typ() {
                         Type::Bool => self.asm += " xor rdi, 1\n",
-                        Type::Int | Type::Char => self.asm += " not rdi\n",
+                        Type::Int | Type::Ascii => self.asm += " not rdi\n",
                         Type::Array { .. } => unreachable!("cannot invert array values"),
                         Type::Str => unreachable!("cannot invert string values"),
                         Type::Infer => unreachable!("should have been coerced to a concrete type"),
                     },
                     Op::Minus => match operand.typ() {
-                        Type::Int | Type::Char => self.asm += " neg rdi\n",
+                        Type::Int | Type::Ascii => self.asm += " neg rdi\n",
                         Type::Bool => unreachable!("cannot negate boolean values"),
                         Type::Array { .. } => unreachable!("cannot negate array values"),
                         Type::Str => unreachable!("cannot negate string values"),
@@ -2031,7 +2031,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 }
             }
             Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
-            Expression::ArrayIndex { var_name, typ, bracket_position, index } => {
+            Expression::ArrayIndex { typ, var_name, bracket_position, index } => {
                 self.expression(index, Dst::Reg(Rdi));
 
                 let line = bracket_position.line;
@@ -2062,7 +2062,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                         match typ {
                             Type::Int => self.asm += &format!(" mov rdi, [rbp + {var_offset} + rdi * 8]\n\n"),
-                            Type::Char | Type::Bool => {
+                            Type::Ascii | Type::Bool => {
                                 self.asm += &format!(" movzx rdi, byte [rbp + {var_offset} + rdi]\n\n");
                             }
                             Type::Str => {
@@ -2092,7 +2092,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             \n and rdi, rsi\n\n"
                         );
                     }
-                    Type::Bool | Type::Char => {
+                    Type::Bool | Type::Ascii => {
                         unreachable!("only arrays, strings and integers are allowed in index espressions")
                     }
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
@@ -2111,14 +2111,14 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     bool = usize::from(*value)
                 );
             }
-            Expression::Literal(Literal::Int(_) | Literal::Char(_) | Literal::Str(_)) => {
+            Expression::Literal(Literal::Int(_) | Literal::Ascii(_) | Literal::Str(_)) => {
                 unreachable!("non-boolean expressions not allowed in conditions")
             }
             Expression::Binary { lhs, op, rhs, .. } => {
                 match &**rhs {
                     Expression::Binary { .. } | Expression::Unary { .. } | Expression::ArrayIndex { .. } => {
                         let lhs_dst = match lhs.typ() {
-                            Type::Int | Type::Char | Type::Bool => Dst::Reg(Rdi),
+                            Type::Int | Type::Ascii | Type::Bool => Dst::Reg(Rdi),
                             Type::Str | Type::Array { .. } => Dst::LenPtr { len: Rdi, ptr: Rsi },
                             Type::Infer => unreachable!("should have been coerced to a concrete type"),
                         };
@@ -2132,7 +2132,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         }
 
                         let rhs_dst = match rhs.typ() {
-                            Type::Int | Type::Char | Type::Bool => Dst::Reg(Rsi),
+                            Type::Int | Type::Ascii | Type::Bool => Dst::Reg(Rsi),
                             Type::Str | Type::Array { .. } => Dst::LenPtr { len: Rdx, ptr: Rcx },
                             Type::Infer => unreachable!("should have been coerced to a concrete type"),
                         };
@@ -2232,7 +2232,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     bool = usize::from(*value)
                 );
             }
-            Expression::Literal(Literal::Int(_) | Literal::Char(_) | Literal::Str(_)) => {
+            Expression::Literal(Literal::Int(_) | Literal::Ascii(_) | Literal::Str(_)) => {
                 unreachable!("non-boolean expressions should not appear here")
             }
             Expression::Binary { lhs, op, rhs, .. } => {
@@ -2344,7 +2344,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         \n mov [rbp + {dst_offset}], rdi\n\n"
                     );
                 }
-                Literal::Char(code) => self.asm += &format!(" mov byte [rbp + {dst_offset}], {code}\n\n"),
+                Literal::Ascii(ascii) => self.asm += &format!(" mov byte [rbp + {dst_offset}], {ascii}\n\n"),
                 Literal::Bool(value) => self.asm += &format!(" mov byte [rbp + {dst_offset}], {value}\n\n"),
                 Literal::Str(string) => {
                     let string_label_index = self.string_label_index(string);
@@ -2360,13 +2360,13 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 match value.typ() {
                     Type::Int => self.asm += &format!(" mov [rbp + {dst_offset}], rdi\n\n"),
-                    Type::Char | Type::Bool => self.asm += &format!(" mov [rbp + {dst_offset}], dil\n\n"),
+                    Type::Ascii | Type::Bool => self.asm += &format!(" mov [rbp + {dst_offset}], dil\n\n"),
                     Type::Array { .. } => unreachable!("arrays cannot appear in expressions"),
                     Type::Str => unreachable!("strings cannot appear in expressions"),
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 }
             }
-            Expression::Identifier { name, typ } => {
+            Expression::Identifier { typ, name } => {
                 let var = self.resolve(name);
                 let src_offset = var.offset;
                 match typ {
@@ -2376,7 +2376,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             \n mov [rbp + {dst_offset}], rdi\n\n"
                         );
                     }
-                    Type::Char | Type::Bool => {
+                    Type::Ascii | Type::Bool => {
                         self.asm += &format!(
                             " movzx rdi, byte [rbp + {src_offset}]\
                             \n mov [rbp + {dst_offset}], dil\n\n"
@@ -2414,7 +2414,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n mov [rbp + {dst_offset}], dil\n\n"
                             );
                         }
-                        Type::Char => {
+                        Type::Ascii => {
                             self.asm += &format!(
                                 " not rdi\
                                 \n mov [rbp + {dst_offset}], dil\n\n"
@@ -2431,7 +2431,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Type::Infer => unreachable!("should have been coerced to a concrete type"),
                     },
                     Op::Minus => match operand.typ() {
-                        Type::Char => {
+                        Type::Ascii => {
                             self.asm += &format!(
                                 " neg rdi\
                                 \n mov [rbp + {dst_offset}], dil\n\n"
@@ -2462,7 +2462,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 match typ {
                     Type::Int => self.asm += &format!(" mov [rbp + {dst_offset}], rdi\n\n"),
-                    Type::Char | Type::Bool => self.asm += &format!(" mov [rbp + {dst_offset}], dil\n\n"),
+                    Type::Ascii | Type::Bool => self.asm += &format!(" mov [rbp + {dst_offset}], dil\n\n"),
                     Type::Str => {
                         self.asm += &format!(
                             " mov [rbp + {dst_offset}], rdi\
@@ -2495,12 +2495,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
         match value_typ {
             Type::Int => self.asm += " call int_print\n\n",
-            Type::Char => self.asm += " call char_print\n\n",
+            Type::Ascii => self.asm += " call char_print\n\n",
             Type::Bool => self.asm += " call bool_print\n\n",
             Type::Str => self.asm += " call str_print\n\n",
             Type::Array { typ, .. } => match &*typ {
                 Type::Int => self.asm += " call int_array_debug_print\n\n",
-                Type::Char => self.asm += " call char_array_debug_print\n\n",
+                Type::Ascii => self.asm += " call char_array_debug_print\n\n",
                 Type::Bool => self.asm += " call bool_array_debug_print\n\n",
                 Type::Str => self.asm += " call str_array_debug_print\n\n",
                 Type::Array { .. } => unreachable!("nested arrays are not supported yet"),
@@ -2545,6 +2545,3 @@ impl ErrorInfo for ErrorKind {
 }
 
 impl BackEndErrorKind for ErrorKind {}
-
-#[deprecated(since = "0.5.3", note = "will be removed to allow for more explicit function signatures")]
-pub type Error = BackEndError<ErrorKind>;

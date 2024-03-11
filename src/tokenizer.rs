@@ -12,21 +12,39 @@ pub(crate) trait SrcCodeLen {
     fn src_code_len(&self) -> usize;
 }
 
+/// kay's equivalent to pointer sized signed integer
+#[allow(non_camel_case_types)]
+pub(crate) type int = isize;
+
+#[allow(non_camel_case_types)]
+/// kay's equivalent to pointer sized unsigned integer
+pub(crate) type uint = usize;
+
+/// kay's ascii character type
+#[allow(non_camel_case_types)]
+pub(crate) type ascii = u8;
+
+/// kay's utf8 character type
+#[allow(non_camel_case_types)]
+pub(crate) type utf8 = char;
+
 #[derive(Debug, Clone)]
 pub(crate) enum Literal {
     // TODO(stefano): implement unsigned integers
     // IDEA(stefano): have different size integers and default to 32 bits for literals
-    Int(isize),
-    Char(u8), // only supporting ASCII characters for now
+    Int(int),
+
+    Ascii(ascii), // only supporting ASCII characters for now
+
     Bool(bool),
-    Str(Vec<u8>), // only supporting ASCII characters for now
+    Str(Vec<ascii>), // only supporting ASCII characters for now
 }
 
 impl Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Int(value) => write!(f, "{value}"),
-            Self::Char(code) => write!(f, "'{code}'", code = code.escape_ascii()),
+            Self::Ascii(ascii) => write!(f, "'{ascii}'", ascii = ascii.escape_ascii()),
             Self::Bool(value) => write!(f, "{value}"),
             Self::Str(string) => {
                 write!(f, "\"")?;
@@ -43,7 +61,7 @@ impl SrcCodeLen for Literal {
     fn src_code_len(&self) -> usize {
         match self {
             Self::Int(value) => value.to_string().len(),
-            Self::Char(value) => value.escape_ascii().len() + 2, // + 2 for the quotes
+            Self::Ascii(ascii) => ascii.escape_ascii().len() + 2, // + 2 for the quotes
             Self::Bool(value) => value.to_string().len(),
             Self::Str(string) => {
                 let mut len = 0;
@@ -378,7 +396,7 @@ pub struct Tokenizer<'src> {
 }
 
 impl<'src> Tokenizer<'src> {
-    pub fn tokenize(src: &'src SrcFile) -> Result<Vec<Token<'src>>, Vec<Error<'src>>> {
+    pub fn tokenize(src: &'src SrcFile) -> Result<Vec<Token<'src>>, Vec<SyntaxError<'src, ErrorKind>>> {
         if src.lines.is_empty() {
             return Ok(Vec::new());
         }
@@ -459,7 +477,7 @@ impl<'src> Tokenizer<'src> {
         self.src.code[self.token_start_col..self.col].chars().count()
     }
 
-    fn next_ascii_char(&mut self) -> Result<Option<u8>, RawSyntaxError<ErrorKind>> {
+    fn next_ascii_char(&mut self) -> Result<Option<ascii>, RawSyntaxError<ErrorKind>> {
         let Some(next) = self.src.code.as_bytes().get(self.col) else {
             return Ok(None);
         };
@@ -479,7 +497,7 @@ impl<'src> Tokenizer<'src> {
         }
     }
 
-    fn next_utf8_char(&mut self) -> Option<char> {
+    fn next_utf8_char(&mut self) -> Option<utf8> {
         let Some(next) = self.src.code.as_bytes().get(self.col) else {
             return None;
         };
@@ -487,7 +505,7 @@ impl<'src> Tokenizer<'src> {
         match next {
             ascii @ ..=b'\x7F' => {
                 self.col += 1;
-                Some(*ascii as char)
+                Some(*ascii as utf8)
             }
             _non_ascii => {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
@@ -498,7 +516,7 @@ impl<'src> Tokenizer<'src> {
         }
     }
 
-    fn peek_next_ascii_char(&self) -> Result<Option<&'src u8>, RawSyntaxError<ErrorKind>> {
+    fn peek_next_ascii_char(&self) -> Result<Option<&'src ascii>, RawSyntaxError<ErrorKind>> {
         let Some(next) = self.src.code.as_bytes().get(self.col) else {
             return Ok(None);
         };
@@ -513,13 +531,13 @@ impl<'src> Tokenizer<'src> {
         }
     }
 
-    fn peek_next_utf8_char(&mut self) -> Option<char> {
+    fn peek_next_utf8_char(&mut self) -> Option<utf8> {
         let Some(next) = self.src.code.as_bytes().get(self.col) else {
             return None;
         };
 
         match next {
-            ascii @ ..=b'\x7F' => Some(*ascii as char),
+            ascii @ ..=b'\x7F' => Some(*ascii as utf8),
             _non_ascii => {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
                 let non_ascii_char = rest_of_line.chars().next().unwrap();
@@ -528,7 +546,7 @@ impl<'src> Tokenizer<'src> {
         }
     }
 
-    fn next_in_char_literal(&mut self) -> Result<u8, RawSyntaxError<ErrorKind>> {
+    fn next_in_ascii_char_literal(&mut self) -> Result<ascii, RawSyntaxError<ErrorKind>> {
         match self.src.code.as_bytes().get(self.col) {
             Some(b'\n') | None => Err(RawSyntaxError {
                 kind: ErrorKind::UnclosedCharacterLiteral,
@@ -549,7 +567,7 @@ impl<'src> Tokenizer<'src> {
         }
     }
 
-    fn next_in_str_literal(&mut self) -> Result<u8, RawSyntaxError<ErrorKind>> {
+    fn next_in_ascii_str_literal(&mut self) -> Result<ascii, RawSyntaxError<ErrorKind>> {
         match self.src.code.as_bytes().get(self.col) {
             Some(b'\n') | None => Err(RawSyntaxError {
                 kind: ErrorKind::UnclosedStringLiteral,
@@ -572,7 +590,7 @@ impl<'src> Tokenizer<'src> {
 }
 
 impl<'src> Tokenizer<'src> {
-    fn next_token(&mut self, next: u8) -> Result<TokenKind<'src>, RawSyntaxError<ErrorKind>> {
+    fn next_token(&mut self, next: ascii) -> Result<TokenKind<'src>, RawSyntaxError<ErrorKind>> {
         match next {
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
                 let mut contains_non_ascii = false;
@@ -659,10 +677,11 @@ impl<'src> Tokenizer<'src> {
             // FIX(stefano): add proper multiple error handling
             b'"' => {
                 let previous_error_count = self.errors.len();
-                let mut string_literal = Vec::<u8>::new();
+                let mut string_literal = Vec::<ascii>::new();
+
                 loop {
-                    let next = match self.next_in_str_literal()? {
-                        b'\\' => match self.next_in_str_literal()? {
+                    let next = match self.next_in_ascii_str_literal()? {
+                        b'\\' => match self.next_in_ascii_str_literal()? {
                             b'\\' => b'\\',
                             b'\'' => b'\'',
                             b'"' => b'"',
@@ -672,7 +691,7 @@ impl<'src> Tokenizer<'src> {
                             b'0' => b'\0',
                             unrecognized => {
                                 self.errors.push(RawSyntaxError {
-                                    kind: ErrorKind::UnrecognizedStringEscapeCharacter(unrecognized as char),
+                                    kind: ErrorKind::UnrecognizedStringEscapeCharacter(unrecognized as utf8),
                                     col: self.col - 2,
                                     len: 2,
                                 });
@@ -704,8 +723,8 @@ impl<'src> Tokenizer<'src> {
                 }
             }
             b'\'' => {
-                let code = match self.next_in_char_literal()? {
-                    b'\\' => match self.next_in_char_literal()? {
+                let code = match self.next_in_ascii_char_literal()? {
+                    b'\\' => match self.next_in_ascii_char_literal()? {
                         b'\\' => Ok(b'\\'),
                         b'\'' => Ok(b'\''),
                         b'"' => Ok(b'"'),
@@ -714,7 +733,7 @@ impl<'src> Tokenizer<'src> {
                         b't' => Ok(b'\t'),
                         b'0' => Ok(b'\0'),
                         unrecognized => Err(RawSyntaxError {
-                            kind: ErrorKind::UnrecognizedCharacterEscapeCharacter(unrecognized as char),
+                            kind: ErrorKind::UnrecognizedCharacterEscapeCharacter(unrecognized as utf8),
                             col: self.col - 2,
                             len: 2,
                         }),
@@ -741,7 +760,7 @@ impl<'src> Tokenizer<'src> {
                 };
 
                 self.col += 1;
-                Ok(TokenKind::Literal(Literal::Char(code?)))
+                Ok(TokenKind::Literal(Literal::Ascii(code?)))
             }
             b'(' => {
                 let kind = BracketKind::OpenRound;
@@ -956,7 +975,7 @@ impl<'src> Tokenizer<'src> {
                 _ => Ok(TokenKind::Op(Op::Less)),
             },
             unrecognized => Err(RawSyntaxError {
-                kind: ErrorKind::UnrecognizedCharacter(unrecognized as char),
+                kind: ErrorKind::UnrecognizedCharacter(unrecognized as utf8),
                 col: self.token_start_col,
                 len: 1,
             }),
@@ -967,7 +986,7 @@ impl<'src> Tokenizer<'src> {
 #[derive(Debug, Clone)]
 pub enum ErrorKind {
     UnclosedBracket(BracketKind),
-    NonAsciiCharacter(char),
+    NonAsciiCharacter(utf8),
     UnclosedCharacterLiteral,
     UnclosedStringLiteral,
     NonAsciiIdentifier,
@@ -976,14 +995,14 @@ pub enum ErrorKind {
     NumberLiteralOverflow,
     NumberLiteralUnderflow,
     GenericInvalidNumberLiteral(ParseIntError),
-    UnrecognizedStringEscapeCharacter(char),
+    UnrecognizedStringEscapeCharacter(utf8),
     ControlCharacterInStringLiteral,
-    UnrecognizedCharacterEscapeCharacter(char),
+    UnrecognizedCharacterEscapeCharacter(utf8),
     ControlCharacterInCharacterLiteral,
     EmptyCharacterLiteral,
     MismatchedBracket { expected: BracketKind, actual: BracketKind },
     UnopenedBracket(BracketKind),
-    UnrecognizedCharacter(char),
+    UnrecognizedCharacter(utf8),
 }
 
 impl ErrorInfo for ErrorKind {
@@ -1005,12 +1024,11 @@ impl ErrorInfo for ErrorKind {
             Self::NonDigitNumberLiteral => ("invalid number literal".into(), "contains non-digit characters".into()),
             Self::NumberLiteralOverflow => (
                 "invalid number literal".into(),
-                format!("overflows a {bits} bit signed integer (over {max})", bits = isize::BITS, max = isize::MAX)
-                    .into(),
+                format!("overflows a {bits} bit signed integer (over {max})", bits = int::BITS, max = int::MAX).into(),
             ),
             Self::NumberLiteralUnderflow => (
                 "invalid number literal".into(),
-                format!("underflows a {bits} bit signed integer (under {min})", bits = isize::BITS, min = isize::MIN)
+                format!("underflows a {bits} bit signed integer (under {min})", bits = int::BITS, min = int::MIN)
                     .into(),
             ),
             Self::GenericInvalidNumberLiteral(err) => ("invalid number literal".into(), format!("{err}").into()),
@@ -1045,6 +1063,3 @@ impl ErrorInfo for ErrorKind {
 }
 
 impl SyntaxErrorKind for ErrorKind {}
-
-#[deprecated(since = "0.5.3", note = "will be removed to allow for more explicit function signatures")]
-pub type Error<'src> = SyntaxError<'src, ErrorKind>;

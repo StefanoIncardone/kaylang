@@ -9,7 +9,7 @@ use std::{
 pub struct Run;
 
 impl Run {
-    pub fn run(exe_path: &Path) -> Result<(), Error> {
+    pub fn run(exe_path: &Path) -> Result<(), BackEndError<ErrorKind>> {
         let exe_path = match exe_path.to_str() {
             Some(exe_path) => Path::new(".").join(exe_path),
             None => return Err(BackEndError { kind: ErrorKind::NonUtf8Path { path: exe_path.to_path_buf() } }),
@@ -59,6 +59,3 @@ impl ErrorInfo for ErrorKind {
 }
 
 impl BackEndErrorKind for ErrorKind {}
-
-#[deprecated(since = "0.5.3", note = "will be removed to allow for more explicit function signatures")]
-pub type Error = BackEndError<ErrorKind>;

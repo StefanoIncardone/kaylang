@@ -216,6 +216,3 @@ impl ErrorInfo for ErrorKind {
 }
 
 impl CliErrorKind for ErrorKind {}
-
-#[deprecated(since = "0.5.3", note = "will be removed to allow for more explicit function signatures")]
-pub type Error = CliError<ErrorKind>;

@@ -9,7 +9,7 @@ use std::{
 pub struct Assembler;
 
 impl Assembler {
-    pub fn assemble(asm_path: &Path, obj_path: &Path) -> Result<(), Error> {
+    pub fn assemble(asm_path: &Path, obj_path: &Path) -> Result<(), BackEndError<ErrorKind>> {
         let Some(asm_path) = asm_path.to_str() else {
             return Err(BackEndError { kind: ErrorKind::NonUtf8Path { path: asm_path.to_path_buf() } });
         };
@@ -54,6 +54,3 @@ impl ErrorInfo for ErrorKind {
 }
 
 impl BackEndErrorKind for ErrorKind {}
-
-#[deprecated(since = "0.5.3", note = "will be removed to allow for more explicit function signatures")]
-pub type Error = BackEndError<ErrorKind>;

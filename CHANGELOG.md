@@ -16,15 +16,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Type aliases and distinct types
 
 
-## 0.5.4 -
+## 0.6.0 -
+
+From version `0.6.0` breaking changes may appear in **patch** version changes, meaning that
+features in `0.6.0` could not work or could be totally **removed** in `0.6.1`.
+This is to prevent an explosion in version numbers, since breaking and non-breaking changes will be
+frequent.
+It will also prevent the stagnation of features and will allow possibly **braking bug fixes**.
+Breaking changes outside of the `Removed` section will be made obvious for easy recognition.
+Changes to the ABI would **not** be considered breaking since no stable ABI is defined for now.
 
 ### Added
 
 - String and Array comparison operators (i.e.: `<=>`, `==`, `!=`, `<`, `<=`, `>`, `>=`)
+- **BREAKING** New Error kinds when trying to compare values of incompatible types
 
 ### Changed
 
 - Improved code generation
+- Consistency of enum's field order
+- **BREAKING**: `char` type renamed to `ascii`
+
+### Removed
+
+- Error type aliases, to allow for more explicit type signatures
 
 ## 0.5.3 - 2024-03-02
 

@@ -3,7 +3,7 @@ use super::{
     src_file::{Position, SrcFile},
     tokenizer::{BracketKind, Literal, Mutability, Op, SrcCodeLen, Token, TokenKind},
 };
-use crate::error::{ErrorInfo, RawSyntaxError, SyntaxErrorKind, SyntaxErrors};
+use crate::{error::{ErrorInfo, RawSyntaxError, SyntaxErrorKind, SyntaxErrors}, tokenizer::{ascii, int, uint}};
 use std::fmt::{Debug, Display};
 
 pub(crate) trait TypeOf {
@@ -13,15 +13,12 @@ pub(crate) trait TypeOf {
 #[derive(Debug, Clone)]
 pub enum Type {
     Infer,
-
     Int,
-    Char,
+    Ascii,
     Bool,
     Str,
-
-    // TODO(stefano): enforce a max length
-    // TODO(breaking)(stefano): make typ the first field
-    Array { len: usize, typ: Box<Type> },
+    // TODO(breaking)(stefano): enforce a max length
+    Array { typ: Box<Type>, len: uint },
 }
 
 impl PartialEq for Type {
@@ -29,7 +26,7 @@ impl PartialEq for Type {
         match (self, other) {
             (Self::Infer, Self::Infer)
             | (Self::Int, Self::Int)
-            | (Self::Char, Self::Char)
+            | (Self::Ascii, Self::Ascii)
             | (Self::Bool, Self::Bool)
             | (Self::Str, Self::Str) => true,
 
@@ -46,7 +43,7 @@ impl Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Int => write!(f, "int"),
-            Self::Char => write!(f, "char"),
+            Self::Ascii => write!(f, "ascii"),
             Self::Bool => write!(f, "bool"),
             Self::Str => write!(f, "str"),
             Self::Array { typ, len } => write!(f, "{typ}[{len}]"),
@@ -59,10 +56,10 @@ impl Display for Type {
 impl Type {
     pub(crate) fn size(&self) -> usize {
         match self {
-            Self::Int => core::mem::size_of::<isize>(),
-            Self::Char => core::mem::size_of::<u8>(),
+            Self::Int => core::mem::size_of::<int>(),
+            Self::Ascii => core::mem::size_of::<ascii>(),
             Self::Bool => core::mem::size_of::<bool>(),
-            Self::Str => core::mem::size_of::<*const u8>() + core::mem::size_of::<usize>(),
+            Self::Str => core::mem::size_of::<*const ascii>() + core::mem::size_of::<int>(),
             Self::Array { typ, len } => typ.size() * len,
 
             Self::Infer => unreachable!("should have been coerced to a concrete type"),
@@ -73,7 +70,7 @@ impl Type {
         match self {
             Self::Infer => true,
             Self::Array { typ, .. } => typ.should_be_inferred(),
-            Self::Int | Self::Char | Self::Bool | Self::Str => false,
+            Self::Int | Self::Ascii | Self::Bool | Self::Str => false,
         }
     }
 
@@ -86,15 +83,16 @@ impl Type {
 
     pub(crate) fn can_be_compared_to(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Str, Self::Str) | (Self::Int | Self::Bool | Self::Char, Self::Int | Self::Bool | Self::Char) => true,
+            (Self::Str, Self::Str) | (Self::Int | Self::Bool | Self::Ascii, Self::Int | Self::Bool | Self::Ascii) => true,
 
             (Self::Array { typ: typ_1, len: len_1 }, Self::Array { typ: typ_2, len: len_2 }) => {
                 // comparing empty arrays makes no sense, so it's not going to be allowed
                 *len_1 != 0 && *len_2 != 0 && typ_1 == typ_2 && len_1 == len_2
             }
 
-            (Self::Str | Self::Array { .. } | Self::Infer, _)
-            | (_, Self::Str | Self::Array { .. } | Self::Infer) => false,
+            (Self::Str | Self::Array { .. } | Self::Infer, _) | (_, Self::Str | Self::Array { .. } | Self::Infer) => {
+                false
+            }
         }
     }
 }
@@ -103,7 +101,7 @@ impl TypeOf for Literal {
     fn typ(&self) -> Type {
         match self {
             Self::Int(_) => Type::Int,
-            Self::Char(_) => Type::Char,
+            Self::Ascii(_) => Type::Ascii,
             Self::Bool(_) => Type::Bool,
             Self::Str(_) => Type::Str,
         }
@@ -159,10 +157,9 @@ pub(crate) enum Expression<'src> {
     Literal(Literal),
     Unary { op: Op, operand: Box<Expression<'src>> },
     Binary { lhs: Box<Expression<'src>>, op_position: Position, op: Op, rhs: Box<Expression<'src>> },
-    Identifier { name: &'src str, typ: Type },
-    // TODO(breaking)(stefano): make typ the first field
-    Array { items: Vec<Expression<'src>>, typ: Type },
-    ArrayIndex { var_name: &'src str, typ: Type, bracket_position: Position, index: Box<Expression<'src>> },
+    Identifier { typ: Type, name: &'src str },
+    Array { typ: Type, items: Vec<Expression<'src>> },
+    ArrayIndex { typ: Type, var_name: &'src str, bracket_position: Position, index: Box<Expression<'src>> },
 }
 
 impl Debug for Expression<'_> {
@@ -207,7 +204,7 @@ impl From<Type> for Expression<'_> {
     fn from(typ: Type) -> Self {
         match typ {
             Type::Bool => Self::Literal(Literal::Bool(false)),
-            Type::Char => Self::Literal(Literal::Char(0)),
+            Type::Ascii => Self::Literal(Literal::Ascii(0)),
             Type::Int => Self::Literal(Literal::Int(0)),
             Type::Str => Self::Literal(Literal::Str(Vec::new())),
             Type::Array { typ, len } => {
@@ -337,7 +334,7 @@ pub struct Ast<'src, 'tokens: 'src> {
 }
 
 impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
-    pub fn build(src: &'src SrcFile, tokens: &'tokens [Token<'src>]) -> Result<Vec<Scope<'src>>, Vec<Error<'src>>> {
+    pub fn build(src: &'src SrcFile, tokens: &'tokens [Token<'src>]) -> Result<Vec<Scope<'src>>, Vec<SyntaxError<'src, ErrorKind>>> {
         if tokens.is_empty() {
             return Ok(Vec::new());
         }
@@ -364,7 +361,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             scope_index: 0,
             scopes: vec![Scope {
                 parent: 0,
-                types: vec![Type::Int, Type::Char, Type::Bool, Type::Str],
+                types: vec![Type::Int, Type::Ascii, Type::Bool, Type::Str],
                 variables: Vec::new(),
                 nodes: Vec::new(),
             }],
@@ -802,7 +799,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let Some(open_bracket_token @ Token { kind: TokenKind::Bracket(BracketKind::OpenSquare), .. }) =
             self.peek_next_token()
         else {
-            return Ok(Expression::Identifier { name: var_name, typ: var_typ });
+            return Ok(Expression::Identifier { typ: var_typ, name: var_name });
         };
 
         let _open_square = self.next_token();
@@ -829,9 +826,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         match var_typ {
             Type::Array { typ, .. } => match &*typ {
-                Type::Int | Type::Bool | Type::Infer | Type::Char | Type::Str => Ok(Expression::ArrayIndex {
-                    var_name,
+                Type::Int | Type::Bool | Type::Infer | Type::Ascii | Type::Str => Ok(Expression::ArrayIndex {
                     typ: *typ,
+                    var_name,
                     bracket_position: Position::new(self.src, open_bracket_token.col).0,
                     index: Box::new(index),
                 }),
@@ -842,18 +839,18 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 }),
             },
             Type::Str => Ok(Expression::ArrayIndex {
+                typ: Type::Ascii,
                 var_name,
-                typ: Type::Char,
                 bracket_position: Position::new(self.src, open_bracket_token.col).0,
                 index: Box::new(index),
             }),
             Type::Int => Ok(Expression::ArrayIndex {
-                var_name,
                 typ: Type::Int,
+                var_name,
                 bracket_position: Position::new(self.src, open_bracket_token.col).0,
                 index: Box::new(index),
             }),
-            Type::Bool | Type::Infer | Type::Char => Err(RawSyntaxError {
+            Type::Bool | Type::Infer | Type::Ascii => Err(RawSyntaxError {
                 kind: ErrorKind::CannotIndexNonArrayType(var_typ),
                 col: current_token.col,
                 len: current_token.kind.src_code_len(),
@@ -956,7 +953,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
                 // returning to avoid the call to tokens.next at the end of the function
                 return match operand.typ() {
-                    Type::Int | Type::Char => {
+                    Type::Int | Type::Ascii => {
                         if sign < 0 {
                             Ok(Expression::Unary { op: Op::Minus, operand: Box::new(operand) })
                         } else {
@@ -991,7 +988,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 let operand = self.primary_expression()?;
                 // returning to avoid the call to tokens.next at the end of the function
                 return match operand.typ() {
-                    Type::Int | Type::Char | Type::Bool => {
+                    Type::Int | Type::Ascii | Type::Bool => {
                         if should_be_inverted {
                             Ok(Expression::Unary { op: Op::Not, operand: Box::new(operand) })
                         } else {
@@ -1175,7 +1172,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    // TODO(breaking)(stefano): make this have the same precedence as other comparison operators
+    // IDEA(breaking)(stefano): make this have the same precedence as other comparison operators
     fn comparative_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
         let mut lhs = self.bitor_expression()?;
 
@@ -1306,7 +1303,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    // TODO(stefano): implement boolean operators for strings
     // TODO(stefano): disallow implicit conversions
     // TODO(stefano): introduce casting operators
     fn expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
@@ -1391,7 +1387,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         let len_token = self.next_token_bounded(ExpectedBeforeEof::ArrayLength)?;
         let len = match len_token.kind {
-            TokenKind::Literal(Literal::Int(len)) => len as usize,
+            TokenKind::Literal(Literal::Int(len)) => len as uint,
             TokenKind::Bracket(BracketKind::CloseSquare) => {
                 return Err(RawSyntaxError {
                     kind: ErrorKind::MissingArrayLength,
@@ -1555,7 +1551,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     let new_value = match &op_token.kind {
                         TokenKind::Op(Op::Equals) => rhs,
                         TokenKind::Op(op) => Expression::Binary {
-                            lhs: Box::new(Expression::Identifier { name, typ: op.typ() }),
+                            lhs: Box::new(Expression::Identifier { typ: op.typ(), name }),
                             op_position: Position::new(self.src, op_token.col).0,
                             op: *op,
                             rhs: Box::new(rhs),
@@ -1629,7 +1625,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             let expression = self.expression()?;
             let condition = match &expression.typ() {
                 Type::Bool => Ok(expression),
-                Type::Char | Type::Int | Type::Str | Type::Array { .. } | Type::Infer => Err(RawSyntaxError {
+                Type::Ascii | Type::Int | Type::Str | Type::Array { .. } | Type::Infer => Err(RawSyntaxError {
                     kind: ErrorKind::ExpectedBooleanExpressionInIfStatement,
                     col: if_token.col,
                     len: if_token.kind.src_code_len(),
@@ -1708,7 +1704,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let expression = self.expression()?;
         let condition = match &expression.typ() {
             Type::Bool => Ok(expression),
-            Type::Char | Type::Int | Type::Str | Type::Array { .. } | Type::Infer => Err(RawSyntaxError {
+            Type::Ascii | Type::Int | Type::Str | Type::Array { .. } | Type::Infer => Err(RawSyntaxError {
                 kind: ErrorKind::ExpectedBooleanExpressionInLoopStatement,
                 col: loop_token.col,
                 len: loop_token.kind.src_code_len(),
@@ -2026,6 +2022,3 @@ impl ErrorInfo for ErrorKind {
 }
 
 impl SyntaxErrorKind for ErrorKind {}
-
-#[deprecated(since = "0.5.3", note = "will be removed to allow for more explicit function signatures")]
-pub type Error<'src> = SyntaxError<'src, ErrorKind>;

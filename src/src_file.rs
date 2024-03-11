@@ -61,7 +61,7 @@ pub struct SrcFile {
 
 impl SrcFile {
     // TODO(stefano): replace indentation tabs with spaces
-    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, SrcFileError<ErrorKind>> {
         let path = path.as_ref().to_path_buf();
 
         let file = match File::open(&path) {
@@ -152,6 +152,3 @@ impl ErrorInfo for ErrorKind {
 }
 
 impl SrcFileErrorKind for ErrorKind {}
-
-#[deprecated(since = "0.5.3", note = "will be removed to allow for more explicit function signatures")]
-pub type Error = SrcFileError<ErrorKind>;
