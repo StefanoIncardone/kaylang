@@ -52,7 +52,7 @@ Changes to the ABI would **not** be considered breaking since no stable ABI is d
 
 ### Removed
 
-- Error type aliases, to allow for more explicit type signatures
+- `Error`, `ColoredString` and `ColoredStr` type aliases, to allow for more explicit type signatures
 - `Run` struct and related errors
 
 ### Fixed

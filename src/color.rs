@@ -153,8 +153,3 @@ impl<Str: AsRef<str>> Display for Colored<Str> {
         unsafe { log(self.text.as_ref(), self.fg, self.bg, self.flags, f) }
     }
 }
-
-#[deprecated(since = "0.5.3", note = "will be removed to allow for more explicit type signatures")]
-pub type ColoredString = Colored<String>;
-#[deprecated(since = "0.5.3", note = "will be removed to allow for more explicit type signatures")]
-pub type ColoredStr = Colored<&'static str>;
