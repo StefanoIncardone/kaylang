@@ -46,7 +46,7 @@ Changes to the ABI would **not** be considered breaking since no stable ABI is d
 - Started running examples as tests to check if output is correct
 - **BREAKING**: `Compiler::compile` now returns an `Artifacts` struct instance instead of a tuple
 - **BREAKING**: `char` type renamed to `ascii`
-- **BREAKING**: new `Utf8Path` struct is now required instead of `&Path` in compilation steps
+- **BREAKING**: New `Utf8Path` struct is now required instead of `&Path` in compilation steps
 
 ### Removed
 
