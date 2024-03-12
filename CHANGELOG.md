@@ -36,6 +36,7 @@ Changes to the ABI would **not** be considered breaking since no stable ABI is d
 
 - String and Array comparison operators (i.e.: `<=>`, `==`, `!=`, `<`, `<=`, `>`, `>=`)
 - Raw string literals: `r"hello\nworld"` where `\n` would not get escaped
+- Printing to `stderr`: `eprint` and `eprintln` keywords
 - **BREAKING**: New Error kinds when trying to compare values of incompatible types
 
 ### Changed
@@ -44,6 +45,7 @@ Changes to the ABI would **not** be considered breaking since no stable ABI is d
 - Improved code generation
 - Consistency of enum's field order
 - Started running examples as tests to check if output is correct
+- **BREAKING**: Runtime crashes now print to `stderr`
 - **BREAKING**: `Compiler::compile` now returns an `Artifacts` struct instance instead of a tuple
 - **BREAKING**: `char` type renamed to `ascii`
 - **BREAKING**: New `Utf8Path` struct is now required instead of `&Path` in compilation steps

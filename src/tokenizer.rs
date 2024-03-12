@@ -304,8 +304,10 @@ pub(crate) enum TokenKind<'src> {
     Definition(Mutability),
 
     // Keywords
-    Print,   // temporary way of printing values
-    PrintLn, // temporary way of printing values followed by a newline
+    Print,   // temporary way of printing values to stdout
+    PrintLn, // temporary way of printing values followed by a newline to stdout
+    Eprint,   // temporary way of printing values to stderr
+    EprintLn, // temporary way of printing values followed by a newline to stderr
     Do,
     If,
     Else,
@@ -333,6 +335,8 @@ impl Display for TokenKind<'_> {
 
             Self::Print => write!(f, "print"),
             Self::PrintLn => write!(f, "println"),
+            Self::Eprint => write!(f, "eprint"),
+            Self::EprintLn => write!(f, "eprintln"),
             Self::True => write!(f, "true"),
             Self::False => write!(f, "false"),
             Self::Do => write!(f, "do"),
@@ -365,6 +369,8 @@ impl SrcCodeLen for TokenKind<'_> {
 
             Self::Print => 5,
             Self::PrintLn => 7,
+            Self::Eprint => 6,
+            Self::EprintLn => 8,
             Self::Do => 2,
             Self::If => 2,
             Self::Else => 4,
@@ -633,6 +639,8 @@ impl<'src> Tokenizer<'src> {
             "var" => TokenKind::Definition(Mutability::Var),
             "print" => TokenKind::Print,
             "println" => TokenKind::PrintLn,
+            "eprint" => TokenKind::Eprint,
+            "eprintln" => TokenKind::EprintLn,
             "true" => TokenKind::True,
             "false" => TokenKind::False,
             "do" => TokenKind::Do,

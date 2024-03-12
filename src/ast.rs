@@ -300,6 +300,8 @@ pub(crate) enum Node<'src> {
 
     Print(Expression<'src>),
     Println(Option<Expression<'src>>),
+    Eprint(Expression<'src>),
+    Eprintln(Option<Expression<'src>>),
 
     If(If<'src>),
 
@@ -318,9 +320,12 @@ impl Display for Node<'_> {
         match self {
             Self::Semicolon => write!(f, ";"),
             Self::Expression(expression) => write!(f, "{expression:?}"),
-            Self::Print(argument) => write!(f, "print {argument:?}"),
+            Self::Print(arg) => write!(f, "print {arg:?}"),
             Self::Println(Some(arg)) => write!(f, "println {arg:?}"),
             Self::Println(None) => write!(f, "println"),
+            Self::Eprint(arg) => write!(f, "eprint {arg:?}"),
+            Self::Eprintln(Some(arg)) => write!(f, "eprintln {arg:?}"),
+            Self::Eprintln(None) => write!(f, "eprintln"),
             Self::If(iff) => write!(f, "{iff}", iff = iff.ifs[0]),
             Self::Loop(looop) => write!(f, "{looop}"),
             Self::Break => write!(f, "break"),
@@ -421,7 +426,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         | Node::Break
                         | Node::Continue
                         | Node::Print(_)
-                        | Node::Println(_) => {
+                        | Node::Println(_)
+                        | Node::Eprint(_)
+                        | Node::Eprintln(_) => {
                             if let Err(err) = self.semicolon() {
                                 self.errors.push(err);
 
@@ -485,8 +492,32 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 None => Ok(Some(Node::Expression(self.expression()?))),
             },
             TokenKind::Definition(_) => Ok(Some(self.variable_definition()?)),
-            TokenKind::Print => Ok(Some(self.print()?)),
-            TokenKind::PrintLn => Ok(Some(self.println()?)),
+            TokenKind::Print => {
+                let arg = self.print_arg()?;
+                Ok(Some(Node::Print(arg)))
+            },
+            TokenKind::PrintLn => {
+                if let Some(&Token { kind: TokenKind::SemiColon, .. }) = self.peek_next_token() {
+                    let _ = self.next_token();
+                    return Ok(Some(Node::Println(None)));
+                }
+
+                let arg = self.print_arg()?;
+                Ok(Some(Node::Println(Some(arg))))
+            },
+            TokenKind::Eprint => {
+                let arg = self.print_arg()?;
+                Ok(Some(Node::Eprint(arg)))
+            },
+            TokenKind::EprintLn => {
+                if let Some(&Token { kind: TokenKind::SemiColon, .. }) = self.peek_next_token() {
+                    let _ = self.next_token();
+                    return Ok(Some(Node::Eprintln(None)));
+                }
+
+                let arg = self.print_arg()?;
+                Ok(Some(Node::Eprintln(Some(arg))))
+            },
             TokenKind::If => Ok(Some(self.iff()?)),
             TokenKind::Else => {
                 let _ = self.next_token();
@@ -1661,21 +1692,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
 // print statements
 impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
-    fn print(&mut self) -> Result<Node<'src>, RawSyntaxError<ErrorKind>> {
-        let arg = self.print_arg()?;
-        Ok(Node::Print(arg))
-    }
-
-    fn println(&mut self) -> Result<Node<'src>, RawSyntaxError<ErrorKind>> {
-        if let Some(&Token { kind: TokenKind::SemiColon, .. }) = self.peek_next_token() {
-            let _ = self.next_token();
-            return Ok(Node::Println(None));
-        }
-
-        let arg = self.print_arg()?;
-        Ok(Node::Println(Some(arg)))
-    }
-
     fn print_arg(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
         let start_of_expression_token = self.next_token_bounded(ExpectedBeforeEof::Expression)?;
         let argument = self.expression()?;

@@ -455,59 +455,59 @@ crash:
 
  mov rdi, CRASH_len
  mov rsi, CRASH
- call str_print
+ call str_eprint
 
  mov dil, ':'
- call char_print
+ call char_eprint
 
  mov dil, ' '
- call char_print
+ call char_eprint
 
  ; crash message
  mov rdi, r8
  mov rsi, r9
- call str_print
+ call str_eprint
 
  mov dil, newline
- call char_print
+ call char_eprint
 
  mov rdi, _AT_len
  mov rsi, _AT
- call str_print
+ call str_eprint
 
  mov dil, ':'
- call char_print
+ call char_eprint
 
  mov dil, ' '
- call char_print
+ call char_eprint
 
  ; file
  mov rdi, file_len
  mov rsi, file
- call str_print
+ call str_eprint
 
  mov dil, ':'
- call char_print
+ call char_eprint
 
  ; line
  mov rdi, r10
  call int_to_str
  mov rdi, rdx
  mov rsi, rax
- call str_print
+ call str_eprint
 
  mov dil, ':'
- call char_print
+ call char_eprint
 
  ; column
  mov rdi, r11
  call int_to_str
  mov rdi, rdx
  mov rsi, rax
- call str_print
+ call str_eprint
 
  mov dil, newline
- call char_print
+ call char_eprint
 
  mov rdi, EXIT_FAILURE
  jmp exit"
@@ -721,6 +721,17 @@ int_print:
  ret"
 };
 
+static INT_EPRINT_ASM: &str = {
+    r"; fn int_eprint(self: int @rdi)
+int_eprint:
+ call int_to_str
+ mov rdi, stderr
+ mov rsi, rax
+ mov rax, SYS_write
+ syscall
+ ret"
+};
+
 static INT_ARRAY_DEBUG_PRINT_ASM: &str = {
     r"; fn int_array_debug_print(self: int[]& @rdi:rsi)
 int_array_debug_print:
@@ -760,12 +771,64 @@ int_array_debug_print:
  ret"
 };
 
+static INT_ARRAY_DEBUG_EPRINT_ASM: &str = {
+    r"; fn int_array_debug_eprint(self: int[]& @rdi:rsi)
+int_array_debug_eprint:
+ mov r8, rdi; len: uint
+ mov r9, rsi; array_ptr: int[]*
+
+ mov dil, '['
+ call char_eprint
+
+ test r8, r8
+ jz .done
+
+.next:
+ dec r8
+ jz .last
+
+ mov rdi, [r9]
+ call int_eprint
+
+ mov dil, ','
+ call char_eprint
+
+ mov dil, ' '
+ call char_eprint
+
+ add r9, 8
+ jmp .next
+
+.last:
+ mov rdi, [r9]
+ call int_eprint
+
+.done:
+ mov dil, ']'
+ call char_eprint
+
+ ret"
+};
+
 static CHAR_PRINT_ASM: &str = {
     r"; fn char_print(self: char @dil)
 char_print:
  push di
  mov rsi, rsp
  mov rdi, stdout
+ mov rdx, 1
+ mov rax, SYS_write
+ syscall
+ pop di
+ ret"
+};
+
+static CHAR_EPRINT_ASM: &str = {
+    r"; fn char_eprint(self: char @dil)
+char_eprint:
+ push di
+ mov rsi, rsp
+ mov rdi, stderr
  mov rdx, 1
  mov rax, SYS_write
  syscall
@@ -812,6 +875,45 @@ char_array_debug_print:
  ret"
 };
 
+static CHAR_ARRAY_DEBUG_EPRINT_ASM: &str = {
+    r"; fn char_array_debug_eprint(self: char[]& @rdi:rsi)
+char_array_debug_eprint:
+ mov r8, rdi; len: uint
+ mov r9, rsi; array_ptr: char[]*
+
+ mov dil, '['
+ call char_eprint
+
+ test r8, r8
+ jz .done
+
+.next:
+ dec r8
+ jz .last
+
+ mov dil, [r9]
+ call char_eprint
+
+ mov dil, ','
+ call char_eprint
+
+ mov dil, ' '
+ call char_eprint
+
+ inc r9
+ jmp .next
+
+.last:
+ mov dil, [r9]
+ call char_eprint
+
+.done:
+ mov dil, ']'
+ call char_eprint
+
+ ret"
+};
+
 static BOOL_PRINT_ASM: &str = {
     r"; fn bool_print(self: bool @dil)
 bool_print:
@@ -824,6 +926,23 @@ bool_print:
  cmovne rdx, rdi
 
  mov rdi, stdout
+ mov rax, SYS_write
+ syscall
+ ret"
+};
+
+static BOOL_EPRINT_ASM: &str = {
+    r"; fn bool_eprint(self: bool @dil)
+bool_eprint:
+ cmp dil, true
+ mov rsi, true_str
+ mov rdi, false_str
+ cmovne rsi, rdi
+ mov rdx, true_str_len
+ mov rdi, false_str_len
+ cmovne rdx, rdi
+
+ mov rdi, stderr
  mov rax, SYS_write
  syscall
  ret"
@@ -868,6 +987,45 @@ bool_array_debug_print:
  ret"
 };
 
+static BOOL_ARRAY_DEBUG_EPRINT_ASM: &str = {
+    r"; fn bool_array_debug_eprint(self: bool[]& @rdi:rsi)
+bool_array_debug_eprint:
+ mov r8, rdi; len: uint
+ mov r9, rsi; array_ptr: bool[]*
+
+ mov dil, '['
+ call char_eprint
+
+ test r8, r8
+ jz .done
+
+.next:
+ dec r8
+ jz .last
+
+ mov dil, [r9]
+ call bool_eprint
+
+ mov dil, ','
+ call char_eprint
+
+ mov dil, ' '
+ call char_eprint
+
+ inc r9
+ jmp .next
+
+.last:
+ mov dil, [r9]
+ call bool_eprint
+
+.done:
+ mov dil, ']'
+ call char_eprint
+
+ ret"
+};
+
 static STR_CMP_ASM: &str = {
     r"; fn cmp: int @rax = str_cmp(self: str @rdi:rsi, other: @rdx:rcx)
 str_cmp:
@@ -907,16 +1065,6 @@ str_eq:
 .done:
  mov rax, false
  sete al
- ret"
-};
-
-static STR_PRINT_ASM: &str = {
-r"; fn str_print(self: str @rdi:rsi)
-str_print:
- mov rdx, rdi
- mov rdi, stdout
- mov rax, SYS_write
- syscall
  ret"
 };
 
@@ -968,6 +1116,26 @@ str_array_eq:
  ret"
 };
 
+static STR_PRINT_ASM: &str = {
+r"; fn str_print(self: str @rdi:rsi)
+str_print:
+ mov rdx, rdi
+ mov rdi, stdout
+ mov rax, SYS_write
+ syscall
+ ret"
+};
+
+static STR_EPRINT_ASM: &str = {
+r"; fn str_eprint(self: str @rdi:rsi)
+str_eprint:
+ mov rdx, rdi
+ mov rdi, stderr
+ mov rax, SYS_write
+ syscall
+ ret"
+};
+
 static STR_ARRAY_DEBUG_PRINT_ASM: &str = {
     r"; fn str_array_debug_print(self: str[]& @rdi:rsi)
 str_array_debug_print:
@@ -1005,6 +1173,47 @@ str_array_debug_print:
 .done:
  mov dil, ']'
  call char_print
+
+ ret"
+};
+
+static STR_ARRAY_DEBUG_EPRINT_ASM: &str = {
+    r"; fn str_array_debug_eprint(self: str[]& @rdi:rsi)
+str_array_debug_eprint:
+ mov r8, rdi; len: uint
+ mov r9, rsi; array_ptr: str[]*
+
+ mov dil, '['
+ call char_eprint
+
+ test r8, r8
+ jz .done
+
+.next:
+ dec r8
+ jz .last
+
+ mov rdi, [r9]
+ mov rsi, [r9 + 8]
+ call str_eprint
+
+ mov dil, ','
+ call char_eprint
+
+ mov dil, ' '
+ call char_eprint
+
+ add r9, 16
+ jmp .next
+
+.last:
+ mov rdi, [r9]
+ mov rsi, [r9 + 8]
+ call str_eprint
+
+.done:
+ mov dil, ']'
+ call char_eprint
 
  ret"
 };
@@ -1170,17 +1379,27 @@ _start:
 
 {INT_PRINT_ASM}
 
+{INT_EPRINT_ASM}
+
 {INT_ARRAY_DEBUG_PRINT_ASM}
+
+{INT_ARRAY_DEBUG_EPRINT_ASM}
 
 {CHAR_PRINT_ASM}
 
+{CHAR_EPRINT_ASM}
+
 {CHAR_ARRAY_DEBUG_PRINT_ASM}
+
+{CHAR_ARRAY_DEBUG_EPRINT_ASM}
 
 {BOOL_PRINT_ASM}
 
+{BOOL_EPRINT_ASM}
+
 {BOOL_ARRAY_DEBUG_PRINT_ASM}
 
-{STR_PRINT_ASM}
+{BOOL_ARRAY_DEBUG_EPRINT_ASM}
 
 {STR_CMP_ASM}
 
@@ -1190,7 +1409,13 @@ _start:
 
 {STR_ARRAY_EQ_ASM}
 
+{STR_PRINT_ASM}
+
+{STR_EPRINT_ASM}
+
 {STR_ARRAY_DEBUG_PRINT_ASM}
+
+{STR_ARRAY_DEBUG_EPRINT_ASM}
 
 
 section .rodata
@@ -1293,6 +1518,19 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 self.asm += " mov dil, newline\
                     \n call char_print\n\n";
+            }
+            Node::Eprint(argument) => {
+                self.asm += &format!(" ; {node}\n");
+                self.eprint(argument);
+            }
+            Node::Eprintln(argument) => {
+                self.asm += &format!(" ; {node}\n");
+                if let Some(arg) = argument {
+                    self.eprint(arg);
+                }
+
+                self.asm += " mov dil, newline\
+                    \n call char_eprint\n\n";
             }
             Node::If(if_statement) => {
                 let if_counter = self.if_counter;
@@ -2642,6 +2880,27 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 Type::Ascii => self.asm += " call char_array_debug_print\n\n",
                 Type::Bool => self.asm += " call bool_array_debug_print\n\n",
                 Type::Str => self.asm += " call str_array_debug_print\n\n",
+                Type::Array { .. } => unreachable!("nested arrays are not supported yet"),
+                Type::Infer => unreachable!("should have been coerced to a concrete type"),
+            },
+            Type::Infer => unreachable!("should have been coerced to a concrete type"),
+        }
+    }
+
+    fn eprint(&mut self, value: &'ast Expression<'src>) {
+        let value_typ = value.typ();
+        self.expression(value, Dst::of(&value_typ));
+
+        match value_typ {
+            Type::Int => self.asm += " call int_eprint\n\n",
+            Type::Ascii => self.asm += " call char_eprint\n\n",
+            Type::Bool => self.asm += " call bool_eprint\n\n",
+            Type::Str => self.asm += " call str_eprint\n\n",
+            Type::Array { typ, .. } => match &*typ {
+                Type::Int => self.asm += " call int_array_debug_eprint\n\n",
+                Type::Ascii => self.asm += " call char_array_debug_eprint\n\n",
+                Type::Bool => self.asm += " call bool_array_debug_eprint\n\n",
+                Type::Str => self.asm += " call str_array_debug_eprint\n\n",
                 Type::Array { .. } => unreachable!("nested arrays are not supported yet"),
                 Type::Infer => unreachable!("should have been coerced to a concrete type"),
             },
