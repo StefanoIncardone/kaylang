@@ -1117,7 +1117,7 @@ str_array_eq:
 };
 
 static STR_PRINT_ASM: &str = {
-r"; fn str_print(self: str @rdi:rsi)
+    r"; fn str_print(self: str @rdi:rsi)
 str_print:
  mov rdx, rdi
  mov rdi, stdout
@@ -1127,7 +1127,7 @@ str_print:
 };
 
 static STR_EPRINT_ASM: &str = {
-r"; fn str_eprint(self: str @rdi:rsi)
+    r"; fn str_eprint(self: str @rdi:rsi)
 str_eprint:
  mov rdx, rdi
  mov rdi, stderr

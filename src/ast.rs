@@ -495,7 +495,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::Print => {
                 let arg = self.print_arg()?;
                 Ok(Some(Node::Print(arg)))
-            },
+            }
             TokenKind::PrintLn => {
                 if let Some(&Token { kind: TokenKind::SemiColon, .. }) = self.peek_next_token() {
                     let _ = self.next_token();
@@ -504,11 +504,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
                 let arg = self.print_arg()?;
                 Ok(Some(Node::Println(Some(arg))))
-            },
+            }
             TokenKind::Eprint => {
                 let arg = self.print_arg()?;
                 Ok(Some(Node::Eprint(arg)))
-            },
+            }
             TokenKind::EprintLn => {
                 if let Some(&Token { kind: TokenKind::SemiColon, .. }) = self.peek_next_token() {
                     let _ = self.next_token();
@@ -517,7 +517,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
                 let arg = self.print_arg()?;
                 Ok(Some(Node::Eprintln(Some(arg))))
-            },
+            }
             TokenKind::If => Ok(Some(self.iff()?)),
             TokenKind::Else => {
                 let _ = self.next_token();

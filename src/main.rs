@@ -190,7 +190,10 @@ mod tests {
         Color, Verbosity,
     };
     use std::{
-        io, path::Path, process::{Command, ExitCode}, time::Instant
+        io,
+        path::Path,
+        process::{Command, ExitCode},
+        time::Instant,
     };
 
     #[allow(unused_mut)]
@@ -343,16 +346,8 @@ mod tests {
             }
 
             let mut lines = stdout.lines();
-
-            let expected = lines
-                .next().unwrap()
-                .strip_prefix("expected:").unwrap()
-                .trim_start();
-
-            let actual = lines
-                .next().unwrap()
-                .strip_prefix("actual:").unwrap()
-                .trim_start();
+            let expected = lines.next().unwrap().strip_prefix("expected:").unwrap().trim_start();
+            let actual = lines.next().unwrap().strip_prefix("actual:").unwrap().trim_start();
 
             if !actual.starts_with("# TODO") {
                 assert_eq!(expected, actual)

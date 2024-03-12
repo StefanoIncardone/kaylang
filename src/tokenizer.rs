@@ -304,8 +304,8 @@ pub(crate) enum TokenKind<'src> {
     Definition(Mutability),
 
     // Keywords
-    Print,   // temporary way of printing values to stdout
-    PrintLn, // temporary way of printing values followed by a newline to stdout
+    Print,    // temporary way of printing values to stdout
+    PrintLn,  // temporary way of printing values followed by a newline to stdout
     Eprint,   // temporary way of printing values to stderr
     EprintLn, // temporary way of printing values followed by a newline to stderr
     Do,
