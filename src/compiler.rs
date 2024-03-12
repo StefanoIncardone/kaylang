@@ -458,10 +458,10 @@ crash:
  call str_eprint
 
  mov dil, ':'
- call char_eprint
+ call ascii_eprint
 
  mov dil, ' '
- call char_eprint
+ call ascii_eprint
 
  ; crash message
  mov rdi, r8
@@ -469,17 +469,17 @@ crash:
  call str_eprint
 
  mov dil, newline
- call char_eprint
+ call ascii_eprint
 
  mov rdi, _AT_len
  mov rsi, _AT
  call str_eprint
 
  mov dil, ':'
- call char_eprint
+ call ascii_eprint
 
  mov dil, ' '
- call char_eprint
+ call ascii_eprint
 
  ; file
  mov rdi, file_len
@@ -487,7 +487,7 @@ crash:
  call str_eprint
 
  mov dil, ':'
- call char_eprint
+ call ascii_eprint
 
  ; line
  mov rdi, r10
@@ -497,7 +497,7 @@ crash:
  call str_eprint
 
  mov dil, ':'
- call char_eprint
+ call ascii_eprint
 
  ; column
  mov rdi, r11
@@ -507,7 +507,7 @@ crash:
  call str_eprint
 
  mov dil, newline
- call char_eprint
+ call ascii_eprint
 
  mov rdi, EXIT_FAILURE
  jmp exit"
@@ -739,7 +739,7 @@ int_array_debug_print:
  mov r9, rsi; array_ptr: int[]*
 
  mov dil, '['
- call char_print
+ call ascii_print
 
  test r8, r8
  jz .done
@@ -752,10 +752,10 @@ int_array_debug_print:
  call int_print
 
  mov dil, ','
- call char_print
+ call ascii_print
 
  mov dil, ' '
- call char_print
+ call ascii_print
 
  add r9, 8
  jmp .next
@@ -766,7 +766,7 @@ int_array_debug_print:
 
 .done:
  mov dil, ']'
- call char_print
+ call ascii_print
 
  ret"
 };
@@ -778,7 +778,7 @@ int_array_debug_eprint:
  mov r9, rsi; array_ptr: int[]*
 
  mov dil, '['
- call char_eprint
+ call ascii_eprint
 
  test r8, r8
  jz .done
@@ -791,10 +791,10 @@ int_array_debug_eprint:
  call int_eprint
 
  mov dil, ','
- call char_eprint
+ call ascii_eprint
 
  mov dil, ' '
- call char_eprint
+ call ascii_eprint
 
  add r9, 8
  jmp .next
@@ -805,14 +805,14 @@ int_array_debug_eprint:
 
 .done:
  mov dil, ']'
- call char_eprint
+ call ascii_eprint
 
  ret"
 };
 
-static CHAR_PRINT_ASM: &str = {
-    r"; fn char_print(self: char @dil)
-char_print:
+static ASCII_PRINT_ASM: &str = {
+    r"; fn ascii_print(self: ascii @dil)
+ascii_print:
  push di
  mov rsi, rsp
  mov rdi, stdout
@@ -823,9 +823,9 @@ char_print:
  ret"
 };
 
-static CHAR_EPRINT_ASM: &str = {
-    r"; fn char_eprint(self: char @dil)
-char_eprint:
+static ASCII_EPRINT_ASM: &str = {
+    r"; fn ascii_eprint(self: ascii @dil)
+ascii_eprint:
  push di
  mov rsi, rsp
  mov rdi, stderr
@@ -836,14 +836,14 @@ char_eprint:
  ret"
 };
 
-static CHAR_ARRAY_DEBUG_PRINT_ASM: &str = {
-    r"; fn char_array_debug_print(self: char[]& @rdi:rsi)
-char_array_debug_print:
+static ASCII_ARRAY_DEBUG_PRINT_ASM: &str = {
+    r"; fn ascii_array_debug_print(self: ascii[]& @rdi:rsi)
+ascii_array_debug_print:
  mov r8, rdi; len: uint
- mov r9, rsi; array_ptr: char[]*
+ mov r9, rsi; array_ptr: ascii[]*
 
  mov dil, '['
- call char_print
+ call ascii_print
 
  test r8, r8
  jz .done
@@ -853,36 +853,36 @@ char_array_debug_print:
  jz .last
 
  mov dil, [r9]
- call char_print
+ call ascii_print
 
  mov dil, ','
- call char_print
+ call ascii_print
 
  mov dil, ' '
- call char_print
+ call ascii_print
 
  inc r9
  jmp .next
 
 .last:
  mov dil, [r9]
- call char_print
+ call ascii_print
 
 .done:
  mov dil, ']'
- call char_print
+ call ascii_print
 
  ret"
 };
 
-static CHAR_ARRAY_DEBUG_EPRINT_ASM: &str = {
-    r"; fn char_array_debug_eprint(self: char[]& @rdi:rsi)
-char_array_debug_eprint:
+static ASCII_ARRAY_DEBUG_EPRINT_ASM: &str = {
+    r"; fn ascii_array_debug_eprint(self: ascii[]& @rdi:rsi)
+ascii_array_debug_eprint:
  mov r8, rdi; len: uint
- mov r9, rsi; array_ptr: char[]*
+ mov r9, rsi; array_ptr: ascii[]*
 
  mov dil, '['
- call char_eprint
+ call ascii_eprint
 
  test r8, r8
  jz .done
@@ -892,24 +892,24 @@ char_array_debug_eprint:
  jz .last
 
  mov dil, [r9]
- call char_eprint
+ call ascii_eprint
 
  mov dil, ','
- call char_eprint
+ call ascii_eprint
 
  mov dil, ' '
- call char_eprint
+ call ascii_eprint
 
  inc r9
  jmp .next
 
 .last:
  mov dil, [r9]
- call char_eprint
+ call ascii_eprint
 
 .done:
  mov dil, ']'
- call char_eprint
+ call ascii_eprint
 
  ret"
 };
@@ -955,7 +955,7 @@ bool_array_debug_print:
  mov r9, rsi; array_ptr: bool[]*
 
  mov dil, '['
- call char_print
+ call ascii_print
 
  test r8, r8
  jz .done
@@ -968,10 +968,10 @@ bool_array_debug_print:
  call bool_print
 
  mov dil, ','
- call char_print
+ call ascii_print
 
  mov dil, ' '
- call char_print
+ call ascii_print
 
  inc r9
  jmp .next
@@ -982,7 +982,7 @@ bool_array_debug_print:
 
 .done:
  mov dil, ']'
- call char_print
+ call ascii_print
 
  ret"
 };
@@ -994,7 +994,7 @@ bool_array_debug_eprint:
  mov r9, rsi; array_ptr: bool[]*
 
  mov dil, '['
- call char_eprint
+ call ascii_eprint
 
  test r8, r8
  jz .done
@@ -1007,10 +1007,10 @@ bool_array_debug_eprint:
  call bool_eprint
 
  mov dil, ','
- call char_eprint
+ call ascii_eprint
 
  mov dil, ' '
- call char_eprint
+ call ascii_eprint
 
  inc r9
  jmp .next
@@ -1021,7 +1021,7 @@ bool_array_debug_eprint:
 
 .done:
  mov dil, ']'
- call char_eprint
+ call ascii_eprint
 
  ret"
 };
@@ -1143,7 +1143,7 @@ str_array_debug_print:
  mov r9, rsi; array_ptr: str[]*
 
  mov dil, '['
- call char_print
+ call ascii_print
 
  test r8, r8
  jz .done
@@ -1157,10 +1157,10 @@ str_array_debug_print:
  call str_print
 
  mov dil, ','
- call char_print
+ call ascii_print
 
  mov dil, ' '
- call char_print
+ call ascii_print
 
  add r9, 16
  jmp .next
@@ -1172,7 +1172,7 @@ str_array_debug_print:
 
 .done:
  mov dil, ']'
- call char_print
+ call ascii_print
 
  ret"
 };
@@ -1184,7 +1184,7 @@ str_array_debug_eprint:
  mov r9, rsi; array_ptr: str[]*
 
  mov dil, '['
- call char_eprint
+ call ascii_eprint
 
  test r8, r8
  jz .done
@@ -1198,10 +1198,10 @@ str_array_debug_eprint:
  call str_eprint
 
  mov dil, ','
- call char_eprint
+ call ascii_eprint
 
  mov dil, ' '
- call char_eprint
+ call ascii_eprint
 
  add r9, 16
  jmp .next
@@ -1213,7 +1213,7 @@ str_array_debug_eprint:
 
 .done:
  mov dil, ']'
- call char_eprint
+ call ascii_eprint
 
  ret"
 };
@@ -1385,13 +1385,13 @@ _start:
 
 {INT_ARRAY_DEBUG_EPRINT_ASM}
 
-{CHAR_PRINT_ASM}
+{ASCII_PRINT_ASM}
 
-{CHAR_EPRINT_ASM}
+{ASCII_EPRINT_ASM}
 
-{CHAR_ARRAY_DEBUG_PRINT_ASM}
+{ASCII_ARRAY_DEBUG_PRINT_ASM}
 
-{CHAR_ARRAY_DEBUG_EPRINT_ASM}
+{ASCII_ARRAY_DEBUG_EPRINT_ASM}
 
 {BOOL_PRINT_ASM}
 
@@ -1517,7 +1517,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 }
 
                 self.asm += " mov dil, newline\
-                    \n call char_print\n\n";
+                    \n call ascii_print\n\n";
             }
             Node::Eprint(argument) => {
                 self.asm += &format!(" ; {node}\n");
@@ -1530,7 +1530,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 }
 
                 self.asm += " mov dil, newline\
-                    \n call char_eprint\n\n";
+                    \n call ascii_eprint\n\n";
             }
             Node::If(if_statement) => {
                 let if_counter = self.if_counter;
@@ -2872,12 +2872,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
         match value_typ {
             Type::Int => self.asm += " call int_print\n\n",
-            Type::Ascii => self.asm += " call char_print\n\n",
+            Type::Ascii => self.asm += " call ascii_print\n\n",
             Type::Bool => self.asm += " call bool_print\n\n",
             Type::Str => self.asm += " call str_print\n\n",
             Type::Array { typ, .. } => match &*typ {
                 Type::Int => self.asm += " call int_array_debug_print\n\n",
-                Type::Ascii => self.asm += " call char_array_debug_print\n\n",
+                Type::Ascii => self.asm += " call ascii_array_debug_print\n\n",
                 Type::Bool => self.asm += " call bool_array_debug_print\n\n",
                 Type::Str => self.asm += " call str_array_debug_print\n\n",
                 Type::Array { .. } => unreachable!("nested arrays are not supported yet"),
@@ -2893,12 +2893,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
         match value_typ {
             Type::Int => self.asm += " call int_eprint\n\n",
-            Type::Ascii => self.asm += " call char_eprint\n\n",
+            Type::Ascii => self.asm += " call ascii_eprint\n\n",
             Type::Bool => self.asm += " call bool_eprint\n\n",
             Type::Str => self.asm += " call str_eprint\n\n",
             Type::Array { typ, .. } => match &*typ {
                 Type::Int => self.asm += " call int_array_debug_eprint\n\n",
-                Type::Ascii => self.asm += " call char_array_debug_eprint\n\n",
+                Type::Ascii => self.asm += " call ascii_array_debug_eprint\n\n",
                 Type::Bool => self.asm += " call bool_array_debug_eprint\n\n",
                 Type::Str => self.asm += " call str_array_debug_eprint\n\n",
                 Type::Array { .. } => unreachable!("nested arrays are not supported yet"),
