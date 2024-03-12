@@ -190,10 +190,7 @@ mod tests {
         Color, Verbosity,
     };
     use std::{
-        io,
-        path::Path,
-        process::{Command, ExitCode},
-        time::Instant,
+        io, path::Path, process::{Command, ExitCode}, time::Instant
     };
 
     #[allow(unused_mut)]
@@ -337,15 +334,29 @@ mod tests {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
 
+            eprint!("{stderr}");
+            eprintln!("{stdout}");
+
             if !output.status.success() {
-                eprint!("{stderr}");
-                eprintln!("{stdout}");
                 let err_code = output.status.code().unwrap();
                 return Ok(ExitCode::from(err_code as u8));
             }
 
-            eprint!("{stderr}");
-            eprintln!("{stdout}");
+            let mut lines = stdout.lines();
+
+            let expected = lines
+                .next().unwrap()
+                .strip_prefix("expected:").unwrap()
+                .trim_start();
+
+            let actual = lines
+                .next().unwrap()
+                .strip_prefix("actual:").unwrap()
+                .trim_start();
+
+            if !actual.starts_with("# TODO") {
+                assert_eq!(expected, actual)
+            }
         }
 
         Ok(ExitCode::SUCCESS)
