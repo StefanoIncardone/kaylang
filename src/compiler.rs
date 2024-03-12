@@ -448,10 +448,13 @@ use Reg8l::*;
 static CRASH_ASM: &str = {
     r"; fn crash(msg: str @rdi:rsi, line: uint @rdx, col: uint @rcx)
 crash:
+ push r12
+ push r13
+
  mov r8, rdi; msg_len: uint
  mov r9, rsi; msg_ptr: ascii*
- mov r10, rdx; line: uint
- mov r11, rcx; col: uint
+ mov r12, rdx; line: uint
+ mov r13, rcx; col: uint
 
  mov rdi, CRASH_len
  mov rsi, CRASH
@@ -490,26 +493,22 @@ crash:
  call ascii_eprint
 
  ; line
- mov rdi, r10
- call int_to_str
- mov rdi, rdx
- mov rsi, rax
- call str_eprint
+ mov rdi, r12
+ call int_eprint
 
  mov dil, ':'
  call ascii_eprint
 
  ; column
- mov rdi, r11
- call int_to_str
- mov rdi, rdx
- mov rsi, rax
- call str_eprint
+ mov rdi, r13
+ call int_eprint
 
  mov dil, newline
  call ascii_eprint
 
  mov rdi, EXIT_FAILURE
+ pop r13
+ pop r12
  jmp exit"
 };
 
@@ -813,26 +812,24 @@ int_array_debug_eprint:
 static ASCII_PRINT_ASM: &str = {
     r"; fn ascii_print(self: ascii @dil)
 ascii_print:
- push di
- mov rsi, rsp
+ mov [rsp - 1], dil
+ lea rsi, [rsp - 1]
  mov rdi, stdout
  mov rdx, 1
  mov rax, SYS_write
  syscall
- pop di
  ret"
 };
 
 static ASCII_EPRINT_ASM: &str = {
     r"; fn ascii_eprint(self: ascii @dil)
 ascii_eprint:
- push di
- mov rsi, rsp
+ mov [rsp - 1], dil
+ lea rsi, [rsp - 1]
  mov rdi, stderr
  mov rdx, 1
  mov rax, SYS_write
  syscall
- pop di
  ret"
 };
 
@@ -2106,10 +2103,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Dst::Reg(Rsi),
                         format!(
                             " mov rdx, {line}\
-                        \n mov rcx, {col}\
-                        \n call assert_exponent_is_positive\
-                        \n call int_pow\
-                        \n mov rdi, rax",
+                            \n mov rcx, {col}\
+                            \n call assert_exponent_is_positive\
+                            \n call int_pow\
+                            \n mov rdi, rax",
                             line = op_position.line,
                             col = op_position.col
                         )
@@ -2123,12 +2120,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Dst::Reg(Rsi),
                         format!(
                             " mov rdx, {line}\
-                        \n mov rcx, {col}\
-                        \n call assert_denominator_not_zero\
-                        \n mov rax, rdi\
-                        \n xor rdx, rdx\
-                        \n idiv rsi\
-                        \n mov rdi, rax",
+                            \n mov rcx, {col}\
+                            \n call assert_denominator_not_zero\
+                            \n mov rax, rdi\
+                            \n xor rdx, rdx\
+                            \n idiv rsi\
+                            \n mov rdi, rax",
                             line = op_position.line,
                             col = op_position.col
                         )
@@ -2139,12 +2136,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Dst::Reg(Rsi),
                         format!(
                             " mov rdx, {line}\
-                        \n mov rcx, {col}\
-                        \n call assert_modulo_not_zero\
-                        \n mov rax, rdi\
-                        \n xor rdx, rdx\
-                        \n idiv rsi\
-                        \n mov rdi, rdx",
+                            \n mov rcx, {col}\
+                            \n call assert_modulo_not_zero\
+                            \n mov rax, rdi\
+                            \n xor rdx, rdx\
+                            \n idiv rsi\
+                            \n mov rdi, rdx",
                             line = op_position.line,
                             col = op_position.col,
                         )
@@ -2160,59 +2157,59 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Dst::Reg(Rdi),
                         Dst::Reg(Rsi),
                         " cmp rdi, rsi\
-                    \n mov rdi, false\
-                    \n sete dil"
+                        \n mov rdi, false\
+                        \n sete dil"
                             .into(),
                     ),
                     Op::NotEquals => (
                         Dst::Reg(Rdi),
                         Dst::Reg(Rsi),
                         " cmp rdi, rsi\
-                    \n mov rdi, false\
-                    \n setne dil"
+                        \n mov rdi, false\
+                        \n setne dil"
                             .into(),
                     ),
                     Op::Greater => (
                         Dst::Reg(Rdi),
                         Dst::Reg(Rsi),
                         " cmp rdi, rsi\
-                    \n mov rdi, false\
-                    \n setg dil"
+                        \n mov rdi, false\
+                        \n setg dil"
                             .into(),
                     ),
                     Op::GreaterOrEquals => (
                         Dst::Reg(Rdi),
                         Dst::Reg(Rsi),
                         " cmp rdi, rsi\
-                    \n mov rdi, false\
-                    \n setge dil"
+                        \n mov rdi, false\
+                        \n setge dil"
                             .into(),
                     ),
                     Op::Less => (
                         Dst::Reg(Rdi),
                         Dst::Reg(Rsi),
                         " cmp rdi, rsi\
-                    \n mov rdi, false\
-                    \n setl dil"
+                        \n mov rdi, false\
+                        \n setl dil"
                             .into(),
                     ),
                     Op::LessOrEquals => (
                         Dst::Reg(Rdi),
                         Dst::Reg(Rsi),
                         " cmp rdi, rsi\
-                    \n mov rdi, false\
-                    \n setle dil"
+                        \n mov rdi, false\
+                        \n setle dil"
                             .into(),
                     ),
                     Op::Compare => (
                         Dst::Reg(Rdi),
                         Dst::Reg(Rsi),
                         " cmp rdi, rsi\
-                    \n mov rdi, LESS\
-                    \n mov rsi, EQUAL\
-                    \n cmove rdi, rsi\
-                    \n mov rsi, GREATER\
-                    \n cmovg rdi, rsi"
+                        \n mov rdi, LESS\
+                        \n mov rsi, EQUAL\
+                        \n cmove rdi, rsi\
+                        \n mov rsi, GREATER\
+                        \n cmovg rdi, rsi"
                             .into(),
                     ),
                     Op::And | Op::AndEquals | Op::BitAnd | Op::BitAndEquals => {
@@ -2229,14 +2226,14 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Dst::Reg(Rdi),
                         Dst::Reg(Rsi),
                         " mov cl, sil\
-                    \n shl rdi, cl"
+                        \n shl rdi, cl"
                             .into(),
                     ),
                     Op::RightShift | Op::RightShiftEquals => (
                         Dst::Reg(Rdi),
                         Dst::Reg(Rsi),
                         " mov cl, sil\
-                    \n shr rdi, cl"
+                        \n shr rdi, cl"
                             .into(),
                     ),
                     Op::Equals => unreachable!("should not be present in the ast"),
