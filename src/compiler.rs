@@ -907,9 +907,11 @@ str_eq:
 .done:
  mov rax, false
  sete al
- ret
+ ret"
+};
 
-; fn str_print(self: str @rdi:rsi)
+static STR_PRINT_ASM: &str = {
+r"; fn str_print(self: str @rdi:rsi)
 str_print:
  mov rdx, rdi
  mov rdi, stdout
@@ -1177,6 +1179,8 @@ _start:
 {BOOL_PRINT_ASM}
 
 {BOOL_ARRAY_DEBUG_PRINT_ASM}
+
+{STR_PRINT_ASM}
 
 {STR_CMP_ASM}
 
