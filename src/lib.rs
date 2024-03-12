@@ -6,12 +6,12 @@ pub mod compiler;
 pub mod error;
 pub mod linker;
 pub mod logging;
-pub mod run;
 pub mod src_file;
 pub mod tokenizer;
 
+use cli::Utf8Path;
 use color::{Bg, Colored, Fg, Flag, Flags};
-use std::{fmt::Display, path::PathBuf};
+use std::fmt::Display;
 
 // help and version messages
 const HELP_FG: Fg = Fg::White;
@@ -92,14 +92,14 @@ pub enum RunMode {
     Help,
     Version,
     Check {
-        src_path: PathBuf,
+        src_path: Utf8Path,
     },
     Compile {
-        src_path: PathBuf,
-        out_path: Option<PathBuf>,
+        src_path: Utf8Path,
+        out_path: Option<Utf8Path>,
     },
     Run {
-        src_path: PathBuf,
-        out_path: Option<PathBuf>,
+        src_path: Utf8Path,
+        out_path: Option<Utf8Path>,
     },
 }

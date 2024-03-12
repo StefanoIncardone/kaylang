@@ -1,8 +1,10 @@
+// TODO(stefano): allow assembly print functions to accept the sink (stdout or stderr)
 // IDEA(stefano): reserve space for the biggest temporary value and reuse as necessary, to allow for stuff like this
 // TODO(stefano): introduce intermediate representation
 
 use crate::{
     ast::{self, Expression, IfStatement, LoopCondition, Node, Scope, Type, TypeOf},
+    cli::Utf8Path,
     error::{BackEndError, BackEndErrorInfo, BackEndErrorKind, ErrorInfo},
     src_file::Position,
     tokenizer::{Literal, Op},
@@ -12,7 +14,7 @@ use std::{
     fmt::Display,
     fs::File,
     io::{self, BufWriter, Write},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 #[allow(dead_code)]
@@ -442,14 +444,6 @@ use Reg64::*;
 use Reg8h::*;
 #[allow(unused_imports)]
 use Reg8l::*;
-
-#[derive(Debug)]
-struct Variable<'src, 'ast: 'src> {
-    inner: &'ast ast::Variable<'src>,
-    offset: usize,
-}
-
-const STACK_ALIGN: usize = core::mem::size_of::<usize>();
 
 static CRASH_ASM: &str = {
     r"; fn crash(msg: str @rdi:rsi, line: uint @rdx, col: uint @rcx)
@@ -1014,6 +1008,21 @@ str_array_debug_print:
 };
 
 #[derive(Debug)]
+pub struct Artifacts {
+    pub asm_path: Utf8Path,
+    pub obj_path: Utf8Path,
+    pub exe_path: Utf8Path,
+}
+
+#[derive(Debug)]
+struct Variable<'src, 'ast: 'src> {
+    inner: &'ast ast::Variable<'src>,
+    offset: usize,
+}
+
+const STACK_ALIGN: usize = core::mem::size_of::<usize>();
+
+#[derive(Debug)]
 pub struct Compiler<'src, 'ast: 'src> {
     ast: &'ast [Scope<'src>],
 
@@ -1031,42 +1040,43 @@ pub struct Compiler<'src, 'ast: 'src> {
 // Generation of compilation artifacts (.asm, .o, executable)
 impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     pub fn compile(
-        src_path: &'src Path,
-        out_path: Option<&'src Path>,
+        src_path: &Utf8Path,
+        out_path: Option<&Utf8Path>,
         ast: &'ast [Scope<'src>],
-    ) -> Result<(PathBuf, PathBuf, PathBuf), BackEndError<ErrorKind>> {
-        let (asm_path, obj_path, exe_path) = {
-            let mut asm_path = src_path.with_extension("asm");
-            let mut obj_path = src_path.with_extension("o");
-            let mut exe_path = src_path.with_extension("");
+    ) -> Result<Artifacts, BackEndError<ErrorKind>> {
+        // Safety: we know src_path is valid utf8 so can safely transmute
+        let mut asm_path: Utf8Path =
+            unsafe { std::mem::transmute(src_path.inner.with_extension("asm")) };
+        let mut obj_path: Utf8Path =
+            unsafe { std::mem::transmute(src_path.inner.with_extension("o")) };
+        let mut exe_path: Utf8Path =
+            unsafe { std::mem::transmute(src_path.inner.with_extension("")) };
 
-            if let Some(out_path) = out_path {
-                match std::fs::create_dir_all(out_path) {
-                    Ok(()) => {}
-                    Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
-                    Err(err) => {
-                        return Err(BackEndError {
-                            kind: ErrorKind::CouldNotCreateOutputDirectory {
-                                err,
-                                path: out_path.to_path_buf(),
-                            },
-                        });
-                    }
+        if let Some(out_path) = out_path {
+            match std::fs::create_dir_all(&out_path.inner) {
+                Ok(()) => {}
+                Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(err) => {
+                    return Err(BackEndError {
+                        kind: ErrorKind::CouldNotCreateOutputDirectory {
+                            err,
+                            path: out_path.inner.clone(),
+                        },
+                    });
                 }
-
-                asm_path = out_path.join(asm_path.file_name().unwrap());
-                obj_path = out_path.join(obj_path.file_name().unwrap());
-                exe_path = out_path.join(exe_path.file_name().unwrap());
             }
 
-            (asm_path, obj_path, exe_path)
-        };
+            // TODO(stefano): ensure a file name is present instead of unwrapping
+            asm_path.inner = out_path.inner.join(asm_path.inner.file_name().unwrap());
+            obj_path.inner = out_path.inner.join(obj_path.inner.file_name().unwrap());
+            exe_path.inner = out_path.inner.join(exe_path.inner.file_name().unwrap());
+        }
 
-        let asm_file = match File::create(&asm_path) {
+        let asm_file = match File::create(&asm_path.inner) {
             Ok(file) => file,
             Err(err) => {
                 return Err(BackEndError {
-                    kind: ErrorKind::CouldNotCreateFile { err, path: asm_path },
+                    kind: ErrorKind::CouldNotCreateFile { err, path: asm_path.inner },
                 })
             }
         };
@@ -1246,7 +1256,7 @@ section .data
  int_str: times INT_BITS db 0
 "#,
             asm = this.asm,
-            src_path = src_path.display(),
+            src_path = src_path.inner.display(),
             strings = this.string_labels,
         );
 
@@ -1259,7 +1269,7 @@ section .data
             return Err(BackEndError { kind: ErrorKind::WritingAssemblyFailed { err } });
         }
 
-        Ok((asm_path, obj_path, exe_path))
+        Ok(Artifacts { asm_path, obj_path, exe_path })
     }
 }
 
@@ -2015,10 +2025,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         let mut rhs_saved = rhs;
         let rhs_requires_saving_of_lhs = 'requires_saving: loop {
             match rhs_saved {
-                Expression::Binary { .. }
-                | Expression::ArrayIndex { .. } => break 'requires_saving true,
-                Expression::Literal(_)
-                | Expression::Identifier { .. } => break 'requires_saving false,
+                Expression::Binary { .. } | Expression::ArrayIndex { .. } => {
+                    break 'requires_saving true
+                }
+                Expression::Literal(_) | Expression::Identifier { .. } => {
+                    break 'requires_saving false
+                }
                 Expression::Unary { operand, .. } => rhs_saved = operand,
                 Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
             }
@@ -2636,7 +2648,6 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
 #[derive(Debug)]
 pub enum ErrorKind {
-    NonUtf8Path { path: PathBuf },
     CouldNotCreateOutputDirectory { err: io::Error, path: PathBuf },
     CouldNotCreateFile { err: io::Error, path: PathBuf },
     WritingAssemblyFailed { err: io::Error },
@@ -2647,10 +2658,6 @@ impl ErrorInfo for ErrorKind {
 
     fn info(&self) -> Self::Info {
         let (msg, cause) = match self {
-            Self::NonUtf8Path { path } => (
-                "invalid path".into(),
-                format!("'{path}' contains non UTF8 characters", path = path.display()).into(),
-            ),
             Self::CouldNotCreateOutputDirectory { err, path } => (
                 format!("could not create output directory '{path}'", path = path.display()).into(),
                 format!("{err} ({kind})", kind = err.kind()).into(),

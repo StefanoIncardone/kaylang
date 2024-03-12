@@ -15,10 +15,6 @@
 # QUESTION:
 # What is the value of the first triangle number to have over five hundred divisors?
 
-# ANSWER:
-# 76576500
-
-
 let TARGET_FACTOR_COUNT = 500;
 
 var triangle_number = 0;
@@ -66,4 +62,5 @@ loop total_factor_count <= TARGET_FACTOR_COUNT {
     number += 1;
 }
 
-print "first triangle number with over "; print TARGET_FACTOR_COUNT; print " factors is "; println triangle_number;
+print "expected: "; println 76576500;
+print "actual:   "; println triangle_number;

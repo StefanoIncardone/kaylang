@@ -4,10 +4,6 @@
 # QUESTION:
 # What is the largest prime factor of the number 600851475143?
 
-# ANSWER:
-# 6857
-
-
 let TARGET_NUMBER = 600851475143;
 var largest_prime = 0;
 
@@ -35,4 +31,5 @@ loop factor ** 2 <= TARGET_NUMBER {
     factor += 1;
 }
 
-println largest_prime;
+print "expected: "; println 6857;
+print "actual:   "; println largest_prime;

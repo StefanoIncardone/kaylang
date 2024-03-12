@@ -1,6 +1,6 @@
 use super::color::{Bg, Colored, Fg, Flag, Flags};
-use crate::Verbosity;
-use std::{path::Path, time::Instant};
+use crate::{cli::Utf8Path, Verbosity};
+use std::time::Instant;
 
 // errors
 const ERR_FG: Fg = Fg::LightRed;
@@ -44,12 +44,12 @@ pub struct Step {
 }
 
 impl Step {
-    pub fn info(step: &Colored<&str>, path: &Path, verbosity: Verbosity) {
+    pub fn info(step: &Colored<&str>, path: &Utf8Path, verbosity: Verbosity) {
         if let Verbosity::Quiet = verbosity {
             return;
         }
 
-        eprintln!("{:STEP_INDENT$}{:>STEP_PADDING$}: {}", "", step, path.display());
+        eprintln!("{:STEP_INDENT$}{step:>STEP_PADDING$}: {path}", "", path = path.inner.display());
     }
 
     pub fn done(self) {

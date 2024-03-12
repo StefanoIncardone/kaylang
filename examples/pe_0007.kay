@@ -4,10 +4,6 @@
 # QUESTION:
 # What is the 10001st prime number?
 
-# ANSWER:
-# 104743
-
-
 var current_prime = 0;
 
 var number = 2;
@@ -31,4 +27,5 @@ loop current_prime < 10001 {
     number += 1;
 }
 
-println number - 1;
+print "expected: "; println 104743;
+print "actual:   "; println number - 1;

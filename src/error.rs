@@ -263,7 +263,7 @@ pub struct SyntaxError<'src, K: SyntaxErrorKind> {
 impl<'src, K: SyntaxErrorKind> SyntaxError<'src, K> {
     pub(crate) fn from_raw(src: &'src SrcFile, raw: &RawSyntaxError<K>) -> Self {
         let (position, line_text) = Position::new(src, raw.col);
-        Self { path: &src.path, position, len: raw.len, line_text, kind: raw.kind.clone() }
+        Self { path: &src.path.inner, position, len: raw.len, line_text, kind: raw.kind.clone() }
     }
 }
 

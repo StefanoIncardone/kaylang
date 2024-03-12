@@ -43,11 +43,15 @@ Changes to the ABI would **not** be considered breaking since no stable ABI is d
 - Maximum line length bumped down to 100 characters
 - Improved code generation
 - Consistency of enum's field order
+- Started running examples as tests to check if output is correct
+- **BREAKING**: `Compiler::compile` now returns an `Artifacts` struct instance instead of a tuple
 - **BREAKING**: `char` type renamed to `ascii`
+- **BREAKING**: new `Utf8Path` struct is now required instead of `&Path` in compilation steps
 
 ### Removed
 
 - Error type aliases, to allow for more explicit type signatures
+- `Run` struct and related errors
 
 ### Fixed
 

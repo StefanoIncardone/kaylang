@@ -10,10 +10,6 @@
 # QUESTION:
 # Find the sum of all the numbers that can be written as the sum of fifth powers of their digits.
 
-# ANSWER:
-# 443839
-
-
 let DIGITS_COUNT = 5;
 let MAX_DIGIT_NUMBER = 10 ** (DIGITS_COUNT + 1);
 
@@ -32,4 +28,5 @@ loop number <= MAX_DIGIT_NUMBER {
     number += 1;
 }
 
-println digit_power_sum;
+print "expected: "; println 443839;
+print "actual:   "; println digit_power_sum;

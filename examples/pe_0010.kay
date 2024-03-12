@@ -4,10 +4,6 @@
 # QUESTION:
 # Find the sum of all the primes below two million.
 
-# ANSWER:
-# 142913828922
-
-
 var sum = 0;
 var number = 1;
 loop number < 2000000 {
@@ -30,4 +26,5 @@ loop number < 2000000 {
     number += 1;
 }
 
-println sum;
+print "expected: "; println 142913828922;
+print "actual:   "; println sum;

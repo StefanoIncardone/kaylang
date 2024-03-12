@@ -2,13 +2,30 @@ use crate::{
     error::{CliError, CliErrorInfo, CliErrorKind, ErrorInfo},
     Color, RunMode, Verbosity,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Default, Clone)]
 pub struct Args {
     pub color: Color,
     pub verbosity: Verbosity,
     pub run_mode: RunMode,
+}
+
+#[derive(Debug, Clone)]
+pub struct Utf8Path {
+    pub(crate) inner: PathBuf,
+}
+
+impl Utf8Path {
+    pub fn from<P: AsRef<Path>>(path: P) -> Option<Self> {
+        let path = path.as_ref();
+        let _utf8_path = path.to_str()?;
+        Some(Self { inner: path.into() })
+    }
+
+    pub fn inner(&self) -> &Path {
+        &self.inner
+    }
 }
 
 impl TryFrom<Vec<String>> for Args {
@@ -106,12 +123,16 @@ impl TryFrom<Vec<String>> for Args {
                         });
                     };
 
-                    let src_path: PathBuf = path.into();
+                    let Some(src_path) = Utf8Path::from(path) else {
+                        return Err(CliError {
+                            kind: ErrorKind::NonUtf8Path { path: path.into() },
+                        });
+                    };
 
                     let mode = match arg.as_str() {
                         "check" => RunMode::Check { src_path },
                         "compile" | "run" => {
-                            let mut out: Option<PathBuf> = None;
+                            let mut out_path: Option<Utf8Path> = None;
 
                             if let Some(out_flag) = args.peek() {
                                 if *out_flag == "-o" || *out_flag == "--output" {
@@ -125,13 +146,20 @@ impl TryFrom<Vec<String>> for Args {
                                         });
                                     };
 
-                                    out = Some(path.into());
+                                    out_path = match Utf8Path::from(path) {
+                                        Some(path) => Some(path),
+                                        None => {
+                                            return Err(CliError {
+                                                kind: ErrorKind::NonUtf8Path { path: path.into() },
+                                            });
+                                        }
+                                    }
                                 }
                             }
 
                             match arg.as_str() {
-                                "compile" => RunMode::Compile { src_path, out_path: out },
-                                "run" => RunMode::Run { src_path, out_path: out },
+                                "compile" => RunMode::Compile { src_path, out_path },
+                                "run" => RunMode::Run { src_path, out_path },
                                 _ => unreachable!(),
                             }
                         }
@@ -181,6 +209,8 @@ impl TryFrom<std::env::Args> for Args {
 
 #[derive(Debug, Clone)]
 pub enum ErrorKind {
+    NonUtf8Path { path: PathBuf },
+
     ColorModeAlreadySelected,
     MissingColorMode,
     UnrecognizedColorMode { unrecognized: String },
@@ -205,6 +235,9 @@ impl ErrorInfo for ErrorKind {
 
     fn info(&self) -> Self::Info {
         let msg = match self {
+            Self::NonUtf8Path { path } => {
+                format!("non UTF8 path: '{path}'", path = path.display()).into()
+            }
             Self::ColorModeAlreadySelected => "color mode selected more than once".into(),
             Self::MissingColorMode => "missing color mode after".into(),
             Self::UnrecognizedColorMode { unrecognized } => {

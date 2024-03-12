@@ -9,10 +9,6 @@
 # QUESTION:
 # Evaluate the sum of all the amicable numbers under 10000.
 
-# ANSWER:
-# 31626
-
-
 let MAX = 10000;
 var sum_of_amicable_numbers = 0;
 
@@ -37,11 +33,10 @@ loop number < MAX {
     }
 
     if second_sum_of_divisors == number && sum_of_divisor != second_sum_of_divisors {
-        print "number: "; print number; print " -> "; print sum_of_divisor; print " -> "; println second_sum_of_divisors;
         sum_of_amicable_numbers += number;
     }
     number += 1;
 }
 
-println;
-println sum_of_amicable_numbers;
+print "expected: "; println 31626;
+print "actual:   "; println sum_of_amicable_numbers;

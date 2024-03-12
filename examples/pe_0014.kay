@@ -11,12 +11,9 @@
 # Which starting number, under one million, produces the longest chain?
 # Note: Once the chain starts the terms are allowed to go above one million.
 
-# ANSWER:
-# 837799
-
-
 var max_chain_length = 1;
 var number = 2;
+var number_at_max_chain_length = number;
 loop number < 1000000 {
     var chain_length = 1;
     var number_copy = number;
@@ -29,8 +26,11 @@ loop number < 1000000 {
 
     if chain_length > max_chain_length {
         max_chain_length = chain_length;
-        print "found new maximum "; print max_chain_length; print " for "; println number;
+        number_at_max_chain_length = number;
     }
 
     number += 1;
 }
+
+print "expected: "; println 837799;
+print "actual:   "; println number_at_max_chain_length;

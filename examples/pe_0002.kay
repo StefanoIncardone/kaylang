@@ -6,10 +6,6 @@
 # By considering the terms in the Fibonacci sequence whose values do not exceed four million, find
 # the sum of the even-valued terms.
 
-# ANSWER:
-# 4613732
-
-
 let FOUR_MILLIONS = 4000000;
 
 var fib_previous = 0;
@@ -24,4 +20,5 @@ loop fib_current < FOUR_MILLIONS {
     fib_current = fib_next;
 }
 
-println evens_sum;
+print "expected: "; println 4613732;
+print "actual:   "; println evens_sum;

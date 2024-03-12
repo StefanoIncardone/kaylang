@@ -1,8 +1,11 @@
-use crate::error::{ErrorInfo, SrcFileError, SrcFileErrorInfo, SrcFileErrorKind};
+use crate::{
+    cli::Utf8Path,
+    error::{ErrorInfo, SrcFileError, SrcFileErrorInfo, SrcFileErrorKind},
+};
 use std::{
     fs::File,
     io::{self, BufRead, BufReader},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,26 +61,34 @@ impl<'src> Position {
 
 #[derive(Debug)]
 pub struct SrcFile {
-    pub(crate) path: PathBuf,
+    pub(crate) path: Utf8Path,
     pub(crate) code: String,
     pub(crate) lines: Vec<Line>,
 }
 
 impl SrcFile {
     // TODO(stefano): replace indentation tabs with spaces
-    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, SrcFileError<ErrorKind>> {
-        let path = path.as_ref().to_path_buf();
-
-        let file = match File::open(&path) {
+    pub fn load(path: &Utf8Path) -> Result<Self, SrcFileError<ErrorKind>> {
+        let file = match File::open(&path.inner) {
             Ok(f) => f,
-            Err(err) => return Err(SrcFileError { kind: ErrorKind::CouldNotOpen { err, path } }),
+            Err(err) => {
+                return Err(SrcFileError {
+                    kind: ErrorKind::CouldNotOpen { err, path: path.inner.clone() },
+                })
+            }
         };
 
         let file_len = match file.metadata() {
             Ok(metadata) if metadata.is_file() => metadata.len() as usize,
-            Ok(_) => return Err(SrcFileError { kind: ErrorKind::ExpectedFile { path } }),
+            Ok(_) => {
+                return Err(SrcFileError {
+                    kind: ErrorKind::ExpectedFile { path: path.inner.clone() },
+                })
+            }
             Err(err) => {
-                return Err(SrcFileError { kind: ErrorKind::CouldNotReadMetadata { err, path } })
+                return Err(SrcFileError {
+                    kind: ErrorKind::CouldNotReadMetadata { err, path: path.inner.clone() },
+                })
             }
         };
 
@@ -93,7 +104,7 @@ impl SrcFile {
                 Ok(read) => read,
                 Err(err) => {
                     return Err(SrcFileError {
-                        kind: ErrorKind::CouldNotReadContents { err, path },
+                        kind: ErrorKind::CouldNotReadContents { err, path: path.inner.clone() },
                     })
                 }
             };
@@ -122,7 +133,7 @@ impl SrcFile {
             }
         }
 
-        Ok(Self { path, code, lines })
+        Ok(Self { path: path.clone(), code, lines })
     }
 }
 

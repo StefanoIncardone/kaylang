@@ -1,28 +1,22 @@
-use crate::error::{BackEndError, BackEndErrorInfo, BackEndErrorKind, ErrorInfo};
-use std::{
-    io,
-    path::{Path, PathBuf},
-    process::Command,
+use crate::{
+    cli::Utf8Path,
+    error::{BackEndError, BackEndErrorInfo, BackEndErrorKind, ErrorInfo},
 };
+use std::{io, process::Command};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Assembler;
 
 impl Assembler {
-    pub fn assemble(asm_path: &Path, obj_path: &Path) -> Result<(), BackEndError<ErrorKind>> {
-        let Some(asm_path) = asm_path.to_str() else {
-            return Err(BackEndError {
-                kind: ErrorKind::NonUtf8Path { path: asm_path.to_path_buf() },
-            });
-        };
+    pub fn assemble(
+        asm_path: &Utf8Path,
+        obj_path: &Utf8Path,
+    ) -> Result<(), BackEndError<ErrorKind>> {
+        let asm_path_str = asm_path.inner.to_str().unwrap();
+        let obj_path_str = obj_path.inner.to_str().unwrap();
+        let args = ["-felf64", "-gdwarf", &asm_path_str, "-o", &obj_path_str];
 
-        let Some(obj_path) = obj_path.to_str() else {
-            return Err(BackEndError {
-                kind: ErrorKind::NonUtf8Path { path: obj_path.to_path_buf() },
-            });
-        };
-
-        match Command::new("nasm").args(["-felf64", "-gdwarf", asm_path, "-o", obj_path]).output() {
+        match Command::new("nasm").args(args).output() {
             Ok(nasm_out) if !nasm_out.status.success() => {
                 Err(BackEndError { kind: ErrorKind::Failed { output: nasm_out.stderr } })
             }
@@ -34,7 +28,6 @@ impl Assembler {
 
 #[derive(Debug)]
 pub enum ErrorKind {
-    NonUtf8Path { path: PathBuf },
     CouldNotCreateProcess { err: io::Error },
     Failed { output: Vec<u8> },
 }
@@ -44,10 +37,6 @@ impl ErrorInfo for ErrorKind {
 
     fn info(&self) -> Self::Info {
         let (msg, cause) = match self {
-            Self::NonUtf8Path { path } => (
-                "invalid path".into(),
-                format!("'{path}' contains non UTF8 characters", path = path.display()).into(),
-            ),
             Self::CouldNotCreateProcess { err } => (
                 "could not create assembler process".into(),
                 format!("{err} ({kind})", kind = err.kind()).into(),

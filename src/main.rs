@@ -2,18 +2,21 @@ use kaylang::{
     assembler::Assembler,
     ast::Ast,
     cli::Args,
-    compiler::Compiler,
+    compiler::{Artifacts, Compiler},
     linker::Linker,
     logging::{
         Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, LINKER,
         LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
     },
-    run::Run,
     src_file::SrcFile,
     tokenizer::Tokenizer,
     Help, RunMode, Version,
 };
-use std::{env, process::ExitCode, time::Instant};
+use std::{
+    env,
+    process::{Command, ExitCode},
+    time::Instant,
+};
 
 fn main() -> ExitCode {
     #[allow(unused_mut)]
@@ -109,9 +112,9 @@ fn main() -> ExitCode {
 
             let asm_generation_sub_step =
                 SubStep { step: &ASM_GENERATION, start_time: Instant::now(), verbosity };
-            let asm_generation_result = Compiler::compile(src_path, out_path.as_deref(), &ast);
+            let asm_generation_result = Compiler::compile(src_path, out_path.as_ref(), &ast);
             asm_generation_sub_step.done();
-            let (asm_path, obj_path, exe_path) = match asm_generation_result {
+            let Artifacts { asm_path, obj_path, exe_path } = match asm_generation_result {
                 Ok(artifacts_path) => artifacts_path,
                 Err(err) => {
                     eprintln!("{err}");
@@ -147,8 +150,17 @@ fn main() -> ExitCode {
 
             if let RunMode::Run { .. } = run_mode {
                 Step::info(&RUNNING, &exe_path, verbosity);
-                match Run::run(&exe_path) {
-                    Ok(()) => {}
+                let exe_path_str = exe_path.inner();
+                let mut executable = match Command::new(exe_path_str).spawn() {
+                    Ok(executable) => executable,
+                    Err(err) => {
+                        eprintln!("{err}");
+                        return ExitCode::FAILURE;
+                    }
+                };
+
+                match executable.wait() {
+                    Ok(_out) => {}
                     Err(err) => {
                         eprintln!("{err}");
                         return ExitCode::FAILURE;
@@ -164,32 +176,45 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use kaylang::{
+        assembler::Assembler,
         ast::Ast,
+        cli::Utf8Path,
+        compiler::{Artifacts, Compiler},
+        linker::Linker,
         logging::{
-            Step, SubStep, AST_BUILDING, CHECKING, LOADING_SOURCE, SUBSTEP_DONE, TOKENIZATION,
+            Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, LINKER,
+            LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
         },
         src_file::SrcFile,
         tokenizer::Tokenizer,
         Color, Verbosity,
     };
-    use std::{io, path::Path, process::ExitCode, time::Instant};
+    use std::{
+        io,
+        path::Path,
+        process::{Command, ExitCode},
+        time::Instant,
+    };
 
     #[allow(unused_mut)]
     #[test]
     fn check_examples() -> Result<ExitCode, io::Error> {
         let verbosity = Verbosity::Normal;
         let color = Color::Auto;
+        let out_path = Utf8Path::from("examples/out").unwrap();
+
         color.set(&std::io::stderr());
+        color.set(&std::io::stdout());
 
         let src_files = Path::new("examples").read_dir()?;
 
         for src_file in src_files {
-            let src_path = src_file?.path();
-            if src_path.is_dir() {
+            let src_path = Utf8Path::from(src_file?.path()).unwrap();
+            if src_path.inner().is_dir() {
                 continue;
             }
 
-            let Some(extension) = src_path.extension() else {
+            let Some(extension) = src_path.inner().extension() else {
                 continue;
             };
 
@@ -197,9 +222,9 @@ mod tests {
                 continue;
             }
 
-            match src_path.file_name() {
+            match src_path.inner().file_name() {
                 Some(path) => {
-                    if path == "features_test.kay" {
+                    if path == "features_test.kay" || path == "fizzbuzz.kay" {
                         continue;
                     }
                 }
@@ -214,7 +239,7 @@ mod tests {
 
             let loading_source_sub_step =
                 SubStep { step: &LOADING_SOURCE, start_time: Instant::now(), verbosity };
-            let source_loading_result = SrcFile::load(src_path);
+            let source_loading_result = SrcFile::load(&src_path);
             loading_source_sub_step.done();
             let src = match source_loading_result {
                 Ok(src) => src,
@@ -243,7 +268,7 @@ mod tests {
                 SubStep { step: &AST_BUILDING, start_time: Instant::now(), verbosity };
             let ast_building_result = Ast::build(&src, &tokens);
             ast_building_sub_step.done();
-            let _ast = match ast_building_result {
+            let ast = match ast_building_result {
                 Ok(ast) => ast,
                 Err(errors) => {
                     eprintln!();
@@ -255,7 +280,72 @@ mod tests {
             };
 
             checking_sub_step.done();
+
+            Step::info(&COMPILING, &src_path, verbosity);
+            let compilation_sub_step =
+                SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
+
+            let asm_generation_sub_step =
+                SubStep { step: &ASM_GENERATION, start_time: Instant::now(), verbosity };
+            let asm_generation_result = Compiler::compile(&src_path, Some(&out_path), &ast);
+            asm_generation_sub_step.done();
+            let Artifacts { asm_path, obj_path, exe_path } = match asm_generation_result {
+                Ok(artifacts_path) => artifacts_path,
+                Err(err) => {
+                    eprintln!("{err}");
+                    return Ok(ExitCode::FAILURE);
+                }
+            };
+
+            let assembler_sub_step =
+                SubStep { step: &ASSEMBLER, start_time: Instant::now(), verbosity };
+            let assembler_result = Assembler::assemble(&asm_path, &obj_path);
+            assembler_sub_step.done();
+            match assembler_result {
+                Ok(()) => {}
+                Err(err) => {
+                    eprintln!("{err}");
+                    return Ok(ExitCode::FAILURE);
+                }
+            }
+
+            let linker_sub_step = SubStep { step: &LINKER, start_time: Instant::now(), verbosity };
+            let linker_result = Linker::link(&obj_path, &exe_path);
+            linker_sub_step.done();
+            match linker_result {
+                Ok(()) => {}
+                Err(err) => {
+                    eprintln!("{err}");
+                    return Ok(ExitCode::FAILURE);
+                }
+            }
+
+            compilation_sub_step.done();
             execution_step.done();
+
+            Step::info(&RUNNING, &exe_path, verbosity);
+
+            let exe_path_str = exe_path.inner().as_os_str();
+            let output = match Command::new(exe_path_str).output() {
+                Ok(output) => output,
+                Err(err) => {
+                    eprintln!("{err}");
+                    return Ok(ExitCode::FAILURE);
+                }
+            };
+
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+
+            if !output.status.success() {
+                eprint!("{stderr}");
+                eprintln!("{stdout}");
+                let err_code = output.status.code().unwrap();
+                return Ok(ExitCode::from(err_code as u8));
+            }
+
+            eprint!("{stderr}");
+            eprintln!("{stdout}");
         }
 
         Ok(ExitCode::SUCCESS)

@@ -26,9 +26,6 @@
 # Find the thirteen adjacent digits in the 1000-digit number that have the greatest product.
 # What is the value of this product?
 
-# ANSWER:
-# 23514624000
-
 # TODO(stefano): multiline strings
 
 let DIGITS_COUNT = 1000;
@@ -55,4 +52,5 @@ loop digit_idx <= DIGITS_COUNT - DIGITS_WINDOW {
     digit_idx += 1;
 }
 
-println max_product;
+print "expected: "; println 23514624000;
+print "actual:   "; println max_product;

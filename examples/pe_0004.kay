@@ -5,10 +5,6 @@
 # QUESTION:
 # Find the largest palindrome made from the product of two 3-digit numbers.
 
-# ANSWER:
-# 906609
-
-
 let MAX_DIGITS = 3;
 let MIN_NUMBER = 10 ** (MAX_DIGITS - 1);
 let MAX_NUMBER = 10 ** MAX_DIGITS - 1;
@@ -38,4 +34,5 @@ loop lhs > MIN_NUMBER {
     lhs -= 1;
 }
 
-print "highest palindrome: "; println max_palindrome;
+print "expected: "; println 906609;
+print "actual:   "; println max_palindrome;

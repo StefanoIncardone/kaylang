@@ -1,28 +1,19 @@
-use crate::error::{BackEndError, BackEndErrorInfo, BackEndErrorKind, ErrorInfo};
-use std::{
-    io,
-    path::{Path, PathBuf},
-    process::Command,
+use crate::{
+    cli::Utf8Path,
+    error::{BackEndError, BackEndErrorInfo, BackEndErrorKind, ErrorInfo},
 };
+use std::{io, process::Command};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Linker;
 
 impl Linker {
-    pub fn link(obj_path: &Path, exe_path: &Path) -> Result<(), BackEndError<ErrorKind>> {
-        let Some(obj_path) = obj_path.to_str() else {
-            return Err(BackEndError {
-                kind: ErrorKind::NonUtf8Path { path: obj_path.to_path_buf() },
-            });
-        };
+    pub fn link(obj_path: &Utf8Path, exe_path: &Utf8Path) -> Result<(), BackEndError<ErrorKind>> {
+        let obj_path_str = obj_path.inner.to_str().unwrap();
+        let exe_path_str = exe_path.inner.to_str().unwrap();
+        let args = [&obj_path_str, "-o", &exe_path_str];
 
-        let Some(exe_path) = exe_path.to_str() else {
-            return Err(BackEndError {
-                kind: ErrorKind::NonUtf8Path { path: exe_path.to_path_buf() },
-            });
-        };
-
-        match Command::new("ld").args([obj_path, "-o", exe_path]).output() {
+        match Command::new("ld").args(args).output() {
             Ok(ld_out) if !ld_out.status.success() => {
                 Err(BackEndError { kind: ErrorKind::Failed { output: ld_out.stderr } })
             }
@@ -34,7 +25,6 @@ impl Linker {
 
 #[derive(Debug)]
 pub enum ErrorKind {
-    NonUtf8Path { path: PathBuf },
     CouldNotCreateProcess { err: io::Error },
     Failed { output: Vec<u8> },
 }
@@ -44,10 +34,6 @@ impl ErrorInfo for ErrorKind {
 
     fn info(&self) -> Self::Info {
         let (msg, cause) = match self {
-            Self::NonUtf8Path { path } => (
-                "invalid path".into(),
-                format!("'{path}' contains non UTF8 characters", path = path.display()).into(),
-            ),
             Self::CouldNotCreateProcess { err } => (
                 "could not create linker process".into(),
                 format!("{err} ({kind})", kind = err.kind()).into(),
