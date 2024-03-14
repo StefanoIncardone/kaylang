@@ -1557,7 +1557,6 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 // compiling the else if branches
                 if has_else_ifs {
                     let last_else_if = ifs.next_back().unwrap();
-                    let else_if_end_tag = format!(" jmp if_{if_counter}_end\n\n");
                     let mut else_if_tag_index = 0;
 
                     for else_if in ifs {
@@ -1568,7 +1567,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         );
 
                         self.iff(else_if, &else_if_tag, &else_if_false_tag);
-                        self.asm += &else_if_end_tag;
+                        self.asm += &format!(" jmp if_{if_counter}_end\n\n");
                         else_if_tag_index += 1;
                     }
 
@@ -1580,7 +1579,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     };
 
                     self.iff(last_else_if, &else_if_tag, &else_if_false_tag);
-                    self.asm += &else_if_end_tag;
+                    self.asm += &format!(" jmp if_{if_counter}_end\n\n");
                 }
 
                 // compiling the else branch
@@ -1703,7 +1702,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             string_index += 1;
         }
 
-        let string_bytes = unsafe { String::from_utf8_unchecked(string.clone()) };
+        let string_bytes = unsafe { std::str::from_utf8_unchecked(string) };
         let string_chars = string_bytes.escape_debug();
         self.string_labels += &format!(
             "\n str_{string_index}: db `{string_chars}`\
