@@ -45,7 +45,7 @@ impl Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Int(value) => write!(f, "{value}"),
-            Self::Ascii(ascii) => write!(f, "'{ascii}'", ascii = ascii.escape_ascii()),
+            Self::Ascii(value) => write!(f, "'{value}'", value = value.escape_ascii()),
             Self::Bool(value) => write!(f, "{value}"),
             Self::Str(string) => {
                 write!(f, "\"")?;
@@ -62,7 +62,7 @@ impl SrcCodeLen for Literal {
     fn src_code_len(&self) -> usize {
         match self {
             Self::Int(value) => value.to_string().len(),
-            Self::Ascii(ascii) => ascii.escape_ascii().len() + 2, // + 2 for the quotes
+            Self::Ascii(value) => value.escape_ascii().len() + 2, // + 2 for the quotes
             Self::Bool(value) => value.to_string().len(),
             Self::Str(string) => {
                 let mut len = 0;
@@ -491,18 +491,18 @@ impl<'src> Tokenizer<'src> {
         };
 
         match next {
-            ascii @ ..=b'\x7F' => {
+            ascii_ch @ ..=b'\x7F' => {
                 self.col += 1;
-                Ok(Some(*ascii))
+                Ok(Some(*ascii_ch))
             }
-            _non_ascii => {
+            _utf8_ch => {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
-                let non_ascii_char = rest_of_line.chars().next().unwrap();
-                let non_ascii_col = self.col;
-                self.col += non_ascii_char.len_utf8();
+                let utf8_ch = rest_of_line.chars().next().unwrap();
+                let utf8_ch_col = self.col;
+                self.col += utf8_ch.len_utf8();
                 Err(RawSyntaxError {
-                    kind: ErrorKind::NonAsciiCharacter(non_ascii_char),
-                    col: non_ascii_col,
+                    kind: ErrorKind::NonAsciiCharacter(utf8_ch),
+                    col: utf8_ch_col,
                     len: 1,
                 })
             }
@@ -515,15 +515,15 @@ impl<'src> Tokenizer<'src> {
         };
 
         match next {
-            ascii @ ..=b'\x7F' => {
+            ascii_ch @ ..=b'\x7F' => {
                 self.col += 1;
-                Some(*ascii as utf8)
+                Some(*ascii_ch as utf8)
             }
-            _non_ascii => {
+            _utf8_ch => {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
-                let non_ascii_char = rest_of_line.chars().next().unwrap();
-                self.col += non_ascii_char.len_utf8();
-                Some(non_ascii_char)
+                let utf8_ch = rest_of_line.chars().next().unwrap();
+                self.col += utf8_ch.len_utf8();
+                Some(utf8_ch)
             }
         }
     }
@@ -534,12 +534,12 @@ impl<'src> Tokenizer<'src> {
         };
 
         match next {
-            ascii @ ..=b'\x7F' => Ok(Some(ascii)),
-            _non_ascii => {
+            ascii_ch @ ..=b'\x7F' => Ok(Some(ascii_ch)),
+            _utf8_ch => {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
-                let non_ascii_char = rest_of_line.chars().next().unwrap();
+                let utf8_ch = rest_of_line.chars().next().unwrap();
                 Err(RawSyntaxError {
-                    kind: ErrorKind::NonAsciiCharacter(non_ascii_char),
+                    kind: ErrorKind::NonAsciiCharacter(utf8_ch),
                     col: self.col,
                     len: 1,
                 })
@@ -553,11 +553,11 @@ impl<'src> Tokenizer<'src> {
         };
 
         match next {
-            ascii @ ..=b'\x7F' => Some(*ascii as utf8),
-            _non_ascii => {
+            ascii_ch @ ..=b'\x7F' => Some(*ascii_ch as utf8),
+            _utf8_ch => {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
-                let non_ascii_char = rest_of_line.chars().next().unwrap();
-                Some(non_ascii_char)
+                let utf8_ch = rest_of_line.chars().next().unwrap();
+                Some(utf8_ch)
             }
         }
     }
@@ -569,18 +569,18 @@ impl<'src> Tokenizer<'src> {
                 col: self.token_start_col,
                 len: self.token_len(),
             }),
-            Some(ascii @ ..=b'\x7F') => {
+            Some(ascii_ch @ ..=b'\x7F') => {
                 self.col += 1;
-                Ok(*ascii)
+                Ok(*ascii_ch)
             }
-            Some(_non_ascii) => {
+            Some(_utf8_ch) => {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
-                let non_ascii_char = rest_of_line.chars().next().unwrap();
-                let non_ascii_col = self.col;
-                self.col += non_ascii_char.len_utf8();
+                let utf8_ch = rest_of_line.chars().next().unwrap();
+                let utf8_ch_col = self.col;
+                self.col += utf8_ch.len_utf8();
                 Err(RawSyntaxError {
-                    kind: ErrorKind::NonAsciiCharacter(non_ascii_char),
-                    col: non_ascii_col,
+                    kind: ErrorKind::NonAsciiCharacter(utf8_ch),
+                    col: utf8_ch_col,
                     len: 1,
                 })
             }
@@ -594,18 +594,18 @@ impl<'src> Tokenizer<'src> {
                 col: self.token_start_col,
                 len: self.token_len(),
             }),
-            Some(ascii @ ..=b'\x7F') => {
+            Some(ascii_ch @ ..=b'\x7F') => {
                 self.col += 1;
-                Ok(*ascii)
+                Ok(*ascii_ch)
             }
-            Some(_non_ascii) => {
+            Some(_utf8_ch) => {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
-                let non_ascii_char = rest_of_line.chars().next().unwrap();
-                let non_ascii_col = self.col;
-                self.col += non_ascii_char.len_utf8();
+                let utf8_ch = rest_of_line.chars().next().unwrap();
+                let utf8_ch_col = self.col;
+                self.col += utf8_ch.len_utf8();
                 Err(RawSyntaxError {
-                    kind: ErrorKind::NonAsciiCharacter(non_ascii_char),
-                    col: non_ascii_col,
+                    kind: ErrorKind::NonAsciiCharacter(utf8_ch),
+                    col: utf8_ch_col,
                     len: 1,
                 })
             }
@@ -615,18 +615,18 @@ impl<'src> Tokenizer<'src> {
 
 impl<'src> Tokenizer<'src> {
     fn identifier(&mut self) -> Result<TokenKind<'src>, RawSyntaxError<ErrorKind>> {
-        let mut contains_non_ascii = false;
+        let mut contains_utf8 = false;
         loop {
             match self.peek_next_ascii_char() {
                 Ok(Some(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {}
                 Ok(Some(_) | None) => break,
-                Err(_) => contains_non_ascii = true,
+                Err(_) => contains_utf8 = true,
             }
 
             let _ = self.next_ascii_char();
         }
 
-        if contains_non_ascii {
+        if contains_utf8 {
             return Err(RawSyntaxError {
                 kind: ErrorKind::NonAsciiIdentifier,
                 col: self.token_start_col,
@@ -693,12 +693,12 @@ impl<'src> Tokenizer<'src> {
             },
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.identifier(),
             b'0'..=b'9' => {
-                let mut contains_non_ascii = false;
+                let mut contains_utf8 = false;
                 loop {
                     match self.peek_next_ascii_char() {
                         Ok(Some(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {}
                         Ok(Some(_) | None) => break,
-                        Err(_) => contains_non_ascii = true,
+                        Err(_) => contains_utf8 = true,
                     }
 
                     let _ = self.next_ascii_char();
@@ -710,7 +710,7 @@ impl<'src> Tokenizer<'src> {
                     Err(err) => {
                         let kind = match err.kind() {
                             IntErrorKind::InvalidDigit => {
-                                if contains_non_ascii {
+                                if contains_utf8 {
                                     ErrorKind::NonAsciiNumberLiteral
                                 } else {
                                     ErrorKind::NonDigitNumberLiteral

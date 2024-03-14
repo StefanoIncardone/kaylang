@@ -7,7 +7,7 @@ use crate::{
     cli::Utf8Path,
     error::{BackEndError, BackEndErrorInfo, BackEndErrorKind, ErrorInfo},
     src_file::Position,
-    tokenizer::{Literal, Op},
+    tokenizer::{ascii, Literal, Op},
 };
 use std::{
     borrow::Cow,
@@ -1238,7 +1238,7 @@ pub struct Compiler<'src, 'ast: 'src> {
     asm: String,
 
     variables: Vec<Variable<'src, 'ast>>,
-    strings: Vec<&'ast Vec<u8>>,
+    strings: Vec<&'ast Vec<ascii>>,
 
     if_counter: usize,
     loop_counter: usize,
@@ -1639,7 +1639,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.assignment(new_value, dst_offset);
             }
             Node::Scope { index } => self.scope(*index),
-            Node::Expression(expression) => self.expression(expression, Dst::of(&expression.typ())),
+            Node::Expression(expression) => {
+                self.expression(expression, Dst::default(&expression.typ()))
+            }
             Node::Break => {
                 self.asm += &format!(
                     " jmp loop_{index}_end\n\n",
@@ -1667,15 +1669,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Dst {
     Reg(Reg64),
-    LenPtr { len: Reg64, ptr: Reg64 },
+    View { len: Reg64, ptr: Reg64 },
 }
 
 impl Dst {
-    fn of(typ: &Type) -> Self {
+    fn default(typ: &Type) -> Self {
         match typ {
             Type::Int | Type::Ascii | Type::Bool => Self::Reg(Rdi),
-            Type::Str | Type::Array { .. } => Self::LenPtr { len: Rdi, ptr: Rsi },
-            Type::Infer => unreachable!("should have been coerced to a concrete type"),
+            Type::Str | Type::Array { .. } => Self::View { len: Rdi, ptr: Rsi },
+            Type::Infer => unreachable!("should have been inferred"),
         }
     }
 }
@@ -1692,7 +1694,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         unreachable!("should always find a variable");
     }
 
-    fn string_label_index(&mut self, string: &'ast Vec<u8>) -> usize {
+    fn string_label_index(&mut self, string: &'ast Vec<ascii>) -> usize {
         let mut string_index = 0;
         for string_label in &self.strings {
             if std::ptr::eq(string, *string_label) {
@@ -1721,23 +1723,23 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         match (lhs.typ(), rhs.typ()) {
             (Type::Str, Type::Str) => match op {
                 Op::EqualsEquals => (
-                    Dst::LenPtr { len: Rdi, ptr: Rsi },
-                    Dst::LenPtr { len: Rdx, ptr: Rcx },
+                    Dst::View { len: Rdi, ptr: Rsi },
+                    Dst::View { len: Rdx, ptr: Rcx },
                     " call str_eq\
                     \n movzx rdi, al"
                         .into(),
                 ),
                 Op::NotEquals => (
-                    Dst::LenPtr { len: Rdi, ptr: Rsi },
-                    Dst::LenPtr { len: Rdx, ptr: Rcx },
+                    Dst::View { len: Rdi, ptr: Rsi },
+                    Dst::View { len: Rdx, ptr: Rcx },
                     " call str_eq\
                     \n xor rax, 1\
                     \n movzx rdi, al"
                         .into(),
                 ),
                 Op::Greater => (
-                    Dst::LenPtr { len: Rdi, ptr: Rsi },
-                    Dst::LenPtr { len: Rdx, ptr: Rcx },
+                    Dst::View { len: Rdi, ptr: Rsi },
+                    Dst::View { len: Rdx, ptr: Rcx },
                     " call str_cmp\
                     \n cmp rax, EQUAL\
                     \n mov rdi, false\
@@ -1745,8 +1747,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         .into(),
                 ),
                 Op::GreaterOrEquals => (
-                    Dst::LenPtr { len: Rdi, ptr: Rsi },
-                    Dst::LenPtr { len: Rdx, ptr: Rcx },
+                    Dst::View { len: Rdi, ptr: Rsi },
+                    Dst::View { len: Rdx, ptr: Rcx },
                     " call str_cmp\
                     \n cmp rax, EQUAL\
                     \n mov rdi, false\
@@ -1754,8 +1756,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         .into(),
                 ),
                 Op::Less => (
-                    Dst::LenPtr { len: Rdi, ptr: Rsi },
-                    Dst::LenPtr { len: Rdx, ptr: Rcx },
+                    Dst::View { len: Rdi, ptr: Rsi },
+                    Dst::View { len: Rdx, ptr: Rcx },
                     " call str_cmp\
                     \n cmp rax, EQUAL\
                     \n mov rdi, false\
@@ -1763,8 +1765,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         .into(),
                 ),
                 Op::LessOrEquals => (
-                    Dst::LenPtr { len: Rdi, ptr: Rsi },
-                    Dst::LenPtr { len: Rdx, ptr: Rcx },
+                    Dst::View { len: Rdi, ptr: Rsi },
+                    Dst::View { len: Rdx, ptr: Rcx },
                     " call str_cmp\
                     \n cmp rax, EQUAL\
                     \n mov rdi, false\
@@ -1772,8 +1774,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         .into(),
                 ),
                 Op::Compare => (
-                    Dst::LenPtr { len: Rdi, ptr: Rsi },
-                    Dst::LenPtr { len: Rdx, ptr: Rcx },
+                    Dst::View { len: Rdi, ptr: Rsi },
+                    Dst::View { len: Rdx, ptr: Rcx },
                     " call str_cmp\
                     \n mov rdi, rax"
                         .into(),
@@ -1841,8 +1843,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     };
 
                     (
-                        Dst::LenPtr { len: Rdi, ptr: Rsi },
-                        Dst::LenPtr { len: Rdx, ptr: Rcx },
+                        Dst::View { len: Rdi, ptr: Rsi },
+                        Dst::View { len: Rdx, ptr: Rcx },
                         eq_fn.into(),
                     )
                 }
@@ -1876,8 +1878,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     };
 
                     (
-                        Dst::LenPtr { len: Rdi, ptr: Rsi },
-                        Dst::LenPtr { len: Rdx, ptr: Rcx },
+                        Dst::View { len: Rdi, ptr: Rsi },
+                        Dst::View { len: Rdx, ptr: Rcx },
                         eq_fn.into(),
                     )
                 }
@@ -1912,8 +1914,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     };
 
                     (
-                        Dst::LenPtr { len: Rdi, ptr: Rsi },
-                        Dst::LenPtr { len: Rdx, ptr: Rcx },
+                        Dst::View { len: Rdi, ptr: Rsi },
+                        Dst::View { len: Rdx, ptr: Rcx },
                         eq_fn.into(),
                     )
                 }
@@ -1948,8 +1950,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     };
 
                     (
-                        Dst::LenPtr { len: Rdi, ptr: Rsi },
-                        Dst::LenPtr { len: Rdx, ptr: Rcx },
+                        Dst::View { len: Rdi, ptr: Rsi },
+                        Dst::View { len: Rdx, ptr: Rcx },
                         eq_fn.into(),
                     )
                 }
@@ -1984,8 +1986,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     };
 
                     (
-                        Dst::LenPtr { len: Rdi, ptr: Rsi },
-                        Dst::LenPtr { len: Rdx, ptr: Rcx },
+                        Dst::View { len: Rdi, ptr: Rsi },
+                        Dst::View { len: Rdx, ptr: Rcx },
                         eq_fn.into(),
                     )
                 }
@@ -2020,8 +2022,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     };
 
                     (
-                        Dst::LenPtr { len: Rdi, ptr: Rsi },
-                        Dst::LenPtr { len: Rdx, ptr: Rcx },
+                        Dst::View { len: Rdi, ptr: Rsi },
+                        Dst::View { len: Rdx, ptr: Rcx },
                         eq_fn.into(),
                     )
                 }
@@ -2060,8 +2062,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     };
 
                     (
-                        Dst::LenPtr { len: Rdi, ptr: Rsi },
-                        Dst::LenPtr { len: Rdx, ptr: Rcx },
+                        Dst::View { len: Rdi, ptr: Rsi },
+                        Dst::View { len: Rdx, ptr: Rcx },
                         eq_fn.into(),
                     )
                 }
@@ -2282,7 +2284,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
         match lhs_dst {
             Dst::Reg(reg) => self.asm += &format!(" push {reg}\n\n"),
-            Dst::LenPtr { len, ptr } => {
+            Dst::View { len, ptr } => {
                 self.asm += &format!(
                     " push {len}\
                     \n push {ptr}\n\n"
@@ -2299,8 +2301,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 );
             }
             (
-                Dst::LenPtr { len: rhs_len, ptr: rhs_ptr },
-                Dst::LenPtr { len: lhs_len, ptr: lhs_ptr },
+                Dst::View { len: rhs_len, ptr: rhs_ptr },
+                Dst::View { len: lhs_len, ptr: lhs_ptr },
             ) => {
                 self.asm += &format!(
                     " mov {rhs_len}, {lhs_len}\
@@ -2318,22 +2320,22 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Literal(literal) => match literal {
                 Literal::Int(value) => match dst {
                     Dst::Reg(reg) => self.asm += &format!(" mov {reg}, {value}\n"),
-                    Dst::LenPtr { .. } => unreachable!(),
+                    Dst::View { .. } => unreachable!(),
                 },
                 Literal::Ascii(ascii) => match dst {
                     Dst::Reg(reg) => self.asm += &format!(" mov {reg}, {ascii}\n"),
-                    Dst::LenPtr { .. } => unreachable!(),
+                    Dst::View { .. } => unreachable!(),
                 },
                 Literal::Bool(value) => match dst {
                     Dst::Reg(reg) => self.asm += &format!(" mov {reg}, {value}\n"),
-                    Dst::LenPtr { .. } => unreachable!(),
+                    Dst::View { .. } => unreachable!(),
                 },
                 Literal::Str(value) => match dst {
-                    Dst::LenPtr { len, ptr } => {
-                        let string_label_index = self.string_label_index(value);
+                    Dst::View { len, ptr } => {
+                        let index = self.string_label_index(value);
                         self.asm += &format!(
-                            " mov {len}, str_{string_label_index}_len\
-                            \n mov {ptr}, str_{string_label_index}\n"
+                            " mov {len}, str_{index}_len\
+                            \n mov {ptr}, str_{index}\n"
                         );
                     }
                     Dst::Reg(_) => unreachable!(),
@@ -2370,16 +2372,16 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 match typ {
                     Type::Int => match dst {
                         Dst::Reg(reg) => self.asm += &format!(" mov {reg}, [rbp + {var_offset}]\n"),
-                        Dst::LenPtr { .. } => unreachable!(),
+                        Dst::View { .. } => unreachable!(),
                     },
                     Type::Ascii | Type::Bool => match dst {
                         Dst::Reg(reg) => {
                             self.asm += &format!(" movzx {reg}, byte [rbp + {var_offset}]\n")
                         }
-                        Dst::LenPtr { .. } => unreachable!(),
+                        Dst::View { .. } => unreachable!(),
                     },
                     Type::Str => match dst {
-                        Dst::LenPtr { len, ptr } => {
+                        Dst::View { len, ptr } => {
                             self.asm += &format!(
                                 " mov {len}, [rbp + {var_offset}]\
                                 \n mov {ptr}, [rbp + {var_offset} + {ptr_offset}]\n",
@@ -2389,7 +2391,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Dst::Reg(_) => unreachable!(),
                     },
                     Type::Array { len: array_len, .. } => match dst {
-                        Dst::LenPtr { len, ptr } => {
+                        Dst::View { len, ptr } => {
                             self.asm += &format!(
                                 " mov {len}, {array_len}\
                                 \n lea {ptr}, [rbp + {var_offset}]\n"
@@ -2397,7 +2399,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         }
                         Dst::Reg(_) => unreachable!(),
                     },
-                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                    Type::Infer => unreachable!("should have been inferred"),
                 }
             }
             Expression::Unary { op, operand } => {
@@ -2413,14 +2415,14 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Type::Int | Type::Ascii => self.asm += &format!(" not {reg}\n"),
                         Type::Array { .. } => unreachable!("cannot invert array values"),
                         Type::Str => unreachable!("cannot invert string values"),
-                        Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                        Type::Infer => unreachable!("should have been inferred"),
                     },
                     Op::Minus => match operand.typ() {
                         Type::Int | Type::Ascii => self.asm += &format!(" neg {reg}\n"),
                         Type::Bool => unreachable!("cannot negate boolean values"),
                         Type::Array { .. } => unreachable!("cannot negate array values"),
                         Type::Str => unreachable!("cannot negate string values"),
-                        Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                        Type::Infer => unreachable!("should have been inferred"),
                     },
                     _ => unreachable!("'Not' and 'Minus' are the only unary operators"),
                 }
@@ -2499,7 +2501,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             "only arrays, strings and integers are allowed in index espressions"
                         )
                     }
-                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                    Type::Infer => unreachable!("should have been inferred"),
                 }
             }
         }
@@ -2521,14 +2523,14 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Binary { lhs, op, rhs, .. } => {
                 let lhs_dst = match lhs.typ() {
                     Type::Int | Type::Ascii | Type::Bool => Dst::Reg(Rdi),
-                    Type::Str | Type::Array { .. } => Dst::LenPtr { len: Rdi, ptr: Rsi },
-                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                    Type::Str | Type::Array { .. } => Dst::View { len: Rdi, ptr: Rsi },
+                    Type::Infer => unreachable!("should have been inferred"),
                 };
 
                 let rhs_dst = match rhs.typ() {
                     Type::Int | Type::Ascii | Type::Bool => Dst::Reg(Rsi),
-                    Type::Str | Type::Array { .. } => Dst::LenPtr { len: Rdx, ptr: Rcx },
-                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                    Type::Str | Type::Array { .. } => Dst::View { len: Rdx, ptr: Rcx },
+                    Type::Infer => unreachable!("should have been inferred"),
                 };
 
                 self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
@@ -2619,14 +2621,14 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Binary { lhs, op, rhs, .. } => {
                 let lhs_dst = match lhs.typ() {
                     Type::Int | Type::Ascii | Type::Bool => Dst::Reg(Rdi),
-                    Type::Str | Type::Array { .. } => Dst::LenPtr { len: Rdi, ptr: Rsi },
-                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                    Type::Str | Type::Array { .. } => Dst::View { len: Rdi, ptr: Rsi },
+                    Type::Infer => unreachable!("should have been inferred"),
                 };
 
                 let rhs_dst = match rhs.typ() {
                     Type::Int | Type::Ascii | Type::Bool => Dst::Reg(Rsi),
-                    Type::Str | Type::Array { .. } => Dst::LenPtr { len: Rdx, ptr: Rcx },
-                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                    Type::Str | Type::Array { .. } => Dst::View { len: Rdx, ptr: Rcx },
+                    Type::Infer => unreachable!("should have been inferred"),
                 };
 
                 self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
@@ -2704,23 +2706,23 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn assignment(&mut self, value: &'ast Expression<'src>, dst_offset: usize) {
         match value {
             Expression::Literal(literal) => match literal {
-                Literal::Int(value) => {
+                Literal::Int(integer) => {
                     self.asm += &format!(
-                        " mov rdi, {value}\
+                        " mov rdi, {integer}\
                         \n mov [rbp + {dst_offset}], rdi\n\n"
                     );
                 }
-                Literal::Ascii(ascii) => {
-                    self.asm += &format!(" mov byte [rbp + {dst_offset}], {ascii}\n\n")
+                Literal::Ascii(code) => {
+                    self.asm += &format!(" mov byte [rbp + {dst_offset}], {code}\n\n")
                 }
-                Literal::Bool(value) => {
-                    self.asm += &format!(" mov byte [rbp + {dst_offset}], {value}\n\n")
+                Literal::Bool(boolean) => {
+                    self.asm += &format!(" mov byte [rbp + {dst_offset}], {boolean}\n\n")
                 }
                 Literal::Str(string) => {
-                    let string_label_index = self.string_label_index(string);
+                    let index = self.string_label_index(string);
                     self.asm += &format!(
-                        " mov qword [rbp + {dst_offset}], str_{string_label_index}_len\
-                        \n mov qword [rbp + {dst_offset} + {ptr_offset}], str_{string_label_index}\n\n",
+                        " mov qword [rbp + {dst_offset}], str_{index}_len\
+                        \n mov qword [rbp + {dst_offset} + {ptr_offset}], str_{index}\n\n",
                         ptr_offset = Type::Int.size()
                     );
                 }
@@ -2735,13 +2737,13 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
                     Type::Array { .. } => unreachable!("arrays cannot appear in expressions"),
                     Type::Str => unreachable!("strings cannot appear in expressions"),
-                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                    Type::Infer => unreachable!("should have been inferred"),
                 }
             }
-            Expression::Identifier { typ, name } => {
+            Expression::Identifier { typ: identifier_typ, name } => {
                 let var = self.resolve(name);
                 let src_offset = var.offset;
-                match typ {
+                match identifier_typ {
                     Type::Int => {
                         self.asm += &format!(
                             " mov rdi, [rbp + {src_offset}]\
@@ -2763,16 +2765,35 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             ptr_offset = Type::Int.size()
                         );
                     }
-                    Type::Array { typ: array_typ, len } => {
-                        self.asm += &format!(
-                            " lea rdi, [rbp + {dst_offset}]\
+                    Type::Array { typ: array_typ, len } => match &**array_typ {
+                        Type::Int => {
+                            self.asm += &format!(
+                                " lea rdi, [rbp + {dst_offset}]\
                             \n lea rsi, [rbp + {src_offset}]\
-                            \n mov rcx, {array_typ_size} * {len}\
-                            \n rep movsb\n\n",
-                            array_typ_size = array_typ.size(),
-                        );
-                    }
-                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                            \n mov rcx, {len}\
+                            \n rep movsq\n\n"
+                            )
+                        }
+                        Type::Ascii | Type::Bool => {
+                            self.asm += &format!(
+                                " lea rdi, [rbp + {dst_offset}]\
+                            \n lea rsi, [rbp + {src_offset}]\
+                            \n mov rcx, {len}\
+                            \n rep movsb\n\n"
+                            )
+                        }
+                        Type::Str => {
+                            self.asm += &format!(
+                                " lea rdi, [rbp + {dst_offset}]\
+                            \n lea rsi, [rbp + {src_offset}]\
+                            \n mov rcx, {len} * 2\
+                            \n rep movsq\n\n"
+                            )
+                        }
+                        Type::Array { .. } => unreachable!("nested arrays not supported yet)"),
+                        Type::Infer => unreachable!("should have been inferred"),
+                    },
+                    Type::Infer => unreachable!("should have been inferred"),
                 }
             }
             Expression::Unary { op, operand } => {
@@ -2800,7 +2821,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         }
                         Type::Array { .. } => unreachable!("cannot invert array values"),
                         Type::Str => unreachable!("cannot invert string values"),
-                        Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                        Type::Infer => unreachable!("should have been inferred"),
                     },
                     Op::Minus => match operand.typ() {
                         Type::Ascii => {
@@ -2818,7 +2839,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Type::Bool => unreachable!("cannot negate boolean values"),
                         Type::Array { .. } => unreachable!("cannot negate array values"),
                         Type::Str => unreachable!("cannot negate string values"),
-                        Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                        Type::Infer => unreachable!("should have been inferred"),
                     },
                     _ => unreachable!("'Not' and 'Minus' are the only unary operators"),
                 }
@@ -2830,7 +2851,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 }
             }
             Expression::ArrayIndex { typ, .. } => {
-                self.expression(value, Dst::of(typ));
+                self.expression(value, Dst::default(typ));
 
                 match typ {
                     Type::Int => self.asm += &format!(" mov [rbp + {dst_offset}], rdi\n\n"),
@@ -2845,7 +2866,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         );
                     }
                     Type::Array { .. } => unreachable!("nested arrays are not supported yet"),
-                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                    Type::Infer => unreachable!("should have been inferred"),
                 }
             }
         }
@@ -2865,7 +2886,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn print(&mut self, value: &'ast Expression<'src>) {
         let value_typ = value.typ();
-        self.expression(value, Dst::of(&value_typ));
+        self.expression(value, Dst::default(&value_typ));
 
         match value_typ {
             Type::Int => self.asm += " call int_print\n\n",
@@ -2878,15 +2899,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 Type::Bool => self.asm += " call bool_array_debug_print\n\n",
                 Type::Str => self.asm += " call str_array_debug_print\n\n",
                 Type::Array { .. } => unreachable!("nested arrays are not supported yet"),
-                Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                Type::Infer => unreachable!("should have been inferred"),
             },
-            Type::Infer => unreachable!("should have been coerced to a concrete type"),
+            Type::Infer => unreachable!("should have been inferred"),
         }
     }
 
     fn eprint(&mut self, value: &'ast Expression<'src>) {
         let value_typ = value.typ();
-        self.expression(value, Dst::of(&value_typ));
+        self.expression(value, Dst::default(&value_typ));
 
         match value_typ {
             Type::Int => self.asm += " call int_eprint\n\n",
@@ -2899,9 +2920,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 Type::Bool => self.asm += " call bool_array_debug_eprint\n\n",
                 Type::Str => self.asm += " call str_array_debug_eprint\n\n",
                 Type::Array { .. } => unreachable!("nested arrays are not supported yet"),
-                Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                Type::Infer => unreachable!("should have been inferred"),
             },
-            Type::Infer => unreachable!("should have been coerced to a concrete type"),
+            Type::Infer => unreachable!("should have been inferred"),
         }
     }
 }

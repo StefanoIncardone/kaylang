@@ -411,6 +411,24 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         }
     }
 
+    fn semicolon(&mut self) -> Result<(), RawSyntaxError<ErrorKind>> {
+        let semicolon_token = self.current_token_bounded(ExpectedBeforeEof::Semicolon)?;
+        if let TokenKind::SemiColon = &semicolon_token.kind {
+            let _ = self.next_token();
+            Ok(())
+        } else {
+            let previous_token = self.peek_previous_token();
+            Err(RawSyntaxError {
+                kind: ErrorKind::MissingSemicolon,
+                col: previous_token.col,
+                len: previous_token.kind.src_code_len(),
+            })
+        }
+    }
+}
+
+// parsing of statements
+impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn parse_scope(&mut self) {
         loop {
             match self.parse_single_any() {
@@ -772,24 +790,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             let TokenKind::Comment(_) = previous.kind else {
                 return previous;
             };
-        }
-    }
-}
-
-// semicolons
-impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
-    fn semicolon(&mut self) -> Result<(), RawSyntaxError<ErrorKind>> {
-        let semicolon_token = self.current_token_bounded(ExpectedBeforeEof::Semicolon)?;
-        if let TokenKind::SemiColon = &semicolon_token.kind {
-            let _ = self.next_token();
-            Ok(())
-        } else {
-            let previous_token = self.peek_previous_token();
-            Err(RawSyntaxError {
-                kind: ErrorKind::MissingSemicolon,
-                col: previous_token.col,
-                len: previous_token.kind.src_code_len(),
-            })
         }
     }
 }
