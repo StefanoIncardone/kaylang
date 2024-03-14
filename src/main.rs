@@ -130,10 +130,15 @@ fn main() -> ExitCode {
 
             let assembler_sub_step =
                 SubStep { step: &ASSEMBLER, start_time: Instant::now(), verbosity };
-            let assembler_result = Assembler::assemble(&asm_path, &obj_path);
+            let mut assembler_command = Assembler::assemble(&asm_path, &obj_path);
+            let assembler_result = assembler_command.status();
             assembler_sub_step.done();
             match assembler_result {
-                Ok(()) => {}
+                Ok(status) => {
+                    if !status.success() {
+                        return ExitCode::from(status.code().unwrap_or(1) as u8);
+                    }
+                }
                 Err(err) => {
                     eprintln!("{err}");
                     return ExitCode::FAILURE;
@@ -141,10 +146,15 @@ fn main() -> ExitCode {
             }
 
             let linker_sub_step = SubStep { step: &LINKER, start_time: Instant::now(), verbosity };
-            let linker_result = Linker::link(&obj_path, &exe_path);
+            let mut linker_command = Linker::link(&obj_path, &exe_path);
+            let linker_result = linker_command.status();
             linker_sub_step.done();
             match linker_result {
-                Ok(()) => {}
+                Ok(status) => {
+                    if !status.success() {
+                        return ExitCode::from(status.code().unwrap_or(1) as u8);
+                    }
+                }
                 Err(err) => {
                     eprintln!("{err}");
                     return ExitCode::FAILURE;
@@ -158,16 +168,12 @@ fn main() -> ExitCode {
                 Step::info(&RUNNING, exe_path.inner(), verbosity);
 
                 let mut run_command = Run::run(&exe_path);
-                let mut executable = match run_command.spawn() {
-                    Ok(executable) => executable,
-                    Err(err) => {
-                        eprintln!("{err}");
-                        return ExitCode::FAILURE;
+                match run_command.status() {
+                    Ok(status) => {
+                        if !status.success() {
+                            return ExitCode::from(status.code().unwrap_or(1) as u8);
+                        }
                     }
-                };
-
-                match executable.wait() {
-                    Ok(_out) => {}
                     Err(err) => {
                         eprintln!("{err}");
                         return ExitCode::FAILURE;
@@ -311,10 +317,15 @@ mod tests {
 
             let assembler_sub_step =
                 SubStep { step: &ASSEMBLER, start_time: Instant::now(), verbosity };
-            let assembler_result = Assembler::assemble(&asm_path, &obj_path);
+            let mut assembler_command = Assembler::assemble(&asm_path, &obj_path);
+            let assembler_result = assembler_command.status();
             assembler_sub_step.done();
             match assembler_result {
-                Ok(()) => {}
+                Ok(status) => {
+                    if !status.success() {
+                        return Ok(ExitCode::from(status.code().unwrap_or(1) as u8));
+                    }
+                }
                 Err(err) => {
                     eprintln!("{err}");
                     return Ok(ExitCode::FAILURE);
@@ -322,10 +333,15 @@ mod tests {
             }
 
             let linker_sub_step = SubStep { step: &LINKER, start_time: Instant::now(), verbosity };
-            let linker_result = Linker::link(&obj_path, &exe_path);
+            let mut linker_command = Linker::link(&obj_path, &exe_path);
+            let linker_result = linker_command.status();
             linker_sub_step.done();
             match linker_result {
-                Ok(()) => {}
+                Ok(status) => {
+                    if !status.success() {
+                        return Ok(ExitCode::from(status.code().unwrap_or(1) as u8));
+                    }
+                }
                 Err(err) => {
                     eprintln!("{err}");
                     return Ok(ExitCode::FAILURE);
@@ -338,7 +354,7 @@ mod tests {
             Step::info(&RUNNING, exe_path.inner(), verbosity);
 
             let mut run_command = Run::run(&exe_path);
-            let output = match run_command.output() {
+            let run_result = match run_command.output() {
                 Ok(output) => output,
                 Err(err) => {
                     eprintln!("{err}");
@@ -346,15 +362,14 @@ mod tests {
                 }
             };
 
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&run_result.stdout);
+            let stderr = String::from_utf8_lossy(&run_result.stderr);
 
             eprint!("{stderr}");
             eprintln!("{stdout}");
 
-            if !output.status.success() {
-                let err_code = output.status.code().unwrap();
-                return Ok(ExitCode::from(err_code as u8));
+            if !run_result.status.success() {
+                return Ok(ExitCode::from(run_result.status.code().unwrap_or(1) as u8));
             }
 
             let mut lines = stdout.lines();
@@ -362,7 +377,7 @@ mod tests {
             let actual = lines.next().unwrap().strip_prefix("actual:").unwrap().trim_start();
 
             if !actual.starts_with("# TODO") {
-                assert_eq!(expected, actual)
+                assert_eq!(expected, actual);
             }
         }
 

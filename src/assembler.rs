@@ -1,50 +1,15 @@
-use crate::{
-    compiler::{AsmPath, ObjPath},
-    error::{BackEndError, BackEndErrorInfo, BackEndErrorKind, ErrorInfo},
-};
-use std::{io, process::Command};
+use crate::compiler::{AsmPath, ObjPath};
+use std::process::Command;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Assembler;
 
 impl Assembler {
-    pub fn assemble(asm_path: &AsmPath, obj_path: &ObjPath) -> Result<(), BackEndError<ErrorKind>> {
+    pub fn assemble(asm_path: &AsmPath, obj_path: &ObjPath) -> Command {
         let asm_path_str = asm_path.inner.to_str().unwrap();
         let obj_path_str = obj_path.inner.to_str().unwrap();
-        let args = ["-felf64", "-gdwarf", &asm_path_str, "-o", &obj_path_str];
-
-        match Command::new("nasm").args(args).output() {
-            Ok(nasm_out) if !nasm_out.status.success() => {
-                Err(BackEndError { kind: ErrorKind::Failed { output: nasm_out.stderr } })
-            }
-            Ok(_) => Ok(()),
-            Err(err) => Err(BackEndError { kind: ErrorKind::CouldNotCreateProcess { err } }),
-        }
+        let mut assembler_command = Command::new("nasm");
+        let _ = assembler_command.args(["-felf64", "-gdwarf", &asm_path_str, "-o", &obj_path_str]);
+        assembler_command
     }
 }
-
-#[derive(Debug)]
-pub enum ErrorKind {
-    CouldNotCreateProcess { err: io::Error },
-    Failed { output: Vec<u8> },
-}
-
-impl ErrorInfo for ErrorKind {
-    type Info = BackEndErrorInfo;
-
-    fn info(&self) -> Self::Info {
-        let (msg, cause) = match self {
-            Self::CouldNotCreateProcess { err } => (
-                "could not create assembler process".into(),
-                format!("{err} ({kind})", kind = err.kind()).into(),
-            ),
-            Self::Failed { output } => {
-                ("assembler failed".into(), String::from_utf8_lossy(output).into_owned().into())
-            }
-        };
-
-        Self::Info { msg, cause }
-    }
-}
-
-impl BackEndErrorKind for ErrorKind {}
