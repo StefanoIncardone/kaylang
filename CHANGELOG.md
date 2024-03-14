@@ -45,15 +45,15 @@ Changes to the ABI would **not** be considered breaking since no stable ABI is d
 - Improved code generation
 - Consistency of enum's field order
 - Started running examples as tests to check if output is correct
-- **BREAKING**: Runtime crashes now print to `stderr`
-- **BREAKING**: `Compiler::compile` now returns an `Artifacts` struct instance instead of a tuple
 - **BREAKING**: `char` type renamed to `ascii`
-- **BREAKING**: New `Utf8Path` struct is now required instead of `&Path` in compilation steps
+- **BREAKING**: Runtime crashes now print to `stderr`
+- **BREAKING**: `Compiler::compile` now returns an `Artifacts` struct
+- **BREAKING**: Specific compilation artifacts are now required in compilation steps instead of a generic `PathBuf`
+- **BREAKING**: Specialized paths to be a `Utf8Path` struct
 
 ### Removed
 
 - `Error`, `ColoredString` and `ColoredStr` type aliases, to allow for more explicit type signatures
-- `Run` struct and related errors
 
 ### Fixed
 

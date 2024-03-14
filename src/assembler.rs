@@ -1,5 +1,5 @@
 use crate::{
-    cli::Utf8Path,
+    compiler::{AsmPath, ObjPath},
     error::{BackEndError, BackEndErrorInfo, BackEndErrorKind, ErrorInfo},
 };
 use std::{io, process::Command};
@@ -8,10 +8,7 @@ use std::{io, process::Command};
 pub struct Assembler;
 
 impl Assembler {
-    pub fn assemble(
-        asm_path: &Utf8Path,
-        obj_path: &Utf8Path,
-    ) -> Result<(), BackEndError<ErrorKind>> {
+    pub fn assemble(asm_path: &AsmPath, obj_path: &ObjPath) -> Result<(), BackEndError<ErrorKind>> {
         let asm_path_str = asm_path.inner.to_str().unwrap();
         let obj_path_str = obj_path.inner.to_str().unwrap();
         let args = ["-felf64", "-gdwarf", &asm_path_str, "-o", &obj_path_str];

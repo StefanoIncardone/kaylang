@@ -6,7 +6,7 @@ use crate::{
     ast::{self, Expression, IfStatement, LoopCondition, Node, Scope, Type, TypeOf},
     cli::Utf8Path,
     error::{BackEndError, BackEndErrorInfo, BackEndErrorKind, ErrorInfo},
-    src_file::Position,
+    src_file::{Position, SrcFile},
     tokenizer::{ascii, Literal, Op},
 };
 use std::{
@@ -1216,10 +1216,77 @@ str_array_debug_eprint:
 };
 
 #[derive(Debug)]
+pub struct AsmPath {
+    pub(crate) inner: Utf8Path,
+}
+
+impl AsmPath {
+    pub fn inner(&self) -> &Utf8Path {
+        &self.inner
+    }
+}
+
+#[derive(Debug)]
+pub struct ObjPath {
+    pub(crate) inner: Utf8Path,
+}
+
+impl ObjPath {
+    pub fn inner(&self) -> &Utf8Path {
+        &self.inner
+    }
+}
+
+#[derive(Debug)]
+pub struct ExePath {
+    pub(crate) inner: Utf8Path,
+}
+
+impl ExePath {
+    pub fn inner(&self) -> &Utf8Path {
+        &self.inner
+    }
+}
+
+#[derive(Debug)]
 pub struct Artifacts {
-    pub asm_path: Utf8Path,
-    pub obj_path: Utf8Path,
-    pub exe_path: Utf8Path,
+    pub asm_path: AsmPath,
+    pub obj_path: ObjPath,
+    pub exe_path: ExePath,
+}
+
+impl Artifacts {
+    pub fn try_from_src(
+        src: &SrcFile,
+        out_path: Option<&Utf8Path>,
+    ) -> Result<Self, BackEndError<ErrorKind>> {
+        // Safety: we know src_path is valid utf8 so can safely transmute
+        let mut asm_path: AsmPath = unsafe { std::mem::transmute(src.path.with_extension("asm")) };
+        let mut obj_path: ObjPath = unsafe { std::mem::transmute(src.path.with_extension("o")) };
+        let mut exe_path: ExePath = unsafe { std::mem::transmute(src.path.with_extension("")) };
+
+        if let Some(out_path) = out_path {
+            match std::fs::create_dir_all(&out_path.inner) {
+                Ok(()) => {}
+                Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(err) => {
+                    return Err(BackEndError {
+                        kind: ErrorKind::CouldNotCreateOutputDirectory {
+                            err,
+                            path: out_path.inner.clone(),
+                        },
+                    });
+                }
+            }
+
+            // TODO(stefano): ensure a file name is present instead of unwrapping
+            asm_path.inner.inner = out_path.join(asm_path.inner.file_name().unwrap());
+            obj_path.inner.inner = out_path.join(obj_path.inner.file_name().unwrap());
+            exe_path.inner.inner = out_path.join(exe_path.inner.file_name().unwrap());
+        }
+
+        Ok(Self { asm_path, obj_path, exe_path })
+    }
 }
 
 #[derive(Debug)]
@@ -1248,43 +1315,15 @@ pub struct Compiler<'src, 'ast: 'src> {
 // Generation of compilation artifacts (.asm, .o, executable)
 impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     pub fn compile(
-        src_path: &Utf8Path,
-        out_path: Option<&Utf8Path>,
+        src: &'src SrcFile,
+        asm_path: &AsmPath,
         ast: &'ast [Scope<'src>],
-    ) -> Result<Artifacts, BackEndError<ErrorKind>> {
-        // Safety: we know src_path is valid utf8 so can safely transmute
-        let mut asm_path: Utf8Path =
-            unsafe { std::mem::transmute(src_path.inner.with_extension("asm")) };
-        let mut obj_path: Utf8Path =
-            unsafe { std::mem::transmute(src_path.inner.with_extension("o")) };
-        let mut exe_path: Utf8Path =
-            unsafe { std::mem::transmute(src_path.inner.with_extension("")) };
-
-        if let Some(out_path) = out_path {
-            match std::fs::create_dir_all(&out_path.inner) {
-                Ok(()) => {}
-                Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
-                Err(err) => {
-                    return Err(BackEndError {
-                        kind: ErrorKind::CouldNotCreateOutputDirectory {
-                            err,
-                            path: out_path.inner.clone(),
-                        },
-                    });
-                }
-            }
-
-            // TODO(stefano): ensure a file name is present instead of unwrapping
-            asm_path.inner = out_path.inner.join(asm_path.inner.file_name().unwrap());
-            obj_path.inner = out_path.inner.join(obj_path.inner.file_name().unwrap());
-            exe_path.inner = out_path.inner.join(exe_path.inner.file_name().unwrap());
-        }
-
-        let asm_file = match File::create(&asm_path.inner) {
+    ) -> Result<(), BackEndError<ErrorKind>> {
+        let asm_file = match File::create(&asm_path.inner.inner) {
             Ok(file) => file,
             Err(err) => {
                 return Err(BackEndError {
-                    kind: ErrorKind::CouldNotCreateFile { err, path: asm_path.inner },
+                    kind: ErrorKind::CouldNotCreateFile { err, path: asm_path.inner.inner.clone() },
                 })
             }
         };
@@ -1482,7 +1521,7 @@ section .data
  int_str: times INT_BITS db 0
 "#,
             asm = this.asm,
-            src_path = src_path.inner.display(),
+            src_path = src.path.inner.display(),
             strings = this.string_labels,
         );
 
@@ -1495,7 +1534,7 @@ section .data
             return Err(BackEndError { kind: ErrorKind::WritingAssemblyFailed { err } });
         }
 
-        Ok(Artifacts { asm_path, obj_path, exe_path })
+        Ok(())
     }
 }
 

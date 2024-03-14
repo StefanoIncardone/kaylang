@@ -6,6 +6,7 @@ pub mod compiler;
 pub mod error;
 pub mod linker;
 pub mod logging;
+pub mod run;
 pub mod src_file;
 pub mod tokenizer;
 

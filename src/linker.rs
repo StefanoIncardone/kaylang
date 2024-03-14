@@ -1,5 +1,5 @@
 use crate::{
-    cli::Utf8Path,
+    compiler::{ExePath, ObjPath},
     error::{BackEndError, BackEndErrorInfo, BackEndErrorKind, ErrorInfo},
 };
 use std::{io, process::Command};
@@ -8,7 +8,7 @@ use std::{io, process::Command};
 pub struct Linker;
 
 impl Linker {
-    pub fn link(obj_path: &Utf8Path, exe_path: &Utf8Path) -> Result<(), BackEndError<ErrorKind>> {
+    pub fn link(obj_path: &ObjPath, exe_path: &ExePath) -> Result<(), BackEndError<ErrorKind>> {
         let obj_path_str = obj_path.inner.to_str().unwrap();
         let exe_path_str = exe_path.inner.to_str().unwrap();
         let args = [&obj_path_str, "-o", &exe_path_str];

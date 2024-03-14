@@ -2,7 +2,10 @@ use crate::{
     error::{CliError, CliErrorInfo, CliErrorKind, ErrorInfo},
     Color, RunMode, Verbosity,
 };
-use std::path::{Path, PathBuf};
+use std::{
+    ops::Deref,
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug, Default, Clone)]
 pub struct Args {
@@ -16,15 +19,19 @@ pub struct Utf8Path {
     pub(crate) inner: PathBuf,
 }
 
+impl Deref for Utf8Path {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
 impl Utf8Path {
     pub fn from<P: AsRef<Path>>(path: P) -> Option<Self> {
         let path = path.as_ref();
         let _utf8_path = path.to_str()?;
         Some(Self { inner: path.into() })
-    }
-
-    pub fn inner(&self) -> &Path {
-        &self.inner
     }
 }
 

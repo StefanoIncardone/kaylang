@@ -8,15 +8,12 @@ use kaylang::{
         Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, LINKER,
         LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
     },
+    run::Run,
     src_file::SrcFile,
     tokenizer::Tokenizer,
     Help, RunMode, Version,
 };
-use std::{
-    env,
-    process::{Command, ExitCode},
-    time::Instant,
-};
+use std::{env, process::ExitCode, time::Instant};
 
 fn main() -> ExitCode {
     #[allow(unused_mut)]
@@ -110,12 +107,21 @@ fn main() -> ExitCode {
             let compilation_sub_step =
                 SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
 
+            let Artifacts { asm_path, obj_path, exe_path } =
+                match Artifacts::try_from_src(&src, out_path.as_ref()) {
+                    Ok(artifacts) => artifacts,
+                    Err(err) => {
+                        eprintln!("{err}");
+                        return ExitCode::FAILURE;
+                    }
+                };
+
             let asm_generation_sub_step =
                 SubStep { step: &ASM_GENERATION, start_time: Instant::now(), verbosity };
-            let asm_generation_result = Compiler::compile(src_path, out_path.as_ref(), &ast);
+            let asm_generation_result = Compiler::compile(&src, &asm_path, &ast);
             asm_generation_sub_step.done();
-            let Artifacts { asm_path, obj_path, exe_path } = match asm_generation_result {
-                Ok(artifacts_path) => artifacts_path,
+            match asm_generation_result {
+                Ok(()) => {}
                 Err(err) => {
                     eprintln!("{err}");
                     return ExitCode::FAILURE;
@@ -149,9 +155,10 @@ fn main() -> ExitCode {
             execution_step.done();
 
             if let RunMode::Run { .. } = run_mode {
-                Step::info(&RUNNING, &exe_path, verbosity);
-                let exe_path_str = exe_path.inner();
-                let mut executable = match Command::new(exe_path_str).spawn() {
+                Step::info(&RUNNING, exe_path.inner(), verbosity);
+
+                let mut run_command = Run::run(&exe_path);
+                let mut executable = match run_command.spawn() {
                     Ok(executable) => executable,
                     Err(err) => {
                         eprintln!("{err}");
@@ -185,16 +192,12 @@ mod tests {
             Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, LINKER,
             LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
         },
+        run::Run,
         src_file::SrcFile,
         tokenizer::Tokenizer,
         Color, Verbosity,
     };
-    use std::{
-        io,
-        path::Path,
-        process::{Command, ExitCode},
-        time::Instant,
-    };
+    use std::{io, path::Path, process::ExitCode, time::Instant};
 
     #[allow(unused_mut)]
     #[test]
@@ -210,11 +213,11 @@ mod tests {
 
         for src_file in src_files {
             let src_path = Utf8Path::from(src_file?.path()).unwrap();
-            if src_path.inner().is_dir() {
+            if src_path.is_dir() {
                 continue;
             }
 
-            let Some(extension) = src_path.inner().extension() else {
+            let Some(extension) = src_path.extension() else {
                 continue;
             };
 
@@ -222,7 +225,7 @@ mod tests {
                 continue;
             }
 
-            match src_path.inner().file_name() {
+            match src_path.file_name() {
                 Some(path) => {
                     if path == "features_test.kay" || path == "fizzbuzz.kay" {
                         continue;
@@ -285,12 +288,21 @@ mod tests {
             let compilation_sub_step =
                 SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
 
+            let Artifacts { asm_path, obj_path, exe_path } =
+                match Artifacts::try_from_src(&src, Some(&out_path)) {
+                    Ok(artifacts) => artifacts,
+                    Err(err) => {
+                        eprintln!("{err}");
+                        return Ok(ExitCode::FAILURE);
+                    }
+                };
+
             let asm_generation_sub_step =
                 SubStep { step: &ASM_GENERATION, start_time: Instant::now(), verbosity };
-            let asm_generation_result = Compiler::compile(&src_path, Some(&out_path), &ast);
+            let asm_generation_result = Compiler::compile(&src, &asm_path, &ast);
             asm_generation_sub_step.done();
-            let Artifacts { asm_path, obj_path, exe_path } = match asm_generation_result {
-                Ok(artifacts_path) => artifacts_path,
+            match asm_generation_result {
+                Ok(()) => {}
                 Err(err) => {
                     eprintln!("{err}");
                     return Ok(ExitCode::FAILURE);
@@ -323,10 +335,10 @@ mod tests {
             compilation_sub_step.done();
             execution_step.done();
 
-            Step::info(&RUNNING, &exe_path, verbosity);
+            Step::info(&RUNNING, exe_path.inner(), verbosity);
 
-            let exe_path_str = exe_path.inner().as_os_str();
-            let output = match Command::new(exe_path_str).output() {
+            let mut run_command = Run::run(&exe_path);
+            let output = match run_command.output() {
                 Ok(output) => output,
                 Err(err) => {
                     eprintln!("{err}");
