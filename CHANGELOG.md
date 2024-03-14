@@ -47,11 +47,15 @@ Changes to the ABI would **not** be considered breaking since no stable ABI is d
 - Started running examples as tests to check if output is correct
 - `run` command now returns the exit code of the executed program
 - `compile` command now returns the exit code of the assembler and linker in the case of a failure
-- Compilation steps now return the relative `std::process::Command` to allow for finer control
+- `Assembler`, `Linker` and `Run` structs moved inside the root of the crate
+- `Assembler`, `Linker` and `Run` steps now return the relative `std::process::Command` to allow for
+    finer control
+- `color` module moved inside `logging` module
 - **BREAKING**: `char` type renamed to `ascii`
 - **BREAKING**: Runtime crashes now print to `stderr`
 - **BREAKING**: `Compiler::compile` now returns an `Artifacts` struct
-- **BREAKING**: Specific compilation artifacts are now required in compilation steps instead of a generic `PathBuf`
+- **BREAKING**: Specific compilation artifacts are now required in compilation steps instead of a
+    generic `PathBuf`
 - **BREAKING**: Specialized paths to be a `Utf8Path` struct
 
 ### Removed

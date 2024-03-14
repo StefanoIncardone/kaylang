@@ -1,17 +1,14 @@
 use kaylang::{
-    assembler::Assembler,
     ast::Ast,
     cli::Args,
-    compiler::{Artifacts, Compiler},
-    linker::Linker,
+    compiler::Compiler,
     logging::{
         Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, LINKER,
         LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
     },
-    run::Run,
     src_file::SrcFile,
     tokenizer::Tokenizer,
-    Help, RunMode, Version,
+    Artifacts, Assembler, Help, Linker, Run, RunMode, Version,
 };
 use std::{env, process::ExitCode, time::Instant};
 
@@ -189,19 +186,16 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use kaylang::{
-        assembler::Assembler,
         ast::Ast,
         cli::Utf8Path,
-        compiler::{Artifacts, Compiler},
-        linker::Linker,
+        compiler::Compiler,
         logging::{
             Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, LINKER,
             LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
         },
-        run::Run,
         src_file::SrcFile,
         tokenizer::Tokenizer,
-        Color, Verbosity,
+        Artifacts, Assembler, Color, Linker, Run, Verbosity,
     };
     use std::{io, path::Path, process::ExitCode, time::Instant};
 

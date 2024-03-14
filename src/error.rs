@@ -1,7 +1,7 @@
 // IDEA(stefano): split error kind enums/structs into kind and msg/cause/... enums
 
 use crate::{
-    color::{Bg, Colored, Fg, Flag},
+    logging::{Bg, Colored, Fg, Flag},
     logging::{AT, BAR, CAUSE, ERROR},
     src_file::{Position, SrcFile},
 };

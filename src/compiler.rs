@@ -4,10 +4,10 @@
 
 use crate::{
     ast::{self, Expression, IfStatement, LoopCondition, Node, Scope, Type, TypeOf},
-    cli::Utf8Path,
     error::{BackEndError, BackEndErrorInfo, BackEndErrorKind, ErrorInfo},
     src_file::{Position, SrcFile},
     tokenizer::{ascii, Literal, Op},
+    AsmPath,
 };
 use std::{
     borrow::Cow,
@@ -1214,80 +1214,6 @@ str_array_debug_eprint:
 
  ret"
 };
-
-#[derive(Debug)]
-pub struct AsmPath {
-    pub(crate) inner: Utf8Path,
-}
-
-impl AsmPath {
-    pub fn inner(&self) -> &Utf8Path {
-        &self.inner
-    }
-}
-
-#[derive(Debug)]
-pub struct ObjPath {
-    pub(crate) inner: Utf8Path,
-}
-
-impl ObjPath {
-    pub fn inner(&self) -> &Utf8Path {
-        &self.inner
-    }
-}
-
-#[derive(Debug)]
-pub struct ExePath {
-    pub(crate) inner: Utf8Path,
-}
-
-impl ExePath {
-    pub fn inner(&self) -> &Utf8Path {
-        &self.inner
-    }
-}
-
-#[derive(Debug)]
-pub struct Artifacts {
-    pub asm_path: AsmPath,
-    pub obj_path: ObjPath,
-    pub exe_path: ExePath,
-}
-
-impl Artifacts {
-    pub fn try_from_src(
-        src: &SrcFile,
-        out_path: Option<&Utf8Path>,
-    ) -> Result<Self, BackEndError<ErrorKind>> {
-        // Safety: we know src_path is valid utf8 so can safely transmute
-        let mut asm_path: AsmPath = unsafe { std::mem::transmute(src.path.with_extension("asm")) };
-        let mut obj_path: ObjPath = unsafe { std::mem::transmute(src.path.with_extension("o")) };
-        let mut exe_path: ExePath = unsafe { std::mem::transmute(src.path.with_extension("")) };
-
-        if let Some(out_path) = out_path {
-            match std::fs::create_dir_all(&out_path.inner) {
-                Ok(()) => {}
-                Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
-                Err(err) => {
-                    return Err(BackEndError {
-                        kind: ErrorKind::CouldNotCreateOutputDirectory {
-                            err,
-                            path: out_path.inner.clone(),
-                        },
-                    });
-                }
-            }
-
-            // TODO(stefano): ensure a file name is present instead of unwrapping
-            asm_path.inner.inner = out_path.join(asm_path.inner.file_name().unwrap());
-            obj_path.inner.inner = out_path.join(obj_path.inner.file_name().unwrap());
-            exe_path.inner.inner = out_path.join(exe_path.inner.file_name().unwrap());
-        }
-
-        Ok(Self { asm_path, obj_path, exe_path })
-    }
-}
 
 #[derive(Debug)]
 struct Variable<'src, 'ast: 'src> {
