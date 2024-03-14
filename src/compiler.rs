@@ -3,11 +3,12 @@
 // TODO(stefano): introduce intermediate representation
 
 use crate::{
+    artifacts::AsmPath,
     ast::{self, Expression, IfStatement, LoopCondition, Node, Scope, Type, TypeOf},
-    error::{BackEndError, BackEndErrorInfo, BackEndErrorKind, ErrorInfo},
+    error::ErrorInfo as CompilerErrorInfo,
+    logging::{CAUSE, ERROR},
     src_file::{Position, SrcFile},
     tokenizer::{ascii, Literal, Op},
-    AsmPath,
 };
 use std::{
     borrow::Cow,
@@ -1244,13 +1245,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         src: &'src SrcFile,
         asm_path: &AsmPath,
         ast: &'ast [Scope<'src>],
-    ) -> Result<(), BackEndError<ErrorKind>> {
+    ) -> Result<(), Error> {
         let asm_file = match File::create(&asm_path.inner.inner) {
             Ok(file) => file,
             Err(err) => {
-                return Err(BackEndError {
-                    kind: ErrorKind::CouldNotCreateFile { err, path: asm_path.inner.inner.clone() },
-                })
+                return Err(Error::CouldNotCreateFile { err, path: asm_path.inner.inner.clone() });
             }
         };
 
@@ -1453,11 +1452,11 @@ section .data
 
         let mut asm_writer = BufWriter::new(asm_file);
         if let Err(err) = asm_writer.write_all(program.as_bytes()) {
-            return Err(BackEndError { kind: ErrorKind::WritingAssemblyFailed { err } });
+            return Err(Error::WritingAssemblyFailed { err });
         }
 
         if let Err(err) = asm_writer.flush() {
-            return Err(BackEndError { kind: ErrorKind::WritingAssemblyFailed { err } });
+            return Err(Error::WritingAssemblyFailed { err });
         }
 
         Ok(())
@@ -2892,28 +2891,31 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 }
 
 #[derive(Debug)]
-pub enum ErrorKind {
-    CouldNotCreateOutputDirectory { err: io::Error, path: PathBuf },
+pub enum Error {
     CouldNotCreateFile { err: io::Error, path: PathBuf },
     WritingAssemblyFailed { err: io::Error },
 }
 
-impl ErrorInfo for ErrorKind {
-    type Info = BackEndErrorInfo;
+impl std::error::Error for Error {}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{info}", info = self.info())
+    }
+}
+
+impl CompilerErrorInfo for Error {
+    type Info = ErrorInfo;
 
     fn info(&self) -> Self::Info {
         let (msg, cause) = match self {
-            Self::CouldNotCreateOutputDirectory { err, path } => (
-                format!("could not create output directory '{path}'", path = path.display()).into(),
-                format!("{err} ({kind})", kind = err.kind()).into(),
-            ),
             Self::CouldNotCreateFile { err, path } => (
-                format!("could not create file '{path}'", path = path.display()).into(),
-                format!("{err} ({kind})", kind = err.kind()).into(),
+                format!("could not create file '{path}'", path = path.display()),
+                format!("{err} ({kind})", kind = err.kind()),
             ),
             Self::WritingAssemblyFailed { err } => (
-                "writing assembly file failed".into(),
-                format!("{err} ({kind})", kind = err.kind()).into(),
+                "writing to assembly file failed".to_string(),
+                format!("{err} ({kind})", kind = err.kind()),
             ),
         };
 
@@ -2921,4 +2923,20 @@ impl ErrorInfo for ErrorKind {
     }
 }
 
-impl BackEndErrorKind for ErrorKind {}
+#[derive(Debug, Clone)]
+pub struct ErrorInfo {
+    pub msg: String,
+    pub cause: String,
+}
+
+impl Display for ErrorInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{ERROR}: {msg}\
+            \n{CAUSE}: {cause}",
+            msg = self.msg,
+            cause = self.cause
+        )
+    }
+}

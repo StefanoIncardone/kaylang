@@ -2,7 +2,7 @@
 
 use crate::{
     logging::{Bg, Colored, Fg, Flag},
-    logging::{AT, BAR, CAUSE, ERROR},
+    logging::{AT, BAR, ERROR},
     src_file::{Position, SrcFile},
 };
 use std::{
@@ -19,84 +19,6 @@ pub trait ErrorInfo {
 
     fn info(&self) -> Self::Info;
 }
-
-#[derive(Debug, Clone)]
-pub struct BackEndErrorInfo {
-    pub msg: Cow<'static, str>,
-    pub cause: Cow<'static, str>,
-}
-
-pub trait BackEndErrorKind: Debug + ErrorInfo<Info = BackEndErrorInfo> {}
-
-#[derive(Debug)]
-pub struct BackEndError<K: BackEndErrorKind> {
-    pub kind: K,
-}
-
-impl<K: BackEndErrorKind> Display for BackEndError<K> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let BackEndErrorInfo { msg, cause } = self.kind.info();
-
-        write!(
-            f,
-            "{ERROR}: {msg}\
-            \n{CAUSE}: {cause}"
-        )
-    }
-}
-
-impl<K: BackEndErrorKind> std::error::Error for BackEndError<K> {}
-
-#[derive(Debug, Clone)]
-pub struct SrcFileErrorInfo {
-    pub msg: Cow<'static, str>,
-    pub cause: Cow<'static, str>,
-}
-
-pub trait SrcFileErrorKind: Debug + ErrorInfo<Info = SrcFileErrorInfo> {}
-
-#[derive(Debug)]
-pub struct SrcFileError<K: SrcFileErrorKind> {
-    pub kind: K,
-}
-
-impl<K: SrcFileErrorKind> Display for SrcFileError<K> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let SrcFileErrorInfo { msg, cause } = self.kind.info();
-
-        write!(
-            f,
-            "{ERROR}: {msg}\
-            \n{CAUSE}: {cause}"
-        )
-    }
-}
-
-impl<K: SrcFileErrorKind> std::error::Error for SrcFileError<K> {}
-
-pub trait CliErrorKind: Debug + Clone + ErrorInfo<Info = CliErrorInfo> {}
-
-#[derive(Debug, Clone)]
-pub struct CliErrorInfo {
-    pub msg: Cow<'static, str>,
-}
-
-// TODO(stefano): add information about the command line arguments and pointers to the place where
-// the error occured (akin to syntax errors)
-#[derive(Debug, Clone)]
-pub struct CliError<K: CliErrorKind> {
-    pub kind: K,
-}
-
-impl<K: CliErrorKind> Display for CliError<K> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let CliErrorInfo { msg } = self.kind.info();
-
-        write!(f, "{ERROR}: {msg}")
-    }
-}
-
-impl<K: CliErrorKind> std::error::Error for CliError<K> {}
 
 #[derive(Debug, Clone)]
 pub struct SyntaxErrorInfo {

@@ -37,7 +37,7 @@ Changes to the ABI would **not** be considered breaking since no stable ABI is d
 - String and Array comparison operators (i.e.: `<=>`, `==`, `!=`, `<`, `<=`, `>`, `>=`)
 - Raw string literals: `r"hello\nworld"` where `\n` would not get escaped
 - Printing to `stderr`: `eprint` and `eprintln` keywords
-- **BREAKING**: New Error kinds when trying to compare values of incompatible types
+- **BREAKING**: New error kinds when trying to compare values of incompatible types
 
 ### Changed
 
@@ -47,20 +47,22 @@ Changes to the ABI would **not** be considered breaking since no stable ABI is d
 - Started running examples as tests to check if output is correct
 - `run` command now returns the exit code of the executed program
 - `compile` command now returns the exit code of the assembler and linker in the case of a failure
-- `Assembler`, `Linker` and `Run` structs moved inside the root of the crate
-- `Assembler`, `Linker` and `Run` steps now return the relative `std::process::Command` to allow for
-    finer control
-- `color` module moved inside `logging` module
+- **BREAKING**: `color` module contents moved inside `logging` module
+- **BREAKING**: `Artifacts`, `Assembler`, `Linker` and `Run` structs moved inside `artifacts` module
+- **BREAKING**: `Assembler`, `Linker` and `Run` steps now return the relative
+    `std::process::Command` to allow for finer control
 - **BREAKING**: `char` type renamed to `ascii`
 - **BREAKING**: Runtime crashes now print to `stderr`
 - **BREAKING**: `Compiler::compile` now returns an `Artifacts` struct
-- **BREAKING**: Specific compilation artifacts are now required in compilation steps instead of a
-    generic `PathBuf`
+- **BREAKING**: Specific compilation artifacts paths structs are now required in compilation steps
+    instead of a generic `PathBuf`
 - **BREAKING**: Specialized paths to be a `Utf8Path` struct
 
 ### Removed
 
 - `Error`, `ColoredString` and `ColoredStr` type aliases, to allow for more explicit type signatures
+- Overly generalized error structs and error kinds, thus simplifying them
+- `color`, `assembler`, `linker` and `run` modules
 
 ### Fixed
 

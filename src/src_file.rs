@@ -1,8 +1,10 @@
 use crate::{
     cli::Utf8Path,
-    error::{ErrorInfo, SrcFileError, SrcFileErrorInfo, SrcFileErrorKind},
+    error::ErrorInfo as SrcFileErrorInfo,
+    logging::{CAUSE, ERROR},
 };
 use std::{
+    fmt::Display,
     fs::File,
     io::{self, BufRead, BufReader},
     path::PathBuf,
@@ -68,28 +70,16 @@ pub struct SrcFile {
 
 impl SrcFile {
     // TODO(stefano): replace indentation tabs with spaces
-    pub fn load(path: &Utf8Path) -> Result<Self, SrcFileError<ErrorKind>> {
+    pub fn load(path: &Utf8Path) -> Result<Self, Error> {
         let file = match File::open(&path.inner) {
             Ok(f) => f,
-            Err(err) => {
-                return Err(SrcFileError {
-                    kind: ErrorKind::CouldNotOpen { err, path: path.inner.clone() },
-                })
-            }
+            Err(err) => return Err(Error::CouldNotOpen { err, path: path.inner.clone() }),
         };
 
         let file_len = match file.metadata() {
             Ok(metadata) if metadata.is_file() => metadata.len() as usize,
-            Ok(_) => {
-                return Err(SrcFileError {
-                    kind: ErrorKind::ExpectedFile { path: path.inner.clone() },
-                })
-            }
-            Err(err) => {
-                return Err(SrcFileError {
-                    kind: ErrorKind::CouldNotReadMetadata { err, path: path.inner.clone() },
-                })
-            }
+            Ok(_) => return Err(Error::ExpectedFile { path: path.inner.clone() }),
+            Err(err) => return Err(Error::CouldNotReadMetadata { err, path: path.inner.clone() }),
         };
 
         // plus one to account for a possible phantom newline at the end
@@ -103,9 +93,7 @@ impl SrcFile {
                 Ok(0) => break,
                 Ok(read) => read,
                 Err(err) => {
-                    return Err(SrcFileError {
-                        kind: ErrorKind::CouldNotReadContents { err, path: path.inner.clone() },
-                    })
+                    return Err(Error::CouldNotReadContents { err, path: path.inner.clone() })
                 }
             };
 
@@ -138,33 +126,41 @@ impl SrcFile {
 }
 
 #[derive(Debug)]
-pub enum ErrorKind {
+pub enum Error {
     CouldNotOpen { err: io::Error, path: PathBuf },
     ExpectedFile { path: PathBuf },
     CouldNotReadMetadata { err: io::Error, path: PathBuf },
     CouldNotReadContents { err: io::Error, path: PathBuf },
 }
 
-impl ErrorInfo for ErrorKind {
-    type Info = SrcFileErrorInfo;
+impl std::error::Error for Error {}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{info}", info = self.info())
+    }
+}
+
+impl SrcFileErrorInfo for Error {
+    type Info = ErrorInfo;
 
     fn info(&self) -> Self::Info {
         let (msg, cause) = match self {
             Self::CouldNotOpen { err, path } => (
-                format!("could not open '{path}'", path = path.display()).into(),
-                format!("{err} ({kind})", kind = err.kind()).into(),
+                format!("could not open '{path}'", path = path.display()),
+                format!("{err} ({kind})", kind = err.kind()),
             ),
             Self::ExpectedFile { path } => (
-                format!("invalid path '{path}'", path = path.display()).into(),
-                "expected a file but got a directory".into(),
+                format!("invalid path '{path}'", path = path.display()),
+                "expected a file but got a directory".to_string(),
             ),
             Self::CouldNotReadMetadata { err, path } => (
-                format!("could not read metadata of '{path}'", path = path.display()).into(),
-                format!("{err} ({kind})", kind = err.kind()).into(),
+                format!("could not read metadata of '{path}'", path = path.display()),
+                format!("{err} ({kind})", kind = err.kind()),
             ),
             Self::CouldNotReadContents { err, path } => (
-                format!("could not read contents of '{path}'", path = path.display()).into(),
-                format!("{err} ({kind})", kind = err.kind()).into(),
+                format!("could not read contents of '{path}'", path = path.display()),
+                format!("{err} ({kind})", kind = err.kind()),
             ),
         };
 
@@ -172,4 +168,20 @@ impl ErrorInfo for ErrorKind {
     }
 }
 
-impl SrcFileErrorKind for ErrorKind {}
+#[derive(Debug, Clone)]
+pub struct ErrorInfo {
+    pub msg: String,
+    pub cause: String,
+}
+
+impl Display for ErrorInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{ERROR}: {msg}\
+            \n{CAUSE}: {cause}",
+            msg = self.msg,
+            cause = self.cause
+        )
+    }
+}

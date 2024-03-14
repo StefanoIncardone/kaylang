@@ -1,4 +1,5 @@
 use kaylang::{
+    artifacts::{Artifacts, Assembler, Linker, Run},
     ast::Ast,
     cli::Args,
     compiler::Compiler,
@@ -8,7 +9,7 @@ use kaylang::{
     },
     src_file::SrcFile,
     tokenizer::Tokenizer,
-    Artifacts, Assembler, Help, Linker, Run, RunMode, Version,
+    Help, RunMode, Version,
 };
 use std::{env, process::ExitCode, time::Instant};
 
@@ -186,6 +187,7 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use kaylang::{
+        artifacts::{Artifacts, Assembler, Linker, Run},
         ast::Ast,
         cli::Utf8Path,
         compiler::Compiler,
@@ -195,7 +197,7 @@ mod tests {
         },
         src_file::SrcFile,
         tokenizer::Tokenizer,
-        Artifacts, Assembler, Color, Linker, Run, Verbosity,
+        Color, Verbosity,
     };
     use std::{io, path::Path, process::ExitCode, time::Instant};
 
