@@ -48,15 +48,18 @@ Changes to the ABI would **not** be considered breaking since no stable ABI is d
 - `run` command now returns the exit code of the executed program
 - `compile` command now returns the exit code of the assembler and linker in the case of a failure
 - **BREAKING**: `color` module contents moved inside `logging` module
-- **BREAKING**: `Artifacts`, `Assembler`, `Linker` and `Run` structs moved inside `artifacts` module
-- **BREAKING**: `Assembler`, `Linker` and `Run` steps now return the relative
-    `std::process::Command` to allow for finer control
-- **BREAKING**: `char` type renamed to `ascii`
 - **BREAKING**: Runtime crashes now print to `stderr`
-- **BREAKING**: `Compiler::compile` now returns an `Artifacts` struct
-- **BREAKING**: Specific compilation artifacts paths structs are now required in compilation steps
-    instead of a generic `PathBuf`
+- **BREAKING**: `char` type renamed to `ascii`
+- **BREAKING**: `Compiler::compile` no longer returns an `Artifacts` struct
 - **BREAKING**: Specialized paths to be a `Utf8Path` struct
+- **BREAKING**: `Run` struct renamed to `Runner`
+- **BREAKING**: `Artifacts`, `Assembler`, `Linker` and `Runner` structs moved inside `artifacts`
+    module
+- **BREAKING**: `Assembler`, `Linker` and `Runner` structs are now required in compilation steps
+    instead of a generic `PathBuf`
+- **BREAKING**: `Assembler`, `Linker` and `Runner` steps now return the relative
+    `std::process::Command` to allow for finer control
+- **BREAKING**: `Assembler::assemble`, `Linker::link` and `Runner::run` are now member functions
 
 ### Removed
 

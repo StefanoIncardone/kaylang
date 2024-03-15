@@ -1,5 +1,5 @@
 use kaylang::{
-    artifacts::{Artifacts, Assembler, Linker, Run},
+    artifacts::Artifacts,
     ast::Ast,
     cli::Args,
     compiler::Compiler,
@@ -105,7 +105,7 @@ fn main() -> ExitCode {
             let compilation_sub_step =
                 SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
 
-            let Artifacts { asm_path, obj_path, exe_path } =
+            let Artifacts { assembler, linker, runner } =
                 match Artifacts::try_from_src(&src, out_path.as_ref()) {
                     Ok(artifacts) => artifacts,
                     Err(err) => {
@@ -116,7 +116,7 @@ fn main() -> ExitCode {
 
             let asm_generation_sub_step =
                 SubStep { step: &ASM_GENERATION, start_time: Instant::now(), verbosity };
-            let asm_generation_result = Compiler::compile(&src, &asm_path, &ast);
+            let asm_generation_result = Compiler::compile(&src, &assembler, &ast);
             asm_generation_sub_step.done();
             match asm_generation_result {
                 Ok(()) => {}
@@ -128,7 +128,7 @@ fn main() -> ExitCode {
 
             let assembler_sub_step =
                 SubStep { step: &ASSEMBLER, start_time: Instant::now(), verbosity };
-            let mut assembler_command = Assembler::assemble(&asm_path, &obj_path);
+            let mut assembler_command = assembler.assemble(&linker);
             let assembler_result = assembler_command.status();
             assembler_sub_step.done();
             match assembler_result {
@@ -144,7 +144,7 @@ fn main() -> ExitCode {
             }
 
             let linker_sub_step = SubStep { step: &LINKER, start_time: Instant::now(), verbosity };
-            let mut linker_command = Linker::link(&obj_path, &exe_path);
+            let mut linker_command = linker.link(&runner);
             let linker_result = linker_command.status();
             linker_sub_step.done();
             match linker_result {
@@ -163,9 +163,9 @@ fn main() -> ExitCode {
             execution_step.done();
 
             if let RunMode::Run { .. } = run_mode {
-                Step::info(&RUNNING, exe_path.inner(), verbosity);
+                Step::info(&RUNNING, runner.path(), verbosity);
 
-                let mut run_command = Run::run(&exe_path);
+                let mut run_command = runner.run();
                 match run_command.status() {
                     Ok(status) => {
                         if !status.success() {
@@ -187,7 +187,7 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use kaylang::{
-        artifacts::{Artifacts, Assembler, Linker, Run},
+        artifacts::Artifacts,
         ast::Ast,
         cli::Utf8Path,
         compiler::Compiler,
@@ -290,7 +290,7 @@ mod tests {
             let compilation_sub_step =
                 SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
 
-            let Artifacts { asm_path, obj_path, exe_path } =
+            let Artifacts { assembler, linker, runner } =
                 match Artifacts::try_from_src(&src, Some(&out_path)) {
                     Ok(artifacts) => artifacts,
                     Err(err) => {
@@ -301,7 +301,7 @@ mod tests {
 
             let asm_generation_sub_step =
                 SubStep { step: &ASM_GENERATION, start_time: Instant::now(), verbosity };
-            let asm_generation_result = Compiler::compile(&src, &asm_path, &ast);
+            let asm_generation_result = Compiler::compile(&src, &assembler, &ast);
             asm_generation_sub_step.done();
             match asm_generation_result {
                 Ok(()) => {}
@@ -313,7 +313,7 @@ mod tests {
 
             let assembler_sub_step =
                 SubStep { step: &ASSEMBLER, start_time: Instant::now(), verbosity };
-            let mut assembler_command = Assembler::assemble(&asm_path, &obj_path);
+            let mut assembler_command = assembler.assemble(&linker);
             let assembler_result = assembler_command.status();
             assembler_sub_step.done();
             match assembler_result {
@@ -329,7 +329,7 @@ mod tests {
             }
 
             let linker_sub_step = SubStep { step: &LINKER, start_time: Instant::now(), verbosity };
-            let mut linker_command = Linker::link(&obj_path, &exe_path);
+            let mut linker_command = linker.link(&runner);
             let linker_result = linker_command.status();
             linker_sub_step.done();
             match linker_result {
@@ -347,9 +347,9 @@ mod tests {
             compilation_sub_step.done();
             execution_step.done();
 
-            Step::info(&RUNNING, exe_path.inner(), verbosity);
+            Step::info(&RUNNING, runner.path(), verbosity);
 
-            let mut run_command = Run::run(&exe_path);
+            let mut run_command = runner.run();
             let run_result = match run_command.output() {
                 Ok(output) => output,
                 Err(err) => {
