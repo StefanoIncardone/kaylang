@@ -1,8 +1,4 @@
-use crate::{
-    cli::Utf8Path,
-    error::ErrorInfo as SrcFileErrorInfo,
-    logging::{CAUSE, ERROR},
-};
+use crate::{cli::Utf8Path, error::ErrorInfo as SrcFileErrorInfo, CAUSE, ERROR};
 use std::{
     fmt::Display,
     fs::File,

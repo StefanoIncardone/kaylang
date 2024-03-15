@@ -1,4 +1,4 @@
-use crate::{error::ErrorInfo as CliErrorInfo, logging::ERROR, Color, RunMode, Verbosity};
+use crate::{error::ErrorInfo as CliErrorInfo, Color, RunMode, Verbosity, ERROR};
 use std::{
     borrow::Cow,
     fmt::Display,

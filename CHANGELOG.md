@@ -47,7 +47,6 @@ Changes to the ABI would **not** be considered breaking since no stable ABI is d
 - Started running examples as tests to check if output is correct
 - `run` command now returns the exit code of the executed program
 - `compile` command now returns the exit code of the assembler and linker in the case of a failure
-- **BREAKING**: `color` module contents moved inside `logging` module
 - **BREAKING**: Runtime crashes now print to `stderr`
 - **BREAKING**: `char` type renamed to `ascii`
 - **BREAKING**: `Compiler::compile` no longer returns an `Artifacts` struct
@@ -59,9 +58,8 @@ Changes to the ABI would **not** be considered breaking since no stable ABI is d
 
 - `Error`, `ColoredString` and `ColoredStr` type aliases, to allow for more explicit type signatures
 - Overly generalized error structs and error kinds, thus simplifying them
-- `color`, `assembler`, `linker` and `run` modules
-- `Assembler`, `Linker` and `Runner` structs are now integrated in the `Artifacts` struct in the
-    `artifacts` module.
+- `color` and `logging` module inlined inside the root module
+- `assembler`, `linker` and `run` modules integrated in the new `artifacts` module
 - `Assembler::assemble`, `Linker::link` and `Run::run` are now substituted by
     `Artifacts::assembler`, `Artifacts::linker` and `Artifacts::runner` member functions and now
     return the relative `std::process::Command` to allow for finer control

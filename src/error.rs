@@ -1,9 +1,8 @@
 // IDEA(stefano): split error kind enums/structs into kind and msg/cause/... enums
 
 use crate::{
-    logging::{Bg, Colored, Fg, Flag},
-    logging::{AT, BAR, ERROR},
     src_file::{Position, SrcFile},
+    Bg, Colored, Fg, Flag, AT, BAR, ERROR,
 };
 use std::{
     borrow::Cow,

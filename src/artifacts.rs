@@ -1,8 +1,5 @@
 use crate::{
-    cli::Utf8Path,
-    error::ErrorInfo as ArtifactsErrorInfo,
-    logging::{CAUSE, ERROR},
-    src_file::SrcFile,
+    cli::Utf8Path, error::ErrorInfo as ArtifactsErrorInfo, src_file::SrcFile, CAUSE, ERROR,
 };
 use std::{ffi::OsStr, fmt::Display, io, path::PathBuf, process::Command};
 

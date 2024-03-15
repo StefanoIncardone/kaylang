@@ -6,9 +6,9 @@ use crate::{
     artifacts::Artifacts,
     ast::{self, Expression, IfStatement, LoopCondition, Node, Scope, Type, TypeOf},
     error::ErrorInfo as CompilerErrorInfo,
-    logging::{CAUSE, ERROR},
     src_file::{Position, SrcFile},
     tokenizer::{ascii, Literal, Op},
+    CAUSE, ERROR,
 };
 use std::{
     borrow::Cow,

@@ -1,15 +1,7 @@
 use kaylang::{
-    artifacts::Artifacts,
-    ast::Ast,
-    cli::Args,
-    compiler::Compiler,
-    logging::{
-        Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, LINKER,
-        LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
-    },
-    src_file::SrcFile,
-    tokenizer::Tokenizer,
-    Help, RunMode, Version,
+    artifacts::Artifacts, ast::Ast, cli::Args, compiler::Compiler, src_file::SrcFile,
+    tokenizer::Tokenizer, Help, RunMode, Step, SubStep, Version, ASM_GENERATION, ASSEMBLER,
+    AST_BUILDING, CHECKING, COMPILING, LINKER, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
 };
 use std::{env, process::ExitCode, time::Instant};
 
@@ -186,17 +178,10 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use kaylang::{
-        artifacts::Artifacts,
-        ast::Ast,
-        cli::Utf8Path,
-        compiler::Compiler,
-        logging::{
-            Step, SubStep, ASM_GENERATION, ASSEMBLER, AST_BUILDING, CHECKING, COMPILING, LINKER,
-            LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
-        },
-        src_file::SrcFile,
-        tokenizer::Tokenizer,
-        Color, Verbosity,
+        artifacts::Artifacts, ast::Ast, cli::Utf8Path, compiler::Compiler, src_file::SrcFile,
+        tokenizer::Tokenizer, Color, Step, SubStep, Verbosity, ASM_GENERATION, ASSEMBLER,
+        AST_BUILDING, CHECKING, COMPILING, LINKER, LOADING_SOURCE, RUNNING, SUBSTEP_DONE,
+        TOKENIZATION,
     };
     use std::{io, path::Path, process::ExitCode, time::Instant};
 
