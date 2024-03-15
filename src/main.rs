@@ -1,8 +1,12 @@
 use kaylang::{
-    artifacts::Artifacts, ast::Ast, cli::Args, compiler::Compiler, src_file::SrcFile,
-    tokenizer::Tokenizer, Help, RunMode, Step, SubStep, Version, ASSEMBLING, BUILDING_AST,
-    CHECKING, COMPILING, GENERATING_ASM, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE,
-    TOKENIZATION,
+    artifacts::Artifacts,
+    ast::Ast,
+    cli::Args,
+    compiler::Compiler,
+    src_file::SrcFile,
+    tokenizer::Tokenizer,
+    Help, RunMode, Step, SubStep, Version, ASSEMBLING, BUILDING_AST, CHECKING, COMPILING,
+    GENERATING_ASM, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
 };
 use std::{env, process::ExitCode, time::Instant};
 
@@ -181,7 +185,7 @@ mod tests {
     use kaylang::{
         artifacts::Artifacts,
         ast::Ast,
-        cli::{Utf8DirPath, Utf8FilePath},
+        cli::{DirPath, FilePath},
         compiler::Compiler,
         src_file::SrcFile,
         tokenizer::Tokenizer,
@@ -195,7 +199,7 @@ mod tests {
     fn check_examples() -> Result<ExitCode, io::Error> {
         let verbosity = Verbosity::Normal;
         let color = Color::Auto;
-        let out_path = Utf8DirPath::from("examples/out").unwrap();
+        let out_path = DirPath::from("examples/out").unwrap();
 
         color.set(&std::io::stderr());
         color.set(&std::io::stdout());
@@ -203,7 +207,7 @@ mod tests {
         let src_files = Path::new("examples").read_dir()?;
 
         for src_file in src_files {
-            let Some(src_path) = Utf8FilePath::from(src_file?.path()) else {
+            let Some(src_path) = FilePath::from(src_file?.path()) else {
                 continue;
             };
 

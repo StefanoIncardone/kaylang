@@ -14,11 +14,11 @@ pub struct Args {
 }
 
 #[derive(Debug, Clone)]
-pub struct Utf8FilePath {
+pub struct FilePath {
     pub(crate) inner: PathBuf,
 }
 
-impl Utf8FilePath {
+impl FilePath {
     pub fn from<P: AsRef<Path>>(path: P) -> Option<Self> {
         let path = path.as_ref().to_path_buf();
         if path.is_dir() {
@@ -29,7 +29,7 @@ impl Utf8FilePath {
     }
 }
 
-impl Deref for Utf8FilePath {
+impl Deref for FilePath {
     type Target = Path;
 
     fn deref(&self) -> &Self::Target {
@@ -38,11 +38,11 @@ impl Deref for Utf8FilePath {
 }
 
 #[derive(Debug, Clone)]
-pub struct Utf8DirPath {
+pub struct DirPath {
     pub(crate) inner: PathBuf,
 }
 
-impl Utf8DirPath {
+impl DirPath {
     pub fn from<P: AsRef<Path>>(path: P) -> Option<Self> {
         let path = path.as_ref().to_path_buf();
         if path.is_file() {
@@ -53,7 +53,7 @@ impl Utf8DirPath {
     }
 }
 
-impl Deref for Utf8DirPath {
+impl Deref for DirPath {
     type Target = Path;
 
     fn deref(&self) -> &Self::Target {
@@ -140,7 +140,7 @@ impl TryFrom<Vec<String>> for Args {
                         });
                     };
 
-                    let Some(src_path) = Utf8FilePath::from(path) else {
+                    let Some(src_path) = FilePath::from(path) else {
                         return Err(Error::ExpectedFile { path: path.into() });
                     };
 
@@ -159,7 +159,7 @@ impl TryFrom<Vec<String>> for Args {
                                         });
                                     };
 
-                                    let Some(dir_path) = Utf8DirPath::from(path) else {
+                                    let Some(dir_path) = DirPath::from(path) else {
                                         return Err(Error::ExpectedDirectory { path: path.into() });
                                     };
 

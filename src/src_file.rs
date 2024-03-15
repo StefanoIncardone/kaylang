@@ -1,4 +1,4 @@
-use crate::{cli::Utf8FilePath, error::ErrorInfo as SrcFileErrorInfo, CAUSE, ERROR};
+use crate::{cli::FilePath, error::ErrorInfo as SrcFileErrorInfo, CAUSE, ERROR};
 use std::{
     fmt::Display,
     fs::File,
@@ -59,14 +59,14 @@ impl<'src> Position {
 
 #[derive(Debug)]
 pub struct SrcFile {
-    pub(crate) path: Utf8FilePath,
+    pub(crate) path: FilePath,
     pub(crate) code: String,
     pub(crate) lines: Vec<Line>,
 }
 
 impl SrcFile {
     // TODO(stefano): replace indentation tabs with spaces
-    pub fn load(path: &Utf8FilePath) -> Result<Self, Error> {
+    pub fn load(path: &FilePath) -> Result<Self, Error> {
         let file = match File::open(&path.inner) {
             Ok(f) => f,
             Err(err) => return Err(Error::CouldNotOpen { err, path: path.inner.clone() }),

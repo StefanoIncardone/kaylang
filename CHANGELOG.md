@@ -38,31 +38,28 @@ Changes to error messages, help message and alike would **not** be considered br
 - String and Array comparison operators (i.e.: `<=>`, `==`, `!=`, `<`, `<=`, `>`, `>=`)
 - Raw string literals: `r"hello\nworld"` where `\n` would not get escaped
 - Printing to `stderr`: `eprint` and `eprintln` keywords
-- **BREAKING**: New error kinds when trying to compare values of incompatible types
 
 ### Changed
 
-- Maximum line length bumped down to 100 characters
+- Internal code style consistency
 - Improved code generation
-- Consistency of enum's field order
-- Started running examples as tests to check if output is correct
-- Updated consistency of help message and compilation steps names
+- Updated consistency of help message
 - `run` command now returns the exit code of the executed program
+- Runtime crashes now print to `stderr`
 - `compile` command now returns the exit code of the assembler and linker in the case of a failure
-- **BREAKING**: `Tokenizer::tokenize` and `Ast::build` now return a more lightweight `SyntaxErrors`
-    struct functioning as an iterator over syntax errors
-- **BREAKING**: Runtime crashes now print to `stderr`
+- Allowed non utf-8 paths
+- **BREAKING**: Updated consistency of compilation steps names and variables
+- **BREAKING**: `Tokenizer::tokenize` and `Ast::build` now return a `SyntaxErrors` struct as an
+    iterator over lightweight `RawSyntaxError`s that lazily construct full `SyntaxError`s
 - **BREAKING**: `char` type renamed to `ascii`
-- **BREAKING**: Specialized paths to be `Utf8FilePath` or `Utf8DirPath` structs to improve type
-    safety
-- **BREAKING**: `Compiler::compile` no longer returns an `Artifacts` struct
-- **BREAKING**: An `Artifacts` struct is now required in compilation steps instead of generic
-    `PathBuf`s
+- **BREAKING**: Specialized paths to be `FilePath` or `DirPath` structs to improve type safety.
+- **BREAKING**: `Compiler::compile` no longer returns an `Artifacts` struct, it is instead
+    constructed beforehand and is now required in compilation steps instead of generic `PathBuf`s
 
 ### Removed
 
 - `Error`, `ColoredString` and `ColoredStr` type aliases, to allow for more explicit type signatures
-- Overly generalized error structs and error kinds, thus simplifying them
+- Module specific `*Error` and `*ErrorInfo` structs
 - `color` and `logging` module inlined inside the root module
 - `assembler`, `linker` and `run` modules integrated in the new `artifacts` module
 - `Assembler::assemble`, `Linker::link` and `Run::run` are now substituted by
