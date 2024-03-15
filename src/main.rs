@@ -1,7 +1,7 @@
 use kaylang::{
     artifacts::Artifacts, ast::Ast, cli::Args, compiler::Compiler, src_file::SrcFile,
-    tokenizer::Tokenizer, Help, RunMode, Step, SubStep, Version, ASM_GENERATION, ASSEMBLER,
-    AST_BUILDING, CHECKING, COMPILING, LINKER, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
+    tokenizer::Tokenizer, Help, RunMode, Step, SubStep, Version, GENERATING_ASM, ASSEMBLING,
+    BUILDING_AST, CHECKING, COMPILING, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
 };
 use std::{env, process::ExitCode, time::Instant};
 
@@ -71,7 +71,7 @@ fn main() -> ExitCode {
             };
 
             let ast_building_sub_step =
-                SubStep { step: &AST_BUILDING, start_time: Instant::now(), verbosity };
+                SubStep { step: &BUILDING_AST, start_time: Instant::now(), verbosity };
             let ast_building_result = Ast::build(&src, &tokens);
             ast_building_sub_step.done();
             let ast = match ast_building_result {
@@ -106,7 +106,7 @@ fn main() -> ExitCode {
             };
 
             let asm_generation_sub_step =
-                SubStep { step: &ASM_GENERATION, start_time: Instant::now(), verbosity };
+                SubStep { step: &GENERATING_ASM, start_time: Instant::now(), verbosity };
             let asm_generation_result = Compiler::compile(&src, &artifacts, &ast);
             asm_generation_sub_step.done();
             match asm_generation_result {
@@ -118,7 +118,7 @@ fn main() -> ExitCode {
             };
 
             let assembler_sub_step =
-                SubStep { step: &ASSEMBLER, start_time: Instant::now(), verbosity };
+                SubStep { step: &ASSEMBLING, start_time: Instant::now(), verbosity };
             let mut assembler_command = artifacts.assembler();
             let assembler_result = assembler_command.status();
             assembler_sub_step.done();
@@ -134,7 +134,7 @@ fn main() -> ExitCode {
                 }
             }
 
-            let linker_sub_step = SubStep { step: &LINKER, start_time: Instant::now(), verbosity };
+            let linker_sub_step = SubStep { step: &LINKING, start_time: Instant::now(), verbosity };
             let mut linker_command = artifacts.linker();
             let linker_result = linker_command.status();
             linker_sub_step.done();
@@ -179,8 +179,8 @@ fn main() -> ExitCode {
 mod tests {
     use kaylang::{
         artifacts::Artifacts, ast::Ast, cli::Utf8Path, compiler::Compiler, src_file::SrcFile,
-        tokenizer::Tokenizer, Color, Step, SubStep, Verbosity, ASM_GENERATION, ASSEMBLER,
-        AST_BUILDING, CHECKING, COMPILING, LINKER, LOADING_SOURCE, RUNNING, SUBSTEP_DONE,
+        tokenizer::Tokenizer, Color, Step, SubStep, Verbosity, GENERATING_ASM, ASSEMBLING,
+        BUILDING_AST, CHECKING, COMPILING, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE,
         TOKENIZATION,
     };
     use std::{io, path::Path, process::ExitCode, time::Instant};
@@ -254,7 +254,7 @@ mod tests {
             };
 
             let ast_building_sub_step =
-                SubStep { step: &AST_BUILDING, start_time: Instant::now(), verbosity };
+                SubStep { step: &BUILDING_AST, start_time: Instant::now(), verbosity };
             let ast_building_result = Ast::build(&src, &tokens);
             ast_building_sub_step.done();
             let ast = match ast_building_result {
@@ -283,7 +283,7 @@ mod tests {
             };
 
             let asm_generation_sub_step =
-                SubStep { step: &ASM_GENERATION, start_time: Instant::now(), verbosity };
+                SubStep { step: &GENERATING_ASM, start_time: Instant::now(), verbosity };
             let asm_generation_result = Compiler::compile(&src, &artifacts, &ast);
             asm_generation_sub_step.done();
             match asm_generation_result {
@@ -295,7 +295,7 @@ mod tests {
             };
 
             let assembler_sub_step =
-                SubStep { step: &ASSEMBLER, start_time: Instant::now(), verbosity };
+                SubStep { step: &ASSEMBLING, start_time: Instant::now(), verbosity };
             let mut assembler_command = artifacts.assembler();
             let assembler_result = assembler_command.status();
             assembler_sub_step.done();
@@ -311,7 +311,7 @@ mod tests {
                 }
             }
 
-            let linker_sub_step = SubStep { step: &LINKER, start_time: Instant::now(), verbosity };
+            let linker_sub_step = SubStep { step: &LINKING, start_time: Instant::now(), verbosity };
             let mut linker_command = artifacts.linker();
             let linker_result = linker_command.status();
             linker_sub_step.done();

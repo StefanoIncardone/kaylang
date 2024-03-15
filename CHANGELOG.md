@@ -31,6 +31,7 @@ frequent.
 It will also prevent the stagnation of features and will allow possibly **braking bug fixes**.
 Breaking changes outside of the `Removed` section will be made obvious for easy recognition.
 Changes to the ABI would **not** be considered breaking since no stable ABI is defined for now.
+Changes to error messages, help message and alike would **not** be considered breaking.
 
 ### Added
 
@@ -45,6 +46,7 @@ Changes to the ABI would **not** be considered breaking since no stable ABI is d
 - Improved code generation
 - Consistency of enum's field order
 - Started running examples as tests to check if output is correct
+- Updated consistency of help message and compilation steps names
 - `run` command now returns the exit code of the executed program
 - `compile` command now returns the exit code of the assembler and linker in the case of a failure
 - **BREAKING**: Runtime crashes now print to `stderr`
