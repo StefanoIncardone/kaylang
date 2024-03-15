@@ -1,7 +1,5 @@
 use crate::{
-    error::{
-        ErrorInfo, RawSyntaxError, SyntaxError, SyntaxErrorInfo, SyntaxErrorKind, SyntaxErrors,
-    },
+    error::{ErrorInfo, RawSyntaxError, SyntaxErrorInfo, SyntaxErrorKind, SyntaxErrors},
     src_file::{Line, SrcFile},
 };
 use std::{
@@ -390,6 +388,7 @@ pub struct Token<'src> {
 #[derive(Debug)]
 pub struct Tokenizer<'src> {
     src: &'src SrcFile,
+    errors: Vec<RawSyntaxError<ErrorKind>>,
 
     col: usize,
     token_start_col: usize,
@@ -399,26 +398,23 @@ pub struct Tokenizer<'src> {
 
     tokens: Vec<Token<'src>>,
     brackets: Vec<Bracket>,
-    errors: Vec<RawSyntaxError<ErrorKind>>,
 }
 
 impl<'src> Tokenizer<'src> {
-    pub fn tokenize(
-        src: &'src SrcFile,
-    ) -> Result<Vec<Token<'src>>, Vec<SyntaxError<'src, ErrorKind>>> {
+    pub fn tokenize(src: &'src SrcFile) -> Result<Vec<Token<'src>>, SyntaxErrors<'src, ErrorKind>> {
         if src.lines.is_empty() {
             return Ok(Vec::new());
         }
 
         let mut this = Self {
             src,
+            errors: Vec::new(),
             col: 0,
             token_start_col: 0,
             line_index: 0,
             line: &src.lines[0],
             tokens: Vec::new(),
             brackets: Vec::new(),
-            errors: Vec::new(),
         };
 
         'tokenization: loop {
@@ -471,8 +467,7 @@ impl<'src> Tokenizer<'src> {
         if this.errors.is_empty() {
             Ok(this.tokens)
         } else {
-            let errors = SyntaxErrors { src, raw_errors: this.errors };
-            Err(errors.iter().collect())
+            Err(SyntaxErrors { src, raw_errors: this.errors })
         }
     }
 }

@@ -49,6 +49,8 @@ Changes to error messages, help message and alike would **not** be considered br
 - Updated consistency of help message and compilation steps names
 - `run` command now returns the exit code of the executed program
 - `compile` command now returns the exit code of the assembler and linker in the case of a failure
+- **BREAKING**: `Tokenizer::tokenize` and `Ast::build` now return a more lightweight `SyntaxErrors`
+    struct functioning as an iterator over syntax errors
 - **BREAKING**: Runtime crashes now print to `stderr`
 - **BREAKING**: `char` type renamed to `ascii`
 - **BREAKING**: Specialized paths to be `Utf8FilePath` or `Utf8DirPath` structs to improve type

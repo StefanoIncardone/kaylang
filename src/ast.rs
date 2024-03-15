@@ -1,5 +1,5 @@
 use super::{
-    error::{SyntaxError, SyntaxErrorInfo},
+    error::SyntaxErrorInfo,
     src_file::{Position, SrcFile},
     tokenizer::{BracketKind, Literal, Mutability, Op, SrcCodeLen, Token, TokenKind},
 };
@@ -350,6 +350,7 @@ pub struct Scope<'src> {
 #[derive(Debug)]
 pub struct Ast<'src, 'tokens: 'src> {
     src: &'src SrcFile,
+    errors: Vec<RawSyntaxError<ErrorKind>>,
 
     token: usize,
     tokens: &'tokens [Token<'src>],
@@ -358,15 +359,13 @@ pub struct Ast<'src, 'tokens: 'src> {
     scopes: Vec<Scope<'src>>,
 
     loop_depth: usize,
-
-    errors: Vec<RawSyntaxError<ErrorKind>>,
 }
 
 impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     pub fn build(
         src: &'src SrcFile,
         tokens: &'tokens [Token<'src>],
-    ) -> Result<Vec<Scope<'src>>, Vec<SyntaxError<'src, ErrorKind>>> {
+    ) -> Result<Vec<Scope<'src>>, SyntaxErrors<'src, ErrorKind>> {
         if tokens.is_empty() {
             return Ok(Vec::new());
         }
@@ -388,6 +387,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         let mut this = Self {
             src,
+            errors: Vec::new(),
             token,
             tokens,
             scope_index: 0,
@@ -398,7 +398,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 nodes: Vec::new(),
             }],
             loop_depth: 0,
-            errors: Vec::new(),
         };
 
         this.parse_scope();
@@ -406,8 +405,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         if this.errors.is_empty() {
             Ok(this.scopes)
         } else {
-            let errors = SyntaxErrors { src, raw_errors: this.errors };
-            Err(errors.iter().collect())
+            Err(SyntaxErrors { src, raw_errors: this.errors })
         }
     }
 
