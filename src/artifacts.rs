@@ -4,76 +4,21 @@ use crate::{
     logging::{CAUSE, ERROR},
     src_file::SrcFile,
 };
-use std::{fmt::Display, io, path::PathBuf, process::Command};
-
-#[derive(Debug)]
-pub struct Assembler {
-    pub(crate) path: Utf8Path,
-}
-
-impl Assembler {
-    pub fn assemble(&self, linker: &Linker) -> Command {
-        let asm_path_str = self.path.to_str().unwrap();
-        let obj_path_str = linker.path.to_str().unwrap();
-        let mut assembler_command = Command::new("nasm");
-        let _ = assembler_command.args(["-felf64", "-gdwarf", &asm_path_str, "-o", &obj_path_str]);
-        assembler_command
-    }
-
-    pub fn path(&self) -> &Utf8Path {
-        &self.path
-    }
-}
-
-#[derive(Debug)]
-pub struct Linker {
-    pub(crate) path: Utf8Path,
-}
-
-impl Linker {
-    pub fn link(&self, runner: &Runner) -> Command {
-        let obj_path_str = self.path.to_str().unwrap();
-        let exe_path_str = runner.path.to_str().unwrap();
-        let mut linker_command = Command::new("ld");
-        let _ = linker_command.args([&obj_path_str, "-o", &exe_path_str]);
-        linker_command
-    }
-
-    pub fn path(&self) -> &Utf8Path {
-        &self.path
-    }
-}
-
-#[derive(Debug)]
-pub struct Runner {
-    pub(crate) path: Utf8Path,
-}
-
-impl Runner {
-    pub fn run(&self) -> Command {
-        let exe_path_str = self.path.to_str().unwrap();
-        Command::new(exe_path_str)
-    }
-
-    pub fn path(&self) -> &Utf8Path {
-        &self.path
-    }
-}
+use std::{ffi::OsStr, fmt::Display, io, path::PathBuf, process::Command};
 
 #[derive(Debug)]
 pub struct Artifacts {
-    pub assembler: Assembler,
-    pub linker: Linker,
-    pub runner: Runner,
+    pub asm_path: Utf8Path,
+    pub obj_path: Utf8Path,
+    pub exe_path: Utf8Path,
 }
 
 impl Artifacts {
-    pub fn try_from_src(src: &SrcFile, out_path: Option<&Utf8Path>) -> Result<Self, Error> {
+    pub fn new(src: &SrcFile, out_path: Option<&Utf8Path>) -> Result<Self, Error> {
         // Safety: we know src_path is valid utf8 so can safely transmute
-        let mut assembler: Assembler =
-            unsafe { std::mem::transmute(src.path.with_extension("asm")) };
-        let mut linker: Linker = unsafe { std::mem::transmute(src.path.with_extension("o")) };
-        let mut runner: Runner = unsafe { std::mem::transmute(src.path.with_extension("")) };
+        let mut asm_path: Utf8Path = unsafe { std::mem::transmute(src.path.with_extension("asm")) };
+        let mut obj_path: Utf8Path = unsafe { std::mem::transmute(src.path.with_extension("o")) };
+        let mut exe_path: Utf8Path = unsafe { std::mem::transmute(src.path.with_extension("")) };
 
         if let Some(out_path) = out_path {
             match std::fs::create_dir_all(&out_path.inner) {
@@ -88,12 +33,36 @@ impl Artifacts {
             }
 
             // TODO(stefano): ensure a file name is present instead of unwrapping
-            assembler.path.inner = out_path.join(assembler.path.file_name().unwrap());
-            linker.path.inner = out_path.join(linker.path.file_name().unwrap());
-            runner.path.inner = out_path.join(runner.path.file_name().unwrap());
+            asm_path.inner = out_path.join(asm_path.file_name().unwrap());
+            obj_path.inner = out_path.join(obj_path.file_name().unwrap());
+            exe_path.inner = out_path.join(exe_path.file_name().unwrap());
         }
 
-        Ok(Self { assembler, linker, runner })
+        Ok(Self { asm_path, obj_path, exe_path })
+    }
+
+    pub fn assembler(&self) -> Command {
+        let mut assembler_command = Command::new("nasm");
+        let _ = assembler_command
+            .arg(OsStr::new("-felf64"))
+            .arg(OsStr::new("-gdwarf"))
+            .arg(self.asm_path.as_os_str())
+            .arg(OsStr::new("-o"))
+            .arg(self.obj_path.as_os_str());
+        assembler_command
+    }
+
+    pub fn linker(&self) -> Command {
+        let mut linker_command = Command::new("ld");
+        let _ = linker_command
+            .arg(self.obj_path.as_os_str())
+            .arg(OsStr::new("-o"))
+            .arg(self.exe_path.as_os_str());
+        linker_command
+    }
+
+    pub fn runner(&self) -> Command {
+        Command::new(self.exe_path.as_os_str())
     }
 }
 

@@ -3,7 +3,7 @@
 // TODO(stefano): introduce intermediate representation
 
 use crate::{
-    artifacts::Assembler,
+    artifacts::Artifacts,
     ast::{self, Expression, IfStatement, LoopCondition, Node, Scope, Type, TypeOf},
     error::ErrorInfo as CompilerErrorInfo,
     logging::{CAUSE, ERROR},
@@ -1243,13 +1243,16 @@ pub struct Compiler<'src, 'ast: 'src> {
 impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     pub fn compile(
         src: &'src SrcFile,
-        assembler: &Assembler,
+        artifacts: &Artifacts,
         ast: &'ast [Scope<'src>],
     ) -> Result<(), Error> {
-        let asm_file = match File::create(&assembler.path.inner) {
+        let asm_file = match File::create(&artifacts.asm_path.inner) {
             Ok(file) => file,
             Err(err) => {
-                return Err(Error::CouldNotCreateFile { err, path: assembler.path.inner.clone() });
+                return Err(Error::CouldNotCreateFile {
+                    err,
+                    path: artifacts.asm_path.inner.clone(),
+                });
             }
         };
 

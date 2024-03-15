@@ -105,18 +105,17 @@ fn main() -> ExitCode {
             let compilation_sub_step =
                 SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
 
-            let Artifacts { assembler, linker, runner } =
-                match Artifacts::try_from_src(&src, out_path.as_ref()) {
-                    Ok(artifacts) => artifacts,
-                    Err(err) => {
-                        eprintln!("{err}");
-                        return ExitCode::FAILURE;
-                    }
-                };
+            let artifacts = match Artifacts::new(&src, out_path.as_ref()) {
+                Ok(artifacts) => artifacts,
+                Err(err) => {
+                    eprintln!("{err}");
+                    return ExitCode::FAILURE;
+                }
+            };
 
             let asm_generation_sub_step =
                 SubStep { step: &ASM_GENERATION, start_time: Instant::now(), verbosity };
-            let asm_generation_result = Compiler::compile(&src, &assembler, &ast);
+            let asm_generation_result = Compiler::compile(&src, &artifacts, &ast);
             asm_generation_sub_step.done();
             match asm_generation_result {
                 Ok(()) => {}
@@ -128,7 +127,7 @@ fn main() -> ExitCode {
 
             let assembler_sub_step =
                 SubStep { step: &ASSEMBLER, start_time: Instant::now(), verbosity };
-            let mut assembler_command = assembler.assemble(&linker);
+            let mut assembler_command = artifacts.assembler();
             let assembler_result = assembler_command.status();
             assembler_sub_step.done();
             match assembler_result {
@@ -144,7 +143,7 @@ fn main() -> ExitCode {
             }
 
             let linker_sub_step = SubStep { step: &LINKER, start_time: Instant::now(), verbosity };
-            let mut linker_command = linker.link(&runner);
+            let mut linker_command = artifacts.linker();
             let linker_result = linker_command.status();
             linker_sub_step.done();
             match linker_result {
@@ -163,9 +162,9 @@ fn main() -> ExitCode {
             execution_step.done();
 
             if let RunMode::Run { .. } = run_mode {
-                Step::info(&RUNNING, runner.path(), verbosity);
+                Step::info(&RUNNING, &artifacts.exe_path, verbosity);
 
-                let mut run_command = runner.run();
+                let mut run_command = artifacts.runner();
                 match run_command.status() {
                     Ok(status) => {
                         if !status.success() {
@@ -290,18 +289,17 @@ mod tests {
             let compilation_sub_step =
                 SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
 
-            let Artifacts { assembler, linker, runner } =
-                match Artifacts::try_from_src(&src, Some(&out_path)) {
-                    Ok(artifacts) => artifacts,
-                    Err(err) => {
-                        eprintln!("{err}");
-                        return Ok(ExitCode::FAILURE);
-                    }
-                };
+            let artifacts = match Artifacts::new(&src, Some(&out_path)) {
+                Ok(artifacts) => artifacts,
+                Err(err) => {
+                    eprintln!("{err}");
+                    return Ok(ExitCode::FAILURE);
+                }
+            };
 
             let asm_generation_sub_step =
                 SubStep { step: &ASM_GENERATION, start_time: Instant::now(), verbosity };
-            let asm_generation_result = Compiler::compile(&src, &assembler, &ast);
+            let asm_generation_result = Compiler::compile(&src, &artifacts, &ast);
             asm_generation_sub_step.done();
             match asm_generation_result {
                 Ok(()) => {}
@@ -313,7 +311,7 @@ mod tests {
 
             let assembler_sub_step =
                 SubStep { step: &ASSEMBLER, start_time: Instant::now(), verbosity };
-            let mut assembler_command = assembler.assemble(&linker);
+            let mut assembler_command = artifacts.assembler();
             let assembler_result = assembler_command.status();
             assembler_sub_step.done();
             match assembler_result {
@@ -329,7 +327,7 @@ mod tests {
             }
 
             let linker_sub_step = SubStep { step: &LINKER, start_time: Instant::now(), verbosity };
-            let mut linker_command = linker.link(&runner);
+            let mut linker_command = artifacts.linker();
             let linker_result = linker_command.status();
             linker_sub_step.done();
             match linker_result {
@@ -347,9 +345,9 @@ mod tests {
             compilation_sub_step.done();
             execution_step.done();
 
-            Step::info(&RUNNING, runner.path(), verbosity);
+            Step::info(&RUNNING, &artifacts.exe_path, verbosity);
 
-            let mut run_command = runner.run();
+            let mut run_command = artifacts.runner();
             let run_result = match run_command.output() {
                 Ok(output) => output,
                 Err(err) => {

@@ -52,20 +52,19 @@ Changes to the ABI would **not** be considered breaking since no stable ABI is d
 - **BREAKING**: `char` type renamed to `ascii`
 - **BREAKING**: `Compiler::compile` no longer returns an `Artifacts` struct
 - **BREAKING**: Specialized paths to be a `Utf8Path` struct
-- **BREAKING**: `Run` struct renamed to `Runner`
-- **BREAKING**: `Artifacts`, `Assembler`, `Linker` and `Runner` structs moved inside `artifacts`
-    module
-- **BREAKING**: `Assembler`, `Linker` and `Runner` structs are now required in compilation steps
-    instead of a generic `PathBuf`
-- **BREAKING**: `Assembler`, `Linker` and `Runner` steps now return the relative
-    `std::process::Command` to allow for finer control
-- **BREAKING**: `Assembler::assemble`, `Linker::link` and `Runner::run` are now member functions
+- **BREAKING**: An `Artifacts` struct is now required in compilation steps instead of generic
+    `PathBuf`s
 
 ### Removed
 
 - `Error`, `ColoredString` and `ColoredStr` type aliases, to allow for more explicit type signatures
 - Overly generalized error structs and error kinds, thus simplifying them
 - `color`, `assembler`, `linker` and `run` modules
+- `Assembler`, `Linker` and `Runner` structs are now integrated in the `Artifacts` struct in the
+    `artifacts` module.
+- `Assembler::assemble`, `Linker::link` and `Run::run` are now substituted by
+    `Artifacts::assembler`, `Artifacts::linker` and `Artifacts::runner` member functions and now
+    return the relative `std::process::Command` to allow for finer control
 
 ### Fixed
 
