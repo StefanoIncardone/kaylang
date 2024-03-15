@@ -1,7 +1,8 @@
 use kaylang::{
     artifacts::Artifacts, ast::Ast, cli::Args, compiler::Compiler, src_file::SrcFile,
-    tokenizer::Tokenizer, Help, RunMode, Step, SubStep, Version, GENERATING_ASM, ASSEMBLING,
-    BUILDING_AST, CHECKING, COMPILING, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
+    tokenizer::Tokenizer, Help, RunMode, Step, SubStep, Version, ASSEMBLING, BUILDING_AST,
+    CHECKING, COMPILING, GENERATING_ASM, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE,
+    TOKENIZATION,
 };
 use std::{env, process::ExitCode, time::Instant};
 
@@ -178,10 +179,14 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use kaylang::{
-        artifacts::Artifacts, ast::Ast, cli::Utf8Path, compiler::Compiler, src_file::SrcFile,
-        tokenizer::Tokenizer, Color, Step, SubStep, Verbosity, GENERATING_ASM, ASSEMBLING,
-        BUILDING_AST, CHECKING, COMPILING, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE,
-        TOKENIZATION,
+        artifacts::Artifacts,
+        ast::Ast,
+        cli::{Utf8DirPath, Utf8FilePath},
+        compiler::Compiler,
+        src_file::SrcFile,
+        tokenizer::Tokenizer,
+        Color, Step, SubStep, Verbosity, ASSEMBLING, BUILDING_AST, CHECKING, COMPILING,
+        GENERATING_ASM, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
     };
     use std::{io, path::Path, process::ExitCode, time::Instant};
 
@@ -190,7 +195,7 @@ mod tests {
     fn check_examples() -> Result<ExitCode, io::Error> {
         let verbosity = Verbosity::Normal;
         let color = Color::Auto;
-        let out_path = Utf8Path::from("examples/out").unwrap();
+        let out_path = Utf8DirPath::from("examples/out").unwrap();
 
         color.set(&std::io::stderr());
         color.set(&std::io::stdout());
@@ -198,26 +203,16 @@ mod tests {
         let src_files = Path::new("examples").read_dir()?;
 
         for src_file in src_files {
-            let src_path = Utf8Path::from(src_file?.path()).unwrap();
-            if src_path.is_dir() {
-                continue;
-            }
-
-            let Some(extension) = src_path.extension() else {
+            let Some(src_path) = Utf8FilePath::from(src_file?.path()) else {
                 continue;
             };
 
-            if extension != "kay" {
+            let Some(file_name) = src_path.file_name() else {
                 continue;
-            }
+            };
 
-            match src_path.file_name() {
-                Some(path) => {
-                    if path == "features_test.kay" || path == "fizzbuzz.kay" {
-                        continue;
-                    }
-                }
-                None => continue,
+            if file_name == "features_test.kay" || file_name == "fizzbuzz.kay" {
+                continue;
             }
 
             let execution_step = Step { start_time: Instant::now(), verbosity };

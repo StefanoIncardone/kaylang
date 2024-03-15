@@ -51,8 +51,9 @@ Changes to error messages, help message and alike would **not** be considered br
 - `compile` command now returns the exit code of the assembler and linker in the case of a failure
 - **BREAKING**: Runtime crashes now print to `stderr`
 - **BREAKING**: `char` type renamed to `ascii`
+- **BREAKING**: Specialized paths to be `Utf8FilePath` or `Utf8DirPath` structs to improve type
+    safety
 - **BREAKING**: `Compiler::compile` no longer returns an `Artifacts` struct
-- **BREAKING**: Specialized paths to be a `Utf8Path` struct
 - **BREAKING**: An `Artifacts` struct is now required in compilation steps instead of generic
     `PathBuf`s
 
@@ -71,6 +72,8 @@ Changes to error messages, help message and alike would **not** be considered br
 - Bug in string literals compilation when escaped characters where present
 - Bug in expressions code generations
 - Bug in crash error messages printing
+- Checking if a file or a directory were given when the opposite was expected is now checked during
+    cli arguments parsing
 
 
 ## 0.5.3 - 2024-03-02

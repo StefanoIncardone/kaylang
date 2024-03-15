@@ -1,4 +1,4 @@
-use crate::{cli::Utf8Path, error::ErrorInfo as SrcFileErrorInfo, CAUSE, ERROR};
+use crate::{cli::Utf8FilePath, error::ErrorInfo as SrcFileErrorInfo, CAUSE, ERROR};
 use std::{
     fmt::Display,
     fs::File,
@@ -59,22 +59,21 @@ impl<'src> Position {
 
 #[derive(Debug)]
 pub struct SrcFile {
-    pub(crate) path: Utf8Path,
+    pub(crate) path: Utf8FilePath,
     pub(crate) code: String,
     pub(crate) lines: Vec<Line>,
 }
 
 impl SrcFile {
     // TODO(stefano): replace indentation tabs with spaces
-    pub fn load(path: &Utf8Path) -> Result<Self, Error> {
+    pub fn load(path: &Utf8FilePath) -> Result<Self, Error> {
         let file = match File::open(&path.inner) {
             Ok(f) => f,
             Err(err) => return Err(Error::CouldNotOpen { err, path: path.inner.clone() }),
         };
 
         let file_len = match file.metadata() {
-            Ok(metadata) if metadata.is_file() => metadata.len() as usize,
-            Ok(_) => return Err(Error::ExpectedFile { path: path.inner.clone() }),
+            Ok(metadata) => metadata.len() as usize,
             Err(err) => return Err(Error::CouldNotReadMetadata { err, path: path.inner.clone() }),
         };
 
@@ -124,7 +123,6 @@ impl SrcFile {
 #[derive(Debug)]
 pub enum Error {
     CouldNotOpen { err: io::Error, path: PathBuf },
-    ExpectedFile { path: PathBuf },
     CouldNotReadMetadata { err: io::Error, path: PathBuf },
     CouldNotReadContents { err: io::Error, path: PathBuf },
 }
@@ -145,10 +143,6 @@ impl SrcFileErrorInfo for Error {
             Self::CouldNotOpen { err, path } => (
                 format!("could not open '{path}'", path = path.display()),
                 format!("{err} ({kind})", kind = err.kind()),
-            ),
-            Self::ExpectedFile { path } => (
-                format!("invalid path '{path}'", path = path.display()),
-                "expected a file but got a directory".to_string(),
             ),
             Self::CouldNotReadMetadata { err, path } => (
                 format!("could not read metadata of '{path}'", path = path.display()),

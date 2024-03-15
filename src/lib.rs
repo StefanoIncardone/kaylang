@@ -6,7 +6,7 @@ pub mod error;
 pub mod src_file;
 pub mod tokenizer;
 
-use cli::Utf8Path;
+use cli::{Utf8DirPath, Utf8FilePath};
 use std::{fmt::Display, io::IsTerminal, time::Instant};
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -31,15 +31,15 @@ pub enum RunMode {
     Help,
     Version,
     Check {
-        src_path: Utf8Path,
+        src_path: Utf8FilePath,
     },
     Compile {
-        src_path: Utf8Path,
-        out_path: Option<Utf8Path>,
+        src_path: Utf8FilePath,
+        out_path: Option<Utf8DirPath>,
     },
     Run {
-        src_path: Utf8Path,
-        out_path: Option<Utf8Path>,
+        src_path: Utf8FilePath,
+        out_path: Option<Utf8DirPath>,
     },
 }
 
@@ -310,7 +310,7 @@ pub struct Step {
 }
 
 impl Step {
-    pub fn info(step: &Colored<&str>, path: &Utf8Path, verbosity: Verbosity) {
+    pub fn info(step: &Colored<&str>, path: &Utf8FilePath, verbosity: Verbosity) {
         if let Verbosity::Quiet = verbosity {
             return;
         }

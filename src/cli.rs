@@ -14,11 +14,22 @@ pub struct Args {
 }
 
 #[derive(Debug, Clone)]
-pub struct Utf8Path {
+pub struct Utf8FilePath {
     pub(crate) inner: PathBuf,
 }
 
-impl Deref for Utf8Path {
+impl Utf8FilePath {
+    pub fn from<P: AsRef<Path>>(path: P) -> Option<Self> {
+        let path = path.as_ref().to_path_buf();
+        if path.is_dir() {
+            return None;
+        }
+
+        Some(Self { inner: path })
+    }
+}
+
+impl Deref for Utf8FilePath {
     type Target = Path;
 
     fn deref(&self) -> &Self::Target {
@@ -26,11 +37,27 @@ impl Deref for Utf8Path {
     }
 }
 
-impl Utf8Path {
+#[derive(Debug, Clone)]
+pub struct Utf8DirPath {
+    pub(crate) inner: PathBuf,
+}
+
+impl Utf8DirPath {
     pub fn from<P: AsRef<Path>>(path: P) -> Option<Self> {
-        let path = path.as_ref();
-        let _utf8_path = path.to_str()?;
-        Some(Self { inner: path.into() })
+        let path = path.as_ref().to_path_buf();
+        if path.is_file() {
+            return None;
+        }
+
+        Some(Self { inner: path })
+    }
+}
+
+impl Deref for Utf8DirPath {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }
 
@@ -113,14 +140,14 @@ impl TryFrom<Vec<String>> for Args {
                         });
                     };
 
-                    let Some(src_path) = Utf8Path::from(path) else {
-                        return Err(Error::NonUtf8Path { path: path.into() });
+                    let Some(src_path) = Utf8FilePath::from(path) else {
+                        return Err(Error::ExpectedFile { path: path.into() });
                     };
 
                     let mode = match arg.as_str() {
                         "check" => RunMode::Check { src_path },
                         "compile" | "run" => {
-                            let mut out_path: Option<Utf8Path> = None;
+                            let mut out_path = None;
 
                             if let Some(out_flag) = args.peek() {
                                 if *out_flag == "-o" || *out_flag == "--output" {
@@ -132,12 +159,11 @@ impl TryFrom<Vec<String>> for Args {
                                         });
                                     };
 
-                                    out_path = match Utf8Path::from(path) {
-                                        Some(path) => Some(path),
-                                        None => {
-                                            return Err(Error::NonUtf8Path { path: path.into() });
-                                        }
-                                    }
+                                    let Some(dir_path) = Utf8DirPath::from(path) else {
+                                        return Err(Error::ExpectedDirectory { path: path.into() });
+                                    };
+
+                                    out_path = Some(dir_path);
                                 }
                             }
 
@@ -190,8 +216,8 @@ impl TryFrom<std::env::Args> for Args {
 // the error occured (akin to syntax errors)
 #[derive(Debug, Clone)]
 pub enum Error {
-    NonUtf8Path { path: PathBuf },
-
+    ExpectedFile { path: PathBuf },
+    ExpectedDirectory { path: PathBuf },
     ColorModeAlreadySelected,
     MissingColorMode,
     UnrecognizedColorMode { unrecognized: String },
@@ -224,8 +250,11 @@ impl CliErrorInfo for Error {
 
     fn info(&self) -> Self::Info {
         let msg = match self {
-            Self::NonUtf8Path { path } => {
-                format!("non UTF8 path: '{path}'", path = path.display()).into()
+            Self::ExpectedFile { path } => {
+                format!("expected a file but got directory '{path}'", path = path.display()).into()
+            }
+            Self::ExpectedDirectory { path } => {
+                format!("expected a directory but got file '{path}'", path = path.display()).into()
             }
             Self::ColorModeAlreadySelected => "color mode selected more than once".into(),
             Self::MissingColorMode => "missing color mode after".into(),
