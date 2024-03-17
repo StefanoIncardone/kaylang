@@ -43,6 +43,7 @@ impl Artifacts {
         Ok(Self { asm_path, obj_path, exe_path })
     }
 
+    #[must_use]
     pub fn assembler(&self) -> Command {
         let mut assembler_command = Command::new("nasm");
         let _ = assembler_command
@@ -54,6 +55,7 @@ impl Artifacts {
         assembler_command
     }
 
+    #[must_use]
     pub fn linker(&self) -> Command {
         let mut linker_command = Command::new("ld");
         let _ = linker_command
@@ -63,6 +65,7 @@ impl Artifacts {
         linker_command
     }
 
+    #[must_use]
     pub fn runner(&self) -> Command {
         Command::new(self.exe_path.as_os_str())
     }

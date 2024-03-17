@@ -27,6 +27,7 @@ impl FilePath {
         Some(Self { inner: path })
     }
 
+    #[must_use]
     pub fn into_inner(self) -> PathBuf {
         self.inner
     }
@@ -55,6 +56,7 @@ impl DirPath {
         Some(Self { inner: path })
     }
 
+    #[must_use]
     pub fn into_inner(self) -> PathBuf {
         self.inner
     }

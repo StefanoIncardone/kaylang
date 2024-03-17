@@ -301,7 +301,11 @@ fn done(start_time: Instant, step: &Colored<&str>, indent: usize, padding: usize
         ..Default::default()
     };
 
-    eprintln!("{spaces:indent$}{step:>padding$}: in {elapsed}", spaces = "", elapsed = elapsed_time);
+    eprintln!(
+        "{spaces:indent$}{step:>padding$}: in {elapsed}",
+        spaces = "",
+        elapsed = elapsed_time
+    );
 }
 
 pub struct Step {
@@ -315,7 +319,11 @@ impl Step {
             return;
         }
 
-        eprintln!("{spaces:STEP_INDENT$}{step:>STEP_PADDING$}: {path}", spaces = "", path = path.inner.display());
+        eprintln!(
+            "{spaces:STEP_INDENT$}{step:>STEP_PADDING$}: {path}",
+            spaces = "",
+            path = path.inner.display()
+        );
     }
 
     pub fn done(self) {

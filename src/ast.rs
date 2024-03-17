@@ -1541,14 +1541,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let len_token = self.next_token_bounded(Expected::ArrayLength)?;
         let len = match len_token.kind {
             TokenKind::Literal(Literal::Int(len)) => len as uint,
-            TokenKind::Bracket(BracketKind::CloseSquare) => {
-                return Err(RawSyntaxError {
-                    kind: ErrorKind::Invalid(Statement::TypeAnnotation),
-                    cause: ErrorCause::MustBeFollowedByIntegerExpression,
-                    col: open_square_bracket_token.col,
-                    len: open_square_bracket_token.kind.src_code_len(),
-                })
-            }
             _ => {
                 return Err(RawSyntaxError {
                     kind: ErrorKind::Invalid(Statement::TypeAnnotation),

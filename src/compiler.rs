@@ -1533,9 +1533,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                     for else_if in ifs {
                         let else_if_tag = format!("if_{if_counter}_else_if_{else_if_tag_index}");
-                        let else_if_false_tag = format!(
-                            "if_{if_counter}_else_if_{}", else_if_tag_index + 1
-                        );
+                        let else_if_false_tag =
+                            format!("if_{if_counter}_else_if_{}", else_if_tag_index + 1);
 
                         self.iff(else_if, &else_if_tag, &else_if_false_tag);
                         self.asm += &format!(" jmp if_{if_counter}_end\n\n");
@@ -1610,17 +1609,17 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             }
             Node::Scope { index } => self.scope(*index),
             Node::Expression(expression) => {
-                self.expression(expression, Dst::default(&expression.typ()))
+                self.expression(expression, Dst::default(&expression.typ()));
             }
             Node::Break => {
                 self.asm += &format!(
-                    " jmp loop_{}_end\n\n", self.loop_counters[self.loop_counters.len() - 1]
+                    " jmp loop_{}_end\n\n",
+                    self.loop_counters[self.loop_counters.len() - 1]
                 );
             }
             Node::Continue => {
-                self.asm += &format!(
-                    " jmp loop_{}\n\n", self.loop_counters[self.loop_counters.len() - 1]
-                );
+                self.asm +=
+                    &format!(" jmp loop_{}\n\n", self.loop_counters[self.loop_counters.len() - 1]);
             }
             Node::Semicolon => unreachable!("should not be present in the ast"),
         }
@@ -2344,7 +2343,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     },
                     Type::Ascii | Type::Bool => match dst {
                         Dst::Reg(reg) => {
-                            self.asm += &format!(" movzx {reg}, byte [rbp + {var_offset}]\n")
+                            self.asm += &format!(" movzx {reg}, byte [rbp + {var_offset}]\n");
                         }
                         Dst::View { .. } => unreachable!(),
                     },
@@ -2427,7 +2426,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                         match typ {
                             Type::Int => {
-                                self.asm += &format!(" mov rdi, [rbp + {var_offset} + rdi * 8]\n\n")
+                                self.asm +=
+                                    &format!(" mov rdi, [rbp + {var_offset} + rdi * 8]\n\n");
                             }
                             Type::Ascii | Type::Bool => {
                                 self.asm +=
@@ -2681,10 +2681,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     );
                 }
                 Literal::Ascii(code) => {
-                    self.asm += &format!(" mov byte [rbp + {dst_offset}], {code}\n\n")
+                    self.asm += &format!(" mov byte [rbp + {dst_offset}], {code}\n\n");
                 }
                 Literal::Bool(boolean) => {
-                    self.asm += &format!(" mov byte [rbp + {dst_offset}], {boolean}\n\n")
+                    self.asm += &format!(" mov byte [rbp + {dst_offset}], {boolean}\n\n");
                 }
                 Literal::Str(string) => {
                     let index = self.string_label_index(string);
@@ -2701,7 +2701,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 match value.typ() {
                     Type::Int => self.asm += &format!(" mov [rbp + {dst_offset}], rdi\n\n"),
                     Type::Ascii | Type::Bool => {
-                        self.asm += &format!(" mov [rbp + {dst_offset}], dil\n\n")
+                        self.asm += &format!(" mov [rbp + {dst_offset}], dil\n\n");
                     }
                     Type::Array { .. } => unreachable!("arrays cannot appear in expressions"),
                     Type::Str => unreachable!("strings cannot appear in expressions"),
@@ -2740,7 +2740,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n lea rsi, [rbp + {src_offset}]\
                                 \n mov rcx, {len}\
                                 \n rep movsq\n\n"
-                            )
+                            );
                         }
                         Type::Ascii | Type::Bool => {
                             self.asm += &format!(
@@ -2748,7 +2748,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n lea rsi, [rbp + {src_offset}]\
                                 \n mov rcx, {len}\
                                 \n rep movsb\n\n"
-                            )
+                            );
                         }
                         Type::Str => {
                             self.asm += &format!(
@@ -2756,7 +2756,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n lea rsi, [rbp + {src_offset}]\
                                 \n mov rcx, {len} * 2\
                                 \n rep movsq\n\n"
-                            )
+                            );
                         }
                         Type::Array { .. } => unreachable!("nested arrays not supported yet)"),
                         Type::Infer => unreachable!("should have been inferred"),
@@ -2824,7 +2824,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 match typ {
                     Type::Int => self.asm += &format!(" mov [rbp + {dst_offset}], rdi\n\n"),
                     Type::Ascii | Type::Bool => {
-                        self.asm += &format!(" mov [rbp + {dst_offset}], dil\n\n")
+                        self.asm += &format!(" mov [rbp + {dst_offset}], dil\n\n");
                     }
                     Type::Str => {
                         self.asm += &format!(

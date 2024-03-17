@@ -134,14 +134,17 @@ impl<'err, 'src: 'err, K: SyntaxErrorKind, C: SyntaxErrorCause> FusedIterator
 
 #[allow(dead_code)]
 impl<'err, 'src: 'err, K: SyntaxErrorKind, C: SyntaxErrorCause> SyntaxErrorsIter<'err, 'src, K, C> {
-    pub fn src(&self) -> &SrcFile {
+    #[must_use]
+    pub const fn src(&self) -> &SrcFile {
         self.src
     }
 
+    #[must_use]
     pub fn as_raw(&self) -> &[RawSyntaxError<K, C>] {
         self.raw_errors.as_slice()
     }
 
+    #[must_use]
     pub fn into_raw(self) -> Vec<RawSyntaxError<K, C>> {
         self.raw_errors.cloned().collect()
     }
@@ -186,14 +189,17 @@ impl<'src, K: SyntaxErrorKind, C: SyntaxErrorCause> FusedIterator
 
 #[allow(dead_code)]
 impl<'src, K: SyntaxErrorKind, C: SyntaxErrorCause> SyntaxErrorsIntoIter<'src, K, C> {
-    pub fn src(&self) -> &SrcFile {
+    #[must_use]
+    pub const fn src(&self) -> &SrcFile {
         self.src
     }
 
+    #[must_use]
     pub fn as_raw(&self) -> &[RawSyntaxError<K, C>] {
         self.raw_errors.as_slice()
     }
 
+    #[must_use]
     pub fn into_raw(self) -> Vec<RawSyntaxError<K, C>> {
         self.raw_errors.collect()
     }
@@ -214,25 +220,29 @@ impl<'src, K: SyntaxErrorKind, C: SyntaxErrorCause> IntoIterator for SyntaxError
     }
 }
 
-#[allow(dead_code)]
 impl<'src, K: SyntaxErrorKind, C: SyntaxErrorCause> SyntaxErrors<'src, K, C> {
+    #[must_use]
     pub fn iter(&self) -> SyntaxErrorsIter<'_, 'src, K, C> {
         SyntaxErrorsIter { src: self.src, raw_errors: self.raw_errors.iter() }
     }
 
+    #[must_use]
     pub fn get(&self, index: usize) -> Option<SyntaxError<'src, K, C>> {
         let raw_error = self.raw_errors.get(index)?;
         Some(SyntaxError::from_raw(self.src, raw_error))
     }
 
-    pub fn src(&self) -> &SrcFile {
+    #[must_use]
+    pub const fn src(&self) -> &SrcFile {
         self.src
     }
 
+    #[must_use]
     pub fn as_raw(&self) -> &[RawSyntaxError<K, C>] {
         &self.raw_errors
     }
 
+    #[must_use]
     pub fn into_raw(self) -> Vec<RawSyntaxError<K, C>> {
         self.raw_errors
     }
