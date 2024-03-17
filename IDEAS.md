@@ -10,23 +10,306 @@ From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProj
 
 - loops and ifs similar to Odin's [for loops](https://odin-lang.org/docs/overview/#for-statement) and [if statements](https://odin-lang.org/docs/overview/#if-statement)
 
-### switch statements
+### do keyword replaced by `->`
 
 ```kay
-let answer = 0;
+var i = 1;
+loop i < 100 {
+    if i % 15 == 0     do println "fizzbuz";
+    else if i % 3 == 0 do println "fizz";
+    else if i % 5 == 0 do println "buzz";
+    else               do println i;
 
-# regular if
-if answer == 19      do println "lucky";
-else if answer == 21 do println "you stoopid";
-else if answer == 42 do println "that's the right answer";
-else                 do println "too bad";
+    i += 1;
+}
+```
 
-# switch statement
+becomes:
+
+```kay
+var i = 1;
+loop i < 100 {
+    if i % 15 == 0     -> println "fizzbuz";
+    else if i % 3 == 0 -> println "fizz";
+    else if i % 5 == 0 -> println "buzz";
+    else               -> println i;
+
+    i += 1;
+}
+```
+
+debate whether to allow blocks after single statements or continue forbidding it:
+
+```kay
+if condition -> println "true";
+
+if condition {
+    println "true";
+}
+
+if condition -> { # debate wheter this should continue to be disallowed
+    println "true";
+}
+```
+
+Debate wheter to keep this keyword/operator or just remove it.
+when "for" loops are going to get implemented, debate whether to disallow the following
+
+```kay
+loop var i = 1; i < 100; i += 1 ->
+    if i % 15 == 0     -> println "fizzbuz";
+    else if i % 3 == 0 -> println "fizz";
+    else if i % 5 == 0 -> println "buzz";
+    else               -> println i;
+```
+
+### switch statements
+
+- as little effort required to refactor from a regular if to a switch statement
+- introducing as little new keywords as possible (just the `case` keyword, and possibly `fall`)
+- avoiding added nesting:
+
+```kay
+# regular if:
+# - 1 level of indentation
+# - two keywords: `if`, `else`
+if answer == 19 {
+    println "lucky";
+} else if answer == 21 {
+    println "you stoopid";
+} else if answer == 42 {
+    println "that's the right answer";
+} else {
+    println "too bad";
+}
+
+# switch statement:
+# - 1 level of indentation
+# - one keyword plus the two from before: `if`, `else`, `case`
+#   - possibly a `fall` keyword to specify a fallthrough case
+# - same semantics as a regular if statement
+#   - every case is like an `else if` branch
+#   - it's basically just syntactic sugar
+# - actually less code
+# - requires minimal structural changes and refactoring:
+#   - replace the first `==` with a `case`
+#   - remove the rest of the `else if answer ==`
+#   - keep the `else` keyword for the 'default' case
 if answer
-case 19 do println "lucky";
-case 21 do println "you stoopid";
-case 42 do println "that's the right answer";
-else    do println "too bad";
+case 19 {
+    println "lucky";
+} case 21 {
+    println "you stoopid";
+} case 42 {
+    println "that's the right answer";
+} else {
+    println "too bad";
+}
+
+# if let pattern matching:
+# - short and concise
+if answer == let Ok(ok) do println ok; # ok is available only in the do statement
+
+# more cases:
+if answer == var Ok(ok) do println ok;
+else if answer == let Err(err) do println err;
+
+# refactor to switch:
+# - only requires to change `==` and `else if answer ==` to `case`
+# - values inside pattern matching (i.e.: `ok` and `err`) are only available in the corresponding branch
+# - can declare mutability modifiers `let` or `var` to matched values
+if answer case var Ok(ok) do println ok;
+case let Err(err) do println err;
+
+# or:
+if answer
+case var Ok(ok) do println ok;
+case let Err(err) do println err;
+
+# rust-inspired let else syntax:
+# - values inside pattern matching (i.e.: `ok` and `err`) are available from now on
+let answer == Ok(ok) else do println "err";
+
+# oh no! i need to access the error value
+# - literally just add the pattern corresponding to the err case
+# - `ok` will be available from now on
+# - 'err' will only be available in it's switch branch
+let answer == Ok(ok) else let Err(err) do println err;
+
+# oh no! i need to access multiple error values
+# - literally just add the pattern corresponding to the other err cases
+# - `ok` will be available from now on
+# - all the other 'err' will only be available in their switch branch
+let answer == Ok(ok)
+else if let Err(err0) do println err0;
+else if let Err(err1) do println err1;
+else if let Err(err2) do println err2;
+else do println "err";
+
+# alternative let-else syntax:
+# - `=` instead of `==` to signal that ok will be made available from now on
+# - may be bug prone
+if answer = let Ok(ok) else do println "err";
+
+# another alternative let-else syntax:
+# - moves the let to the left side, getting closer to a regular variable assignment
+let Ok(ok) = answer else do println "err";
+
+# would allow for acces to other values in other patterns if needed
+# - just add the other patterns
+# - `ok` would be in scope from now on as a regular variable
+# - `err`s would only be in scope in it's match branch
+# - debate wheter the repetition of the `else` kewword should be addressed
+let Ok(ok) = answer else
+case let Err(err0) do println err0;
+case var Err(err1) do println err1;
+case let Err(err2) do println err2;
+else do println "err";
+
+# want to refactor to a regular switch?
+# - minimal code change
+# - all of the matched values will only be available in their switch branch
+if answer
+case let Ok(ok) do println ok;
+case var Err(err0) do println err0;
+case let Err(err1) do println err1;
+case let Err(err2) do println err2;
+else do println "err";
+```
+
+#### compared to C
+
+```c
+// regular if:
+// - 1 level of indentation
+// - two keywords: `if`, `else`
+if (answer == 19) {
+    printf("lucky");
+} else if (answer == 21) {
+    printf("you stoopid");
+} else if (answer == 42) {
+    printf("that's the right answer");
+} else {
+    printf("too bad");
+}
+
+// switch:
+// - 2 levels of indentation
+// - two/three keywords plus the two from before: `if`, `else`, `switch`, `case`, `break`
+// - different semantics than a regular if statement
+//  - each case is basically a goto statement
+// - more code
+// - requires lots of structural change and refactoring
+switch answer {
+    case 19: {
+        printf("lucky");
+        break;
+    }
+    case 21: {
+        printf("you stoopid");
+        break;
+    }
+    case 42: {
+        printf("that's the right answer");
+        break;
+    }
+    default: {
+        printf("too bad");
+    }
+}
+
+// switch:
+// - same as above
+// - 1 level of indentation
+// - ugly
+switch answer {
+case 19: {
+    printf("lucky");
+    break;
+}
+case 21: {
+    printf("you stoopid");
+    break;
+}
+case 42: {
+    printf("that's the right answer");
+    break;
+}
+default: {
+    printf("too bad");
+}
+}
+```
+
+### compared to Rust
+
+```rust
+// regular if:
+// - 1 level of indentation
+// - two keywords: `if`, `else`
+if answer == 19 {
+    print!("lucky");
+} else if answer == 21 {
+    print!("you stoopid");
+} else if answer == 42 {
+    print!("that's the right answer");
+} else {
+    print!("too bad");
+}
+
+// match:
+// - 2 levels of indentation
+// - one keyword plus the two from before: `if`, `else`, `match`
+// - different semantics
+//  - allows for pattern matching
+//  - requires commas in single statements
+// - comparable amount of code, less in many cases
+// - requires a lot of structural change and refactoring
+match answer {
+    19 => print!("lucky"),
+    21 => print!("you stoopid"),
+    42 => print!("that's the right answer"),
+    _ => print!("too bad"),
+}
+
+// match:
+// - same as above
+// - 2 levels of indentation (cargo fmt will refactor it regardless)
+// - less amounts of code
+match answer {
+19 => print!("lucky"),
+21 => print!("you stoopid"),
+42 => print!("that's the right answer"),
+_ => print!("too bad"),
+}
+
+// let else to match:
+// - short and concise
+let Ok(ok) = answer else {
+    // oh no! how do i access the error value, which is exactly what an else case should allow for
+};
+
+// i neet to completely refactor the cose to this:
+// - repetition of `if let`
+// - complete change to code structure
+//  - need to extract ok to a separate variable
+//  - need to remember to explicity return in the Err case to match the let-else behaviour
+let ok = if let Ok(ok) = answer {
+    ok
+} else if let Err(err) = answer {
+    print!("{err}");
+    return err;
+};
+
+// or to this:
+// - same as above
+let ok = match answer {
+    Ok(ok) => ok,
+    Err(err) => {
+        print!("{err}");
+        return err;
+    },
+};
 ```
 
 ## Once keyword
@@ -39,7 +322,7 @@ add [Zig inspired arithmetic operators](https://ziglang.org/documentation/master
 
 ### Unchecked/Checked
 
-- unchecked (+, -, /, ... ): overflow will wrap, division by zero will crash
+- unchecked (+, -, /, ...): overflow will wrap, division by zero will crash
 - checked (++, --, //, ...):
     - overflow/underflow may return both the result and the overflow of the addition
     - division will return either the result or an error value
@@ -555,19 +838,19 @@ maybe optionally enable true dynamic dispatch on demand with v-tables and stuff
 fn
 
 # return values
-[result: int, remainder: int]
+result: int, remainder: int
 
 # return values' names are optional
 [int, int]
 
-# equals sign to make it ease to copy paste this function definition in code
+# equals sign to make it easey to copy paste this function definition in code
 =
 
 # name of the function
 divmod
 
 # function arguments
-( dividend: int, divisor: int )
+(dividend: int, divisor: int)
 
 # body of the function, can also be in the do single-statement form
 {
@@ -582,50 +865,42 @@ divmod
 putting it all together:
 
 ```kay
-
-# no return values
-fn [] = answer() do return 42;
-
-# with named return values (NOTE: naked returns are not going to be allowed)
-fn [result: int, remainder: int] = divmod( dividend: int, divisor: int )
-    do return result = dividend / divisor, remainder = dividend % divisor;
-
-# with unnamed return values
-fn [int, int] = divmod( dividend: int, divisor: int ) do return dividend / divisor, remainder = dividend % divisor;
-```
-
-
-```kay
-# or have it like this
-
-# with return values
-fn result: int, remainder: int = divmod( dividend: int, divisor: int ) do return result = dividend / divisor, remainder = dividend % divisor;
-
 # no return values
 fn answer() do return 42;
+
+# with unnamed return values
+fn int, int = divmod(dividend: int, divisor: int) do
+    return dividend / divisor, dividend % divisor;
+
+# with named return values (NOTE: naked returns are not going to be allowed)
+fn result: int, remainder: int = divmod(dividend: int, divisor: int) do
+    return result = dividend / divisor, remainder = dividend % divisor;
 ```
 
 going from function definition to usage would look like this
 
 ```kay
 # function definition
-fn result: int, remainder: int = divmod( dividend: int, divisor: int ) do return result = dividend / divisor, remainder = dividend % divisor;
+fn result: int, remainder: int = divmod(dividend: int, divisor: int) do
+    return result = dividend / divisor, remainder = dividend % divisor;
 
 # from here onwards we are pretending that each line is the progression of steps needed to go from function definition to the usage
 
 # copy paste the definition
-fn result: int, remainder: int = divmod( dividend: int, divisor: int ) do return result = dividend / divisor, remainder = dividend % divisor;
+fn result: int, remainder: int = divmod(dividend: int, divisor: int) do
 
 # change 'fn' to 'let'/'var'
-let result: int, remainder: int = divmod( dividend: int, divisor: int ) do return result = dividend / divisor, remainder = dividend % divisor;
+# - explicit mutability qualifiers needed for each variable
+let result: int, var remainder: int = divmod(dividend: int, divisor: int) do
 
-# remove the function body, keeping the semicolon at the end
-let result: int, remainder: int = divmod( dividend: int, divisor: int );
+# remove everything after the arguments' closing round bracket
+let result: int, var remainder: int = divmod(dividend: int, divisor: int)
 
-# remove the function arguments' type hints 
-let result: int, remainder: int = divmod( dividend, divisor );
+# add a semicolon at the end
+let result: int, var remainder: int = divmod(dividend: int, divisor: int);
 
-# done!
+# remove the function arguments' type hints and you are done!
+let result: int, var remainder: int = divmod(dividend, divisor);
 ```
 
 going from usage to function definition would look like this
@@ -635,26 +910,32 @@ let dividend = 3;
 let divisor = 2;
 
 # usage
-let result: int, remainder: int = dividend / divisor, dividend % divisor;
+let result: int, var remainder: int = dividend / divisor, dividend % divisor;
 
 # from here onwards we are pretending that each line is the progression of steps needed to go from usage to the function definition
 
 # copy paste the usage
-let result: int, remainder: int = dividend / divisor, dividend % divisor;
+let result: int, var remainder: int = dividend / divisor, dividend % divisor;
 
-# change 'let'/'var' to 'fn'
+# remove 'let'/'var' and add the 'fn' keyword at the start of the line
 fn result: int, remainder: int = dividend / divisor, dividend % divisor;
 
 # add the function name and arguments
-fn result: int, remainder: int = divmod( dividend: int, divisor: int ) dividend / divisor, dividend % divisor;
+fn result: int, remainder: int = divmod(dividend: int, divisor: int) dividend / divisor, dividend % divisor;
 
 # add the function body, with no named returns
-fn result: int, remainder: int = divmod( dividend: int, divisor: int ) do return dividend / divisor, dividend % divisor;
+fn result: int, remainder: int = divmod(dividend: int, divisor: int) do
+    return dividend / divisor, dividend % divisor;
 
-# optionally add named returns
-fn result: int, remainder: int = divmod( dividend: int, divisor: int ) do return result = dividend / divisor, remainder = dividend % divisor;
+# optionally remove named returns
+fn int, int = divmod(dividend: int, divisor: int) do
+    return dividend / divisor, dividend % divisor;
 
-# done
+# or add them back
+fn result: int, remainder: int = divmod(dividend: int, divisor: int) do
+    return result = dividend / divisor, remainder = dividend % divisor;
+
+# and done!
 ```
 
 ## "unconventional" variable names

@@ -48,6 +48,7 @@ Changes to error messages, help message and alike would **not** be considered br
 - Runtime crashes now print to `stderr`
 - `compile` command now returns the exit code of the assembler and linker in the case of a failure
 - Allowed non utf-8 paths
+- **BREAKING**: Split `Error`s into `ErrorKind` and `ErrorCause`
 - **BREAKING**: Updated consistency of compilation steps names and variables
 - **BREAKING**: `Tokenizer::tokenize` and `Ast::build` now return a `SyntaxErrors` struct as an
     iterator over lightweight `RawSyntaxError`s that lazily construct full `SyntaxError`s

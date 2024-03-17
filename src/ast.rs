@@ -1,10 +1,9 @@
 use super::{
-    error::SyntaxErrorInfo,
     src_file::{Position, SrcFile},
     tokenizer::{BracketKind, Literal, Mutability, Op, SrcCodeLen, Token, TokenKind},
 };
 use crate::{
-    error::{ErrorInfo, RawSyntaxError, SyntaxErrorKind, SyntaxErrors},
+    error::{RawSyntaxError, SyntaxErrorCause, SyntaxErrorKind, SyntaxErrors},
     tokenizer::{ascii, int, uint},
 };
 use std::fmt::{Debug, Display};
@@ -350,7 +349,7 @@ pub struct Scope<'src> {
 #[derive(Debug)]
 pub struct Ast<'src, 'tokens: 'src> {
     src: &'src SrcFile,
-    errors: Vec<RawSyntaxError<ErrorKind>>,
+    errors: Vec<RawSyntaxError<ErrorKind, ErrorCause>>,
 
     token: usize,
     tokens: &'tokens [Token<'src>],
@@ -365,7 +364,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     pub fn build(
         src: &'src SrcFile,
         tokens: &'tokens [Token<'src>],
-    ) -> Result<Vec<Scope<'src>>, SyntaxErrors<'src, ErrorKind>> {
+    ) -> Result<Vec<Scope<'src>>, SyntaxErrors<'src, ErrorKind, ErrorCause>> {
         if tokens.is_empty() {
             return Ok(Vec::new());
         }
@@ -409,19 +408,20 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         }
     }
 
-    fn semicolon(&mut self) -> Result<(), RawSyntaxError<ErrorKind>> {
-        let semicolon_token = self.current_token_bounded(ExpectedBeforeEof::Semicolon)?;
-        if let TokenKind::SemiColon = &semicolon_token.kind {
-            let _ = self.next_token();
-            Ok(())
-        } else {
+    fn semicolon(&mut self) -> Result<(), RawSyntaxError<ErrorKind, ErrorCause>> {
+        let semicolon_token = self.current_token_bounded(Expected::Semicolon)?;
+        let TokenKind::SemiColon = &semicolon_token.kind else {
             let previous_token = self.peek_previous_token();
-            Err(RawSyntaxError {
-                kind: ErrorKind::MissingSemicolon,
+            return Err(RawSyntaxError {
+                kind: ErrorKind::Invalid(Statement::Statement),
+                cause: ErrorCause::MissingSemicolon,
                 col: previous_token.col,
                 len: previous_token.kind.src_code_len(),
-            })
-        }
+            });
+        };
+
+        let _ = self.next_token();
+        Ok(())
     }
 }
 
@@ -476,7 +476,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         }
     }
 
-    fn parse_single_statement(&mut self) -> Result<Option<Node<'src>>, RawSyntaxError<ErrorKind>> {
+    fn parse_single_statement(
+        &mut self,
+    ) -> Result<Option<Node<'src>>, RawSyntaxError<ErrorKind, ErrorCause>> {
         let Some(current_token) = self.tokens.get(self.token) else { return Ok(None) };
 
         match current_token.kind {
@@ -538,7 +540,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::Else => {
                 let _ = self.next_token();
                 Err(RawSyntaxError {
-                    kind: ErrorKind::StrayElseBlock,
+                    kind: ErrorKind::Invalid(Statement::If),
+                    cause: ErrorCause::StrayElseBlock,
                     col: current_token.col,
                     len: current_token.kind.src_code_len(),
                 })
@@ -556,7 +559,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 let _ = self.next_token();
                 match self.loop_depth {
                     0 => Err(RawSyntaxError {
-                        kind: ErrorKind::BreakOutsideOfLoop,
+                        kind: ErrorKind::Invalid(Statement::Break),
+                        cause: ErrorCause::CanOnlyBeUsedInLoops,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
@@ -567,7 +571,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 let _ = self.next_token();
                 match self.loop_depth {
                     0 => Err(RawSyntaxError {
-                        kind: ErrorKind::ContinueOutsideOfLoop,
+                        kind: ErrorKind::Invalid(Statement::Continue),
+                        cause: ErrorCause::CanOnlyBeUsedInLoops,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
@@ -579,49 +584,39 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 Ok(Some(Node::Semicolon))
             }
             TokenKind::Bracket(BracketKind::OpenCurly) => {
-                let _ = self.next_token();
-                Err(RawSyntaxError {
-                    kind: ErrorKind::BlocksNotAllowed(BlocksNotAllowedIn::DoStatement),
-                    col: current_token.col,
-                    len: current_token.kind.src_code_len(),
-                })
-            }
-            TokenKind::Bracket(BracketKind::CloseCurly) => {
-                let _ = self.next_token();
-                Err(RawSyntaxError {
-                    kind: ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
-                    col: current_token.col,
-                    len: current_token.kind.src_code_len(),
-                })
+                let (position, _) = Position::new(self.src, current_token.col);
+                unreachable!(
+                    "blocks not allowed in single statements: {path}:{line}:{col}",
+                    path = self.src.path.display(),
+                    line = position.line,
+                    col = position.col,
+                )
             }
             TokenKind::Bracket(BracketKind::OpenSquare) => {
                 let _ = self.expression()?;
                 Err(RawSyntaxError {
-                    kind: ErrorKind::TemporaryArrayNotSupportedYet,
+                    kind: ErrorKind::Invalid(Statement::Statement),
+                    cause: ErrorCause::TemporaryArrayNotSupportedYet,
                     col: current_token.col,
                     len: current_token.kind.src_code_len(),
                 })
             }
-            TokenKind::Bracket(BracketKind::CloseSquare) => {
-                let _ = self.next_token();
-                Err(RawSyntaxError {
-                    kind: ErrorKind::UnopenedBracket(BracketKind::CloseSquare),
-                    col: current_token.col,
-                    len: current_token.kind.src_code_len(),
-                })
-            }
-            TokenKind::Bracket(BracketKind::CloseRound) => {
-                let _ = self.next_token();
-                Err(RawSyntaxError {
-                    kind: ErrorKind::UnopenedBracket(BracketKind::CloseRound),
-                    col: current_token.col,
-                    len: current_token.kind.src_code_len(),
-                })
+            TokenKind::Bracket(
+                BracketKind::CloseCurly | BracketKind::CloseSquare | BracketKind::CloseRound,
+            ) => {
+                let (position, _) = Position::new(self.src, current_token.col);
+                unreachable!(
+                    "unopend brackets should have been cought during tokenization: {path}:{line}:{col}",
+                    path = self.src.path.display(),
+                    line = position.line,
+                    col = position.col,
+                )
             }
             TokenKind::Colon => {
                 let _ = self.next_token();
                 Err(RawSyntaxError {
-                    kind: ErrorKind::StrayColon,
+                    kind: ErrorKind::Invalid(Statement::TypeAnnotation),
+                    cause: ErrorCause::StrayColon,
                     col: current_token.col,
                     len: current_token.kind.src_code_len(),
                 })
@@ -629,7 +624,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::Comma => {
                 let _ = self.next_token();
                 Err(RawSyntaxError {
-                    kind: ErrorKind::StrayComma,
+                    kind: ErrorKind::Invalid(Statement::ItemSeparator),
+                    cause: ErrorCause::StrayComma,
                     col: current_token.col,
                     len: current_token.kind.src_code_len(),
                 })
@@ -637,7 +633,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::Op(Op::Equals) => {
                 let _ = self.next_token();
                 Err(RawSyntaxError {
-                    kind: ErrorKind::StrayEquals,
+                    kind: ErrorKind::Invalid(Statement::Assignment),
+                    cause: ErrorCause::StrayEquals,
                     col: current_token.col,
                     len: current_token.kind.src_code_len(),
                 })
@@ -645,7 +642,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::Op(op) => {
                 let _ = self.next_token();
                 Err(RawSyntaxError {
-                    kind: ErrorKind::StrayBinaryOperator(op),
+                    kind: ErrorKind::Invalid(Statement::Expression),
+                    cause: ErrorCause::StrayBinaryOperator(op),
                     col: current_token.col,
                     len: current_token.kind.src_code_len(),
                 })
@@ -655,13 +653,19 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         }
     }
 
-    fn parse_do_statement(&mut self) -> Result<Option<Node<'src>>, RawSyntaxError<ErrorKind>> {
-        let current_token = self.next_token_bounded(ExpectedBeforeEof::StatementAfterDo)?;
+    fn parse_do_statement(
+        &mut self,
+    ) -> Result<Option<Node<'src>>, RawSyntaxError<ErrorKind, ErrorCause>> {
+        let current_token = self.next_token_bounded(Expected::StatementAfterDo)?;
         match current_token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
                 let _ = self.next_token();
                 Err(RawSyntaxError {
-                    kind: ErrorKind::BlocksNotAllowed(BlocksNotAllowedIn::DoStatement),
+                    kind: ErrorKind::Invalid(Statement::Block),
+                    cause: ErrorCause::NotAllowedIn {
+                        not_allowed: Statement::Block,
+                        in_: Statement::Do,
+                    },
                     col: current_token.col,
                     len: current_token.kind.src_code_len(),
                 })
@@ -669,9 +673,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::Definition(_) => {
                 let _ = self.next_token();
                 Err(RawSyntaxError {
-                    kind: ErrorKind::VariableDefinitionNotAllowed(
-                        VariableDefinitionNotAllowedIn::DoStatement,
-                    ),
+                    kind: ErrorKind::Invalid(Statement::VariableDefinition),
+                    cause: ErrorCause::NotAllowedIn {
+                        not_allowed: Statement::VariableDefinition,
+                        in_: Statement::Do,
+                    },
                     col: current_token.col,
                     len: current_token.kind.src_code_len(),
                 })
@@ -680,7 +686,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         }
     }
 
-    fn parse_single_any(&mut self) -> Result<Option<Node<'src>>, RawSyntaxError<ErrorKind>> {
+    fn parse_single_any(
+        &mut self,
+    ) -> Result<Option<Node<'src>>, RawSyntaxError<ErrorKind, ErrorCause>> {
         let Some(current_token) = self.tokens.get(self.token) else { return Ok(None) };
 
         match current_token.kind {
@@ -712,12 +720,13 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn current_token_bounded(
         &self,
-        expected: ExpectedBeforeEof,
-    ) -> Result<&'tokens Token<'src>, RawSyntaxError<ErrorKind>> {
+        expected: Expected,
+    ) -> Result<&'tokens Token<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
         let Some(token) = self.tokens.get(self.token) else {
             let previous = self.peek_previous_token();
             return Err(RawSyntaxError {
-                kind: ErrorKind::NoMoreTokens(expected),
+                kind: ErrorKind::Expected(expected),
+                cause: ErrorCause::NoMoreTokens,
                 col: previous.col,
                 len: previous.kind.src_code_len(),
             });
@@ -743,14 +752,15 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
     fn next_token_bounded(
         &mut self,
-        expected_before_eof: ExpectedBeforeEof,
-    ) -> Result<&'tokens Token<'src>, RawSyntaxError<ErrorKind>> {
+        expected: Expected,
+    ) -> Result<&'tokens Token<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
         loop {
             if self.token >= self.tokens.len() - 1 {
                 let previous = &self.tokens[self.token];
                 self.token = self.tokens.len();
                 return Err(RawSyntaxError {
-                    kind: ErrorKind::NoMoreTokens(expected_before_eof),
+                    kind: ErrorKind::Expected(expected),
+                    cause: ErrorCause::NoMoreTokens,
                     col: previous.col,
                     len: previous.kind.src_code_len(),
                 });
@@ -797,17 +807,19 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn assert_lhs_is_not_string_or_array(
         op_token: &'tokens Token<'src>,
         lhs: &Expression<'src>,
-    ) -> Result<(), RawSyntaxError<ErrorKind>> {
+    ) -> Result<(), RawSyntaxError<ErrorKind, ErrorCause>> {
         if let Type::Str = lhs.typ() {
             return Err(RawSyntaxError {
-                kind: ErrorKind::StringLeftOperand,
+                kind: ErrorKind::Invalid(Statement::Expression),
+                cause: ErrorCause::StringLeftOperand,
                 col: op_token.col,
                 len: op_token.kind.src_code_len(),
             });
         }
         if let Type::Array { .. } = lhs.typ() {
             return Err(RawSyntaxError {
-                kind: ErrorKind::ArrayLeftOperand,
+                kind: ErrorKind::Invalid(Statement::Expression),
+                cause: ErrorCause::ArrayLeftOperand,
                 col: op_token.col,
                 len: op_token.kind.src_code_len(),
             });
@@ -819,17 +831,19 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn assert_rhs_is_not_string_or_array(
         op_token: &'tokens Token<'src>,
         rhs: &Expression<'src>,
-    ) -> Result<(), RawSyntaxError<ErrorKind>> {
+    ) -> Result<(), RawSyntaxError<ErrorKind, ErrorCause>> {
         if let Type::Str = rhs.typ() {
             return Err(RawSyntaxError {
-                kind: ErrorKind::StringRightOperand,
+                kind: ErrorKind::Invalid(Statement::Expression),
+                cause: ErrorCause::StringRightOperand,
                 col: op_token.col,
                 len: op_token.kind.src_code_len(),
             });
         }
         if let Type::Array { .. } = rhs.typ() {
             return Err(RawSyntaxError {
-                kind: ErrorKind::ArrayRightOperand,
+                kind: ErrorKind::Invalid(Statement::Expression),
+                cause: ErrorCause::ArrayRightOperand,
                 col: op_token.col,
                 len: op_token.kind.src_code_len(),
             });
@@ -841,8 +855,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn operator(
         &mut self,
         ops: &[Op],
-    ) -> Result<Option<(&'tokens Token<'src>, Op)>, RawSyntaxError<ErrorKind>> {
-        let current_token = self.current_token_bounded(ExpectedBeforeEof::OperatorOrSemicolon)?;
+    ) -> Result<Option<(&'tokens Token<'src>, Op)>, RawSyntaxError<ErrorKind, ErrorCause>> {
+        let current_token = self.current_token_bounded(Expected::OperatorOrSemicolon)?;
         let TokenKind::Op(op) = current_token.kind else {
             return Ok(None);
         };
@@ -859,7 +873,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         &mut self,
         var_name: &'src str,
         var_typ: Type,
-    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
+    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
         let current_token = &self.tokens[self.token];
 
         let Some(open_bracket_token) = self.peek_next_token() else {
@@ -876,19 +890,20 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let index = self.expression()?;
         let Type::Int = index.typ() else {
             return Err(RawSyntaxError {
-                kind: ErrorKind::ExpectedIntegerExpressionInArrayIndex,
+                kind: ErrorKind::Invalid(Statement::ArrayIndex),
+                cause: ErrorCause::MustBeFollowedByIntegerExpression,
                 col: open_bracket_token.col,
                 len: open_bracket_token.kind.src_code_len(),
             });
         };
 
-        let after_index_token =
-            self.current_token_bounded(ExpectedBeforeEof::ClosingSquareBracket)?;
+        let after_index_token = self.current_token_bounded(Expected::ClosingSquareBracket)?;
 
         let TokenKind::Bracket(BracketKind::CloseSquare) = after_index_token.kind else {
             let before_index_token = self.peek_previous_token();
             return Err(RawSyntaxError {
-                kind: ErrorKind::MissingSquareBracketInArrayIndex,
+                kind: ErrorKind::Invalid(Statement::ArrayIndex),
+                cause: ErrorCause::MustBeFollowedByClosingSquareBracket,
                 col: before_index_token.col,
                 len: before_index_token.kind.src_code_len(),
             });
@@ -905,7 +920,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     })
                 }
                 Type::Array { .. } => Err(RawSyntaxError {
-                    kind: ErrorKind::NestedArrayNotSupportedYet,
+                    kind: ErrorKind::Invalid(Statement::ArrayItem),
+                    cause: ErrorCause::NestedArrayNotSupportedYet,
                     col: current_token.col,
                     len: current_token.kind.src_code_len(),
                 }),
@@ -923,15 +939,18 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 index: Box::new(index),
             }),
             Type::Bool | Type::Infer | Type::Ascii => Err(RawSyntaxError {
-                kind: ErrorKind::CannotIndexNonArrayType(var_typ),
+                kind: ErrorKind::Invalid(Statement::Expression),
+                cause: ErrorCause::CannotIndexNonArrayType(var_typ),
                 col: current_token.col,
                 len: current_token.kind.src_code_len(),
             }),
         }
     }
 
-    fn primary_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
-        let current_token = self.current_token_bounded(ExpectedBeforeEof::Expression)?;
+    fn primary_expression(
+        &mut self,
+    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+        let current_token = self.current_token_bounded(Expected::Expression)?;
         let factor = match &current_token.kind {
             TokenKind::Literal(literal) => Ok(Expression::Literal(literal.clone())),
             TokenKind::True => Ok(Expression::Literal(Literal::Bool(true))),
@@ -941,23 +960,25 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     Some((_, _, var)) => self.index(var.name, var.value.typ()),
                     None => Err(RawSyntaxError {
                         kind: ErrorKind::VariableNotPreviouslyDefined,
+                        cause: ErrorCause::WasNotPreviouslyDefined,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
                 },
                 Some(_) => Err(RawSyntaxError {
-                    kind: ErrorKind::TypeNameInExpressions,
+                    kind: ErrorKind::Invalid(Statement::Expression),
+                    cause: ErrorCause::CannotBeATypeName,
                     col: current_token.col,
                     len: current_token.kind.src_code_len(),
                 }),
             },
             TokenKind::Bracket(open_bracket_kind @ BracketKind::OpenRound) => 'parenthesis: {
-                let expression_start_token =
-                    self.next_token_bounded(ExpectedBeforeEof::Expression)?;
+                let expression_start_token = self.next_token_bounded(Expected::Expression)?;
 
                 if let TokenKind::Bracket(BracketKind::CloseRound) = expression_start_token.kind {
                     break 'parenthesis Err(RawSyntaxError {
-                        kind: ErrorKind::EmptyExpression,
+                        kind: ErrorKind::Invalid(Statement::Expression),
+                        cause: ErrorCause::EmptyExpression,
                         col: expression_start_token.col,
                         len: expression_start_token.kind.src_code_len(),
                     });
@@ -965,12 +986,13 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
                 let expression = self.expression()?;
                 let close_bracket_token =
-                    self.current_token_bounded(ExpectedBeforeEof::ClosingRoundBracket)?;
+                    self.current_token_bounded(Expected::ClosingRoundBracket)?;
 
                 match close_bracket_token.kind {
                     TokenKind::Bracket(BracketKind::CloseRound) => Ok(expression),
                     _ => Err(RawSyntaxError {
-                        kind: ErrorKind::UnclosedBracket(*open_bracket_kind),
+                        kind: ErrorKind::Invalid(Statement::Expression),
+                        cause: ErrorCause::UnclosedBracket(*open_bracket_kind),
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
@@ -982,9 +1004,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 let mut items_typ = Type::Infer;
 
                 loop {
-                    let item_token = self.current_token_bounded(
-                        ExpectedBeforeEof::ArrayElementOrClosingSquareBracket,
-                    )?;
+                    let item_token =
+                        self.current_token_bounded(Expected::ArrayElementOrClosingSquareBracket)?;
 
                     if let TokenKind::Bracket(BracketKind::CloseSquare) = item_token.kind {
                         break 'array Ok(Expression::Array { typ: items_typ, items });
@@ -994,9 +1015,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     match (&items_typ, item.typ()) {
                         (_, Type::Array { .. }) => {
                             break 'array Err(RawSyntaxError {
-                                kind: ErrorKind::NestedArrayNotSupportedYet,
-                                col: item_token.col,
-                                len: item_token.kind.src_code_len(),
+                                kind: ErrorKind::Invalid(Statement::ArrayItem),
+                                cause: ErrorCause::NestedArrayNotSupportedYet,
+                                col: current_token.col,
+                                len: current_token.kind.src_code_len(),
                             })
                         }
                         (Type::Infer, other) => {
@@ -1005,7 +1027,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         }
                         (expected, actual) if *expected != actual => {
                             break 'array Err(RawSyntaxError {
-                                kind: ErrorKind::MismatchedArrayElementType {
+                                kind: ErrorKind::Invalid(Statement::ArrayItem),
+                                cause: ErrorCause::MismatchedArrayElementType {
                                     expected: expected.clone(),
                                     actual,
                                 },
@@ -1017,7 +1040,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     }
 
                     let comma_token =
-                        self.current_token_bounded(ExpectedBeforeEof::CommaOrClosingSquareBracket)?;
+                        self.current_token_bounded(Expected::CommaOrClosingSquareBracket)?;
 
                     if let TokenKind::Comma = comma_token.kind {
                         let _ = self.next_token();
@@ -1043,17 +1066,20 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         }
                     }
                     Type::Bool => Err(RawSyntaxError {
-                        kind: ErrorKind::CannotNegateBoolean,
+                        kind: ErrorKind::Invalid(Statement::Expression),
+                        cause: ErrorCause::CannotNegateBoolean,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
                     Type::Str => Err(RawSyntaxError {
-                        kind: ErrorKind::CannotNegateString,
+                        kind: ErrorKind::Invalid(Statement::Expression),
+                        cause: ErrorCause::CannotNegateString,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
                     Type::Array { .. } => Err(RawSyntaxError {
-                        kind: ErrorKind::CannotNegateArray,
+                        kind: ErrorKind::Invalid(Statement::Expression),
+                        cause: ErrorCause::CannotNegateArray,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
@@ -1078,12 +1104,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         }
                     }
                     Type::Str => Err(RawSyntaxError {
-                        kind: ErrorKind::CannotInvertString,
+                        kind: ErrorKind::Invalid(Statement::Expression),
+                        cause: ErrorCause::CannotInvertString,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
                     Type::Array { .. } => Err(RawSyntaxError {
-                        kind: ErrorKind::CannotInvertArray,
+                        kind: ErrorKind::Invalid(Statement::Expression),
+                        cause: ErrorCause::CannotInvertArray,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
@@ -1098,12 +1126,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Loop
             | TokenKind::Break
             | TokenKind::Continue => Err(RawSyntaxError {
-                kind: ErrorKind::KeywordInExpression,
+                kind: ErrorKind::Invalid(Statement::Expression),
+                cause: ErrorCause::KeywordInExpression,
                 col: current_token.col,
                 len: current_token.kind.src_code_len(),
             }),
             _ => Err(RawSyntaxError {
-                kind: ErrorKind::ExpectedOperand,
+                kind: ErrorKind::Invalid(Statement::Expression),
+                cause: ErrorCause::ExpectedOperand,
                 col: current_token.col,
                 len: current_token.kind.src_code_len(),
             }),
@@ -1113,7 +1143,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         factor
     }
 
-    fn exponentiative_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
+    fn exponentiative_expression(
+        &mut self,
+    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
         let mut lhs = self.primary_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::Pow])? {
@@ -1133,7 +1165,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    fn multiplicative_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
+    fn multiplicative_expression(
+        &mut self,
+    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
         let mut lhs = self.exponentiative_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::Times, Op::Divide, Op::Remainder])? {
@@ -1154,7 +1188,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     }
 
     // TODO(breaking)(stefano): make the plus operator as the abs operator
-    fn additive_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
+    fn additive_expression(
+        &mut self,
+    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
         let mut lhs = self.multiplicative_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::Plus, Op::Minus])? {
@@ -1174,7 +1210,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    fn shift_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
+    fn shift_expression(
+        &mut self,
+    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
         let mut lhs = self.additive_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::LeftShift, Op::RightShift])? {
@@ -1194,7 +1232,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    fn bitand_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
+    fn bitand_expression(
+        &mut self,
+    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
         let mut lhs = self.shift_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitAnd])? {
@@ -1214,7 +1254,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    fn bitxor_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
+    fn bitxor_expression(
+        &mut self,
+    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
         let mut lhs = self.bitand_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitXor])? {
@@ -1234,7 +1276,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    fn bitor_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
+    fn bitor_expression(
+        &mut self,
+    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
         let mut lhs = self.bitxor_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitOr])? {
@@ -1255,7 +1299,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     }
 
     // IDEA(breaking)(stefano): make this have the same precedence as other comparison operators
-    fn comparative_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
+    fn comparative_expression(
+        &mut self,
+    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
         let mut lhs = self.bitor_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::Compare])? {
@@ -1265,7 +1311,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             let rhs_typ = rhs.typ();
             if !lhs_typ.can_be_compared_to(&rhs_typ) {
                 return Err(RawSyntaxError {
-                    kind: ErrorKind::CannotCompareOperands { lhs_typ, rhs_typ },
+                    kind: ErrorKind::Invalid(Statement::Expression),
+                    cause: ErrorCause::CannotCompareOperands { lhs_typ, rhs_typ },
                     col: op_token.col,
                     len: op_token.kind.src_code_len(),
                 });
@@ -1282,7 +1329,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    fn comparison_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
+    fn comparison_expression(
+        &mut self,
+    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
         let mut lhs = self.comparative_expression()?;
 
         let ops = [
@@ -1302,7 +1351,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             let rhs_typ = rhs.typ();
             if !lhs_typ.can_be_compared_to(&rhs_typ) {
                 return Err(RawSyntaxError {
-                    kind: ErrorKind::CannotCompareOperands { lhs_typ, rhs_typ },
+                    kind: ErrorKind::Invalid(Statement::Expression),
+                    cause: ErrorCause::CannotCompareOperands { lhs_typ, rhs_typ },
                     col: op_token.col,
                     len: op_token.kind.src_code_len(),
                 });
@@ -1310,7 +1360,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             if is_chained {
                 return Err(RawSyntaxError {
-                    kind: ErrorKind::ChainedComparison,
+                    kind: ErrorKind::Invalid(Statement::Expression),
+                    cause: ErrorCause::ChainedComparison,
                     col: op_token.col,
                     len: op_token.kind.src_code_len(),
                 });
@@ -1328,13 +1379,16 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    fn and_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
+    fn and_expression(
+        &mut self,
+    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
         let mut lhs = self.comparison_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::And])? {
             let Type::Bool = lhs.typ() else {
                 return Err(RawSyntaxError {
-                    kind: ErrorKind::NonBooleanLeftOperand,
+                    kind: ErrorKind::Invalid(Statement::Expression),
+                    cause: ErrorCause::NonBooleanLeftOperand,
                     col: op_token.col,
                     len: op_token.kind.src_code_len(),
                 });
@@ -1343,7 +1397,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             let rhs = self.comparison_expression()?;
             let Type::Bool = rhs.typ() else {
                 return Err(RawSyntaxError {
-                    kind: ErrorKind::NonBooleanRightOperand,
+                    kind: ErrorKind::Invalid(Statement::Expression),
+                    cause: ErrorCause::NonBooleanRightOperand,
                     col: op_token.col,
                     len: op_token.kind.src_code_len(),
                 });
@@ -1360,13 +1415,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    fn or_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
+    fn or_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
         let mut lhs = self.and_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::Or])? {
             let Type::Bool = lhs.typ() else {
                 return Err(RawSyntaxError {
-                    kind: ErrorKind::NonBooleanLeftOperand,
+                    kind: ErrorKind::Invalid(Statement::Expression),
+                    cause: ErrorCause::NonBooleanLeftOperand,
                     col: op_token.col,
                     len: op_token.kind.src_code_len(),
                 });
@@ -1375,7 +1431,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             let rhs = self.and_expression()?;
             let Type::Bool = rhs.typ() else {
                 return Err(RawSyntaxError {
-                    kind: ErrorKind::NonBooleanRightOperand,
+                    kind: ErrorKind::Invalid(Statement::Expression),
+                    cause: ErrorCause::NonBooleanRightOperand,
                     col: op_token.col,
                     len: op_token.kind.src_code_len(),
                 });
@@ -1394,7 +1451,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
     // TODO(stefano): disallow implicit conversions
     // TODO(stefano): introduce casting operators
-    fn expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
+    fn expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
         self.or_expression()
     }
 }
@@ -1440,19 +1497,19 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
     fn type_annotation(
         &mut self,
-    ) -> Result<Option<(&'tokens Token<'src>, Type)>, RawSyntaxError<ErrorKind>> {
-        let colon_token =
-            self.next_token_bounded(ExpectedBeforeEof::TypeAnnotationOrVariableDefinition)?;
+    ) -> Result<Option<(&'tokens Token<'src>, Type)>, RawSyntaxError<ErrorKind, ErrorCause>> {
+        let colon_token = self.next_token_bounded(Expected::TypeAnnotationOrVariableDefinition)?;
 
         let TokenKind::Colon = colon_token.kind else {
             self.token -= 1;
             return Ok(None);
         };
 
-        let type_token = self.next_token_bounded(ExpectedBeforeEof::TypeAnnotation)?;
+        let type_token = self.next_token_bounded(Expected::TypeAnnotation)?;
         let TokenKind::Identifier(type_name) = type_token.kind else {
             return Err(RawSyntaxError {
-                kind: ErrorKind::ExpectedTypeName,
+                kind: ErrorKind::Invalid(Statement::TypeAnnotation),
+                cause: ErrorCause::ExpectedTypeName,
                 col: colon_token.col,
                 len: colon_token.kind.src_code_len(),
             });
@@ -1462,7 +1519,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             return match self.resolve_variable(type_name) {
                 Some((_, _, var)) => Ok(Some((type_token, var.value.typ()))),
                 None => Err(RawSyntaxError {
-                    kind: ErrorKind::VariableAsTypeAnnotationNotPreviouslyDefined,
+                    kind: ErrorKind::Invalid(Statement::TypeAnnotation),
+                    cause: ErrorCause::WasNotPreviouslyDefined,
                     col: type_token.col,
                     len: type_token.kind.src_code_len(),
                 }),
@@ -1480,21 +1538,23 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let typ = Box::new(typ.clone());
         let _open_square_bracket = self.next_token();
 
-        let len_token = self.next_token_bounded(ExpectedBeforeEof::ArrayLength)?;
+        let len_token = self.next_token_bounded(Expected::ArrayLength)?;
         let len = match len_token.kind {
             TokenKind::Literal(Literal::Int(len)) => len as uint,
             TokenKind::Bracket(BracketKind::CloseSquare) => {
                 return Err(RawSyntaxError {
-                    kind: ErrorKind::MissingArrayLength,
-                    col: len_token.col,
-                    len: len_token.kind.src_code_len(),
+                    kind: ErrorKind::Invalid(Statement::TypeAnnotation),
+                    cause: ErrorCause::MustBeFollowedByIntegerExpression,
+                    col: open_square_bracket_token.col,
+                    len: open_square_bracket_token.kind.src_code_len(),
                 })
             }
             _ => {
                 return Err(RawSyntaxError {
-                    kind: ErrorKind::NonLiteralIntegerArrayLength,
-                    col: len_token.col,
-                    len: len_token.kind.src_code_len(),
+                    kind: ErrorKind::Invalid(Statement::TypeAnnotation),
+                    cause: ErrorCause::MustBeFollowedByIntegerExpression,
+                    col: open_square_bracket_token.col,
+                    len: open_square_bracket_token.kind.src_code_len(),
                 })
             }
         };
@@ -1507,31 +1567,34 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 },
             ) => Ok(Some((close_square_bracket_token, Type::Array { typ, len }))),
             Some(_) | None => Err(RawSyntaxError {
-                kind: ErrorKind::MissingSquareBracketInArrayTypeAnnotation,
+                kind: ErrorKind::Invalid(Statement::TypeAnnotation),
+                cause: ErrorCause::MustBeFollowedByClosingSquareBracket,
                 col: open_square_bracket_token.col,
                 len: open_square_bracket_token.kind.src_code_len(),
             }),
         }
     }
 
-    fn variable_definition(&mut self) -> Result<Node<'src>, RawSyntaxError<ErrorKind>> {
+    fn variable_definition(&mut self) -> Result<Node<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
         let definition_token = &self.tokens[self.token];
         let TokenKind::Definition(mutability) = definition_token.kind else {
             unreachable!("cannot be anything different from 'let' or 'var'");
         };
 
-        let name_token = self.next_token_bounded(ExpectedBeforeEof::Identifier)?;
+        let name_token = self.next_token_bounded(Expected::Identifier)?;
         let name = match name_token.kind {
             TokenKind::Identifier(name) => match self.resolve_type(name) {
                 None => Ok(name),
                 Some(_) => Err(RawSyntaxError {
-                    kind: ErrorKind::TypeNameInVariableName,
+                    kind: ErrorKind::Invalid(Statement::VariableName),
+                    cause: ErrorCause::CannotBeATypeName,
                     col: name_token.col,
                     len: name_token.kind.src_code_len(),
                 }),
             },
             _ => Err(RawSyntaxError {
-                kind: ErrorKind::ExpectedVariableName,
+                kind: ErrorKind::Invalid(Statement::VariableDefinition),
+                cause: ErrorCause::ExpectedVariableName,
                 col: name_token.col,
                 len: name_token.kind.src_code_len(),
             }),
@@ -1540,8 +1603,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         let annotation = self.type_annotation()?;
 
-        let equals_or_semicolon_token =
-            self.next_token_bounded(ExpectedBeforeEof::EqualsOrSemicolon)?;
+        let equals_or_semicolon_token = self.next_token_bounded(Expected::EqualsOrSemicolon)?;
 
         let expression = match equals_or_semicolon_token.kind {
             TokenKind::Op(Op::Equals) => {
@@ -1554,12 +1616,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::SemiColon => Ok(None),
             _ => match annotation {
                 None => Err(RawSyntaxError {
-                    kind: ErrorKind::ExpectedEqualsOrSemicolonAfterVariableName,
+                    kind: ErrorKind::Invalid(Statement::VariableDefinition),
+                    cause: ErrorCause::ExpectedEqualsOrSemicolonAfterVariableName,
                     col: name_token.col,
                     len: name_token.kind.src_code_len(),
                 }),
                 Some((annotation_token, _)) => Err(RawSyntaxError {
-                    kind: ErrorKind::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
+                    kind: ErrorKind::Invalid(Statement::VariableDefinition),
+                    cause: ErrorCause::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
                     col: annotation_token.col,
                     len: annotation_token.kind.src_code_len(),
                 }),
@@ -1570,6 +1634,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         if self.resolve_variable(name).is_some() {
             return Err(RawSyntaxError {
                 kind: ErrorKind::VariableRedefinition,
+                cause: ErrorCause::WasPreviouslyDefined,
                 col: name_token.col,
                 len: name_token.kind.src_code_len(),
             });
@@ -1586,7 +1651,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
                     if *annotation_typ != value.typ() {
                         return Err(RawSyntaxError {
-                            kind: ErrorKind::VariableDefinitionTypeMismatch {
+                            kind: ErrorKind::Invalid(Statement::VariableDefinition),
+                            cause: ErrorCause::VariableDefinitionTypeMismatch {
                                 expected: annotation_typ.clone(),
                                 actual: value.typ(),
                             },
@@ -1596,7 +1662,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     }
                 } else if value.typ().should_be_inferred() {
                     return Err(RawSyntaxError {
-                        kind: ErrorKind::ExpectedTypeAnnotation,
+                        kind: ErrorKind::Invalid(Statement::VariableDefinition),
+                        cause: ErrorCause::ExpectedTypeAnnotation,
                         col: name_token.col,
                         len: name_token.kind.src_code_len(),
                     });
@@ -1619,7 +1686,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     })
                 }
                 None => Err(RawSyntaxError {
-                    kind: ErrorKind::ExpectedTypeAnnotationOrValue,
+                    kind: ErrorKind::Invalid(Statement::VariableDefinition),
+                    cause: ErrorCause::ExpectedTypeAnnotationOrValue,
                     col: name_token.col,
                     len: name_token.kind.src_code_len(),
                 }),
@@ -1627,7 +1695,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         }
     }
 
-    fn variable_reassignment(&mut self) -> Result<Node<'src>, RawSyntaxError<ErrorKind>> {
+    fn variable_reassignment(
+        &mut self,
+    ) -> Result<Node<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
         let name_token = &self.tokens[self.token];
         let TokenKind::Identifier(name) = name_token.kind else {
             unreachable!("cannot be different from an identifier");
@@ -1635,7 +1705,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         if self.resolve_type(name).is_some() {
             return Err(RawSyntaxError {
-                kind: ErrorKind::TypeNameInVariableReassignment,
+                kind: ErrorKind::Invalid(Statement::VariableAssignment),
+                cause: ErrorCause::CannotBeATypeName,
                 col: name_token.col,
                 len: name_token.kind.src_code_len(),
             });
@@ -1649,7 +1720,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         match self.resolve_variable(name) {
             Some((scope_index, var_index, var)) => match var.mutability {
                 Mutability::Let => Err(RawSyntaxError {
-                    kind: ErrorKind::TryingToMutateImmutableVariable,
+                    kind: ErrorKind::Invalid(Statement::VariableAssignment),
+                    cause: ErrorCause::CannotMutateImmutableVariable,
                     col: name_token.col,
                     len: name_token.kind.src_code_len(),
                 }),
@@ -1669,7 +1741,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         Ok(Node::Assignment { scope_index, var_index, new_value })
                     } else {
                         Err(RawSyntaxError {
-                            kind: ErrorKind::VariableAssignmentTypeMismatch {
+                            kind: ErrorKind::Invalid(Statement::VariableAssignment),
+                            cause: ErrorCause::VariableAssignmentTypeMismatch {
                                 expected: var.value.typ(),
                                 actual: new_value.typ(),
                             },
@@ -1680,7 +1753,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 }
             },
             None => Err(RawSyntaxError {
-                kind: ErrorKind::VariableNotPreviouslyDefined,
+                kind: ErrorKind::Invalid(Statement::VariableAssignment),
+                cause: ErrorCause::WasNotPreviouslyDefined,
                 col: name_token.col,
                 len: name_token.kind.src_code_len(),
             }),
@@ -1690,15 +1764,16 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
 // print statements
 impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
-    fn print_arg(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind>> {
-        let start_of_expression_token = self.next_token_bounded(ExpectedBeforeEof::Expression)?;
+    fn print_arg(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+        let start_of_expression_token = self.next_token_bounded(Expected::Expression)?;
         let argument = self.expression()?;
         let Expression::Array { .. } = argument else {
             return Ok(argument);
         };
 
         Err(RawSyntaxError {
-            kind: ErrorKind::TemporaryArrayNotSupportedYet,
+            kind: ErrorKind::Invalid(Statement::Expression),
+            cause: ErrorCause::TemporaryArrayNotSupportedYet,
             col: start_of_expression_token.col,
             len: start_of_expression_token.kind.src_code_len(),
         })
@@ -1707,18 +1782,19 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
 // if statements
 impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
-    fn iff(&mut self) -> Result<Node<'src>, RawSyntaxError<ErrorKind>> {
+    fn iff(&mut self) -> Result<Node<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
         let mut if_statement = If { ifs: Vec::new(), els: None };
 
         'iff: while let Some(if_token) = self.tokens.get(self.token) {
-            let _ = self.next_token_bounded(ExpectedBeforeEof::BooleanExpression)?;
+            let _ = self.next_token_bounded(Expected::BooleanExpression)?;
 
             let expression = self.expression()?;
             let condition = match &expression.typ() {
                 Type::Bool => Ok(expression),
                 Type::Ascii | Type::Int | Type::Str | Type::Array { .. } | Type::Infer => {
                     Err(RawSyntaxError {
-                        kind: ErrorKind::ExpectedBooleanExpressionInIfStatement,
+                        kind: ErrorKind::Invalid(Statement::If),
+                        cause: ErrorCause::MustBeFollowedByABooleanExpression,
                         col: if_token.col,
                         len: if_token.kind.src_code_len(),
                     })
@@ -1726,7 +1802,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             };
 
             let condition = condition?;
-            let after_condition_token = self.current_token_bounded(ExpectedBeforeEof::DoOrBlock)?;
+            let after_condition_token = self.current_token_bounded(Expected::DoOrBlock)?;
             let iff = match after_condition_token.kind {
                 TokenKind::Bracket(BracketKind::OpenCurly) => {
                     let scope = self.parse_single_any()?.unwrap();
@@ -1740,7 +1816,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 _ => {
                     let before_curly_bracket_token = self.peek_previous_token();
                     Err(RawSyntaxError {
-                        kind: ErrorKind::ExpectedDoOrBlockAfterIfStatement,
+                        kind: ErrorKind::Invalid(Statement::If),
+                        cause: ErrorCause::MustBeFollowedByDoOrBlock,
                         col: before_curly_bracket_token.col,
                         len: before_curly_bracket_token.kind.src_code_len(),
                     })
@@ -1751,9 +1828,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             while let Some(else_token) = self.tokens.get(self.token) {
                 let after_else_token = match else_token.kind {
-                    TokenKind::Else => {
-                        self.next_token_bounded(ExpectedBeforeEof::DoOrBlockOrIfStatement)?
-                    }
+                    TokenKind::Else => self.next_token_bounded(Expected::DoOrBlockOrIfStatement)?,
                     _ => break 'iff,
                 };
 
@@ -1772,7 +1847,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     }
                     TokenKind::If => break,
                     _ => Err(RawSyntaxError {
-                        kind: ErrorKind::ExpectedDoOrBlockOrIfStatementAfterIfStatement,
+                        kind: ErrorKind::Invalid(Statement::If),
+                        cause: ErrorCause::MustBeFollowedByDoOrBlockOrIfStatement,
                         col: else_token.col,
                         len: else_token.kind.src_code_len(),
                     }),
@@ -1788,27 +1864,28 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
 // for statements
 impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
-    fn loop_statement(&mut self) -> Result<Node<'src>, RawSyntaxError<ErrorKind>> {
+    fn loop_statement(&mut self) -> Result<Node<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
         let do_token = &self.tokens[self.token];
         let loop_token = match do_token.kind {
-            TokenKind::Do => self.next_token_bounded(ExpectedBeforeEof::LoopStatement)?,
+            TokenKind::Do => self.next_token_bounded(Expected::LoopStatement)?,
             _ => do_token,
         };
 
-        let _ = self.next_token_bounded(ExpectedBeforeEof::BooleanExpression)?;
+        let _ = self.next_token_bounded(Expected::BooleanExpression)?;
         let expression = self.expression()?;
         let condition = match &expression.typ() {
             Type::Bool => Ok(expression),
             Type::Ascii | Type::Int | Type::Str | Type::Array { .. } | Type::Infer => {
                 Err(RawSyntaxError {
-                    kind: ErrorKind::ExpectedBooleanExpressionInLoopStatement,
+                    kind: ErrorKind::Invalid(Statement::Loop),
+                    cause: ErrorCause::MustBeFollowedByABooleanExpression,
                     col: loop_token.col,
                     len: loop_token.kind.src_code_len(),
                 })
             }
         };
 
-        let after_condition_token = self.current_token_bounded(ExpectedBeforeEof::DoOrBlock)?;
+        let after_condition_token = self.current_token_bounded(Expected::DoOrBlock)?;
         let statement = match after_condition_token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
                 let scope = self.parse_single_any()?.unwrap();
@@ -1822,7 +1899,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             _ => {
                 let before_curly_bracket_token = self.peek_previous_token();
                 Err(RawSyntaxError {
-                    kind: ErrorKind::ExpectedBooleanExpressionInLoopStatement,
+                    kind: ErrorKind::Invalid(Statement::Loop),
+                    cause: ErrorCause::MustBeFollowedByDoOrBlock,
                     col: before_curly_bracket_token.col,
                     len: before_curly_bracket_token.kind.src_code_len(),
                 })
@@ -1842,7 +1920,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 }
 
 #[derive(Debug, Clone)]
-pub enum ExpectedBeforeEof {
+pub enum Expected {
     StatementAfterDo,
     Semicolon,
     OperatorOrSemicolon,
@@ -1862,268 +1940,253 @@ pub enum ExpectedBeforeEof {
     LoopStatement,
 }
 
-impl Display for ExpectedBeforeEof {
+impl Display for Expected {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::StatementAfterDo => write!(f, "expected statement after do keyword"),
-            Self::Semicolon => write!(f, "expected semicolon"),
-            Self::OperatorOrSemicolon => write!(f, "expected operator or semicolon"),
-            Self::Expression => write!(f, "expected expression"),
-            Self::BooleanExpression => write!(f, "expected boolean expression"),
-            Self::ClosingSquareBracket => write!(f, "expected closing square bracket"),
-            Self::ClosingRoundBracket => write!(f, "expected closing round bracket"),
+            Self::StatementAfterDo => write!(f, "statement after do keyword"),
+            Self::Semicolon => write!(f, "semicolon"),
+            Self::OperatorOrSemicolon => write!(f, "operator or semicolon"),
+            Self::Expression => write!(f, "expression"),
+            Self::BooleanExpression => write!(f, "boolean expression"),
+            Self::ClosingSquareBracket => write!(f, "closing square bracket"),
+            Self::ClosingRoundBracket => write!(f, "closing round bracket"),
             Self::ArrayElementOrClosingSquareBracket => {
-                write!(f, "expected array item or closing square bracket")
+                write!(f, "array item or closing square bracket")
             }
             Self::CommaOrClosingSquareBracket => {
-                write!(f, "expected comma or closing square bracket")
+                write!(f, "comma or closing square bracket")
             }
             Self::TypeAnnotationOrVariableDefinition => {
-                write!(f, "expected type annotation or variable definition")
+                write!(f, "type annotation or variable definition")
             }
-            Self::TypeAnnotation => write!(f, "expected type annotation"),
-            Self::ArrayLength => write!(f, "expected array length"),
-            Self::Identifier => write!(f, "expected identifier"),
-            Self::EqualsOrSemicolon => write!(f, "expected '=' or ';'"),
-            Self::DoOrBlock => write!(f, "expected do statement or block"),
+            Self::TypeAnnotation => write!(f, "type annotation"),
+            Self::ArrayLength => write!(f, "array length"),
+            Self::Identifier => write!(f, "identifier"),
+            Self::EqualsOrSemicolon => write!(f, "'=' or ';'"),
+            Self::DoOrBlock => write!(f, "do statement or block"),
             Self::DoOrBlockOrIfStatement => {
-                write!(f, "expected do statement, block or if statement")
+                write!(f, "do statement, block or if statement")
             }
-            Self::LoopStatement => write!(f, "expected loop statement"),
+            Self::LoopStatement => write!(f, "loop statement"),
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum BlocksNotAllowedIn {
-    DoStatement,
+pub enum Statement {
+    Statement,
+    If,
+    Block,
+    Do,
+    Loop,
+    Break,
+    Continue,
+    TypeAnnotation,
+    ItemSeparator,
+    Assignment,
+    Expression,
+    ArrayIndex,
+    ArrayItem,
+    VariableName,
+    VariableDefinition,
+    VariableAssignment,
 }
 
-impl Display for BlocksNotAllowedIn {
+impl Display for Statement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::DoStatement => write!(f, "blocks are not allowed in do statements"),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum VariableDefinitionNotAllowedIn {
-    DoStatement,
-}
-
-impl Display for VariableDefinitionNotAllowedIn {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::DoStatement => write!(f, "variable definitions are not allowed in do statements"),
+            Self::Statement => write!(f, "statement"),
+            Self::If => write!(f, "if statement"),
+            Self::Block => write!(f, "block statement"),
+            Self::Do => write!(f, "do statement"),
+            Self::Loop => write!(f, "loop statement"),
+            Self::Break => write!(f, "break statement"),
+            Self::Continue => write!(f, "continue statement"),
+            Self::TypeAnnotation => write!(f, "type annotation"),
+            Self::ItemSeparator => write!(f, "item separator"),
+            Self::Assignment => write!(f, "assignment"),
+            Self::Expression => write!(f, "expression"),
+            Self::ArrayIndex => write!(f, "array index"),
+            Self::ArrayItem => write!(f, "array item"),
+            Self::VariableName => write!(f, "variable name"),
+            Self::VariableDefinition => write!(f, "variable definition"),
+            Self::VariableAssignment => write!(f, "variable assignment"),
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum ErrorKind {
-    NoMoreTokens(ExpectedBeforeEof),
+    Expected(Expected),
+    Invalid(Statement),
+    VariableNotPreviouslyDefined,
+    VariableRedefinition,
+}
+
+impl SyntaxErrorKind for ErrorKind {}
+
+impl Display for ErrorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Expected(expected) => write!(f, "expected {expected}"),
+            Self::Invalid(invalid) => write!(f, "invalid {invalid}"),
+            Self::VariableNotPreviouslyDefined => write!(f, "variable not previously defined"),
+            Self::VariableRedefinition => write!(f, "variable redefinition"),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ErrorCause {
+    MissingSemicolon,
     StrayElseBlock,
-    BreakOutsideOfLoop,
-    ContinueOutsideOfLoop,
-    BlocksNotAllowed(BlocksNotAllowedIn),
-    UnopenedBracket(BracketKind),
-    UnclosedBracket(BracketKind),
-    TemporaryArrayNotSupportedYet,
-    NestedArrayNotSupportedYet,
-    MismatchedArrayElementType { expected: Type, actual: Type },
     StrayColon,
     StrayComma,
     StrayEquals,
     StrayBinaryOperator(Op),
-    VariableDefinitionNotAllowed(VariableDefinitionNotAllowedIn),
-    MissingSemicolon,
-    MissingSquareBracketInArrayIndex,
-    MissingSquareBracketInArrayTypeAnnotation,
-    MissingArrayLength,
-    NonLiteralIntegerArrayLength,
-    ExpectedIntegerExpressionInArrayIndex,
-    VariableNotPreviouslyDefined,
-    VariableRedefinition,
-    VariableAsTypeAnnotationNotPreviouslyDefined,
-    VariableDefinitionTypeMismatch { expected: Type, actual: Type },
-    VariableAssignmentTypeMismatch { expected: Type, actual: Type },
-    ExpectedTypeAnnotation,
-    ExpectedTypeAnnotationOrValue,
-    TypeNameInExpressions,
-    TypeNameInVariableName,
-    TypeNameInVariableReassignment,
-    TryingToMutateImmutableVariable,
-    ExpectedVariableName,
-    ExpectedTypeName,
-    ExpectedEqualsOrSemicolonAfterVariableName,
-    ExpectedEqualsOrSemicolonAfterTypeAnnotation,
+
+    NoMoreTokens,
+    StringLeftOperand,
+    StringRightOperand,
+    ArrayLeftOperand,
+    ArrayRightOperand,
+    NonBooleanLeftOperand,
+    NonBooleanRightOperand,
+
+    CanOnlyBeUsedInLoops,
+
+    NotAllowedIn { not_allowed: Statement, in_: Statement },
+    TemporaryArrayNotSupportedYet,
+    NestedArrayNotSupportedYet,
+    CannotIndexNonArrayType(Type),
     EmptyExpression,
+    UnclosedBracket(BracketKind),
+    MismatchedArrayElementType { expected: Type, actual: Type },
+
+    WasNotPreviouslyDefined,
+    WasPreviouslyDefined,
+
+    CannotBeATypeName,
     CannotNegateBoolean,
     CannotNegateString,
     CannotNegateArray,
     CannotInvertString,
     CannotInvertArray,
+
     KeywordInExpression,
-    ExpectedOperand,
-    StringLeftOperand,
-    StringRightOperand,
-    ArrayLeftOperand,
-    ArrayRightOperand,
     ChainedComparison,
-    NonBooleanLeftOperand,
-    NonBooleanRightOperand,
-    ExpectedBooleanExpressionInIfStatement,
-    ExpectedDoOrBlockAfterIfStatement,
-    ExpectedDoOrBlockOrIfStatementAfterIfStatement,
-    ExpectedBooleanExpressionInLoopStatement,
-    ExpectedDoOrBlockAfterLoopStatement,
-    CannotIndexNonArrayType(Type),
     CannotCompareOperands { lhs_typ: Type, rhs_typ: Type },
+    CannotMutateImmutableVariable,
+    VariableDefinitionTypeMismatch { expected: Type, actual: Type },
+    VariableAssignmentTypeMismatch { expected: Type, actual: Type },
+
+    MustBeFollowedByABooleanExpression,
+    MustBeFollowedByDoOrBlock,
+    MustBeFollowedByDoOrBlockOrIfStatement,
+    MustBeFollowedByIntegerExpression,
+    MustBeFollowedByClosingSquareBracket,
+
+    ExpectedOperand,
+    ExpectedTypeName,
+    ExpectedTypeAnnotation,
+    ExpectedTypeAnnotationOrValue,
+    ExpectedVariableName,
+    ExpectedEqualsOrSemicolonAfterVariableName,
+    ExpectedEqualsOrSemicolonAfterTypeAnnotation,
 }
 
-impl ErrorInfo for ErrorKind {
-    type Info = SyntaxErrorInfo;
+impl SyntaxErrorCause for ErrorCause {}
 
-    fn info(&self) -> Self::Info {
-        let (msg, help_msg) = match &self {
-            Self::NoMoreTokens(kind) => (kind.to_string().into(), "no more tokens left after here".into()),
-            Self::StrayElseBlock => ("invalid if statement".into(), "stray else block".into()),
-            Self::BreakOutsideOfLoop => ("invalid break statement".into(), "cannot be used outside of loops".into()),
-            Self::ContinueOutsideOfLoop => {
-                ("invalid continue statement".into(), "cannot be used outside of loops".into())
+impl Display for ErrorCause {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingSemicolon => write!(f, "expected semicolon after here"),
+            Self::StrayElseBlock => write!(f, "stray else block"),
+            Self::CanOnlyBeUsedInLoops => write!(f, "can only be used in loops"),
+            Self::NotAllowedIn { not_allowed, in_ } => {
+                write!(f, "{not_allowed} are not allowed in {in_}")
             }
-            Self::BlocksNotAllowed(context) => ("invalid statement".into(), context.to_string().into()),
-            Self::UnopenedBracket(bracket) => {
-                ("invalid statement".into(), format!("'{bracket}' bracket was not opened").into())
+            Self::TemporaryArrayNotSupportedYet => {
+                write!(
+                    f,
+                    "temporary arrays are not supported yet, extract this to a variable first"
+                )
             }
-            Self::UnclosedBracket(bracket) => {
-                ("invalid expression".into(), format!("'{bracket}' bracket was not closed").into())
+            Self::StrayColon => write!(f, "stray colon"),
+            Self::StrayComma => write!(f, "stray comma"),
+            Self::StrayEquals => write!(f, "stray equals"),
+            Self::StrayBinaryOperator(op) => write!(f, "stray '{op}' operator"),
+            Self::NoMoreTokens => write!(f, "no more tokens left after here"),
+            Self::StringLeftOperand => write!(f, "cannot be preceded by a string"),
+            Self::StringRightOperand => write!(f, "cannot be followed by a string"),
+            Self::ArrayLeftOperand => write!(f, "cannot be preceded by an array"),
+            Self::ArrayRightOperand => write!(f, "cannot be followed by an array"),
+            Self::MustBeFollowedByIntegerExpression => {
+                write!(f, "must be followed by an integer expression")
             }
-            Self::TemporaryArrayNotSupportedYet => (
-                "invalid expression".into(),
-                "temporary arrays are not supported yet, extract this to a variable first".into(),
-            ),
-            Self::NestedArrayNotSupportedYet => {
-                ("invalid array item".into(), "nested arrays are not supported yet".into())
+            Self::MustBeFollowedByClosingSquareBracket => {
+                write!(f, "must be followed by a close square bracket")
             }
+            Self::NestedArrayNotSupportedYet => write!(f, "nested arrays not supported yet"),
+            Self::CannotIndexNonArrayType(typ) => {
+                write!(f, "cannot index into a value of type '{typ}'")
+            }
+            Self::WasNotPreviouslyDefined => write!(f, "was not previously defined in this scope"),
+            Self::WasPreviouslyDefined => write!(f, "was previously defined in this scope"),
+            Self::CannotBeATypeName => write!(f, "cannot be a type name"),
+            Self::EmptyExpression => write!(f, "empty expressions are not allowed"),
+            Self::UnclosedBracket(bracket) => write!(f, "'{bracket}' bracket was not closed"),
             Self::MismatchedArrayElementType { expected, actual } => {
-                ("invalid array item".into(), format!("expected item of type '{expected}', but got '{actual}'").into())
+                write!(f, "expected item of type '{expected}', but got '{actual}'")
             }
-            Self::StrayColon => ("invalid type annotation".into(), "stray colon".into()),
-            Self::StrayComma => ("invalid array item separator".into(), "stray comma".into()),
-            Self::StrayEquals => ("invalid assignment".into(), "stray assigment".into()),
-            Self::StrayBinaryOperator(op) => ("invalid expression".into(), format!("stray '{op}' operator").into()),
-            Self::VariableDefinitionNotAllowed(context) => ("invalid statement".into(), context.to_string().into()),
-            Self::MissingSemicolon => ("invalid statement".into(), "expected semicolon after here".into()),
-            Self::MissingSquareBracketInArrayIndex => {
-                ("invalid array index".into(), "must be followed by a close square bracket".into())
+            Self::CannotNegateBoolean => {
+                write!(
+                    f,
+                    "cannot negate a boolean value, use the '!' operator instead to invert it"
+                )
             }
-            Self::MissingSquareBracketInArrayTypeAnnotation => {
-                ("invalid array type annotation".into(), "missing closing square bracket".into())
+            Self::CannotNegateString => write!(f, "cannot negate a string"),
+            Self::CannotNegateArray => write!(f, "cannot negate an array"),
+            Self::CannotInvertString => write!(f, "cannot invert a string"),
+            Self::CannotInvertArray => write!(f, "cannot invert an array"),
+            Self::KeywordInExpression => write!(f, "cannot be a keyword"),
+            Self::ExpectedOperand => write!(f, "expected expression operand before this token"),
+            Self::ChainedComparison => write!(f, "comparison operators cannot be chained"),
+            Self::NonBooleanLeftOperand => write!(f, "must be preceded by a boolean expression"),
+            Self::NonBooleanRightOperand => write!(f, "must be followed by a boolean expression"),
+            Self::CannotCompareOperands { lhs_typ, rhs_typ } => {
+                write!(f, "cannot compare '{lhs_typ}' to '{rhs_typ}'")
             }
-            Self::MissingArrayLength => {
-                ("invalid array type annotation".into(), "missing array length before this token".into())
+            Self::ExpectedTypeName => write!(f, "expected type name after here"),
+            Self::ExpectedTypeAnnotation => {
+                write!(f, "expected type annotation after here to infer the type of the variable")
             }
-            Self::NonLiteralIntegerArrayLength => {
-                ("invalid array type annotation".into(), "must be a literal integer".into())
+            Self::ExpectedTypeAnnotationOrValue => {
+                write!(f, "expected type annotation or value after here to infer the type of the variable")
             }
-            Self::ExpectedIntegerExpressionInArrayIndex => {
-                ("invalid array index".into(), "must be followed by an integer expression".into())
-            }
-            Self::VariableNotPreviouslyDefined => {
-                ("variable not defined".into(), "was not previously defined in this scope".into())
-            }
-            Self::VariableRedefinition => {
-                ("variable redefinition".into(), "was previously defined in this scope".into())
-            }
-            Self::VariableDefinitionTypeMismatch { expected, actual } => (
-                "invalid variable definition".into(),
-                format!("declared type of '{expected}' doesn't match value of type '{actual}'").into(),
-            ),
-            Self::VariableAssignmentTypeMismatch { expected, actual } => (
-                "invalid variable assignment".into(),
-                format!("trying to assign an expression of type '{actual}' to a variable of type '{expected}'").into(),
-            ),
-            Self::VariableAsTypeAnnotationNotPreviouslyDefined => {
-                ("invalid type annotation".into(), "was not previously defined in this scope".into())
-            }
-            Self::ExpectedTypeName => ("invalid type annotation".into(), "expected type name after here".into()),
-            Self::ExpectedTypeAnnotation => (
-                "invalid variable definition".into(),
-                "expected type annotation after here to infer the type of the variable".into(),
-            ),
-            Self::ExpectedTypeAnnotationOrValue => (
-                "invalid variable definition".into(),
-                "expected type annotation or value after here to infer the type of the variable".into(),
-            ),
-            Self::TypeNameInExpressions => ("invalid expression".into(), "cannot be a type name".into()),
-            Self::TypeNameInVariableName => ("invalid variable name".into(), "cannot be a type name".into()),
-            Self::TypeNameInVariableReassignment => {
-                ("invalid variable assignment".into(), "cannot be a type name".into())
-            }
-            Self::TryingToMutateImmutableVariable => {
-                ("invalid variable assignment".into(), "cannot mutate immutable variable".into())
-            }
-            Self::ExpectedVariableName => ("invalid variable definition".into(), "expected variable name".into()),
+            Self::ExpectedVariableName => write!(f, "expected variable name after here"),
             Self::ExpectedEqualsOrSemicolonAfterVariableName => {
-                ("invalid variable definition".into(), "expected '=' or ';' after variable name".into())
+                write!(f, "expected '=' or ';' after variable name")
             }
             Self::ExpectedEqualsOrSemicolonAfterTypeAnnotation => {
-                ("invalid variable definition".into(), "expected '=' or ';' after type annotation".into())
+                write!(f, "expected '=' or ';' after type annotation")
             }
-            Self::EmptyExpression => ("invalid expression".into(), "empty expressions are not allowed".into()),
-            Self::CannotNegateBoolean => (
-                "invalid expression".into(),
-                "cannot negate a boolean value, use the '!' operator instead to invert it".into(),
-            ),
-            Self::CannotNegateString => ("invalid expression".into(), "cannot negate a string".into()),
-            Self::CannotNegateArray => ("invalid expression".into(), "cannot negate an array".into()),
-            Self::CannotInvertString => ("invalid expression".into(), "cannot invert a string".into()),
-            Self::CannotInvertArray => ("invalid expression".into(), "cannot invert an array".into()),
-            Self::KeywordInExpression => ("invalid expression".into(), "cannot be a keyword".into()),
-            Self::ExpectedOperand => {
-                ("invalid expression".into(), "expected expression operand before this token".into())
+            Self::VariableDefinitionTypeMismatch { expected, actual } => {
+                write!(f, "declared type of '{expected}' doesn't match value of type '{actual}'")
             }
-            Self::StringLeftOperand => ("invalid expression".into(), "cannot be preceded by a string".into()),
-            Self::StringRightOperand => ("invalid expression".into(), "cannot be followed by a string".into()),
-            Self::ArrayLeftOperand => ("invalid expression".into(), "cannot be preceded by an array".into()),
-            Self::ArrayRightOperand => ("invalid expression".into(), "cannot be followed by an array".into()),
-            Self::ChainedComparison => {
-                ("invalid boolean expression".into(), "comparison operators cannot be chained".into())
+            Self::VariableAssignmentTypeMismatch { expected, actual } => {
+                write!(f, "trying to assign an expression of type '{actual}' to a variable of type '{expected}'")
             }
-            Self::NonBooleanLeftOperand => {
-                ("invalid boolean expression".into(), "must be preceded by a boolean expression".into())
+            Self::CannotMutateImmutableVariable => write!(f, "cannot mutate immutable variable"),
+            Self::MustBeFollowedByABooleanExpression => {
+                write!(f, "must be followed by a boolean expression")
             }
-            Self::NonBooleanRightOperand => {
-                ("invalid boolean expression".into(), "must be followed by a boolean expression".into())
+            Self::MustBeFollowedByDoOrBlock => {
+                write!(f, "must be followed by a do statement or a block")
             }
-            Self::ExpectedBooleanExpressionInIfStatement => {
-                ("invalid if statement".into(), "must be followed by a boolean expression".into())
+            Self::MustBeFollowedByDoOrBlockOrIfStatement => {
+                write!(f, "must be followed by a do statement, a block or an if statement")
             }
-            Self::ExpectedDoOrBlockAfterIfStatement => {
-                ("invalid if statement".into(), "must be followed by a do statement or a block".into())
-            }
-            Self::ExpectedDoOrBlockOrIfStatementAfterIfStatement => {
-                ("invalid if statement".into(), "must be followed by a do statement, a block or an if statement".into())
-            }
-            Self::ExpectedBooleanExpressionInLoopStatement => {
-                ("invalid loop statement".into(), "must be followed by a boolean expression".into())
-            }
-            Self::ExpectedDoOrBlockAfterLoopStatement => {
-                ("invalid loop statement".into(), "must be followed by a do statement or a block".into())
-            }
-            Self::CannotIndexNonArrayType(typ) => {
-                ("invalid expression".into(), format!("cannot index into a value of type '{typ}'").into())
-            }
-            Self::CannotCompareOperands { lhs_typ, rhs_typ } => (
-                "invalid expression".into(),
-                format!("cannot compare left operand of type '{lhs_typ}' to right operand of type '{rhs_typ}'").into(),
-            ),
-        };
-
-        Self::Info { msg, help_msg }
+        }
     }
 }
-
-impl SyntaxErrorKind for ErrorKind {}

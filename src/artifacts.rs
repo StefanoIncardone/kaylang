@@ -1,10 +1,9 @@
 use crate::{
     cli::{DirPath, FilePath},
-    error::ErrorInfo as ArtifactsErrorInfo,
     src_file::SrcFile,
     CAUSE, ERROR,
 };
-use std::{ffi::OsStr, fmt::Display, io, path::PathBuf, process::Command};
+use std::{ffi::OsStr, fmt::Display, io, process::Command};
 
 #[derive(Debug)]
 pub struct Artifacts {
@@ -25,9 +24,9 @@ impl Artifacts {
                 Ok(()) => {}
                 Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
                 Err(err) => {
-                    return Err(Error::CouldNotCreateOutputDirectory {
-                        err,
-                        path: out_path.inner.clone(),
+                    return Err(Error {
+                        kind: ErrorKind::CouldNotCreateOutputDirectory { path: out_path.clone() },
+                        cause: ErrorCause::IoError(err),
                     });
                 }
             }
@@ -70,46 +69,48 @@ impl Artifacts {
 }
 
 #[derive(Debug)]
-pub enum Error {
-    CouldNotCreateOutputDirectory { err: io::Error, path: PathBuf },
+pub enum ErrorKind {
+    CouldNotCreateOutputDirectory { path: DirPath },
+}
+
+impl Display for ErrorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::CouldNotCreateOutputDirectory { path } => {
+                write!(f, "could not create output directory '{path}", path = path.display())
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum ErrorCause {
+    IoError(io::Error),
+}
+
+impl Display for ErrorCause {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::IoError(err) => write!(f, "{err} ({kind})", kind = err.kind()),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Error {
+    pub kind: ErrorKind,
+    pub cause: ErrorCause,
 }
 
 impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{info}", info = self.info())
-    }
-}
-
-impl ArtifactsErrorInfo for Error {
-    type Info = ErrorInfo;
-
-    fn info(&self) -> Self::Info {
-        let (msg, cause) = match self {
-            Self::CouldNotCreateOutputDirectory { err, path } => (
-                format!("could not create output directory '{path}'", path = path.display()),
-                format!("{err} ({kind})", kind = err.kind()),
-            ),
-        };
-
-        Self::Info { msg, cause }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ErrorInfo {
-    pub msg: String,
-    pub cause: String,
-}
-
-impl Display for ErrorInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "{ERROR}: {msg}\
             \n{CAUSE}: {cause}",
-            msg = self.msg,
+            msg = self.kind,
             cause = self.cause
         )
     }

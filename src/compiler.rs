@@ -5,7 +5,7 @@
 use crate::{
     artifacts::Artifacts,
     ast::{self, Expression, IfStatement, LoopCondition, Node, Scope, Type, TypeOf},
-    error::ErrorInfo as CompilerErrorInfo,
+    cli::FilePath,
     src_file::{Position, SrcFile},
     tokenizer::{ascii, Literal, Op},
     CAUSE, ERROR,
@@ -15,7 +15,6 @@ use std::{
     fmt::Display,
     fs::File,
     io::{self, BufWriter, Write},
-    path::PathBuf,
 };
 
 #[allow(dead_code)]
@@ -1249,9 +1248,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         let asm_file = match File::create(&artifacts.asm_path.inner) {
             Ok(file) => file,
             Err(err) => {
-                return Err(Error::CouldNotCreateFile {
-                    err,
-                    path: artifacts.asm_path.inner.clone(),
+                return Err(Error {
+                    kind: ErrorKind::CouldNotCreateFile { path: artifacts.asm_path.clone() },
+                    cause: ErrorCause::IoError(err),
                 });
             }
         };
@@ -1455,11 +1454,17 @@ section .data
 
         let mut asm_writer = BufWriter::new(asm_file);
         if let Err(err) = asm_writer.write_all(program.as_bytes()) {
-            return Err(Error::WritingAssemblyFailed { err });
+            return Err(Error {
+                kind: ErrorKind::WritingAssemblyFailed,
+                cause: ErrorCause::IoError(err),
+            });
         }
 
         if let Err(err) = asm_writer.flush() {
-            return Err(Error::WritingAssemblyFailed { err });
+            return Err(Error {
+                kind: ErrorKind::WritingAssemblyFailed,
+                cause: ErrorCause::IoError(err),
+            });
         }
 
         Ok(())
@@ -2894,51 +2899,52 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 }
 
 #[derive(Debug)]
-pub enum Error {
-    CouldNotCreateFile { err: io::Error, path: PathBuf },
-    WritingAssemblyFailed { err: io::Error },
+pub enum ErrorKind {
+    CouldNotCreateFile { path: FilePath },
+    WritingAssemblyFailed,
+}
+
+impl Display for ErrorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::CouldNotCreateFile { path } => {
+                write!(f, "could not create file '{path}'", path = path.display())
+            }
+            Self::WritingAssemblyFailed => {
+                write!(f, "writing to assembly file failed")
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum ErrorCause {
+    IoError(io::Error),
+}
+
+impl Display for ErrorCause {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::IoError(err) => write!(f, "{err} ({kind})", kind = err.kind()),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Error {
+    pub kind: ErrorKind,
+    pub cause: ErrorCause,
 }
 
 impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{info}", info = self.info())
-    }
-}
-
-impl CompilerErrorInfo for Error {
-    type Info = ErrorInfo;
-
-    fn info(&self) -> Self::Info {
-        let (msg, cause) = match self {
-            Self::CouldNotCreateFile { err, path } => (
-                format!("could not create file '{path}'", path = path.display()),
-                format!("{err} ({kind})", kind = err.kind()),
-            ),
-            Self::WritingAssemblyFailed { err } => (
-                "writing to assembly file failed".to_string(),
-                format!("{err} ({kind})", kind = err.kind()),
-            ),
-        };
-
-        Self::Info { msg, cause }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ErrorInfo {
-    pub msg: String,
-    pub cause: String,
-}
-
-impl Display for ErrorInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "{ERROR}: {msg}\
             \n{CAUSE}: {cause}",
-            msg = self.msg,
+            msg = self.kind,
             cause = self.cause
         )
     }

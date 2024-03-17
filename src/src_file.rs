@@ -1,9 +1,8 @@
-use crate::{cli::FilePath, error::ErrorInfo as SrcFileErrorInfo, CAUSE, ERROR};
+use crate::{cli::FilePath, CAUSE, ERROR};
 use std::{
     fmt::Display,
     fs::File,
     io::{self, BufRead, BufReader},
-    path::PathBuf,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,12 +68,22 @@ impl SrcFile {
     pub fn load(path: &FilePath) -> Result<Self, Error> {
         let file = match File::open(&path.inner) {
             Ok(f) => f,
-            Err(err) => return Err(Error::CouldNotOpen { err, path: path.inner.clone() }),
+            Err(err) => {
+                return Err(Error {
+                    kind: ErrorKind::CouldNotOpen { path: path.clone() },
+                    cause: ErrorCause::IoError(err),
+                });
+            }
         };
 
         let file_len = match file.metadata() {
             Ok(metadata) => metadata.len() as usize,
-            Err(err) => return Err(Error::CouldNotReadMetadata { err, path: path.inner.clone() }),
+            Err(err) => {
+                return Err(Error {
+                    kind: ErrorKind::CouldNotReadMetadata { path: path.clone() },
+                    cause: ErrorCause::IoError(err),
+                });
+            }
         };
 
         // plus one to account for a possible phantom newline at the end
@@ -88,7 +97,10 @@ impl SrcFile {
                 Ok(0) => break,
                 Ok(read) => read,
                 Err(err) => {
-                    return Err(Error::CouldNotReadContents { err, path: path.inner.clone() })
+                    return Err(Error {
+                        kind: ErrorKind::CouldNotReadContents { path: path.clone() },
+                        cause: ErrorCause::IoError(err),
+                    });
                 }
             };
 
@@ -121,56 +133,56 @@ impl SrcFile {
 }
 
 #[derive(Debug)]
-pub enum Error {
-    CouldNotOpen { err: io::Error, path: PathBuf },
-    CouldNotReadMetadata { err: io::Error, path: PathBuf },
-    CouldNotReadContents { err: io::Error, path: PathBuf },
+pub enum ErrorKind {
+    CouldNotOpen { path: FilePath },
+    CouldNotReadMetadata { path: FilePath },
+    CouldNotReadContents { path: FilePath },
+}
+
+impl Display for ErrorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::CouldNotOpen { path } => {
+                write!(f, "could not open '{path}'", path = path.display())
+            }
+            Self::CouldNotReadMetadata { path } => {
+                write!(f, "could not read metadata of '{path}'", path = path.display())
+            }
+            Self::CouldNotReadContents { path } => {
+                write!(f, "could not read contents of '{path}'", path = path.display())
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum ErrorCause {
+    IoError(io::Error),
+}
+
+impl Display for ErrorCause {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::IoError(err) => write!(f, "{err} ({kind})", kind = err.kind()),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Error {
+    pub kind: ErrorKind,
+    pub cause: ErrorCause,
 }
 
 impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{info}", info = self.info())
-    }
-}
-
-impl SrcFileErrorInfo for Error {
-    type Info = ErrorInfo;
-
-    fn info(&self) -> Self::Info {
-        let (msg, cause) = match self {
-            Self::CouldNotOpen { err, path } => (
-                format!("could not open '{path}'", path = path.display()),
-                format!("{err} ({kind})", kind = err.kind()),
-            ),
-            Self::CouldNotReadMetadata { err, path } => (
-                format!("could not read metadata of '{path}'", path = path.display()),
-                format!("{err} ({kind})", kind = err.kind()),
-            ),
-            Self::CouldNotReadContents { err, path } => (
-                format!("could not read contents of '{path}'", path = path.display()),
-                format!("{err} ({kind})", kind = err.kind()),
-            ),
-        };
-
-        Self::Info { msg, cause }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ErrorInfo {
-    pub msg: String,
-    pub cause: String,
-}
-
-impl Display for ErrorInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "{ERROR}: {msg}\
             \n{CAUSE}: {cause}",
-            msg = self.msg,
+            msg = self.kind,
             cause = self.cause
         )
     }

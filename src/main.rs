@@ -1,12 +1,8 @@
 use kaylang::{
-    artifacts::Artifacts,
-    ast::Ast,
-    cli::Args,
-    compiler::Compiler,
-    src_file::SrcFile,
-    tokenizer::Tokenizer,
-    Help, RunMode, Step, SubStep, Version, ASSEMBLING, BUILDING_AST, CHECKING, COMPILING,
-    GENERATING_ASM, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
+    artifacts::Artifacts, ast::Ast, cli::Args, compiler::Compiler, src_file::SrcFile,
+    tokenizer::Tokenizer, Help, RunMode, Step, SubStep, Version, ASSEMBLING, BUILDING_AST,
+    CHECKING, COMPILING, GENERATING_ASM, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE,
+    TOKENIZATION,
 };
 use std::{env, process::ExitCode, time::Instant};
 
