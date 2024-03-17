@@ -92,8 +92,7 @@ if answer == 19 {
 #   - it's basically just syntactic sugar
 # - actually less code
 # - requires minimal structural changes and refactoring:
-#   - replace the first `==` with a `case`
-#   - remove the rest of the `else if answer ==`
+#   - replace the first `==` and the rest of the `else if answer ==` with a `case`
 #   - keep the `else` keyword for the 'default' case
 if answer
 case 19 {
@@ -106,64 +105,39 @@ case 19 {
     println "too bad";
 }
 
-# if let pattern matching:
+# pattern matching:
 # - short and concise
+# - can declare mutability modifiers `let` or `var` on matched values
 if answer == let Ok(ok) do println ok; # ok is available only in the do statement
 
 # more cases:
-if answer == var Ok(ok) do println ok;
+if answer == let Ok(ok) do println ok;
 else if answer == let Err(err) do println err;
 
 # refactor to switch:
 # - only requires to change `==` and `else if answer ==` to `case`
 # - values inside pattern matching (i.e.: `ok` and `err`) are only available in the corresponding branch
-# - can declare mutability modifiers `let` or `var` to matched values
-if answer case var Ok(ok) do println ok;
-case let Err(err) do println err;
-
-# or:
+# - split into multiple lines if preferred
 if answer
 case var Ok(ok) do println ok;
 case let Err(err) do println err;
 
 # rust-inspired let else syntax:
-# - values inside pattern matching (i.e.: `ok` and `err`) are available from now on
-let answer == Ok(ok) else do println "err";
+# - `ok` will be available from now on
+let Ok(ok) = answer else do println "err";
 
 # oh no! i need to access the error value
 # - literally just add the pattern corresponding to the err case
-# - `ok` will be available from now on
 # - 'err' will only be available in it's switch branch
-let answer == Ok(ok) else let Err(err) do println err;
-
-# oh no! i need to access multiple error values
-# - literally just add the pattern corresponding to the other err cases
-# - `ok` will be available from now on
-# - all the other 'err' will only be available in their switch branch
-let answer == Ok(ok)
-else if let Err(err0) do println err0;
-else if let Err(err1) do println err1;
-else if let Err(err2) do println err2;
-else do println "err";
-
-# alternative let-else syntax:
-# - `=` instead of `==` to signal that ok will be made available from now on
-# - may be bug prone
-if answer = let Ok(ok) else do println "err";
-
-# another alternative let-else syntax:
-# - moves the let to the left side, getting closer to a regular variable assignment
-let Ok(ok) = answer else do println "err";
+# - `case` required to allow for more consistency when adding multiple cases
+let Ok(ok) = answer else case let Err(err) do println err;
 
 # would allow for acces to other values in other patterns if needed
 # - just add the other patterns
-# - `ok` would be in scope from now on as a regular variable
-# - `err`s would only be in scope in it's match branch
 # - debate wheter the repetition of the `else` kewword should be addressed
 let Ok(ok) = answer else
-case let Err(err0) do println err0;
-case var Err(err1) do println err1;
-case let Err(err2) do println err2;
+case let Err0(err0) do println err0;
+case var Err1(err1) do println err1;
 else do println "err";
 
 # want to refactor to a regular switch?
@@ -171,10 +145,59 @@ else do println "err";
 # - all of the matched values will only be available in their switch branch
 if answer
 case let Ok(ok) do println ok;
-case var Err(err0) do println err0;
-case let Err(err1) do println err1;
-case let Err(err2) do println err2;
+case var Err0(err0) do println err0;
+case let Err1(err1) do println err1;
 else do println "err";
+```
+
+possibly allow for the operator before the first case to propagate, basically sugar for a regular if
+
+```kay
+# this would be treated as pattern matching
+if answer
+case 19 ...;
+case 21 ...;
+case 42 ...;
+else ...;
+
+# this would use the `==` operator to "pattern match" on cases
+if answer ==
+case 19 ...;
+case 21 ...;
+case 42 ...;
+else ...;
+
+# would be sugar for this
+if answer == 19 ...;
+else if answer == 21 ...;
+else if answer == 42 ...;
+else ...;
+
+# this would use the `>` operator to "pattern match" on cases
+if answer >
+case 19 ...;
+case 21 ...;
+case 42 ...;
+else ...;
+
+# would be sugar for this
+if answer > 19 ...;
+else if answer > 21 ...;
+else if answer > 42 ...;
+else ...;
+
+# this would use the `%` operator to "pattern match" on cases
+if answer %
+case 19 == 0 ...; # same as answer % 19 == 0
+case 21 == 3 ...; # same as answer % 21 == 3
+case 42 ...; # same as answer > 42 -> error: other branches evaluated to booleans while this evaluated to int
+else ...;
+
+# would be sugar for this
+if answer % 19 == 0 ...;
+else if answer % 21 == 3 ...;
+else if answer % 42 ...;
+else ...;
 ```
 
 #### compared to C
@@ -266,30 +289,28 @@ if answer == 19 {
 // - comparable amount of code, less in many cases
 // - requires a lot of structural change and refactoring
 match answer {
-    19 => print!("lucky"),
-    21 => print!("you stoopid"),
-    42 => print!("that's the right answer"),
-    _ => print!("too bad"),
+    19 => {
+        print!("lucky");
+    },
+    21 => {
+        print!("you stoopid");
+    },
+    42 => {
+        print!("that's the right answer");
+    },
+    _ => {
+        print!("too bad");
+    },
 }
 
-// match:
-// - same as above
-// - 2 levels of indentation (cargo fmt will refactor it regardless)
-// - less amounts of code
-match answer {
-19 => print!("lucky"),
-21 => print!("you stoopid"),
-42 => print!("that's the right answer"),
-_ => print!("too bad"),
-}
-
-// let else to match:
+// let else:
 // - short and concise
 let Ok(ok) = answer else {
-    // oh no! how do i access the error value, which is exactly what an else case should allow for
+    // oh no! how do i access the error value? which is exactly what an else case should allow for
+    print!("{???}");
 };
 
-// i neet to completely refactor the cose to this:
+// i need to completely refactor to this:
 // - repetition of `if let`
 // - complete change to code structure
 //  - need to extract ok to a separate variable
@@ -311,10 +332,6 @@ let ok = match answer {
     },
 };
 ```
-
-## Once keyword
-
-- allow variables to be mutated only `once` or in special places
 
 ## Operators
 
@@ -374,12 +391,12 @@ add [Zig inspired arithmetic operators](https://ziglang.org/documentation/master
     | utf16 char | `utf16` | 4                 | `u16'è'` | guaranteed to be valid utf16          |
     | utf32 char | `utf32` | 4                 | `u32'è'` | guaranteed to be valid utf32          |
 
-    | type name    | type     | pointer type | type size (bytes)              | example      | notes                                          |
-    | :----------- | :------- | :----------- | :----------------------------- | :----------- | :--------------------------------------------- |
-    | ascii string | `str`    | ascii\*      | 1 \* len                       | `"hello"`    | guaranteed to be a valid ascii and utf8 string |
-    | utf8 string  | `u8str`  | utf8\*       | 1 to 4 \* len (in code points) | `u8"hellò"`  |                                                |
-    | utf16 string | `u16str` | utf16\*      | 2 or 4 \* len (in code points) | `u16"hellò"` |                                                |
-    | utf32 string | `u32str` | utf32\*      | 4 \* len                       | `u32"hellò"` |                                                |
+    | type name    | type       | pointer type | type size (bytes)              | example      | notes                                 |
+    | :----------- | :--------- | :----------- | :----------------------------- | :----------- | :------------------------------------ |
+    | ascii string | `str`      | ascii\*      | 1 \* len                       | `"hello"`    | guaranteed to be valid ascii and utf8 |
+    | utf8 string  | `utf8str`  | utf8\*       | 1 to 4 \* len (in code points) | `u8"hellò"`  | guaranteed to be valid utf8           |
+    | utf16 string | `utf16str` | utf16\*      | 2 or 4 \* len (in code points) | `u16"hellò"` | guaranteed to be valid utf16          |
+    | utf32 string | `utf32str` | utf32\*      | 4 \* len                       | `u32"hellò"` | guaranteed to be valid utf32          |
 
 ## Arrays
 
@@ -406,7 +423,7 @@ let codes = int[6: 1 = 1, 3 = 2, 0 = 3];    # array of six elements with indexes
 let codes = int[6][1 = 1, 3 = 2, 0 = 3];    # array of six elements with indexes 1, 3 and 0 initialized to 1, 2, 3
 ```
 
-will borrow useful feature from C like indexed initialization:
+will borrow useful features from C like indexed initialization:
 
 ```kay
 let codes: int[19] = [
@@ -433,12 +450,12 @@ heap-allocated collections of a possibly unknown amount of elements:
 let codes: int[..];
 
 # an optional initial capacity can be specified
-let codes: int[..19]; # for consistency with initializing some members
-let codes: int[..19: 1 = 0, 3 = 5]; # for consistency with initializing some members in arrays
+let codes: int[19..]; # for consistency with initializing some members
+let codes: int[19..: 1 = 0, 3 = 5]; # for consistency with initializing some members in arrays
 
 # initial capacity can be specified from variables
 let capacity = 19;
-let code: int[..capacity]
+let code: int[capacity..]
 ```
 
 they can be manipulated in different ways (syntax yet to be dicided):
