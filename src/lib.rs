@@ -194,10 +194,10 @@ fn log_color(
     let mut codes = String::with_capacity(15);
 
     if fg != Fg::Default {
-        codes += &format!("{fg};", fg = fg as u8);
+        codes += &format!("{};", fg as u8);
     }
     if bg != Bg::Default {
-        codes += &format!("{bg};", bg = bg as u8);
+        codes += &format!("{};", bg as u8);
     }
     if flags & Flag::Bold != 0 {
         codes += "1;";
@@ -296,12 +296,12 @@ const BAR_FLAGS: Flags = Flag::Bold;
 
 fn done(start_time: Instant, step: &Colored<&str>, indent: usize, padding: usize) {
     let elapsed_time = Colored {
-        text: format!("{elapsed}s", elapsed = start_time.elapsed().as_secs_f32()),
+        text: format!("{}s", start_time.elapsed().as_secs_f32()),
         fg: Fg::White,
         ..Default::default()
     };
 
-    eprintln!("{:indent$}{:>padding$}: in {}", "", step, elapsed_time);
+    eprintln!("{spaces:indent$}{step:>padding$}: in {elapsed}", spaces = "", elapsed = elapsed_time);
 }
 
 pub struct Step {
@@ -315,7 +315,7 @@ impl Step {
             return;
         }
 
-        eprintln!("{:STEP_INDENT$}{step:>STEP_PADDING$}: {path}", "", path = path.inner.display());
+        eprintln!("{spaces:STEP_INDENT$}{step:>STEP_PADDING$}: {path}", spaces = "", path = path.inner.display());
     }
 
     pub fn done(self) {

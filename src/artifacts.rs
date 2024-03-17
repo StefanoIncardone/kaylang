@@ -77,7 +77,7 @@ impl Display for ErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::CouldNotCreateOutputDirectory { path } => {
-                write!(f, "could not create output directory '{path}", path = path.display())
+                write!(f, "could not create output directory '{}", path.display())
             }
         }
     }
@@ -91,7 +91,7 @@ pub enum ErrorCause {
 impl Display for ErrorCause {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::IoError(err) => write!(f, "{err} ({kind})", kind = err.kind()),
+            Self::IoError(err) => write!(f, "{err} ({})", err.kind()),
         }
     }
 }

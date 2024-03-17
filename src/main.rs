@@ -64,8 +64,8 @@ fn main() -> ExitCode {
                 Ok(tokens) => tokens,
                 Err(errors) => {
                     eprintln!();
-                    for error in errors {
-                        eprintln!("{error}\n");
+                    for err in errors {
+                        eprintln!("{err}\n");
                     }
                     return ExitCode::FAILURE;
                 }
@@ -79,8 +79,8 @@ fn main() -> ExitCode {
                 Ok(ast) => ast,
                 Err(errors) => {
                     eprintln!();
-                    for error in errors {
-                        eprintln!("{error}\n");
+                    for err in errors {
+                        eprintln!("{err}\n");
                     }
                     return ExitCode::FAILURE;
                 }
@@ -241,8 +241,8 @@ mod tests {
                 Ok(tokens) => tokens,
                 Err(errors) => {
                     eprintln!();
-                    for error in errors {
-                        eprintln!("{error}\n");
+                    for err in errors {
+                        eprintln!("{err}\n");
                     }
                     return Ok(ExitCode::FAILURE);
                 }
@@ -256,8 +256,8 @@ mod tests {
                 Ok(ast) => ast,
                 Err(errors) => {
                     eprintln!();
-                    for error in errors {
-                        eprintln!("{error}\n");
+                    for err in errors {
+                        eprintln!("{err}\n");
                     }
                     return Ok(ExitCode::FAILURE);
                 }

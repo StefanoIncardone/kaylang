@@ -142,14 +142,12 @@ pub enum ErrorKind {
 impl Display for ErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::CouldNotOpen { path } => {
-                write!(f, "could not open '{path}'", path = path.display())
-            }
+            Self::CouldNotOpen { path } => write!(f, "could not open '{}'", path.display()),
             Self::CouldNotReadMetadata { path } => {
-                write!(f, "could not read metadata of '{path}'", path = path.display())
+                write!(f, "could not read metadata of '{}'", path.display())
             }
             Self::CouldNotReadContents { path } => {
-                write!(f, "could not read contents of '{path}'", path = path.display())
+                write!(f, "could not read contents of '{}'", path.display())
             }
         }
     }
@@ -163,7 +161,7 @@ pub enum ErrorCause {
 impl Display for ErrorCause {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::IoError(err) => write!(f, "{err} ({kind})", kind = err.kind()),
+            Self::IoError(err) => write!(f, "{err} ({})", err.kind()),
         }
     }
 }

@@ -42,13 +42,13 @@ pub(crate) enum Literal {
 impl Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Int(value) => write!(f, "{value}"),
-            Self::Ascii(value) => write!(f, "'{value}'", value = value.escape_ascii()),
-            Self::Bool(value) => write!(f, "{value}"),
+            Self::Int(integer) => write!(f, "{integer}"),
+            Self::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
+            Self::Bool(boolean) => write!(f, "{boolean}"),
             Self::Str(string) => {
                 write!(f, "\"")?;
-                for character in string {
-                    write!(f, "{ch}", ch = character.escape_ascii())?;
+                for ch in string {
+                    write!(f, "{}", ch.escape_ascii())?;
                 }
                 write!(f, "\"")
             }
@@ -59,9 +59,9 @@ impl Display for Literal {
 impl SrcCodeLen for Literal {
     fn src_code_len(&self) -> usize {
         match self {
-            Self::Int(value) => value.to_string().len(),
-            Self::Ascii(value) => value.escape_ascii().len() + 2, // + 2 for the quotes
-            Self::Bool(value) => value.to_string().len(),
+            Self::Int(integer) => integer.to_string().len(),
+            Self::Ascii(code) => code.escape_ascii().len() + 2, // + 2 for the quotes
+            Self::Bool(boolean) => boolean.to_string().len(),
             Self::Str(string) => {
                 let mut len = 0;
                 for ch in string {
@@ -676,7 +676,7 @@ impl<'src> Tokenizer<'src> {
                     self.col += 1;
 
                     let previous_error_count = self.errors.len();
-                    let mut raw_string_literal = Vec::<ascii>::new();
+                    let mut raw_string = Vec::<ascii>::new();
 
                     loop {
                         let next = match self.next_in_ascii_str_literal()? {
@@ -693,7 +693,7 @@ impl<'src> Tokenizer<'src> {
                             ch => ch,
                         };
 
-                        raw_string_literal.push(next);
+                        raw_string.push(next);
                     }
 
                     if self.errors.len() > previous_error_count {
@@ -701,7 +701,7 @@ impl<'src> Tokenizer<'src> {
                         let last_error = self.errors.pop().unwrap();
                         Err(last_error)
                     } else {
-                        Ok(TokenKind::Literal(Literal::Str(raw_string_literal)))
+                        Ok(TokenKind::Literal(Literal::Str(raw_string)))
                     }
                 }
                 _ => self.identifier(),
@@ -721,7 +721,7 @@ impl<'src> Tokenizer<'src> {
 
                 let token_text = &self.src.code[self.token_start_col..self.col];
                 match token_text.parse() {
-                    Ok(value) => Ok(TokenKind::Literal(Literal::Int(value))),
+                    Ok(integer) => Ok(TokenKind::Literal(Literal::Int(integer))),
                     Err(err) => {
                         let cause = match err.kind() {
                             IntErrorKind::InvalidDigit => {
@@ -768,7 +768,7 @@ impl<'src> Tokenizer<'src> {
             // FIX(stefano): add proper multiple error handling
             b'"' => {
                 let previous_error_count = self.errors.len();
-                let mut string_literal = Vec::<ascii>::new();
+                let mut string = Vec::<ascii>::new();
 
                 loop {
                     let next = match self.next_in_ascii_str_literal()? {
@@ -789,7 +789,7 @@ impl<'src> Tokenizer<'src> {
                                     col: self.col - 2,
                                     len: 2,
                                 });
-                                string_literal.push(b'\\');
+                                string.push(b'\\');
                                 unrecognized
                             }
                         },
@@ -806,7 +806,7 @@ impl<'src> Tokenizer<'src> {
                         ch => ch,
                     };
 
-                    string_literal.push(next);
+                    string.push(next);
                 }
 
                 if self.errors.len() > previous_error_count {
@@ -814,7 +814,7 @@ impl<'src> Tokenizer<'src> {
                     let last_error = self.errors.pop().unwrap();
                     Err(last_error)
                 } else {
-                    Ok(TokenKind::Literal(Literal::Str(string_literal)))
+                    Ok(TokenKind::Literal(Literal::Str(string)))
                 }
             }
             b'\'' => {
@@ -1132,18 +1132,10 @@ impl Display for ErrorKind {
             Self::InvalidIdentifier => write!(f, "invalid identifier"),
             Self::InvalidNumberLiteral => write!(f, "invalid number literal"),
             Self::NonAsciiCharacter(ch) => {
-                write!(
-                    f,
-                    "non-ascii '{ch}' ({escaped_char}) character",
-                    escaped_char = ch.escape_unicode()
-                )
+                write!(f, "non-ascii '{ch}' ({}) character", ch.escape_unicode())
             }
             Self::UnrecognizedCharacter(ch) => {
-                write!(
-                    f,
-                    "unrecognized '{ch}' ({escaped_char}) character",
-                    escaped_char = ch.escape_unicode()
-                )
+                write!(f, "unrecognized '{ch}' ({}) character", ch.escape_unicode())
             }
         }
     }

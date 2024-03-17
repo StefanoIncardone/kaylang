@@ -1534,8 +1534,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     for else_if in ifs {
                         let else_if_tag = format!("if_{if_counter}_else_if_{else_if_tag_index}");
                         let else_if_false_tag = format!(
-                            "if_{if_counter}_else_if_{else_if_false_index}",
-                            else_if_false_index = else_if_tag_index + 1
+                            "if_{if_counter}_else_if_{}", else_if_tag_index + 1
                         );
 
                         self.iff(else_if, &else_if_tag, &else_if_false_tag);
@@ -1563,8 +1562,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.asm += &format!("if_{if_counter}_end:\n");
             }
             Node::Loop(looop) => {
-                let loop_tag = format!("loop_{index}", index = self.loop_counter);
-                let loop_end_tag = format!("loop_{index}_end", index = self.loop_counter);
+                let loop_tag = format!("loop_{}", self.loop_counter);
+                let loop_end_tag = format!("loop_{}_end", self.loop_counter);
 
                 self.loop_counters.push(self.loop_counter);
                 self.loop_counter += 1;
@@ -1615,14 +1614,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             }
             Node::Break => {
                 self.asm += &format!(
-                    " jmp loop_{index}_end\n\n",
-                    index = self.loop_counters[self.loop_counters.len() - 1]
+                    " jmp loop_{}_end\n\n", self.loop_counters[self.loop_counters.len() - 1]
                 );
             }
             Node::Continue => {
                 self.asm += &format!(
-                    " jmp loop_{index}\n\n",
-                    index = self.loop_counters[self.loop_counters.len() - 1]
+                    " jmp loop_{}\n\n", self.loop_counters[self.loop_counters.len() - 1]
                 );
             }
             Node::Semicolon => unreachable!("should not be present in the ast"),
@@ -2289,21 +2286,21 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn expression(&mut self, factor: &'ast Expression<'src>, dst: Dst) {
         match factor {
             Expression::Literal(literal) => match literal {
-                Literal::Int(value) => match dst {
-                    Dst::Reg(reg) => self.asm += &format!(" mov {reg}, {value}\n"),
+                Literal::Int(integer) => match dst {
+                    Dst::Reg(reg) => self.asm += &format!(" mov {reg}, {integer}\n"),
                     Dst::View { .. } => unreachable!(),
                 },
-                Literal::Ascii(ascii) => match dst {
-                    Dst::Reg(reg) => self.asm += &format!(" mov {reg}, {ascii}\n"),
+                Literal::Ascii(code) => match dst {
+                    Dst::Reg(reg) => self.asm += &format!(" mov {reg}, {code}\n"),
                     Dst::View { .. } => unreachable!(),
                 },
-                Literal::Bool(value) => match dst {
-                    Dst::Reg(reg) => self.asm += &format!(" mov {reg}, {value}\n"),
+                Literal::Bool(boolean) => match dst {
+                    Dst::Reg(reg) => self.asm += &format!(" mov {reg}, {boolean}\n"),
                     Dst::View { .. } => unreachable!(),
                 },
-                Literal::Str(value) => match dst {
+                Literal::Str(string) => match dst {
                     Dst::View { len, ptr } => {
-                        let index = self.string_label_index(value);
+                        let index = self.string_label_index(string);
                         self.asm += &format!(
                             " mov {len}, str_{index}_len\
                             \n mov {ptr}, str_{index}\n"
@@ -2480,12 +2477,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
     fn condition(&mut self, condition: &'ast Expression<'src>, false_tag: &str) {
         match condition {
-            Expression::Literal(Literal::Bool(value)) => {
+            Expression::Literal(Literal::Bool(boolean)) => {
                 self.asm += &format!(
                     " mov dil, {bool}\
                     \n cmp dil, true\
                     \n jne {false_tag}\n\n",
-                    bool = usize::from(*value)
+                    bool = usize::from(*boolean)
                 );
             }
             Expression::Literal(Literal::Int(_) | Literal::Ascii(_) | Literal::Str(_)) => {
@@ -2578,12 +2575,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
     fn condition_reversed(&mut self, condition: &'ast Expression<'src>, true_tag: &str) {
         match condition {
-            Expression::Literal(Literal::Bool(value)) => {
+            Expression::Literal(Literal::Bool(boolean)) => {
                 self.asm += &format!(
                     " mov dil, {bool}\
                     \n cmp dil, true\
                     \n je {true_tag}\n\n",
-                    bool = usize::from(*value)
+                    bool = usize::from(*boolean)
                 );
             }
             Expression::Literal(Literal::Int(_) | Literal::Ascii(_) | Literal::Str(_)) => {
@@ -2740,25 +2737,25 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Type::Int => {
                             self.asm += &format!(
                                 " lea rdi, [rbp + {dst_offset}]\
-                            \n lea rsi, [rbp + {src_offset}]\
-                            \n mov rcx, {len}\
-                            \n rep movsq\n\n"
+                                \n lea rsi, [rbp + {src_offset}]\
+                                \n mov rcx, {len}\
+                                \n rep movsq\n\n"
                             )
                         }
                         Type::Ascii | Type::Bool => {
                             self.asm += &format!(
                                 " lea rdi, [rbp + {dst_offset}]\
-                            \n lea rsi, [rbp + {src_offset}]\
-                            \n mov rcx, {len}\
-                            \n rep movsb\n\n"
+                                \n lea rsi, [rbp + {src_offset}]\
+                                \n mov rcx, {len}\
+                                \n rep movsb\n\n"
                             )
                         }
                         Type::Str => {
                             self.asm += &format!(
                                 " lea rdi, [rbp + {dst_offset}]\
-                            \n lea rsi, [rbp + {src_offset}]\
-                            \n mov rcx, {len} * 2\
-                            \n rep movsq\n\n"
+                                \n lea rsi, [rbp + {src_offset}]\
+                                \n mov rcx, {len} * 2\
+                                \n rep movsq\n\n"
                             )
                         }
                         Type::Array { .. } => unreachable!("nested arrays not supported yet)"),
@@ -2847,7 +2844,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 // ifs
 impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn iff(&mut self, iff: &'ast IfStatement<'src>, tag: &str, false_tag: &str) {
-        self.asm += &format!("{tag}:; {condition:?}\n", condition = iff.condition);
+        self.asm += &format!("{tag}:; {:?}\n", iff.condition);
         self.condition(&iff.condition, false_tag);
         self.node(&iff.statement);
     }
@@ -2908,7 +2905,7 @@ impl Display for ErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::CouldNotCreateFile { path } => {
-                write!(f, "could not create file '{path}'", path = path.display())
+                write!(f, "could not create file '{}'", path.display())
             }
             Self::WritingAssemblyFailed => {
                 write!(f, "writing to assembly file failed")
@@ -2925,7 +2922,7 @@ pub enum ErrorCause {
 impl Display for ErrorCause {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::IoError(err) => write!(f, "{err} ({kind})", kind = err.kind()),
+            Self::IoError(err) => write!(f, "{err} ({})", err.kind()),
         }
     }
 }

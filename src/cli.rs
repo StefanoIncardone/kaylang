@@ -274,10 +274,10 @@ impl Display for ErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::ExpectedFile { path } => {
-                write!(f, "expected a file but got directory '{path}'", path = path.display())
+                write!(f, "expected a file but got directory '{}'", path.display())
             }
             Self::ExpectedDirectory { path } => {
-                write!(f, "expected a directory but got file '{path}'", path = path.display())
+                write!(f, "expected a directory but got file '{}'", path.display())
             }
             Self::ColorModeAlreadySelected => write!(f, "color mode selected more than once"),
             Self::MissingColorMode => write!(f, "missing color mode after"),
@@ -322,6 +322,6 @@ impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{ERROR}: {msg}", msg = self.kind)
+        write!(f, "{ERROR}: {}", self.kind)
     }
 }

@@ -258,7 +258,7 @@ pub(crate) struct IfStatement<'src> {
 
 impl Display for IfStatement<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "if {condition:?}", condition = self.condition)
+        write!(f, "if {:?}", self.condition)
     }
 }
 
@@ -325,7 +325,7 @@ impl Display for Node<'_> {
             Self::Eprint(arg) => write!(f, "eprint {arg:?}"),
             Self::Eprintln(Some(arg)) => write!(f, "eprintln {arg:?}"),
             Self::Eprintln(None) => write!(f, "eprintln"),
-            Self::If(iff) => write!(f, "{iff}", iff = iff.ifs[0]),
+            Self::If(iff) => write!(f, "{}", iff.ifs[0]),
             Self::Loop(looop) => write!(f, "{looop}"),
             Self::Break => write!(f, "break"),
             Self::Continue => write!(f, "continue"),
@@ -606,7 +606,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             ) => {
                 let (position, _) = Position::new(self.src, current_token.col);
                 unreachable!(
-                    "unopend brackets should have been cought during tokenization: {path}:{line}:{col}",
+                    "should have been cought during tokenization: {path}:{line}:{col}",
                     path = self.src.path.display(),
                     line = position.line,
                     col = position.col,

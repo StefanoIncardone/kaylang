@@ -62,7 +62,6 @@ impl<K: SyntaxErrorKind, C: SyntaxErrorCause> Display for SyntaxError<'_, K, C> 
             flags: Flag::Bold,
         };
         let line_number_padding = line_number.text.len() + 1 + BAR.text.len();
-        let at_padding = line_number_padding - 1;
         let pointers_and_cause = Colored {
             text: format!(
                 "{spaces:^>len$} {cause}",
@@ -82,6 +81,7 @@ impl<K: SyntaxErrorKind, C: SyntaxErrorCause> Display for SyntaxError<'_, K, C> 
             \n{BAR:>line_number_padding$}\
             \n{line_number} {BAR} {line_text}\
             \n{BAR:>line_number_padding$}{spaces:>col$}{pointers_and_cause}",
+            at_padding = line_number_padding - 1,
             path = self.path.display(),
             line = self.position.line,
             col = self.position.col,
