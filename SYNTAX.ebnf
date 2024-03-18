@@ -14,12 +14,13 @@ identifier        = "_" | "A".."Z" | "a".."z", [{"_" | "A".."Z" | "a".."z" | dig
 array       = "[", [{expression}], "]";
 array_index = identifier, "[", integer_expression, "]";
 array_variable = identifier;
+string_index = identifier, "[", integer_expression, "]";
 
 (* from highest precedence to lowest *)
 int_factor                = ["-" | "!"], (number_literal | character_literal | identifier | ("(", integer_expression, ")") | array_index);
 boolean_factor            = ["!"], (boolean_literal | identifier | ("(", boolean_expression, ")"));
 
-primary_expression        = int_factor | boolean_factor | character_literal | ("(", expression, ")");
+primary_expression        = int_factor | boolean_factor | character_literal | string_index | array_index | ("(", expression, ")");
 exponentiative_expression = primary_expression, ["**", primary_expression];
 multiplicative_expression = boolean_literal, [("*" | "/" | "%"), boolean_literal];
 additive_expression       = multiplicative_expression, [("+" | "-"), multiplicative_expression];
@@ -27,17 +28,16 @@ shift_expression          = additive_expression, [("<<" | ">>"), additive_expres
 bitand_expression         = shift_expression, ["&", shift_expression];
 bitxor_expression         = bitand_expression, ["^", bitand_expression];
 bitor_expression          = bitxor_expression, ["|", bitxor_expression];
-comparative_expression    = bitor_expression, ["<=>", bitor_expression];
 (* comparison expressions cannot be chained*)
-comparison_expression     = comparative_expression, [("==" | "!=" | ">" | ">=" | "<" | "<="), comparative_expression];
+comparison_expression     = bitor_expression, [("<=>" | "==" | "!=" | ">" | ">=" | "<" | "<="), bitor_expression];
 and_expression            = comparison_expression, ["&&", comparison_expression];
 or_expression             = and_expression, ["||", and_expression];
 
 boolean_expression        = or_expression;
-integer_expression        = comparative_expression;
+integer_expression        = bitor_expression;
 string_expression         = string_literal, ("<=>" | "==" | "!=" | ">" | ">=" | "<" | "<="), string_literal;
 array_expression          = array_variable, ("<=>" | "==" | "!=" | ">" | ">=" | "<" | "<="), array_variable;
-expression                = boolean_expression | integer_expression | string_literal | string_expression | array | array_index | array_expression;
+expression                = boolean_expression | integer_expression | string_literal | string_expression | array  | array_expression;
 
 type = identifier;
 variable_declaration = ("let" | "var"), identifier, [[":", type], "=", expression], ";";

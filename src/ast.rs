@@ -33,7 +33,7 @@ impl PartialEq for Type {
             | (Self::Str, Self::Str) => true,
 
             (Self::Array { typ: typ_1, len: len_1 }, Self::Array { typ: typ_2, len: len_2 }) => {
-                typ_1 == typ_2 && len_1 == len_2
+                len_1 == len_2 && typ_1 == typ_2
             }
 
             _ => false,
@@ -90,7 +90,9 @@ impl Type {
 
             (Self::Array { typ: typ_1, len: len_1 }, Self::Array { typ: typ_2, len: len_2 }) => {
                 // comparing empty arrays makes no sense, so it's not going to be allowed
-                *len_1 != 0 && *len_2 != 0 && typ_1 == typ_2 && len_1 == len_2
+                *len_1 != 0 && *len_2 != 0
+                && len_1 == len_2
+                && typ_1.can_be_compared_to(typ_2)
             }
 
             (Self::Str | Self::Array { .. } | Self::Infer, _)
@@ -1298,43 +1300,13 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    // IDEA(breaking)(stefano): make this have the same precedence as other comparison operators
-    fn comparative_expression(
+    fn comparison_expression(
         &mut self,
     ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
         let mut lhs = self.bitor_expression()?;
 
-        while let Some((op_token, op)) = self.operator(&[Op::Compare])? {
-            let rhs = self.bitor_expression()?;
-
-            let lhs_typ = lhs.typ();
-            let rhs_typ = rhs.typ();
-            if !lhs_typ.can_be_compared_to(&rhs_typ) {
-                return Err(RawSyntaxError {
-                    kind: ErrorKind::Invalid(Statement::Expression),
-                    cause: ErrorCause::CannotCompareOperands { lhs_typ, rhs_typ },
-                    col: op_token.col,
-                    len: op_token.kind.src_code_len(),
-                });
-            }
-
-            lhs = Expression::Binary {
-                lhs: Box::new(lhs),
-                op_position: Position::new(self.src, op_token.col).0,
-                op,
-                rhs: Box::new(rhs),
-            };
-        }
-
-        Ok(lhs)
-    }
-
-    fn comparison_expression(
-        &mut self,
-    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
-        let mut lhs = self.comparative_expression()?;
-
         let ops = [
+            Op::Compare,
             Op::EqualsEquals,
             Op::NotEquals,
             Op::Greater,
@@ -1345,7 +1317,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         let mut is_chained = false;
         while let Some((op_token, op)) = self.operator(&ops)? {
-            let rhs = self.comparative_expression()?;
+            let rhs = self.bitor_expression()?;
 
             let lhs_typ = lhs.typ();
             let rhs_typ = rhs.typ();
