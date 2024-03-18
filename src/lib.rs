@@ -299,15 +299,13 @@ pub struct Step;
 
 impl Step {
     pub fn info(step: &Colored<&str>, path: &FilePath, verbosity: Verbosity) {
-        if let Verbosity::Quiet = verbosity {
-            return;
+        if let Verbosity::Normal | Verbosity::Verbose = verbosity {
+            eprintln!(
+                "{spaces:STEP_INDENT$}{step:>STEP_PADDING$}: {path}",
+                spaces = "",
+                path = path.display()
+            );
         }
-
-        eprintln!(
-            "{spaces:STEP_INDENT$}{step:>STEP_PADDING$}: {path}",
-            spaces = "",
-            path = path.display()
-        );
     }
 
     fn done<Text: AsRef<str>>(
@@ -326,11 +324,9 @@ impl Step {
     }
 
     pub fn step_done(start_time: Instant, verbosity: Verbosity) {
-        if let Verbosity::Quiet = verbosity {
-            return;
+        if let Verbosity::Normal | Verbosity::Verbose = verbosity {
+            Self::done(start_time, &DONE, STEP_INDENT, STEP_PADDING);
         }
-
-        Self::done(start_time, &DONE, STEP_INDENT, STEP_PADDING);
     }
 
     pub fn sub_step_done<Text: AsRef<str>>(
@@ -338,10 +334,8 @@ impl Step {
         sub_step: &Colored<Text>,
         verbosity: Verbosity,
     ) {
-        if let Verbosity::Quiet | Verbosity::Normal = verbosity {
-            return;
+        if let Verbosity::Verbose = verbosity {
+            Self::done(start_time, sub_step, SUBSTEP_INDENT, SUBSTEP_PADDING);
         }
-
-        Self::done(start_time, sub_step, SUBSTEP_INDENT, SUBSTEP_PADDING);
     }
 }
