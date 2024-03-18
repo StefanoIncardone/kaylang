@@ -310,7 +310,12 @@ impl Step {
         );
     }
 
-    fn done<Text: AsRef<str>>(start_time: Instant, step: &Colored<Text>, indent: usize, padding: usize) {
+    fn done<Text: AsRef<str>>(
+        start_time: Instant,
+        step: &Colored<Text>,
+        indent: usize,
+        padding: usize,
+    ) {
         let elapsed_time = Colored {
             text: format!("{}s", start_time.elapsed().as_secs_f32()),
             fg: Fg::White,
@@ -328,7 +333,11 @@ impl Step {
         Self::done(start_time, &DONE, STEP_INDENT, STEP_PADDING);
     }
 
-    pub fn sub_step_done<Text: AsRef<str>>(start_time: Instant, sub_step: &Colored<Text>, verbosity: Verbosity) {
+    pub fn sub_step_done<Text: AsRef<str>>(
+        start_time: Instant,
+        sub_step: &Colored<Text>,
+        verbosity: Verbosity,
+    ) {
         if let Verbosity::Quiet | Verbosity::Normal = verbosity {
             return;
         }

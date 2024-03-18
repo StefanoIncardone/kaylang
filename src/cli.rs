@@ -1,4 +1,4 @@
-use crate::{Bg, Color, Colored, Fg, Flag, Command, Verbosity, BAR, ERROR};
+use crate::{Bg, Color, Colored, Command, Fg, Flag, Verbosity, BAR, ERROR};
 use std::{
     fmt::Display,
     ops::Deref,
@@ -95,7 +95,7 @@ impl TryFrom<Vec<String>> for Args {
                         kind: ErrorKind::RepeatedOption(cli_option),
                         cause: ErrorCause::OptionAlreadySelected {
                             current: cli_option,
-                            previous: previous_cli_option
+                            previous: previous_cli_option,
                         },
                     });
                 }
@@ -158,7 +158,7 @@ impl TryFrom<Vec<String>> for Args {
                             kind: ErrorKind::RepeatedOption(cli_option),
                             cause: ErrorCause::OptionAlreadySelected {
                                 current: cli_option,
-                                previous: previous_cli_option
+                                previous: previous_cli_option,
                             },
                         });
                     }
@@ -187,7 +187,7 @@ impl TryFrom<Vec<String>> for Args {
                                 kind: ErrorKind::RepeatedCommand(previous_cli_command),
                                 cause: ErrorCause::CommandAlreadySelected {
                                     current: cli_command,
-                                    previous: previous_cli_command
+                                    previous: previous_cli_command,
                                 },
                             });
                         }
@@ -198,13 +198,13 @@ impl TryFrom<Vec<String>> for Args {
                                 kind: ErrorKind::InvalidCommand(cli_command),
                                 cause: ErrorCause::CommandCannotBeUsedAtTheSameTime {
                                     current: cli_command,
-                                    previous: previous_cli_command
+                                    previous: previous_cli_command,
                                 },
                             });
                         }
                         _ => command = Some((Command::Help, cli_command)),
                     }
-                },
+                }
                 "version" | "-v" | "--version" => {
                     let cli_command = match arg.as_str() {
                         "version" => CliCommand::Version,
@@ -221,7 +221,7 @@ impl TryFrom<Vec<String>> for Args {
                                 kind: ErrorKind::RepeatedCommand(previous_cli_command),
                                 cause: ErrorCause::CommandAlreadySelected {
                                     current: cli_command,
-                                    previous: previous_cli_command
+                                    previous: previous_cli_command,
                                 },
                             });
                         }
@@ -232,13 +232,13 @@ impl TryFrom<Vec<String>> for Args {
                                 kind: ErrorKind::InvalidCommand(cli_command),
                                 cause: ErrorCause::CommandCannotBeUsedAtTheSameTime {
                                     current: cli_command,
-                                    previous: previous_cli_command
+                                    previous: previous_cli_command,
                                 },
                             });
                         }
                         _ => command = Some((Command::Version, cli_command)),
                     }
-                },
+                }
                 command_str @ ("check" | "compile" | "run") => {
                     let cli_command = match command_str {
                         "check" => CliCommand::Check,
@@ -247,12 +247,10 @@ impl TryFrom<Vec<String>> for Args {
                         _ => unreachable!(),
                     };
 
-                    if let Some(
-                        (
-                            Command::Check { .. } | Command::Compile { .. } | Command::Run { .. },
-                            previous_cli_command
-                        )
-                    ) = command
+                    if let Some((
+                        Command::Check { .. } | Command::Compile { .. } | Command::Run { .. },
+                        previous_cli_command,
+                    )) = command
                     {
                         return Err(Error {
                             args,
@@ -300,7 +298,9 @@ impl TryFrom<Vec<String>> for Args {
                                         return Err(Error {
                                             args,
                                             erroneous_arg_index: out_flag_idx,
-                                            kind: ErrorKind::InvalidOption(CliOption::OutFolderPath),
+                                            kind: ErrorKind::InvalidOption(
+                                                CliOption::OutFolderPath,
+                                            ),
                                             cause: ErrorCause::MustBeFollowedByDirectoryFilePath,
                                         });
                                     };
@@ -310,7 +310,9 @@ impl TryFrom<Vec<String>> for Args {
                                         return Err(Error {
                                             args,
                                             erroneous_arg_index: out_path_idx,
-                                            kind: ErrorKind::InvalidOption(CliOption::OutFolderPath),
+                                            kind: ErrorKind::InvalidOption(
+                                                CliOption::OutFolderPath,
+                                            ),
                                             cause: ErrorCause::ExpectedDirectory {
                                                 path: FilePath { inner: out_path },
                                             },
@@ -501,7 +503,9 @@ impl Display for ErrorCause {
             Self::CommandCannotBeUsedAtTheSameTime { current, previous } => {
                 write!(f, "cannot use '{current}' because '{previous}' was already selected")
             }
-            Self::MustBeFollowedByColorMode => write!(f, "must be followed by 'auto', 'always' or 'never'"),
+            Self::MustBeFollowedByColorMode => {
+                write!(f, "must be followed by 'auto', 'always' or 'never'")
+            }
             Self::UnrecognizedColorMode => write!(f, "must be one of 'auto', 'always' or 'never'"),
             Self::MustBeFollowedByASourceFilePath => {
                 write!(f, "must be followed by a source file path")

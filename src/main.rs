@@ -1,8 +1,7 @@
 use kaylang::{
     artifacts::Artifacts, ast::Ast, cli::Args, compiler::Compiler, src_file::SrcFile,
-    tokenizer::Tokenizer, Help, Command, Step, Version, ASSEMBLING, BUILDING_AST,
-    CHECKING, COMPILING, GENERATING_ASM, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE,
-    TOKENIZATION,
+    tokenizer::Tokenizer, Command, Help, Step, Version, ASSEMBLING, BUILDING_AST, CHECKING,
+    COMPILING, GENERATING_ASM, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
 };
 use std::{env, process::ExitCode, time::Instant};
 
@@ -182,8 +181,8 @@ mod tests {
         compiler::Compiler,
         src_file::SrcFile,
         tokenizer::Tokenizer,
-        Color, Step, Verbosity, ASSEMBLING, BUILDING_AST, CHECKING, COMPILING,
-        GENERATING_ASM, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
+        Color, Step, Verbosity, ASSEMBLING, BUILDING_AST, CHECKING, COMPILING, GENERATING_ASM,
+        LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
     };
     use std::{io, path::Path, process::ExitCode, time::Instant};
 
