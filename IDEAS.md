@@ -264,7 +264,7 @@ default: {
 }
 ```
 
-### compared to Rust
+#### compared to Rust
 
 ```rust
 // regular if:
@@ -353,21 +353,6 @@ add [Zig inspired arithmetic operators](https://ziglang.org/documentation/master
     ```kay
     let division, remainder = 3 /% 2; # will result in 1, 1
     ```
-
-- absolute value, using the `+` operator (since it's basically useless inside normal expressions):
-
-    ```kay
-    let negative = -19;
-    let positive = +negative; # 19
-    ```
-
-    ```nasm
-    mov rax, rdi
-    sar rax, INT_BITS - 1
-    xor rdi, rax
-    sub rdi, rax
-    ```
-
 
 ## Strings
 

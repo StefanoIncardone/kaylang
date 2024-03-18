@@ -90,9 +90,7 @@ impl Type {
 
             (Self::Array { typ: typ_1, len: len_1 }, Self::Array { typ: typ_2, len: len_2 }) => {
                 // comparing empty arrays makes no sense, so it's not going to be allowed
-                *len_1 != 0 && *len_2 != 0
-                && len_1 == len_2
-                && typ_1.can_be_compared_to(typ_2)
+                *len_1 != 0 && *len_2 != 0 && len_1 == len_2 && typ_1.can_be_compared_to(typ_2)
             }
 
             (Self::Str | Self::Array { .. } | Self::Infer, _)
@@ -488,7 +486,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::True
             | TokenKind::False
             | TokenKind::Bracket(BracketKind::OpenRound)
-            | TokenKind::Op(Op::Minus | Op::Not) => Ok(Some(Node::Expression(self.expression()?))),
+            | TokenKind::Op(Op::Plus | Op::Minus | Op::Not) => {
+                Ok(Some(Node::Expression(self.expression()?)))
+            }
             TokenKind::Identifier(_) => match self.peek_next_token() {
                 Some(op) => match op.kind {
                     TokenKind::Op(
@@ -974,7 +974,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     len: current_token.kind.src_code_len(),
                 }),
             },
-            TokenKind::Bracket(open_bracket_kind @ BracketKind::OpenRound) => 'parenthesis: {
+            TokenKind::Bracket(BracketKind::OpenRound) => 'parenthesis: {
                 let expression_start_token = self.next_token_bounded(Expected::Expression)?;
 
                 if let TokenKind::Bracket(BracketKind::CloseRound) = expression_start_token.kind {
@@ -990,15 +990,16 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 let close_bracket_token =
                     self.current_token_bounded(Expected::ClosingRoundBracket)?;
 
-                match close_bracket_token.kind {
-                    TokenKind::Bracket(BracketKind::CloseRound) => Ok(expression),
-                    _ => Err(RawSyntaxError {
+                let TokenKind::Bracket(BracketKind::CloseRound) = close_bracket_token.kind else {
+                    return Err(RawSyntaxError {
                         kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::UnclosedBracket(*open_bracket_kind),
+                        cause: ErrorCause::UnclosedBracket(BracketKind::OpenRound),
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
-                    }),
-                }
+                    });
+                };
+
+                Ok(expression)
             }
             TokenKind::Bracket(BracketKind::OpenSquare) => 'array: {
                 let _ = self.next_token();
@@ -1049,11 +1050,50 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     }
                 }
             }
+            TokenKind::Op(Op::Plus) => {
+                // NOTE(stefano): this optimization should be moved to later stages
+                while let Some(&Token { kind: TokenKind::Op(Op::Plus), .. }) = self.next_token() {
+                    // removing extra plus symbols
+                }
+
+                let operand = self.primary_expression()?;
+
+                // returning to avoid the call to tokens.next at the end of the function
+                let operand_typ = operand.typ();
+                return match operand_typ {
+                    Type::Int => Ok(Expression::Unary { op: Op::Plus, operand: Box::new(operand) }),
+                    Type::Ascii => Err(RawSyntaxError {
+                        kind: ErrorKind::Invalid(Statement::Expression),
+                        cause: ErrorCause::CannotTakeAbsValueOfAscii,
+                        col: current_token.col,
+                        len: current_token.kind.src_code_len(),
+                    }),
+                    Type::Bool => Err(RawSyntaxError {
+                        kind: ErrorKind::Invalid(Statement::Expression),
+                        cause: ErrorCause::CannotTakeAbsValueOfBoolean,
+                        col: current_token.col,
+                        len: current_token.kind.src_code_len(),
+                    }),
+                    Type::Str => Err(RawSyntaxError {
+                        kind: ErrorKind::Invalid(Statement::Expression),
+                        cause: ErrorCause::CannotTakeAbsValueOfString,
+                        col: current_token.col,
+                        len: current_token.kind.src_code_len(),
+                    }),
+                    Type::Array { .. } => Err(RawSyntaxError {
+                        kind: ErrorKind::Invalid(Statement::Expression),
+                        cause: ErrorCause::CannotTakeAbsValueOfArray,
+                        col: current_token.col,
+                        len: current_token.kind.src_code_len(),
+                    }),
+                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                };
+            }
             TokenKind::Op(Op::Minus) => {
-                let mut sign: isize = -1;
+                let mut should_be_negated = true;
                 // NOTE(stefano): this optimization should be moved to later stages
                 while let Some(&Token { kind: TokenKind::Op(Op::Minus), .. }) = self.next_token() {
-                    sign *= -1;
+                    should_be_negated = !should_be_negated;
                 }
 
                 let operand = self.primary_expression()?;
@@ -1061,7 +1101,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 // returning to avoid the call to tokens.next at the end of the function
                 return match operand.typ() {
                     Type::Int | Type::Ascii => {
-                        if sign < 0 {
+                        if should_be_negated {
                             Ok(Expression::Unary { op: Op::Minus, operand: Box::new(operand) })
                         } else {
                             Ok(operand)
@@ -1189,7 +1229,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         Ok(lhs)
     }
 
-    // TODO(breaking)(stefano): make the plus operator as the abs operator
     fn additive_expression(
         &mut self,
     ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
@@ -2036,6 +2075,10 @@ pub enum ErrorCause {
     CannotNegateArray,
     CannotInvertString,
     CannotInvertArray,
+    CannotTakeAbsValueOfAscii,
+    CannotTakeAbsValueOfBoolean,
+    CannotTakeAbsValueOfString,
+    CannotTakeAbsValueOfArray,
 
     KeywordInExpression,
     ChainedComparison,
@@ -2113,6 +2156,12 @@ impl Display for ErrorCause {
             Self::CannotNegateArray => write!(f, "cannot negate an array"),
             Self::CannotInvertString => write!(f, "cannot invert a string"),
             Self::CannotInvertArray => write!(f, "cannot invert an array"),
+            Self::CannotTakeAbsValueOfAscii => {
+                write!(f, "cannot take the absolute of an ascii character")
+            }
+            Self::CannotTakeAbsValueOfBoolean => write!(f, "cannot take the absolute of a boolean"),
+            Self::CannotTakeAbsValueOfString => write!(f, "cannot take the absolute of a string"),
+            Self::CannotTakeAbsValueOfArray => write!(f, "cannot take the absolute of an array"),
             Self::KeywordInExpression => write!(f, "cannot be a keyword"),
             Self::ExpectedOperand => write!(f, "expected expression operand before this token"),
             Self::ChainedComparison => write!(f, "comparison operators cannot be chained"),

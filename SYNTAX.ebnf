@@ -17,7 +17,7 @@ array_variable = identifier;
 string_index = identifier, "[", integer_expression, "]";
 
 (* from highest precedence to lowest *)
-int_factor                = ["-" | "!"], (number_literal | character_literal | identifier | ("(", integer_expression, ")") | array_index);
+int_factor                = ["+" | "-" | "!"], (number_literal | character_literal | identifier | ("(", integer_expression, ")") | array_index);
 boolean_factor            = ["!"], (boolean_literal | identifier | ("(", boolean_expression, ")"));
 
 primary_expression        = int_factor | boolean_factor | character_literal | string_index | array_index | ("(", expression, ")");

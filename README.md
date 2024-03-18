@@ -59,9 +59,11 @@ println 1 + false; # will print 1 (1 + false -> 1 + 0)
 
 Expressions follow this order of operations (precedence from highest to lowest):
 
-- unary minus `-`, unary not `!`:
-    - integer negation: `-4`
-    - bitwise bit one's complement: `!4 # 0100 -> !0100 == 1011`
+- unary operators:
+    - minus `-` as integer negation: `-4`
+    - not `!` as integer bitwise one's complement: `!4 # 0100 -> !0100 == 1011`
+    - not `!` as boolean negation: `!true -> false`
+    - plus `+` as integer absolute value: `|1| == +1 -> 1`, `|-1| == +(-1) -> 1`
 - round brackets `(`, `)`
 - binary exponentiation `**`
 - binary multiplication `*`, binary division `/` and binary remainder `%`

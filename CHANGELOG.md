@@ -14,13 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - UTF-8/UTF-16/UTF-32 characters and string literals
 - Type aliases and distinct types
 - **BREAKING**: Bit-casting operator and removal of implicit conversions
-- **BREAKING**: `+` to be repurposed as the unary absolute value:
-
-    ```kay
-    let negative = -19;
-    let positive = +negative; # 19
-    ```
-
 
 ## 0.6.0 -
 
@@ -36,6 +29,7 @@ Changes to error messages, help message and alike would **not** be considered br
 ### Added
 
 - String and Array comparison operators (i.e.: `<=>`, `==`, `!=`, `<`, `<=`, `>`, `>=`)
+- `+` as the unary absolute value operator
 - Raw string literals: `r"hello\nworld"` where `\n` would not get escaped
 - Printing to `stderr`: `eprint` and `eprintln` keywords
 - `help` and `version` command line arguments

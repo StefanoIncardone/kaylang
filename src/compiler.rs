@@ -2391,7 +2391,20 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Type::Str => unreachable!("cannot negate string values"),
                         Type::Infer => unreachable!("should have been inferred"),
                     },
-                    _ => unreachable!("'Not' and 'Minus' are the only unary operators"),
+                    Op::Plus => match operand.typ() {
+                        Type::Int => {
+                            self.asm += " mov rax, rdi\
+                                \n sar rax, INT_BITS - 1\
+                                \n xor rdi, rax\
+                                \n sub rdi, rax\n";
+                        }
+                        Type::Ascii => unreachable!("cannot negate ascii values"),
+                        Type::Bool => unreachable!("cannot negate boolean values"),
+                        Type::Array { .. } => unreachable!("cannot negate array values"),
+                        Type::Str => unreachable!("cannot negate string values"),
+                        Type::Infer => unreachable!("should have been inferred"),
+                    },
+                    _ => unreachable!("not a unary operators"),
                 }
             }
             Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
@@ -2809,7 +2822,23 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Type::Str => unreachable!("cannot negate string values"),
                         Type::Infer => unreachable!("should have been inferred"),
                     },
-                    _ => unreachable!("'Not' and 'Minus' are the only unary operators"),
+                    Op::Plus => match operand.typ() {
+                        Type::Int => {
+                            self.asm += &format!(
+                                " mov rax, rdi\
+                                \n sar rax, INT_BITS - 1\
+                                \n xor rdi, rax\
+                                \n sub rdi, rax\
+                                \n mov [rbp + {dst_offset}], rdi\n\n"
+                            );
+                        }
+                        Type::Ascii => unreachable!("cannot negate ascii values"),
+                        Type::Bool => unreachable!("cannot negate boolean values"),
+                        Type::Array { .. } => unreachable!("cannot negate array values"),
+                        Type::Str => unreachable!("cannot negate string values"),
+                        Type::Infer => unreachable!("should have been inferred"),
+                    },
+                    _ => unreachable!("not a unary operators"),
                 }
             }
             Expression::Array { typ, items } => {
