@@ -1,6 +1,6 @@
 use kaylang::{
     artifacts::Artifacts, ast::Ast, cli::Args, compiler::Compiler, src_file::SrcFile,
-    tokenizer::Tokenizer, Help, Command, Step, SubStep, Version, ASSEMBLING, BUILDING_AST,
+    tokenizer::Tokenizer, Help, Command, Step, Version, ASSEMBLING, BUILDING_AST,
     CHECKING, COMPILING, GENERATING_ASM, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE,
     TOKENIZATION,
 };
@@ -38,16 +38,14 @@ fn main() -> ExitCode {
         Command::Check { src_path }
         | Command::Compile { src_path, .. }
         | Command::Run { src_path, .. } => {
-            let execution_step = Step { start_time: Instant::now(), verbosity };
+            let execution_step = Instant::now();
 
             Step::info(&CHECKING, src_path, verbosity);
-            let checking_sub_step =
-                SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
+            let checking_sub_step = Instant::now();
 
-            let loading_source_sub_step =
-                SubStep { step: &LOADING_SOURCE, start_time: Instant::now(), verbosity };
+            let loading_source_sub_step = Instant::now();
             let source_loading_result = SrcFile::load(src_path);
-            loading_source_sub_step.done();
+            Step::sub_step_done(loading_source_sub_step, &LOADING_SOURCE, verbosity);
             let src = match source_loading_result {
                 Ok(src) => src,
                 Err(err) => {
@@ -56,11 +54,10 @@ fn main() -> ExitCode {
                 }
             };
 
-            let lexing_sub_step =
-                SubStep { step: &TOKENIZATION, start_time: Instant::now(), verbosity };
-            let lexer_result = Tokenizer::tokenize(&src);
-            lexing_sub_step.done();
-            let tokens = match lexer_result {
+            let tokenization_sub_step = Instant::now();
+            let tokenizer_result = Tokenizer::tokenize(&src);
+            Step::sub_step_done(tokenization_sub_step, &TOKENIZATION, verbosity);
+            let tokens = match tokenizer_result {
                 Ok(tokens) => tokens,
                 Err(errors) => {
                     let mut errors_iter = errors.into_iter();
@@ -73,11 +70,10 @@ fn main() -> ExitCode {
                 }
             };
 
-            let ast_building_sub_step =
-                SubStep { step: &BUILDING_AST, start_time: Instant::now(), verbosity };
-            let ast_building_result = Ast::build(&src, &tokens);
-            ast_building_sub_step.done();
-            let ast = match ast_building_result {
+            let building_ast_sub_step = Instant::now();
+            let building_ast_result = Ast::build(&src, &tokens);
+            Step::sub_step_done(building_ast_sub_step, &BUILDING_AST, verbosity);
+            let ast = match building_ast_result {
                 Ok(ast) => ast,
                 Err(errors) => {
                     let mut errors_iter = errors.into_iter();
@@ -90,17 +86,16 @@ fn main() -> ExitCode {
                 }
             };
 
-            checking_sub_step.done();
+            Step::sub_step_done(checking_sub_step, &SUBSTEP_DONE, verbosity);
 
             let (Command::Compile { out_path, .. } | Command::Run { out_path, .. }) = &command
             else {
-                execution_step.done();
+                Step::step_done(execution_step, verbosity);
                 return ExitCode::SUCCESS;
             };
 
             Step::info(&COMPILING, src_path, verbosity);
-            let compilation_sub_step =
-                SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
+            let compilation_sub_step = Instant::now();
 
             let artifacts = match Artifacts::new(&src, out_path.as_ref()) {
                 Ok(artifacts) => artifacts,
@@ -110,11 +105,10 @@ fn main() -> ExitCode {
                 }
             };
 
-            let asm_generation_sub_step =
-                SubStep { step: &GENERATING_ASM, start_time: Instant::now(), verbosity };
-            let asm_generation_result = Compiler::compile(&src, &artifacts, &ast);
-            asm_generation_sub_step.done();
-            match asm_generation_result {
+            let generating_asm_sub_step = Instant::now();
+            let compiler_result = Compiler::compile(&src, &artifacts, &ast);
+            Step::sub_step_done(generating_asm_sub_step, &GENERATING_ASM, verbosity);
+            match compiler_result {
                 Ok(()) => {}
                 Err(err) => {
                     eprintln!("{err}");
@@ -122,11 +116,10 @@ fn main() -> ExitCode {
                 }
             };
 
-            let assembler_sub_step =
-                SubStep { step: &ASSEMBLING, start_time: Instant::now(), verbosity };
+            let assembling_sub_step = Instant::now();
             let mut assembler_command = artifacts.assembler();
             let assembler_result = assembler_command.status();
-            assembler_sub_step.done();
+            Step::sub_step_done(assembling_sub_step, &ASSEMBLING, verbosity);
             match assembler_result {
                 Ok(status) => {
                     if !status.success() {
@@ -139,10 +132,10 @@ fn main() -> ExitCode {
                 }
             }
 
-            let linker_sub_step = SubStep { step: &LINKING, start_time: Instant::now(), verbosity };
+            let linking_sub_step = Instant::now();
             let mut linker_command = artifacts.linker();
             let linker_result = linker_command.status();
-            linker_sub_step.done();
+            Step::sub_step_done(linking_sub_step, &LINKING, verbosity);
             match linker_result {
                 Ok(status) => {
                     if !status.success() {
@@ -155,8 +148,8 @@ fn main() -> ExitCode {
                 }
             }
 
-            compilation_sub_step.done();
-            execution_step.done();
+            Step::sub_step_done(compilation_sub_step, &SUBSTEP_DONE, verbosity);
+            Step::step_done(execution_step, verbosity);
 
             if let Command::Run { .. } = command {
                 Step::info(&RUNNING, &artifacts.exe_path, verbosity);
@@ -189,7 +182,7 @@ mod tests {
         compiler::Compiler,
         src_file::SrcFile,
         tokenizer::Tokenizer,
-        Color, Step, SubStep, Verbosity, ASSEMBLING, BUILDING_AST, CHECKING, COMPILING,
+        Color, Step, Verbosity, ASSEMBLING, BUILDING_AST, CHECKING, COMPILING,
         GENERATING_ASM, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
     };
     use std::{io, path::Path, process::ExitCode, time::Instant};
@@ -219,16 +212,14 @@ mod tests {
                 continue;
             }
 
-            let execution_step = Step { start_time: Instant::now(), verbosity };
+            let execution_step = Instant::now();
 
             Step::info(&CHECKING, &src_path, verbosity);
-            let checking_sub_step =
-                SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
+            let checking_sub_step = Instant::now();
 
-            let loading_source_sub_step =
-                SubStep { step: &LOADING_SOURCE, start_time: Instant::now(), verbosity };
+            let loading_source_sub_step = Instant::now();
             let source_loading_result = SrcFile::load(&src_path);
-            loading_source_sub_step.done();
+            Step::sub_step_done(loading_source_sub_step, &LOADING_SOURCE, verbosity);
             let src = match source_loading_result {
                 Ok(src) => src,
                 Err(err) => {
@@ -237,11 +228,10 @@ mod tests {
                 }
             };
 
-            let lexing_sub_step =
-                SubStep { step: &TOKENIZATION, start_time: Instant::now(), verbosity };
-            let lexer_result = Tokenizer::tokenize(&src);
-            lexing_sub_step.done();
-            let tokens = match lexer_result {
+            let tokenization_sub_step = Instant::now();
+            let tokenizer_result = Tokenizer::tokenize(&src);
+            Step::sub_step_done(tokenization_sub_step, &TOKENIZATION, verbosity);
+            let tokens = match tokenizer_result {
                 Ok(tokens) => tokens,
                 Err(errors) => {
                     let mut errors_iter = errors.into_iter();
@@ -254,11 +244,10 @@ mod tests {
                 }
             };
 
-            let ast_building_sub_step =
-                SubStep { step: &BUILDING_AST, start_time: Instant::now(), verbosity };
-            let ast_building_result = Ast::build(&src, &tokens);
-            ast_building_sub_step.done();
-            let ast = match ast_building_result {
+            let building_ast_sub_step = Instant::now();
+            let building_ast_result = Ast::build(&src, &tokens);
+            Step::sub_step_done(building_ast_sub_step, &BUILDING_AST, verbosity);
+            let ast = match building_ast_result {
                 Ok(ast) => ast,
                 Err(errors) => {
                     let mut errors_iter = errors.into_iter();
@@ -271,11 +260,10 @@ mod tests {
                 }
             };
 
-            checking_sub_step.done();
+            Step::sub_step_done(checking_sub_step, &SUBSTEP_DONE, verbosity);
 
             Step::info(&COMPILING, &src_path, verbosity);
-            let compilation_sub_step =
-                SubStep { step: &SUBSTEP_DONE, start_time: Instant::now(), verbosity };
+            let compilation_sub_step = Instant::now();
 
             let artifacts = match Artifacts::new(&src, Some(&out_path)) {
                 Ok(artifacts) => artifacts,
@@ -285,11 +273,10 @@ mod tests {
                 }
             };
 
-            let asm_generation_sub_step =
-                SubStep { step: &GENERATING_ASM, start_time: Instant::now(), verbosity };
-            let asm_generation_result = Compiler::compile(&src, &artifacts, &ast);
-            asm_generation_sub_step.done();
-            match asm_generation_result {
+            let generating_asm_sub_step = Instant::now();
+            let compiler_result = Compiler::compile(&src, &artifacts, &ast);
+            Step::sub_step_done(generating_asm_sub_step, &GENERATING_ASM, verbosity);
+            match compiler_result {
                 Ok(()) => {}
                 Err(err) => {
                     eprintln!("{err}");
@@ -297,11 +284,10 @@ mod tests {
                 }
             };
 
-            let assembler_sub_step =
-                SubStep { step: &ASSEMBLING, start_time: Instant::now(), verbosity };
+            let assembler_sub_step = Instant::now();
             let mut assembler_command = artifacts.assembler();
             let assembler_result = assembler_command.status();
-            assembler_sub_step.done();
+            Step::sub_step_done(assembler_sub_step, &ASSEMBLING, verbosity);
             match assembler_result {
                 Ok(status) => {
                     if !status.success() {
@@ -314,10 +300,10 @@ mod tests {
                 }
             }
 
-            let linker_sub_step = SubStep { step: &LINKING, start_time: Instant::now(), verbosity };
+            let linking_sub_step = Instant::now();
             let mut linker_command = artifacts.linker();
             let linker_result = linker_command.status();
-            linker_sub_step.done();
+            Step::sub_step_done(linking_sub_step, &LINKING, verbosity);
             match linker_result {
                 Ok(status) => {
                     if !status.success() {
@@ -330,8 +316,8 @@ mod tests {
                 }
             }
 
-            compilation_sub_step.done();
-            execution_step.done();
+            Step::sub_step_done(compilation_sub_step, &SUBSTEP_DONE, verbosity);
+            Step::step_done(execution_step, verbosity);
 
             Step::info(&RUNNING, &artifacts.exe_path, verbosity);
 

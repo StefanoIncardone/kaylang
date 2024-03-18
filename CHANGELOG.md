@@ -48,7 +48,6 @@ Changes to error messages, help message and alike would **not** be considered br
 - `run` command now returns the exit code of the executed program
 - Runtime crashes now print to `stderr`
 - `compile` command now returns the exit code of the assembler and linker in the case of a failure
-- Allowed non utf-8 paths
 - **BREAKING**: Split `Error`s into `ErrorKind` and `ErrorCause`
 - **BREAKING**: Updated consistency of compilation steps names and variables
 - **BREAKING**: `Tokenizer::tokenize` and `Ast::build` now return a `SyntaxErrors` struct as an
@@ -57,6 +56,7 @@ Changes to error messages, help message and alike would **not** be considered br
 - **BREAKING**: Specialized paths to be `FilePath` or `DirPath` structs to improve type safety.
 - **BREAKING**: `Compiler::compile` no longer returns an `Artifacts` struct, it is instead
     constructed beforehand and is now required in compilation steps instead of generic `PathBuf`s
+- **BREAKING**: Compilation steps are now `Step` associated functions `step_done` and `sub_step_done`
 
 ### Removed
 

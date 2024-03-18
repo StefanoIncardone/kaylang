@@ -66,7 +66,7 @@ impl Display for Help {
             f,
             r"{version}
 
-Usage: kay [{OPTIONS}] [{COMMAND}]
+{USAGE}: kay [{OPTIONS}] [{COMMAND}]
 
 {OPTIONS}:
     -c, --color <{MODE}>    Wether to display colored output ({MODE}: auto (default), never, always)
@@ -227,14 +227,14 @@ fn log_color(
 }
 
 #[derive(Debug, Default)]
-pub struct Colored<Str: AsRef<str>> {
-    pub text: Str,
+pub struct Colored<Text: AsRef<str>> {
+    pub text: Text,
     pub fg: Fg,
     pub bg: Bg,
     pub flags: Flags,
 }
 
-impl<Str: AsRef<str>> Display for Colored<Str> {
+impl<Text: AsRef<str>> Display for Colored<Text> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         unsafe { log(self.text.as_ref(), self.fg, self.bg, self.flags, f) }
     }
@@ -246,6 +246,7 @@ const HELP_BG: Bg = Bg::Default;
 const HELP_FLAGS: Flags = Flag::Bold;
 
 #[rustfmt::skip] pub(crate) static VERSION: Colored<&str> = Colored { text: env!("CARGO_PKG_VERSION"), fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+#[rustfmt::skip] pub(crate) static USAGE:   Colored<&str> = Colored { text: "Usage",                   fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
 #[rustfmt::skip] pub(crate) static OPTIONS: Colored<&str> = Colored { text: "Options",                 fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
 #[rustfmt::skip] pub(crate) static COMMAND: Colored<&str> = Colored { text: "Command",                 fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
 #[rustfmt::skip] pub(crate) static MODE:    Colored<&str> = Colored { text: "mode",                    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
@@ -294,24 +295,7 @@ const BAR_FLAGS: Flags = Flag::Bold;
 #[rustfmt::skip] pub(crate) static AT:    Colored<&str> = Colored { text: "at",    fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 #[rustfmt::skip] pub(crate) static BAR:   Colored<&str> = Colored { text: "|",     fg: BAR_FG, bg: BAR_BG, flags: BAR_FLAGS };
 
-fn done(start_time: Instant, step: &Colored<&str>, indent: usize, padding: usize) {
-    let elapsed_time = Colored {
-        text: format!("{}s", start_time.elapsed().as_secs_f32()),
-        fg: Fg::White,
-        ..Default::default()
-    };
-
-    eprintln!(
-        "{spaces:indent$}{step:>padding$}: in {elapsed}",
-        spaces = "",
-        elapsed = elapsed_time
-    );
-}
-
-pub struct Step {
-    pub start_time: Instant,
-    pub verbosity: Verbosity,
-}
+pub struct Step;
 
 impl Step {
     pub fn info(step: &Colored<&str>, path: &FilePath, verbosity: Verbosity) {
@@ -322,31 +306,33 @@ impl Step {
         eprintln!(
             "{spaces:STEP_INDENT$}{step:>STEP_PADDING$}: {path}",
             spaces = "",
-            path = path.inner.display()
+            path = path.display()
         );
     }
 
-    pub fn done(self) {
-        if let Verbosity::Quiet = self.verbosity {
-            return;
-        }
+    fn done<Text: AsRef<str>>(start_time: Instant, step: &Colored<Text>, indent: usize, padding: usize) {
+        let elapsed_time = Colored {
+            text: format!("{}s", start_time.elapsed().as_secs_f32()),
+            fg: Fg::White,
+            ..Default::default()
+        };
 
-        done(self.start_time, &DONE, STEP_INDENT, STEP_PADDING);
+        eprintln!("{spaces:indent$}{step:>padding$}: in {elapsed_time}", spaces = "");
     }
-}
 
-pub struct SubStep {
-    pub step: &'static Colored<&'static str>,
-    pub start_time: Instant,
-    pub verbosity: Verbosity,
-}
-
-impl SubStep {
-    pub fn done(self) {
-        if let Verbosity::Quiet | Verbosity::Normal = self.verbosity {
+    pub fn step_done(start_time: Instant, verbosity: Verbosity) {
+        if let Verbosity::Quiet = verbosity {
             return;
         }
 
-        done(self.start_time, self.step, SUBSTEP_INDENT, SUBSTEP_PADDING);
+        Self::done(start_time, &DONE, STEP_INDENT, STEP_PADDING);
+    }
+
+    pub fn sub_step_done<Text: AsRef<str>>(start_time: Instant, sub_step: &Colored<Text>, verbosity: Verbosity) {
+        if let Verbosity::Quiet | Verbosity::Normal = verbosity {
+            return;
+        }
+
+        Self::done(start_time, sub_step, SUBSTEP_INDENT, SUBSTEP_PADDING);
     }
 }
