@@ -38,12 +38,13 @@ Changes to error messages, help message and alike would **not** be considered br
 - String and Array comparison operators (i.e.: `<=>`, `==`, `!=`, `<`, `<=`, `>`, `>=`)
 - Raw string literals: `r"hello\nworld"` where `\n` would not get escaped
 - Printing to `stderr`: `eprint` and `eprintln` keywords
+- `help` and `version` command line arguments
 
 ### Changed
 
-- Internal code style consistency
 - Improved code generation
-- Updated consistency of help message
+- Improved error messages
+- Allowed non utf-8 paths in cli arguments
 - `run` command now returns the exit code of the executed program
 - Runtime crashes now print to `stderr`
 - `compile` command now returns the exit code of the assembler and linker in the case of a failure

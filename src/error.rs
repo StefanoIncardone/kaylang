@@ -49,7 +49,7 @@ impl<'src, K: SyntaxErrorKind, C: SyntaxErrorCause> SyntaxError<'src, K, C> {
 
 impl<K: SyntaxErrorKind, C: SyntaxErrorCause> Display for SyntaxError<'_, K, C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let error_msg = Colored {
+        let msg = Colored {
             text: &self.kind.to_string(),
             fg: Fg::White,
             bg: Bg::Default,
@@ -76,7 +76,7 @@ impl<K: SyntaxErrorKind, C: SyntaxErrorCause> Display for SyntaxError<'_, K, C> 
 
         write!(
             f,
-            "{ERROR}: {error_msg}\
+            "{ERROR}: {msg}\
             \n{AT:>at_padding$}: {path}:{line}:{col}\
             \n{BAR:>line_number_padding$}\
             \n{line_number} {BAR} {line_text}\

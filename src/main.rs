@@ -1,6 +1,6 @@
 use kaylang::{
     artifacts::Artifacts, ast::Ast, cli::Args, compiler::Compiler, src_file::SrcFile,
-    tokenizer::Tokenizer, Help, RunMode, Step, SubStep, Version, ASSEMBLING, BUILDING_AST,
+    tokenizer::Tokenizer, Help, Command, Step, SubStep, Version, ASSEMBLING, BUILDING_AST,
     CHECKING, COMPILING, GENERATING_ASM, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE,
     TOKENIZATION,
 };
@@ -16,7 +16,7 @@ fn main() -> ExitCode {
     // args.push( "examples/out".to_string() );
     // args.push( "-V".to_string() );
 
-    let Args { color, verbosity, run_mode } = match Args::try_from(args) {
+    let Args { color, verbosity, command } = match Args::try_from(args) {
         Ok(args) => args,
         Err(err) => {
             eprintln!("{err}");
@@ -26,18 +26,18 @@ fn main() -> ExitCode {
 
     color.set(&std::io::stderr());
 
-    match &run_mode {
-        RunMode::Version => {
+    match &command {
+        Command::Version => {
             println!("{}", Version { color });
             return ExitCode::SUCCESS;
         }
-        RunMode::Help => {
+        Command::Help => {
             println!("{}", Help { color });
             return ExitCode::SUCCESS;
         }
-        RunMode::Check { src_path }
-        | RunMode::Compile { src_path, .. }
-        | RunMode::Run { src_path, .. } => {
+        Command::Check { src_path }
+        | Command::Compile { src_path, .. }
+        | Command::Run { src_path, .. } => {
             let execution_step = Step { start_time: Instant::now(), verbosity };
 
             Step::info(&CHECKING, src_path, verbosity);
@@ -63,10 +63,12 @@ fn main() -> ExitCode {
             let tokens = match lexer_result {
                 Ok(tokens) => tokens,
                 Err(errors) => {
-                    eprintln!();
-                    for err in errors {
+                    let mut errors_iter = errors.into_iter();
+                    let last_err = errors_iter.next_back().unwrap();
+                    for err in errors_iter {
                         eprintln!("{err}\n");
                     }
+                    eprintln!("{last_err}");
                     return ExitCode::FAILURE;
                 }
             };
@@ -78,17 +80,19 @@ fn main() -> ExitCode {
             let ast = match ast_building_result {
                 Ok(ast) => ast,
                 Err(errors) => {
-                    eprintln!();
-                    for err in errors {
+                    let mut errors_iter = errors.into_iter();
+                    let last_err = errors_iter.next_back().unwrap();
+                    for err in errors_iter {
                         eprintln!("{err}\n");
                     }
+                    eprintln!("{last_err}");
                     return ExitCode::FAILURE;
                 }
             };
 
             checking_sub_step.done();
 
-            let (RunMode::Compile { out_path, .. } | RunMode::Run { out_path, .. }) = &run_mode
+            let (Command::Compile { out_path, .. } | Command::Run { out_path, .. }) = &command
             else {
                 execution_step.done();
                 return ExitCode::SUCCESS;
@@ -154,7 +158,7 @@ fn main() -> ExitCode {
             compilation_sub_step.done();
             execution_step.done();
 
-            if let RunMode::Run { .. } = run_mode {
+            if let Command::Run { .. } = command {
                 Step::info(&RUNNING, &artifacts.exe_path, verbosity);
 
                 let mut run_command = artifacts.runner();
@@ -240,10 +244,12 @@ mod tests {
             let tokens = match lexer_result {
                 Ok(tokens) => tokens,
                 Err(errors) => {
-                    eprintln!();
-                    for err in errors {
+                    let mut errors_iter = errors.into_iter();
+                    let last_err = errors_iter.next_back().unwrap();
+                    for err in errors_iter {
                         eprintln!("{err}\n");
                     }
+                    eprintln!("{last_err}");
                     return Ok(ExitCode::FAILURE);
                 }
             };
@@ -255,10 +261,12 @@ mod tests {
             let ast = match ast_building_result {
                 Ok(ast) => ast,
                 Err(errors) => {
-                    eprintln!();
-                    for err in errors {
+                    let mut errors_iter = errors.into_iter();
+                    let last_err = errors_iter.next_back().unwrap();
+                    for err in errors_iter {
                         eprintln!("{err}\n");
                     }
+                    eprintln!("{last_err}");
                     return Ok(ExitCode::FAILURE);
                 }
             };

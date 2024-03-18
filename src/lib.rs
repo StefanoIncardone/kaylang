@@ -26,7 +26,7 @@ pub enum Verbosity {
 }
 
 #[derive(Debug, Default, Clone)]
-pub enum RunMode {
+pub enum Command {
     #[default]
     Help,
     Version,
@@ -69,19 +69,19 @@ impl Display for Help {
 Usage: kay [{OPTIONS}] [{COMMAND}]
 
 {OPTIONS}:
--h, --help            Display this message (selected when no other run commands are provided)
--v, --version         Display the compiler version
--c, --color <{MODE}>    Wether to display colored output ({MODE}: auto (default), never, always)
--q, --quiet           Don't display any diagnostic messages
--V, --verbose         Display extra diagnostic messages
+    -c, --color <{MODE}>    Wether to display colored output ({MODE}: auto (default), never, always)
+    -q, --quiet           Don't display any diagnostic messages
+    -V, --verbose         Display extra diagnostic messages
 
 {COMMAND}s:
-check    <{FILE}>              Check the source code for correctness
-compile  <{FILE}> [{OUTPUT}]     Compile the source code down to an executable
-run      <{FILE}> [{OUTPUT}]     Compile and run the generated executable
+    help,    -h, --help         Display this message (default)
+    version, -v, --version      Display the compiler version
+    check    <{FILE}>             Check the source code for correctness
+    compile  <{FILE}> [{OUTPUT}]    Compile the source code down to an executable
+    run      <{FILE}> [{OUTPUT}]    Compile and run the generated executable
 
 {OUTPUT}:
--o, --output <{PATH}>       Folder to populate with compilation artifacts (.asm, .o, executable) (default: '.')",
+    -o, --output <{PATH}>   Folder to populate with compilation artifacts (.asm, .o, executable) (default: '.')",
             version = Version { color: self.color }
         )
     }
