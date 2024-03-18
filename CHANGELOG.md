@@ -32,34 +32,34 @@ Changes to error messages, help message and alike would **not** be considered br
 - `+` as the unary absolute value operator
 - Raw string literals: `r"hello\nworld"` where `\n` would not get escaped
 - Printing to `stderr`: `eprint` and `eprintln` keywords
-- `help` and `version` command line arguments
+- `help` and `version` commands
 
 ### Changed
 
-- Improved code generation
+- Improved generated asm code
+- Runtime crashes now print to `stderr`
+- **BREAKING**: `<=>` now has the same precedence as `==`, `!=`, `<`, `<=`, `>`, `>=` operators
+- **BREAKING**: `char` type renamed to `ascii`
 - Improved error messages
 - Allowed non utf-8 paths in cli arguments
 - `run` command now returns the exit code of the executed program
-- Runtime crashes now print to `stderr`
 - `compile` command now returns the exit code of the assembler and linker in the case of a failure
 - **BREAKING**: Split `Error`s into `ErrorKind` and `ErrorCause`
-- **BREAKING**: Updated consistency of compilation steps names and variables
 - **BREAKING**: `Tokenizer::tokenize` and `Ast::build` now return a `SyntaxErrors` struct as an
     iterator over lightweight `RawSyntaxError`s that lazily construct full `SyntaxError`s
-- **BREAKING**: `char` type renamed to `ascii`
 - **BREAKING**: Specialized paths to be `FilePath` or `DirPath` structs to improve type safety.
 - **BREAKING**: `Compiler::compile` no longer returns an `Artifacts` struct, it is instead
     constructed beforehand and is now required in compilation steps instead of generic `PathBuf`s
+- **BREAKING**: Updated consistency of compilation steps names and static variables
 - **BREAKING**: Compilation steps are now `Step` associated functions `step_done` and `sub_step_done`
-- **BREAKING**: `<=>` now has the same precedence as `==`, `!=`, `<`, `<=`, `>`, `>=` operators
 
 ### Removed
 
 - `Error`, `ColoredString` and `ColoredStr` type aliases, to allow for more explicit type signatures
 - Module specific `*Error` and `*ErrorInfo` structs
 - `color` and `logging` module inlined inside the root module
-- `assembler`, `linker` and `run` modules integrated in the new `artifacts` module
-- `Assembler::assemble`, `Linker::link` and `Run::run` are now substituted by
+- `assembler`, `linker` and `run` modules integrated in the new `artifacts` module.
+    `Assembler::assemble`, `Linker::link` and `Run::run` are now substituted by
     `Artifacts::assembler`, `Artifacts::linker` and `Artifacts::runner` member functions and now
     return the relative `std::process::Command` to allow for finer control
 
