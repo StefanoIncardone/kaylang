@@ -6,62 +6,10 @@
 
 From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProjects/bldaps_for/common/bldaps_under_inpext.htm#:~:text=Typical%20Fortran%20source%20files%20have,f.)
 
-## Loops/ifs/switches
+## Loops/ifs
 
-- loops and ifs similar to Odin's [for loops](https://odin-lang.org/docs/overview/#for-statement) and [if statements](https://odin-lang.org/docs/overview/#if-statement)
-
-### do keyword replaced by `->`
-
-```kay
-var i = 1;
-loop i < 100 {
-    if i % 15 == 0     do println "fizzbuz";
-    else if i % 3 == 0 do println "fizz";
-    else if i % 5 == 0 do println "buzz";
-    else               do println i;
-
-    i += 1;
-}
-```
-
-becomes:
-
-```kay
-var i = 1;
-loop i < 100 {
-    if i % 15 == 0     -> println "fizzbuz";
-    else if i % 3 == 0 -> println "fizz";
-    else if i % 5 == 0 -> println "buzz";
-    else               -> println i;
-
-    i += 1;
-}
-```
-
-debate whether to allow blocks after single statements or continue forbidding it:
-
-```kay
-if condition -> println "true";
-
-if condition {
-    println "true";
-}
-
-if condition -> { # debate wheter this should continue to be disallowed
-    println "true";
-}
-```
-
-Debate wheter to keep this keyword/operator or just remove it.
-when "for" loops are going to get implemented, debate whether to disallow the following
-
-```kay
-loop var i = 1; i < 100; i += 1 ->
-    if i % 15 == 0     -> println "fizzbuz";
-    else if i % 3 == 0 -> println "fizz";
-    else if i % 5 == 0 -> println "buzz";
-    else               -> println i;
-```
+- loops similar to Odin's [for loops](https://odin-lang.org/docs/overview/#for-statement)
+- ifs similar to Odin's [if statements](https://odin-lang.org/docs/overview/#if-statement)
 
 ### switch statements
 
@@ -335,19 +283,12 @@ let ok = match answer {
 
 ## Operators
 
-add [Zig inspired arithmetic operators](https://ziglang.org/documentation/master/#Operators)
-
-### Unchecked/Checked
-
+- add [Zig inspired arithmetic operators](https://ziglang.org/documentation/master/#Operators)
 - unchecked (+, -, /, ...): overflow will wrap, division by zero will crash
 - checked (++, --, //, ...):
     - overflow/underflow may return both the result and the overflow of the addition
     - division will return either the result or an error value
-- maybe have a compiler flag to use checked/unchecked operators
 - maybe have them as built-in operators or just implement them as functions
-
-### New ones
-
 - divmod:
 
     ```kay
@@ -416,13 +357,7 @@ let codes: int[19] = [
     0 = 9,
     3..18 = 3, # elements from index 3 to index 18 will contain the value 3
     42 = 7, # error, out of bounds
-    ]
-```
-
-and expand on them:
-
-```kay
-let codes: int[19] = [0] # every element will contain the value 0
+];
 ```
 
 ## Dynamic array (Lists)
@@ -526,7 +461,7 @@ fn mimatch_index: uint? = str_array_eq[T: type, N: uint](dst: T[N]*, src: T[N]*)
 
 ## Structs
 
-structs are just an aggregation of types:
+structs are just an aggregation of types, basically named heterogeneous arrays:
 
 ```kay
 struct RBG {
@@ -546,6 +481,94 @@ let rgb: RGB = { r = 255, g = 255, b = 255 };
 
 # or specifying the arguments in order
 let rgb = RGB { 255, 255, 255 };
+```
+
+### alternative syntax
+
+using round brackets instead of curly brackets for ease of use and consistency with function calls
+
+```kay
+struct RGB (
+    r: u8,
+    g: u8,
+    b: u8,
+)
+
+# maybe this can stay as curly brackets
+struct RGB {
+    r: u8,
+    g: u8,
+    b: u8,
+}
+
+let rgb = RGB(r = 255, g = 255, b = 255);
+
+# say we now create a constructor function 
+impl RGB {
+    fn Self = new(r: u8, g: u8, b: u8) {
+        # the StructName(...) "function" is like an implicit constructor function
+        return Self(r, g, b); # round backets
+    }
+}
+
+# no need to convert from curly brackets to round brackets
+let rgb = RGB.new(r = 255, g = 255, b = 255); # using '.' instead of '::'
+```
+
+#### comparison to rust
+
+```rust
+struct RGB {
+    r: u8,
+    g: u8,
+    b: u8,
+}
+
+impl RGB {
+    fn new(r: u8, g: u8, b: u8) -> Self {
+        Self { r, g, b }
+    }
+}
+
+// with the struct initialization syntax
+// - can use named 'arguments'
+let rgb = RGB { r: 255, g: 255, b: 255 }
+
+// with the 'constructor' function
+// - complete syntax change
+// - had to convert curly brackets to round brackets
+// - had to remove named arguments
+let rgb = RGB::new(255, 255, 255);
+```
+
+### Rust-like tuple structs
+
+basically structs whith unnamed fields (referred to by index)
+
+named tuples:
+
+```kay
+struct Point { int, int };
+
+let point = Point { 19, 21 };
+
+let x = point.0; # Point { 19, 21 }
+                 #         ^^  ^^
+                 # index:  0   1
+
+let y = point.1;
+```
+
+name-less tuples:
+
+```kay
+let stefano: { string, int } = { "stefano", 23 };
+
+# type can be omitted and therefore inferred
+let stefano = { "stefano", 23 };
+
+let name = stefano.0;
+let age = stefano.1;
 ```
 
 ### Inheritance
@@ -579,11 +602,47 @@ struct RGBA {
     a: u8,
 }
 
-# Multiple extension are not allowed
+# 'using' the same struct multiple times is not allowed
 struct RGBA {
     rgb: using RGB,
     rgb2: using RGB, # not allowed
     a: u8
+}
+
+# but 'using' multiple different struct is
+struct Point {
+    x: int,
+    y: int,
+}
+
+struct Pixel {
+    rgba: using RGBA,
+    position: using Point,
+}
+
+# which is equivalent to 
+struct Pixel {
+    union {
+        rgba: RGBA,
+        struct {
+            union {
+                rgb: RGBA,
+                struct {
+                    r: u8,
+                    g: u8,
+                    b: u8,
+                },
+            },
+            a: u8,
+        }
+    },
+    union {
+        position: Point,
+        struct {
+            x: int,
+            y: int,
+        },
+    },
 }
 
 let rgb = RGB { r = 255, g = 255, b = 255 };
@@ -612,6 +671,12 @@ function_for_RGB(rgba);
 
 # is desugared to
 function_for_RGB(rgba.rgb);
+
+# and
+function_for_rgb(pixel);
+
+# is desugared to
+function_for_RGB(pixel.rgba.rgb);
 ```
 
 if we dont explicity extend inside a struct it's going to result in an error
@@ -649,25 +714,31 @@ enum Colors: u32 { # optional data type
 
 ## Unions
 
-Rust-like collection of variants:
+C-like unions:
 
 ```kay
-union Statement {
-    Empty,
-    Single(Node),
-    Multiple(Node[]),
+union RGBA {
+    struct {
+        r: u8,
+        g: u8,
+        b: u8,
+        a: u8,
+    }
+
+    rgba: u32,
 }
 ```
 
-## tuples
+## Enum unions
 
-basically name-less structs:
+Rust-like collection of variants:
 
 ```kay
-let red = (255, 0, 0);
-let r = red.0;
-let g = red.1;
-let b = red.2;
+enum union Statement: u8 { # optional discriminant type
+    Empty,
+    Single { Node },
+    Multiple { Node[] },
+}
 ```
 
 ## Pointers

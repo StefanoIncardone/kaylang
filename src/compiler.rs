@@ -1687,6 +1687,21 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         op: Op,
         rhs: &'ast Expression<'src>,
     ) -> (Dst, Dst, Cow<'static, str>) {
+        // IDEA(stefano): string/array comparison operators could also return the index where
+        // the mismatch occured, since repe CMPcc stops at
+        // mismatch_index @rdx = len @rdx - reverse_mismatch_index @rcx - 1, so:
+        //
+        // repe cmpsq
+        // mov rdi, false
+        // setz dil
+        //
+        // would become this:
+        //
+        // repe cmpsq
+        // mov rdi, false
+        // setz dil
+        // sub rdx, rcx
+        // dec rdx
         match (lhs.typ(), rhs.typ()) {
             (Type::Str, Type::Str) => match op {
                 Op::EqualsEquals => (
@@ -2310,21 +2325,6 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             },
             // NOTE(stefano): hard-coding the first and second operand until a better way to manage
             // dst and src are developed
-            // NOTE(stefano): string/array comparisons functions could also return the index where
-            // the mismatch occured, since repe CMPcc stops at
-            // mismatch_index @rdx = len @rdx - reverse_mismatch_index @rcx - 1, so:
-            //
-            // repe cmpsq
-            // mov rdi, false
-            // setz dil
-            //
-            // would become this:
-            //
-            // repe cmpsq
-            // mov rdi, false
-            // setz dil
-            // sub rdx, rcx
-            // dec rdx
             Expression::Binary { lhs, op_position, op, rhs } => {
                 let (lhs_dst, rhs_dst, op_asm) =
                     Self::binary_expression_dst_and_asm(lhs, *op_position, *op, rhs);

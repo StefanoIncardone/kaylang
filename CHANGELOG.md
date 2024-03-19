@@ -70,6 +70,7 @@ Changes to error messages, help message and alike would **not** be considered br
 - Bug in crash error messages printing
 - Checking if a file or a directory were given when the opposite was expected is now checked during
     cli arguments parsing
+- Bug in parsing of do-loop statements
 
 
 ## 0.5.3 - 2024-03-02

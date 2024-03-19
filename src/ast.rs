@@ -1372,7 +1372,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             if is_chained {
                 return Err(RawSyntaxError {
                     kind: ErrorKind::Invalid(Statement::Expression),
-                    cause: ErrorCause::ChainedComparison,
+                    cause: ErrorCause::CannotChainComparisons,
                     col: op_token.col,
                     len: op_token.kind.src_code_len(),
                 });
@@ -1865,12 +1865,24 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     }
 }
 
-// for statements
+// loop statements
 impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn loop_statement(&mut self) -> Result<Node<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
         let do_token = &self.tokens[self.token];
         let loop_token = match do_token.kind {
-            TokenKind::Do => self.next_token_bounded(Expected::LoopStatement)?,
+            TokenKind::Do => {
+                let loop_token = self.next_token_bounded(Expected::LoopStatement)?;
+                if let TokenKind::Loop = loop_token.kind {
+                    loop_token
+                } else {
+                    return Err(RawSyntaxError {
+                        kind: ErrorKind::Invalid(Statement::Loop),
+                        cause: ErrorCause::MustBeFollowedByLoop,
+                        col: do_token.col,
+                        len: do_token.kind.src_code_len(),
+                    });
+                }
+            }
             _ => do_token,
         };
 
@@ -2061,7 +2073,6 @@ pub enum ErrorCause {
     NotAllowedIn { not_allowed: Statement, in_: Statement },
     TemporaryArrayNotSupportedYet,
     NestedArrayNotSupportedYet,
-    CannotIndexNonArrayType(Type),
     EmptyExpression,
     UnclosedBracket(BracketKind),
     MismatchedArrayElementType { expected: Type, actual: Type },
@@ -2079,11 +2090,12 @@ pub enum ErrorCause {
     CannotTakeAbsValueOfBoolean,
     CannotTakeAbsValueOfString,
     CannotTakeAbsValueOfArray,
+    CannotMutateImmutableVariable,
+    CannotChainComparisons,
+    CannotIndexNonArrayType(Type),
+    CannotCompareOperands { lhs_typ: Type, rhs_typ: Type },
 
     KeywordInExpression,
-    ChainedComparison,
-    CannotCompareOperands { lhs_typ: Type, rhs_typ: Type },
-    CannotMutateImmutableVariable,
     VariableDefinitionTypeMismatch { expected: Type, actual: Type },
     VariableAssignmentTypeMismatch { expected: Type, actual: Type },
 
@@ -2092,6 +2104,7 @@ pub enum ErrorCause {
     MustBeFollowedByDoOrBlockOrIfStatement,
     MustBeFollowedByIntegerExpression,
     MustBeFollowedByClosingSquareBracket,
+    MustBeFollowedByLoop,
 
     ExpectedOperand,
     ExpectedTypeName,
@@ -2164,7 +2177,7 @@ impl Display for ErrorCause {
             Self::CannotTakeAbsValueOfArray => write!(f, "cannot take the absolute of an array"),
             Self::KeywordInExpression => write!(f, "cannot be a keyword"),
             Self::ExpectedOperand => write!(f, "expected expression operand before this token"),
-            Self::ChainedComparison => write!(f, "comparison operators cannot be chained"),
+            Self::CannotChainComparisons => write!(f, "comparison operators cannot be chained"),
             Self::NonBooleanLeftOperand => write!(f, "must be preceded by a boolean expression"),
             Self::NonBooleanRightOperand => write!(f, "must be followed by a boolean expression"),
             Self::CannotCompareOperands { lhs_typ, rhs_typ } => {
@@ -2199,6 +2212,9 @@ impl Display for ErrorCause {
             }
             Self::MustBeFollowedByDoOrBlockOrIfStatement => {
                 write!(f, "must be followed by a do statement, a block or an if statement")
+            }
+            Self::MustBeFollowedByLoop => {
+                write!(f, "must be followed by a loop statement")
             }
         }
     }
