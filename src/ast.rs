@@ -154,7 +154,7 @@ impl TypeOf for Op {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub(crate) enum Expression<'src> {
     Literal(Literal),
     Unary {
@@ -183,12 +183,12 @@ pub(crate) enum Expression<'src> {
     },
 }
 
-impl Debug for Expression<'_> {
+impl Display for Expression<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Literal(literal) => write!(f, "{literal}"),
-            Self::Unary { op, operand } => write!(f, "{op}{operand:?}"),
-            Self::Binary { lhs, op, rhs, .. } => write!(f, "({lhs:?} {op} {rhs:?})"),
+            Self::Unary { op, operand } => write!(f, "{op}{operand}"),
+            Self::Binary { lhs, op, rhs, .. } => write!(f, "({lhs} {op} {rhs})"),
             Self::Identifier { name, .. } => write!(f, "{name}"),
             Self::Array { items, .. } => {
                 write!(f, "[")?;
@@ -196,14 +196,14 @@ impl Debug for Expression<'_> {
                     let mut items_iter = items.iter();
                     let last = items_iter.next_back().unwrap(); // we have already checked for a non empty array
                     for item in items_iter {
-                        write!(f, "{item:?}, ")?;
+                        write!(f, "{item}, ")?;
                     }
 
-                    write!(f, "{last:?}")?;
+                    write!(f, "{last}")?;
                 }
                 write!(f, "]")
             }
-            Self::ArrayIndex { var_name, index, .. } => write!(f, "{var_name}[{index:?}]"),
+            Self::ArrayIndex { var_name, index, .. } => write!(f, "{var_name}[{index}]"),
         }
     }
 }
@@ -268,25 +268,24 @@ pub(crate) struct If<'src> {
     pub(crate) els: Option<Box<Node<'src>>>,
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-pub(crate) enum LoopCondition<'src> {
-    Loop(Expression<'src>),
-    DoLoop(Expression<'src>),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LoopKind {
+    Loop,
+    DoLoop,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) struct Loop<'src> {
-    pub(crate) condition: LoopCondition<'src>,
+    pub(crate) kind: LoopKind,
+    pub(crate) condition: Expression<'src>,
     pub(crate) statement: Box<Node<'src>>,
 }
 
 impl Display for Loop<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.condition {
-            LoopCondition::Loop(condition) => write!(f, "loop {condition:?}"),
-            LoopCondition::DoLoop(condition) => write!(f, "do loop {condition:?}"),
+        match &self.kind {
+            LoopKind::Loop => write!(f, "loop {}", self.condition),
+            LoopKind::DoLoop => write!(f, "do loop {}", self.condition),
         }
     }
 }
@@ -318,12 +317,12 @@ impl Display for Node<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Semicolon => write!(f, ";"),
-            Self::Expression(expression) => write!(f, "{expression:?}"),
-            Self::Print(arg) => write!(f, "print {arg:?}"),
-            Self::Println(Some(arg)) => write!(f, "println {arg:?}"),
+            Self::Expression(expression) => write!(f, "{expression}"),
+            Self::Print(arg) => write!(f, "print {arg}"),
+            Self::Println(Some(arg)) => write!(f, "println {arg}"),
             Self::Println(None) => write!(f, "println"),
-            Self::Eprint(arg) => write!(f, "eprint {arg:?}"),
-            Self::Eprintln(Some(arg)) => write!(f, "eprintln {arg:?}"),
+            Self::Eprint(arg) => write!(f, "eprint {arg}"),
+            Self::Eprintln(Some(arg)) => write!(f, "eprintln {arg}"),
             Self::Eprintln(None) => write!(f, "eprintln"),
             Self::If(iff) => write!(f, "{}", iff.ifs[0]),
             Self::Loop(looop) => write!(f, "{looop}"),
@@ -1924,13 +1923,13 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         let condition = condition?;
         let statement = statement?;
-        let condition = if let TokenKind::Do = do_token.kind {
-            LoopCondition::DoLoop(condition)
+        let kind = if let TokenKind::Do = do_token.kind {
+            LoopKind::DoLoop
         } else {
-            LoopCondition::Loop(condition)
+            LoopKind::Loop
         };
 
-        Ok(Node::Loop(Loop { condition, statement: Box::new(statement) }))
+        Ok(Node::Loop(Loop { kind, condition, statement: Box::new(statement) }))
     }
 }
 

@@ -53,6 +53,29 @@ case 19 {
     println "too bad";
 }
 
+# alternative switch statement:
+# - 1 level of indentation
+# - two keywords plus the two from before: `if`, `else`, `switch`, `case`
+#   - possibly a `fall` keyword to specify a fallthrough case
+# - same semantics as a regular if statement
+#   - every case is like an `else if` branch
+#   - it's basically just syntactic sugar
+# - actually less code
+# - requires minimal structural changes and refactoring:
+#   - replace the first `if` keyword with the `switch` keyword
+#   - replace the first `==` and the rest of the `else if answer ==` with a `case`
+#   - keep the `else` keyword for the 'default' case
+switch answer
+case 19 {
+    println "lucky";
+} case 21 {
+    println "you stoopid";
+} case 42 {
+    println "that's the right answer";
+} else {
+    println "too bad";
+}
+
 # pattern matching:
 # - short and concise
 # - can declare mutability modifiers `let` or `var` on matched values
@@ -439,11 +462,11 @@ let s5 = "aldo";
 let b = ["hello", "from", "kay"];
 let a = ["hello", "from", "stefano"];
 
-if array_eq(a, b)
+if array_eq(a, b) is
 case let mismatch: none do println("equals"); # would not be reached since there was a mismatch
 else let mismatch: uint do println(f"mismatch at index {mismatch}"); # mismatch would have the value of 2
 
-fn mimatch_index: uint? = str_array_eq[T: type, N: uint](dst: T[N]*, src: T[N]*) {
+fn mimatch_index: uint? = array_eq[T: type, N: uint](dst: T[N]*, src: T[N]*) {
     loop var i = N; i > 0; i -= 1 {
         if dst* != src* {
             return i;

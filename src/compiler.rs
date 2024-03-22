@@ -4,7 +4,7 @@
 
 use crate::{
     artifacts::Artifacts,
-    ast::{self, Expression, IfStatement, LoopCondition, Node, Scope, Type, TypeOf},
+    ast::{self, Expression, IfStatement, LoopKind, Node, Scope, Type, TypeOf},
     cli::FilePath,
     src_file::{Position, SrcFile},
     tokenizer::{ascii, Literal, Op},
@@ -1568,9 +1568,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.loop_counter += 1;
 
                 self.asm += &format!("{loop_tag}:; {looop}\n");
-                match &looop.condition {
-                    LoopCondition::Loop(condition) => {
-                        self.condition(condition, &loop_end_tag);
+                match looop.kind {
+                    LoopKind::Loop => {
+                        self.condition(&looop.condition, &loop_end_tag);
                         self.node(&looop.statement);
 
                         self.asm += &format!(
@@ -1578,9 +1578,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             \n{loop_end_tag}:\n\n"
                         );
                     }
-                    LoopCondition::DoLoop(condition) => {
+                    LoopKind::DoLoop => {
                         self.node(&looop.statement);
-                        self.condition_reversed(condition, &loop_tag);
+                        self.condition_reversed(&looop.condition, &loop_tag);
                     }
                 }
 
@@ -1594,7 +1594,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 let var = self.resolve(name);
                 let dst_offset = var.offset;
 
-                self.asm += &format!(" ; {name} = {value:?}\n");
+                self.asm += &format!(" ; {name} = {value}\n");
                 self.assignment(value, dst_offset);
             }
             Node::Assignment { scope_index, var_index, new_value } => {
@@ -1604,7 +1604,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 let var = self.resolve(name);
                 let dst_offset = var.offset;
 
-                self.asm += &format!(" ; {name} = {new_value:?}\n");
+                self.asm += &format!(" ; {name} = {new_value}\n");
                 self.assignment(new_value, dst_offset);
             }
             Node::Scope { index } => self.scope(*index),
@@ -2873,7 +2873,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 // ifs
 impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn iff(&mut self, iff: &'ast IfStatement<'src>, tag: &str, false_tag: &str) {
-        self.asm += &format!("{tag}:; {:?}\n", iff.condition);
+        self.asm += &format!("{tag}:; {}\n", iff.condition);
         self.condition(&iff.condition, false_tag);
         self.node(&iff.statement);
     }
