@@ -1,11 +1,5 @@
-use super::{
-    src_file::{Position, SrcFile},
-    tokenizer::{BracketKind, Literal, Mutability, Op, SrcCodeLen, Token, TokenKind},
-};
-use crate::{
-    error::{RawSyntaxError, SyntaxErrorCause, SyntaxErrorKind, SyntaxErrors},
-    tokenizer::{ascii, int, uint},
-};
+use super::{tokenizer::{ascii, int, uint, BracketKind, Literal, Mutability, Op, SrcCodeLen, Token, TokenKind}, RawSyntaxError, SyntaxErrorCause, SyntaxErrorKind, SyntaxErrors};
+use crate::src_file::{Position, SrcFile};
 use std::fmt::{Debug, Display};
 
 pub(crate) trait TypeOf {

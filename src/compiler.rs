@@ -3,12 +3,7 @@
 // TODO(stefano): introduce intermediate representation
 
 use crate::{
-    artifacts::Artifacts,
-    ast::{self, Expression, IfStatement, LoopKind, Node, Scope, Type, TypeOf},
-    cli::FilePath,
-    src_file::{Position, SrcFile},
-    tokenizer::{ascii, Literal, Op},
-    CAUSE, ERROR,
+    artifacts::Artifacts, cli::FilePath, src_file::{Position, SrcFile}, syntax::{ast::{self, Expression, IfStatement, LoopKind, Node, Scope, Type, TypeOf}, tokenizer::{ascii, Literal, Op}}, CAUSE, ERROR
 };
 use std::{
     borrow::Cow,

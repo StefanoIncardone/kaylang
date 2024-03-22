@@ -1,11 +1,10 @@
-use crate::{
-    error::{RawSyntaxError, SyntaxErrorCause, SyntaxErrorKind, SyntaxErrors},
-    src_file::{Line, SrcFile},
-};
+use crate::src_file::{Line, SrcFile};
 use std::{
     fmt::Display,
     num::{IntErrorKind, ParseIntError},
 };
+
+use super::{RawSyntaxError, SyntaxErrorCause, SyntaxErrorKind, SyntaxErrors};
 
 pub(crate) trait SrcCodeLen {
     fn src_code_len(&self) -> usize;
@@ -77,6 +76,7 @@ impl SrcCodeLen for Literal {
 pub enum Op {
     // unary
     Not,
+    // Plus can also be a unary operator
     // Minus can also be a unary operator
 
     // binary
@@ -94,10 +94,11 @@ pub enum Op {
     BitXor,
     BitOr,
 
-    Compare,
     And,
     Or,
 
+    // comparisons
+    Compare,
     EqualsEquals,
     NotEquals,
     Greater,
@@ -509,10 +510,7 @@ impl<'src> Tokenizer<'src> {
     }
 
     fn next_utf8_char(&mut self) -> Option<utf8> {
-        let Some(next) = self.src.code.as_bytes().get(self.col) else {
-            return None;
-        };
-
+        let next = self.src.code.as_bytes().get(self.col)?;
         match next {
             ascii_ch @ ..=b'\x7F' => {
                 self.col += 1;
@@ -550,10 +548,7 @@ impl<'src> Tokenizer<'src> {
     }
 
     fn peek_next_utf8_char(&mut self) -> Option<utf8> {
-        let Some(next) = self.src.code.as_bytes().get(self.col) else {
-            return None;
-        };
-
+        let next = self.src.code.as_bytes().get(self.col)?;
         match next {
             ascii_ch @ ..=b'\x7F' => Some(*ascii_ch as utf8),
             _utf8_ch => {
