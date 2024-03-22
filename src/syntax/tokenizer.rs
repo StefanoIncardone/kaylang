@@ -1,11 +1,10 @@
-use crate::{
-    error::{RawSyntaxError, SyntaxErrorCause, SyntaxErrorKind, SyntaxErrors},
-    src_file::{Line, SrcFile},
-};
+use crate::src_file::{Line, SrcFile};
 use std::{
     fmt::Display,
     num::{IntErrorKind, ParseIntError},
 };
+
+use super::{RawSyntaxError, SyntaxErrorCause, SyntaxErrorKind, SyntaxErrors};
 
 pub(crate) trait SrcCodeLen {
     fn src_code_len(&self) -> usize;
@@ -77,6 +76,7 @@ impl SrcCodeLen for Literal {
 pub enum Op {
     // unary
     Not,
+    // Plus can also be a unary operator
     // Minus can also be a unary operator
 
     // binary
@@ -94,10 +94,11 @@ pub enum Op {
     BitXor,
     BitOr,
 
-    Compare,
     And,
     Or,
 
+    // comparisons
+    Compare,
     EqualsEquals,
     NotEquals,
     Greater,

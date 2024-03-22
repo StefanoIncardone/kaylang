@@ -1,6 +1,6 @@
 use kaylang::{
-    artifacts::Artifacts, ast::Ast, cli::Args, compiler::Compiler, src_file::SrcFile,
-    tokenizer::Tokenizer, Command, Help, Step, Version, ASSEMBLING, BUILDING_AST, CHECKING,
+    artifacts::Artifacts, syntax::ast::Ast, cli::Args, compiler::Compiler, src_file::SrcFile,
+    syntax::tokenizer::Tokenizer, Command, Help, Step, Version, ASSEMBLING, BUILDING_AST, CHECKING,
     COMPILING, GENERATING_ASM, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
 };
 use std::{env, process::ExitCode, time::Instant};
@@ -176,11 +176,11 @@ fn main() -> ExitCode {
 mod tests {
     use kaylang::{
         artifacts::Artifacts,
-        ast::Ast,
+        syntax::ast::Ast,
         cli::{DirPath, FilePath},
         compiler::Compiler,
         src_file::SrcFile,
-        tokenizer::Tokenizer,
+        syntax::tokenizer::Tokenizer,
         Color, Step, Verbosity, ASSEMBLING, BUILDING_AST, CHECKING, COMPILING, GENERATING_ASM,
         LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
     };

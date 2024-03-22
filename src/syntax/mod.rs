@@ -1,3 +1,7 @@
+pub mod ast;
+pub mod tokenizer;
+pub mod syntax_parser;
+
 use crate::{
     src_file::{Position, SrcFile},
     Bg, Colored, Fg, Flag, AT, BAR, ERROR,

@@ -1,10 +1,8 @@
 pub mod artifacts;
-pub mod ast;
+pub mod syntax;
 pub mod cli;
 pub mod compiler;
-pub mod error;
 pub mod src_file;
-pub mod tokenizer;
 
 use cli::{DirPath, FilePath};
 use std::{fmt::Display, io::IsTerminal, time::Instant};
