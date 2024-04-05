@@ -9,6 +9,6 @@ Makefile
 
 /src/saved_for_later
 
-/examples/features_test.kay
+test*.kay
 # ignoring any non .kay file in subdirectories
-/examples/out
+/out
