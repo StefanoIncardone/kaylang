@@ -487,7 +487,7 @@ fn mimatch_index: uint? = array_eq[T: type, N: uint](dst: T[N]*, src: T[N]*) {
 structs are just an aggregation of types, basically named heterogeneous arrays:
 
 ```kay
-struct RBG {
+struct RGB {
     r: u8,          # type specific default inizialization, which for u8 is 0
     g: u8 = 255,    # explicit default initialization
     b: u8 = ?,      # intentionally uninitialized member, may contain garbage
@@ -525,17 +525,36 @@ struct RGB {
 }
 
 let rgb = RGB(r = 255, g = 255, b = 255);
+```
 
-# say we now create a constructor function 
+### method functions
+
+say we now create a constructor function:
+
+```kay
+# rust-like
 impl RGB {
-    fn Self = new(r: u8, g: u8, b: u8) {
-        # the StructName(...) "function" is like an implicit constructor function
-        return Self(r, g, b); # round backets
-    }
+    # associated function or java's "static" method
+    fn Self = new(...) { ... }
 }
 
+# new ideas:
+
+# no impl-block
+# <RGB> means it's a method of RGB
+fn<RGB> Self = new(...) { ... }
+
+# <RGB> means it's a method of RGB
+# first argument is of type Self, meaning this is a method of a variable of type RGB
+fn<RGB> do_stuff(self: Self, ...) { ... }
+
+# the name of the first parameter could be anything, unlike Rust
+fn<RGB> do_stuff(rgb: Self, ...) { ... }
+
 # no need to convert from curly brackets to round brackets
-let rgb = RGB.new(r = 255, g = 255, b = 255); # using '.' instead of '::'
+let rgb = RGB.new(...);
+
+rgb.do_stuff();
 ```
 
 #### comparison to rust
@@ -927,7 +946,7 @@ check for the type of the object by itself
 
 maybe optionally enable true dynamic dispatch on demand with v-tables and stuff
 
-## MATLAB-inspired [function](https://www.mathworks.com/help/matlab/ref/function.html) definitions
+## MATLAB-inspired [functions](https://www.mathworks.com/help/matlab/ref/function.html) definitions
 
 ```kay
 # introductory keyword

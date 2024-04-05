@@ -6,13 +6,15 @@ use kaylang::{
 use std::{env, process::ExitCode, time::Instant};
 
 fn main() -> ExitCode {
+    // println!("{}", isize::MAX.pow(2));
+
     #[allow(unused_mut)]
     let mut args = env::args().collect::<Vec<String>>();
     // to quickly debug
     // args.push( "run".to_string() );
     // args.push( "examples/features_test.kay".to_string() );
     // args.push( "-o".to_string() );
-    // args.push( "examples/out".to_string() );
+    // args.push( "out".to_string() );
     // args.push( "-V".to_string() );
 
     let Args { color, verbosity, command } = match Args::try_from(args) {
@@ -191,7 +193,7 @@ mod tests {
     fn check_examples() -> Result<ExitCode, io::Error> {
         let verbosity = Verbosity::Normal;
         let color = Color::Auto;
-        let out_path = DirPath::from("examples/out").unwrap();
+        let out_path = DirPath::from("out").unwrap();
 
         color.set(&std::io::stderr());
         color.set(&std::io::stdout());
