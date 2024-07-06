@@ -3,7 +3,7 @@ use crate::{
     src_file::SrcFile,
     CAUSE, ERROR,
 };
-use std::{ffi::OsStr, fmt::Display, io, process::Command};
+use std::{fmt::Display, io, process::Command};
 
 #[derive(Debug)]
 pub struct Artifacts {
@@ -19,13 +19,13 @@ impl Artifacts {
         let mut obj_path: FilePath = unsafe { std::mem::transmute(src.path.with_extension("o")) };
         let mut exe_path: FilePath = unsafe { std::mem::transmute(src.path.with_extension("")) };
 
-        if let Some(out_path) = out_path {
-            match std::fs::create_dir_all(&out_path.inner) {
+        if let Some(out_path_buf) = out_path {
+            match std::fs::create_dir_all(&out_path_buf.inner) {
                 Ok(()) => {}
                 Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
                 Err(err) => {
                     return Err(Error {
-                        kind: ErrorKind::CouldNotCreateOutputDirectory { path: out_path.clone() },
+                        kind: ErrorKind::CouldNotCreateOutputDirectory { path: out_path_buf.clone() },
                         cause: ErrorCause::IoError(err),
                     });
                 }
@@ -35,39 +35,41 @@ impl Artifacts {
             let obj_file_name = unsafe { obj_path.file_name().unwrap_unchecked() };
             let exe_file_name = unsafe { exe_path.file_name().unwrap_unchecked() };
 
-            asm_path.inner = out_path.join(asm_file_name);
-            obj_path.inner = out_path.join(obj_file_name);
-            exe_path.inner = out_path.join(exe_file_name);
+            asm_path.inner = out_path_buf.join(asm_file_name);
+            obj_path.inner = out_path_buf.join(obj_file_name);
+            exe_path.inner = out_path_buf.join(exe_file_name);
         }
 
-        Ok(Self { asm_path, obj_path, exe_path })
+        return Ok(Self { asm_path, obj_path, exe_path });
     }
 
     #[must_use]
     pub fn assembler(&self) -> Command {
         let mut assembler_command = Command::new("nasm");
-        let _ = assembler_command
-            .arg(OsStr::new("-felf64"))
-            .arg(OsStr::new("-gdwarf"))
+        _ = assembler_command
+            .arg("-felf64")
+            .arg("-gdwarf")
+            .arg("-Werror")
+            .arg("-Wall")
             .arg(self.asm_path.as_os_str())
-            .arg(OsStr::new("-o"))
+            .arg("-o")
             .arg(self.obj_path.as_os_str());
-        assembler_command
+        return assembler_command;
     }
 
     #[must_use]
     pub fn linker(&self) -> Command {
         let mut linker_command = Command::new("ld");
-        let _ = linker_command
+        _ = linker_command
             .arg(self.obj_path.as_os_str())
-            .arg(OsStr::new("-o"))
+            .arg("-o")
             .arg(self.exe_path.as_os_str());
-        linker_command
+        return linker_command;
     }
 
     #[must_use]
     pub fn runner(&self) -> Command {
-        Command::new(self.exe_path.as_os_str())
+        return Command::new(self.exe_path.as_os_str());
     }
 }
 
@@ -78,11 +80,11 @@ pub enum ErrorKind {
 
 impl Display for ErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::CouldNotCreateOutputDirectory { path } => {
                 write!(f, "could not create output directory '{}", path.display())
             }
-        }
+        };
     }
 }
 
@@ -93,9 +95,9 @@ pub enum ErrorCause {
 
 impl Display for ErrorCause {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::IoError(err) => write!(f, "{err} ({})", err.kind()),
-        }
+        };
     }
 }
 
@@ -109,12 +111,12 @@ impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
+        return write!(
             f,
             "{ERROR}: {msg}\
             \n{CAUSE}: {cause}",
             msg = self.kind,
             cause = self.cause
-        )
+        );
     }
 }

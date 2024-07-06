@@ -1,13 +1,20 @@
 // TODO(stefano): allow assembly print functions to accept the sink (stdout or stderr)
-// IDEA(stefano): reserve space for the biggest temporary value and reuse as necessary, to allow for stuff like this
-// TODO(stefano): introduce intermediate representation
+// IDEA(stefano): reserve space for the biggest temporary value and reuse as necessary
+// IDEA(stefano): have built-in functions return their result in rdi instead of rax
 
 use crate::{
-    artifacts::Artifacts, cli::FilePath, src_file::{Position, SrcFile}, syntax::{ast::{self, Expression, IfStatement, LoopKind, Node, Scope, Type, TypeOf}, tokenizer::{ascii, Literal, Op}}, CAUSE, ERROR
+    artifacts::Artifacts,
+    cli::FilePath,
+    src_file::{Position, SrcFile},
+    syntax::{
+        ast::{self, Expression, IfStatement, LoopKind, Node, Scope, Type, TypeOf},
+        tokenizer::{ascii, Literal, Op},
+    },
+    CAUSE, ERROR,
 };
 use std::{
     borrow::Cow,
-    fmt::Display,
+    fmt::{Display, Write as _},
     fs::File,
     io::{self, BufWriter, Write},
 };
@@ -38,26 +45,26 @@ enum Reg64 {
 #[rustfmt::skip]
 impl Display for Reg64 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Rax => write!( f, "rax" ),
-            Self::Rbx => write!( f, "rbx" ),
-            Self::Rcx => write!( f, "rcx" ),
-            Self::Rdx => write!( f, "rdx" ),
+        return match self {
+            Self::Rax => write!(f, "rax"),
+            Self::Rbx => write!(f, "rbx"),
+            Self::Rcx => write!(f, "rcx"),
+            Self::Rdx => write!(f, "rdx"),
 
-            Self::Rsi => write!( f, "rsi" ),
-            Self::Rdi => write!( f, "rdi" ),
-            Self::Rbp => write!( f, "rbp" ),
-            Self::Rsp => write!( f, "rsp" ),
+            Self::Rsi => write!(f, "rsi"),
+            Self::Rdi => write!(f, "rdi"),
+            Self::Rbp => write!(f, "rbp"),
+            Self::Rsp => write!(f, "rsp"),
 
-            Self::R8  => write!( f, "r8" ),
-            Self::R9  => write!( f, "r9" ),
-            Self::R10 => write!( f, "r10" ),
-            Self::R11 => write!( f, "r11" ),
-            Self::R12 => write!( f, "r12" ),
-            Self::R13 => write!( f, "r13" ),
-            Self::R14 => write!( f, "r14" ),
-            Self::R15 => write!( f, "r15" ),
-        }
+            Self::R8  => write!(f, "r8"),
+            Self::R9  => write!(f, "r9"),
+            Self::R10 => write!(f, "r10"),
+            Self::R11 => write!(f, "r11"),
+            Self::R12 => write!(f, "r12"),
+            Self::R13 => write!(f, "r13"),
+            Self::R14 => write!(f, "r14"),
+            Self::R15 => write!(f, "r15"),
+        };
     }
 }
 
@@ -87,26 +94,26 @@ enum Reg32 {
 #[rustfmt::skip]
 impl Display for Reg32 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Eax  => write!( f, "eax" ),
-            Self::Ebx  => write!( f, "ebx" ),
-            Self::Ecx  => write!( f, "ecx" ),
-            Self::Edx  => write!( f, "edx" ),
+        return match self {
+            Self::Eax  => write!(f, "eax"),
+            Self::Ebx  => write!(f, "ebx"),
+            Self::Ecx  => write!(f, "ecx"),
+            Self::Edx  => write!(f, "edx"),
 
-            Self::Esi  => write!( f, "esi" ),
-            Self::Edi  => write!( f, "edi" ),
-            Self::Ebp  => write!( f, "ebp" ),
-            Self::Esp  => write!( f, "esp" ),
+            Self::Esi  => write!(f, "esi"),
+            Self::Edi  => write!(f, "edi"),
+            Self::Ebp  => write!(f, "ebp"),
+            Self::Esp  => write!(f, "esp"),
 
-            Self::R8d  => write!( f, "r8d" ),
-            Self::R9d  => write!( f, "r9d" ),
-            Self::R10d => write!( f, "r10d" ),
-            Self::R11d => write!( f, "r11d" ),
-            Self::R12d => write!( f, "r12d" ),
-            Self::R13d => write!( f, "r13d" ),
-            Self::R14d => write!( f, "r14d" ),
-            Self::R15d => write!( f, "r15d" ),
-        }
+            Self::R8d  => write!(f, "r8d"),
+            Self::R9d  => write!(f, "r9d"),
+            Self::R10d => write!(f, "r10d"),
+            Self::R11d => write!(f, "r11d"),
+            Self::R12d => write!(f, "r12d"),
+            Self::R13d => write!(f, "r13d"),
+            Self::R14d => write!(f, "r14d"),
+            Self::R15d => write!(f, "r15d"),
+        };
     }
 }
 
@@ -136,26 +143,26 @@ enum Reg16 {
 #[rustfmt::skip]
 impl Display for Reg16 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Ax   => write!( f, "ax" ),
-            Self::Bx   => write!( f, "bx" ),
-            Self::Cx   => write!( f, "cx" ),
-            Self::Dx   => write!( f, "dx" ),
+        return match self {
+            Self::Ax   => write!(f, "ax"),
+            Self::Bx   => write!(f, "bx"),
+            Self::Cx   => write!(f, "cx"),
+            Self::Dx   => write!(f, "dx"),
 
-            Self::Si   => write!( f, "si" ),
-            Self::Di   => write!( f, "di" ),
-            Self::Bp   => write!( f, "bp" ),
-            Self::Sp   => write!( f, "sp" ),
+            Self::Si   => write!(f, "si"),
+            Self::Di   => write!(f, "di"),
+            Self::Bp   => write!(f, "bp"),
+            Self::Sp   => write!(f, "sp"),
 
-            Self::R8w  => write!( f, "r8w" ),
-            Self::R9w  => write!( f, "r9w" ),
-            Self::R10w => write!( f, "r10w" ),
-            Self::R11w => write!( f, "r11w" ),
-            Self::R12w => write!( f, "r12w" ),
-            Self::R13w => write!( f, "r13w" ),
-            Self::R14w => write!( f, "r14w" ),
-            Self::R15w => write!( f, "r15w" ),
-        }
+            Self::R8w  => write!(f, "r8w"),
+            Self::R9w  => write!(f, "r9w"),
+            Self::R10w => write!(f, "r10w"),
+            Self::R11w => write!(f, "r11w"),
+            Self::R12w => write!(f, "r12w"),
+            Self::R13w => write!(f, "r13w"),
+            Self::R14w => write!(f, "r14w"),
+            Self::R15w => write!(f, "r15w"),
+        };
     }
 }
 
@@ -185,26 +192,26 @@ enum Reg8l {
 #[rustfmt::skip]
 impl Display for Reg8l {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Al   => write!( f, "al" ),
-            Self::Bl   => write!( f, "bl" ),
-            Self::Cl   => write!( f, "cl" ),
-            Self::Dl   => write!( f, "dl" ),
+        return match self {
+            Self::Al   => write!(f, "al"),
+            Self::Bl   => write!(f, "bl"),
+            Self::Cl   => write!(f, "cl"),
+            Self::Dl   => write!(f, "dl"),
 
-            Self::Sil  => write!( f, "sil" ),
-            Self::Dil  => write!( f, "dil" ),
-            Self::Bpl  => write!( f, "bpl" ),
-            Self::Spl  => write!( f, "spl" ),
+            Self::Sil  => write!(f, "sil"),
+            Self::Dil  => write!(f, "dil"),
+            Self::Bpl  => write!(f, "bpl"),
+            Self::Spl  => write!(f, "spl"),
 
-            Self::R8b  => write!( f, "r8b" ),
-            Self::R9b  => write!( f, "r9b" ),
-            Self::R10b => write!( f, "r10b" ),
-            Self::R11b => write!( f, "r11b" ),
-            Self::R12b => write!( f, "r12b" ),
-            Self::R13b => write!( f, "r13b" ),
-            Self::R14b => write!( f, "r14b" ),
-            Self::R15b => write!( f, "r15b" ),
-        }
+            Self::R8b  => write!(f, "r8b"),
+            Self::R9b  => write!(f, "r9b"),
+            Self::R10b => write!(f, "r10b"),
+            Self::R11b => write!(f, "r11b"),
+            Self::R12b => write!(f, "r12b"),
+            Self::R13b => write!(f, "r13b"),
+            Self::R14b => write!(f, "r14b"),
+            Self::R15b => write!(f, "r15b"),
+        };
     }
 }
 
@@ -220,40 +227,40 @@ enum Reg8h {
 #[rustfmt::skip]
 impl Display for Reg8h {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Ah => write!( f, "ah" ),
-            Self::Bh => write!( f, "bh" ),
-            Self::Ch => write!( f, "ch" ),
-            Self::Dh => write!( f, "dh" ),
-        }
+        return match self {
+            Self::Ah => write!(f, "ah"),
+            Self::Bh => write!(f, "bh"),
+            Self::Ch => write!(f, "ch"),
+            Self::Dh => write!(f, "dh"),
+        };
     }
 }
 
 impl Into<Reg32> for Reg64 {
     #[inline(always)]
     fn into(self) -> Reg32 {
-        unsafe { std::mem::transmute(self) }
+        return unsafe { std::mem::transmute(self) };
     }
 }
 
 impl Into<Reg16> for Reg64 {
     #[inline(always)]
     fn into(self) -> Reg16 {
-        unsafe { std::mem::transmute(self) }
+        return unsafe { std::mem::transmute(self) };
     }
 }
 
 impl Into<Reg8l> for Reg64 {
     #[inline(always)]
     fn into(self) -> Reg8l {
-        unsafe { std::mem::transmute(self) }
+        return unsafe { std::mem::transmute(self) };
     }
 }
 
 impl Into<Option<Reg8h>> for Reg64 {
     #[inline(always)]
     fn into(self) -> Option<Reg8h> {
-        match self {
+        return match self {
             Self::Rax | Self::Rbx | Self::Rcx | Self::Rdx => unsafe {
                 Some(std::mem::transmute(self))
             },
@@ -269,35 +276,35 @@ impl Into<Option<Reg8h>> for Reg64 {
             | Self::R13
             | Self::R14
             | Self::R15 => None,
-        }
+        };
     }
 }
 
 impl Into<Reg64> for Reg32 {
     #[inline(always)]
     fn into(self) -> Reg64 {
-        unsafe { std::mem::transmute(self) }
+        return unsafe { std::mem::transmute(self) };
     }
 }
 
 impl Into<Reg16> for Reg32 {
     #[inline(always)]
     fn into(self) -> Reg16 {
-        unsafe { std::mem::transmute(self) }
+        return unsafe { std::mem::transmute(self) };
     }
 }
 
 impl Into<Reg8l> for Reg32 {
     #[inline(always)]
     fn into(self) -> Reg8l {
-        unsafe { std::mem::transmute(self) }
+        return unsafe { std::mem::transmute(self) };
     }
 }
 
 impl Into<Option<Reg8h>> for Reg32 {
     #[inline(always)]
     fn into(self) -> Option<Reg8h> {
-        match self {
+        return match self {
             Self::Eax | Self::Ebx | Self::Ecx | Self::Edx => unsafe {
                 Some(std::mem::transmute(self))
             },
@@ -313,35 +320,35 @@ impl Into<Option<Reg8h>> for Reg32 {
             | Self::R13d
             | Self::R14d
             | Self::R15d => None,
-        }
+        };
     }
 }
 
 impl Into<Reg64> for Reg16 {
     #[inline(always)]
     fn into(self) -> Reg64 {
-        unsafe { std::mem::transmute(self) }
+        return unsafe { std::mem::transmute(self) };
     }
 }
 
 impl Into<Reg32> for Reg16 {
     #[inline(always)]
     fn into(self) -> Reg32 {
-        unsafe { std::mem::transmute(self) }
+        return unsafe { std::mem::transmute(self) };
     }
 }
 
 impl Into<Reg8l> for Reg16 {
     #[inline(always)]
     fn into(self) -> Reg8l {
-        unsafe { std::mem::transmute(self) }
+        return unsafe { std::mem::transmute(self) };
     }
 }
 
 impl Into<Option<Reg8h>> for Reg16 {
     #[inline(always)]
     fn into(self) -> Option<Reg8h> {
-        match self {
+        return match self {
             Self::Ax | Self::Bx | Self::Cx | Self::Dx => unsafe { Some(std::mem::transmute(self)) },
             Self::Si
             | Self::Di
@@ -355,35 +362,35 @@ impl Into<Option<Reg8h>> for Reg16 {
             | Self::R13w
             | Self::R14w
             | Self::R15w => None,
-        }
+        };
     }
 }
 
 impl Into<Reg64> for Reg8l {
     #[inline(always)]
     fn into(self) -> Reg64 {
-        unsafe { std::mem::transmute(self) }
+        return unsafe { std::mem::transmute(self) };
     }
 }
 
 impl Into<Reg32> for Reg8l {
     #[inline(always)]
     fn into(self) -> Reg32 {
-        unsafe { std::mem::transmute(self) }
+        return unsafe { std::mem::transmute(self) };
     }
 }
 
 impl Into<Reg16> for Reg8l {
     #[inline(always)]
     fn into(self) -> Reg16 {
-        unsafe { std::mem::transmute(self) }
+        return unsafe { std::mem::transmute(self) };
     }
 }
 
 impl Into<Option<Reg8h>> for Reg8l {
     #[inline(always)]
     fn into(self) -> Option<Reg8h> {
-        match self {
+        return match self {
             Self::Al | Self::Bl | Self::Cl | Self::Dl => unsafe { Some(std::mem::transmute(self)) },
             Self::Sil
             | Self::Dil
@@ -397,47 +404,47 @@ impl Into<Option<Reg8h>> for Reg8l {
             | Self::R13b
             | Self::R14b
             | Self::R15b => None,
-        }
+        };
     }
 }
 
 impl Into<Reg64> for Reg8h {
     #[inline(always)]
     fn into(self) -> Reg64 {
-        unsafe { std::mem::transmute(self) }
+        return unsafe { std::mem::transmute(self) };
     }
 }
 
 impl Into<Reg32> for Reg8h {
     #[inline(always)]
     fn into(self) -> Reg32 {
-        unsafe { std::mem::transmute(self) }
+        return unsafe { std::mem::transmute(self) };
     }
 }
 
 impl Into<Reg16> for Reg8h {
     #[inline(always)]
     fn into(self) -> Reg16 {
-        unsafe { std::mem::transmute(self) }
+        return unsafe { std::mem::transmute(self) };
     }
 }
 
 impl Into<Reg8l> for Reg8h {
     #[inline(always)]
     fn into(self) -> Reg8l {
-        unsafe { std::mem::transmute(self) }
+        return unsafe { std::mem::transmute(self) };
     }
 }
 
-#[allow(unused_imports)]
+#[allow(unused_imports, clippy::enum_glob_use)]
 use Reg16::*;
-#[allow(unused_imports)]
+#[allow(unused_imports, clippy::enum_glob_use)]
 use Reg32::*;
-#[allow(unused_imports)]
+#[allow(unused_imports, clippy::enum_glob_use)]
 use Reg64::*;
-#[allow(unused_imports)]
+#[allow(unused_imports, clippy::enum_glob_use)]
 use Reg8h::*;
-#[allow(unused_imports)]
+#[allow(unused_imports, clippy::enum_glob_use)]
 use Reg8l::*;
 
 static CRASH_ASM: &str = {
@@ -573,48 +580,6 @@ assert_str_index_in_range:
  jmp crash"
 };
 
-static ASSERT_DENOMINATOR_NOT_ZERO_ASM: &str = {
-    r"; fn assert_denominator_not_zero(_dummy: @rdi, denominator: int @rsi, line: uint @rdx, col: uint @rcx)
-assert_denominator_not_zero:
- test rsi, rsi
- jz .denominator_zero
-
- ret
-
-.denominator_zero:
- mov rdi, attempt_division_by_zero_len
- mov rsi, attempt_division_by_zero
- jmp crash"
-};
-
-static ASSERT_MODULO_NOT_ZERO_ASM: &str = {
-    r"; fn assert_modulo_not_zero(_dummy: @rdi, modulo: int @rsi, line: uint @rdx, col: uint @rcx)
-assert_modulo_not_zero:
- test rsi, rsi
- jz .modulo_zero
-
- ret
-
-.modulo_zero:
- mov rdi, attempt_modulo_zero_len
- mov rsi, attempt_modulo_zero
- jmp crash"
-};
-
-static ASSERT_EXPONENT_IS_POSITIVE_ASM: &str = {
-    r"; fn assert_exponent_is_positive(_dummy: @rdi, exponent: int @rsi, line: uint @rdx, col: uint @rcx)
-assert_exponent_is_positive:
- cmp rsi, 0
- jl .exponent_negative
-
- ret
-
-.exponent_negative:
- mov rdi, attempt_exponent_negative_len
- mov rsi, attempt_exponent_negative
- jmp crash"
-};
-
 static INT_TO_STR_ASM: &str = {
     r"; fn int_str: str @rax:rdx = int_to_str(self: int @rdi)
 int_to_str:
@@ -661,13 +626,20 @@ int_to_str:
  ret"
 };
 
-static INT_POW_ASM: &str = {
-    r"; fn result: int @rax = int_pow(self: int @rdi, exponent: int @rsi, line: uint @rdx, col: uint @rcx)
-int_pow:
+static INT_SAFE_POW_ASM: &str = {
+    r"; fn result: int @rax = int_safe_pow(self: int @rdi, exponent: uint @rsi, line: uint @rdx, col: uint @rcx)
+int_safe_pow:
  cmp rsi, 0
+ jl .exponent_negative
  jg .exponent_positive
+
  mov rax, 1
  ret
+
+.exponent_negative:
+ mov rdi, attempt_exponent_negative_len
+ mov rsi, attempt_exponent_negative
+ jmp crash
 
 .exponent_positive:
  cmp rsi, 1
@@ -677,7 +649,72 @@ int_pow:
 
 .exponent_not_one:
  mov rax, rdi
- mov rdx, 1
+ mov r8, rsi
+ mov r10, 1
+
+.next_power:
+ cmp r8, 1
+ jle .done
+
+ test r8, 1
+ jnz .exponent_odd
+
+ mov rdi, rax
+ mov rsi, rax
+ call int_safe_mul_pow
+ mov rax, rdi
+
+ shr r8, 1
+ jmp .next_power
+
+.exponent_odd:
+ mov rdi, r10
+ mov rsi, rax
+ call int_safe_mul_pow
+ mov r10, rdi
+
+ mov rdi, rax
+ mov rsi, rax
+ call int_safe_mul_pow
+ mov rax, rdi
+
+ dec r8
+ shr r8, 1
+ jmp .next_power
+
+.done:
+ mov rdi, rax
+ mov rsi, r10
+ call int_safe_mul_pow
+ mov rax, rdi
+
+ ret"
+};
+
+static INT_WRAPPING_POW_ASM: &str = {
+    r"; fn result: int @rax = int_wrapping_pow(self: int @rdi, exponent: uint @rsi, line: uint @rdx, col: uint @rcx)
+int_wrapping_pow:
+ cmp rsi, 0
+ jl .exponent_negative
+ jg .exponent_positive
+
+ mov rax, 1
+ ret
+
+.exponent_negative:
+ mov rdi, attempt_exponent_negative_len
+ mov rsi, attempt_exponent_negative
+ jmp crash
+
+.exponent_positive:
+ cmp rsi, 1
+ jne .exponent_not_one
+ mov rax, rdi
+ ret
+
+.exponent_not_one:
+ mov rax, rdi
+ mov r8, 1
 
 .next_power:
  cmp rsi, 1
@@ -691,7 +728,7 @@ int_pow:
  jmp .next_power
 
 .exponent_odd:
- imul rdx, rax
+ imul r8, rax
  imul rax, rax
 
  dec rsi
@@ -699,8 +736,513 @@ int_pow:
  jmp .next_power
 
 .done:
- imul rax, rdx
+ imul rax, r8
 
+ ret"
+};
+
+static INT_SATURATING_POW_ASM: &str = {
+    r"; fn result: int @rax = int_saturating_pow(self: int @rdi, exponent: uint @rsi, line: uint @rdx, col: uint @rcx)
+int_saturating_pow:
+ cmp rsi, 0
+ jl .exponent_negative
+ jg .exponent_positive
+
+ mov rax, 1
+ ret
+
+.exponent_negative:
+ mov rdi, attempt_exponent_negative_len
+ mov rsi, attempt_exponent_negative
+ jmp crash
+
+.exponent_positive:
+ cmp rsi, 1
+ jne .exponent_not_one
+ mov rax, rdi
+ ret
+
+.exponent_not_one:
+ mov rax, rdi
+ mov r8, rsi
+ mov r10, 1
+
+.next_power:
+ cmp r8, 1
+ jle .done
+
+ test r8, 1
+ jnz .exponent_odd
+
+ mov rdi, rax
+ mov rsi, rax
+ call int_saturating_mul
+ mov rax, rdi
+
+ shr r8, 1
+ jmp .next_power
+
+.exponent_odd:
+ mov rdi, r10
+ mov rsi, rax
+ call int_saturating_mul
+ mov r10, rdi
+
+ mov rdi, rax
+ mov rsi, rax
+ call int_saturating_mul
+ mov rax, rdi
+
+ dec r8
+ shr r8, 1
+ jmp .next_power
+
+.done:
+ mov rdi, rax
+ mov rsi, r10
+ call int_saturating_mul
+ mov rax, rdi
+
+ ret"
+};
+
+static INT_SAFE_MUL_POW_ASM: &str = {
+    r"; fn int_safe_mul_pow(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+int_safe_mul_pow:
+ imul rdi, rsi
+ jno .no_overflow
+ mov rdi, pow_overflow_len
+ mov rsi, pow_overflow
+ jmp crash
+
+.no_overflow:
+ ret"
+};
+
+static INT_SAFE_MUL_ASM: &str = {
+    r"; fn int_safe_mul(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+int_safe_mul:
+ imul rdi, rsi
+ jno .no_overflow
+ mov rdi, mul_overflow_len
+ mov rsi, mul_overflow
+ jmp crash
+
+.no_overflow:
+ ret"
+};
+
+static INT_SATURATING_MUL_ASM: &str = {
+    r"; fn int_saturating_mul(lhs: int @rdi, rhs: int @rsi)
+int_saturating_mul:
+ mov rax, rdi
+ xor rdi, rsi
+ shr rdi, 63
+ mov rdx, INT_MAX
+ add rdi, rdx
+ imul rsi
+ cmovc rax, rdi
+ mov rdi, rax
+ ret"
+};
+
+static INT_SAFE_DIV_ASM: &str = {
+    r"; fn int_safe_div(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+int_safe_div:
+ test rsi, rsi
+ jnz .check_no_int_min_div_minus_one
+
+ mov rdi, attempt_division_by_zero_len
+ mov rsi, attempt_division_by_zero
+ jmp crash
+
+.check_no_int_min_div_minus_one:
+ mov rax, INT_MIN
+ cmp rdi, rax
+ jne .no_int_min_div_minus_one
+ cmp rsi, -1
+ jne .no_int_min_div_minus_one
+
+ mov rdi, attempt_int_min_div_by_minus_one_len
+ mov rsi, attempt_int_min_div_by_minus_one
+ jmp crash
+
+.no_int_min_div_minus_one:
+ mov rax, rdi
+ cqo
+ idiv rsi
+ mov rdi, rax
+ ret"
+};
+
+static INT_WRAPPING_DIV_ASM: &str = {
+    r"; fn int_wrapping_div(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+int_wrapping_div:
+ test rsi, rsi
+ jnz .check_no_int_min_div_minus_one
+
+ mov rdi, attempt_division_by_zero_len
+ mov rsi, attempt_division_by_zero
+ jmp crash
+
+.check_no_int_min_div_minus_one:; INT_MIX @rdi ^ -1 @rsi == INT_MAX @r8
+ mov rax, rdi
+ xor rax, rsi
+ mov r8, INT_MAX
+ cmp rax, r8
+ jne .no_int_min_div_minus_one
+
+ ret; return INT_MIN @rdi
+
+.no_int_min_div_minus_one:
+ mov rax, rdi
+ cqo
+ idiv rsi
+ mov rdi, rax
+ ret"
+};
+
+static INT_SATURATING_DIV_ASM: &str = {
+    r"; fn int_saturating_div(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+int_saturating_div:
+ test rsi, rsi
+ jnz .check_no_int_min_div_minus_one
+
+ mov rdi, attempt_division_by_zero_len
+ mov rsi, attempt_division_by_zero
+ jmp crash
+
+.check_no_int_min_div_minus_one:; INT_MIX @rdi ^ -1 @rsi == INT_MAX @r8
+ mov rax, rdi
+ xor rax, rsi
+ mov r8, INT_MAX
+ cmp rax, r8
+ jne .no_int_min_div_minus_one
+
+ mov rdi, r8
+ ret; return INT_MAX @r8
+
+.no_int_min_div_minus_one:
+ mov rax, rdi
+ cqo
+ idiv rsi
+ mov rdi, rax
+ ret"
+};
+
+static INT_SAFE_REMAINDER_ASM: &str = {
+    r"; fn int_safe_remainder(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+int_safe_remainder:
+ test rsi, rsi
+ jnz .check_no_int_min_div_minus_one
+
+ mov rdi, attempt_remainder_zero_len
+ mov rsi, attempt_remainder_zero
+ jmp crash
+
+.check_no_int_min_div_minus_one:; INT_MIX @rdi ^ -1 @rsi == INT_MAX @r8
+ mov rax, rdi
+ xor rax, rsi
+ mov r8, INT_MAX
+ cmp rax, r8
+ jne .no_int_min_div_minus_one
+
+ mov rdi, attempt_remainder_int_min_div_by_minus_one_len
+ mov rsi, attempt_remainder_int_min_div_by_minus_one
+ jmp crash
+
+.no_int_min_div_minus_one:
+ mov rax, rdi
+ cqo
+ idiv rsi
+ mov rdi, rdx
+ ret"
+};
+
+static INT_SAFE_ADD_ASM: &str = {
+    r"; fn int_safe_add(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+int_safe_add:
+ add rdi, rsi
+ jno .no_overflow
+ mov rdi, add_overflow_len
+ mov rsi, add_overflow
+ jmp crash
+
+.no_overflow:
+ ret"
+};
+
+static INT_SATURATING_ADD_ASM: &str = {
+    r"; fn int_saturating_add(lhs: int @rdi, rhs: int @rsi)
+int_saturating_add:
+ add rdi, rsi
+ jno .no_overflow
+ mov rdi, INT_MAX
+ mov rsi, INT_MIN
+ cmovc rdi, rsi
+
+.no_overflow:
+ ret"
+};
+
+static INT_SAFE_ABS_ASM: &str = {
+    r"; fn int_safe_abs(lhs: int @rdi, _dummy: int @rsi, line: uint @rdx, col: uint @rcx)
+int_safe_abs:
+ mov rsi, rdi
+ sar rsi, INT_BITS - 1
+ xor rdi, rsi
+ sub rdi, rsi
+ jno .no_overflow
+ mov rdi, abs_overflow_len
+ mov rsi, abs_overflow
+ jmp crash
+
+.no_overflow:
+ ret"
+};
+
+static INT_WRAPPING_ABS_ASM: &str = {
+    r"; fn int_wrapping_abs(lhs: int @rdi)
+int_wrapping_abs:
+ mov rsi, rdi
+ sar rsi, INT_BITS - 1
+ xor rdi, rsi
+ sub rdi, rsi
+ ret"
+};
+
+static INT_SATURATING_ABS_ASM: &str = {
+    r"; fn int_saturating_abs(lhs: int @rdi)
+int_saturating_abs:
+ mov rsi, rdi
+ sar rsi, INT_BITS - 1
+ xor rdi, rsi
+ sub rdi, rsi
+ jno .no_overflow
+ mov rdi, INT_MAX
+
+.no_overflow:
+ ret"
+};
+
+static INT_SAFE_SUB_ASM: &str = {
+    r"; fn int_safe_sub(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+int_safe_sub:
+ sub rdi, rsi
+ jno .no_overflow
+ mov rdi, sub_overflow_len
+ mov rsi, sub_overflow
+ jmp crash
+
+.no_overflow:
+ ret"
+};
+
+static INT_SATURATING_SUB_ASM: &str = {
+    r"; fn int_saturating_sub(lhs: int @rdi, rhs: int @rsi)
+int_saturating_sub:
+ sub rdi, rsi
+ jno .no_overflow
+ mov rdi, INT_MIN
+ mov rsi, INT_MAX
+ cmovc rdi, rsi
+
+.no_overflow:
+ ret"
+};
+
+static INT_SAFE_NEGATE_ASM: &str = {
+    r"; fn int_safe_negate(lhs: int @rdi, _dummy: int @rsi, line: uint @rdx, col: uint @rcx)
+int_safe_negate:
+ neg rdi
+ jno .no_overflow
+ mov rdi, negate_overflow_len
+ mov rsi, negate_overflow
+ jmp crash
+
+.no_overflow:
+ ret"
+};
+
+static INT_SATURATING_NEGATE_ASM: &str = {
+    r"; fn int_saturating_negate(lhs: int @rdi)
+int_saturating_negate:
+ neg rdi
+ jno .no_overflow
+ mov rdi, INT_MAX
+
+.no_overflow:
+ ret"
+};
+
+static INT_SAFE_LEFT_SHIFT_ASM: &str = {
+    r"; fn int_safe_left_shift(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+int_safe_left_shift:
+ cmp rsi, 0
+ jge .no_negative_shift
+
+ mov rdi, attempt_left_shift_negative_len
+ mov rsi, attempt_left_shift_negative
+ jmp crash
+
+.no_negative_shift:
+ cmp rsi, (1 << 6) - 1
+ jle .no_shift_over_6_bits
+
+ mov rdi, attempt_left_shift_over_6_bits_len
+ mov rsi, attempt_left_shift_over_6_bits
+ jmp crash
+
+.no_shift_over_6_bits:
+ shlx rax, rdi, rsi
+ sarx rsi, rax, rsi
+ cmp rdi, rsi
+ je .no_overflow
+
+ mov rdi, left_shift_overflow_len
+ mov rsi, left_shift_overflow
+ jmp crash
+
+.no_overflow:
+ mov rdi, rax
+ ret"
+};
+
+static INT_WRAPPING_LEFT_SHIFT_ASM: &str = {
+    r"; fn int_wrapping_left_shift(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+int_wrapping_left_shift:
+ cmp rsi, 0
+ jge .no_negative_shift
+
+ mov rdi, attempt_left_shift_negative_len
+ mov rsi, attempt_left_shift_negative
+ jmp crash
+
+.no_negative_shift:
+ cmp rsi, (1 << 6) - 1
+ jle .no_shift_over_6_bits
+
+ mov rdi, attempt_left_shift_over_6_bits_len
+ mov rsi, attempt_left_shift_over_6_bits
+ jmp crash
+
+.no_shift_over_6_bits:
+ shlx rdi, rdi, rsi
+ ret"
+};
+
+static INT_SATURATING_LEFT_SHIFT_ASM: &str = {
+    r"; fn int_saturating_left_shift(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+int_saturating_left_shift:
+ cmp rsi, 0
+ jge .no_negative_shift
+
+ mov rdi, attempt_left_shift_negative_len
+ mov rsi, attempt_left_shift_negative
+ jmp crash
+
+.no_negative_shift:
+ cmp rsi, (1 << 6) - 1
+ jle .no_shift_over_6_bits
+
+ mov rdi, attempt_left_shift_over_6_bits_len
+ mov rsi, attempt_left_shift_over_6_bits
+ jmp crash
+
+.no_shift_over_6_bits:
+ cmp rdi, 0
+ jg .positive_lhs
+ jl .negative_lhs
+
+ ret; return 0 @rdi << rhs @rsi -> return 0
+
+.positive_lhs:
+ lzcnt rax, rdi
+ cmp rax, rsi
+ cmovl rsi, rax
+ shlx rdi, rdi, rsi
+ ret
+
+.negative_lhs:
+ mov rax, rdi
+ not rax
+ lzcnt rax, rax
+ sub rax, 1
+
+ cmp rax, rsi
+ cmovl rsi, rax
+ shlx rdi, rdi, rsi
+ ret"
+};
+
+static INT_SAFE_RIGHT_SHIFT_ASM: &str = {
+    r"; fn int_safe_right_shift(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+int_safe_right_shift:
+ cmp rsi, 0
+ jge .no_negative_shift
+
+ mov rdi, attempt_right_shift_negative_len
+ mov rsi, attempt_right_shift_negative
+ jmp crash
+
+.no_negative_shift:
+ cmp rsi, (1 << 6) - 1
+ jle .no_shift_over_6_bits
+
+ mov rdi, attempt_right_shift_over_6_bits_len
+ mov rsi, attempt_right_shift_over_6_bits
+ jmp crash
+
+.no_shift_over_6_bits:
+ sarx rdi, rdi, rsi
+ ret"
+};
+
+static INT_SAFE_LEFT_ROTATE_ASM: &str = {
+    r"; fn int_safe_left_rotate(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+int_safe_left_rotate:
+ cmp rsi, 0
+ jge .no_negative_shift
+
+ mov rdi, attempt_left_rotate_negative_len
+ mov rsi, attempt_left_rotate_negative
+ jmp crash
+
+.no_negative_shift:
+ cmp rsi, (1 << 6) - 1
+ jle .no_shift_over_6_bits
+
+ mov rdi, attempt_left_rotate_over_6_bits_len
+ mov rsi, attempt_left_rotate_over_6_bits
+ jmp crash
+
+.no_shift_over_6_bits:
+ mov cl, sil
+ rol rdi, cl
+ ret"
+};
+
+static INT_SAFE_RIGHT_ROTATE_ASM: &str = {
+    r"; fn int_safe_right_rotate(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+int_safe_right_rotate:
+ cmp rsi, 0
+ jge .no_negative_shift
+
+ mov rdi, attempt_right_rotate_negative_len
+ mov rsi, attempt_right_rotate_negative
+ jmp crash
+
+.no_negative_shift:
+ cmp rsi, (1 << 6) - 1
+ jle .no_shift_over_6_bits
+
+ mov rdi, attempt_right_rotate_over_6_bits_len
+ mov rsi, attempt_right_rotate_over_6_bits
+ jmp crash
+
+.no_shift_over_6_bits:
+ mov cl, sil
+ ror rdi, cl
  ret"
 };
 
@@ -1216,7 +1758,7 @@ struct Variable<'src, 'ast: 'src> {
     offset: usize,
 }
 
-const STACK_ALIGN: usize = core::mem::size_of::<usize>();
+const STACK_ALIGN: usize = std::mem::size_of::<usize>();
 
 #[derive(Debug)]
 pub struct Compiler<'src, 'ast: 'src> {
@@ -1272,7 +1814,13 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             }
 
             this.variables.sort_by(|var_1, var_2| {
-                var_1.inner.value.typ().size().cmp(&var_2.inner.value.typ().size()).reverse()
+                return var_1
+                    .inner
+                    .value
+                    .typ()
+                    .size()
+                    .cmp(&var_2.inner.value.typ().size())
+                    .reverse();
             });
 
             let mut stack_size = 0;
@@ -1287,19 +1835,19 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 let padding = usize::from(needs_padding) * (STACK_ALIGN - misalignment);
                 stack_size += padding;
 
-                this.asm += &format!(
+                _ = writeln!(this.asm,
                     " push rbp\
                     \n sub rsp, {stack_size}\
-                    \n mov rbp, rsp\n\n"
+                    \n mov rbp, rsp\n"
                 );
             }
 
             this.scope(0);
 
             if stack_size > 0 {
-                this.asm += &format!(
+                _ = writeln!(this.asm,
                     " add rsp, {stack_size}\
-                    \n pop rbp\n\n"
+                    \n pop rbp\n"
                 );
             }
 
@@ -1325,15 +1873,57 @@ _start:
 
 {ASSERT_STR_INDEX_IN_RANGE_ASM}
 
-{ASSERT_DENOMINATOR_NOT_ZERO_ASM}
-
-{ASSERT_MODULO_NOT_ZERO_ASM}
-
-{ASSERT_EXPONENT_IS_POSITIVE_ASM}
-
 {INT_TO_STR_ASM}
 
-{INT_POW_ASM}
+{INT_SAFE_POW_ASM}
+
+{INT_WRAPPING_POW_ASM}
+
+{INT_SATURATING_POW_ASM}
+
+{INT_SAFE_MUL_POW_ASM}
+
+{INT_SAFE_MUL_ASM}
+
+{INT_SATURATING_MUL_ASM}
+
+{INT_SAFE_DIV_ASM}
+
+{INT_WRAPPING_DIV_ASM}
+
+{INT_SATURATING_DIV_ASM}
+
+{INT_SAFE_REMAINDER_ASM}
+
+{INT_SAFE_ADD_ASM}
+
+{INT_SATURATING_ADD_ASM}
+
+{INT_SAFE_ABS_ASM}
+
+{INT_WRAPPING_ABS_ASM}
+
+{INT_SATURATING_ABS_ASM}
+
+{INT_SAFE_SUB_ASM}
+
+{INT_SATURATING_SUB_ASM}
+
+{INT_SAFE_NEGATE_ASM}
+
+{INT_SATURATING_NEGATE_ASM}
+
+{INT_SAFE_LEFT_SHIFT_ASM}
+
+{INT_WRAPPING_LEFT_SHIFT_ASM}
+
+{INT_SATURATING_LEFT_SHIFT_ASM}
+
+{INT_SAFE_RIGHT_SHIFT_ASM}
+
+{INT_SAFE_LEFT_ROTATE_ASM}
+
+{INT_SAFE_RIGHT_ROTATE_ASM}
 
 {INT_PRINT_ASM}
 
@@ -1395,8 +1985,14 @@ section .rodata
  attempt_division_by_zero: db "attempt to divide by zero"
  attempt_division_by_zero_len: equ $ - attempt_division_by_zero
 
- attempt_modulo_zero: db "attempt to take the modulo zero of a number"
- attempt_modulo_zero_len: equ $ - attempt_modulo_zero
+ attempt_int_min_div_by_minus_one: db "attempt to divide the minimum integer value by -1"
+ attempt_int_min_div_by_minus_one_len: equ $ - attempt_int_min_div_by_minus_one
+
+ attempt_remainder_zero: db "attempt to take the remainder of a division by zero"
+ attempt_remainder_zero_len: equ $ - attempt_remainder_zero
+
+ attempt_remainder_int_min_div_by_minus_one: db "attempt to take the remainder of the minimun integer value divided by -1"
+ attempt_remainder_int_min_div_by_minus_one_len: equ $ - attempt_remainder_int_min_div_by_minus_one
 
  attempt_exponent_negative: db "attempt to raise a number to a negative power"
  attempt_exponent_negative_len: equ $ - attempt_exponent_negative
@@ -1418,6 +2014,51 @@ section .rodata
 
  attempt_str_index_overflow: db "string index out of bounds"
  attempt_str_index_overflow_len: equ $ - attempt_str_index_overflow
+
+ attempt_left_shift_negative: db "attempting to shift left by a negative quantity"
+ attempt_left_shift_negative_len: equ $ - attempt_left_shift_negative
+
+ attempt_left_shift_over_6_bits: db "attempting to shift left by a quantity over a 6 bit integer"
+ attempt_left_shift_over_6_bits_len: equ $ - attempt_left_shift_over_6_bits
+
+ attempt_right_shift_negative: db "attempting to shift right by a negative quantity"
+ attempt_right_shift_negative_len: equ $ - attempt_right_shift_negative
+
+ attempt_right_shift_over_6_bits: db "attempting to shift right by a quantity over a 6 bit integer"
+ attempt_right_shift_over_6_bits_len: equ $ - attempt_right_shift_over_6_bits
+
+ attempt_left_rotate_negative: db "attempting to rotate left by a negative quantity"
+ attempt_left_rotate_negative_len: equ $ - attempt_left_rotate_negative
+
+ attempt_left_rotate_over_6_bits: db "attempting to rotate left by a quantity over a 6 bit integer"
+ attempt_left_rotate_over_6_bits_len: equ $ - attempt_left_rotate_over_6_bits
+
+ attempt_right_rotate_negative: db "attempting to rotate right by a negative quantity"
+ attempt_right_rotate_negative_len: equ $ - attempt_right_rotate_negative
+
+ attempt_right_rotate_over_6_bits: db "attempting to rotate right by a quantity over a 6 bit integer"
+ attempt_right_rotate_over_6_bits_len: equ $ - attempt_right_rotate_over_6_bits
+
+ pow_overflow: db "exponentiation operation resulted in an overflow"
+ pow_overflow_len: equ $ - pow_overflow
+
+ mul_overflow: db "multiplication operation resulted in an overflow"
+ mul_overflow_len: equ $ - mul_overflow
+
+ add_overflow: db "add operation resulted in an overflow"
+ add_overflow_len: equ $ - add_overflow
+
+ abs_overflow: db "unary absolute value operation resulted in an overflow"
+ abs_overflow_len: equ $ - abs_overflow
+
+ sub_overflow: db "subtraction operation resulted in an overflow"
+ sub_overflow_len: equ $ - sub_overflow
+
+ negate_overflow: db "unary negation operation resulted in an overflow"
+ negate_overflow_len: equ $ - negate_overflow
+
+ left_shift_overflow: db "left shift operation resulted in an overflow"
+ left_shift_overflow_len: equ $ - left_shift_overflow
 
  file: db "{src_path}"
  file_len: equ $ - file
@@ -1462,7 +2103,7 @@ section .data
             });
         }
 
-        Ok(())
+        return Ok(());
     }
 }
 
@@ -1471,11 +2112,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn node(&mut self, node: &'ast Node<'src>) {
         match node {
             Node::Print(argument) => {
-                self.asm += &format!(" ; {node}\n");
+                _ = writeln!(self.asm, " ; {node}");
                 self.print(argument);
             }
             Node::Println(argument) => {
-                self.asm += &format!(" ; {node}\n");
+                _ = writeln!(self.asm, " ; {node}");
                 if let Some(arg) = argument {
                     self.print(arg);
                 }
@@ -1484,11 +2125,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n call ascii_print\n\n";
             }
             Node::Eprint(argument) => {
-                self.asm += &format!(" ; {node}\n");
+                _ = writeln!(self.asm, " ; {node}");
                 self.eprint(argument);
             }
             Node::Eprintln(argument) => {
-                self.asm += &format!(" ; {node}\n");
+                _ = writeln!(self.asm, " ; {node}");
                 if let Some(arg) = argument {
                     self.eprint(arg);
                 }
@@ -1501,7 +2142,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.if_counter += 1;
 
                 let mut ifs = if_statement.ifs.iter();
-                let first_if = ifs.next().unwrap();
+                let Some(first_if) = ifs.next() else {
+                    unreachable!("at least one if block should be present at all times");
+                };
 
                 let has_else_ifs = if_statement.ifs.len() > 1;
                 let has_else = if_statement.els.is_some();
@@ -1518,21 +2161,23 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 self.iff(first_if, &if_tag, &if_false_tag);
                 if let Some(index) = if_end_tag_index {
-                    self.asm += &format!(" jmp if_{index}_end\n\n");
+                    _ = writeln!(self.asm, " jmp if_{index}_end\n");
                 }
 
                 // compiling the else if branches
                 if has_else_ifs {
-                    let last_else_if = ifs.next_back().unwrap();
-                    let mut else_if_tag_index = 0;
+                    let Some(last_else_if) = ifs.next_back() else {
+                        unreachable!("at least one else-if block should be present at all times");
+                    };
 
+                    let mut else_if_tag_index = 0;
                     for else_if in ifs {
                         let else_if_tag = format!("if_{if_counter}_else_if_{else_if_tag_index}");
                         let else_if_false_tag =
                             format!("if_{if_counter}_else_if_{}", else_if_tag_index + 1);
 
                         self.iff(else_if, &else_if_tag, &else_if_false_tag);
-                        self.asm += &format!(" jmp if_{if_counter}_end\n\n");
+                        _ = writeln!(self.asm, " jmp if_{if_counter}_end\n");
                         else_if_tag_index += 1;
                     }
 
@@ -1544,16 +2189,16 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     };
 
                     self.iff(last_else_if, &else_if_tag, &else_if_false_tag);
-                    self.asm += &format!(" jmp if_{if_counter}_end\n\n");
+                    _ = writeln!(self.asm, " jmp if_{if_counter}_end\n");
                 }
 
                 // compiling the else branch
                 if let Some(els) = &if_statement.els {
-                    self.asm += &format!("if_{if_counter}_else:\n");
+                    _ = writeln!(self.asm, "if_{if_counter}_else:");
                     self.node(els);
                 }
 
-                self.asm += &format!("if_{if_counter}_end:\n");
+                _ = writeln!(self.asm, "if_{if_counter}_end:");
             }
             Node::Loop(looop) => {
                 let loop_tag = format!("loop_{}", self.loop_counter);
@@ -1562,15 +2207,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.loop_counters.push(self.loop_counter);
                 self.loop_counter += 1;
 
-                self.asm += &format!("{loop_tag}:; {looop}\n");
+                _ = writeln!(self.asm, "{loop_tag}:; {looop}");
                 match looop.kind {
                     LoopKind::Loop => {
                         self.condition(&looop.condition, &loop_end_tag);
                         self.node(&looop.statement);
 
-                        self.asm += &format!(
+                        _ = writeln!(self.asm,
                             " jmp {loop_tag}\
-                            \n{loop_end_tag}:\n\n"
+                            \n{loop_end_tag}:\n"
                         );
                     }
                     LoopKind::DoLoop => {
@@ -1579,7 +2224,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
                 }
 
-                let _ = self.loop_counters.pop();
+                _ = self.loop_counters.pop();
             }
             Node::Definition { scope_index, var_index } => {
                 let ast_var = &self.ast[*scope_index].variables[*var_index];
@@ -1589,7 +2234,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 let var = self.resolve(name);
                 let dst_offset = var.offset;
 
-                self.asm += &format!(" ; {name} = {value}\n");
+                _ = writeln!(self.asm, " ; {name} = {value}");
                 self.assignment(value, dst_offset);
             }
             Node::Assignment { scope_index, var_index, new_value } => {
@@ -1599,7 +2244,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 let var = self.resolve(name);
                 let dst_offset = var.offset;
 
-                self.asm += &format!(" ; {name} = {new_value}\n");
+                _ = writeln!(self.asm, " ; {name} = {new_value}");
                 self.assignment(new_value, dst_offset);
             }
             Node::Scope { index } => self.scope(*index),
@@ -1607,14 +2252,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.expression(expression, Dst::default(&expression.typ()));
             }
             Node::Break => {
-                self.asm += &format!(
-                    " jmp loop_{}_end\n\n",
+                _ = writeln!(self.asm,
+                    " jmp loop_{}_end\n",
                     self.loop_counters[self.loop_counters.len() - 1]
                 );
             }
             Node::Continue => {
-                self.asm +=
-                    &format!(" jmp loop_{}\n\n", self.loop_counters[self.loop_counters.len() - 1]);
+                _ = writeln!(self.asm,
+                    " jmp loop_{}\n", self.loop_counters[self.loop_counters.len() - 1]
+                );
             }
             Node::Semicolon => unreachable!("should not be present in the ast"),
         }
@@ -1636,11 +2282,11 @@ enum Dst {
 
 impl Dst {
     fn default(typ: &Type) -> Self {
-        match typ {
+        return match typ {
             Type::Int | Type::Ascii | Type::Bool => Self::Reg(Rdi),
             Type::Str | Type::Array { .. } => Self::View { len: Rdi, ptr: Rsi },
             Type::Infer => unreachable!("should have been inferred"),
-        }
+        };
     }
 }
 
@@ -1667,37 +2313,47 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
         let string_bytes = unsafe { std::str::from_utf8_unchecked(string) };
         let string_chars = string_bytes.escape_debug();
-        self.string_labels += &format!(
+        _ = writeln!(self.string_labels,
             "\n str_{string_index}: db `{string_chars}`\
-            \n str_{string_index}_len: equ $ - str_{string_index}\n",
+            \n str_{string_index}_len: equ $ - str_{string_index}",
         );
 
         self.strings.push(string);
-        string_index
+        return string_index;
     }
 
+    // NOTE(stefano): needs refactoring to split this into multiple functions
+    // TODO(stefano): check if the shift/rotation amount overflows a 6bit integer
+    // when shifting/rotating a 64bit integer (i.e.: when lhs is 64bit, rhs must not overflow
+    // a 6bit integer)
+        // IDEA limit rhs to an 8bit integer, and different strategies to deal whit rhs
+        // over 6bits:
+        // - check for an rhs bigger than 8 bits and crash
+        // - silently discard the missing bits
+        // - create dedicate operators that implement those strategies
+    // IDEA(stefano): string/array comparison operators could also return the index where
+    // the mismatch occured, since repe CMPcc stops at
+    // mismatch_index @rdx = len @rdx - reverse_mismatch_index @rcx - 1, so:
+    //
+    // repe cmpsq
+    // mov rdi, false
+    // setz dil
+    //
+    // would become this:
+    //
+    // repe cmpsq
+    // mov rdi, false
+    // setz dil
+    // sub rdx, rcx
+    // dec rdx
+    #[allow(clippy::single_call_fn)]
     fn binary_expression_dst_and_asm(
         lhs: &'ast Expression<'src>,
         op_position: Position,
         op: Op,
         rhs: &'ast Expression<'src>,
     ) -> (Dst, Dst, Cow<'static, str>) {
-        // IDEA(stefano): string/array comparison operators could also return the index where
-        // the mismatch occured, since repe CMPcc stops at
-        // mismatch_index @rdx = len @rdx - reverse_mismatch_index @rcx - 1, so:
-        //
-        // repe cmpsq
-        // mov rdi, false
-        // setz dil
-        //
-        // would become this:
-        //
-        // repe cmpsq
-        // mov rdi, false
-        // setz dil
-        // sub rdx, rcx
-        // dec rdx
-        match (lhs.typ(), rhs.typ()) {
+        return match (lhs.typ(), rhs.typ()) {
             (Type::Str, Type::Str) => match op {
                 Op::EqualsEquals => (
                     Dst::View { len: Rdi, ptr: Rsi },
@@ -1758,17 +2414,37 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         .into(),
                 ),
                 Op::Pow
+                | Op::WrappingPow
+                | Op::SaturatingPow
                 | Op::PowEquals
+                | Op::WrappingPowEquals
+                | Op::SaturatingPowEquals
                 | Op::Times
+                | Op::WrappingTimes
+                | Op::SaturatingTimes
                 | Op::TimesEquals
+                | Op::WrappingTimesEquals
+                | Op::SaturatingTimesEquals
                 | Op::Divide
+                | Op::WrappingDivide
+                | Op::SaturatingDivide
                 | Op::DivideEquals
+                | Op::WrappingDivideEquals
+                | Op::SaturatingDivideEquals
                 | Op::Remainder
                 | Op::RemainderEquals
                 | Op::Plus
+                | Op::WrappingPlus
+                | Op::SaturatingPlus
                 | Op::PlusEquals
+                | Op::WrappingPlusEquals
+                | Op::SaturatingPlusEquals
                 | Op::Minus
+                | Op::WrappingMinus
+                | Op::SaturatingMinus
                 | Op::MinusEquals
+                | Op::WrappingMinusEquals
+                | Op::SaturatingMinusEquals
                 | Op::And
                 | Op::AndEquals
                 | Op::BitAnd
@@ -1780,9 +2456,17 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 | Op::BitXor
                 | Op::BitXorEquals
                 | Op::LeftShift
+                | Op::WrappingLeftShift
+                | Op::SaturatingLeftShift
                 | Op::LeftShiftEquals
+                | Op::WrappingLeftShiftEquals
+                | Op::SaturatingLeftShiftEquals
                 | Op::RightShift
-                | Op::RightShiftEquals => {
+                | Op::RightShiftEquals
+                | Op::LeftRotate
+                | Op::LeftRotateEquals
+                | Op::RightRotate
+                | Op::RightRotateEquals => {
                     unreachable!("math operation not allowed on strings")
                 }
                 Op::Equals => unreachable!("should not be present in the ast"),
@@ -2045,17 +2729,37 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     )
                 }
                 Op::Pow
+                | Op::WrappingPow
+                | Op::SaturatingPow
                 | Op::PowEquals
+                | Op::WrappingPowEquals
+                | Op::SaturatingPowEquals
                 | Op::Times
+                | Op::WrappingTimes
+                | Op::SaturatingTimes
                 | Op::TimesEquals
+                | Op::WrappingTimesEquals
+                | Op::SaturatingTimesEquals
                 | Op::Divide
+                | Op::WrappingDivide
+                | Op::SaturatingDivide
                 | Op::DivideEquals
+                | Op::WrappingDivideEquals
+                | Op::SaturatingDivideEquals
                 | Op::Remainder
                 | Op::RemainderEquals
                 | Op::Plus
+                | Op::WrappingPlus
+                | Op::SaturatingPlus
                 | Op::PlusEquals
+                | Op::WrappingPlusEquals
+                | Op::SaturatingPlusEquals
                 | Op::Minus
+                | Op::WrappingMinus
+                | Op::SaturatingMinus
                 | Op::MinusEquals
+                | Op::WrappingMinusEquals
+                | Op::SaturatingMinusEquals
                 | Op::And
                 | Op::AndEquals
                 | Op::BitAnd
@@ -2067,9 +2771,17 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 | Op::BitXor
                 | Op::BitXorEquals
                 | Op::LeftShift
+                | Op::WrappingLeftShift
+                | Op::SaturatingLeftShift
                 | Op::LeftShiftEquals
+                | Op::WrappingLeftShiftEquals
+                | Op::SaturatingLeftShiftEquals
                 | Op::RightShift
-                | Op::RightShiftEquals => {
+                | Op::RightShiftEquals
+                | Op::LeftRotate
+                | Op::LeftRotateEquals
+                | Op::RightRotate
+                | Op::RightRotateEquals => {
                     unreachable!("math operation not allowed on arrays")
                 }
                 Op::Equals => unreachable!("should not be present in the ast"),
@@ -2083,28 +2795,88 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {col}\
-                            \n call assert_exponent_is_positive\
-                            \n call int_pow\
+                            \n call int_safe_pow\
                             \n mov rdi, rax",
                             line = op_position.line,
                             col = op_position.col
                         )
                         .into(),
                     ),
-                    Op::Times | Op::TimesEquals => {
-                        (Dst::Reg(Rdi), Dst::Reg(Rsi), " imul rdi, rsi".into())
-                    }
-                    Op::Divide | Op::DivideEquals => (
+                    Op::WrappingPow | Op::WrappingPowEquals => (
                         Dst::Reg(Rdi),
                         Dst::Reg(Rsi),
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {col}\
-                            \n call assert_denominator_not_zero\
-                            \n mov rax, rdi\
-                            \n xor rdx, rdx\
-                            \n idiv rsi\
+                            \n call int_wrapping_pow\
                             \n mov rdi, rax",
+                            line = op_position.line,
+                            col = op_position.col
+                        )
+                        .into(),
+                    ),
+                    Op::SaturatingPow | Op::SaturatingPowEquals => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        format!(
+                            " mov rdx, {line}\
+                            \n mov rcx, {col}\
+                            \n call int_saturating_pow\
+                            \n mov rdi, rax",
+                            line = op_position.line,
+                            col = op_position.col
+                        )
+                        .into(),
+                    ),
+                    Op::Times | Op::TimesEquals => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        format!(
+                            " mov rdx, {line}\
+                            \n mov rcx, {col}\
+                            \n call int_safe_mul",
+                            line = op_position.line,
+                            col = op_position.col
+                        )
+                        .into(),
+                    ),
+                    Op::WrappingTimes | Op::WrappingTimesEquals => {
+                        (Dst::Reg(Rdi), Dst::Reg(Rsi), " imul rdi, rsi".into())
+                    }
+                    Op::SaturatingTimes | Op::SaturatingTimesEquals => {
+                        (Dst::Reg(Rdi), Dst::Reg(Rsi), " call int_saturating_mul".into())
+                    }
+                    Op::Divide | Op::DivideEquals =>  (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        format!(
+                            " mov rdx, {line}\
+                            \n mov rcx, {col}\
+                            \n call int_safe_div",
+                            line = op_position.line,
+                            col = op_position.col
+                        )
+                        .into(),
+                    ),
+                    Op::WrappingDivide | Op::WrappingDivideEquals => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        format!(
+                            " mov rdx, {line}\
+                            \n mov rcx, {col}\
+                            \n call int_wrapping_div",
+                            line = op_position.line,
+                            col = op_position.col
+                        )
+                        .into(),
+                    ),
+                    Op::SaturatingDivide | Op::SaturatingDivideEquals => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        format!(
+                            " mov rdx, {line}\
+                            \n mov rcx, {col}\
+                            \n call int_saturating_div",
                             line = op_position.line,
                             col = op_position.col
                         )
@@ -2116,21 +2888,47 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {col}\
-                            \n call assert_modulo_not_zero\
-                            \n mov rax, rdi\
-                            \n xor rdx, rdx\
-                            \n idiv rsi\
-                            \n mov rdi, rdx",
+                            \n call int_safe_remainder",
+                            line = op_position.line,
+                            col = op_position.col
+                        )
+                        .into(),
+                    ),
+                    Op::Plus | Op::PlusEquals => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        format!(
+                            " mov rdx, {line}\
+                            \n mov rcx, {col}\
+                            \n call int_safe_add",
                             line = op_position.line,
                             col = op_position.col,
                         )
                         .into(),
                     ),
-                    Op::Plus | Op::PlusEquals => {
+                    Op::WrappingPlus | Op::WrappingPlusEquals => {
                         (Dst::Reg(Rdi), Dst::Reg(Rsi), " add rdi, rsi".into())
                     }
-                    Op::Minus | Op::MinusEquals => {
+                    Op::SaturatingPlus | Op::SaturatingPlusEquals => {
+                        (Dst::Reg(Rdi), Dst::Reg(Rsi), " call int_saturating_add".into())
+                    }
+                    Op::Minus | Op::MinusEquals => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        format!(
+                            " mov rdx, {line}\
+                            \n mov rcx, {col}\
+                            \n call int_safe_sub",
+                            line = op_position.line,
+                            col = op_position.col,
+                        )
+                        .into(),
+                    ),
+                    Op::WrappingMinus | Op::WrappingMinusEquals => {
                         (Dst::Reg(Rdi), Dst::Reg(Rsi), " sub rdi, rsi".into())
+                    }
+                    Op::SaturatingMinus | Op::SaturatingMinusEquals => {
+                        (Dst::Reg(Rdi), Dst::Reg(Rsi), " call int_saturating_sub".into())
                     }
                     Op::EqualsEquals => (
                         Dst::Reg(Rdi),
@@ -2197,23 +2995,80 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     Op::Or | Op::OrEquals | Op::BitOr | Op::BitOrEquals => {
                         (Dst::Reg(Rdi), Dst::Reg(Rsi), " or rdi, rsi".into())
                     }
-
                     Op::BitXor | Op::BitXorEquals => {
                         (Dst::Reg(Rdi), Dst::Reg(Rsi), " xor rdi, rsi".into())
                     }
                     Op::LeftShift | Op::LeftShiftEquals => (
                         Dst::Reg(Rdi),
                         Dst::Reg(Rsi),
-                        " mov cl, sil\
-                        \n shl rdi, cl"
-                            .into(),
+                        format!(
+                            " mov rdx, {line}\
+                            \n mov rcx, {col}\
+                            \n call int_safe_left_shift",
+                            line = op_position.line,
+                            col = op_position.col,
+                        )
+                        .into()
+                    ),
+                    Op::WrappingLeftShift | Op::WrappingLeftShiftEquals => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        format!(
+                            " mov rdx, {line}\
+                            \n mov rcx, {col}\
+                            \n call int_wrapping_left_shift",
+                            line = op_position.line,
+                            col = op_position.col,
+                        )
+                        .into()
+                    ),
+                    Op::SaturatingLeftShift | Op::SaturatingLeftShiftEquals => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        format!(
+                            " mov rdx, {line}\
+                            \n mov rcx, {col}\
+                            \n call int_saturating_left_shift",
+                            line = op_position.line,
+                            col = op_position.col,
+                        )
+                        .into()
                     ),
                     Op::RightShift | Op::RightShiftEquals => (
                         Dst::Reg(Rdi),
                         Dst::Reg(Rsi),
-                        " mov cl, sil\
-                        \n shr rdi, cl"
-                            .into(),
+                        format!(
+                            " mov rdx, {line}\
+                            \n mov rcx, {col}\
+                            \n call int_safe_right_shift",
+                            line = op_position.line,
+                            col = op_position.col,
+                        )
+                        .into()
+                    ),
+                    Op::LeftRotate | Op::LeftRotateEquals => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        format!(
+                            " mov rdx, {line}\
+                            \n mov rcx, {col}\
+                            \n call int_safe_left_rotate",
+                            line = op_position.line,
+                            col = op_position.col,
+                        )
+                        .into()
+                    ),
+                    Op::RightRotate | Op::RightRotateEquals => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        format!(
+                            " mov rdx, {line}\
+                            \n mov rcx, {col}\
+                            \n call int_safe_right_rotate",
+                            line = op_position.line,
+                            col = op_position.col,
+                        )
+                        .into()
                     ),
                     Op::Equals => unreachable!("should not be present in the ast"),
                     Op::Not => unreachable!("should only appear in unary expressions"),
@@ -2228,7 +3083,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             (Type::Infer, _) | (_, Type::Infer) => {
                 unreachable!("should have been coerced to a concrete type")
             }
-        }
+        };
     }
 
     fn binary_expression(
@@ -2240,31 +3095,26 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     ) {
         self.expression(lhs, lhs_dst);
 
-        let mut rhs_saved = rhs;
-        let rhs_requires_saving_of_lhs = 'requires_saving: loop {
-            match rhs_saved {
-                Expression::Binary { .. } | Expression::ArrayIndex { .. } => {
-                    break 'requires_saving true
-                }
-                Expression::Literal(_) | Expression::Identifier { .. } => {
-                    break 'requires_saving false
-                }
-                Expression::Unary { operand, .. } => rhs_saved = operand,
-                Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
-            }
-        };
+        match rhs {
+            // these expressions need to save the value of the lhs
+            Expression::Binary { .. }
+            | Expression::Unary { op: Op::Minus | Op::Plus | Op::WrappingPlus, .. }
+            | Expression::ArrayIndex { .. } => {}
 
-        if !rhs_requires_saving_of_lhs {
-            self.expression(rhs, rhs_dst);
-            return;
+            // these expressions do not need
+            Expression::Unary { .. } | Expression::Literal(_) | Expression::Identifier { .. } => {
+                self.expression(rhs, rhs_dst);
+                return;
+            }
+            Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
         }
 
         match lhs_dst {
-            Dst::Reg(reg) => self.asm += &format!(" push {reg}\n\n"),
+            Dst::Reg(reg) => _ = writeln!(self.asm, " push {reg}\n"),
             Dst::View { len, ptr } => {
-                self.asm += &format!(
+                _ = writeln!(self.asm,
                     " push {len}\
-                    \n push {ptr}\n\n"
+                    \n push {ptr}\n"
                 );
             }
         }
@@ -2272,20 +3122,20 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         self.expression(rhs, lhs_dst);
         match (rhs_dst, lhs_dst) {
             (Dst::Reg(rhs_reg), Dst::Reg(lhs_reg)) => {
-                self.asm += &format!(
+                _ = writeln!(self.asm,
                     " mov {rhs_reg}, {lhs_reg}\
-                    \n pop {lhs_reg}\n\n"
+                    \n pop {lhs_reg}\n"
                 );
             }
             (
                 Dst::View { len: rhs_len, ptr: rhs_ptr },
                 Dst::View { len: lhs_len, ptr: lhs_ptr },
             ) => {
-                self.asm += &format!(
+                _ = writeln!(self.asm,
                     " mov {rhs_len}, {lhs_len}\
                     \n mov {rhs_ptr}, {lhs_ptr}\
                     \n pop {lhs_ptr}\
-                    \n pop {lhs_len}\n\n"
+                    \n pop {lhs_len}\n"
                 );
             }
             _ => unreachable!(),
@@ -2296,23 +3146,23 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         match factor {
             Expression::Literal(literal) => match literal {
                 Literal::Int(integer) => match dst {
-                    Dst::Reg(reg) => self.asm += &format!(" mov {reg}, {integer}\n"),
+                    Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, {integer}"),
                     Dst::View { .. } => unreachable!(),
                 },
                 Literal::Ascii(code) => match dst {
-                    Dst::Reg(reg) => self.asm += &format!(" mov {reg}, {code}\n"),
+                    Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, {code}"),
                     Dst::View { .. } => unreachable!(),
                 },
                 Literal::Bool(boolean) => match dst {
-                    Dst::Reg(reg) => self.asm += &format!(" mov {reg}, {boolean}\n"),
+                    Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, {boolean}"),
                     Dst::View { .. } => unreachable!(),
                 },
                 Literal::Str(string) => match dst {
                     Dst::View { len, ptr } => {
                         let index = self.string_label_index(string);
-                        self.asm += &format!(
+                        _ = writeln!(self.asm,
                             " mov {len}, str_{index}_len\
-                            \n mov {ptr}, str_{index}\n"
+                            \n mov {ptr}, str_{index}"
                         );
                     }
                     Dst::Reg(_) => unreachable!(),
@@ -2326,27 +3176,27 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
 
-                self.asm += &format!("{op_asm}\n\n");
+                _ = writeln!(self.asm, "{op_asm}\n");
             }
             Expression::Identifier { typ, name } => {
                 let var = self.resolve(name);
                 let var_offset = var.offset;
                 match typ {
                     Type::Int => match dst {
-                        Dst::Reg(reg) => self.asm += &format!(" mov {reg}, [rbp + {var_offset}]\n"),
+                        Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, [rbp + {var_offset}]"),
                         Dst::View { .. } => unreachable!(),
                     },
                     Type::Ascii | Type::Bool => match dst {
                         Dst::Reg(reg) => {
-                            self.asm += &format!(" movzx {reg}, byte [rbp + {var_offset}]\n");
+                            _ = writeln!(self.asm, " movzx {reg}, byte [rbp + {var_offset}]");
                         }
                         Dst::View { .. } => unreachable!(),
                     },
                     Type::Str => match dst {
                         Dst::View { len, ptr } => {
-                            self.asm += &format!(
+                            _ = writeln!(self.asm,
                                 " mov {len}, [rbp + {var_offset}]\
-                                \n mov {ptr}, [rbp + {var_offset} + {ptr_offset}]\n",
+                                \n mov {ptr}, [rbp + {var_offset} + {ptr_offset}]",
                                 ptr_offset = Type::Int.size()
                             );
                         }
@@ -2354,9 +3204,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     },
                     Type::Array { len: array_len, .. } => match dst {
                         Dst::View { len, ptr } => {
-                            self.asm += &format!(
+                            _ = writeln!(self.asm,
                                 " mov {len}, {array_len}\
-                                \n lea {ptr}, [rbp + {var_offset}]\n"
+                                \n lea {ptr}, [rbp + {var_offset}]"
                             );
                         }
                         Dst::Reg(_) => unreachable!(),
@@ -2364,7 +3214,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     Type::Infer => unreachable!("should have been inferred"),
                 }
             }
-            Expression::Unary { op, operand } => {
+            Expression::Unary { op_position, op, operand } => {
                 self.expression(operand, dst);
 
                 let Dst::Reg(reg) = dst else {
@@ -2373,14 +3223,44 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 match op {
                     Op::Not => match operand.typ() {
-                        Type::Bool => self.asm += &format!(" xor {reg}, 1\n"),
-                        Type::Int | Type::Ascii => self.asm += &format!(" not {reg}\n"),
+                        Type::Bool => _ = writeln!(self.asm, " xor {reg}, 1"),
+                        Type::Int | Type::Ascii => _ = writeln!(self.asm, " not {reg}"),
                         Type::Array { .. } => unreachable!("cannot invert array values"),
                         Type::Str => unreachable!("cannot invert string values"),
                         Type::Infer => unreachable!("should have been inferred"),
                     },
                     Op::Minus => match operand.typ() {
-                        Type::Int | Type::Ascii => self.asm += &format!(" neg {reg}\n"),
+                        Type::Int | Type::Ascii => {
+                            _ = writeln!(self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_safe_negate",
+                                line = op_position.line,
+                                col = op_position.col
+                            );
+                        }
+                        Type::Bool => unreachable!("cannot negate boolean values"),
+                        Type::Array { .. } => unreachable!("cannot negate array values"),
+                        Type::Str => unreachable!("cannot negate string values"),
+                        Type::Infer => unreachable!("should have been inferred"),
+                    },
+                    Op::WrappingMinus => match operand.typ() {
+                        Type::Int | Type::Ascii => _ = writeln!(self.asm, " neg {reg}"),
+                        Type::Bool => unreachable!("cannot negate boolean values"),
+                        Type::Array { .. } => unreachable!("cannot negate array values"),
+                        Type::Str => unreachable!("cannot negate string values"),
+                        Type::Infer => unreachable!("should have been inferred"),
+                    },
+                    Op::SaturatingMinus => match operand.typ() {
+                        Type::Int | Type::Ascii => {
+                            _ = writeln!(self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_saturating_negate",
+                                line = op_position.line,
+                                col = op_position.col
+                            );
+                        }
                         Type::Bool => unreachable!("cannot negate boolean values"),
                         Type::Array { .. } => unreachable!("cannot negate array values"),
                         Type::Str => unreachable!("cannot negate string values"),
@@ -2388,18 +3268,106 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     },
                     Op::Plus => match operand.typ() {
                         Type::Int => {
-                            self.asm += " mov rax, rdi\
-                                \n sar rax, INT_BITS - 1\
-                                \n xor rdi, rax\
-                                \n sub rdi, rax\n";
+                            _ = writeln!(self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_safe_abs",
+                                line = op_position.line,
+                                col = op_position.col
+                            );
                         }
-                        Type::Ascii => unreachable!("cannot negate ascii values"),
-                        Type::Bool => unreachable!("cannot negate boolean values"),
-                        Type::Array { .. } => unreachable!("cannot negate array values"),
-                        Type::Str => unreachable!("cannot negate string values"),
+                        Type::Ascii => unreachable!("cannot take absolute value of ascii values"),
+                        Type::Bool => unreachable!("cannot take absolute value of boolean values"),
+                        Type::Array { .. } => {
+                            unreachable!("cannot take absolute value of array values")
+                        }
+                        Type::Str => unreachable!("cannot take absolute value of string values"),
                         Type::Infer => unreachable!("should have been inferred"),
                     },
-                    _ => unreachable!("not a unary operators"),
+                    Op::WrappingPlus => match operand.typ() {
+                        Type::Int => _ = writeln!(self.asm, " call int_wrapping_abs"),
+                        Type::Ascii => unreachable!("cannot take absolute value of ascii values"),
+                        Type::Bool => unreachable!("cannot take absolute value of boolean values"),
+                        Type::Array { .. } => {
+                            unreachable!("cannot take absolute value of array values")
+                        }
+                        Type::Str => unreachable!("cannot take absolute value of string values"),
+                        Type::Infer => unreachable!("should have been inferred"),
+                    },
+                    Op::SaturatingPlus => match operand.typ() {
+                        Type::Int => {
+                            _ = writeln!(self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_saturating_abs",
+                                line = op_position.line,
+                                col = op_position.col
+                            );
+                        }
+                        Type::Ascii => unreachable!("cannot take absolute value of ascii values"),
+                        Type::Bool => unreachable!("cannot take absolute value of boolean values"),
+                        Type::Array { .. } => {
+                            unreachable!("cannot take absolute value of array values")
+                        }
+                        Type::Str => unreachable!("cannot take absolute value of string values"),
+                        Type::Infer => unreachable!("should have been inferred"),
+                    },
+                    Op::Equals
+                    | Op::Pow
+                    | Op::WrappingPow
+                    | Op::SaturatingPow
+                    | Op::PowEquals
+                    | Op::WrappingPowEquals
+                    | Op::SaturatingPowEquals
+                    | Op::Times
+                    | Op::WrappingTimes
+                    | Op::SaturatingTimes
+                    | Op::TimesEquals
+                    | Op::WrappingTimesEquals
+                    | Op::SaturatingTimesEquals
+                    | Op::Divide
+                    | Op::WrappingDivide
+                    | Op::SaturatingDivide
+                    | Op::DivideEquals
+                    | Op::WrappingDivideEquals
+                    | Op::SaturatingDivideEquals
+                    | Op::Remainder
+                    | Op::RemainderEquals
+                    | Op::PlusEquals
+                    | Op::WrappingPlusEquals
+                    | Op::SaturatingPlusEquals
+                    | Op::MinusEquals
+                    | Op::WrappingMinusEquals
+                    | Op::SaturatingMinusEquals
+                    | Op::LeftShift
+                    | Op::WrappingLeftShift
+                    | Op::SaturatingLeftShift
+                    | Op::LeftShiftEquals
+                    | Op::WrappingLeftShiftEquals
+                    | Op::SaturatingLeftShiftEquals
+                    | Op::RightShift
+                    | Op::RightShiftEquals
+                    | Op::LeftRotate
+                    | Op::LeftRotateEquals
+                    | Op::RightRotate
+                    | Op::RightRotateEquals
+                    | Op::And
+                    | Op::AndEquals
+                    | Op::BitAnd
+                    | Op::BitAndEquals
+                    | Op::BitXor
+                    | Op::BitXorEquals
+                    | Op::Or
+                    | Op::OrEquals
+                    | Op::BitOr
+                    | Op::BitOrEquals
+                    | Op::Compare
+                    | Op::EqualsEquals
+                    | Op::NotEquals
+                    | Op::Greater
+                    | Op::GreaterOrEquals
+                    | Op::Less
+                    | Op::LessOrEquals => unreachable!("not a unary operators"),
                 }
             }
             Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
@@ -2414,38 +3382,36 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 match var_typ {
                     Type::Str => {
-                        self.asm += &format!(
+                        _ = writeln!(self.asm,
                             " mov rsi, [rbp + {var_offset}]\
                             \n mov rdx, {line}\
                             \n mov rcx, {col}\
                             \n call assert_str_index_in_range\
                             \n mov rsi, [rbp + {var_offset} + {ptr_offset}]\
-                            \n movzx rdi, byte [rsi + rdi]\n\n",
+                            \n movzx rdi, byte [rsi + rdi]\n",
                             ptr_offset = Type::Int.size()
                         );
                     }
                     Type::Array { len: array_len, .. } => {
-                        self.asm += &format!(
+                        _ = writeln!(self.asm,
                             " mov rsi, {array_len}\
                             \n mov rdx, {line}\
                             \n mov rcx, {col}\
-                            \n call assert_array_index_in_range\n"
+                            \n call assert_array_index_in_range"
                         );
 
                         match typ {
                             Type::Int => {
-                                self.asm +=
-                                    &format!(" mov rdi, [rbp + {var_offset} + rdi * 8]\n\n");
+                                _ = writeln!(self.asm, " mov rdi, [rbp + {var_offset} + rdi * 8]\n");
                             }
                             Type::Ascii | Type::Bool => {
-                                self.asm +=
-                                    &format!(" movzx rdi, byte [rbp + {var_offset} + rdi]\n\n");
+                                _ = writeln!(self.asm, " movzx rdi, byte [rbp + {var_offset} + rdi]\n");
                             }
                             Type::Str => {
-                                self.asm += &format!(
+                                _ = writeln!(self.asm,
                                     " imul rdi, {typ_size}\
                                     \n mov rsi, [rbp + {var_offset} + {ptr_offset} + rdi]\
-                                    \n mov rdi, [rbp + {var_offset} + rdi]\n\n",
+                                    \n mov rdi, [rbp + {var_offset} + rdi]\n",
                                     typ_size = typ.size(),
                                     ptr_offset = Type::Int.size()
                                 );
@@ -2459,7 +3425,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         }
                     }
                     Type::Int => {
-                        self.asm += &format!(
+                        _ = writeln!(self.asm,
                             " mov rsi, INT_BITS\
                             \n mov rdx, {line}\
                             \n mov rcx, {col}\
@@ -2469,7 +3435,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             \n mov rsi, 1\
                             \n shl rsi, cl\
                             \n mov rdi, [rbp + {var_offset}]\
-                            \n and rdi, rsi\n\n"
+                            \n and rdi, rsi\n"
                         );
                     }
                     Type::Bool | Type::Ascii => {
@@ -2486,10 +3452,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn condition(&mut self, condition: &'ast Expression<'src>, false_tag: &str) {
         match condition {
             Expression::Literal(Literal::Bool(boolean)) => {
-                self.asm += &format!(
+                _ = writeln!(self.asm,
                     " mov dil, {bool}\
                     \n cmp dil, true\
-                    \n jne {false_tag}\n\n",
+                    \n jne {false_tag}\n",
                     bool = usize::from(*boolean)
                 );
             }
@@ -2522,20 +3488,40 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     Op::Or | Op::OrEquals => self.asm += " or rdi, rsi\n jz",
 
                     Op::Equals
+                    | Op::Not
                     | Op::Pow
+                    | Op::WrappingPow
+                    | Op::SaturatingPow
                     | Op::PowEquals
+                    | Op::WrappingPowEquals
+                    | Op::SaturatingPowEquals
                     | Op::Times
+                    | Op::WrappingTimes
+                    | Op::SaturatingTimes
                     | Op::TimesEquals
+                    | Op::WrappingTimesEquals
+                    | Op::SaturatingTimesEquals
                     | Op::Divide
+                    | Op::WrappingDivide
+                    | Op::SaturatingDivide
                     | Op::DivideEquals
+                    | Op::WrappingDivideEquals
+                    | Op::SaturatingDivideEquals
                     | Op::Remainder
                     | Op::RemainderEquals
                     | Op::Plus
+                    | Op::WrappingPlus
+                    | Op::SaturatingPlus
                     | Op::PlusEquals
+                    | Op::WrappingPlusEquals
+                    | Op::SaturatingPlusEquals
                     | Op::Minus
+                    | Op::WrappingMinus
+                    | Op::SaturatingMinus
                     | Op::MinusEquals
+                    | Op::WrappingMinusEquals
+                    | Op::SaturatingMinusEquals
                     | Op::Compare
-                    | Op::Not
                     | Op::BitAnd
                     | Op::BitAndEquals
                     | Op::BitOr
@@ -2543,39 +3529,47 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     | Op::BitXor
                     | Op::BitXorEquals
                     | Op::LeftShift
+                    | Op::WrappingLeftShift
+                    | Op::SaturatingLeftShift
                     | Op::LeftShiftEquals
+                    | Op::WrappingLeftShiftEquals
+                    | Op::SaturatingLeftShiftEquals
                     | Op::RightShift
-                    | Op::RightShiftEquals => {
+                    | Op::RightShiftEquals
+                    | Op::LeftRotate
+                    | Op::LeftRotateEquals
+                    | Op::RightRotate
+                    | Op::RightRotateEquals => {
                         unreachable!("non-boolean operators should not appear here")
                     }
                 }
 
-                self.asm += &format!(" {false_tag}\n\n");
+                _ = writeln!(self.asm, " {false_tag}\n");
             }
             Expression::Identifier { name, .. } => {
                 let var = self.resolve(name);
                 let var_offset = var.offset;
-                self.asm += &format!(
+                _ = writeln!(self.asm,
                     " mov dil, [rbp + {var_offset}]\
                     \n cmp dil, true\
-                    \n jne {false_tag}\n\n"
+                    \n jne {false_tag}\n"
                 );
             }
             Expression::Unary { operand, .. } => {
                 self.expression(operand, Dst::Reg(Rdi));
 
                 // we can only have boolean expressions at this point, so it's safe to ignore the integer negation case
-                self.asm += &format!(
+                _ = writeln!(self.asm,
                     " xor dil, 1\
-                    \n jz {false_tag}\n\n"
+                    \n jz {false_tag}\n"
                 );
             }
             Expression::Array { .. } => unreachable!("arrays cannot appear in conditions"),
             Expression::ArrayIndex { .. } => {
                 self.expression(condition, Dst::Reg(Rdi));
-                self.asm += &format!(
+                _ = writeln!(self.asm,
                     " cmp dil, true\
-                    \n jne {false_tag}\n\n"
+                    \n jne {false_tag}\n"
                 );
             }
         }
@@ -2584,10 +3578,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn condition_reversed(&mut self, condition: &'ast Expression<'src>, true_tag: &str) {
         match condition {
             Expression::Literal(Literal::Bool(boolean)) => {
-                self.asm += &format!(
+                _ = writeln!(self.asm,
                     " mov dil, {bool}\
                     \n cmp dil, true\
-                    \n je {true_tag}\n\n",
+                    \n je {true_tag}\n",
                     bool = usize::from(*boolean)
                 );
             }
@@ -2620,20 +3614,40 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     Op::Or | Op::OrEquals => self.asm += " or rdi, rsi\n jnz",
 
                     Op::Equals
+                    | Op::Not
                     | Op::Pow
+                    | Op::WrappingPow
+                    | Op::SaturatingPow
                     | Op::PowEquals
+                    | Op::WrappingPowEquals
+                    | Op::SaturatingPowEquals
                     | Op::Times
+                    | Op::WrappingTimes
+                    | Op::SaturatingTimes
                     | Op::TimesEquals
+                    | Op::WrappingTimesEquals
+                    | Op::SaturatingTimesEquals
                     | Op::Divide
+                    | Op::WrappingDivide
+                    | Op::SaturatingDivide
                     | Op::DivideEquals
+                    | Op::WrappingDivideEquals
+                    | Op::SaturatingDivideEquals
                     | Op::Remainder
                     | Op::RemainderEquals
                     | Op::Plus
+                    | Op::WrappingPlus
+                    | Op::SaturatingPlus
                     | Op::PlusEquals
+                    | Op::WrappingPlusEquals
+                    | Op::SaturatingPlusEquals
                     | Op::Minus
+                    | Op::WrappingMinus
+                    | Op::SaturatingMinus
                     | Op::MinusEquals
+                    | Op::WrappingMinusEquals
+                    | Op::SaturatingMinusEquals
                     | Op::Compare
-                    | Op::Not
                     | Op::BitAnd
                     | Op::BitAndEquals
                     | Op::BitOr
@@ -2641,39 +3655,47 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     | Op::BitXor
                     | Op::BitXorEquals
                     | Op::LeftShift
+                    | Op::WrappingLeftShift
+                    | Op::SaturatingLeftShift
                     | Op::LeftShiftEquals
+                    | Op::WrappingLeftShiftEquals
+                    | Op::SaturatingLeftShiftEquals
                     | Op::RightShift
-                    | Op::RightShiftEquals => {
+                    | Op::RightShiftEquals
+                    | Op::LeftRotate
+                    | Op::LeftRotateEquals
+                    | Op::RightRotate
+                    | Op::RightRotateEquals => {
                         unreachable!("non-boolean operators should not appear here")
                     }
                 }
 
-                self.asm += &format!(" {true_tag}\n\n");
+                _ = writeln!(self.asm, " {true_tag}\n");
             }
             Expression::Identifier { name, .. } => {
                 let var = self.resolve(name);
                 let var_offset = var.offset;
-                self.asm += &format!(
+                _ = writeln!(self.asm,
                     " mov dil, [rbp + {var_offset}]\
                     \n cmp dil, true\
-                    \n je {true_tag}\n\n"
+                    \n je {true_tag}\n"
                 );
             }
             Expression::Unary { operand, .. } => {
                 self.expression(operand, Dst::Reg(Rdi));
 
                 // we can only have boolean expressions at this point, so it's safe to ignore the integer negation case
-                self.asm += &format!(
+                _ = writeln!(self.asm,
                     " xor dil, 1\
-                    \n jnz {true_tag}\n\n"
+                    \n jnz {true_tag}\n"
                 );
             }
             Expression::Array { .. } => unreachable!("arrays cannot appear in conditions"),
             Expression::ArrayIndex { .. } => {
                 self.expression(condition, Dst::Reg(Rdi));
-                self.asm += &format!(
+                _ = writeln!(self.asm,
                     " cmp dil, true\
-                    \n je {true_tag}\n\n"
+                    \n je {true_tag}\n"
                 );
             }
         }
@@ -2683,22 +3705,22 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         match value {
             Expression::Literal(literal) => match literal {
                 Literal::Int(integer) => {
-                    self.asm += &format!(
+                    _ = writeln!(self.asm,
                         " mov rdi, {integer}\
-                        \n mov [rbp + {dst_offset}], rdi\n\n"
+                        \n mov [rbp + {dst_offset}], rdi\n"
                     );
                 }
                 Literal::Ascii(code) => {
-                    self.asm += &format!(" mov byte [rbp + {dst_offset}], {code}\n\n");
+                    _ = writeln!(self.asm, " mov byte [rbp + {dst_offset}], {code}\n");
                 }
                 Literal::Bool(boolean) => {
-                    self.asm += &format!(" mov byte [rbp + {dst_offset}], {boolean}\n\n");
+                    _ = writeln!(self.asm, " mov byte [rbp + {dst_offset}], {boolean}\n");
                 }
                 Literal::Str(string) => {
                     let index = self.string_label_index(string);
-                    self.asm += &format!(
+                    _ = writeln!(self.asm,
                         " mov qword [rbp + {dst_offset}], str_{index}_len\
-                        \n mov qword [rbp + {dst_offset} + {ptr_offset}], str_{index}\n\n",
+                        \n mov qword [rbp + {dst_offset} + {ptr_offset}], str_{index}\n",
                         ptr_offset = Type::Int.size()
                     );
                 }
@@ -2707,9 +3729,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.expression(value, Dst::Reg(Rdi));
 
                 match value.typ() {
-                    Type::Int => self.asm += &format!(" mov [rbp + {dst_offset}], rdi\n\n"),
+                    Type::Int => _ = writeln!(self.asm, " mov [rbp + {dst_offset}], rdi\n"),
                     Type::Ascii | Type::Bool => {
-                        self.asm += &format!(" mov [rbp + {dst_offset}], dil\n\n");
+                        _ = writeln!(self.asm, " mov [rbp + {dst_offset}], dil\n");
                     }
                     Type::Array { .. } => unreachable!("arrays cannot appear in expressions"),
                     Type::Str => unreachable!("strings cannot appear in expressions"),
@@ -2721,49 +3743,49 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 let src_offset = var.offset;
                 match identifier_typ {
                     Type::Int => {
-                        self.asm += &format!(
+                        _ = writeln!(self.asm,
                             " mov rdi, [rbp + {src_offset}]\
-                            \n mov [rbp + {dst_offset}], rdi\n\n"
+                            \n mov [rbp + {dst_offset}], rdi\n"
                         );
                     }
                     Type::Ascii | Type::Bool => {
-                        self.asm += &format!(
+                        _ = writeln!(self.asm,
                             " movzx rdi, byte [rbp + {src_offset}]\
-                            \n mov [rbp + {dst_offset}], dil\n\n"
+                            \n mov [rbp + {dst_offset}], dil\n"
                         );
                     }
                     Type::Str => {
-                        self.asm += &format!(
+                        _ = writeln!(self.asm,
                             " mov rdi, [rbp + {src_offset}]\
                             \n mov rsi, [rbp + {src_offset} + {ptr_offset}]\
                             \n mov [rbp + {dst_offset}], rdi\
-                            \n mov [rbp + {dst_offset} + {ptr_offset}], rsi\n\n",
+                            \n mov [rbp + {dst_offset} + {ptr_offset}], rsi\n",
                             ptr_offset = Type::Int.size()
                         );
                     }
                     Type::Array { typ: array_typ, len } => match &**array_typ {
                         Type::Int => {
-                            self.asm += &format!(
+                            _ = writeln!(self.asm,
                                 " lea rdi, [rbp + {dst_offset}]\
                                 \n lea rsi, [rbp + {src_offset}]\
                                 \n mov rcx, {len}\
-                                \n rep movsq\n\n"
+                                \n rep movsq\n"
                             );
                         }
                         Type::Ascii | Type::Bool => {
-                            self.asm += &format!(
+                            _ = writeln!(self.asm,
                                 " lea rdi, [rbp + {dst_offset}]\
                                 \n lea rsi, [rbp + {src_offset}]\
                                 \n mov rcx, {len}\
-                                \n rep movsb\n\n"
+                                \n rep movsb\n"
                             );
                         }
                         Type::Str => {
-                            self.asm += &format!(
+                            _ = writeln!(self.asm,
                                 " lea rdi, [rbp + {dst_offset}]\
                                 \n lea rsi, [rbp + {src_offset}]\
                                 \n mov rcx, {len} * 2\
-                                \n rep movsq\n\n"
+                                \n rep movsq\n"
                             );
                         }
                         Type::Array { .. } => unreachable!("nested arrays not supported yet)"),
@@ -2772,27 +3794,27 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     Type::Infer => unreachable!("should have been inferred"),
                 }
             }
-            Expression::Unary { op, operand } => {
+            Expression::Unary { op_position, op, operand } => {
                 self.expression(operand, Dst::Reg(Rdi));
 
                 match op {
                     Op::Not => match operand.typ() {
                         Type::Bool => {
-                            self.asm += &format!(
+                            _ = writeln!(self.asm,
                                 " xor rdi, 1\
-                                \n mov [rbp + {dst_offset}], dil\n\n"
+                                \n mov [rbp + {dst_offset}], dil\n"
                             );
                         }
                         Type::Ascii => {
-                            self.asm += &format!(
+                            _ = writeln!(self.asm,
                                 " not rdi\
-                                \n mov [rbp + {dst_offset}], dil\n\n"
+                                \n mov [rbp + {dst_offset}], dil\n"
                             );
                         }
                         Type::Int => {
-                            self.asm += &format!(
+                            _ = writeln!(self.asm,
                                 " not rdi\
-                                \n mov [rbp + {dst_offset}], rdi\n\n"
+                                \n mov [rbp + {dst_offset}], rdi\n"
                             );
                         }
                         Type::Array { .. } => unreachable!("cannot invert array values"),
@@ -2801,15 +3823,67 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     },
                     Op::Minus => match operand.typ() {
                         Type::Ascii => {
-                            self.asm += &format!(
-                                " neg rdi\
-                                \n mov [rbp + {dst_offset}], dil\n\n"
+                            _ = writeln!(self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_safe_negate\
+                                \n mov [rbp + {dst_offset}], dil\n",
+                                line = op_position.line,
+                                col = op_position.col
                             );
                         }
                         Type::Int => {
-                            self.asm += &format!(
+                            _ = writeln!(self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_safe_negate\
+                                \n mov [rbp + {dst_offset}], rdi\n",
+                                line = op_position.line,
+                                col = op_position.col
+                            );
+                        }
+                        Type::Bool => unreachable!("cannot negate boolean values"),
+                        Type::Array { .. } => unreachable!("cannot negate array values"),
+                        Type::Str => unreachable!("cannot negate string values"),
+                        Type::Infer => unreachable!("should have been inferred"),
+                    },
+                    Op::WrappingMinus => match operand.typ() {
+                        Type::Ascii => {
+                            _ = writeln!(self.asm,
                                 " neg rdi\
-                                \n mov [rbp + {dst_offset}], rdi\n\n"
+                                \n mov [rbp + {dst_offset}], dil\n"
+                            );
+                        }
+                        Type::Int => {
+                            _ = writeln!(self.asm,
+                                " neg rdi\
+                                \n mov [rbp + {dst_offset}], rdi\n"
+                            );
+                        }
+                        Type::Bool => unreachable!("cannot negate boolean values"),
+                        Type::Array { .. } => unreachable!("cannot negate array values"),
+                        Type::Str => unreachable!("cannot negate string values"),
+                        Type::Infer => unreachable!("should have been inferred"),
+                    },
+                    Op::SaturatingMinus => match operand.typ() {
+                        Type::Ascii => {
+                            _ = writeln!(self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_saturating_negate\
+                                \n mov [rbp + {dst_offset}], dil\n",
+                                line = op_position.line,
+                                col = op_position.col
+                            );
+                        }
+                        Type::Int => {
+                            _ = writeln!(self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_saturating_negate\
+                                \n mov [rbp + {dst_offset}], rdi\n",
+                                line = op_position.line,
+                                col = op_position.col
                             );
                         }
                         Type::Bool => unreachable!("cannot negate boolean values"),
@@ -2818,22 +3892,137 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Type::Infer => unreachable!("should have been inferred"),
                     },
                     Op::Plus => match operand.typ() {
-                        Type::Int => {
-                            self.asm += &format!(
-                                " mov rax, rdi\
-                                \n sar rax, INT_BITS - 1\
-                                \n xor rdi, rax\
-                                \n sub rdi, rax\
-                                \n mov [rbp + {dst_offset}], rdi\n\n"
+                        Type::Ascii => {
+                            _ = writeln!(self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_safe_abs\
+                                \n mov [rbp + {dst_offset}], dil\n",
+                                line = op_position.line,
+                                col = op_position.col
                             );
                         }
-                        Type::Ascii => unreachable!("cannot negate ascii values"),
-                        Type::Bool => unreachable!("cannot negate boolean values"),
-                        Type::Array { .. } => unreachable!("cannot negate array values"),
-                        Type::Str => unreachable!("cannot negate string values"),
+                        Type::Int => {
+                            _ = writeln!(self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_safe_abs\
+                                \n mov [rbp + {dst_offset}], rdi\n",
+                                line = op_position.line,
+                                col = op_position.col
+                            );
+                        }
+                        Type::Bool => unreachable!("cannot take absolute value of boolean values"),
+                        Type::Array { .. } => {
+                            unreachable!("cannot take absolute value of array values")
+                        }
+                        Type::Str => unreachable!("cannot take absolute value of string values"),
                         Type::Infer => unreachable!("should have been inferred"),
                     },
-                    _ => unreachable!("not a unary operators"),
+                    Op::WrappingPlus => match operand.typ() {
+                        Type::Ascii => {
+                            _ = writeln!(self.asm,
+                                " call int_wrapping_abs\
+                                \n mov [rbp + {dst_offset}], dil\n"
+                            );
+                        }
+                        Type::Int => {
+                            _ = writeln!(self.asm,
+                                " call int_wrapping_abs\
+                                \n mov [rbp + {dst_offset}], rdi\n"
+                            );
+                        }
+                        Type::Bool => unreachable!("cannot take absolute value of boolean values"),
+                        Type::Array { .. } => {
+                            unreachable!("cannot take absolute value of array values")
+                        }
+                        Type::Str => unreachable!("cannot take absolute value of string values"),
+                        Type::Infer => unreachable!("should have been inferred"),
+                    },
+                    Op::SaturatingPlus => match operand.typ() {
+                        Type::Ascii => {
+                            _ = writeln!(self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_saturating_abs\
+                                \n mov [rbp + {dst_offset}], dil\n",
+                                line = op_position.line,
+                                col = op_position.col
+                            );
+                        }
+                        Type::Int => {
+                            _ = writeln!(self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_saturating_abs\
+                                \n mov [rbp + {dst_offset}], rdi\n",
+                                line = op_position.line,
+                                col = op_position.col
+                            );
+                        }
+                        Type::Bool => unreachable!("cannot take absolute value of boolean values"),
+                        Type::Array { .. } => {
+                            unreachable!("cannot take absolute value of array values")
+                        }
+                        Type::Str => unreachable!("cannot take absolute value of string values"),
+                        Type::Infer => unreachable!("should have been inferred"),
+                    },
+                    Op::Equals
+                    | Op::Pow
+                    | Op::WrappingPow
+                    | Op::SaturatingPow
+                    | Op::PowEquals
+                    | Op::WrappingPowEquals
+                    | Op::SaturatingPowEquals
+                    | Op::Times
+                    | Op::WrappingTimes
+                    | Op::SaturatingTimes
+                    | Op::TimesEquals
+                    | Op::WrappingTimesEquals
+                    | Op::SaturatingTimesEquals
+                    | Op::Divide
+                    | Op::WrappingDivide
+                    | Op::SaturatingDivide
+                    | Op::DivideEquals
+                    | Op::WrappingDivideEquals
+                    | Op::SaturatingDivideEquals
+                    | Op::Remainder
+                    | Op::RemainderEquals
+                    | Op::PlusEquals
+                    | Op::WrappingPlusEquals
+                    | Op::SaturatingPlusEquals
+                    | Op::MinusEquals
+                    | Op::WrappingMinusEquals
+                    | Op::SaturatingMinusEquals
+                    | Op::LeftShift
+                    | Op::WrappingLeftShift
+                    | Op::SaturatingLeftShift
+                    | Op::LeftShiftEquals
+                    | Op::WrappingLeftShiftEquals
+                    | Op::SaturatingLeftShiftEquals
+                    | Op::RightShift
+                    | Op::RightShiftEquals
+                    | Op::LeftRotate
+                    | Op::LeftRotateEquals
+                    | Op::RightRotate
+                    | Op::RightRotateEquals
+                    | Op::And
+                    | Op::AndEquals
+                    | Op::BitAnd
+                    | Op::BitAndEquals
+                    | Op::BitXor
+                    | Op::BitXorEquals
+                    | Op::Or
+                    | Op::OrEquals
+                    | Op::BitOr
+                    | Op::BitOrEquals
+                    | Op::Compare
+                    | Op::EqualsEquals
+                    | Op::NotEquals
+                    | Op::Greater
+                    | Op::GreaterOrEquals
+                    | Op::Less
+                    | Op::LessOrEquals => unreachable!("not a unary operators"),
                 }
             }
             Expression::Array { typ, items } => {
@@ -2846,14 +4035,14 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.expression(value, Dst::default(typ));
 
                 match typ {
-                    Type::Int => self.asm += &format!(" mov [rbp + {dst_offset}], rdi\n\n"),
+                    Type::Int => _ = writeln!(self.asm, " mov [rbp + {dst_offset}], rdi\n"),
                     Type::Ascii | Type::Bool => {
-                        self.asm += &format!(" mov [rbp + {dst_offset}], dil\n\n");
+                        _ = writeln!(self.asm, " mov [rbp + {dst_offset}], dil\n");
                     }
                     Type::Str => {
-                        self.asm += &format!(
+                        _ = writeln!(self.asm,
                             " mov [rbp + {dst_offset}], rdi\
-                            \n mov [rbp + {dst_offset} + {ptr_offset}], rsi\n\n",
+                            \n mov [rbp + {dst_offset} + {ptr_offset}], rsi\n",
                             ptr_offset = Type::Int.size()
                         );
                     }
@@ -2868,7 +4057,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 // ifs
 impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn iff(&mut self, iff: &'ast IfStatement<'src>, tag: &str, false_tag: &str) {
-        self.asm += &format!("{tag}:; {}\n", iff.condition);
+        _ = writeln!(self.asm, "{tag}:; {}", iff.condition);
         self.condition(&iff.condition, false_tag);
         self.node(&iff.statement);
     }
@@ -2927,14 +4116,14 @@ pub enum ErrorKind {
 
 impl Display for ErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::CouldNotCreateFile { path } => {
                 write!(f, "could not create file '{}'", path.display())
             }
             Self::WritingAssemblyFailed => {
                 write!(f, "writing to assembly file failed")
             }
-        }
+        };
     }
 }
 
@@ -2945,9 +4134,9 @@ pub enum ErrorCause {
 
 impl Display for ErrorCause {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::IoError(err) => write!(f, "{err} ({})", err.kind()),
-        }
+        };
     }
 }
 
@@ -2961,12 +4150,12 @@ impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
+        return write!(
             f,
             "{ERROR}: {msg}\
             \n{CAUSE}: {cause}",
             msg = self.kind,
             cause = self.cause
-        )
+        );
     }
 }

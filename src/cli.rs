@@ -1,6 +1,6 @@
 use crate::{Bg, Color, Colored, Command, Fg, Flag, Verbosity, BAR, ERROR};
 use std::{
-    fmt::Display,
+    fmt::{Display, Write as _},
     ops::Deref,
     path::{Path, PathBuf},
 };
@@ -12,6 +12,7 @@ pub struct Args {
     pub command: Command,
 }
 
+// REMOVE(stefano): prefer checking for a correct file before actually opening a file
 #[derive(Debug, Clone)]
 pub struct FilePath {
     pub(crate) inner: PathBuf,
@@ -19,17 +20,17 @@ pub struct FilePath {
 
 impl FilePath {
     pub fn from<P: AsRef<Path>>(path: P) -> Option<Self> {
-        let path = path.as_ref().to_path_buf();
-        if path.is_dir() {
+        let path_ref = path.as_ref();
+        if !path_ref.is_file() {
             return None;
         }
 
-        Some(Self { inner: path })
+        return Some(Self { inner: path_ref.to_owned() });
     }
 
     #[must_use]
     pub fn into_inner(self) -> PathBuf {
-        self.inner
+        return self.inner;
     }
 }
 
@@ -37,10 +38,11 @@ impl Deref for FilePath {
     type Target = Path;
 
     fn deref(&self) -> &Self::Target {
-        &self.inner
+        return &self.inner;
     }
 }
 
+// REMOVE(stefano): prefer checking for a correct directory before actually creating it
 #[derive(Debug, Clone)]
 pub struct DirPath {
     pub(crate) inner: PathBuf,
@@ -48,17 +50,17 @@ pub struct DirPath {
 
 impl DirPath {
     pub fn from<P: AsRef<Path>>(path: P) -> Option<Self> {
-        let path = path.as_ref().to_path_buf();
-        if path.is_file() {
+        let path_ref = path.as_ref();
+        if !path_ref.is_dir() {
             return None;
         }
 
-        Some(Self { inner: path })
+        return Some(Self { inner: path_ref.to_owned() });
     }
 
     #[must_use]
     pub fn into_inner(self) -> PathBuf {
-        self.inner
+        return self.inner;
     }
 }
 
@@ -66,19 +68,22 @@ impl Deref for DirPath {
     type Target = Path;
 
     fn deref(&self) -> &Self::Target {
-        &self.inner
+        return &self.inner;
     }
 }
 
 impl TryFrom<Vec<String>> for Args {
     type Error = Error;
 
+    // TODO(stefano): split patterns and avoid unreachable macro calls by factoring to functions
     fn try_from(args: Vec<String>) -> Result<Self, Self::Error> {
-        let mut color_args = args.iter().enumerate().clone();
-        let _ = color_args.next(); // skipping the name of this executable
+        let mut args_iter = args.iter().enumerate();
+        let _executable_name = args_iter.next();
+
+        let mut color_args = args_iter.clone();
 
         Color::Auto.set(&std::io::stderr());
-        let mut color: Option<(Color, CliOption)> = None;
+        let mut color_option: Option<(Color, CliOption)> = None;
 
         while let Some((color_flag_idx, arg)) = color_args.next() {
             if arg == "-c" || arg == "--color" {
@@ -88,7 +93,7 @@ impl TryFrom<Vec<String>> for Args {
                     _ => unreachable!(),
                 };
 
-                if let Some((_mode, previous_cli_option)) = color {
+                if let Some((_mode, previous_cli_option)) = color_option {
                     return Err(Error {
                         args,
                         erroneous_arg_index: color_flag_idx,
@@ -114,31 +119,30 @@ impl TryFrom<Vec<String>> for Args {
                     "always" => Color::Always,
                     "never" => Color::Never,
                     _ => {
-                        let mode = mode.to_owned();
+                        let unrecognized_mode = mode.to_owned();
                         return Err(Error {
                             args,
                             erroneous_arg_index: color_mode_idx,
-                            kind: ErrorKind::UnrecognizedColorMode { mode },
+                            kind: ErrorKind::UnrecognizedColorMode { mode: unrecognized_mode },
                             cause: ErrorCause::UnrecognizedColorMode,
                         });
                     }
                 };
 
-                color = Some((color_mode, cli_option));
+                color_option = Some((color_mode, cli_option));
             }
         }
 
-        let color = match color {
+        let color = match color_option {
             Some((mode, _)) => mode,
             None => Color::Auto,
         };
         color.set(&std::io::stderr());
 
-        let mut verbosity: Option<(Verbosity, CliOption)> = None;
-        let mut command: Option<(Command, CliCommand)> = None;
+        let mut verbosity_option: Option<(Verbosity, CliOption)> = None;
+        let mut command_option: Option<(Command, CliCommand)> = None;
 
-        let mut other_args = args.iter().enumerate().clone().peekable();
-        let _ = other_args.next(); // skipping the name of this executable
+        let mut other_args = args_iter.clone().peekable();
 
         while let Some((flag_idx, arg)) = other_args.next() {
             match arg.as_str() {
@@ -146,12 +150,12 @@ impl TryFrom<Vec<String>> for Args {
                     let cli_option = match arg.as_str() {
                         "-q" => CliOption::QuietShort,
                         "--quiet" => CliOption::QuietLong,
-                        "-V" => CliOption::VerboseLong,
+                        "-V" => CliOption::VerboseShort,
                         "--verbose" => CliOption::VerboseLong,
                         _ => unreachable!(),
                     };
 
-                    if let Some((_mode, previous_cli_option)) = verbosity {
+                    if let Some((_mode, previous_cli_option)) = verbosity_option {
                         return Err(Error {
                             args,
                             erroneous_arg_index: flag_idx,
@@ -169,7 +173,7 @@ impl TryFrom<Vec<String>> for Args {
                         _ => unreachable!(),
                     };
 
-                    verbosity = Some((verbosity_mode, cli_option));
+                    verbosity_option = Some((verbosity_mode, cli_option));
                 }
                 "help" | "-h" | "--help" => {
                     let cli_command = match arg.as_str() {
@@ -179,7 +183,7 @@ impl TryFrom<Vec<String>> for Args {
                         _ => unreachable!(),
                     };
 
-                    match command {
+                    match command_option {
                         Some((Command::Help, previous_cli_command)) => {
                             return Err(Error {
                                 args,
@@ -202,7 +206,7 @@ impl TryFrom<Vec<String>> for Args {
                                 },
                             });
                         }
-                        _ => command = Some((Command::Help, cli_command)),
+                        _ => command_option = Some((Command::Help, cli_command)),
                     }
                 }
                 "version" | "-v" | "--version" => {
@@ -213,7 +217,7 @@ impl TryFrom<Vec<String>> for Args {
                         _ => unreachable!(),
                     };
 
-                    match command {
+                    match command_option {
                         Some((Command::Version, previous_cli_command)) => {
                             return Err(Error {
                                 args,
@@ -236,7 +240,7 @@ impl TryFrom<Vec<String>> for Args {
                                 },
                             });
                         }
-                        _ => command = Some((Command::Version, cli_command)),
+                        _ => command_option = Some((Command::Version, cli_command)),
                     }
                 }
                 command_str @ ("check" | "compile" | "run") => {
@@ -250,7 +254,7 @@ impl TryFrom<Vec<String>> for Args {
                     if let Some((
                         Command::Check { .. } | Command::Compile { .. } | Command::Run { .. },
                         previous_cli_command,
-                    )) = command
+                    )) = command_option
                     {
                         return Err(Error {
                             args,
@@ -306,7 +310,7 @@ impl TryFrom<Vec<String>> for Args {
                                     };
 
                                     let Some(dir_path) = DirPath::from(out_path_str) else {
-                                        let out_path: PathBuf = out_path_str.into();
+                                        let out_path_buf: PathBuf = out_path_str.into();
                                         return Err(Error {
                                             args,
                                             erroneous_arg_index: out_path_idx,
@@ -314,7 +318,7 @@ impl TryFrom<Vec<String>> for Args {
                                                 CliOption::OutFolderPath,
                                             ),
                                             cause: ErrorCause::ExpectedDirectory {
-                                                path: FilePath { inner: out_path },
+                                                path: FilePath { inner: out_path_buf },
                                             },
                                         });
                                     };
@@ -332,12 +336,12 @@ impl TryFrom<Vec<String>> for Args {
                         _ => unreachable!(),
                     };
 
-                    if let Some((Command::Help | Command::Version, _)) = command {
+                    if let Some((Command::Help | Command::Version, _)) = command_option {
                         // this is just to make sure that run modes commands are properly formatted,
                         // so we do nothing in the case where the
                         // help, -h, --help, version,  -v or --version command was already selected
                     } else {
-                        command = Some((mode, cli_command));
+                        command_option = Some((mode, cli_command));
                     }
                 }
                 "-o" | "--output" => match other_args.next() {
@@ -362,28 +366,28 @@ impl TryFrom<Vec<String>> for Args {
                     let _color_mode = other_args.next();
                 }
                 unrecognized => {
-                    let unrecognized = unrecognized.to_owned();
+                    let unrecognized_arg = unrecognized.to_owned();
                     return Err(Error {
                         args,
                         erroneous_arg_index: flag_idx,
-                        kind: ErrorKind::UnrecognizedArg { arg: unrecognized },
+                        kind: ErrorKind::UnrecognizedArg { arg: unrecognized_arg },
                         cause: ErrorCause::Unrecognized,
                     });
                 }
             }
         }
 
-        let verbosity = match verbosity {
+        let verbosity = match verbosity_option {
             Some((verbosity, _)) => verbosity,
             None => Verbosity::Normal,
         };
 
-        let command = match command {
+        let command = match command_option {
             Some((command, _)) => command,
             None => Command::Help,
         };
 
-        Ok(Self { color, verbosity, command })
+        return Ok(Self { color, verbosity, command });
     }
 }
 
@@ -391,11 +395,12 @@ impl TryFrom<std::env::Args> for Args {
     type Error = Error;
 
     fn try_from(args: std::env::Args) -> Result<Self, Self::Error> {
-        Self::try_from(args.collect::<Vec<String>>())
+        return Self::try_from(args.collect::<Vec<String>>());
     }
 }
 
 #[derive(Debug, Clone, Copy)]
+#[allow(clippy::module_name_repetitions)] // would collide with the built-in Option enum
 pub enum CliOption {
     ColorShort,
     ColorLong,
@@ -408,7 +413,7 @@ pub enum CliOption {
 
 impl Display for CliOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::ColorShort => write!(f, "-c"),
             Self::ColorLong => write!(f, "-color"),
             Self::QuietShort => write!(f, "-q"),
@@ -416,11 +421,12 @@ impl Display for CliOption {
             Self::VerboseShort => write!(f, "-V"),
             Self::VerboseLong => write!(f, "--verbose"),
             Self::OutFolderPath => write!(f, "-o"),
-        }
+        };
     }
 }
 
 #[derive(Debug, Clone, Copy)]
+#[allow(clippy::module_name_repetitions)] // would collide with std::process::Command
 pub enum CliCommand {
     Help,
     HelpShort,
@@ -435,7 +441,7 @@ pub enum CliCommand {
 
 impl Display for CliCommand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::Help => write!(f, "help"),
             Self::HelpShort => write!(f, "-h"),
             Self::HelpLong => write!(f, "--help"),
@@ -445,7 +451,7 @@ impl Display for CliCommand {
             Self::Check => write!(f, "check"),
             Self::Compile => write!(f, "compile"),
             Self::Run => write!(f, "run"),
-        }
+        };
     }
 }
 
@@ -463,7 +469,7 @@ pub enum ErrorKind {
 
 impl Display for ErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::MissingColorMode => write!(f, "missing color mode"),
             Self::UnrecognizedColorMode { mode } => write!(f, "unrecognized color mode '{mode}'"),
             Self::RepeatedOption(option) => write!(f, "repeated '{option}' option"),
@@ -472,7 +478,7 @@ impl Display for ErrorKind {
             Self::InvalidCommand(command) => write!(f, "invalid '{command}' command"),
             Self::StrayOption(option) => write!(f, "stray '{option}' option"),
             Self::UnrecognizedArg { arg } => write!(f, "unrecognized arg '{arg}'"),
-        }
+        };
     }
 }
 
@@ -493,7 +499,7 @@ pub enum ErrorCause {
 
 impl Display for ErrorCause {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::CommandAlreadySelected { current, previous } => {
                 write!(f, "cannot use '{current}' again because '{previous}' was already selected")
             }
@@ -523,7 +529,7 @@ impl Display for ErrorCause {
                 write!(f, "output path can only be specified after a 'compile' or 'run' command")
             }
             Self::Unrecognized => write!(f, "unrecognized"),
-        }
+        };
     }
 }
 
@@ -545,9 +551,15 @@ impl Display for Error {
         }
 
         let mut args = String::new();
-        for arg in &self.args {
-            args += &format!(" {arg}");
+        let mut args_iter = self.args.iter();
+        let Some(last_arg) = args_iter.next_back() else {
+            unreachable!("program executable name should always be present");
+        };
+
+        for arg in args_iter {
+            _ = write!(args, "{arg} ");
         }
+        args += last_arg.as_str();
 
         let msg = Colored {
             text: &self.kind.to_string(),
@@ -556,7 +568,11 @@ impl Display for Error {
             flags: Flag::Bold,
         };
 
-        let pointers_len = self.args[self.erroneous_arg_index].len();
+        let pointers_len = match self.args.get(self.erroneous_arg_index) {
+            Some(erroneous_arg) => erroneous_arg.len(),
+            None => 0
+        };
+
         let pointers_and_cause = Colored {
             text: format!("{spaces:^>pointers_len$} {cause}", spaces = "", cause = self.cause),
             fg: Fg::LightRed,
@@ -564,13 +580,13 @@ impl Display for Error {
             flags: Flag::Bold,
         };
 
-        write!(
+        return write!(
             f,
             "{ERROR}: {msg}\
             \n{BAR}\
-            \n{BAR}{args}\
+            \n{BAR} {args}\
             \n{BAR} {spaces:>pointer_offset$}{pointers_and_cause}",
             spaces = ""
-        )
+        );
     }
 }

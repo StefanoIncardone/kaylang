@@ -3,7 +3,8 @@
 All notable changes to this project will be documented in this file
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html),
+but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 
 ## Unreleased
@@ -11,9 +12,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Temporary values
 - Shortcircuted and/or operators
 - Unsigned integers
-- UTF-8/UTF-16/UTF-32 characters and string literals
-- Type aliases and distinct types
-- **BREAKING**: Bit-casting operator and removal of implicit conversions
+
+### Aliases
+
+ability to create type aliases, which are just alternative names to existing types:
+
+```kay
+alias byte = u8;
+```
+
+### Distinct types
+
+ability to create distinct types, which are considered entirely different types:
+
+```kay
+type byte = u8;
+```
+
 
 ## 0.6.0 -
 
@@ -28,8 +43,10 @@ Changes to error messages, help message and alike would **not** be considered br
 
 ### Added
 
-- String and Array comparison operators (i.e.: `<=>`, `==`, `!=`, `<`, `<=`, `>`, `>=`)
+- String and Array comparison operators: `<=>`, `==`, `!=`, `<`, `<=`, `>`, `>=`
 - `+` as the unary absolute value operator
+- overflowing operators, will wrap in two's complemente: `...\` (e.g.: `*` -> `*\`)
+- saturating operators: `...|` (e.g.: `*` -> `*|`)
 - Raw string literals: `r"hello\nworld"` where `\n` would not get escaped
 - Printing to `stderr`: `eprint` and `eprintln` keywords
 - `help` and `version` commands
@@ -39,6 +56,7 @@ Changes to error messages, help message and alike would **not** be considered br
 - Improved generated asm code
 - Runtime crashes now print to `stderr`
 - **BREAKING**: `<=>` now has the same precedence as `==`, `!=`, `<`, `<=`, `>`, `>=` operators
+- **BREAKING**: operators `**`, `*`, `+`, `-`, `<<`, `>>` will crash on overflow
 - **BREAKING**: `char` type renamed to `ascii`
 - Improved error messages
 - Allowed non utf-8 paths in cli arguments
@@ -71,6 +89,8 @@ Changes to error messages, help message and alike would **not** be considered br
 - Checking if a file or a directory were given when the opposite was expected is now checked during
     cli arguments parsing
 - Bug in parsing of do-loop statements
+- Bug in result of division/remainder assembly code that would produce incorrect results when
+    division happend on negative numbers
 
 
 ## 0.5.3 - 2024-03-02
@@ -140,7 +160,8 @@ going to be provided to lazily construct full syntax errors
 
 ### Added
 
-- Runtime errors for division by zero, taking the modulo 0 and raising to a negative power
+- Runtime errors for division by zero, taking the remainder of a number divided by 0 and raising to
+    a negative power
 
 ## 0.4.1 - 2023-11-29
 

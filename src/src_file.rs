@@ -23,8 +23,9 @@ pub struct Position {
 impl<'src> Position {
     pub(crate) fn new(src: &'src SrcFile, col: usize) -> (Self, &'src str) {
         let mut left = 0;
-        let mut right = src.lines.len();
+        let mut right = src.lines.len() - 1;
         while left < right {
+            #[allow(clippy::integer_division)] // it's intended to lose precision
             let middle = left + (right - left) / 2;
             if col < src.lines[middle].end {
                 right = middle;
@@ -33,15 +34,8 @@ impl<'src> Position {
             }
         }
 
-        Self::new_with_line_index(src, left, col)
-    }
-
-    pub(crate) fn new_with_line_index(
-        src: &'src SrcFile,
-        line_index: usize,
-        col: usize,
-    ) -> (Self, &'src str) {
-        let line = &src.lines[line_index];
+        // converting from column offset to display offset (useful for utf8 characters)
+        let line = &src.lines[left];
         let line_text = &src.code[line.start..line.end];
         let target_col = col - line.start;
         let mut display_col = 0;
@@ -52,7 +46,7 @@ impl<'src> Position {
             }
         }
 
-        (Self { line: line_index + 1, col: display_col }, line_text)
+        return (Self { line: left + 1, col: display_col }, line_text);
     }
 }
 
@@ -108,7 +102,10 @@ impl SrcFile {
             if end > start {
                 if let cr @ b'\r' = &mut unsafe { code.as_bytes_mut() }[end - 1] {
                     *cr = b'\n';
-                    unsafe { code.as_mut_vec().set_len(end) };
+
+                    // NOTE(stefano): might change to "safe" options
+                    unsafe { code.as_mut_vec().set_len(end); }
+
                     end -= 1;
                     chars_read -= 1;
                 }
@@ -128,7 +125,7 @@ impl SrcFile {
             }
         }
 
-        Ok(Self { path: path.clone(), code, lines })
+        return Ok(Self { path: path.clone(), code, lines });
     }
 }
 
@@ -141,7 +138,7 @@ pub enum ErrorKind {
 
 impl Display for ErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::CouldNotOpen { path } => write!(f, "could not open '{}'", path.display()),
             Self::CouldNotReadMetadata { path } => {
                 write!(f, "could not read metadata of '{}'", path.display())
@@ -149,7 +146,7 @@ impl Display for ErrorKind {
             Self::CouldNotReadContents { path } => {
                 write!(f, "could not read contents of '{}'", path.display())
             }
-        }
+        };
     }
 }
 
@@ -160,9 +157,9 @@ pub enum ErrorCause {
 
 impl Display for ErrorCause {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::IoError(err) => write!(f, "{err} ({})", err.kind()),
-        }
+        };
     }
 }
 
@@ -176,12 +173,12 @@ impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
+        return write!(
             f,
             "{ERROR}: {msg}\
             \n{CAUSE}: {cause}",
             msg = self.kind,
             cause = self.cause
-        )
+        );
     }
 }

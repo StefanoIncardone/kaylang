@@ -1,11 +1,11 @@
 pub mod artifacts;
-pub mod syntax;
 pub mod cli;
 pub mod compiler;
 pub mod src_file;
+pub mod syntax;
 
 use cli::{DirPath, FilePath};
-use std::{fmt::Display, io::IsTerminal, time::Instant};
+use std::{fmt::{Display, Write as _}, io::IsTerminal, time::Instant};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub enum Color {
@@ -49,7 +49,7 @@ pub struct Version {
 impl Display for Version {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.color.set(&std::io::stdout());
-        write!(f, "Kaylang compiler, version {VERSION}")
+        return write!(f, "Kaylang compiler, version {VERSION}");
     }
 }
 
@@ -60,7 +60,7 @@ pub struct Help {
 
 impl Display for Help {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
+        return write!(
             f,
             r"{version}
 
@@ -81,7 +81,7 @@ impl Display for Help {
 {OUTPUT}:
     -o, --output <{PATH}>   Folder to populate with compilation artifacts (.asm, .o, executable) (default: '.')",
             version = Version { color: self.color }
-        )
+        );
     }
 }
 
@@ -155,7 +155,7 @@ pub(crate) static mut log: fn(
 ) -> std::fmt::Result = log_color;
 
 impl Color {
-    pub fn set(self, sink: &impl IsTerminal) {
+    pub fn set<I: IsTerminal>(self, sink: &I) {
         unsafe {
             log = match self {
                 Self::Auto => {
@@ -179,7 +179,7 @@ fn log_no_color(
     _: Flags,
     f: &mut std::fmt::Formatter<'_>,
 ) -> std::fmt::Result {
-    text.fmt(f)
+    return text.fmt(f);
 }
 
 fn log_color(
@@ -192,10 +192,10 @@ fn log_color(
     let mut codes = String::with_capacity(15);
 
     if fg != Fg::Default {
-        codes += &format!("{};", fg as u8);
+        _ = write!(codes, "{};", fg as u8);
     }
     if bg != Bg::Default {
-        codes += &format!("{};", bg as u8);
+        _ = write!(codes, "{};", bg as u8);
     }
     if flags & Flag::Bold != 0 {
         codes += "1;";
@@ -213,7 +213,7 @@ fn log_color(
         codes += "27;";
     }
 
-    if codes.is_empty() {
+    return if codes.is_empty() {
         text.fmt(f)
     } else {
         let _last_semicolon = codes.pop();
@@ -221,7 +221,7 @@ fn log_color(
         write!(f, "\x1b[{codes}m")?;
         text.fmt(f)?;
         write!(f, "\x1b[0m")
-    }
+    };
 }
 
 #[derive(Debug, Default)]
@@ -234,7 +234,7 @@ pub struct Colored<Text: AsRef<str>> {
 
 impl<Text: AsRef<str>> Display for Colored<Text> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        unsafe { log(self.text.as_ref(), self.fg, self.bg, self.flags, f) }
+        return unsafe { log(self.text.as_ref(), self.fg, self.bg, self.flags, f) };
     }
 }
 
@@ -293,8 +293,10 @@ const BAR_FLAGS: Flags = Flag::Bold;
 #[rustfmt::skip] pub(crate) static AT:    Colored<&str> = Colored { text: "at",    fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 #[rustfmt::skip] pub(crate) static BAR:   Colored<&str> = Colored { text: "|",     fg: BAR_FG, bg: BAR_BG, flags: BAR_FLAGS };
 
+// IDEA(stefano): this struct and color related features could be extracted to a separate crate
 pub struct Step;
 
+#[allow(clippy::print_stderr)]
 impl Step {
     pub fn info(step: &Colored<&str>, path: &FilePath, verbosity: Verbosity) {
         if let Verbosity::Normal | Verbosity::Verbose = verbosity {

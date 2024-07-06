@@ -40,7 +40,7 @@ pub(crate) enum Literal {
 
 impl Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::Int(integer) => write!(f, "{integer}"),
             Self::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
             Self::Bool(boolean) => write!(f, "{boolean}"),
@@ -51,13 +51,13 @@ impl Display for Literal {
                 }
                 write!(f, "\"")
             }
-        }
+        };
     }
 }
 
 impl SrcCodeLen for Literal {
     fn src_code_len(&self) -> usize {
-        match self {
+        return match self {
             Self::Int(integer) => integer.to_string().len(),
             Self::Ascii(code) => code.escape_ascii().len() + 2, // + 2 for the quotes
             Self::Bool(boolean) => boolean.to_string().len(),
@@ -68,36 +68,86 @@ impl SrcCodeLen for Literal {
                 }
                 len + 2 // + 2 for the quotes
             }
-        }
+        };
     }
 }
 
+// IDEA(stefano): introduce left/right shift/rotate opertors that skip the check for a positive 6bit
+// shift amount (maybe <<?, >>?, <<<?, >>>?)
+    // WARNING: will introduce undefined behaviour
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Op {
-    // unary
+    Equals,
     Not,
-    // Plus can also be a unary operator
-    // Minus can also be a unary operator
 
-    // binary
     Pow,
+    WrappingPow,
+    SaturatingPow,
+    PowEquals,
+    WrappingPowEquals,
+    SaturatingPowEquals,
+
     Times,
+    WrappingTimes,
+    SaturatingTimes,
+    TimesEquals,
+    WrappingTimesEquals,
+    SaturatingTimesEquals,
+
     Divide,
+    WrappingDivide,
+    SaturatingDivide,
+    DivideEquals,
+    WrappingDivideEquals,
+    SaturatingDivideEquals,
+
     Remainder,
+    RemainderEquals,
+
     Plus,
+    WrappingPlus,
+    SaturatingPlus,
+    PlusEquals,
+    WrappingPlusEquals,
+    SaturatingPlusEquals,
+
     Minus,
+    WrappingMinus,
+    SaturatingMinus,
+    MinusEquals,
+    WrappingMinusEquals,
+    SaturatingMinusEquals,
 
     LeftShift,
-    RightShift,
+    WrappingLeftShift,
+    SaturatingLeftShift,
+    LeftShiftEquals,
+    WrappingLeftShiftEquals,
+    SaturatingLeftShiftEquals,
 
-    BitAnd,
-    BitXor,
-    BitOr,
+    RightShift,
+    RightShiftEquals,
+
+    LeftRotate,
+    LeftRotateEquals,
+    RightRotate,
+    RightRotateEquals,
 
     And,
-    Or,
+    AndEquals,
 
-    // comparisons
+    BitAnd,
+    BitAndEquals,
+
+    BitXor,
+    BitXorEquals,
+
+    Or,
+    OrEquals,
+
+    BitOr,
+    BitOrEquals,
+
     Compare,
     EqualsEquals,
     NotEquals,
@@ -105,108 +155,167 @@ pub enum Op {
     GreaterOrEquals,
     Less,
     LessOrEquals,
-
-    // assignment
-    Equals,
-
-    PowEquals,
-    TimesEquals,
-    DivideEquals,
-    RemainderEquals,
-    PlusEquals,
-    MinusEquals,
-
-    LeftShiftEquals,
-    RightShiftEquals,
-
-    BitAndEquals,
-    BitXorEquals,
-    BitOrEquals,
-
-    AndEquals,
-    OrEquals,
 }
 
 impl Display for Op {
+    #[rustfmt::skip]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::Equals => write!(f, "="),
-
             Self::Not => write!(f, "!"),
 
-            Self::Pow => write!(f, "**"),
-            Self::PowEquals => write!(f, "**="),
-            Self::Times => write!(f, "*"),
-            Self::TimesEquals => write!(f, "*="),
-            Self::Divide => write!(f, "/"),
-            Self::DivideEquals => write!(f, "/="),
-            Self::Remainder => write!(f, "%"),
+            Self::Pow                 => write!(f,  "**"),
+            Self::WrappingPow         => write!(f, r"**\"),
+            Self::SaturatingPow       => write!(f,  "**|"),
+            Self::PowEquals           => write!(f,  "**="),
+            Self::WrappingPowEquals   => write!(f, r"**\="),
+            Self::SaturatingPowEquals => write!(f,  "**|="),
+
+            Self::Times                 => write!(f,  "*"),
+            Self::WrappingTimes         => write!(f, r"*\"),
+            Self::SaturatingTimes       => write!(f,  "*|"),
+            Self::TimesEquals           => write!(f,  "*="),
+            Self::WrappingTimesEquals   => write!(f, r"*\="),
+            Self::SaturatingTimesEquals => write!(f,  "*|="),
+
+            Self::Divide                 => write!(f,  "/"),
+            Self::WrappingDivide         => write!(f, r"/\"),
+            Self::SaturatingDivide       => write!(f,  "/|"),
+            Self::DivideEquals           => write!(f,  "/="),
+            Self::WrappingDivideEquals   => write!(f, r"/\="),
+            Self::SaturatingDivideEquals => write!(f,  "/|="),
+
+            Self::Remainder       => write!(f, "%"),
             Self::RemainderEquals => write!(f, "%="),
-            Self::Plus => write!(f, "+"),
-            Self::PlusEquals => write!(f, "+="),
-            Self::Minus => write!(f, "-"),
-            Self::MinusEquals => write!(f, "-="),
 
-            Self::And => write!(f, "&&"),
+            Self::Plus                 => write!(f,  "+"), // also unary safe absolute value
+            Self::WrappingPlus         => write!(f, r"+\"), // also unary wrapping absolute value
+            Self::SaturatingPlus       => write!(f,  "+|"), // also unary saturating absolute value
+            Self::PlusEquals           => write!(f,  "+="),
+            Self::WrappingPlusEquals   => write!(f, r"+\="),
+            Self::SaturatingPlusEquals => write!(f,  "+|="),
+
+            Self::Minus                 => write!(f,  "-"), // also unary integer negation
+            Self::WrappingMinus         => write!(f, r"-\"), // also unary wrapping integer negation
+            Self::SaturatingMinus       => write!(f,  "-|"), // also unary saturating integer negation
+            Self::MinusEquals           => write!(f,  "-="),
+            Self::WrappingMinusEquals   => write!(f, r"-\="),
+            Self::SaturatingMinusEquals => write!(f,  "-|="),
+
+            Self::And       => write!(f, "&&"),
             Self::AndEquals => write!(f, "&&="),
-            Self::BitAnd => write!(f, "&"),
-            Self::BitAndEquals => write!(f, "&="),
-            Self::Or => write!(f, "||"),
-            Self::OrEquals => write!(f, "||="),
-            Self::BitOr => write!(f, "|"),
-            Self::BitOrEquals => write!(f, "|="),
-            Self::BitXor => write!(f, "^"),
-            Self::BitXorEquals => write!(f, "^="),
-            Self::LeftShift => write!(f, "<<"),
-            Self::LeftShiftEquals => write!(f, "<<="),
-            Self::RightShift => write!(f, ">>"),
-            Self::RightShiftEquals => write!(f, ">>="),
 
-            Self::EqualsEquals => write!(f, "=="),
-            Self::NotEquals => write!(f, "!="),
-            Self::Greater => write!(f, ">"),
+            Self::BitAnd       => write!(f, "&"),
+            Self::BitAndEquals => write!(f, "&="),
+
+            Self::Or       => write!(f, "||"),
+            Self::OrEquals => write!(f, "||="),
+
+            Self::BitOr       => write!(f, "|"),
+            Self::BitOrEquals => write!(f, "|="),
+
+            Self::BitXor       => write!(f, "^"),
+            Self::BitXorEquals => write!(f, "^="),
+
+            Self::LeftShift                 => write!(f,  "<<"),
+            Self::WrappingLeftShift         => write!(f, r"<<\"),
+            Self::SaturatingLeftShift       => write!(f,  "<<|"),
+            Self::LeftShiftEquals           => write!(f,  "<<="),
+            Self::WrappingLeftShiftEquals   => write!(f, r"<<\="),
+            Self::SaturatingLeftShiftEquals => write!(f,  "<<|="),
+
+            Self::RightShift                 => write!(f,  ">>"),
+            Self::RightShiftEquals           => write!(f,  ">>="),
+
+            Self::LeftRotate        => write!(f, "<<<"),
+            Self::LeftRotateEquals  => write!(f, "<<<="),
+            Self::RightRotate       => write!(f, ">>>"),
+            Self::RightRotateEquals => write!(f, ">>>="),
+
+            Self::EqualsEquals    => write!(f, "=="),
+            Self::NotEquals       => write!(f, "!="),
+            Self::Greater         => write!(f, ">"),
             Self::GreaterOrEquals => write!(f, ">="),
-            Self::Less => write!(f, "<"),
-            Self::LessOrEquals => write!(f, "<="),
-            Self::Compare => write!(f, "<=>"),
-        }
+            Self::Less            => write!(f, "<"),
+            Self::LessOrEquals    => write!(f, "<="),
+            Self::Compare         => write!(f, "<=>"),
+        };
     }
 }
 
 impl SrcCodeLen for Op {
     fn src_code_len(&self) -> usize {
-        match self {
+        return match self {
             Self::Equals => 1,
-
             Self::Not => 1,
 
             Self::Pow => 2,
+            Self::WrappingPow => 3,
+            Self::SaturatingPow => 3,
             Self::PowEquals => 3,
+            Self::WrappingPowEquals => 4,
+            Self::SaturatingPowEquals => 4,
+
             Self::Times => 1,
+            Self::WrappingTimes => 2,
+            Self::SaturatingTimes => 2,
             Self::TimesEquals => 2,
+            Self::WrappingTimesEquals => 3,
+            Self::SaturatingTimesEquals => 3,
+
             Self::Divide => 1,
+            Self::WrappingDivide => 2,
+            Self::SaturatingDivide => 2,
             Self::DivideEquals => 2,
+            Self::WrappingDivideEquals => 3,
+            Self::SaturatingDivideEquals => 3,
+
             Self::Remainder => 1,
             Self::RemainderEquals => 2,
+
             Self::Plus => 1,
+            Self::WrappingPlus => 2,
+            Self::SaturatingPlus => 2,
             Self::PlusEquals => 2,
+            Self::WrappingPlusEquals => 3,
+            Self::SaturatingPlusEquals => 3,
+
             Self::Minus => 1,
+            Self::WrappingMinus => 2,
+            Self::SaturatingMinus => 2,
             Self::MinusEquals => 2,
+            Self::WrappingMinusEquals => 3,
+            Self::SaturatingMinusEquals => 3,
 
             Self::And => 2,
             Self::AndEquals => 3,
+
             Self::BitAnd => 1,
             Self::BitAndEquals => 2,
+
             Self::Or => 2,
             Self::OrEquals => 3,
+
             Self::BitOr => 1,
             Self::BitOrEquals => 2,
+
             Self::BitXor => 1,
             Self::BitXorEquals => 2,
+
             Self::LeftShift => 2,
+            Self::WrappingLeftShift => 3,
+            Self::SaturatingLeftShift => 3,
             Self::LeftShiftEquals => 3,
+            Self::WrappingLeftShiftEquals => 4,
+            Self::SaturatingLeftShiftEquals => 4,
+
             Self::RightShift => 2,
             Self::RightShiftEquals => 3,
+
+            Self::LeftRotate => 3,
+            Self::LeftRotateEquals => 4,
+            Self::RightRotate => 3,
+            Self::RightRotateEquals => 4,
 
             Self::EqualsEquals => 2,
             Self::NotEquals => 2,
@@ -215,7 +324,7 @@ impl SrcCodeLen for Op {
             Self::Less => 1,
             Self::LessOrEquals => 2,
             Self::Compare => 3,
-        }
+        };
     }
 }
 
@@ -227,19 +336,19 @@ pub(crate) enum Mutability {
 
 impl Display for Mutability {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::Let => write!(f, "let"),
             Self::Var => write!(f, "var"),
-        }
+        };
     }
 }
 
 impl SrcCodeLen for Mutability {
     fn src_code_len(&self) -> usize {
-        match self {
+        return match self {
             Self::Let => 3,
             Self::Var => 3,
-        }
+        };
     }
 }
 
@@ -255,27 +364,27 @@ pub enum BracketKind {
 
 impl Display for BracketKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::OpenRound => write!(f, "("),
             Self::CloseRound => write!(f, ")"),
             Self::OpenSquare => write!(f, "["),
             Self::CloseSquare => write!(f, "]"),
             Self::OpenCurly => write!(f, "{{"),
             Self::CloseCurly => write!(f, "}}"),
-        }
+        };
     }
 }
 
 impl SrcCodeLen for BracketKind {
     fn src_code_len(&self) -> usize {
-        match self {
+        return match self {
             Self::OpenRound => 1,
             Self::CloseRound => 1,
             Self::OpenSquare => 1,
             Self::CloseSquare => 1,
             Self::OpenCurly => 1,
             Self::CloseCurly => 1,
-        }
+        };
     }
 }
 
@@ -307,6 +416,7 @@ pub(crate) enum TokenKind<'src> {
     PrintLn,  // temporary way of printing values followed by a newline to stdout
     Eprint,   // temporary way of printing values to stderr
     EprintLn, // temporary way of printing values followed by a newline to stderr
+    // TODO(stefano): introduce the "len" operator to retrieve the length of strings and arrays
     Do,
     If,
     Else,
@@ -317,7 +427,7 @@ pub(crate) enum TokenKind<'src> {
 
 impl Display for TokenKind<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::Comment(text) => write!(f, "#{text}"),
             Self::Unexpected(text) => write!(f, "{text}"),
 
@@ -344,13 +454,13 @@ impl Display for TokenKind<'_> {
             Self::Loop => write!(f, "loop"),
             Self::Break => write!(f, "break"),
             Self::Continue => write!(f, "continue"),
-        }
+        };
     }
 }
 
 impl SrcCodeLen for TokenKind<'_> {
     fn src_code_len(&self) -> usize {
-        match self {
+        return match self {
             Self::Comment(text) => text.chars().count(),
             Self::Unexpected(text) => text.chars().count(),
 
@@ -376,7 +486,7 @@ impl SrcCodeLen for TokenKind<'_> {
             Self::Loop => 4,
             Self::Break => 5,
             Self::Continue => 8,
-        }
+        };
     }
 }
 
@@ -405,9 +515,9 @@ impl<'src> Tokenizer<'src> {
     pub fn tokenize(
         src: &'src SrcFile,
     ) -> Result<Vec<Token<'src>>, SyntaxErrors<'src, ErrorKind, ErrorCause>> {
-        if src.lines.is_empty() {
+        let Some(first_line) = src.lines.first() else {
             return Ok(Vec::new());
-        }
+        };
 
         let mut this = Self {
             src,
@@ -415,7 +525,7 @@ impl<'src> Tokenizer<'src> {
             col: 0,
             token_start_col: 0,
             line_index: 0,
-            line: &src.lines[0],
+            line: first_line,
             tokens: Vec::new(),
             brackets: Vec::new(),
         };
@@ -468,11 +578,11 @@ impl<'src> Tokenizer<'src> {
             });
         }
 
-        if this.errors.is_empty() {
+        return if this.errors.is_empty() {
             Ok(this.tokens)
         } else {
             Err(SyntaxErrors { src, raw_errors: this.errors })
-        }
+        };
     }
 }
 
@@ -481,7 +591,7 @@ impl<'src> Tokenizer<'src> {
 // iteration of characters
 impl<'src> Tokenizer<'src> {
     fn token_len(&self) -> usize {
-        self.src.code[self.token_start_col..self.col].chars().count()
+        return self.src.code[self.token_start_col..self.col].chars().count();
     }
 
     fn next_ascii_char(&mut self) -> Result<Option<ascii>, RawSyntaxError<ErrorKind, ErrorCause>> {
@@ -489,14 +599,18 @@ impl<'src> Tokenizer<'src> {
             return Ok(None);
         };
 
-        match next {
+        return match next {
             ascii_ch @ ..=b'\x7F' => {
                 self.col += 1;
                 Ok(Some(*ascii_ch))
             }
             _utf8_ch => {
-                let rest_of_line = &self.src.code[self.col..self.line.end];
-                let utf8_ch = rest_of_line.chars().next().unwrap();
+                let rest_of_line = &self.src.code[self.col..];
+
+                let Some(utf8_ch) = rest_of_line.chars().next() else {
+                    unreachable!("this branch assured we would have a valid utf8 character")
+                };
+
                 let utf8_ch_col = self.col;
                 self.col += utf8_ch.len_utf8();
                 Err(RawSyntaxError {
@@ -506,23 +620,27 @@ impl<'src> Tokenizer<'src> {
                     len: 1,
                 })
             }
-        }
+        };
     }
 
     fn next_utf8_char(&mut self) -> Option<utf8> {
         let next = self.src.code.as_bytes().get(self.col)?;
-        match next {
+        return match next {
             ascii_ch @ ..=b'\x7F' => {
                 self.col += 1;
                 Some(*ascii_ch as utf8)
             }
             _utf8_ch => {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
-                let utf8_ch = rest_of_line.chars().next().unwrap();
+
+                let Some(utf8_ch) = rest_of_line.chars().next() else {
+                    unreachable!("this branch assured we would have a valid utf8 character")
+                };
+
                 self.col += utf8_ch.len_utf8();
                 Some(utf8_ch)
             }
-        }
+        };
     }
 
     fn peek_next_ascii_char(
@@ -532,11 +650,15 @@ impl<'src> Tokenizer<'src> {
             return Ok(None);
         };
 
-        match next {
+        return match next {
             ascii_ch @ ..=b'\x7F' => Ok(Some(ascii_ch)),
             _utf8_ch => {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
-                let utf8_ch = rest_of_line.chars().next().unwrap();
+
+                let Some(utf8_ch) = rest_of_line.chars().next() else {
+                    unreachable!("this branch assured we would have a valid utf8 character")
+                };
+
                 Err(RawSyntaxError {
                     kind: ErrorKind::NonAsciiCharacter(utf8_ch),
                     cause: ErrorCause::NonAsciiCharacter,
@@ -544,25 +666,29 @@ impl<'src> Tokenizer<'src> {
                     len: 1,
                 })
             }
-        }
+        };
     }
 
     fn peek_next_utf8_char(&mut self) -> Option<utf8> {
         let next = self.src.code.as_bytes().get(self.col)?;
-        match next {
+        return match next {
             ascii_ch @ ..=b'\x7F' => Some(*ascii_ch as utf8),
             _utf8_ch => {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
-                let utf8_ch = rest_of_line.chars().next().unwrap();
+
+                let Some(utf8_ch) = rest_of_line.chars().next() else {
+                    unreachable!("this branch assured we would have a valid utf8 character")
+                };
+
                 Some(utf8_ch)
             }
-        }
+        };
     }
 
     fn next_in_ascii_char_literal(
         &mut self,
     ) -> Result<ascii, RawSyntaxError<ErrorKind, ErrorCause>> {
-        match self.src.code.as_bytes().get(self.col) {
+        return match self.src.code.as_bytes().get(self.col) {
             Some(b'\n') | None => Err(RawSyntaxError {
                 kind: ErrorKind::InvalidCharacterLiteral,
                 cause: ErrorCause::MissingClosingSingleQuote,
@@ -575,7 +701,11 @@ impl<'src> Tokenizer<'src> {
             }
             Some(_utf8_ch) => {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
-                let utf8_ch = rest_of_line.chars().next().unwrap();
+
+                let Some(utf8_ch) = rest_of_line.chars().next() else {
+                    unreachable!("this branch assured we would have a valid utf8 character")
+                };
+
                 let utf8_ch_col = self.col;
                 self.col += utf8_ch.len_utf8();
                 Err(RawSyntaxError {
@@ -585,13 +715,13 @@ impl<'src> Tokenizer<'src> {
                     len: 1,
                 })
             }
-        }
+        };
     }
 
     fn next_in_ascii_str_literal(
         &mut self,
     ) -> Result<ascii, RawSyntaxError<ErrorKind, ErrorCause>> {
-        match self.src.code.as_bytes().get(self.col) {
+        return match self.src.code.as_bytes().get(self.col) {
             Some(b'\n') | None => Err(RawSyntaxError {
                 kind: ErrorKind::InvalidStringLiteral,
                 cause: ErrorCause::MissingClosingDoubleQuote,
@@ -604,7 +734,11 @@ impl<'src> Tokenizer<'src> {
             }
             Some(_utf8_ch) => {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
-                let utf8_ch = rest_of_line.chars().next().unwrap();
+
+                let Some(utf8_ch) = rest_of_line.chars().next() else {
+                    unreachable!("this branch assured we would have a valid utf8 character")
+                };
+
                 let utf8_ch_col = self.col;
                 self.col += utf8_ch.len_utf8();
                 Err(RawSyntaxError {
@@ -614,7 +748,7 @@ impl<'src> Tokenizer<'src> {
                     len: 1,
                 })
             }
-        }
+        };
     }
 }
 
@@ -628,7 +762,7 @@ impl<'src> Tokenizer<'src> {
                 Err(_) => contains_utf8 = true,
             }
 
-            let _ = self.next_ascii_char();
+            _ = self.next_ascii_char();
         }
 
         if contains_utf8 {
@@ -658,14 +792,14 @@ impl<'src> Tokenizer<'src> {
             identifier => TokenKind::Identifier(identifier),
         };
 
-        Ok(identifier)
+        return Ok(identifier);
     }
 
     fn next_token(
         &mut self,
         next: ascii,
     ) -> Result<TokenKind<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
-        match next {
+        return match next {
             b'r' => match self.peek_next_utf8_char() {
                 Some('"') => {
                     self.col += 1;
@@ -674,7 +808,7 @@ impl<'src> Tokenizer<'src> {
                     let mut raw_string = Vec::<ascii>::new();
 
                     loop {
-                        let next = match self.next_in_ascii_str_literal()? {
+                        let next_ch = match self.next_in_ascii_str_literal()? {
                             control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                                 self.errors.push(RawSyntaxError {
                                     kind: ErrorKind::InvalidStringLiteral,
@@ -688,12 +822,14 @@ impl<'src> Tokenizer<'src> {
                             ch => ch,
                         };
 
-                        raw_string.push(next);
+                        raw_string.push(next_ch);
                     }
 
                     if self.errors.len() > previous_error_count {
-                        // SAFETY: we are now sure that at least one error has occured, so we can safely unwrap
-                        let last_error = self.errors.pop().unwrap();
+                        let Some(last_error) = self.errors.pop() else {
+                            unreachable!("we are now sure that at least one error has occured");
+                        };
+
                         Err(last_error)
                     } else {
                         Ok(TokenKind::Literal(Literal::Str(raw_string)))
@@ -711,7 +847,7 @@ impl<'src> Tokenizer<'src> {
                         Err(_) => contains_utf8 = true,
                     }
 
-                    let _ = self.next_ascii_char();
+                    _ = self.next_ascii_char();
                 }
 
                 let token_text = &self.src.code[self.token_start_col..self.col];
@@ -755,7 +891,7 @@ impl<'src> Tokenizer<'src> {
                     if let Some('\n') | None = self.peek_next_utf8_char() {
                         break;
                     }
-                    let _ = self.next_utf8_char();
+                    _ = self.next_utf8_char();
                 }
 
                 Ok(TokenKind::Comment(comment))
@@ -766,7 +902,7 @@ impl<'src> Tokenizer<'src> {
                 let mut string = Vec::<ascii>::new();
 
                 loop {
-                    let next = match self.next_in_ascii_str_literal()? {
+                    let next_ch = match self.next_in_ascii_str_literal()? {
                         b'\\' => match self.next_in_ascii_str_literal()? {
                             b'\\' => b'\\',
                             b'\'' => b'\'',
@@ -778,9 +914,7 @@ impl<'src> Tokenizer<'src> {
                             unrecognized => {
                                 self.errors.push(RawSyntaxError {
                                     kind: ErrorKind::InvalidStringLiteral,
-                                    cause: ErrorCause::UnrecognizedEscapeCharacter(
-                                        unrecognized as utf8,
-                                    ),
+                                    cause: ErrorCause::UnrecognizedEscapeCharacter(unrecognized as utf8),
                                     col: self.col - 2,
                                     len: 2,
                                 });
@@ -801,12 +935,14 @@ impl<'src> Tokenizer<'src> {
                         ch => ch,
                     };
 
-                    string.push(next);
+                    string.push(next_ch);
                 }
 
                 if self.errors.len() > previous_error_count {
-                    // SAFETY: we are now sure that at least one error has occured, so we can safely unwrap
-                    let last_error = self.errors.pop().unwrap();
+                    let Some(last_error) = self.errors.pop() else {
+                        unreachable!("we are now sure that at least one error has occured");
+                    };
+
                     Err(last_error)
                 } else {
                     Ok(TokenKind::Literal(Literal::Str(string)))
@@ -964,6 +1100,26 @@ impl<'src> Tokenizer<'src> {
                             self.col += 1;
                             Ok(TokenKind::Op(Op::PowEquals))
                         }
+                        Some('\\') => {
+                            self.col += 1;
+                            match self.peek_next_utf8_char() {
+                                Some('=') => {
+                                    self.col += 1;
+                                    Ok(TokenKind::Op(Op::WrappingPowEquals))
+                                }
+                                _ => Ok(TokenKind::Op(Op::WrappingPow)),
+                            }
+                        }
+                        Some('|') => {
+                            self.col += 1;
+                            match self.peek_next_utf8_char() {
+                                Some('=') => {
+                                    self.col += 1;
+                                    Ok(TokenKind::Op(Op::SaturatingPowEquals))
+                                }
+                                _ => Ok(TokenKind::Op(Op::SaturatingPow)),
+                            }
+                        }
                         _ => Ok(TokenKind::Op(Op::Pow)),
                     }
                 }
@@ -971,12 +1127,52 @@ impl<'src> Tokenizer<'src> {
                     self.col += 1;
                     Ok(TokenKind::Op(Op::TimesEquals))
                 }
+                Some('\\') => {
+                    self.col += 1;
+                    match self.peek_next_utf8_char() {
+                        Some('=') => {
+                            self.col += 1;
+                            Ok(TokenKind::Op(Op::WrappingTimesEquals))
+                        }
+                        _ => Ok(TokenKind::Op(Op::WrappingTimes)),
+                    }
+                }
+                Some('|') => {
+                    self.col += 1;
+                    match self.peek_next_utf8_char() {
+                        Some('=') => {
+                            self.col += 1;
+                            Ok(TokenKind::Op(Op::SaturatingTimesEquals))
+                        }
+                        _ => Ok(TokenKind::Op(Op::SaturatingTimes)),
+                    }
+                }
                 _ => Ok(TokenKind::Op(Op::Times)),
             },
             b'/' => match self.peek_next_utf8_char() {
                 Some('=') => {
                     self.col += 1;
                     Ok(TokenKind::Op(Op::DivideEquals))
+                }
+                Some('\\') => {
+                    self.col += 1;
+                    match self.peek_next_utf8_char() {
+                        Some('=') => {
+                            self.col += 1;
+                            Ok(TokenKind::Op(Op::WrappingDivideEquals))
+                        }
+                        _ => Ok(TokenKind::Op(Op::WrappingDivide)),
+                    }
+                }
+                Some('|') => {
+                    self.col += 1;
+                    match self.peek_next_utf8_char() {
+                        Some('=') => {
+                            self.col += 1;
+                            Ok(TokenKind::Op(Op::SaturatingDivideEquals))
+                        }
+                        _ => Ok(TokenKind::Op(Op::SaturatingDivide)),
+                    }
                 }
                 _ => Ok(TokenKind::Op(Op::Divide)),
             },
@@ -992,12 +1188,52 @@ impl<'src> Tokenizer<'src> {
                     self.col += 1;
                     Ok(TokenKind::Op(Op::PlusEquals))
                 }
+                Some('\\') => {
+                    self.col += 1;
+                    match self.peek_next_utf8_char() {
+                        Some('=') => {
+                            self.col += 1;
+                            Ok(TokenKind::Op(Op::WrappingPlusEquals))
+                        }
+                        _ => Ok(TokenKind::Op(Op::WrappingPlus)),
+                    }
+                }
+                Some('|') => {
+                    self.col += 1;
+                    match self.peek_next_utf8_char() {
+                        Some('=') => {
+                            self.col += 1;
+                            Ok(TokenKind::Op(Op::SaturatingPlusEquals))
+                        }
+                        _ => Ok(TokenKind::Op(Op::SaturatingPlus)),
+                    }
+                }
                 _ => Ok(TokenKind::Op(Op::Plus)),
             },
             b'-' => match self.peek_next_utf8_char() {
                 Some('=') => {
                     self.col += 1;
                     Ok(TokenKind::Op(Op::MinusEquals))
+                }
+                Some('\\') => {
+                    self.col += 1;
+                    match self.peek_next_utf8_char() {
+                        Some('=') => {
+                            self.col += 1;
+                            Ok(TokenKind::Op(Op::WrappingMinusEquals))
+                        }
+                        _ => Ok(TokenKind::Op(Op::WrappingMinus)),
+                    }
+                }
+                Some('|') => {
+                    self.col += 1;
+                    match self.peek_next_utf8_char() {
+                        Some('=') => {
+                            self.col += 1;
+                            Ok(TokenKind::Op(Op::SaturatingMinusEquals))
+                        }
+                        _ => Ok(TokenKind::Op(Op::SaturatingMinus)),
+                    }
                 }
                 _ => Ok(TokenKind::Op(Op::Minus)),
             },
@@ -1053,6 +1289,16 @@ impl<'src> Tokenizer<'src> {
                 Some('>') => {
                     self.col += 1;
                     match self.peek_next_utf8_char() {
+                        Some('>') => {
+                            self.col += 1;
+                            match self.peek_next_utf8_char() {
+                                Some('=') => {
+                                    self.col += 1;
+                                    Ok(TokenKind::Op(Op::RightRotateEquals))
+                                }
+                                _ => Ok(TokenKind::Op(Op::RightRotate)),
+                            }
+                        }
                         Some('=') => {
                             self.col += 1;
                             Ok(TokenKind::Op(Op::RightShiftEquals))
@@ -1070,9 +1316,39 @@ impl<'src> Tokenizer<'src> {
                 Some('<') => {
                     self.col += 1;
                     match self.peek_next_utf8_char() {
+                        Some('<') => {
+                            self.col += 1;
+                            match self.peek_next_utf8_char() {
+                                Some('=') => {
+                                    self.col += 1;
+                                    Ok(TokenKind::Op(Op::LeftRotateEquals))
+                                }
+                                _ => Ok(TokenKind::Op(Op::LeftRotate)),
+                            }
+                        }
                         Some('=') => {
                             self.col += 1;
                             Ok(TokenKind::Op(Op::LeftShiftEquals))
+                        }
+                        Some('\\') => {
+                            self.col += 1;
+                            match self.peek_next_utf8_char() {
+                                Some('=') => {
+                                    self.col += 1;
+                                    Ok(TokenKind::Op(Op::WrappingLeftShiftEquals))
+                                }
+                                _ => Ok(TokenKind::Op(Op::WrappingLeftShift)),
+                            }
+                        }
+                        Some('|') => {
+                            self.col += 1;
+                            match self.peek_next_utf8_char() {
+                                Some('=') => {
+                                    self.col += 1;
+                                    Ok(TokenKind::Op(Op::SaturatingLeftShiftEquals))
+                                }
+                                _ => Ok(TokenKind::Op(Op::SaturatingLeftShift)),
+                            }
                         }
                         _ => Ok(TokenKind::Op(Op::LeftShift)),
                     }
@@ -1095,7 +1371,7 @@ impl<'src> Tokenizer<'src> {
                 col: self.token_start_col,
                 len: 1,
             }),
-        }
+        };
     }
 }
 
@@ -1118,7 +1394,7 @@ impl SyntaxErrorKind for ErrorKind {}
 
 impl Display for ErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::UnclosedBracket(bracket) => write!(f, "unclosed '{bracket}' bracket"),
             Self::UnopenedBracket(bracket) => write!(f, "unopened '{bracket}' bracket"),
             Self::MismatchedBracket => write!(f, "mismatched bracket"),
@@ -1132,7 +1408,7 @@ impl Display for ErrorKind {
             Self::UnrecognizedCharacter(ch) => {
                 write!(f, "unrecognized '{ch}' ({}) character", ch.escape_unicode())
             }
-        }
+        };
     }
 }
 
@@ -1162,7 +1438,7 @@ impl SyntaxErrorCause for ErrorCause {}
 
 impl Display for ErrorCause {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::UnclosedBracket => write!(f, "was not closed"),
             Self::UnopenedBracket => write!(f, "was not opened"),
             Self::MissingClosingSingleQuote => write!(f, "missing closing single quote"),
@@ -1188,6 +1464,6 @@ impl Display for ErrorCause {
             Self::InvalidInt(err) => write!(f, "{err}"),
             Self::NonAsciiCharacter => write!(f, "not a valid ASCII character"),
             Self::UnrecognizedCharacter => write!(f, "unrecognized"),
-        }
+        };
     }
 }

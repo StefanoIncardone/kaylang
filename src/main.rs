@@ -1,15 +1,15 @@
+#![allow(clippy::print_stdout, clippy::print_stderr)] // it's a cli tool, it's normal to print to stderr and stdout
+
 use kaylang::{
-    artifacts::Artifacts, syntax::ast::Ast, cli::Args, compiler::Compiler, src_file::SrcFile,
+    artifacts::Artifacts, cli::Args, compiler::Compiler, src_file::SrcFile, syntax::ast::Ast,
     syntax::tokenizer::Tokenizer, Command, Help, Step, Version, ASSEMBLING, BUILDING_AST, CHECKING,
     COMPILING, GENERATING_ASM, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
 };
 use std::{env, process::ExitCode, time::Instant};
 
 fn main() -> ExitCode {
-    // println!("{}", isize::MAX.pow(2));
-
     #[allow(unused_mut)]
-    let mut args = env::args().collect::<Vec<String>>();
+    let mut env_args = env::args().collect::<Vec<String>>();
     // to quickly debug
     // args.push( "run".to_string() );
     // args.push( "examples/features_test.kay".to_string() );
@@ -17,7 +17,7 @@ fn main() -> ExitCode {
     // args.push( "out".to_string() );
     // args.push( "-V".to_string() );
 
-    let Args { color, verbosity, command } = match Args::try_from(args) {
+    let Args { color, verbosity, command } = match Args::try_from(env_args) {
         Ok(args) => args,
         Err(err) => {
             eprintln!("{err}");
@@ -62,7 +62,10 @@ fn main() -> ExitCode {
                 Ok(tokens) => tokens,
                 Err(errors) => {
                     let mut errors_iter = errors.into_iter();
-                    let last_err = errors_iter.next_back().unwrap();
+                    let Some(last_err) = errors_iter.next_back() else {
+                        unreachable!("at least one error should be present in this branch");
+                    };
+
                     for err in errors_iter {
                         eprintln!("{err}\n");
                     }
@@ -78,7 +81,10 @@ fn main() -> ExitCode {
                 Ok(ast) => ast,
                 Err(errors) => {
                     let mut errors_iter = errors.into_iter();
-                    let last_err = errors_iter.next_back().unwrap();
+                    let Some(last_err) = errors_iter.next_back() else {
+                        unreachable!("at least one error should be present in this branch");
+                    };
+
                     for err in errors_iter {
                         eprintln!("{err}\n");
                     }
@@ -171,17 +177,17 @@ fn main() -> ExitCode {
         }
     }
 
-    ExitCode::SUCCESS
+    return ExitCode::SUCCESS;
 }
 
 #[cfg(test)]
 mod tests {
     use kaylang::{
         artifacts::Artifacts,
-        syntax::ast::Ast,
         cli::{DirPath, FilePath},
         compiler::Compiler,
         src_file::SrcFile,
+        syntax::ast::Ast,
         syntax::tokenizer::Tokenizer,
         Color, Step, Verbosity, ASSEMBLING, BUILDING_AST, CHECKING, COMPILING, GENERATING_ASM,
         LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
@@ -193,7 +199,9 @@ mod tests {
     fn check_examples() -> Result<ExitCode, io::Error> {
         let verbosity = Verbosity::Normal;
         let color = Color::Auto;
-        let out_path = DirPath::from("out").unwrap();
+        let Some(out_path) = DirPath::from("out") else {
+            unreachable!("the literal dir path should not be a file path");
+        };
 
         color.set(&std::io::stderr());
         color.set(&std::io::stdout());
@@ -236,7 +244,10 @@ mod tests {
                 Ok(tokens) => tokens,
                 Err(errors) => {
                     let mut errors_iter = errors.into_iter();
-                    let last_err = errors_iter.next_back().unwrap();
+                    let Some(last_err) = errors_iter.next_back() else {
+                        unreachable!("at least one error should be present in this branch");
+                    };
+
                     for err in errors_iter {
                         eprintln!("{err}\n");
                     }
@@ -252,7 +263,10 @@ mod tests {
                 Ok(ast) => ast,
                 Err(errors) => {
                     let mut errors_iter = errors.into_iter();
-                    let last_err = errors_iter.next_back().unwrap();
+                    let Some(last_err) = errors_iter.next_back() else {
+                        unreachable!("at least one error should be present in this branch");
+                    };
+
                     for err in errors_iter {
                         eprintln!("{err}\n");
                     }
@@ -350,6 +364,6 @@ mod tests {
             }
         }
 
-        Ok(ExitCode::SUCCESS)
+        return Ok(ExitCode::SUCCESS);
     }
 }

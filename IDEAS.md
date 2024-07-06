@@ -6,6 +6,44 @@
 
 From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProjects/bldaps_for/common/bldaps_under_inpext.htm#:~:text=Typical%20Fortran%20source%20files%20have,f.)
 
+## Amount of crash information
+
+To reduce binary size we could allow to specify a flag controlling the amount of information printed
+in the case of crashes.
+
+As of right now when crashing due to arithmetic constraints we print the general following message:
+
+```text
+Crash: something specific wrong happened
+at: file.kay:21:12
+```
+
+While this is useful because it cleary shows whan cause the problem and where it happened, it comes
+with the drawback that every function now needs to accept extra information, thus leading to bigger
+binary sizes due to:
+
+- reason of the crash
+- file name, line and column numbers of where the crash happened
+
+Every function is thus bigger and more complex, so we could let a cli flag such as
+`--crashinfo` followed by some crash info degree such as:
+
+- `none`: no reason, file, line and column information:
+
+    ```text
+    Crash: program crashed
+    ```
+
+- `full`: as shown above:
+- `reduced`: only the reason of the crash:
+
+    ```text
+    Crash: something specific wrong happened
+    ```
+
+This could also speedup performance since less information (namely line and column number
+information) would not be passed to functions
+
 ## Loops/ifs
 
 - loops similar to Odin's [for loops](https://odin-lang.org/docs/overview/#for-statement)
@@ -307,16 +345,41 @@ let ok = match answer {
 ## Operators
 
 - add [Zig inspired arithmetic operators](https://ziglang.org/documentation/master/#Operators)
-- unchecked (+, -, /, ...): overflow will wrap, division by zero will crash
-- checked (++, --, //, ...):
+- checked (`++`, `--`, `//`, ..., or `+?`, `-?`, `/?`, ...):
     - overflow/underflow may return both the result and the overflow of the addition
     - division will return either the result or an error value
-- maybe have them as built-in operators or just implement them as functions
 - divmod:
 
     ```kay
     let division, remainder = 3 /% 2; # will result in 1, 1
     ```
+
+- boolean flip operator `=!`:  
+    so: boolean = !boolean;
+    would become: boolean =!;
+
+### Revised remainder/mod operators
+
+| strategy                | symbol | math equation                                                          |
+| :---------------------- | :----: | :--------------------------------------------------------------------- |
+| **with truncation**         |  `%`   | `remainder = dividend - divisor * trunc(dividend / divisor)`           |
+| **with floor**              |  `%-`  | `remainder = dividend - divisor * floor(dividend / divisor)`           |
+| **with ceil**               |  `%+`  | `remainder = dividend - divisor * ceil(dividend / divisor)`            |
+| **with round**              |  `%*`  | `remainder = dividend - divisor * round(dividend / divisor)`           |
+| **with euclidian division** |  `%%`  | `remainder = dividend - abs(divisor) * floor(dividend / abs(divisor))` |
+
+### Revised shift operator
+
+| strategy                 | symbol | x86-64 instruction |
+| :----------------------- | :----: | :----------------- |
+| **left logical shift**       |  `<<`  | `shl` / `shlx`     |
+| **left arithmetical shift**  |  TBD   | `sal`              |
+| **right logical shift**      |  `>>`  | `shr` / `shrx`     |
+| **right arithmetical shift** |  TBD   | `sar` / `sarx`     |
+
+Note: left logical shift and left arithmetical shift are completely identical, just kept for
+consistency with their right shifts counterparts
+
 
 ## Strings
 
@@ -412,22 +475,6 @@ codes.pop();
 codes.insert(2, 4) # inserting an element at index 2
 
 codes.remove(3); # removing at index 3
-```
-
-## Aliases
-
-ability to create type aliases, which are just alternative names to existing types
-
-```kay
-alias byte = u8;
-```
-
-## Distinct types
-
-ability to create distinct types, which are considered entirely different types:
-
-```kay
-type byte = u8;
 ```
 
 ## Type unions
@@ -538,11 +585,17 @@ impl RGB {
     fn Self = new(...) { ... }
 }
 
-# new ideas:
+# new ideas (mainly to avoid having an additional indentation coming from the impl block):
 
 # no impl-block
 # <RGB> means it's a method of RGB
 fn<RGB> Self = new(...) { ... }
+
+# or
+RGB.fn Self = new(...) { ... }
+
+# or
+fn Self = Rgb.new(...) { ... }
 
 # <RGB> means it's a method of RGB
 # first argument is of type Self, meaning this is a method of a variable of type RGB
@@ -552,7 +605,8 @@ fn<RGB> do_stuff(self: Self, ...) { ... }
 fn<RGB> do_stuff(rgb: Self, ...) { ... }
 
 # no need to convert from curly brackets to round brackets
-let rgb = RGB.new(...);
+let rgb = RGB(r = 0, g = 0, b = 0);
+let rgb = RGB.new(r = 0, g = 0, b = 0);
 
 rgb.do_stuff();
 ```
@@ -579,7 +633,7 @@ let rgb = RGB { r: 255, g: 255, b: 255 }
 // with the 'constructor' function
 // - complete syntax change
 // - had to convert curly brackets to round brackets
-// - had to remove named arguments
+// - lost ability to use named arguments
 let rgb = RGB::new(255, 255, 255);
 ```
 
@@ -911,6 +965,8 @@ red_plus_green.b = red.b + green.b;
 red_plus_green.a = red.a + green.b;
 ```
 
+### **BREAKING**: Bit-casting operator for primitive types and removal of implicit conversions
+
 ## compile time constants and functions excution
 
 ```kay
@@ -934,6 +990,8 @@ let answer = 0;
 if answer == 1 do println "in branch 1";
 else if answer > 1 do pass;
 else if answer > 1 none; # or like this, explicit no do keyword required (to differentiate from none being a value)
+else if answer > 1 do {}; # or like this
+
 
 ## experiment with no dynamic dispatch
 

@@ -39,14 +39,14 @@ pub struct SyntaxError<'src, K: SyntaxErrorKind, C: SyntaxErrorCause> {
 impl<'src, K: SyntaxErrorKind, C: SyntaxErrorCause> SyntaxError<'src, K, C> {
     pub(crate) fn from_raw(src: &'src SrcFile, raw: &RawSyntaxError<K, C>) -> Self {
         let (position, line_text) = Position::new(src, raw.col);
-        Self {
+        return Self {
             path: &src.path.inner,
             position,
             len: raw.len,
             line_text,
             kind: raw.kind.clone(),
             cause: raw.cause.clone(),
-        }
+        };
     }
 }
 
@@ -77,7 +77,7 @@ impl<K: SyntaxErrorKind, C: SyntaxErrorCause> Display for SyntaxError<'_, K, C> 
             flags: Flag::Bold,
         };
 
-        write!(
+        return write!(
             f,
             "{ERROR}: {msg}\
             \n{AT:>at_padding$}: {path}:{line}:{col}\
@@ -90,7 +90,7 @@ impl<K: SyntaxErrorKind, C: SyntaxErrorCause> Display for SyntaxError<'_, K, C> 
             col = self.position.col,
             line_text = self.line_text,
             spaces = "",
-        )
+        );
     }
 }
 
@@ -109,7 +109,7 @@ impl<'err, 'src: 'err, K: SyntaxErrorKind, C: SyntaxErrorCause> Iterator
 
     fn next(&mut self) -> Option<Self::Item> {
         let raw_error = self.raw_errors.next()?;
-        Some(SyntaxError::from_raw(self.src, raw_error))
+        return Some(SyntaxError::from_raw(self.src, raw_error));
     }
 }
 
@@ -118,7 +118,7 @@ impl<'err, 'src: 'err, K: SyntaxErrorKind, C: SyntaxErrorCause> DoubleEndedItera
 {
     fn next_back(&mut self) -> Option<Self::Item> {
         let raw_error = self.raw_errors.next_back()?;
-        Some(SyntaxError::from_raw(self.src, raw_error))
+        return Some(SyntaxError::from_raw(self.src, raw_error));
     }
 }
 
@@ -126,7 +126,7 @@ impl<'err, 'src: 'err, K: SyntaxErrorKind, C: SyntaxErrorCause> ExactSizeIterato
     for SyntaxErrorsIter<'err, 'src, K, C>
 {
     fn len(&self) -> usize {
-        self.raw_errors.len()
+        return self.raw_errors.len();
     }
 }
 
@@ -139,17 +139,17 @@ impl<'err, 'src: 'err, K: SyntaxErrorKind, C: SyntaxErrorCause> FusedIterator
 impl<'err, 'src: 'err, K: SyntaxErrorKind, C: SyntaxErrorCause> SyntaxErrorsIter<'err, 'src, K, C> {
     #[must_use]
     pub const fn src(&self) -> &SrcFile {
-        self.src
+        return self.src;
     }
 
     #[must_use]
     pub fn as_raw(&self) -> &[RawSyntaxError<K, C>] {
-        self.raw_errors.as_slice()
+        return self.raw_errors.as_slice();
     }
 
     #[must_use]
     pub fn into_raw(self) -> Vec<RawSyntaxError<K, C>> {
-        self.raw_errors.cloned().collect()
+        return self.raw_errors.cloned().collect();
     }
 }
 
@@ -164,7 +164,7 @@ impl<'src, K: SyntaxErrorKind, C: SyntaxErrorCause> Iterator for SyntaxErrorsInt
 
     fn next(&mut self) -> Option<Self::Item> {
         let raw_error = self.raw_errors.next()?;
-        Some(SyntaxError::from_raw(self.src, &raw_error))
+        return Some(SyntaxError::from_raw(self.src, &raw_error));
     }
 }
 
@@ -173,7 +173,7 @@ impl<'src, K: SyntaxErrorKind, C: SyntaxErrorCause> DoubleEndedIterator
 {
     fn next_back(&mut self) -> Option<Self::Item> {
         let raw_error = self.raw_errors.next_back()?;
-        Some(SyntaxError::from_raw(self.src, &raw_error))
+        return Some(SyntaxError::from_raw(self.src, &raw_error));
     }
 }
 
@@ -181,7 +181,7 @@ impl<'src, K: SyntaxErrorKind, C: SyntaxErrorCause> ExactSizeIterator
     for SyntaxErrorsIntoIter<'src, K, C>
 {
     fn len(&self) -> usize {
-        self.raw_errors.len()
+        return self.raw_errors.len();
     }
 }
 
@@ -194,17 +194,17 @@ impl<'src, K: SyntaxErrorKind, C: SyntaxErrorCause> FusedIterator
 impl<'src, K: SyntaxErrorKind, C: SyntaxErrorCause> SyntaxErrorsIntoIter<'src, K, C> {
     #[must_use]
     pub const fn src(&self) -> &SrcFile {
-        self.src
+        return self.src;
     }
 
     #[must_use]
     pub fn as_raw(&self) -> &[RawSyntaxError<K, C>] {
-        self.raw_errors.as_slice()
+        return self.raw_errors.as_slice();
     }
 
     #[must_use]
     pub fn into_raw(self) -> Vec<RawSyntaxError<K, C>> {
-        self.raw_errors.collect()
+        return self.raw_errors.collect();
     }
 }
 
@@ -219,34 +219,34 @@ impl<'src, K: SyntaxErrorKind, C: SyntaxErrorCause> IntoIterator for SyntaxError
     type Item = SyntaxError<'src, K, C>;
 
     fn into_iter(self) -> Self::IntoIter {
-        Self::IntoIter { src: self.src, raw_errors: self.raw_errors.into_iter() }
+        return Self::IntoIter { src: self.src, raw_errors: self.raw_errors.into_iter() };
     }
 }
 
 impl<'src, K: SyntaxErrorKind, C: SyntaxErrorCause> SyntaxErrors<'src, K, C> {
     #[must_use]
     pub fn iter(&self) -> SyntaxErrorsIter<'_, 'src, K, C> {
-        SyntaxErrorsIter { src: self.src, raw_errors: self.raw_errors.iter() }
+        return SyntaxErrorsIter { src: self.src, raw_errors: self.raw_errors.iter() };
     }
 
     #[must_use]
     pub fn get(&self, index: usize) -> Option<SyntaxError<'src, K, C>> {
         let raw_error = self.raw_errors.get(index)?;
-        Some(SyntaxError::from_raw(self.src, raw_error))
+        return Some(SyntaxError::from_raw(self.src, raw_error));
     }
 
     #[must_use]
     pub const fn src(&self) -> &SrcFile {
-        self.src
+        return self.src;
     }
 
     #[must_use]
     pub fn as_raw(&self) -> &[RawSyntaxError<K, C>] {
-        &self.raw_errors
+        return &self.raw_errors;
     }
 
     #[must_use]
     pub fn into_raw(self) -> Vec<RawSyntaxError<K, C>> {
-        self.raw_errors
+        return self.raw_errors;
     }
 }
