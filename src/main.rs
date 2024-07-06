@@ -69,15 +69,9 @@ fn main() -> ExitCode {
         match tokenizer_result {
             Ok(tokens) => tokens,
             Err(errors) => {
-                let mut errors_iter = errors.into_iter();
-                let Some(last_err) = errors_iter.next_back() else {
-                    unreachable!("at least one error should be present in this branch");
-                };
-
-                for err in errors_iter {
-                    eprintln!("{err}\n");
+                for error in errors {
+                    eprintln!("{error}");
                 }
-                eprintln!("{last_err}");
                 return ExitCode::FAILURE;
             }
         }
@@ -90,15 +84,9 @@ fn main() -> ExitCode {
         match building_ast_result {
             Ok(ast) => ast,
             Err(errors) => {
-                let mut errors_iter = errors.into_iter();
-                let Some(last_err) = errors_iter.next_back() else {
-                    unreachable!("at least one error should be present in this branch");
-                };
-
-                for err in errors_iter {
-                    eprintln!("{err}\n");
+                for error in errors {
+                    eprintln!("{error}");
                 }
-                eprintln!("{last_err}");
                 return ExitCode::FAILURE;
             }
         }
@@ -258,15 +246,9 @@ mod tests {
                 match tokenizer_result {
                     Ok(tokens) => tokens,
                     Err(errors) => {
-                        let mut errors_iter = errors.into_iter();
-                        let Some(last_err) = errors_iter.next_back() else {
-                            unreachable!("at least one error should be present in this branch");
-                        };
-
-                        for err in errors_iter {
-                            eprintln!("{err}\n");
+                        for error in errors {
+                            eprintln!("{error}");
                         }
-                        eprintln!("{last_err}");
                         return Ok(ExitCode::FAILURE);
                     }
                 }
@@ -279,15 +261,9 @@ mod tests {
                 match building_ast_result {
                     Ok(ast) => ast,
                     Err(errors) => {
-                        let mut errors_iter = errors.into_iter();
-                        let Some(last_err) = errors_iter.next_back() else {
-                            unreachable!("at least one error should be present in this branch");
-                        };
-
-                        for err in errors_iter {
-                            eprintln!("{err}\n");
+                        for error in errors {
+                            eprintln!("{error}");
                         }
-                        eprintln!("{last_err}");
                         return Ok(ExitCode::FAILURE);
                     }
                 }
