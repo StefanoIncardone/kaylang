@@ -17,7 +17,10 @@ impl TryFrom<Vec<String>> for Args {
     // TODO(stefano): split patterns and avoid unreachable macro calls by factoring to functions
     fn try_from(args: Vec<String>) -> Result<Self, Self::Error> {
         let mut args_iter = args.iter().enumerate();
-        let _executable_name = args_iter.next();
+        let executable_name = match args_iter.next() {
+            Some((_, name)) => PathBuf::from(name),
+            None => unreachable!("executable name is always present"),
+        };
 
         let mut color_args = args_iter.clone();
 
@@ -123,7 +126,7 @@ impl TryFrom<Vec<String>> for Args {
                     };
 
                     match command_option {
-                        Some((Command::Help, previous_cli_command)) => {
+                        Some((Command::Help { .. }, previous_cli_command)) => {
                             return Err(Error {
                                 args,
                                 erroneous_arg_index: flag_idx,
@@ -145,7 +148,7 @@ impl TryFrom<Vec<String>> for Args {
                                 },
                             });
                         }
-                        _ => command_option = Some((Command::Help, cli_command)),
+                        _ => command_option = Some((Command::Help { executable_name: executable_name.clone() }, cli_command)),
                     }
                 }
                 "version" | "-v" | "--version" => {
@@ -168,7 +171,7 @@ impl TryFrom<Vec<String>> for Args {
                                 },
                             });
                         }
-                        Some((Command::Help, previous_cli_command)) => {
+                        Some((Command::Help { .. }, previous_cli_command)) => {
                             return Err(Error {
                                 args,
                                 erroneous_arg_index: flag_idx,
@@ -255,7 +258,7 @@ impl TryFrom<Vec<String>> for Args {
                         _ => unreachable!(),
                     };
 
-                    if let Some((Command::Help | Command::Version, _)) = command_option {
+                    if let Some((Command::Help { .. } | Command::Version, _)) = command_option {
                         // this is just to make sure that run modes commands are properly formatted,
                         // so we do nothing in the case where the
                         // help, -h, --help, version,  -v or --version command was already selected
@@ -303,7 +306,7 @@ impl TryFrom<Vec<String>> for Args {
 
         let command = match command_option {
             Some((command, _)) => command,
-            None => Command::Help,
+            None => Command::Help { executable_name },
         };
 
         return Ok(Self { color, verbosity, command });

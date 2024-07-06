@@ -25,10 +25,9 @@ pub enum Verbosity {
     Verbose,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub enum Command {
-    #[default]
-    Help,
+    Help { executable_name: PathBuf },
     Version,
     Check {
         src_path: PathBuf,
@@ -43,6 +42,12 @@ pub enum Command {
     },
 }
 
+impl Default for Command {
+    fn default() -> Self {
+        return Self::Help { executable_name: PathBuf::from("kay") };
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Version {
     pub color: Color,
@@ -55,8 +60,9 @@ impl Display for Version {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct Help {
+    pub executable_name: PathBuf,
     pub color: Color,
 }
 
@@ -66,7 +72,7 @@ impl Display for Help {
             f,
             r"{version}
 
-{USAGE}: kay [{OPTIONS}] [{COMMAND}]
+{USAGE}: {executable_name} [{OPTIONS}] [{COMMAND}]
 
 {OPTIONS}:
     -c, --color <{MODE}>    Wether to display colored output ({MODE}: auto (default), never, always)
@@ -82,6 +88,7 @@ impl Display for Help {
 
 {OUTPUT}:
     -o, --output <{PATH}>   Folder to populate with compilation artifacts (.asm, .o, executable) (default: '.')",
+            executable_name = self.executable_name.display(),
             version = Version { color: self.color }
         );
     }

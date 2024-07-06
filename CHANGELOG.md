@@ -53,6 +53,7 @@ Changes to error messages, help message and alike would **not** be considered br
 
 ### Changed
 
+- help message now prints the name of the executable that run the command
 - Improved generated asm code
 - Runtime crashes now print to `stderr`
 - **BREAKING**: `<=>` now has the same precedence as `==`, `!=`, `<`, `<=`, `>`, `>=` operators

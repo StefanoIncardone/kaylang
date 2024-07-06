@@ -1,14 +1,21 @@
-/.vscode
-
 *.tldr
 
-/target
-
-/asm
-Makefile
-
-/src/saved_for_later
-
 test*.kay
+
 # ignoring any non .kay file in subdirectories
-/out
+out
+
+# vscode settings, tasks and launch configurations
+.vscode
+
+# rust build artifacts
+target
+
+# output directory of artifacts generated from debugging with vscode
+out
+
+# used to test the compiler, with a lot of hard coding specific to my current
+# vscode debugging launch configurations
+src/bin
+
+src/saved_for_later

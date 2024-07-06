@@ -27,153 +27,170 @@ fn main() -> ExitCode {
 
     color.set(&std::io::stderr());
 
-    match &command {
-        Command::Version => {
-            println!("{}", Version { color });
-            return ExitCode::SUCCESS;
-        }
-        Command::Help => {
-            println!("{}", Help { color });
-            return ExitCode::SUCCESS;
-        }
-        Command::Check { src_path }
+    if let Command::Version = command {
+        println!("{}", Version { color });
+        return ExitCode::SUCCESS;
+    }
+
+    if let Command::Help { executable_name } = command {
+        println!("{}", Help { executable_name, color });
+        return ExitCode::SUCCESS;
+    }
+
+    let (Command::Check { src_path }
         | Command::Compile { src_path, .. }
-        | Command::Run { src_path, .. } => {
-            let execution_step = Instant::now();
+        | Command::Run { src_path, .. }) = &command
+    else {
+        unreachable!()
+    };
 
-            Step::info(&CHECKING, src_path, verbosity);
-            let checking_sub_step = Instant::now();
+    let execution_step = Instant::now();
 
-            let loading_source_sub_step = Instant::now();
-            let source_loading_result = SrcFile::load(src_path);
-            Step::sub_step_done(loading_source_sub_step, &LOADING_SOURCE, verbosity);
-            let src = match source_loading_result {
-                Ok(src) => src,
-                Err(err) => {
-                    eprintln!("{err}");
-                    return ExitCode::FAILURE;
+    Step::info(&CHECKING, src_path, verbosity);
+    let checking_sub_step = Instant::now();
+
+    let src = {
+        let loading_source_sub_step = Instant::now();
+        let source_loading_result = SrcFile::load(src_path);
+        Step::sub_step_done(loading_source_sub_step, &LOADING_SOURCE, verbosity);
+        match source_loading_result {
+            Ok(src) => src,
+            Err(err) => {
+                eprintln!("{err}");
+                return ExitCode::FAILURE;
+            }
+        }
+    };
+
+    let tokens = {
+        let tokenization_sub_step = Instant::now();
+        let tokenizer_result = Tokenizer::tokenize(&src);
+        Step::sub_step_done(tokenization_sub_step, &TOKENIZATION, verbosity);
+        match tokenizer_result {
+            Ok(tokens) => tokens,
+            Err(errors) => {
+                let mut errors_iter = errors.into_iter();
+                let Some(last_err) = errors_iter.next_back() else {
+                    unreachable!("at least one error should be present in this branch");
+                };
+
+                for err in errors_iter {
+                    eprintln!("{err}\n");
                 }
-            };
+                eprintln!("{last_err}");
+                return ExitCode::FAILURE;
+            }
+        }
+    };
 
-            let tokenization_sub_step = Instant::now();
-            let tokenizer_result = Tokenizer::tokenize(&src);
-            Step::sub_step_done(tokenization_sub_step, &TOKENIZATION, verbosity);
-            let tokens = match tokenizer_result {
-                Ok(tokens) => tokens,
-                Err(errors) => {
-                    let mut errors_iter = errors.into_iter();
-                    let Some(last_err) = errors_iter.next_back() else {
-                        unreachable!("at least one error should be present in this branch");
-                    };
+    let ast = {
+        let building_ast_sub_step = Instant::now();
+        let building_ast_result = Ast::build(&src, &tokens);
+        Step::sub_step_done(building_ast_sub_step, &BUILDING_AST, verbosity);
+        match building_ast_result {
+            Ok(ast) => ast,
+            Err(errors) => {
+                let mut errors_iter = errors.into_iter();
+                let Some(last_err) = errors_iter.next_back() else {
+                    unreachable!("at least one error should be present in this branch");
+                };
 
-                    for err in errors_iter {
-                        eprintln!("{err}\n");
-                    }
-                    eprintln!("{last_err}");
-                    return ExitCode::FAILURE;
+                for err in errors_iter {
+                    eprintln!("{err}\n");
                 }
-            };
+                eprintln!("{last_err}");
+                return ExitCode::FAILURE;
+            }
+        }
+    };
 
-            let building_ast_sub_step = Instant::now();
-            let building_ast_result = Ast::build(&src, &tokens);
-            Step::sub_step_done(building_ast_sub_step, &BUILDING_AST, verbosity);
-            let ast = match building_ast_result {
-                Ok(ast) => ast,
-                Err(errors) => {
-                    let mut errors_iter = errors.into_iter();
-                    let Some(last_err) = errors_iter.next_back() else {
-                        unreachable!("at least one error should be present in this branch");
-                    };
+    Step::sub_step_done(checking_sub_step, &SUBSTEP_DONE, verbosity);
 
-                    for err in errors_iter {
-                        eprintln!("{err}\n");
-                    }
-                    eprintln!("{last_err}");
-                    return ExitCode::FAILURE;
-                }
-            };
+    let (Command::Compile { out_path, .. } | Command::Run { out_path, .. }) = &command
+    else {
+        Step::step_done(execution_step, verbosity);
+        return ExitCode::SUCCESS;
+    };
 
-            Step::sub_step_done(checking_sub_step, &SUBSTEP_DONE, verbosity);
+    Step::info(&COMPILING, src_path, verbosity);
+    let compilation_sub_step = Instant::now();
 
-            let (Command::Compile { out_path, .. } | Command::Run { out_path, .. }) = &command
-            else {
-                Step::step_done(execution_step, verbosity);
-                return ExitCode::SUCCESS;
-            };
+    let artifacts = match Artifacts::new(&src, out_path.as_deref()) {
+        Ok(artifacts) => artifacts,
+        Err(err) => {
+            eprintln!("{err}");
+            return ExitCode::FAILURE;
+        }
+    };
 
-            Step::info(&COMPILING, src_path, verbosity);
-            let compilation_sub_step = Instant::now();
+    let _compiler_result: () = {
+        let generating_asm_sub_step = Instant::now();
+        let compiler_result = Compiler::compile(&src, &artifacts, &ast);
+        Step::sub_step_done(generating_asm_sub_step, &GENERATING_ASM, verbosity);
+        match compiler_result {
+            Ok(()) => (),
+            Err(err) => {
+                eprintln!("{err}");
+                return ExitCode::FAILURE;
+            }
+        }
+    };
 
-            let artifacts = match Artifacts::new(&src, out_path.as_deref()) {
-                Ok(artifacts) => artifacts,
-                Err(err) => {
-                    eprintln!("{err}");
-                    return ExitCode::FAILURE;
-                }
-            };
-
-            let generating_asm_sub_step = Instant::now();
-            let compiler_result = Compiler::compile(&src, &artifacts, &ast);
-            Step::sub_step_done(generating_asm_sub_step, &GENERATING_ASM, verbosity);
-            match compiler_result {
-                Ok(()) => {}
-                Err(err) => {
-                    eprintln!("{err}");
-                    return ExitCode::FAILURE;
-                }
-            };
-
-            let assembling_sub_step = Instant::now();
-            let mut assembler_command = artifacts.assembler();
-            let assembler_result = assembler_command.status();
-            Step::sub_step_done(assembling_sub_step, &ASSEMBLING, verbosity);
-            match assembler_result {
-                Ok(status) => {
-                    if !status.success() {
-                        return ExitCode::from(status.code().unwrap_or(1) as u8);
-                    }
-                }
-                Err(err) => {
-                    eprintln!("{err}");
-                    return ExitCode::FAILURE;
+    let _assembler_status: () = {
+        let assembling_sub_step = Instant::now();
+        let mut assembler_command = artifacts.assembler();
+        let assembler_result = assembler_command.status();
+        Step::sub_step_done(assembling_sub_step, &ASSEMBLING, verbosity);
+        match assembler_result {
+            Ok(status) => {
+                if !status.success() {
+                    return ExitCode::from(status.code().unwrap_or(1) as u8);
                 }
             }
+            Err(err) => {
+                eprintln!("{err}");
+                return ExitCode::FAILURE;
+            }
+        }
+    };
 
-            let linking_sub_step = Instant::now();
-            let mut linker_command = artifacts.linker();
-            let linker_result = linker_command.status();
-            Step::sub_step_done(linking_sub_step, &LINKING, verbosity);
-            match linker_result {
-                Ok(status) => {
-                    if !status.success() {
-                        return ExitCode::from(status.code().unwrap_or(1) as u8);
-                    }
-                }
-                Err(err) => {
-                    eprintln!("{err}");
-                    return ExitCode::FAILURE;
+    let _linker_status: () = {
+        let linking_sub_step = Instant::now();
+        let mut linker_command = artifacts.linker();
+        let linker_result = linker_command.status();
+        Step::sub_step_done(linking_sub_step, &LINKING, verbosity);
+        match linker_result {
+            Ok(status) => {
+                if !status.success() {
+                    return ExitCode::from(status.code().unwrap_or(1) as u8);
                 }
             }
-
-            Step::sub_step_done(compilation_sub_step, &SUBSTEP_DONE, verbosity);
-            Step::step_done(execution_step, verbosity);
-
-            if let Command::Run { .. } = command {
-                Step::info(&RUNNING, &artifacts.exe_path, verbosity);
-
-                let mut run_command = artifacts.runner();
-                match run_command.status() {
-                    Ok(status) => {
-                        if !status.success() {
-                            return ExitCode::from(status.code().unwrap_or(1) as u8);
-                        }
-                    }
-                    Err(err) => {
-                        eprintln!("{err}");
-                        return ExitCode::FAILURE;
-                    }
-                }
+            Err(err) => {
+                eprintln!("{err}");
+                return ExitCode::FAILURE;
             }
+        }
+    };
+
+    Step::sub_step_done(compilation_sub_step, &SUBSTEP_DONE, verbosity);
+
+    let Command::Run { .. } = command else {
+        Step::step_done(execution_step, verbosity);
+        return ExitCode::SUCCESS;
+    };
+
+    Step::info(&RUNNING, &artifacts.exe_path, verbosity);
+
+    let mut run_command = artifacts.runner();
+    match run_command.status() {
+        Ok(status) => {
+            if !status.success() {
+                return ExitCode::from(status.code().unwrap_or(1) as u8);
+            }
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            return ExitCode::FAILURE;
         }
     }
 
@@ -191,11 +208,11 @@ mod tests {
         Color, Step, Verbosity, ASSEMBLING, BUILDING_AST, CHECKING, COMPILING, GENERATING_ASM,
         LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
     };
-    use std::{io, path::{Path, PathBuf}, process::ExitCode, time::Instant};
+    use std::{path::{Path, PathBuf}, process::ExitCode, time::Instant};
 
     #[allow(unused_mut)]
     #[test]
-    fn check_examples() -> Result<ExitCode, io::Error> {
+    fn check_examples() -> Result<ExitCode, std::io::Error> {
         let verbosity = Verbosity::Normal;
         let color = Color::Auto;
         let out_path = PathBuf::from("out");
@@ -221,52 +238,58 @@ mod tests {
             Step::info(&CHECKING, &src_path, verbosity);
             let checking_sub_step = Instant::now();
 
-            let loading_source_sub_step = Instant::now();
-            let source_loading_result = SrcFile::load(&src_path);
-            Step::sub_step_done(loading_source_sub_step, &LOADING_SOURCE, verbosity);
-            let src = match source_loading_result {
-                Ok(src) => src,
-                Err(err) => {
-                    eprintln!("{err}");
-                    return Ok(ExitCode::FAILURE);
+            let src = {
+                let loading_source_sub_step = Instant::now();
+                let source_loading_result = SrcFile::load(&src_path);
+                Step::sub_step_done(loading_source_sub_step, &LOADING_SOURCE, verbosity);
+                match source_loading_result {
+                    Ok(src) => src,
+                    Err(err) => {
+                        eprintln!("{err}");
+                        return Ok(ExitCode::FAILURE);
+                    }
                 }
             };
 
-            let tokenization_sub_step = Instant::now();
-            let tokenizer_result = Tokenizer::tokenize(&src);
-            Step::sub_step_done(tokenization_sub_step, &TOKENIZATION, verbosity);
-            let tokens = match tokenizer_result {
-                Ok(tokens) => tokens,
-                Err(errors) => {
-                    let mut errors_iter = errors.into_iter();
-                    let Some(last_err) = errors_iter.next_back() else {
-                        unreachable!("at least one error should be present in this branch");
-                    };
+            let tokens = {
+                let tokenization_sub_step = Instant::now();
+                let tokenizer_result = Tokenizer::tokenize(&src);
+                Step::sub_step_done(tokenization_sub_step, &TOKENIZATION, verbosity);
+                match tokenizer_result {
+                    Ok(tokens) => tokens,
+                    Err(errors) => {
+                        let mut errors_iter = errors.into_iter();
+                        let Some(last_err) = errors_iter.next_back() else {
+                            unreachable!("at least one error should be present in this branch");
+                        };
 
-                    for err in errors_iter {
-                        eprintln!("{err}\n");
+                        for err in errors_iter {
+                            eprintln!("{err}\n");
+                        }
+                        eprintln!("{last_err}");
+                        return Ok(ExitCode::FAILURE);
                     }
-                    eprintln!("{last_err}");
-                    return Ok(ExitCode::FAILURE);
                 }
             };
 
-            let building_ast_sub_step = Instant::now();
-            let building_ast_result = Ast::build(&src, &tokens);
-            Step::sub_step_done(building_ast_sub_step, &BUILDING_AST, verbosity);
-            let ast = match building_ast_result {
-                Ok(ast) => ast,
-                Err(errors) => {
-                    let mut errors_iter = errors.into_iter();
-                    let Some(last_err) = errors_iter.next_back() else {
-                        unreachable!("at least one error should be present in this branch");
-                    };
+            let ast = {
+                let building_ast_sub_step = Instant::now();
+                let building_ast_result = Ast::build(&src, &tokens);
+                Step::sub_step_done(building_ast_sub_step, &BUILDING_AST, verbosity);
+                match building_ast_result {
+                    Ok(ast) => ast,
+                    Err(errors) => {
+                        let mut errors_iter = errors.into_iter();
+                        let Some(last_err) = errors_iter.next_back() else {
+                            unreachable!("at least one error should be present in this branch");
+                        };
 
-                    for err in errors_iter {
-                        eprintln!("{err}\n");
+                        for err in errors_iter {
+                            eprintln!("{err}\n");
+                        }
+                        eprintln!("{last_err}");
+                        return Ok(ExitCode::FAILURE);
                     }
-                    eprintln!("{last_err}");
-                    return Ok(ExitCode::FAILURE);
                 }
             };
 
@@ -283,48 +306,54 @@ mod tests {
                 }
             };
 
-            let generating_asm_sub_step = Instant::now();
-            let compiler_result = Compiler::compile(&src, &artifacts, &ast);
-            Step::sub_step_done(generating_asm_sub_step, &GENERATING_ASM, verbosity);
-            match compiler_result {
-                Ok(()) => {}
-                Err(err) => {
-                    eprintln!("{err}");
-                    return Ok(ExitCode::FAILURE);
+            let _compiler_result: () = {
+                let generating_asm_sub_step = Instant::now();
+                let compiler_result = Compiler::compile(&src, &artifacts, &ast);
+                Step::sub_step_done(generating_asm_sub_step, &GENERATING_ASM, verbosity);
+                match compiler_result {
+                    Ok(()) => (),
+                    Err(err) => {
+                        eprintln!("{err}");
+                        return Ok(ExitCode::FAILURE);
+                    }
                 }
             };
 
-            let assembler_sub_step = Instant::now();
-            let mut assembler_command = artifacts.assembler();
-            let assembler_result = assembler_command.status();
-            Step::sub_step_done(assembler_sub_step, &ASSEMBLING, verbosity);
-            match assembler_result {
-                Ok(status) => {
-                    if !status.success() {
-                        return Ok(ExitCode::from(status.code().unwrap_or(1) as u8));
+            let _assembler_status: () = {
+                let assembling_sub_step = Instant::now();
+                let mut assembler_command = artifacts.assembler();
+                let assembler_result = assembler_command.status();
+                Step::sub_step_done(assembling_sub_step, &ASSEMBLING, verbosity);
+                match assembler_result {
+                    Ok(status) => {
+                        if !status.success() {
+                            return Ok(ExitCode::from(status.code().unwrap_or(1) as u8));
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("{err}");
+                        return Ok(ExitCode::FAILURE);
                     }
                 }
-                Err(err) => {
-                    eprintln!("{err}");
-                    return Ok(ExitCode::FAILURE);
-                }
-            }
+            };
 
-            let linking_sub_step = Instant::now();
-            let mut linker_command = artifacts.linker();
-            let linker_result = linker_command.status();
-            Step::sub_step_done(linking_sub_step, &LINKING, verbosity);
-            match linker_result {
-                Ok(status) => {
-                    if !status.success() {
-                        return Ok(ExitCode::from(status.code().unwrap_or(1) as u8));
+            let _linker_status: () = {
+                let linking_sub_step = Instant::now();
+                let mut linker_command = artifacts.linker();
+                let linker_result = linker_command.status();
+                Step::sub_step_done(linking_sub_step, &LINKING, verbosity);
+                match linker_result {
+                    Ok(status) => {
+                        if !status.success() {
+                            return Ok(ExitCode::from(status.code().unwrap_or(1) as u8));
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("{err}");
+                        return Ok(ExitCode::FAILURE);
                     }
                 }
-                Err(err) => {
-                    eprintln!("{err}");
-                    return Ok(ExitCode::FAILURE);
-                }
-            }
+            };
 
             Step::sub_step_done(compilation_sub_step, &SUBSTEP_DONE, verbosity);
             Step::step_done(execution_step, verbosity);
