@@ -1,8 +1,8 @@
-use crate::{cli::FilePath, CAUSE, ERROR};
+use crate::{CAUSE, ERROR};
 use std::{
     fmt::Display,
     fs::File,
-    io::{self, BufRead, BufReader},
+    io::{self, BufRead, BufReader}, path::{Path, PathBuf},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,19 +52,19 @@ impl<'src> Position {
 
 #[derive(Debug)]
 pub struct SrcFile {
-    pub(crate) path: FilePath,
+    pub(crate) path: PathBuf,
     pub(crate) code: String,
     pub(crate) lines: Vec<Line>,
 }
 
 impl SrcFile {
     // TODO(stefano): replace indentation tabs with spaces
-    pub fn load(path: &FilePath) -> Result<Self, Error> {
-        let file = match File::open(&path.inner) {
+    pub fn load(path: &Path) -> Result<Self, Error> {
+        let file = match File::open(path) {
             Ok(f) => f,
             Err(err) => {
                 return Err(Error {
-                    kind: ErrorKind::CouldNotOpen { path: path.clone() },
+                    kind: ErrorKind::CouldNotOpen { path: path.to_owned() },
                     cause: ErrorCause::IoError(err),
                 });
             }
@@ -74,7 +74,7 @@ impl SrcFile {
             Ok(metadata) => metadata.len() as usize,
             Err(err) => {
                 return Err(Error {
-                    kind: ErrorKind::CouldNotReadMetadata { path: path.clone() },
+                    kind: ErrorKind::CouldNotReadMetadata { path: path.to_owned() },
                     cause: ErrorCause::IoError(err),
                 });
             }
@@ -92,7 +92,7 @@ impl SrcFile {
                 Ok(read) => read,
                 Err(err) => {
                     return Err(Error {
-                        kind: ErrorKind::CouldNotReadContents { path: path.clone() },
+                        kind: ErrorKind::CouldNotReadContents { path: path.to_owned() },
                         cause: ErrorCause::IoError(err),
                     });
                 }
@@ -125,15 +125,15 @@ impl SrcFile {
             }
         }
 
-        return Ok(Self { path: path.clone(), code, lines });
+        return Ok(Self { path: path.to_owned(), code, lines });
     }
 }
 
 #[derive(Debug)]
 pub enum ErrorKind {
-    CouldNotOpen { path: FilePath },
-    CouldNotReadMetadata { path: FilePath },
-    CouldNotReadContents { path: FilePath },
+    CouldNotOpen { path: PathBuf },
+    CouldNotReadMetadata { path: PathBuf },
+    CouldNotReadContents { path: PathBuf },
 }
 
 impl Display for ErrorKind {

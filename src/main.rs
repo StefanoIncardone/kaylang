@@ -104,7 +104,7 @@ fn main() -> ExitCode {
             Step::info(&COMPILING, src_path, verbosity);
             let compilation_sub_step = Instant::now();
 
-            let artifacts = match Artifacts::new(&src, out_path.as_ref()) {
+            let artifacts = match Artifacts::new(&src, out_path.as_deref()) {
                 Ok(artifacts) => artifacts,
                 Err(err) => {
                     eprintln!("{err}");
@@ -184,7 +184,6 @@ fn main() -> ExitCode {
 mod tests {
     use kaylang::{
         artifacts::Artifacts,
-        cli::{DirPath, FilePath},
         compiler::Compiler,
         src_file::SrcFile,
         syntax::ast::Ast,
@@ -192,16 +191,14 @@ mod tests {
         Color, Step, Verbosity, ASSEMBLING, BUILDING_AST, CHECKING, COMPILING, GENERATING_ASM,
         LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
     };
-    use std::{io, path::Path, process::ExitCode, time::Instant};
+    use std::{io, path::{Path, PathBuf}, process::ExitCode, time::Instant};
 
     #[allow(unused_mut)]
     #[test]
     fn check_examples() -> Result<ExitCode, io::Error> {
         let verbosity = Verbosity::Normal;
         let color = Color::Auto;
-        let Some(out_path) = DirPath::from("out") else {
-            unreachable!("the literal dir path should not be a file path");
-        };
+        let out_path = PathBuf::from("out");
 
         color.set(&std::io::stderr());
         color.set(&std::io::stdout());
@@ -209,9 +206,7 @@ mod tests {
         let src_files = Path::new("examples").read_dir()?;
 
         for src_file in src_files {
-            let Some(src_path) = FilePath::from(src_file?.path()) else {
-                continue;
-            };
+            let src_path = src_file?.path();
 
             let Some(file_name) = src_path.file_name() else {
                 continue;

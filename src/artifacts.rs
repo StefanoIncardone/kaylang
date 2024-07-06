@@ -1,31 +1,30 @@
 use crate::{
-    cli::{DirPath, FilePath},
     src_file::SrcFile,
     CAUSE, ERROR,
 };
-use std::{fmt::Display, io, process::Command};
+use std::{fmt::Display, io, path::{Path, PathBuf}, process::Command};
 
 #[derive(Debug)]
 pub struct Artifacts {
-    pub asm_path: FilePath,
-    pub obj_path: FilePath,
-    pub exe_path: FilePath,
+    pub asm_path: PathBuf,
+    pub obj_path: PathBuf,
+    pub exe_path: PathBuf,
 }
 
 impl Artifacts {
-    pub fn new(src: &SrcFile, out_path: Option<&DirPath>) -> Result<Self, Error> {
+    pub fn new(src: &SrcFile, out_path: Option<&Path>) -> Result<Self, Error> {
         // Safety: we know src_path is valid utf8 so can safely transmute
-        let mut asm_path: FilePath = unsafe { std::mem::transmute(src.path.with_extension("asm")) };
-        let mut obj_path: FilePath = unsafe { std::mem::transmute(src.path.with_extension("o")) };
-        let mut exe_path: FilePath = unsafe { std::mem::transmute(src.path.with_extension("")) };
+        let mut asm_path: PathBuf = unsafe { std::mem::transmute(src.path.with_extension("asm")) };
+        let mut obj_path: PathBuf = unsafe { std::mem::transmute(src.path.with_extension("o")) };
+        let mut exe_path: PathBuf = unsafe { std::mem::transmute(src.path.with_extension("")) };
 
         if let Some(out_path_buf) = out_path {
-            match std::fs::create_dir_all(&out_path_buf.inner) {
+            match std::fs::create_dir_all(&out_path_buf) {
                 Ok(()) => {}
                 Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
                 Err(err) => {
                     return Err(Error {
-                        kind: ErrorKind::CouldNotCreateOutputDirectory { path: out_path_buf.clone() },
+                        kind: ErrorKind::CouldNotCreateOutputDirectory { path: out_path_buf.to_owned() },
                         cause: ErrorCause::IoError(err),
                     });
                 }
@@ -35,9 +34,9 @@ impl Artifacts {
             let obj_file_name = unsafe { obj_path.file_name().unwrap_unchecked() };
             let exe_file_name = unsafe { exe_path.file_name().unwrap_unchecked() };
 
-            asm_path.inner = out_path_buf.join(asm_file_name);
-            obj_path.inner = out_path_buf.join(obj_file_name);
-            exe_path.inner = out_path_buf.join(exe_file_name);
+            asm_path = out_path_buf.join(asm_file_name);
+            obj_path = out_path_buf.join(obj_file_name);
+            exe_path = out_path_buf.join(exe_file_name);
         }
 
         return Ok(Self { asm_path, obj_path, exe_path });
@@ -75,7 +74,7 @@ impl Artifacts {
 
 #[derive(Debug)]
 pub enum ErrorKind {
-    CouldNotCreateOutputDirectory { path: DirPath },
+    CouldNotCreateOutputDirectory { path: PathBuf },
 }
 
 impl Display for ErrorKind {

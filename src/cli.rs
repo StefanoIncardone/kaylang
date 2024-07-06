@@ -1,8 +1,7 @@
 use crate::{Bg, Color, Colored, Command, Fg, Flag, Verbosity, BAR, ERROR};
 use std::{
     fmt::{Display, Write as _},
-    ops::Deref,
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 #[derive(Debug, Default, Clone)]
@@ -10,66 +9,6 @@ pub struct Args {
     pub color: Color,
     pub verbosity: Verbosity,
     pub command: Command,
-}
-
-// REMOVE(stefano): prefer checking for a correct file before actually opening a file
-#[derive(Debug, Clone)]
-pub struct FilePath {
-    pub(crate) inner: PathBuf,
-}
-
-impl FilePath {
-    pub fn from<P: AsRef<Path>>(path: P) -> Option<Self> {
-        let path_ref = path.as_ref();
-        if !path_ref.is_file() {
-            return None;
-        }
-
-        return Some(Self { inner: path_ref.to_owned() });
-    }
-
-    #[must_use]
-    pub fn into_inner(self) -> PathBuf {
-        return self.inner;
-    }
-}
-
-impl Deref for FilePath {
-    type Target = Path;
-
-    fn deref(&self) -> &Self::Target {
-        return &self.inner;
-    }
-}
-
-// REMOVE(stefano): prefer checking for a correct directory before actually creating it
-#[derive(Debug, Clone)]
-pub struct DirPath {
-    pub(crate) inner: PathBuf,
-}
-
-impl DirPath {
-    pub fn from<P: AsRef<Path>>(path: P) -> Option<Self> {
-        let path_ref = path.as_ref();
-        if !path_ref.is_dir() {
-            return None;
-        }
-
-        return Some(Self { inner: path_ref.to_owned() });
-    }
-
-    #[must_use]
-    pub fn into_inner(self) -> PathBuf {
-        return self.inner;
-    }
-}
-
-impl Deref for DirPath {
-    type Target = Path;
-
-    fn deref(&self) -> &Self::Target {
-        return &self.inner;
-    }
 }
 
 impl TryFrom<Vec<String>> for Args {
@@ -267,7 +206,7 @@ impl TryFrom<Vec<String>> for Args {
                         });
                     }
 
-                    let Some((src_path_idx, src_path_str)) = other_args.next() else {
+                    let Some((_src_path_idx, src_path_str)) = other_args.next() else {
                         return Err(Error {
                             args,
                             erroneous_arg_index: flag_idx,
@@ -276,15 +215,7 @@ impl TryFrom<Vec<String>> for Args {
                         });
                     };
 
-                    let Some(src_path) = FilePath::from(src_path_str) else {
-                        let src_path: PathBuf = src_path_str.into();
-                        return Err(Error {
-                            args,
-                            erroneous_arg_index: src_path_idx,
-                            kind: ErrorKind::InvalidCommand(cli_command),
-                            cause: ErrorCause::ExpectedFile { path: DirPath { inner: src_path } },
-                        });
-                    };
+                    let src_path = PathBuf::from(src_path_str);
 
                     let mode = match command_str {
                         "check" => Command::Check { src_path },
@@ -297,7 +228,7 @@ impl TryFrom<Vec<String>> for Args {
                                         unreachable!();
                                     };
 
-                                    let Some((out_path_idx, out_path_str)) = other_args.next()
+                                    let Some((_out_path_idx, out_path_str)) = other_args.next()
                                     else {
                                         return Err(Error {
                                             args,
@@ -309,19 +240,7 @@ impl TryFrom<Vec<String>> for Args {
                                         });
                                     };
 
-                                    let Some(dir_path) = DirPath::from(out_path_str) else {
-                                        let out_path_buf: PathBuf = out_path_str.into();
-                                        return Err(Error {
-                                            args,
-                                            erroneous_arg_index: out_path_idx,
-                                            kind: ErrorKind::InvalidOption(
-                                                CliOption::OutFolderPath,
-                                            ),
-                                            cause: ErrorCause::ExpectedDirectory {
-                                                path: FilePath { inner: out_path_buf },
-                                            },
-                                        });
-                                    };
+                                    let dir_path = PathBuf::from(out_path_str);
 
                                     out_path = Some(dir_path);
                                 }
@@ -491,8 +410,6 @@ pub enum ErrorCause {
     MustBeFollowedByColorMode,
     MustBeFollowedByASourceFilePath,
     MustBeFollowedByDirectoryFilePath,
-    ExpectedFile { path: DirPath },
-    ExpectedDirectory { path: FilePath },
     StrayOutputFolderPath,
     Unrecognized,
 }
@@ -518,12 +435,6 @@ impl Display for ErrorCause {
             }
             Self::MustBeFollowedByDirectoryFilePath => {
                 write!(f, "must be followed by a directory file path")
-            }
-            Self::ExpectedFile { path } => {
-                write!(f, "expected a file but got directory '{}'", path.display())
-            }
-            Self::ExpectedDirectory { path } => {
-                write!(f, "expected a directory but got file '{}'", path.display())
             }
             Self::StrayOutputFolderPath => {
                 write!(f, "output path can only be specified after a 'compile' or 'run' command")

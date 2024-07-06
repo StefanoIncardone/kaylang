@@ -75,7 +75,7 @@ Changes to error messages, help message and alike would **not** be considered br
 
 - `Error`, `ColoredString` and `ColoredStr` type aliases, to allow for more explicit type signatures
 - Module specific `*Error` and `*ErrorInfo` structs
-- `color` and `logging` module inlined inside the root module
+- `logging` module inlined inside the root module
 - `assembler`, `linker` and `run` modules integrated in the new `artifacts` module.
     `Assembler::assemble`, `Linker::link` and `Run::run` are now substituted by
     `Artifacts::assembler`, `Artifacts::linker` and `Artifacts::runner` member functions and now
@@ -86,8 +86,6 @@ Changes to error messages, help message and alike would **not** be considered br
 - Bug in string literals compilation when escaped characters where present
 - Bug in expressions code generations
 - Bug in crash error messages printing
-- Checking if a file or a directory were given when the opposite was expected is now checked during
-    cli arguments parsing
 - Bug in parsing of do-loop statements
 - Bug in result of division/remainder assembly code that would produce incorrect results when
     division happend on negative numbers

@@ -4,7 +4,6 @@
 
 use crate::{
     artifacts::Artifacts,
-    cli::FilePath,
     src_file::{Position, SrcFile},
     syntax::{
         ast::{self, Expression, IfStatement, LoopKind, Node, Scope, Type, TypeOf},
@@ -16,7 +15,7 @@ use std::{
     borrow::Cow,
     fmt::{Display, Write as _},
     fs::File,
-    io::{self, BufWriter, Write},
+    io::{self, BufWriter, Write}, path::PathBuf,
 };
 
 #[allow(dead_code)]
@@ -1782,7 +1781,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         artifacts: &Artifacts,
         ast: &'ast [Scope<'src>],
     ) -> Result<(), Error> {
-        let asm_file = match File::create(&artifacts.asm_path.inner) {
+        let asm_file = match File::create(&artifacts.asm_path) {
             Ok(file) => file,
             Err(err) => {
                 return Err(Error {
@@ -2084,7 +2083,7 @@ section .data
  int_str: times INT_BITS db 0
 "#,
             asm = this.asm,
-            src_path = src.path.inner.display(),
+            src_path = src.path.display(),
             strings = this.string_labels,
         );
 
@@ -4110,7 +4109,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
 #[derive(Debug)]
 pub enum ErrorKind {
-    CouldNotCreateFile { path: FilePath },
+    CouldNotCreateFile { path: PathBuf },
     WritingAssemblyFailed,
 }
 

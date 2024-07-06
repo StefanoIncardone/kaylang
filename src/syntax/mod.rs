@@ -40,7 +40,7 @@ impl<'src, K: SyntaxErrorKind, C: SyntaxErrorCause> SyntaxError<'src, K, C> {
     pub(crate) fn from_raw(src: &'src SrcFile, raw: &RawSyntaxError<K, C>) -> Self {
         let (position, line_text) = Position::new(src, raw.col);
         return Self {
-            path: &src.path.inner,
+            path: &src.path,
             position,
             len: raw.len,
             line_text,
