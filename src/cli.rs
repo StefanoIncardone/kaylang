@@ -148,7 +148,12 @@ impl TryFrom<Vec<String>> for Args {
                                 },
                             });
                         }
-                        _ => command_option = Some((Command::Help { executable_name: executable_name.clone() }, cli_command)),
+                        _ => {
+                            command_option = Some((
+                                Command::Help { executable_name: executable_name.clone() },
+                                cli_command,
+                            ))
+                        }
                     }
                 }
                 "version" | "-v" | "--version" => {
@@ -484,7 +489,7 @@ impl Display for Error {
 
         let pointers_len = match self.args.get(self.erroneous_arg_index) {
             Some(erroneous_arg) => erroneous_arg.len(),
-            None => 0
+            None => 0,
         };
 
         let pointers_and_cause = Colored {

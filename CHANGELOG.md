@@ -50,6 +50,7 @@ Changes to error messages, help message and alike would **not** be considered br
 - Raw string literals: `r"hello\nworld"` where `\n` would not get escaped
 - Printing to `stderr`: `eprint` and `eprintln` keywords
 - `help` and `version` commands
+- usage examples
 
 ### Changed
 

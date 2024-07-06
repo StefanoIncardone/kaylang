@@ -78,11 +78,7 @@ impl Type {
     pub(crate) fn inner(&self) -> Self {
         return match self {
             Self::Array { typ, .. } => typ.inner(),
-            Self::Infer
-            | Self::Int
-            | Self::Ascii
-            | Self::Bool
-            | Self::Str => self.clone(),
+            Self::Infer | Self::Int | Self::Ascii | Self::Bool | Self::Str => self.clone(),
         };
     }
 
@@ -1983,12 +1979,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let name = match name_token.kind {
             TokenKind::Identifier(name) => match self.resolve_type(name) {
                 None => name,
-                Some(_) => return Err(RawSyntaxError {
-                    kind: ErrorKind::Invalid(Statement::VariableName),
-                    cause: ErrorCause::CannotBeATypeName,
-                    col: name_token.col,
-                    len: name_token.kind.src_code_len(),
-                }),
+                Some(_) => {
+                    return Err(RawSyntaxError {
+                        kind: ErrorKind::Invalid(Statement::VariableName),
+                        cause: ErrorCause::CannotBeATypeName,
+                        col: name_token.col,
+                        len: name_token.kind.src_code_len(),
+                    })
+                }
             },
             TokenKind::Comment(_)
             | TokenKind::Unexpected(_)
@@ -2010,12 +2008,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Else
             | TokenKind::Loop
             | TokenKind::Break
-            | TokenKind::Continue => return Err(RawSyntaxError {
-                kind: ErrorKind::Invalid(Statement::VariableDefinition),
-                cause: ErrorCause::ExpectedVariableName,
-                col: name_token.col,
-                len: name_token.kind.src_code_len(),
-            }),
+            | TokenKind::Continue => {
+                return Err(RawSyntaxError {
+                    kind: ErrorKind::Invalid(Statement::VariableDefinition),
+                    cause: ErrorCause::ExpectedVariableName,
+                    col: name_token.col,
+                    len: name_token.kind.src_code_len(),
+                })
+            }
         };
 
         let annotation = self.type_annotation()?;
@@ -2049,18 +2049,22 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Loop
             | TokenKind::Break
             | TokenKind::Continue => match annotation {
-                None => return Err(RawSyntaxError {
-                    kind: ErrorKind::Invalid(Statement::VariableDefinition),
-                    cause: ErrorCause::ExpectedEqualsOrSemicolonAfterVariableName,
-                    col: name_token.col,
-                    len: name_token.kind.src_code_len(),
-                }),
-                Some((annotation_token, _)) => return Err(RawSyntaxError {
-                    kind: ErrorKind::Invalid(Statement::VariableDefinition),
-                    cause: ErrorCause::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
-                    col: annotation_token.col,
-                    len: annotation_token.kind.src_code_len(),
-                }),
+                None => {
+                    return Err(RawSyntaxError {
+                        kind: ErrorKind::Invalid(Statement::VariableDefinition),
+                        cause: ErrorCause::ExpectedEqualsOrSemicolonAfterVariableName,
+                        col: name_token.col,
+                        len: name_token.kind.src_code_len(),
+                    })
+                }
+                Some((annotation_token, _)) => {
+                    return Err(RawSyntaxError {
+                        kind: ErrorKind::Invalid(Statement::VariableDefinition),
+                        cause: ErrorCause::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
+                        col: annotation_token.col,
+                        len: annotation_token.kind.src_code_len(),
+                    })
+                }
             },
         };
 
@@ -2187,7 +2191,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         | TokenKind::Else
                         | TokenKind::Loop
                         | TokenKind::Break
-                        | TokenKind::Continue => unreachable!("cannot be different from an operator"),
+                        | TokenKind::Continue => {
+                            unreachable!("cannot be different from an operator")
+                        }
                     };
 
                     if var.value.typ() == new_value.typ() {

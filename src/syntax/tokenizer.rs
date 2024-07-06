@@ -74,7 +74,6 @@ impl SrcCodeLen for Literal {
 
 // IDEA(stefano): introduce left/right shift/rotate opertors that skip the check for a positive 6bit
 // shift amount (maybe <<?, >>?, <<<?, >>>?)
-    // WARNING: will introduce undefined behaviour
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Op {
     Equals,
@@ -914,7 +913,9 @@ impl<'src> Tokenizer<'src> {
                             unrecognized => {
                                 self.errors.push(RawSyntaxError {
                                     kind: ErrorKind::InvalidStringLiteral,
-                                    cause: ErrorCause::UnrecognizedEscapeCharacter(unrecognized as utf8),
+                                    cause: ErrorCause::UnrecognizedEscapeCharacter(
+                                        unrecognized as utf8,
+                                    ),
                                     col: self.col - 2,
                                     len: 2,
                                 });

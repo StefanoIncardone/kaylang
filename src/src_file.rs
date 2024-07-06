@@ -2,7 +2,8 @@ use crate::{CAUSE, ERROR};
 use std::{
     fmt::Display,
     fs::File,
-    io::{self, BufRead, BufReader}, path::{Path, PathBuf},
+    io::{self, BufRead, BufReader},
+    path::{Path, PathBuf},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,7 +105,9 @@ impl SrcFile {
                     *cr = b'\n';
 
                     // NOTE(stefano): might change to "safe" options
-                    unsafe { code.as_mut_vec().set_len(end); }
+                    unsafe {
+                        code.as_mut_vec().set_len(end);
+                    }
 
                     end -= 1;
                     chars_read -= 1;

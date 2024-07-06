@@ -1,8 +1,10 @@
-use crate::{
-    src_file::SrcFile,
-    CAUSE, ERROR,
+use crate::{src_file::SrcFile, CAUSE, ERROR};
+use std::{
+    fmt::Display,
+    io,
+    path::{Path, PathBuf},
+    process::Command,
 };
-use std::{fmt::Display, io, path::{Path, PathBuf}, process::Command};
 
 #[derive(Debug)]
 pub struct Artifacts {
@@ -23,7 +25,9 @@ impl Artifacts {
                 Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
                 Err(err) => {
                     return Err(Error {
-                        kind: ErrorKind::CouldNotCreateOutputDirectory { path: out_path_buf.to_owned() },
+                        kind: ErrorKind::CouldNotCreateOutputDirectory {
+                            path: out_path_buf.to_owned(),
+                        },
                         cause: ErrorCause::IoError(err),
                     });
                 }
@@ -58,10 +62,7 @@ impl Artifacts {
     #[must_use]
     pub fn linker(&self) -> Command {
         let mut linker_command = Command::new("ld");
-        _ = linker_command
-            .arg(self.obj_path.as_os_str())
-            .arg("-o")
-            .arg(self.exe_path.as_os_str());
+        _ = linker_command.arg(self.obj_path.as_os_str()).arg("-o").arg(self.exe_path.as_os_str());
         return linker_command;
     }
 

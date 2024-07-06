@@ -1,4 +1,7 @@
-use std::{fmt::{Display, Write as _}, io::IsTerminal};
+use std::{
+    fmt::{Display, Write as _},
+    io::IsTerminal,
+};
 
 use crate::Color;
 

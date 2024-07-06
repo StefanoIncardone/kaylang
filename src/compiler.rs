@@ -15,7 +15,8 @@ use std::{
     borrow::Cow,
     fmt::{Display, Write as _},
     fs::File,
-    io::{self, BufWriter, Write}, path::PathBuf,
+    io::{self, BufWriter, Write},
+    path::PathBuf,
 };
 
 #[allow(dead_code)]
@@ -1834,7 +1835,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 let padding = usize::from(needs_padding) * (STACK_ALIGN - misalignment);
                 stack_size += padding;
 
-                _ = writeln!(this.asm,
+                _ = writeln!(
+                    this.asm,
                     " push rbp\
                     \n sub rsp, {stack_size}\
                     \n mov rbp, rsp\n"
@@ -1844,7 +1846,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             this.scope(0);
 
             if stack_size > 0 {
-                _ = writeln!(this.asm,
+                _ = writeln!(
+                    this.asm,
                     " add rsp, {stack_size}\
                     \n pop rbp\n"
                 );
@@ -2212,7 +2215,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         self.condition(&looop.condition, &loop_end_tag);
                         self.node(&looop.statement);
 
-                        _ = writeln!(self.asm,
+                        _ = writeln!(
+                            self.asm,
                             " jmp {loop_tag}\
                             \n{loop_end_tag}:\n"
                         );
@@ -2251,14 +2255,17 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.expression(expression, Dst::default(&expression.typ()));
             }
             Node::Break => {
-                _ = writeln!(self.asm,
+                _ = writeln!(
+                    self.asm,
                     " jmp loop_{}_end\n",
                     self.loop_counters[self.loop_counters.len() - 1]
                 );
             }
             Node::Continue => {
-                _ = writeln!(self.asm,
-                    " jmp loop_{}\n", self.loop_counters[self.loop_counters.len() - 1]
+                _ = writeln!(
+                    self.asm,
+                    " jmp loop_{}\n",
+                    self.loop_counters[self.loop_counters.len() - 1]
                 );
             }
             Node::Semicolon => unreachable!("should not be present in the ast"),
@@ -2312,7 +2319,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
         let string_bytes = unsafe { std::str::from_utf8_unchecked(string) };
         let string_chars = string_bytes.escape_debug();
-        _ = writeln!(self.string_labels,
+        _ = writeln!(
+            self.string_labels,
             "\n str_{string_index}: db `{string_chars}`\
             \n str_{string_index}_len: equ $ - str_{string_index}",
         );
@@ -2325,11 +2333,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     // TODO(stefano): check if the shift/rotation amount overflows a 6bit integer
     // when shifting/rotating a 64bit integer (i.e.: when lhs is 64bit, rhs must not overflow
     // a 6bit integer)
-        // IDEA limit rhs to an 8bit integer, and different strategies to deal whit rhs
-        // over 6bits:
-        // - check for an rhs bigger than 8 bits and crash
-        // - silently discard the missing bits
-        // - create dedicate operators that implement those strategies
+    // IDEA limit rhs to an 8bit integer, and different strategies to deal whit rhs
+    // over 6bits:
+    // - check for an rhs bigger than 8 bits and crash
+    // - silently discard the missing bits
+    // - create dedicate operators that implement those strategies
     // IDEA(stefano): string/array comparison operators could also return the index where
     // the mismatch occured, since repe CMPcc stops at
     // mismatch_index @rdx = len @rdx - reverse_mismatch_index @rcx - 1, so:
@@ -2845,7 +2853,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     Op::SaturatingTimes | Op::SaturatingTimesEquals => {
                         (Dst::Reg(Rdi), Dst::Reg(Rsi), " call int_saturating_mul".into())
                     }
-                    Op::Divide | Op::DivideEquals =>  (
+                    Op::Divide | Op::DivideEquals => (
                         Dst::Reg(Rdi),
                         Dst::Reg(Rsi),
                         format!(
@@ -3007,7 +3015,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             line = op_position.line,
                             col = op_position.col,
                         )
-                        .into()
+                        .into(),
                     ),
                     Op::WrappingLeftShift | Op::WrappingLeftShiftEquals => (
                         Dst::Reg(Rdi),
@@ -3019,7 +3027,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             line = op_position.line,
                             col = op_position.col,
                         )
-                        .into()
+                        .into(),
                     ),
                     Op::SaturatingLeftShift | Op::SaturatingLeftShiftEquals => (
                         Dst::Reg(Rdi),
@@ -3031,7 +3039,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             line = op_position.line,
                             col = op_position.col,
                         )
-                        .into()
+                        .into(),
                     ),
                     Op::RightShift | Op::RightShiftEquals => (
                         Dst::Reg(Rdi),
@@ -3043,7 +3051,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             line = op_position.line,
                             col = op_position.col,
                         )
-                        .into()
+                        .into(),
                     ),
                     Op::LeftRotate | Op::LeftRotateEquals => (
                         Dst::Reg(Rdi),
@@ -3055,7 +3063,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             line = op_position.line,
                             col = op_position.col,
                         )
-                        .into()
+                        .into(),
                     ),
                     Op::RightRotate | Op::RightRotateEquals => (
                         Dst::Reg(Rdi),
@@ -3067,7 +3075,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             line = op_position.line,
                             col = op_position.col,
                         )
-                        .into()
+                        .into(),
                     ),
                     Op::Equals => unreachable!("should not be present in the ast"),
                     Op::Not => unreachable!("should only appear in unary expressions"),
@@ -3111,7 +3119,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         match lhs_dst {
             Dst::Reg(reg) => _ = writeln!(self.asm, " push {reg}\n"),
             Dst::View { len, ptr } => {
-                _ = writeln!(self.asm,
+                _ = writeln!(
+                    self.asm,
                     " push {len}\
                     \n push {ptr}\n"
                 );
@@ -3121,7 +3130,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         self.expression(rhs, lhs_dst);
         match (rhs_dst, lhs_dst) {
             (Dst::Reg(rhs_reg), Dst::Reg(lhs_reg)) => {
-                _ = writeln!(self.asm,
+                _ = writeln!(
+                    self.asm,
                     " mov {rhs_reg}, {lhs_reg}\
                     \n pop {lhs_reg}\n"
                 );
@@ -3130,7 +3140,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 Dst::View { len: rhs_len, ptr: rhs_ptr },
                 Dst::View { len: lhs_len, ptr: lhs_ptr },
             ) => {
-                _ = writeln!(self.asm,
+                _ = writeln!(
+                    self.asm,
                     " mov {rhs_len}, {lhs_len}\
                     \n mov {rhs_ptr}, {lhs_ptr}\
                     \n pop {lhs_ptr}\
@@ -3159,7 +3170,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 Literal::Str(string) => match dst {
                     Dst::View { len, ptr } => {
                         let index = self.string_label_index(string);
-                        _ = writeln!(self.asm,
+                        _ = writeln!(
+                            self.asm,
                             " mov {len}, str_{index}_len\
                             \n mov {ptr}, str_{index}"
                         );
@@ -3193,7 +3205,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     },
                     Type::Str => match dst {
                         Dst::View { len, ptr } => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " mov {len}, [rbp + {var_offset}]\
                                 \n mov {ptr}, [rbp + {var_offset} + {ptr_offset}]",
                                 ptr_offset = Type::Int.size()
@@ -3203,7 +3216,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     },
                     Type::Array { len: array_len, .. } => match dst {
                         Dst::View { len, ptr } => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " mov {len}, {array_len}\
                                 \n lea {ptr}, [rbp + {var_offset}]"
                             );
@@ -3230,7 +3244,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     },
                     Op::Minus => match operand.typ() {
                         Type::Int | Type::Ascii => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call int_safe_negate",
@@ -3252,7 +3267,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     },
                     Op::SaturatingMinus => match operand.typ() {
                         Type::Int | Type::Ascii => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call int_saturating_negate",
@@ -3267,7 +3283,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     },
                     Op::Plus => match operand.typ() {
                         Type::Int => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call int_safe_abs",
@@ -3295,7 +3312,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     },
                     Op::SaturatingPlus => match operand.typ() {
                         Type::Int => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call int_saturating_abs",
@@ -3381,7 +3399,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 match var_typ {
                     Type::Str => {
-                        _ = writeln!(self.asm,
+                        _ = writeln!(
+                            self.asm,
                             " mov rsi, [rbp + {var_offset}]\
                             \n mov rdx, {line}\
                             \n mov rcx, {col}\
@@ -3392,7 +3411,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         );
                     }
                     Type::Array { len: array_len, .. } => {
-                        _ = writeln!(self.asm,
+                        _ = writeln!(
+                            self.asm,
                             " mov rsi, {array_len}\
                             \n mov rdx, {line}\
                             \n mov rcx, {col}\
@@ -3401,13 +3421,20 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                         match typ {
                             Type::Int => {
-                                _ = writeln!(self.asm, " mov rdi, [rbp + {var_offset} + rdi * 8]\n");
+                                _ = writeln!(
+                                    self.asm,
+                                    " mov rdi, [rbp + {var_offset} + rdi * 8]\n"
+                                );
                             }
                             Type::Ascii | Type::Bool => {
-                                _ = writeln!(self.asm, " movzx rdi, byte [rbp + {var_offset} + rdi]\n");
+                                _ = writeln!(
+                                    self.asm,
+                                    " movzx rdi, byte [rbp + {var_offset} + rdi]\n"
+                                );
                             }
                             Type::Str => {
-                                _ = writeln!(self.asm,
+                                _ = writeln!(
+                                    self.asm,
                                     " imul rdi, {typ_size}\
                                     \n mov rsi, [rbp + {var_offset} + {ptr_offset} + rdi]\
                                     \n mov rdi, [rbp + {var_offset} + rdi]\n",
@@ -3424,7 +3451,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         }
                     }
                     Type::Int => {
-                        _ = writeln!(self.asm,
+                        _ = writeln!(
+                            self.asm,
                             " mov rsi, INT_BITS\
                             \n mov rdx, {line}\
                             \n mov rcx, {col}\
@@ -3451,7 +3479,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn condition(&mut self, condition: &'ast Expression<'src>, false_tag: &str) {
         match condition {
             Expression::Literal(Literal::Bool(boolean)) => {
-                _ = writeln!(self.asm,
+                _ = writeln!(
+                    self.asm,
                     " mov dil, {bool}\
                     \n cmp dil, true\
                     \n jne {false_tag}\n",
@@ -3548,7 +3577,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Identifier { name, .. } => {
                 let var = self.resolve(name);
                 let var_offset = var.offset;
-                _ = writeln!(self.asm,
+                _ = writeln!(
+                    self.asm,
                     " mov dil, [rbp + {var_offset}]\
                     \n cmp dil, true\
                     \n jne {false_tag}\n"
@@ -3558,7 +3588,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.expression(operand, Dst::Reg(Rdi));
 
                 // we can only have boolean expressions at this point, so it's safe to ignore the integer negation case
-                _ = writeln!(self.asm,
+                _ = writeln!(
+                    self.asm,
                     " xor dil, 1\
                     \n jz {false_tag}\n"
                 );
@@ -3566,7 +3597,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Array { .. } => unreachable!("arrays cannot appear in conditions"),
             Expression::ArrayIndex { .. } => {
                 self.expression(condition, Dst::Reg(Rdi));
-                _ = writeln!(self.asm,
+                _ = writeln!(
+                    self.asm,
                     " cmp dil, true\
                     \n jne {false_tag}\n"
                 );
@@ -3577,7 +3609,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn condition_reversed(&mut self, condition: &'ast Expression<'src>, true_tag: &str) {
         match condition {
             Expression::Literal(Literal::Bool(boolean)) => {
-                _ = writeln!(self.asm,
+                _ = writeln!(
+                    self.asm,
                     " mov dil, {bool}\
                     \n cmp dil, true\
                     \n je {true_tag}\n",
@@ -3674,7 +3707,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Identifier { name, .. } => {
                 let var = self.resolve(name);
                 let var_offset = var.offset;
-                _ = writeln!(self.asm,
+                _ = writeln!(
+                    self.asm,
                     " mov dil, [rbp + {var_offset}]\
                     \n cmp dil, true\
                     \n je {true_tag}\n"
@@ -3684,7 +3718,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.expression(operand, Dst::Reg(Rdi));
 
                 // we can only have boolean expressions at this point, so it's safe to ignore the integer negation case
-                _ = writeln!(self.asm,
+                _ = writeln!(
+                    self.asm,
                     " xor dil, 1\
                     \n jnz {true_tag}\n"
                 );
@@ -3692,7 +3727,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Array { .. } => unreachable!("arrays cannot appear in conditions"),
             Expression::ArrayIndex { .. } => {
                 self.expression(condition, Dst::Reg(Rdi));
-                _ = writeln!(self.asm,
+                _ = writeln!(
+                    self.asm,
                     " cmp dil, true\
                     \n je {true_tag}\n"
                 );
@@ -3704,7 +3740,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         match value {
             Expression::Literal(literal) => match literal {
                 Literal::Int(integer) => {
-                    _ = writeln!(self.asm,
+                    _ = writeln!(
+                        self.asm,
                         " mov rdi, {integer}\
                         \n mov [rbp + {dst_offset}], rdi\n"
                     );
@@ -3717,7 +3754,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 }
                 Literal::Str(string) => {
                     let index = self.string_label_index(string);
-                    _ = writeln!(self.asm,
+                    _ = writeln!(
+                        self.asm,
                         " mov qword [rbp + {dst_offset}], str_{index}_len\
                         \n mov qword [rbp + {dst_offset} + {ptr_offset}], str_{index}\n",
                         ptr_offset = Type::Int.size()
@@ -3742,19 +3780,22 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 let src_offset = var.offset;
                 match identifier_typ {
                     Type::Int => {
-                        _ = writeln!(self.asm,
+                        _ = writeln!(
+                            self.asm,
                             " mov rdi, [rbp + {src_offset}]\
                             \n mov [rbp + {dst_offset}], rdi\n"
                         );
                     }
                     Type::Ascii | Type::Bool => {
-                        _ = writeln!(self.asm,
+                        _ = writeln!(
+                            self.asm,
                             " movzx rdi, byte [rbp + {src_offset}]\
                             \n mov [rbp + {dst_offset}], dil\n"
                         );
                     }
                     Type::Str => {
-                        _ = writeln!(self.asm,
+                        _ = writeln!(
+                            self.asm,
                             " mov rdi, [rbp + {src_offset}]\
                             \n mov rsi, [rbp + {src_offset} + {ptr_offset}]\
                             \n mov [rbp + {dst_offset}], rdi\
@@ -3764,7 +3805,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
                     Type::Array { typ: array_typ, len } => match &**array_typ {
                         Type::Int => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " lea rdi, [rbp + {dst_offset}]\
                                 \n lea rsi, [rbp + {src_offset}]\
                                 \n mov rcx, {len}\
@@ -3772,7 +3814,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             );
                         }
                         Type::Ascii | Type::Bool => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " lea rdi, [rbp + {dst_offset}]\
                                 \n lea rsi, [rbp + {src_offset}]\
                                 \n mov rcx, {len}\
@@ -3780,7 +3823,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             );
                         }
                         Type::Str => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " lea rdi, [rbp + {dst_offset}]\
                                 \n lea rsi, [rbp + {src_offset}]\
                                 \n mov rcx, {len} * 2\
@@ -3799,19 +3843,22 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 match op {
                     Op::Not => match operand.typ() {
                         Type::Bool => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " xor rdi, 1\
                                 \n mov [rbp + {dst_offset}], dil\n"
                             );
                         }
                         Type::Ascii => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " not rdi\
                                 \n mov [rbp + {dst_offset}], dil\n"
                             );
                         }
                         Type::Int => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " not rdi\
                                 \n mov [rbp + {dst_offset}], rdi\n"
                             );
@@ -3822,7 +3869,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     },
                     Op::Minus => match operand.typ() {
                         Type::Ascii => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call int_safe_negate\
@@ -3832,7 +3880,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             );
                         }
                         Type::Int => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call int_safe_negate\
@@ -3848,13 +3897,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     },
                     Op::WrappingMinus => match operand.typ() {
                         Type::Ascii => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " neg rdi\
                                 \n mov [rbp + {dst_offset}], dil\n"
                             );
                         }
                         Type::Int => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " neg rdi\
                                 \n mov [rbp + {dst_offset}], rdi\n"
                             );
@@ -3866,7 +3917,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     },
                     Op::SaturatingMinus => match operand.typ() {
                         Type::Ascii => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call int_saturating_negate\
@@ -3876,7 +3928,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             );
                         }
                         Type::Int => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call int_saturating_negate\
@@ -3892,7 +3945,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     },
                     Op::Plus => match operand.typ() {
                         Type::Ascii => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call int_safe_abs\
@@ -3902,7 +3956,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             );
                         }
                         Type::Int => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call int_safe_abs\
@@ -3920,13 +3975,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     },
                     Op::WrappingPlus => match operand.typ() {
                         Type::Ascii => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " call int_wrapping_abs\
                                 \n mov [rbp + {dst_offset}], dil\n"
                             );
                         }
                         Type::Int => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " call int_wrapping_abs\
                                 \n mov [rbp + {dst_offset}], rdi\n"
                             );
@@ -3940,7 +3997,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     },
                     Op::SaturatingPlus => match operand.typ() {
                         Type::Ascii => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call int_saturating_abs\
@@ -3950,7 +4008,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             );
                         }
                         Type::Int => {
-                            _ = writeln!(self.asm,
+                            _ = writeln!(
+                                self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call int_saturating_abs\
@@ -4039,7 +4098,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         _ = writeln!(self.asm, " mov [rbp + {dst_offset}], dil\n");
                     }
                     Type::Str => {
-                        _ = writeln!(self.asm,
+                        _ = writeln!(
+                            self.asm,
                             " mov [rbp + {dst_offset}], rdi\
                             \n mov [rbp + {dst_offset} + {ptr_offset}], rsi\n",
                             ptr_offset = Type::Int.size()

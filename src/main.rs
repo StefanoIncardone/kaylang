@@ -2,22 +2,14 @@
 
 use kaylang::{
     artifacts::Artifacts, cli::Args, compiler::Compiler, src_file::SrcFile, syntax::ast::Ast,
-    syntax::tokenizer::Tokenizer, Command, Help, Logger, Version, ASSEMBLING, BUILDING_AST, CHECKING,
-    COMPILING, GENERATING_ASM, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
+    syntax::tokenizer::Tokenizer, Command, Help, Logger, Version, ASSEMBLING, BUILDING_AST,
+    CHECKING, COMPILING, GENERATING_ASM, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE,
+    TOKENIZATION,
 };
-use std::{env, process::ExitCode};
+use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    #[allow(unused_mut)]
-    let mut env_args = env::args().collect::<Vec<String>>();
-    // to quickly debug
-    // args.push( "run".to_string() );
-    // args.push( "examples/features_test.kay".to_string() );
-    // args.push( "-o".to_string() );
-    // args.push( "out".to_string() );
-    // args.push( "-V".to_string() );
-
-    let Args { color, verbosity, command } = match Args::try_from(env_args) {
+    let Args { color, verbosity, command } = match Args::try_from(std::env::args()) {
         Ok(args) => args,
         Err(err) => {
             eprintln!("{err}");
@@ -38,8 +30,8 @@ fn main() -> ExitCode {
     }
 
     let (Command::Check { src_path }
-        | Command::Compile { src_path, .. }
-        | Command::Run { src_path, .. }) = &command
+    | Command::Compile { src_path, .. }
+    | Command::Run { src_path, .. }) = &command
     else {
         unreachable!()
     };
@@ -94,8 +86,7 @@ fn main() -> ExitCode {
 
     checking_sub_step.sub_step_done_with_verbosity(&SUBSTEP_DONE, verbosity);
 
-    let (Command::Compile { out_path, .. } | Command::Run { out_path, .. }) = &command
-    else {
+    let (Command::Compile { out_path, .. } | Command::Run { out_path, .. }) = &command else {
         execution_step.step_done_with_verbosity(verbosity);
         return ExitCode::SUCCESS;
     };
@@ -188,15 +179,14 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use kaylang::{
-        artifacts::Artifacts,
-        compiler::Compiler,
-        src_file::SrcFile,
-        syntax::ast::Ast,
-        syntax::tokenizer::Tokenizer,
-        Color, Logger, Verbosity, ASSEMBLING, BUILDING_AST, CHECKING, COMPILING, GENERATING_ASM,
-        LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
+        artifacts::Artifacts, compiler::Compiler, src_file::SrcFile, syntax::ast::Ast,
+        syntax::tokenizer::Tokenizer, Color, Logger, Verbosity, ASSEMBLING, BUILDING_AST, CHECKING,
+        COMPILING, GENERATING_ASM, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
     };
-    use std::{path::{Path, PathBuf}, process::ExitCode};
+    use std::{
+        path::{Path, PathBuf},
+        process::ExitCode,
+    };
 
     #[allow(unused_mut)]
     #[test]

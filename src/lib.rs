@@ -1,13 +1,18 @@
+#![warn(clippy::print_stdout, clippy::print_stderr)]
+
 pub mod artifacts;
 pub mod cli;
+pub mod color;
 pub mod compiler;
 pub mod src_file;
 pub mod syntax;
-pub mod color;
 
 use color::{Bg, Colored, Fg, Flag, Flags};
-use std::{fmt::Display, path::{Path, PathBuf}, time::Instant};
-
+use std::{
+    fmt::Display,
+    path::{Path, PathBuf},
+    time::Instant,
+};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub enum Color {
@@ -29,17 +34,9 @@ pub enum Verbosity {
 pub enum Command {
     Help { executable_name: PathBuf },
     Version,
-    Check {
-        src_path: PathBuf,
-    },
-    Compile {
-        src_path: PathBuf,
-        out_path: Option<PathBuf>,
-    },
-    Run {
-        src_path: PathBuf,
-        out_path: Option<PathBuf>,
-    },
+    Check { src_path: PathBuf },
+    Compile { src_path: PathBuf, out_path: Option<PathBuf> },
+    Run { src_path: PathBuf, out_path: Option<PathBuf> },
 }
 
 impl Default for Command {
@@ -154,6 +151,7 @@ pub struct Logger {
     pub start: Instant,
 }
 
+#[allow(clippy::new_without_default)]
 impl Logger {
     #[inline(always)]
     #[must_use]
@@ -194,7 +192,11 @@ impl Logger {
 
 // logging with verbosity information, intended for use in general cases
 impl Logger {
-    pub fn info_with_verbosity<Text: AsRef<str>>(step: &Colored<Text>, path: &Path, verbosity: Verbosity) {
+    pub fn info_with_verbosity<Text: AsRef<str>>(
+        step: &Colored<Text>,
+        path: &Path,
+        verbosity: Verbosity,
+    ) {
         if let Verbosity::Normal | Verbosity::Verbose = verbosity {
             Self::info(step, path);
         }
