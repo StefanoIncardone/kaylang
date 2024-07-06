@@ -150,28 +150,32 @@ const BAR_FLAGS: Flags = Flag::Bold;
 #[rustfmt::skip] pub(crate) static BAR:   Colored<&str> = Colored { text: "|",     fg: BAR_FG, bg: BAR_BG, flags: BAR_FLAGS };
 
 // IDEA(stefano): this struct and color related features could be extracted to a separate crate
-pub struct Step;
+pub struct Logger {
+    pub start: Instant,
+}
 
+impl Logger {
+    #[inline(always)]
+    #[must_use]
+    pub fn new() -> Self {
+        return Self { start: Instant::now() };
+    }
+}
+
+// logging without verbosity information, intended for use in specialized cases
 #[allow(clippy::print_stderr)]
-impl Step {
-    pub fn info(step: &Colored<&str>, path: &Path, verbosity: Verbosity) {
-        if let Verbosity::Normal | Verbosity::Verbose = verbosity {
-            eprintln!(
-                "{spaces:STEP_INDENT$}{step:>STEP_PADDING$}: {path}",
-                spaces = "",
-                path = path.display()
-            );
-        }
+impl Logger {
+    pub fn info<Text: AsRef<str>>(step: &Colored<Text>, path: &Path) {
+        eprintln!(
+            "{spaces:STEP_INDENT$}{step:>STEP_PADDING$}: {path}",
+            spaces = "",
+            path = path.display()
+        );
     }
 
-    fn done<Text: AsRef<str>>(
-        start_time: Instant,
-        step: &Colored<Text>,
-        indent: usize,
-        padding: usize,
-    ) {
+    fn done<Text: AsRef<str>>(self, step: &Colored<Text>, indent: usize, padding: usize) {
         let elapsed_time = Colored {
-            text: format!("{}s", start_time.elapsed().as_secs_f32()),
+            text: format!("{}s", self.start.elapsed().as_secs_f32()),
             fg: Fg::White,
             ..Default::default()
         };
@@ -179,19 +183,36 @@ impl Step {
         eprintln!("{spaces:indent$}{step:>padding$}: in {elapsed_time}", spaces = "");
     }
 
-    pub fn step_done(start_time: Instant, verbosity: Verbosity) {
+    pub fn step_done(self) {
+        self.done(&DONE, STEP_INDENT, STEP_PADDING);
+    }
+
+    pub fn sub_step_done<Text: AsRef<str>>(self, sub_step: &Colored<Text>) {
+        self.done(sub_step, SUBSTEP_INDENT, SUBSTEP_PADDING);
+    }
+}
+
+// logging with verbosity information, intended for use in general cases
+impl Logger {
+    pub fn info_with_verbosity<Text: AsRef<str>>(step: &Colored<Text>, path: &Path, verbosity: Verbosity) {
         if let Verbosity::Normal | Verbosity::Verbose = verbosity {
-            Self::done(start_time, &DONE, STEP_INDENT, STEP_PADDING);
+            Self::info(step, path);
         }
     }
 
-    pub fn sub_step_done<Text: AsRef<str>>(
-        start_time: Instant,
+    pub fn step_done_with_verbosity(self, verbosity: Verbosity) {
+        if let Verbosity::Normal | Verbosity::Verbose = verbosity {
+            self.done(&DONE, STEP_INDENT, STEP_PADDING);
+        }
+    }
+
+    pub fn sub_step_done_with_verbosity<Text: AsRef<str>>(
+        self,
         sub_step: &Colored<Text>,
         verbosity: Verbosity,
     ) {
         if let Verbosity::Verbose = verbosity {
-            Self::done(start_time, sub_step, SUBSTEP_INDENT, SUBSTEP_PADDING);
+            self.done(sub_step, SUBSTEP_INDENT, SUBSTEP_PADDING);
         }
     }
 }

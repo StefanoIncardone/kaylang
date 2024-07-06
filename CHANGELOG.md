@@ -70,7 +70,7 @@ Changes to error messages, help message and alike would **not** be considered br
 - **BREAKING**: `Compiler::compile` no longer returns an `Artifacts` struct, it is instead
     constructed beforehand and is now required in compilation steps instead of generic `PathBuf`s
 - **BREAKING**: Updated consistency of compilation steps names and static variables
-- **BREAKING**: Compilation steps are now `Step` associated functions `step_done` and `sub_step_done`
+- **BREAKING**: Compilation steps are now managed by the `Logger` struct
 
 ### Removed
 

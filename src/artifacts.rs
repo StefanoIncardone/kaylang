@@ -13,13 +13,12 @@ pub struct Artifacts {
 
 impl Artifacts {
     pub fn new(src: &SrcFile, out_path: Option<&Path>) -> Result<Self, Error> {
-        // Safety: we know src_path is valid utf8 so can safely transmute
-        let mut asm_path: PathBuf = unsafe { std::mem::transmute(src.path.with_extension("asm")) };
-        let mut obj_path: PathBuf = unsafe { std::mem::transmute(src.path.with_extension("o")) };
-        let mut exe_path: PathBuf = unsafe { std::mem::transmute(src.path.with_extension("")) };
+        let mut asm_path: PathBuf = src.path.with_extension("asm");
+        let mut obj_path: PathBuf = src.path.with_extension("o");
+        let mut exe_path: PathBuf = src.path.with_extension("");
 
         if let Some(out_path_buf) = out_path {
-            match std::fs::create_dir_all(&out_path_buf) {
+            match std::fs::create_dir_all(out_path_buf) {
                 Ok(()) => {}
                 Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
                 Err(err) => {
