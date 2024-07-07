@@ -2,7 +2,7 @@ use super::{
     tokenizer::{
         ascii, int, uint, BracketKind, Literal, Mutability, Op, SrcCodeLen, Token, TokenKind,
     },
-    RawSyntaxError, SyntaxErrorCause, SyntaxErrorKind, SyntaxErrors,
+    RawError, Errors,
 };
 use crate::src_file::{Position, SrcFile};
 use std::fmt::{Debug, Display};
@@ -289,7 +289,7 @@ pub(crate) struct IfStatement<'src> {
 
 impl Display for IfStatement<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return write!(f, "if {:?}", self.condition);
+        return write!(f, "if {}", self.condition);
     }
 }
 
@@ -379,7 +379,7 @@ pub struct Scope<'src> {
 #[derive(Debug)]
 pub struct Ast<'src, 'tokens: 'src> {
     src: &'src SrcFile,
-    errors: Vec<RawSyntaxError<ErrorKind, ErrorCause>>,
+    errors: Vec<RawError<ErrorKind, ErrorCause>>,
 
     token: usize,
     tokens: &'tokens [Token<'src>],
@@ -394,7 +394,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     pub fn build(
         src: &'src SrcFile,
         tokens: &'tokens [Token<'src>],
-    ) -> Result<Vec<Scope<'src>>, SyntaxErrors<'src, ErrorKind, ErrorCause>> {
+    ) -> Result<Vec<Scope<'src>>, Errors<'src, ErrorKind, ErrorCause>> {
         if tokens.is_empty() {
             return Ok(Vec::new());
         }
@@ -434,15 +434,15 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         return if this.errors.is_empty() {
             Ok(this.scopes)
         } else {
-            Err(SyntaxErrors { src, raw_errors: this.errors })
+            Err(Errors { src, raw_errors: this.errors })
         };
     }
 
-    fn semicolon(&mut self) -> Result<(), RawSyntaxError<ErrorKind, ErrorCause>> {
+    fn semicolon(&mut self) -> Result<(), RawError<ErrorKind, ErrorCause>> {
         let semicolon_token = self.current_token_bounded(Expected::Semicolon)?;
         let TokenKind::SemiColon = &semicolon_token.kind else {
             let previous_token = self.peek_previous_token();
-            return Err(RawSyntaxError {
+            return Err(RawError {
                 kind: ErrorKind::Invalid(Statement::Statement),
                 cause: ErrorCause::MissingSemicolon,
                 col: previous_token.col,
@@ -508,7 +508,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
     fn parse_single_statement(
         &mut self,
-    ) -> Result<Option<Node<'src>>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<Option<Node<'src>>, RawError<ErrorKind, ErrorCause>> {
         let Some(current_token) = self.tokens.get(self.token) else { return Ok(None) };
 
         return match current_token.kind {
@@ -606,7 +606,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::If => Ok(Some(self.iff()?)),
             TokenKind::Else => {
                 _ = self.next_token();
-                Err(RawSyntaxError {
+                Err(RawError {
                     kind: ErrorKind::Invalid(Statement::If),
                     cause: ErrorCause::StrayElseBlock,
                     col: current_token.col,
@@ -625,7 +625,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::Break => {
                 _ = self.next_token();
                 match self.loop_depth {
-                    0 => Err(RawSyntaxError {
+                    0 => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Break),
                         cause: ErrorCause::CanOnlyBeUsedInLoops,
                         col: current_token.col,
@@ -637,7 +637,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::Continue => {
                 _ = self.next_token();
                 match self.loop_depth {
-                    0 => Err(RawSyntaxError {
+                    0 => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Continue),
                         cause: ErrorCause::CanOnlyBeUsedInLoops,
                         col: current_token.col,
@@ -661,7 +661,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             }
             TokenKind::Bracket(BracketKind::OpenSquare) => {
                 _ = self.expression()?;
-                Err(RawSyntaxError {
+                Err(RawError {
                     kind: ErrorKind::Invalid(Statement::Statement),
                     cause: ErrorCause::TemporaryArrayNotSupportedYet,
                     col: current_token.col,
@@ -681,7 +681,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             }
             TokenKind::Colon => {
                 _ = self.next_token();
-                Err(RawSyntaxError {
+                Err(RawError {
                     kind: ErrorKind::Invalid(Statement::TypeAnnotation),
                     cause: ErrorCause::StrayColon,
                     col: current_token.col,
@@ -690,7 +690,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             }
             TokenKind::Comma => {
                 _ = self.next_token();
-                Err(RawSyntaxError {
+                Err(RawError {
                     kind: ErrorKind::Invalid(Statement::ItemSeparator),
                     cause: ErrorCause::StrayComma,
                     col: current_token.col,
@@ -699,7 +699,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             }
             TokenKind::Op(Op::Equals) => {
                 _ = self.next_token();
-                Err(RawSyntaxError {
+                Err(RawError {
                     kind: ErrorKind::Invalid(Statement::Assignment),
                     cause: ErrorCause::StrayEquals,
                     col: current_token.col,
@@ -708,7 +708,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             }
             TokenKind::Op(op) => {
                 _ = self.next_token();
-                Err(RawSyntaxError {
+                Err(RawError {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::StrayBinaryOperator(op),
                     col: current_token.col,
@@ -722,12 +722,12 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
     fn parse_do_statement(
         &mut self,
-    ) -> Result<Option<Node<'src>>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<Option<Node<'src>>, RawError<ErrorKind, ErrorCause>> {
         let current_token = self.next_token_bounded(Expected::StatementAfterDo)?;
         return match current_token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
                 _ = self.next_token();
-                Err(RawSyntaxError {
+                Err(RawError {
                     kind: ErrorKind::Invalid(Statement::Block),
                     cause: ErrorCause::NotAllowedIn {
                         not_allowed: Statement::Block,
@@ -739,7 +739,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             }
             TokenKind::Definition(_) => {
                 _ = self.next_token();
-                Err(RawSyntaxError {
+                Err(RawError {
                     kind: ErrorKind::Invalid(Statement::VariableDefinition),
                     cause: ErrorCause::NotAllowedIn {
                         not_allowed: Statement::VariableDefinition,
@@ -775,7 +775,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
     fn parse_single_any(
         &mut self,
-    ) -> Result<Option<Node<'src>>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<Option<Node<'src>>, RawError<ErrorKind, ErrorCause>> {
         let Some(current_token) = self.tokens.get(self.token) else { return Ok(None) };
 
         return match current_token.kind {
@@ -829,10 +829,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn current_token_bounded(
         &self,
         expected: Expected,
-    ) -> Result<&'tokens Token<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<&'tokens Token<'src>, RawError<ErrorKind, ErrorCause>> {
         let Some(token) = self.tokens.get(self.token) else {
             let previous = self.peek_previous_token();
-            return Err(RawSyntaxError {
+            return Err(RawError {
                 kind: ErrorKind::Expected(expected),
                 cause: ErrorCause::NoMoreTokens,
                 col: previous.col,
@@ -861,12 +861,12 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn next_token_bounded(
         &mut self,
         expected: Expected,
-    ) -> Result<&'tokens Token<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<&'tokens Token<'src>, RawError<ErrorKind, ErrorCause>> {
         loop {
             if self.token >= self.tokens.len() - 1 {
                 let previous = &self.tokens[self.token];
                 self.token = self.tokens.len();
-                return Err(RawSyntaxError {
+                return Err(RawError {
                     kind: ErrorKind::Expected(expected),
                     cause: ErrorCause::NoMoreTokens,
                     col: previous.col,
@@ -915,9 +915,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn assert_lhs_is_not_string_or_array(
         op_token: &'tokens Token<'src>,
         lhs: &Expression<'src>,
-    ) -> Result<(), RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<(), RawError<ErrorKind, ErrorCause>> {
         if let Type::Str = lhs.typ() {
-            return Err(RawSyntaxError {
+            return Err(RawError {
                 kind: ErrorKind::Invalid(Statement::Expression),
                 cause: ErrorCause::StringLeftOperand,
                 col: op_token.col,
@@ -925,7 +925,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             });
         }
         if let Type::Array { .. } = lhs.typ() {
-            return Err(RawSyntaxError {
+            return Err(RawError {
                 kind: ErrorKind::Invalid(Statement::Expression),
                 cause: ErrorCause::ArrayLeftOperand,
                 col: op_token.col,
@@ -939,9 +939,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn assert_rhs_is_not_string_or_array(
         op_token: &'tokens Token<'src>,
         rhs: &Expression<'src>,
-    ) -> Result<(), RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<(), RawError<ErrorKind, ErrorCause>> {
         if let Type::Str = rhs.typ() {
-            return Err(RawSyntaxError {
+            return Err(RawError {
                 kind: ErrorKind::Invalid(Statement::Expression),
                 cause: ErrorCause::StringRightOperand,
                 col: op_token.col,
@@ -949,7 +949,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             });
         }
         if let Type::Array { .. } = rhs.typ() {
-            return Err(RawSyntaxError {
+            return Err(RawError {
                 kind: ErrorKind::Invalid(Statement::Expression),
                 cause: ErrorCause::ArrayRightOperand,
                 col: op_token.col,
@@ -963,7 +963,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn operator(
         &mut self,
         ops: &[Op],
-    ) -> Result<Option<(&'tokens Token<'src>, Op)>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<Option<(&'tokens Token<'src>, Op)>, RawError<ErrorKind, ErrorCause>> {
         let current_token = self.current_token_bounded(Expected::OperatorOrSemicolon)?;
         let TokenKind::Op(op) = current_token.kind else {
             return Ok(None);
@@ -981,7 +981,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         &mut self,
         var_name: &'src str,
         var_typ: Type,
-    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let current_token = &self.tokens[self.token];
 
         let Some(open_bracket_token) = self.peek_next_token() else {
@@ -997,7 +997,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         let index = self.expression()?;
         let Type::Int = index.typ() else {
-            return Err(RawSyntaxError {
+            return Err(RawError {
                 kind: ErrorKind::Invalid(Statement::ArrayIndex),
                 cause: ErrorCause::MustBeFollowedByIntegerExpression,
                 col: open_bracket_token.col,
@@ -1009,7 +1009,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         let TokenKind::Bracket(BracketKind::CloseSquare) = after_index_token.kind else {
             let before_index_token = self.peek_previous_token();
-            return Err(RawSyntaxError {
+            return Err(RawError {
                 kind: ErrorKind::Invalid(Statement::ArrayIndex),
                 cause: ErrorCause::MustBeFollowedByClosingSquareBracket,
                 col: before_index_token.col,
@@ -1027,7 +1027,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         index: Box::new(index),
                     })
                 }
-                Type::Array { .. } => Err(RawSyntaxError {
+                Type::Array { .. } => Err(RawError {
                     kind: ErrorKind::Invalid(Statement::ArrayItem),
                     cause: ErrorCause::NestedArrayNotSupportedYet,
                     col: current_token.col,
@@ -1046,7 +1046,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 bracket_position: Position::new(self.src, open_bracket_token.col).0,
                 index: Box::new(index),
             }),
-            Type::Bool | Type::Infer | Type::Ascii => Err(RawSyntaxError {
+            Type::Bool | Type::Infer | Type::Ascii => Err(RawError {
                 kind: ErrorKind::Invalid(Statement::Expression),
                 cause: ErrorCause::CannotIndexNonArrayType(var_typ),
                 col: current_token.col,
@@ -1057,7 +1057,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
     fn primary_expression(
         &mut self,
-    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let current_token = self.current_token_bounded(Expected::Expression)?;
         let factor = match &current_token.kind {
             // TODO(stefano): move parsing of numbers to here to allow for negative numbers natively
@@ -1068,14 +1068,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::Identifier(name) => match self.resolve_type(name) {
                 None => match self.resolve_variable(name) {
                     Some((_, _, var)) => self.index(var.name, var.value.typ()),
-                    None => Err(RawSyntaxError {
+                    None => Err(RawError {
                         kind: ErrorKind::VariableNotPreviouslyDefined,
                         cause: ErrorCause::WasNotPreviouslyDefined,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
                 },
-                Some(_) => Err(RawSyntaxError {
+                Some(_) => Err(RawError {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::CannotBeATypeName,
                     col: current_token.col,
@@ -1086,7 +1086,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 let expression_start_token = self.next_token_bounded(Expected::Expression)?;
 
                 if let TokenKind::Bracket(BracketKind::CloseRound) = expression_start_token.kind {
-                    break 'parenthesis Err(RawSyntaxError {
+                    break 'parenthesis Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::EmptyExpression,
                         col: expression_start_token.col,
@@ -1099,7 +1099,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     self.current_token_bounded(Expected::ClosingRoundBracket)?;
 
                 let TokenKind::Bracket(BracketKind::CloseRound) = close_bracket_token.kind else {
-                    return Err(RawSyntaxError {
+                    return Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::UnclosedBracket(BracketKind::OpenRound),
                         col: current_token.col,
@@ -1125,7 +1125,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     let item = self.expression()?;
                     match (&items_typ, item.typ()) {
                         (_, Type::Array { .. }) => {
-                            break 'array Err(RawSyntaxError {
+                            break 'array Err(RawError {
                                 kind: ErrorKind::Invalid(Statement::ArrayItem),
                                 cause: ErrorCause::NestedArrayNotSupportedYet,
                                 col: current_token.col,
@@ -1137,7 +1137,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             items.push(item);
                         }
                         (expected, actual) if *expected != actual => {
-                            break 'array Err(RawSyntaxError {
+                            break 'array Err(RawError {
                                 kind: ErrorKind::Invalid(Statement::ArrayItem),
                                 cause: ErrorCause::MismatchedArrayElementType {
                                     expected: expected.clone(),
@@ -1182,25 +1182,25 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    Type::Ascii => Err(RawSyntaxError {
+                    Type::Ascii => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotTakeAbsValueOfAscii,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
-                    Type::Bool => Err(RawSyntaxError {
+                    Type::Bool => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotTakeAbsValueOfBoolean,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
-                    Type::Str => Err(RawSyntaxError {
+                    Type::Str => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotTakeAbsValueOfString,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
-                    Type::Array { .. } => Err(RawSyntaxError {
+                    Type::Array { .. } => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotTakeAbsValueOfArray,
                         col: current_token.col,
@@ -1235,25 +1235,25 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    Type::Ascii => Err(RawSyntaxError {
+                    Type::Ascii => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotTakeAbsValueOfAscii,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
-                    Type::Bool => Err(RawSyntaxError {
+                    Type::Bool => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotTakeAbsValueOfBoolean,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
-                    Type::Str => Err(RawSyntaxError {
+                    Type::Str => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotTakeAbsValueOfString,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
-                    Type::Array { .. } => Err(RawSyntaxError {
+                    Type::Array { .. } => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotTakeAbsValueOfArray,
                         col: current_token.col,
@@ -1288,25 +1288,25 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    Type::Ascii => Err(RawSyntaxError {
+                    Type::Ascii => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotTakeAbsValueOfAscii,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
-                    Type::Bool => Err(RawSyntaxError {
+                    Type::Bool => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotTakeAbsValueOfBoolean,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
-                    Type::Str => Err(RawSyntaxError {
+                    Type::Str => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotTakeAbsValueOfString,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
-                    Type::Array { .. } => Err(RawSyntaxError {
+                    Type::Array { .. } => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotTakeAbsValueOfArray,
                         col: current_token.col,
@@ -1339,19 +1339,19 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    Type::Bool => Err(RawSyntaxError {
+                    Type::Bool => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotNegateBoolean,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
-                    Type::Str => Err(RawSyntaxError {
+                    Type::Str => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotNegateString,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
-                    Type::Array { .. } => Err(RawSyntaxError {
+                    Type::Array { .. } => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotNegateArray,
                         col: current_token.col,
@@ -1386,19 +1386,19 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    Type::Bool => Err(RawSyntaxError {
+                    Type::Bool => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotNegateBoolean,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
-                    Type::Str => Err(RawSyntaxError {
+                    Type::Str => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotNegateString,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
-                    Type::Array { .. } => Err(RawSyntaxError {
+                    Type::Array { .. } => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotNegateArray,
                         col: current_token.col,
@@ -1433,19 +1433,19 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    Type::Bool => Err(RawSyntaxError {
+                    Type::Bool => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotNegateBoolean,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
-                    Type::Str => Err(RawSyntaxError {
+                    Type::Str => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotNegateString,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
-                    Type::Array { .. } => Err(RawSyntaxError {
+                    Type::Array { .. } => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotNegateArray,
                         col: current_token.col,
@@ -1478,13 +1478,13 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    Type::Str => Err(RawSyntaxError {
+                    Type::Str => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotInvertString,
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
-                    Type::Array { .. } => Err(RawSyntaxError {
+                    Type::Array { .. } => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotInvertArray,
                         col: current_token.col,
@@ -1500,7 +1500,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Else
             | TokenKind::Loop
             | TokenKind::Break
-            | TokenKind::Continue => Err(RawSyntaxError {
+            | TokenKind::Continue => Err(RawError {
                 kind: ErrorKind::Invalid(Statement::Expression),
                 cause: ErrorCause::KeywordInExpression,
                 col: current_token.col,
@@ -1515,7 +1515,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Comma
             | TokenKind::Eprint
             | TokenKind::EprintLn
-            | TokenKind::Do => Err(RawSyntaxError {
+            | TokenKind::Do => Err(RawError {
                 kind: ErrorKind::Invalid(Statement::Expression),
                 cause: ErrorCause::ExpectedOperand,
                 col: current_token.col,
@@ -1529,7 +1529,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
     fn exponentiative_expression(
         &mut self,
-    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let mut lhs = self.primary_expression()?;
 
         let ops = [Op::Pow, Op::WrappingPow, Op::SaturatingPow];
@@ -1552,7 +1552,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
     fn multiplicative_expression(
         &mut self,
-    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let mut lhs = self.exponentiative_expression()?;
 
         let ops = [
@@ -1583,7 +1583,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
     fn additive_expression(
         &mut self,
-    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let mut lhs = self.multiplicative_expression()?;
 
         let ops = [
@@ -1615,7 +1615,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     // 64bit lhs integer. this can only be done when the lhs is a literal integer
     fn shift_expression(
         &mut self,
-    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let mut lhs = self.additive_expression()?;
 
         let ops = [
@@ -1645,7 +1645,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
     fn bitand_expression(
         &mut self,
-    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let mut lhs = self.shift_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitAnd])? {
@@ -1667,7 +1667,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
     fn bitxor_expression(
         &mut self,
-    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let mut lhs = self.bitand_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitXor])? {
@@ -1689,7 +1689,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
     fn bitor_expression(
         &mut self,
-    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let mut lhs = self.bitxor_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitOr])? {
@@ -1711,7 +1711,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
     fn comparison_expression(
         &mut self,
-    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let mut lhs = self.bitor_expression()?;
 
         let ops = [
@@ -1731,7 +1731,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             let lhs_typ = lhs.typ();
             let rhs_typ = rhs.typ();
             if !lhs_typ.can_be_compared_to(&rhs_typ) {
-                return Err(RawSyntaxError {
+                return Err(RawError {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::CannotCompareOperands { lhs_typ, rhs_typ },
                     col: op_token.col,
@@ -1740,7 +1740,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             }
 
             if is_chained {
-                return Err(RawSyntaxError {
+                return Err(RawError {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::CannotChainComparisons,
                     col: op_token.col,
@@ -1762,12 +1762,12 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
     fn and_expression(
         &mut self,
-    ) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let mut lhs = self.comparison_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::And])? {
             let Type::Bool = lhs.typ() else {
-                return Err(RawSyntaxError {
+                return Err(RawError {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::NonBooleanLeftOperand,
                     col: op_token.col,
@@ -1777,7 +1777,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             let rhs = self.comparison_expression()?;
             let Type::Bool = rhs.typ() else {
-                return Err(RawSyntaxError {
+                return Err(RawError {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::NonBooleanRightOperand,
                     col: op_token.col,
@@ -1796,12 +1796,12 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         return Ok(lhs);
     }
 
-    fn or_expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    fn or_expression(&mut self) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let mut lhs = self.and_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::Or])? {
             let Type::Bool = lhs.typ() else {
-                return Err(RawSyntaxError {
+                return Err(RawError {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::NonBooleanLeftOperand,
                     col: op_token.col,
@@ -1811,7 +1811,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             let rhs = self.and_expression()?;
             let Type::Bool = rhs.typ() else {
-                return Err(RawSyntaxError {
+                return Err(RawError {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::NonBooleanRightOperand,
                     col: op_token.col,
@@ -1832,7 +1832,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
     // TODO(stefano): disallow implicit conversions
     // TODO(stefano): introduce casting operators
-    fn expression(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    fn expression(&mut self) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         return self.or_expression();
     }
 }
@@ -1878,7 +1878,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
     fn type_annotation(
         &mut self,
-    ) -> Result<Option<(&'tokens Token<'src>, Type)>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<Option<(&'tokens Token<'src>, Type)>, RawError<ErrorKind, ErrorCause>> {
         let colon_token = self.next_token_bounded(Expected::TypeAnnotationOrVariableDefinition)?;
 
         let TokenKind::Colon = colon_token.kind else {
@@ -1888,7 +1888,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         let type_token = self.next_token_bounded(Expected::TypeAnnotation)?;
         let TokenKind::Identifier(type_name) = type_token.kind else {
-            return Err(RawSyntaxError {
+            return Err(RawError {
                 kind: ErrorKind::Invalid(Statement::TypeAnnotation),
                 cause: ErrorCause::ExpectedTypeName,
                 col: colon_token.col,
@@ -1899,7 +1899,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let Some(typ) = self.resolve_type(type_name) else {
             return match self.resolve_variable(type_name) {
                 Some((_, _, var)) => Ok(Some((type_token, var.value.typ()))),
-                None => Err(RawSyntaxError {
+                None => Err(RawError {
                     kind: ErrorKind::Invalid(Statement::TypeAnnotation),
                     cause: ErrorCause::WasNotPreviouslyDefined,
                     col: type_token.col,
@@ -1944,7 +1944,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Loop
             | TokenKind::Break
             | TokenKind::Continue => {
-                return Err(RawSyntaxError {
+                return Err(RawError {
                     kind: ErrorKind::Invalid(Statement::TypeAnnotation),
                     cause: ErrorCause::MustBeFollowedByIntegerExpression,
                     col: open_square_bracket_token.col,
@@ -1960,7 +1960,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     ..
                 },
             ) => Ok(Some((close_square_bracket_token, Type::Array { typ: array_type, len }))),
-            Some(_) | None => Err(RawSyntaxError {
+            Some(_) | None => Err(RawError {
                 kind: ErrorKind::Invalid(Statement::TypeAnnotation),
                 cause: ErrorCause::MustBeFollowedByClosingSquareBracket,
                 col: open_square_bracket_token.col,
@@ -1969,7 +1969,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         };
     }
 
-    fn variable_definition(&mut self) -> Result<Node<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    fn variable_definition(&mut self) -> Result<Node<'src>, RawError<ErrorKind, ErrorCause>> {
         let definition_token = &self.tokens[self.token];
         let TokenKind::Definition(mutability) = definition_token.kind else {
             unreachable!("cannot be anything different from 'let' or 'var'");
@@ -1980,7 +1980,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::Identifier(name) => match self.resolve_type(name) {
                 None => name,
                 Some(_) => {
-                    return Err(RawSyntaxError {
+                    return Err(RawError {
                         kind: ErrorKind::Invalid(Statement::VariableName),
                         cause: ErrorCause::CannotBeATypeName,
                         col: name_token.col,
@@ -2009,7 +2009,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Loop
             | TokenKind::Break
             | TokenKind::Continue => {
-                return Err(RawSyntaxError {
+                return Err(RawError {
                     kind: ErrorKind::Invalid(Statement::VariableDefinition),
                     cause: ErrorCause::ExpectedVariableName,
                     col: name_token.col,
@@ -2050,7 +2050,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Break
             | TokenKind::Continue => match annotation {
                 None => {
-                    return Err(RawSyntaxError {
+                    return Err(RawError {
                         kind: ErrorKind::Invalid(Statement::VariableDefinition),
                         cause: ErrorCause::ExpectedEqualsOrSemicolonAfterVariableName,
                         col: name_token.col,
@@ -2058,7 +2058,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     })
                 }
                 Some((annotation_token, _)) => {
-                    return Err(RawSyntaxError {
+                    return Err(RawError {
                         kind: ErrorKind::Invalid(Statement::VariableDefinition),
                         cause: ErrorCause::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
                         col: annotation_token.col,
@@ -2069,7 +2069,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         };
 
         if self.resolve_variable(name).is_some() {
-            return Err(RawSyntaxError {
+            return Err(RawError {
                 kind: ErrorKind::VariableRedefinition,
                 cause: ErrorCause::WasPreviouslyDefined,
                 col: name_token.col,
@@ -2087,7 +2087,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     }
 
                     if *annotation_typ != value.typ() {
-                        return Err(RawSyntaxError {
+                        return Err(RawError {
                             kind: ErrorKind::Invalid(Statement::VariableDefinition),
                             cause: ErrorCause::VariableDefinitionTypeMismatch {
                                 expected: annotation_typ.clone(),
@@ -2098,7 +2098,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         });
                     }
                 } else if value.typ().should_be_inferred() {
-                    return Err(RawSyntaxError {
+                    return Err(RawError {
                         kind: ErrorKind::Invalid(Statement::VariableDefinition),
                         cause: ErrorCause::ExpectedTypeAnnotation,
                         col: name_token.col,
@@ -2122,7 +2122,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         var_index: variables.len() - 1,
                     })
                 }
-                None => Err(RawSyntaxError {
+                None => Err(RawError {
                     kind: ErrorKind::Invalid(Statement::VariableDefinition),
                     cause: ErrorCause::ExpectedTypeAnnotationOrValue,
                     col: name_token.col,
@@ -2134,14 +2134,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
     fn variable_reassignment(
         &mut self,
-    ) -> Result<Node<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<Node<'src>, RawError<ErrorKind, ErrorCause>> {
         let name_token = &self.tokens[self.token];
         let TokenKind::Identifier(name) = name_token.kind else {
             unreachable!("cannot be different from an identifier");
         };
 
         if self.resolve_type(name).is_some() {
-            return Err(RawSyntaxError {
+            return Err(RawError {
                 kind: ErrorKind::Invalid(Statement::VariableAssignment),
                 cause: ErrorCause::CannotBeATypeName,
                 col: name_token.col,
@@ -2149,14 +2149,15 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             });
         }
 
-        // we checked for the presence of an op token before the call to this function
-        let op_token = self.next_token().unwrap();
+        let Some(op_token) = self.next_token() else {
+            unreachable!("the presence of an op token should have been checked before the call to this function");
+        };
 
         _ = self.next_token();
         let rhs = self.expression()?;
         return match self.resolve_variable(name) {
             Some((scope_index, var_index, var)) => match var.mutability {
-                Mutability::Let => Err(RawSyntaxError {
+                Mutability::Let => Err(RawError {
                     kind: ErrorKind::Invalid(Statement::VariableAssignment),
                     cause: ErrorCause::CannotMutateImmutableVariable,
                     col: name_token.col,
@@ -2199,7 +2200,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     if var.value.typ() == new_value.typ() {
                         Ok(Node::Assignment { scope_index, var_index, new_value })
                     } else {
-                        Err(RawSyntaxError {
+                        Err(RawError {
                             kind: ErrorKind::Invalid(Statement::VariableAssignment),
                             cause: ErrorCause::VariableAssignmentTypeMismatch {
                                 expected: var.value.typ(),
@@ -2211,7 +2212,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     }
                 }
             },
-            None => Err(RawSyntaxError {
+            None => Err(RawError {
                 kind: ErrorKind::Invalid(Statement::VariableAssignment),
                 cause: ErrorCause::WasNotPreviouslyDefined,
                 col: name_token.col,
@@ -2223,14 +2224,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
 // print statements
 impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
-    fn print_arg(&mut self) -> Result<Expression<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    fn print_arg(&mut self) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let start_of_expression_token = self.next_token_bounded(Expected::Expression)?;
         let argument = self.expression()?;
         let Expression::Array { .. } = argument else {
             return Ok(argument);
         };
 
-        return Err(RawSyntaxError {
+        return Err(RawError {
             kind: ErrorKind::Invalid(Statement::Expression),
             cause: ErrorCause::TemporaryArrayNotSupportedYet,
             col: start_of_expression_token.col,
@@ -2241,7 +2242,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
 // if statements
 impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
-    fn iff(&mut self) -> Result<Node<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    fn iff(&mut self) -> Result<Node<'src>, RawError<ErrorKind, ErrorCause>> {
         let mut if_statement = If { ifs: Vec::new(), els: None };
 
         'iff: while let Some(if_token) = self.tokens.get(self.token) {
@@ -2251,7 +2252,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             let condition = match &expression.typ() {
                 Type::Bool => expression,
                 Type::Ascii | Type::Int | Type::Str | Type::Array { .. } | Type::Infer => {
-                    return Err(RawSyntaxError {
+                    return Err(RawError {
                         kind: ErrorKind::Invalid(Statement::If),
                         cause: ErrorCause::MustBeFollowedByABooleanExpression,
                         col: if_token.col,
@@ -2263,11 +2264,15 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             let after_condition_token = self.current_token_bounded(Expected::DoOrBlock)?;
             let iff = match after_condition_token.kind {
                 TokenKind::Bracket(BracketKind::OpenCurly) => {
-                    let scope = self.parse_single_any()?.unwrap();
+                    let Some(scope) = self.parse_single_any()? else {
+                        unreachable!("this branch ensures there will be a block to be parsed");
+                    };
                     IfStatement { condition, statement: scope }
                 }
                 TokenKind::Do => {
-                    let statement = self.parse_do_statement()?.unwrap();
+                    let Some(statement) = self.parse_do_statement()? else {
+                        unreachable!("this branch ensures there will be a do statement to be parsed");
+                    };
                     self.semicolon()?;
                     IfStatement { condition, statement }
                 }
@@ -2293,7 +2298,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 | TokenKind::Break
                 | TokenKind::Continue => {
                     let before_curly_bracket_token = self.peek_previous_token();
-                    return Err(RawSyntaxError {
+                    return Err(RawError {
                         kind: ErrorKind::Invalid(Statement::If),
                         cause: ErrorCause::MustBeFollowedByDoOrBlock,
                         col: before_curly_bracket_token.col,
@@ -2333,12 +2338,16 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 // we are now inside an else branch
                 let else_if = match after_else_token.kind {
                     TokenKind::Bracket(BracketKind::OpenCurly) => {
-                        let scope = self.parse_single_any()?.unwrap();
+                        let Some(scope) = self.parse_single_any()? else {
+                            unreachable!("this branch ensures there will be a block to be parsed");
+                        };
                         if_statement.els = Some(Box::new(scope));
                         break 'iff;
                     }
                     TokenKind::Do => {
-                        let statement = self.parse_do_statement()?.unwrap();
+                        let Some(statement) = self.parse_do_statement()? else {
+                            unreachable!("this branch ensures there will be a do statement to be parsed");
+                        };
                         self.semicolon()?;
                         if_statement.els = Some(Box::new(statement));
                         break 'iff;
@@ -2363,7 +2372,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     | TokenKind::Else
                     | TokenKind::Loop
                     | TokenKind::Break
-                    | TokenKind::Continue => Err(RawSyntaxError {
+                    | TokenKind::Continue => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::If),
                         cause: ErrorCause::MustBeFollowedByDoOrBlockOrIfStatement,
                         col: else_token.col,
@@ -2381,7 +2390,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
 // loop statements
 impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
-    fn loop_statement(&mut self) -> Result<Node<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    fn loop_statement(&mut self) -> Result<Node<'src>, RawError<ErrorKind, ErrorCause>> {
         let do_token = &self.tokens[self.token];
         let loop_token = match do_token.kind {
             TokenKind::Do => {
@@ -2389,7 +2398,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 if let TokenKind::Loop = loop_token.kind {
                     loop_token
                 } else {
-                    return Err(RawSyntaxError {
+                    return Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Loop),
                         cause: ErrorCause::MustBeFollowedByLoop,
                         col: do_token.col,
@@ -2425,7 +2434,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let condition_result = match &expression.typ() {
             Type::Bool => Ok(expression),
             Type::Ascii | Type::Int | Type::Str | Type::Array { .. } | Type::Infer => {
-                Err(RawSyntaxError {
+                Err(RawError {
                     kind: ErrorKind::Invalid(Statement::Loop),
                     cause: ErrorCause::MustBeFollowedByABooleanExpression,
                     col: loop_token.col,
@@ -2437,11 +2446,15 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let after_condition_token = self.current_token_bounded(Expected::DoOrBlock)?;
         let statement_result = match after_condition_token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
-                let scope = self.parse_single_any()?.unwrap();
+                let Some(scope) = self.parse_single_any()? else {
+                    unreachable!("this branch ensures there will be a block to be parsed");
+                };
                 Ok(scope)
             }
             TokenKind::Do => {
-                let statement = self.parse_do_statement()?.unwrap();
+                let Some(statement) = self.parse_do_statement()? else {
+                    unreachable!("this branch ensures there will be a do statement to be parsed");
+                };
                 self.semicolon()?;
                 Ok(statement)
             }
@@ -2467,7 +2480,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Break
             | TokenKind::Continue => {
                 let before_curly_bracket_token = self.peek_previous_token();
-                Err(RawSyntaxError {
+                Err(RawError {
                     kind: ErrorKind::Invalid(Statement::Loop),
                     cause: ErrorCause::MustBeFollowedByDoOrBlock,
                     col: before_curly_bracket_token.col,
@@ -2589,7 +2602,7 @@ pub enum ErrorKind {
     VariableRedefinition,
 }
 
-impl SyntaxErrorKind for ErrorKind {}
+impl super::ErrorKind for ErrorKind {}
 
 impl Display for ErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -2666,7 +2679,7 @@ pub enum ErrorCause {
     ExpectedEqualsOrSemicolonAfterTypeAnnotation,
 }
 
-impl SyntaxErrorCause for ErrorCause {}
+impl super::ErrorCause for ErrorCause {}
 
 impl Display for ErrorCause {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

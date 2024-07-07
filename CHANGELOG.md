@@ -58,16 +58,15 @@ Changes to error messages, help message and alike would **not** be considered br
 - Improved generated asm code
 - Runtime crashes now print to `stderr`
 - **BREAKING**: `<=>` now has the same precedence as `==`, `!=`, `<`, `<=`, `>`, `>=` operators
-- **BREAKING**: operators `**`, `*`, `+`, `-`, `<<`, `>>` will crash on overflow
+- **BREAKING**: non-wrapping and non-saturating operators will crash on overflow
 - **BREAKING**: `char` type renamed to `ascii`
 - Improved error messages
 - Allowed non utf-8 paths in cli arguments
 - `run` command now returns the exit code of the executed program
 - `compile` command now returns the exit code of the assembler and linker in the case of a failure
 - **BREAKING**: Split `Error`s into `ErrorKind` and `ErrorCause`
-- **BREAKING**: `Tokenizer::tokenize` and `Ast::build` now return a `SyntaxErrors` struct as an
-    iterator over lightweight `RawSyntaxError`s that lazily construct full `SyntaxError`s
-- **BREAKING**: Specialized paths to be `FilePath` or `DirPath` structs to improve type safety.
+- **BREAKING**: `Tokenizer::tokenize` and `Ast::build` now return a `Errors` struct as an
+    iterator over lightweight `RawError`s that lazily construct full `Error`s
 - **BREAKING**: `Compiler::compile` no longer returns an `Artifacts` struct, it is instead
     constructed beforehand and is now required in compilation steps instead of generic `PathBuf`s
 - **BREAKING**: Updated consistency of compilation steps names and static variables

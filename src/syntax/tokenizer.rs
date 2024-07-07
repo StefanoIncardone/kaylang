@@ -4,7 +4,7 @@ use std::{
     num::{IntErrorKind, ParseIntError},
 };
 
-use super::{RawSyntaxError, SyntaxErrorCause, SyntaxErrorKind, SyntaxErrors};
+use super::{RawError, Errors};
 
 pub(crate) trait SrcCodeLen {
     fn src_code_len(&self) -> usize;
@@ -498,7 +498,7 @@ pub struct Token<'src> {
 #[derive(Debug)]
 pub struct Tokenizer<'src> {
     src: &'src SrcFile,
-    errors: Vec<RawSyntaxError<ErrorKind, ErrorCause>>,
+    errors: Vec<RawError<ErrorKind, ErrorCause>>,
 
     col: usize,
     token_start_col: usize,
@@ -513,7 +513,7 @@ pub struct Tokenizer<'src> {
 impl<'src> Tokenizer<'src> {
     pub fn tokenize(
         src: &'src SrcFile,
-    ) -> Result<Vec<Token<'src>>, SyntaxErrors<'src, ErrorKind, ErrorCause>> {
+    ) -> Result<Vec<Token<'src>>, Errors<'src, ErrorKind, ErrorCause>> {
         let Some(first_line) = src.lines.first() else {
             return Ok(Vec::new());
         };
@@ -569,7 +569,7 @@ impl<'src> Tokenizer<'src> {
 
         for bracket in &this.brackets {
             // there can only be open brackets at this point
-            this.errors.push(RawSyntaxError {
+            this.errors.push(RawError {
                 kind: ErrorKind::UnclosedBracket(bracket.kind),
                 cause: ErrorCause::UnclosedBracket,
                 col: bracket.col,
@@ -580,7 +580,7 @@ impl<'src> Tokenizer<'src> {
         return if this.errors.is_empty() {
             Ok(this.tokens)
         } else {
-            Err(SyntaxErrors { src, raw_errors: this.errors })
+            Err(Errors { src, raw_errors: this.errors })
         };
     }
 }
@@ -593,7 +593,7 @@ impl<'src> Tokenizer<'src> {
         return self.src.code[self.token_start_col..self.col].chars().count();
     }
 
-    fn next_ascii_char(&mut self) -> Result<Option<ascii>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    fn next_ascii_char(&mut self) -> Result<Option<ascii>, RawError<ErrorKind, ErrorCause>> {
         let Some(next) = self.src.code.as_bytes().get(self.col) else {
             return Ok(None);
         };
@@ -612,7 +612,7 @@ impl<'src> Tokenizer<'src> {
 
                 let utf8_ch_col = self.col;
                 self.col += utf8_ch.len_utf8();
-                Err(RawSyntaxError {
+                Err(RawError {
                     kind: ErrorKind::NonAsciiCharacter(utf8_ch),
                     cause: ErrorCause::NonAsciiCharacter,
                     col: utf8_ch_col,
@@ -644,7 +644,7 @@ impl<'src> Tokenizer<'src> {
 
     fn peek_next_ascii_char(
         &self,
-    ) -> Result<Option<&'src ascii>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<Option<&'src ascii>, RawError<ErrorKind, ErrorCause>> {
         let Some(next) = self.src.code.as_bytes().get(self.col) else {
             return Ok(None);
         };
@@ -658,7 +658,7 @@ impl<'src> Tokenizer<'src> {
                     unreachable!("this branch assured we would have a valid utf8 character")
                 };
 
-                Err(RawSyntaxError {
+                Err(RawError {
                     kind: ErrorKind::NonAsciiCharacter(utf8_ch),
                     cause: ErrorCause::NonAsciiCharacter,
                     col: self.col,
@@ -686,9 +686,9 @@ impl<'src> Tokenizer<'src> {
 
     fn next_in_ascii_char_literal(
         &mut self,
-    ) -> Result<ascii, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<ascii, RawError<ErrorKind, ErrorCause>> {
         return match self.src.code.as_bytes().get(self.col) {
-            Some(b'\n') | None => Err(RawSyntaxError {
+            Some(b'\n') | None => Err(RawError {
                 kind: ErrorKind::InvalidCharacterLiteral,
                 cause: ErrorCause::MissingClosingSingleQuote,
                 col: self.token_start_col,
@@ -707,7 +707,7 @@ impl<'src> Tokenizer<'src> {
 
                 let utf8_ch_col = self.col;
                 self.col += utf8_ch.len_utf8();
-                Err(RawSyntaxError {
+                Err(RawError {
                     kind: ErrorKind::NonAsciiCharacter(utf8_ch),
                     cause: ErrorCause::NonAsciiCharacter,
                     col: utf8_ch_col,
@@ -719,9 +719,9 @@ impl<'src> Tokenizer<'src> {
 
     fn next_in_ascii_str_literal(
         &mut self,
-    ) -> Result<ascii, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<ascii, RawError<ErrorKind, ErrorCause>> {
         return match self.src.code.as_bytes().get(self.col) {
-            Some(b'\n') | None => Err(RawSyntaxError {
+            Some(b'\n') | None => Err(RawError {
                 kind: ErrorKind::InvalidStringLiteral,
                 cause: ErrorCause::MissingClosingDoubleQuote,
                 col: self.token_start_col,
@@ -740,7 +740,7 @@ impl<'src> Tokenizer<'src> {
 
                 let utf8_ch_col = self.col;
                 self.col += utf8_ch.len_utf8();
-                Err(RawSyntaxError {
+                Err(RawError {
                     kind: ErrorKind::NonAsciiCharacter(utf8_ch),
                     cause: ErrorCause::NonAsciiCharacter,
                     col: utf8_ch_col,
@@ -752,7 +752,7 @@ impl<'src> Tokenizer<'src> {
 }
 
 impl<'src> Tokenizer<'src> {
-    fn identifier(&mut self) -> Result<TokenKind<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    fn identifier(&mut self) -> Result<TokenKind<'src>, RawError<ErrorKind, ErrorCause>> {
         let mut contains_utf8 = false;
         loop {
             match self.peek_next_ascii_char() {
@@ -765,7 +765,7 @@ impl<'src> Tokenizer<'src> {
         }
 
         if contains_utf8 {
-            return Err(RawSyntaxError {
+            return Err(RawError {
                 kind: ErrorKind::InvalidIdentifier,
                 cause: ErrorCause::ContainsNonAsciiCharacters,
                 col: self.token_start_col,
@@ -797,7 +797,7 @@ impl<'src> Tokenizer<'src> {
     fn next_token(
         &mut self,
         next: ascii,
-    ) -> Result<TokenKind<'src>, RawSyntaxError<ErrorKind, ErrorCause>> {
+    ) -> Result<TokenKind<'src>, RawError<ErrorKind, ErrorCause>> {
         return match next {
             b'r' => match self.peek_next_utf8_char() {
                 Some('"') => {
@@ -809,7 +809,7 @@ impl<'src> Tokenizer<'src> {
                     loop {
                         let next_ch = match self.next_in_ascii_str_literal()? {
                             control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                                self.errors.push(RawSyntaxError {
+                                self.errors.push(RawError {
                                     kind: ErrorKind::InvalidStringLiteral,
                                     cause: ErrorCause::ControlCharacterNotAllowed(control as utf8),
                                     col: self.col - 1,
@@ -872,7 +872,7 @@ impl<'src> Tokenizer<'src> {
                             _ => ErrorCause::InvalidInt(err),
                         };
 
-                        Err(RawSyntaxError {
+                        Err(RawError {
                             kind: ErrorKind::InvalidNumberLiteral,
                             cause,
                             col: self.token_start_col,
@@ -911,7 +911,7 @@ impl<'src> Tokenizer<'src> {
                             b't' => b'\t',
                             b'0' => b'\0',
                             unrecognized => {
-                                self.errors.push(RawSyntaxError {
+                                self.errors.push(RawError {
                                     kind: ErrorKind::InvalidStringLiteral,
                                     cause: ErrorCause::UnrecognizedEscapeCharacter(
                                         unrecognized as utf8,
@@ -924,7 +924,7 @@ impl<'src> Tokenizer<'src> {
                             }
                         },
                         control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                            self.errors.push(RawSyntaxError {
+                            self.errors.push(RawError {
                                 kind: ErrorKind::InvalidStringLiteral,
                                 cause: ErrorCause::ControlCharacterNotAllowed(control as utf8),
                                 col: self.col - 1,
@@ -959,20 +959,20 @@ impl<'src> Tokenizer<'src> {
                         b'r' => Ok(b'\r'),
                         b't' => Ok(b'\t'),
                         b'0' => Ok(b'\0'),
-                        unrecognized => Err(RawSyntaxError {
+                        unrecognized => Err(RawError {
                             kind: ErrorKind::InvalidCharacterLiteral,
                             cause: ErrorCause::UnrecognizedEscapeCharacter(unrecognized as utf8),
                             col: self.col - 2,
                             len: 2,
                         }),
                     },
-                    control @ (b'\x00'..=b'\x1F' | b'\x7F') => Err(RawSyntaxError {
+                    control @ (b'\x00'..=b'\x1F' | b'\x7F') => Err(RawError {
                         kind: ErrorKind::InvalidCharacterLiteral,
                         cause: ErrorCause::ControlCharacterNotAllowed(control as utf8),
                         col: self.col - 1,
                         len: 1,
                     }),
-                    b'\'' => Err(RawSyntaxError {
+                    b'\'' => Err(RawError {
                         kind: ErrorKind::InvalidCharacterLiteral,
                         cause: ErrorCause::MustNotBeEmpty,
                         col: self.token_start_col,
@@ -982,7 +982,7 @@ impl<'src> Tokenizer<'src> {
                 };
 
                 let Some(b'\'') = self.peek_next_ascii_char()? else {
-                    return Err(RawSyntaxError {
+                    return Err(RawError {
                         kind: ErrorKind::InvalidCharacterLiteral,
                         cause: ErrorCause::MissingClosingSingleQuote,
                         col: self.token_start_col,
@@ -1005,7 +1005,7 @@ impl<'src> Tokenizer<'src> {
                     | BracketKind::CloseCurly
                     | BracketKind::CloseSquare => Ok(TokenKind::Bracket(BracketKind::CloseRound)),
                     actual @ (BracketKind::OpenCurly | BracketKind::OpenSquare) => {
-                        Err(RawSyntaxError {
+                        Err(RawError {
                             kind: ErrorKind::MismatchedBracket,
                             cause: ErrorCause::MismatchedBracket {
                                 expected: BracketKind::CloseRound,
@@ -1016,7 +1016,7 @@ impl<'src> Tokenizer<'src> {
                         })
                     }
                 },
-                None => Err(RawSyntaxError {
+                None => Err(RawError {
                     kind: ErrorKind::UnopenedBracket(BracketKind::CloseRound),
                     cause: ErrorCause::UnopenedBracket,
                     col: self.token_start_col,
@@ -1035,7 +1035,7 @@ impl<'src> Tokenizer<'src> {
                     | BracketKind::CloseCurly
                     | BracketKind::CloseRound => Ok(TokenKind::Bracket(BracketKind::CloseSquare)),
                     actual @ (BracketKind::OpenCurly | BracketKind::OpenRound) => {
-                        Err(RawSyntaxError {
+                        Err(RawError {
                             kind: ErrorKind::MismatchedBracket,
                             cause: ErrorCause::MismatchedBracket {
                                 expected: BracketKind::CloseSquare,
@@ -1046,7 +1046,7 @@ impl<'src> Tokenizer<'src> {
                         })
                     }
                 },
-                None => Err(RawSyntaxError {
+                None => Err(RawError {
                     kind: ErrorKind::UnopenedBracket(BracketKind::CloseSquare),
                     cause: ErrorCause::UnopenedBracket,
                     col: self.token_start_col,
@@ -1065,7 +1065,7 @@ impl<'src> Tokenizer<'src> {
                     | BracketKind::CloseRound
                     | BracketKind::CloseSquare => Ok(TokenKind::Bracket(BracketKind::CloseCurly)),
                     actual @ (BracketKind::OpenRound | BracketKind::OpenSquare) => {
-                        Err(RawSyntaxError {
+                        Err(RawError {
                             kind: ErrorKind::MismatchedBracket,
                             cause: ErrorCause::MismatchedBracket {
                                 expected: BracketKind::CloseCurly,
@@ -1076,7 +1076,7 @@ impl<'src> Tokenizer<'src> {
                         })
                     }
                 },
-                None => Err(RawSyntaxError {
+                None => Err(RawError {
                     kind: ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
                     cause: ErrorCause::UnopenedBracket,
                     col: self.token_start_col,
@@ -1366,7 +1366,7 @@ impl<'src> Tokenizer<'src> {
                 }
                 _ => Ok(TokenKind::Op(Op::Less)),
             },
-            unrecognized => Err(RawSyntaxError {
+            unrecognized => Err(RawError {
                 kind: ErrorKind::UnrecognizedCharacter(unrecognized as utf8),
                 cause: ErrorCause::UnrecognizedCharacter,
                 col: self.token_start_col,
@@ -1391,7 +1391,7 @@ pub enum ErrorKind {
     UnrecognizedCharacter(utf8),
 }
 
-impl SyntaxErrorKind for ErrorKind {}
+impl super::ErrorKind for ErrorKind {}
 
 impl Display for ErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1435,7 +1435,7 @@ pub enum ErrorCause {
     UnrecognizedCharacter,
 }
 
-impl SyntaxErrorCause for ErrorCause {}
+impl super::ErrorCause for ErrorCause {}
 
 impl Display for ErrorCause {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -152,7 +152,7 @@ impl TryFrom<Vec<String>> for Args {
                             command_option = Some((
                                 Command::Help { executable_name: executable_name.clone() },
                                 cli_command,
-                            ))
+                            ));
                         }
                     }
                 }
