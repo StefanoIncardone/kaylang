@@ -102,9 +102,7 @@ pub struct ErrorsIter<'err, 'src: 'err, K: ErrorKind, C: ErrorCause> {
     pub(crate) raw_errors: Iter<'err, RawError<K, C>>,
 }
 
-impl<'err, 'src: 'err, K: ErrorKind, C: ErrorCause> Iterator
-    for ErrorsIter<'err, 'src, K, C>
-{
+impl<'err, 'src: 'err, K: ErrorKind, C: ErrorCause> Iterator for ErrorsIter<'err, 'src, K, C> {
     type Item = Error<'src, K, C>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -130,10 +128,7 @@ impl<'err, 'src: 'err, K: ErrorKind, C: ErrorCause> ExactSizeIterator
     }
 }
 
-impl<'err, 'src: 'err, K: ErrorKind, C: ErrorCause> FusedIterator
-    for ErrorsIter<'err, 'src, K, C>
-{
-}
+impl<'err, 'src: 'err, K: ErrorKind, C: ErrorCause> FusedIterator for ErrorsIter<'err, 'src, K, C> {}
 
 #[allow(dead_code)]
 impl<'err, 'src: 'err, K: ErrorKind, C: ErrorCause> ErrorsIter<'err, 'src, K, C> {
@@ -168,27 +163,20 @@ impl<'src, K: ErrorKind, C: ErrorCause> Iterator for ErrorsIntoIter<'src, K, C> 
     }
 }
 
-impl<'src, K: ErrorKind, C: ErrorCause> DoubleEndedIterator
-    for ErrorsIntoIter<'src, K, C>
-{
+impl<'src, K: ErrorKind, C: ErrorCause> DoubleEndedIterator for ErrorsIntoIter<'src, K, C> {
     fn next_back(&mut self) -> Option<Self::Item> {
         let raw_error = self.raw_errors.next_back()?;
         return Some(Error::from_raw(self.src, &raw_error));
     }
 }
 
-impl<'src, K: ErrorKind, C: ErrorCause> ExactSizeIterator
-    for ErrorsIntoIter<'src, K, C>
-{
+impl<'src, K: ErrorKind, C: ErrorCause> ExactSizeIterator for ErrorsIntoIter<'src, K, C> {
     fn len(&self) -> usize {
         return self.raw_errors.len();
     }
 }
 
-impl<'src, K: ErrorKind, C: ErrorCause> FusedIterator
-    for ErrorsIntoIter<'src, K, C>
-{
-}
+impl<'src, K: ErrorKind, C: ErrorCause> FusedIterator for ErrorsIntoIter<'src, K, C> {}
 
 #[allow(dead_code)]
 impl<'src, K: ErrorKind, C: ErrorCause> ErrorsIntoIter<'src, K, C> {

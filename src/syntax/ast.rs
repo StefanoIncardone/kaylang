@@ -2,7 +2,7 @@ use super::{
     tokenizer::{
         ascii, int, uint, BracketKind, Literal, Mutability, Op, SrcCodeLen, Token, TokenKind,
     },
-    RawError, Errors,
+    Errors, RawError,
 };
 use crate::src_file::{Position, SrcFile};
 use std::fmt::{Debug, Display};
@@ -773,9 +773,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         };
     }
 
-    fn parse_single_any(
-        &mut self,
-    ) -> Result<Option<Node<'src>>, RawError<ErrorKind, ErrorCause>> {
+    fn parse_single_any(&mut self) -> Result<Option<Node<'src>>, RawError<ErrorKind, ErrorCause>> {
         let Some(current_token) = self.tokens.get(self.token) else { return Ok(None) };
 
         return match current_token.kind {
@@ -1055,9 +1053,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         };
     }
 
-    fn primary_expression(
-        &mut self,
-    ) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
+    fn primary_expression(&mut self) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let current_token = self.current_token_bounded(Expected::Expression)?;
         let factor = match &current_token.kind {
             // TODO(stefano): move parsing of numbers to here to allow for negative numbers natively
@@ -1581,9 +1577,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         return Ok(lhs);
     }
 
-    fn additive_expression(
-        &mut self,
-    ) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
+    fn additive_expression(&mut self) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let mut lhs = self.multiplicative_expression()?;
 
         let ops = [
@@ -1613,9 +1607,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
     // TODO(stefano): check that the rotation rhs doesn't overflow a 6bit integer when rotating a
     // 64bit lhs integer. this can only be done when the lhs is a literal integer
-    fn shift_expression(
-        &mut self,
-    ) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
+    fn shift_expression(&mut self) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let mut lhs = self.additive_expression()?;
 
         let ops = [
@@ -1643,9 +1635,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         return Ok(lhs);
     }
 
-    fn bitand_expression(
-        &mut self,
-    ) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
+    fn bitand_expression(&mut self) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let mut lhs = self.shift_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitAnd])? {
@@ -1665,9 +1655,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         return Ok(lhs);
     }
 
-    fn bitxor_expression(
-        &mut self,
-    ) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
+    fn bitxor_expression(&mut self) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let mut lhs = self.bitand_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitXor])? {
@@ -1687,9 +1675,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         return Ok(lhs);
     }
 
-    fn bitor_expression(
-        &mut self,
-    ) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
+    fn bitor_expression(&mut self) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let mut lhs = self.bitxor_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitOr])? {
@@ -1760,9 +1746,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         return Ok(lhs);
     }
 
-    fn and_expression(
-        &mut self,
-    ) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
+    fn and_expression(&mut self) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let mut lhs = self.comparison_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::And])? {
@@ -2132,9 +2116,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         };
     }
 
-    fn variable_reassignment(
-        &mut self,
-    ) -> Result<Node<'src>, RawError<ErrorKind, ErrorCause>> {
+    fn variable_reassignment(&mut self) -> Result<Node<'src>, RawError<ErrorKind, ErrorCause>> {
         let name_token = &self.tokens[self.token];
         let TokenKind::Identifier(name) = name_token.kind else {
             unreachable!("cannot be different from an identifier");
@@ -2271,7 +2253,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 }
                 TokenKind::Do => {
                     let Some(statement) = self.parse_do_statement()? else {
-                        unreachable!("this branch ensures there will be a do statement to be parsed");
+                        unreachable!(
+                            "this branch ensures there will be a do statement to be parsed"
+                        );
                     };
                     self.semicolon()?;
                     IfStatement { condition, statement }
@@ -2346,7 +2330,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     }
                     TokenKind::Do => {
                         let Some(statement) = self.parse_do_statement()? else {
-                            unreachable!("this branch ensures there will be a do statement to be parsed");
+                            unreachable!(
+                                "this branch ensures there will be a do statement to be parsed"
+                            );
                         };
                         self.semicolon()?;
                         if_statement.els = Some(Box::new(statement));

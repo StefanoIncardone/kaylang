@@ -4,7 +4,7 @@ use std::{
     num::{IntErrorKind, ParseIntError},
 };
 
-use super::{RawError, Errors};
+use super::{Errors, RawError};
 
 pub(crate) trait SrcCodeLen {
     fn src_code_len(&self) -> usize;
@@ -642,9 +642,7 @@ impl<'src> Tokenizer<'src> {
         };
     }
 
-    fn peek_next_ascii_char(
-        &self,
-    ) -> Result<Option<&'src ascii>, RawError<ErrorKind, ErrorCause>> {
+    fn peek_next_ascii_char(&self) -> Result<Option<&'src ascii>, RawError<ErrorKind, ErrorCause>> {
         let Some(next) = self.src.code.as_bytes().get(self.col) else {
             return Ok(None);
         };
@@ -684,9 +682,7 @@ impl<'src> Tokenizer<'src> {
         };
     }
 
-    fn next_in_ascii_char_literal(
-        &mut self,
-    ) -> Result<ascii, RawError<ErrorKind, ErrorCause>> {
+    fn next_in_ascii_char_literal(&mut self) -> Result<ascii, RawError<ErrorKind, ErrorCause>> {
         return match self.src.code.as_bytes().get(self.col) {
             Some(b'\n') | None => Err(RawError {
                 kind: ErrorKind::InvalidCharacterLiteral,
@@ -717,9 +713,7 @@ impl<'src> Tokenizer<'src> {
         };
     }
 
-    fn next_in_ascii_str_literal(
-        &mut self,
-    ) -> Result<ascii, RawError<ErrorKind, ErrorCause>> {
+    fn next_in_ascii_str_literal(&mut self) -> Result<ascii, RawError<ErrorKind, ErrorCause>> {
         return match self.src.code.as_bytes().get(self.col) {
             Some(b'\n') | None => Err(RawError {
                 kind: ErrorKind::InvalidStringLiteral,
@@ -1004,17 +998,15 @@ impl<'src> Tokenizer<'src> {
                     | BracketKind::CloseRound
                     | BracketKind::CloseCurly
                     | BracketKind::CloseSquare => Ok(TokenKind::Bracket(BracketKind::CloseRound)),
-                    actual @ (BracketKind::OpenCurly | BracketKind::OpenSquare) => {
-                        Err(RawError {
-                            kind: ErrorKind::MismatchedBracket,
-                            cause: ErrorCause::MismatchedBracket {
-                                expected: BracketKind::CloseRound,
-                                actual,
-                            },
-                            col: self.token_start_col,
-                            len: 1,
-                        })
-                    }
+                    actual @ (BracketKind::OpenCurly | BracketKind::OpenSquare) => Err(RawError {
+                        kind: ErrorKind::MismatchedBracket,
+                        cause: ErrorCause::MismatchedBracket {
+                            expected: BracketKind::CloseRound,
+                            actual,
+                        },
+                        col: self.token_start_col,
+                        len: 1,
+                    }),
                 },
                 None => Err(RawError {
                     kind: ErrorKind::UnopenedBracket(BracketKind::CloseRound),
@@ -1034,17 +1026,15 @@ impl<'src> Tokenizer<'src> {
                     | BracketKind::CloseSquare
                     | BracketKind::CloseCurly
                     | BracketKind::CloseRound => Ok(TokenKind::Bracket(BracketKind::CloseSquare)),
-                    actual @ (BracketKind::OpenCurly | BracketKind::OpenRound) => {
-                        Err(RawError {
-                            kind: ErrorKind::MismatchedBracket,
-                            cause: ErrorCause::MismatchedBracket {
-                                expected: BracketKind::CloseSquare,
-                                actual,
-                            },
-                            col: self.token_start_col,
-                            len: 1,
-                        })
-                    }
+                    actual @ (BracketKind::OpenCurly | BracketKind::OpenRound) => Err(RawError {
+                        kind: ErrorKind::MismatchedBracket,
+                        cause: ErrorCause::MismatchedBracket {
+                            expected: BracketKind::CloseSquare,
+                            actual,
+                        },
+                        col: self.token_start_col,
+                        len: 1,
+                    }),
                 },
                 None => Err(RawError {
                     kind: ErrorKind::UnopenedBracket(BracketKind::CloseSquare),
@@ -1064,17 +1054,15 @@ impl<'src> Tokenizer<'src> {
                     | BracketKind::CloseCurly
                     | BracketKind::CloseRound
                     | BracketKind::CloseSquare => Ok(TokenKind::Bracket(BracketKind::CloseCurly)),
-                    actual @ (BracketKind::OpenRound | BracketKind::OpenSquare) => {
-                        Err(RawError {
-                            kind: ErrorKind::MismatchedBracket,
-                            cause: ErrorCause::MismatchedBracket {
-                                expected: BracketKind::CloseCurly,
-                                actual,
-                            },
-                            col: self.token_start_col,
-                            len: 1,
-                        })
-                    }
+                    actual @ (BracketKind::OpenRound | BracketKind::OpenSquare) => Err(RawError {
+                        kind: ErrorKind::MismatchedBracket,
+                        cause: ErrorCause::MismatchedBracket {
+                            expected: BracketKind::CloseCurly,
+                            actual,
+                        },
+                        col: self.token_start_col,
+                        len: 1,
+                    }),
                 },
                 None => Err(RawError {
                     kind: ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
