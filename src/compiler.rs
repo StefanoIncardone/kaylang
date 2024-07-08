@@ -3918,7 +3918,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 Op::Len => match &**operand {
                     Expression::Literal(Literal::Str(string)) => {
                         let index = self.string_label_index(string);
-                        _ = writeln!(self.asm, " mov [rbp + {dst_offset}], str_{index}_len\n");
+                        _ = writeln!(self.asm, " mov qword [rbp + {dst_offset}], str_{index}_len\n");
                     }
                     Expression::Identifier { typ, name } => {
                         let var = self.resolve(name);
@@ -3931,12 +3931,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     \n mov [rbp + {dst_offset}], rdi\n"
                                 );
                             },
-                            Type::Array { len, .. } => _ = writeln!(self.asm, " mov [rbp + {dst_offset}], {len}\n"),
+                            Type::Array { len, .. } => _ = writeln!(self.asm, " mov qword [rbp + {dst_offset}], {len}\n"),
                             Type::Int | Type::Bool | Type::Ascii => unreachable!("cannot take the length of numerical types"),
                             Type::Infer => unreachable!("should have been inferred"),
                         }
                     }
-                    Expression::Array { items, .. } => _ = writeln!(self.asm, " mov [rbp + {dst_offset}], {}\n", items.len()),
+                    Expression::Array { items, .. } => _ = writeln!(self.asm, " mov qword [rbp + {dst_offset}], {}\n", items.len()),
                     Expression::ArrayIndex { typ, var_name, bracket_position, index } => {
                         self.expression(index, Dst::Reg(Rdi));
 
