@@ -3457,10 +3457,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             \n mov rdx, {line}\
                             \n mov rcx, {col}\
                             \n call assert_int_bit_index_in_range\
-                            \n mov rsi, rdi\
-                            \n mov cl, sil\
                             \n mov rsi, 1\
-                            \n shl rsi, cl\
+                            \n shlx rsi, rsi, rdi\
                             \n mov rdi, [rbp + {var_offset}]\
                             \n and rdi, rsi\n"
                         );
