@@ -1,6 +1,6 @@
 use super::{
     tokenizer::{
-        ascii, int, uint, BracketKind, Literal, Mutability, Op, SrcCodeLen, Token, TokenKind,
+        ascii, int, uint, BracketKind, Literal, Mutability, Op, SrcCodeLen, Token, TokenKind, UnaryOp,
     },
     Errors, RawError,
 };
@@ -187,7 +187,7 @@ pub(crate) enum Expression<'src> {
     Literal(Literal),
     Unary {
         op_position: Position,
-        op: Op,
+        op: UnaryOp,
         operand: Box<Expression<'src>>,
     },
     Binary {
@@ -217,7 +217,7 @@ impl Display for Expression<'_> {
         return match self {
             Self::Literal(literal) => write!(f, "{literal}"),
             Self::Unary { op, operand, .. } => {
-                if let Op::Len = op {
+                if let UnaryOp::Len = op {
                     write!(f, "{op} {operand}")
                 } else {
                     write!(f, "{op}{operand}")
@@ -250,7 +250,15 @@ impl TypeOf for Expression<'_> {
     fn typ(&self) -> Type {
         return match self {
             Self::Literal(literal) => literal.typ(),
-            Self::Unary { op, .. } => op.typ(),
+            Self::Unary { op, operand, .. } => match (op, operand.typ()) {
+                (UnaryOp::Len, Type::Str | Type::Array { .. } | Type::Infer)
+                | (UnaryOp::Minus | UnaryOp::WrappingMinus | UnaryOp::SaturatingMinus, _)
+                | (UnaryOp::Plus | UnaryOp::WrappingPlus | UnaryOp::SaturatingPlus, _)
+                | (UnaryOp::Not, Type::Int) => Type::Int,
+                (UnaryOp::Not, Type::Bool) => Type::Bool,
+                (UnaryOp::Not, _) => unreachable!("'!' operator can only be use with integers and booleans"),
+                (UnaryOp::Len, _) => unreachable!("'len' operator can only be used with strings and arrays"),
+            },
             Self::Binary { op, .. } => op.typ(),
             Self::Identifier { typ, .. } => typ.clone(),
             Self::Array { typ, items } => {
@@ -1168,7 +1176,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     Expression::Literal(literal) => match literal {
                         Literal::Str(_) => Ok(Expression::Unary {
                             op_position: Position::new(self.src, current_token.col).0,
-                            op: Op::Len,
+                            op: UnaryOp::Len,
                             operand: Box::new(operand)
                         }),
                         Literal::Int(_)
@@ -1190,7 +1198,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     Expression::Identifier { typ, .. } => match typ {
                         Type::Str | Type::Array { .. } => Ok(Expression::Unary {
                             op_position: Position::new(self.src, current_token.col).0,
-                            op: Op::Len,
+                            op: UnaryOp::Len,
                             operand: Box::new(operand)
                         }),
                         Type::Int
@@ -1205,13 +1213,13 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     },
                     Expression::Array { .. } => Ok(Expression::Unary {
                         op_position: Position::new(self.src, current_token.col).0,
-                        op: Op::Len,
+                        op: UnaryOp::Len,
                         operand: Box::new(operand)
                     }),
                     Expression::ArrayIndex { typ, .. } => match typ {
                         Type::Str | Type::Array { .. } => Ok(Expression::Unary {
                             op_position: Position::new(self.src, current_token.col).0,
-                            op: Op::Len,
+                            op: UnaryOp::Len,
                             operand: Box::new(operand)
                         }),
                         Type::Int
@@ -1243,7 +1251,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         if should_be_made_positive {
                             Ok(Expression::Unary {
                                 op_position: Position::new(self.src, current_token.col).0,
-                                op: Op::Plus,
+                                op: UnaryOp::Plus,
                                 operand: Box::new(operand),
                             })
                         } else {
@@ -1296,7 +1304,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         if should_be_made_positive {
                             Ok(Expression::Unary {
                                 op_position: Position::new(self.src, current_token.col).0,
-                                op: Op::WrappingPlus,
+                                op: UnaryOp::WrappingPlus,
                                 operand: Box::new(operand),
                             })
                         } else {
@@ -1349,7 +1357,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         if should_be_made_positive {
                             Ok(Expression::Unary {
                                 op_position: Position::new(self.src, current_token.col).0,
-                                op: Op::SaturatingPlus,
+                                op: UnaryOp::SaturatingPlus,
                                 operand: Box::new(operand),
                             })
                         } else {
@@ -1400,7 +1408,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         if should_be_negated {
                             Ok(Expression::Unary {
                                 op_position: Position::new(self.src, current_token.col).0,
-                                op: Op::Minus,
+                                op: UnaryOp::Minus,
                                 operand: Box::new(operand),
                             })
                         } else {
@@ -1447,7 +1455,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         if should_be_negated {
                             Ok(Expression::Unary {
                                 op_position: Position::new(self.src, current_token.col).0,
-                                op: Op::WrappingMinus,
+                                op: UnaryOp::WrappingMinus,
                                 operand: Box::new(operand),
                             })
                         } else {
@@ -1494,7 +1502,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         if should_be_negated {
                             Ok(Expression::Unary {
                                 op_position: Position::new(self.src, current_token.col).0,
-                                op: Op::SaturatingMinus,
+                                op: UnaryOp::SaturatingMinus,
                                 operand: Box::new(operand),
                             })
                         } else {
@@ -1539,7 +1547,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         if should_be_inverted {
                             Ok(Expression::Unary {
                                 op_position: Position::new(self.src, current_token.col).0,
-                                op: Op::Not,
+                                op: UnaryOp::Not,
                                 operand: Box::new(operand),
                             })
                         } else {

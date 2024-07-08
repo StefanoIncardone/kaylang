@@ -72,6 +72,37 @@ impl SrcCodeLen for Literal {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnaryOp {
+    Len,
+    Not,
+
+    Plus,
+    WrappingPlus,
+    SaturatingPlus,
+
+    Minus,
+    WrappingMinus,
+    SaturatingMinus,
+}
+
+impl Display for UnaryOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        return match self {
+            Self::Len               => write!(f, "len"),
+            Self::Not               => write!(f, "!"),
+
+            Self::Plus              => write!(f,  "+"),
+            Self::WrappingPlus      => write!(f, r"+\"),
+            Self::SaturatingPlus    => write!(f,  "+|"),
+
+            Self::Minus             => write!(f,  "-"),
+            Self::WrappingMinus     => write!(f, r"-\"),
+            Self::SaturatingMinus   => write!(f,  "-|"),
+        };
+    }
+}
+
 // IDEA(stefano): introduce left/right shift/rotate opertors that skip the check for a positive 6bit
 // shift amount (maybe <<?, >>?, <<<?, >>>?)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

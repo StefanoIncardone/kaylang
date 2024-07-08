@@ -7,7 +7,7 @@ use crate::{
     src_file::{Position, SrcFile},
     syntax::{
         ast::{self, Expression, IfStatement, LoopKind, Node, Scope, Type, TypeOf},
-        tokenizer::{ascii, Literal, Op},
+        tokenizer::{ascii, Literal, Op, UnaryOp},
     },
     CAUSE, ERROR,
 };
@@ -3102,16 +3102,16 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         self.expression(lhs, lhs_dst);
 
         match rhs {
-            // these expressions need to save the value of the lhs
-            Expression::Binary { .. }
-            | Expression::Unary { op: Op::Len | Op::Minus | Op::Plus | Op::WrappingPlus, .. }
-            | Expression::ArrayIndex { .. } => {}
-
             // these expressions do not need to save the value of the lhs
-            Expression::Unary { .. } | Expression::Literal(_) | Expression::Identifier { .. } => {
+            Expression::Unary { op: UnaryOp::Not | UnaryOp::WrappingMinus, .. } | Expression::Literal(_) | Expression::Identifier { .. } => {
                 self.expression(rhs, rhs_dst);
                 return;
             }
+            // these expressions need to save the value of the lhs
+            Expression::Binary { .. }
+            | Expression::Unary { .. }
+            | Expression::ArrayIndex { .. } => {}
+
             Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
         }
 
@@ -3248,7 +3248,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 };
 
                 match op {
-                    Op::Len => match &**operand {
+                    UnaryOp::Len => match &**operand {
                         Expression::Literal(Literal::Str(string)) => {
                             let index = self.string_label_index(string);
                             _ = writeln!(self.asm, " mov {reg}, str_{index}_len");
@@ -3291,7 +3291,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         | Expression::Unary { .. }
                         | Expression::Binary { .. } => unreachable!("cannot take the length of numerical types"),
                     }
-                    Op::Not => {
+                    UnaryOp::Not => {
                         self.expression(operand, dst);
                         match operand.typ() {
                             Type::Bool => _ = writeln!(self.asm, " xor {reg}, 1"),
@@ -3301,55 +3301,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             Type::Infer => unreachable!("should have been inferred"),
                         }
                     }
-                    Op::Minus => {
-                        self.expression(operand, dst);
-                        match operand.typ() {
-                            Type::Int | Type::Ascii => {
-                                _ = writeln!(
-                                    self.asm,
-                                    " mov rdx, {line}\
-                                    \n mov rcx, {col}\
-                                    \n call int_safe_negate",
-                                    line = op_position.line,
-                                    col = op_position.col
-                                );
-                            }
-                            Type::Bool => unreachable!("cannot negate boolean values"),
-                            Type::Array { .. } => unreachable!("cannot negate array values"),
-                            Type::Str => unreachable!("cannot negate string values"),
-                            Type::Infer => unreachable!("should have been inferred"),
-                        }
-                    }
-                    Op::WrappingMinus => {
-                        self.expression(operand, dst);
-                        match operand.typ() {
-                            Type::Int | Type::Ascii => _ = writeln!(self.asm, " neg {reg}"),
-                            Type::Bool => unreachable!("cannot negate boolean values"),
-                            Type::Array { .. } => unreachable!("cannot negate array values"),
-                            Type::Str => unreachable!("cannot negate string values"),
-                            Type::Infer => unreachable!("should have been inferred"),
-                        }
-                    }
-                    Op::SaturatingMinus => {
-                        self.expression(operand, dst);
-                        match operand.typ() {
-                            Type::Int | Type::Ascii => {
-                                _ = writeln!(
-                                    self.asm,
-                                    " mov rdx, {line}\
-                                    \n mov rcx, {col}\
-                                    \n call int_saturating_negate",
-                                    line = op_position.line,
-                                    col = op_position.col
-                                );
-                            }
-                            Type::Bool => unreachable!("cannot negate boolean values"),
-                            Type::Array { .. } => unreachable!("cannot negate array values"),
-                            Type::Str => unreachable!("cannot negate string values"),
-                            Type::Infer => unreachable!("should have been inferred"),
-                        }
-                    }
-                    Op::Plus => {
+                    UnaryOp::Plus => {
                         self.expression(operand, dst);
                         match operand.typ() {
                             Type::Int => {
@@ -3371,7 +3323,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             Type::Infer => unreachable!("should have been inferred"),
                         }
                     }
-                    Op::WrappingPlus => {
+                    UnaryOp::WrappingPlus => {
                         self.expression(operand, dst);
                         match operand.typ() {
                             Type::Int => _ = writeln!(self.asm, " call int_wrapping_abs"),
@@ -3384,7 +3336,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             Type::Infer => unreachable!("should have been inferred"),
                         }
                     }
-                    Op::SaturatingPlus => {
+                    UnaryOp::SaturatingPlus => {
                         self.expression(operand, dst);
                         match operand.typ() {
                             Type::Int => {
@@ -3406,62 +3358,54 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             Type::Infer => unreachable!("should have been inferred"),
                         }
                     }
-                    Op::Equals
-                    | Op::Pow
-                    | Op::WrappingPow
-                    | Op::SaturatingPow
-                    | Op::PowEquals
-                    | Op::WrappingPowEquals
-                    | Op::SaturatingPowEquals
-                    | Op::Times
-                    | Op::WrappingTimes
-                    | Op::SaturatingTimes
-                    | Op::TimesEquals
-                    | Op::WrappingTimesEquals
-                    | Op::SaturatingTimesEquals
-                    | Op::Divide
-                    | Op::WrappingDivide
-                    | Op::SaturatingDivide
-                    | Op::DivideEquals
-                    | Op::WrappingDivideEquals
-                    | Op::SaturatingDivideEquals
-                    | Op::Remainder
-                    | Op::RemainderEquals
-                    | Op::PlusEquals
-                    | Op::WrappingPlusEquals
-                    | Op::SaturatingPlusEquals
-                    | Op::MinusEquals
-                    | Op::WrappingMinusEquals
-                    | Op::SaturatingMinusEquals
-                    | Op::LeftShift
-                    | Op::WrappingLeftShift
-                    | Op::SaturatingLeftShift
-                    | Op::LeftShiftEquals
-                    | Op::WrappingLeftShiftEquals
-                    | Op::SaturatingLeftShiftEquals
-                    | Op::RightShift
-                    | Op::RightShiftEquals
-                    | Op::LeftRotate
-                    | Op::LeftRotateEquals
-                    | Op::RightRotate
-                    | Op::RightRotateEquals
-                    | Op::And
-                    | Op::AndEquals
-                    | Op::BitAnd
-                    | Op::BitAndEquals
-                    | Op::BitXor
-                    | Op::BitXorEquals
-                    | Op::Or
-                    | Op::OrEquals
-                    | Op::BitOr
-                    | Op::BitOrEquals
-                    | Op::Compare
-                    | Op::EqualsEquals
-                    | Op::NotEquals
-                    | Op::Greater
-                    | Op::GreaterOrEquals
-                    | Op::Less
-                    | Op::LessOrEquals => unreachable!("not a unary operator"),
+                    UnaryOp::Minus => {
+                        self.expression(operand, dst);
+                        match operand.typ() {
+                            Type::Int | Type::Ascii => {
+                                _ = writeln!(
+                                    self.asm,
+                                    " mov rdx, {line}\
+                                    \n mov rcx, {col}\
+                                    \n call int_safe_negate",
+                                    line = op_position.line,
+                                    col = op_position.col
+                                );
+                            }
+                            Type::Bool => unreachable!("cannot negate boolean values"),
+                            Type::Array { .. } => unreachable!("cannot negate array values"),
+                            Type::Str => unreachable!("cannot negate string values"),
+                            Type::Infer => unreachable!("should have been inferred"),
+                        }
+                    }
+                    UnaryOp::WrappingMinus => {
+                        self.expression(operand, dst);
+                        match operand.typ() {
+                            Type::Int | Type::Ascii => _ = writeln!(self.asm, " neg {reg}"),
+                            Type::Bool => unreachable!("cannot negate boolean values"),
+                            Type::Array { .. } => unreachable!("cannot negate array values"),
+                            Type::Str => unreachable!("cannot negate string values"),
+                            Type::Infer => unreachable!("should have been inferred"),
+                        }
+                    }
+                    UnaryOp::SaturatingMinus => {
+                        self.expression(operand, dst);
+                        match operand.typ() {
+                            Type::Int | Type::Ascii => {
+                                _ = writeln!(
+                                    self.asm,
+                                    " mov rdx, {line}\
+                                    \n mov rcx, {col}\
+                                    \n call int_saturating_negate",
+                                    line = op_position.line,
+                                    col = op_position.col
+                                );
+                            }
+                            Type::Bool => unreachable!("cannot negate boolean values"),
+                            Type::Array { .. } => unreachable!("cannot negate array values"),
+                            Type::Str => unreachable!("cannot negate string values"),
+                            Type::Infer => unreachable!("should have been inferred"),
+                        }
+                    }
                 }
             }
             Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
@@ -3915,7 +3859,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 }
             }
             Expression::Unary { op_position, op, operand } => match op {
-                Op::Len => match &**operand {
+                UnaryOp::Len => match &**operand {
                     Expression::Literal(Literal::Str(string)) => {
                         let index = self.string_label_index(string);
                         _ = writeln!(self.asm, " mov qword [rbp + {dst_offset}], str_{index}_len\n");
@@ -3965,7 +3909,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     | Expression::Unary { .. }
                     | Expression::Binary { .. } => unreachable!("cannot take the length of numerical types"),
                 }
-                Op::Not => {
+                UnaryOp::Not => {
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
                         Type::Bool => {
@@ -3994,92 +3938,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Type::Infer => unreachable!("should have been inferred"),
                     }
                 }
-                Op::Minus => {
-                    self.expression(operand, Dst::Reg(Rdi));
-                    match operand.typ() {
-                        Type::Ascii => {
-                            _ = writeln!(
-                                self.asm,
-                                " mov rdx, {line}\
-                                \n mov rcx, {col}\
-                                \n call int_safe_negate\
-                                \n mov [rbp + {dst_offset}], dil\n",
-                                line = op_position.line,
-                                col = op_position.col
-                            );
-                        }
-                        Type::Int => {
-                            _ = writeln!(
-                                self.asm,
-                                " mov rdx, {line}\
-                                \n mov rcx, {col}\
-                                \n call int_safe_negate\
-                                \n mov [rbp + {dst_offset}], rdi\n",
-                                line = op_position.line,
-                                col = op_position.col
-                            );
-                        }
-                        Type::Bool => unreachable!("cannot negate boolean values"),
-                        Type::Array { .. } => unreachable!("cannot negate array values"),
-                        Type::Str => unreachable!("cannot negate string values"),
-                        Type::Infer => unreachable!("should have been inferred"),
-                    }
-                }
-                Op::WrappingMinus => {
-                    self.expression(operand, Dst::Reg(Rdi));
-                    match operand.typ() {
-                        Type::Ascii => {
-                            _ = writeln!(
-                                self.asm,
-                                " neg rdi\
-                                \n mov [rbp + {dst_offset}], dil\n"
-                            );
-                        }
-                        Type::Int => {
-                            _ = writeln!(
-                                self.asm,
-                                " neg rdi\
-                                \n mov [rbp + {dst_offset}], rdi\n"
-                            );
-                        }
-                        Type::Bool => unreachable!("cannot negate boolean values"),
-                        Type::Array { .. } => unreachable!("cannot negate array values"),
-                        Type::Str => unreachable!("cannot negate string values"),
-                        Type::Infer => unreachable!("should have been inferred"),
-                    }
-                }
-                Op::SaturatingMinus => {
-                    self.expression(operand, Dst::Reg(Rdi));
-                    match operand.typ() {
-                        Type::Ascii => {
-                            _ = writeln!(
-                                self.asm,
-                                " mov rdx, {line}\
-                                \n mov rcx, {col}\
-                                \n call int_saturating_negate\
-                                \n mov [rbp + {dst_offset}], dil\n",
-                                line = op_position.line,
-                                col = op_position.col
-                            );
-                        }
-                        Type::Int => {
-                            _ = writeln!(
-                                self.asm,
-                                " mov rdx, {line}\
-                                \n mov rcx, {col}\
-                                \n call int_saturating_negate\
-                                \n mov [rbp + {dst_offset}], rdi\n",
-                                line = op_position.line,
-                                col = op_position.col
-                            );
-                        }
-                        Type::Bool => unreachable!("cannot negate boolean values"),
-                        Type::Array { .. } => unreachable!("cannot negate array values"),
-                        Type::Str => unreachable!("cannot negate string values"),
-                        Type::Infer => unreachable!("should have been inferred"),
-                    }
-                }
-                Op::Plus => {
+                UnaryOp::Plus => {
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
                         Type::Ascii => {
@@ -4112,7 +3971,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Type::Infer => unreachable!("should have been inferred"),
                     }
                 }
-                Op::WrappingPlus => {
+                UnaryOp::WrappingPlus => {
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
                         Type::Ascii => {
@@ -4137,7 +3996,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Type::Infer => unreachable!("should have been inferred"),
                     }
                 }
-                Op::SaturatingPlus => {
+                UnaryOp::SaturatingPlus => {
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
                         Type::Ascii => {
@@ -4170,62 +4029,91 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Type::Infer => unreachable!("should have been inferred"),
                     }
                 }
-                Op::Equals
-                | Op::Pow
-                | Op::WrappingPow
-                | Op::SaturatingPow
-                | Op::PowEquals
-                | Op::WrappingPowEquals
-                | Op::SaturatingPowEquals
-                | Op::Times
-                | Op::WrappingTimes
-                | Op::SaturatingTimes
-                | Op::TimesEquals
-                | Op::WrappingTimesEquals
-                | Op::SaturatingTimesEquals
-                | Op::Divide
-                | Op::WrappingDivide
-                | Op::SaturatingDivide
-                | Op::DivideEquals
-                | Op::WrappingDivideEquals
-                | Op::SaturatingDivideEquals
-                | Op::Remainder
-                | Op::RemainderEquals
-                | Op::PlusEquals
-                | Op::WrappingPlusEquals
-                | Op::SaturatingPlusEquals
-                | Op::MinusEquals
-                | Op::WrappingMinusEquals
-                | Op::SaturatingMinusEquals
-                | Op::LeftShift
-                | Op::WrappingLeftShift
-                | Op::SaturatingLeftShift
-                | Op::LeftShiftEquals
-                | Op::WrappingLeftShiftEquals
-                | Op::SaturatingLeftShiftEquals
-                | Op::RightShift
-                | Op::RightShiftEquals
-                | Op::LeftRotate
-                | Op::LeftRotateEquals
-                | Op::RightRotate
-                | Op::RightRotateEquals
-                | Op::And
-                | Op::AndEquals
-                | Op::BitAnd
-                | Op::BitAndEquals
-                | Op::BitXor
-                | Op::BitXorEquals
-                | Op::Or
-                | Op::OrEquals
-                | Op::BitOr
-                | Op::BitOrEquals
-                | Op::Compare
-                | Op::EqualsEquals
-                | Op::NotEquals
-                | Op::Greater
-                | Op::GreaterOrEquals
-                | Op::Less
-                | Op::LessOrEquals => unreachable!("not a unary operator"),
+                UnaryOp::Minus => {
+                    self.expression(operand, Dst::Reg(Rdi));
+                    match operand.typ() {
+                        Type::Ascii => {
+                            _ = writeln!(
+                                self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_safe_negate\
+                                \n mov [rbp + {dst_offset}], dil\n",
+                                line = op_position.line,
+                                col = op_position.col
+                            );
+                        }
+                        Type::Int => {
+                            _ = writeln!(
+                                self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_safe_negate\
+                                \n mov [rbp + {dst_offset}], rdi\n",
+                                line = op_position.line,
+                                col = op_position.col
+                            );
+                        }
+                        Type::Bool => unreachable!("cannot negate boolean values"),
+                        Type::Array { .. } => unreachable!("cannot negate array values"),
+                        Type::Str => unreachable!("cannot negate string values"),
+                        Type::Infer => unreachable!("should have been inferred"),
+                    }
+                }
+                UnaryOp::WrappingMinus => {
+                    self.expression(operand, Dst::Reg(Rdi));
+                    match operand.typ() {
+                        Type::Ascii => {
+                            _ = writeln!(
+                                self.asm,
+                                " neg rdi\
+                                \n mov [rbp + {dst_offset}], dil\n"
+                            );
+                        }
+                        Type::Int => {
+                            _ = writeln!(
+                                self.asm,
+                                " neg rdi\
+                                \n mov [rbp + {dst_offset}], rdi\n"
+                            );
+                        }
+                        Type::Bool => unreachable!("cannot negate boolean values"),
+                        Type::Array { .. } => unreachable!("cannot negate array values"),
+                        Type::Str => unreachable!("cannot negate string values"),
+                        Type::Infer => unreachable!("should have been inferred"),
+                    }
+                }
+                UnaryOp::SaturatingMinus => {
+                    self.expression(operand, Dst::Reg(Rdi));
+                    match operand.typ() {
+                        Type::Ascii => {
+                            _ = writeln!(
+                                self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_saturating_negate\
+                                \n mov [rbp + {dst_offset}], dil\n",
+                                line = op_position.line,
+                                col = op_position.col
+                            );
+                        }
+                        Type::Int => {
+                            _ = writeln!(
+                                self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_saturating_negate\
+                                \n mov [rbp + {dst_offset}], rdi\n",
+                                line = op_position.line,
+                                col = op_position.col
+                            );
+                        }
+                        Type::Bool => unreachable!("cannot negate boolean values"),
+                        Type::Array { .. } => unreachable!("cannot negate array values"),
+                        Type::Str => unreachable!("cannot negate string values"),
+                        Type::Infer => unreachable!("should have been inferred"),
+                    }
+                }
             }
             Expression::Array { typ, items } => {
                 let typ_size = typ.size();
