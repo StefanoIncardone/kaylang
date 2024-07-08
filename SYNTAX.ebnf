@@ -10,6 +10,7 @@ character_literal = "'", (escape_character | ASCII_character), "'";
 string_literal    = '"', [{escape_character | ASCII_character}], '"';
 identifier        = "_" | "A".."Z" | "a".."z", [{"_" | "A".."Z" | "a".."z" | digit}];
 
+operator_len = "len";
 operator_equals = "=";
 operator_not = "!";
 operator_pow = "**" | "**\" | "**|";
@@ -45,7 +46,7 @@ comparison_operator =
     | operator_less_or_equals
     ;
 
-unary_operator = operator_not | operator_plus | operator_minus;
+unary_operator = operator_len | operator_not | operator_plus | operator_minus;
 binary_operator =
     operator_pow
     | operator_times

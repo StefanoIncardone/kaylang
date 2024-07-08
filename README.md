@@ -60,6 +60,7 @@ println 1 + false; # will print 1 (1 + false -> 1 + 0)
 Expressions follow this order of operations (precedence from highest to lowest):
 
 - unary operators:
+    - len `len` as string and array len operator: `len [12, 21, 42, 19] # -> 4`
     - minus `-` as integer negation: `-4`
     - not `!` as integer bitwise one's complement: `!4 # 0100 -> !0100 == 1011`
     - not `!` as boolean negation: `!true -> false`

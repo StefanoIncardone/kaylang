@@ -112,7 +112,8 @@ impl TypeOf for Literal {
 impl TypeOf for Op {
     fn typ(&self) -> Type {
         return match self {
-            Self::Compare
+            Self::Len
+            | Self::Compare
             | Self::Pow
             | Self::WrappingPow
             | Self::SaturatingPow
@@ -215,7 +216,13 @@ impl Display for Expression<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         return match self {
             Self::Literal(literal) => write!(f, "{literal}"),
-            Self::Unary { op, operand, .. } => write!(f, "{op}{operand}"),
+            Self::Unary { op, operand, .. } => {
+                if let Op::Len = op {
+                    write!(f, "{op} {operand}")
+                } else {
+                    write!(f, "{op}{operand}")
+                }
+            }
             Self::Binary { lhs, op, rhs, .. } => write!(f, "({lhs} {op} {rhs})"),
             Self::Identifier { name, .. } => write!(f, "{name}"),
             Self::Array { items, .. } => {
@@ -243,7 +250,7 @@ impl TypeOf for Expression<'_> {
     fn typ(&self) -> Type {
         return match self {
             Self::Literal(literal) => literal.typ(),
-            Self::Unary { operand, .. } => operand.typ(),
+            Self::Unary { op, .. } => op.typ(),
             Self::Binary { op, .. } => op.typ(),
             Self::Identifier { typ, .. } => typ.clone(),
             Self::Array { typ, items } => {
@@ -1152,6 +1159,71 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     if let TokenKind::Comma = comma_token.kind {
                         _ = self.next_token();
                     }
+                }
+            }
+            TokenKind::Op(Op::Len) => {
+                _ = self.next_token();
+                let operand = self.primary_expression()?;
+                return match &operand {
+                    Expression::Literal(literal) => match literal {
+                        Literal::Str(_) => Ok(Expression::Unary {
+                            op_position: Position::new(self.src, current_token.col).0,
+                            op: Op::Len,
+                            operand: Box::new(operand)
+                        }),
+                        Literal::Int(_)
+                        | Literal::Ascii(_)
+                        | Literal::Bool(_) => Err(RawError {
+                            kind: ErrorKind::Invalid(Statement::Len),
+                            cause: ErrorCause::CannotTakeLenOfNumericValue(literal.typ()),
+                            col: current_token.col,
+                            len: current_token.kind.src_code_len()
+                        }),
+                    }
+                    Expression::Unary { .. }
+                    | Expression::Binary { .. } => Err(RawError {
+                        kind: ErrorKind::Invalid(Statement::Len),
+                        cause: ErrorCause::CannotTakeLenOfNumericValue(operand.typ()),
+                        col: current_token.col,
+                        len: current_token.kind.src_code_len()
+                    }),
+                    Expression::Identifier { typ, .. } => match typ {
+                        Type::Str | Type::Array { .. } => Ok(Expression::Unary {
+                            op_position: Position::new(self.src, current_token.col).0,
+                            op: Op::Len,
+                            operand: Box::new(operand)
+                        }),
+                        Type::Int
+                        | Type::Ascii
+                        | Type::Bool => Err(RawError {
+                            kind: ErrorKind::Invalid(Statement::Len),
+                            cause: ErrorCause::CannotTakeLenOfNumericValue(typ.clone()),
+                            col: current_token.col,
+                            len: current_token.kind.src_code_len()
+                        }),
+                        Type::Infer => unreachable!("variables with no type are not allowed"),
+                    },
+                    Expression::Array { .. } => Ok(Expression::Unary {
+                        op_position: Position::new(self.src, current_token.col).0,
+                        op: Op::Len,
+                        operand: Box::new(operand)
+                    }),
+                    Expression::ArrayIndex { typ, .. } => match typ {
+                        Type::Str | Type::Array { .. } => Ok(Expression::Unary {
+                            op_position: Position::new(self.src, current_token.col).0,
+                            op: Op::Len,
+                            operand: Box::new(operand)
+                        }),
+                        Type::Int
+                        | Type::Ascii
+                        | Type::Bool => Err(RawError {
+                            kind: ErrorKind::Invalid(Statement::Len),
+                            cause: ErrorCause::CannotTakeLenOfNumericValue(typ.clone()),
+                            col: current_token.col,
+                            len: current_token.kind.src_code_len()
+                        }),
+                        Type::Infer => unreachable!("variables with no type are not allowed"),
+                    },
                 }
             }
             TokenKind::Op(Op::Plus) => {
@@ -2550,6 +2622,7 @@ pub enum Statement {
     ItemSeparator,
     Assignment,
     Expression,
+    Len,
     ArrayIndex,
     ArrayItem,
     VariableName,
@@ -2571,6 +2644,7 @@ impl Display for Statement {
             Self::ItemSeparator => write!(f, "item separator"),
             Self::Assignment => write!(f, "assignment"),
             Self::Expression => write!(f, "expression"),
+            Self::Len => write!(f, "len expression"),
             Self::ArrayIndex => write!(f, "array index"),
             Self::ArrayItem => write!(f, "array item"),
             Self::VariableName => write!(f, "variable name"),
@@ -2644,6 +2718,7 @@ pub enum ErrorCause {
     CannotChainComparisons,
     CannotIndexNonArrayType(Type),
     CannotCompareOperands { lhs_typ: Type, rhs_typ: Type },
+    CannotTakeLenOfNumericValue(Type),
 
     KeywordInExpression,
     VariableDefinitionTypeMismatch { expected: Type, actual: Type },
@@ -2720,11 +2795,14 @@ impl Display for ErrorCause {
             Self::CannotInvertString => write!(f, "cannot invert a string"),
             Self::CannotInvertArray => write!(f, "cannot invert an array"),
             Self::CannotTakeAbsValueOfAscii => {
-                write!(f, "cannot take the absolute of an ascii character")
+                write!(f, "cannot take the absolute value of an ascii character")
             }
-            Self::CannotTakeAbsValueOfBoolean => write!(f, "cannot take the absolute of a boolean"),
-            Self::CannotTakeAbsValueOfString => write!(f, "cannot take the absolute of a string"),
-            Self::CannotTakeAbsValueOfArray => write!(f, "cannot take the absolute of an array"),
+            Self::CannotTakeAbsValueOfBoolean => write!(f, "cannot take the absolute value of a boolean"),
+            Self::CannotTakeAbsValueOfString => write!(f, "cannot take the absolute value of a string"),
+            Self::CannotTakeAbsValueOfArray => write!(f, "cannot take the absolute value of an array"),
+            Self::CannotTakeLenOfNumericValue(typ) => {
+                write!(f, "cannot take the length of '{typ}', only of arrays and strings")
+            }
             Self::KeywordInExpression => write!(f, "cannot be a keyword"),
             Self::ExpectedOperand => write!(f, "expected expression operand before this token"),
             Self::CannotChainComparisons => write!(f, "comparison operators cannot be chained"),

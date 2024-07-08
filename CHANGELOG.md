@@ -44,6 +44,7 @@ Changes to error messages, help message and alike would **not** be considered br
 ### Added
 
 - String and Array comparison operators: `<=>`, `==`, `!=`, `<`, `<=`, `>`, `>=`
+- String and Array `len` operator: `len "hello" # -> 5`
 - `+` as the unary absolute value operator
 - overflowing operators, will wrap in two's complemente: `...\` (e.g.: `*` -> `*\`)
 - saturating operators: `...|` (e.g.: `*` -> `*|`)

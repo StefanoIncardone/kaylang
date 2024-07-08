@@ -76,6 +76,7 @@ impl SrcCodeLen for Literal {
 // shift amount (maybe <<?, >>?, <<<?, >>>?)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Op {
+    Len,    // temporary way of getting the length of strings and arrays
     Equals,
     Not,
 
@@ -160,6 +161,7 @@ impl Display for Op {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         return match self {
+            Self::Len => write!(f, "len"),
             Self::Equals => write!(f, "="),
             Self::Not => write!(f, "!"),
 
@@ -245,6 +247,7 @@ impl Display for Op {
 impl SrcCodeLen for Op {
     fn src_code_len(&self) -> usize {
         return match self {
+            Self::Len => 3,
             Self::Equals => 1,
             Self::Not => 1,
 
@@ -411,11 +414,10 @@ pub(crate) enum TokenKind<'src> {
     Definition(Mutability),
 
     // Keywords
-    Print,    // temporary way of printing values to stdout
-    PrintLn,  // temporary way of printing values followed by a newline to stdout
-    Eprint,   // temporary way of printing values to stderr
-    EprintLn, // temporary way of printing values followed by a newline to stderr
-    // TODO(stefano): introduce the "len" operator to retrieve the length of strings and arrays
+    Print,      // temporary way of printing values to stdout
+    PrintLn,    // temporary way of printing values followed by a newline to stdout
+    Eprint,     // temporary way of printing values to stderr
+    EprintLn,   // temporary way of printing values followed by a newline to stderr
     Do,
     If,
     Else,
@@ -782,6 +784,7 @@ impl<'src> Tokenizer<'src> {
             "loop" => TokenKind::Loop,
             "break" => TokenKind::Break,
             "continue" => TokenKind::Continue,
+            "len" => TokenKind::Op(Op::Len),
             identifier => TokenKind::Identifier(identifier),
         };
 
