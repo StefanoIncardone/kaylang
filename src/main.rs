@@ -183,12 +183,9 @@ mod tests {
         syntax::tokenizer::Tokenizer, Color, Logger, Verbosity, ASSEMBLING, BUILDING_AST, CHECKING,
         COMPILING, GENERATING_ASM, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
     };
-    use std::{
-        path::{Path, PathBuf},
-        process::ExitCode,
-    };
+    use std::{path::PathBuf, process::ExitCode};
 
-    #[allow(unused_mut)]
+    #[allow(unused_mut, clippy::unwrap_used, clippy::panic_in_result_fn)]
     #[test]
     fn check_examples() -> Result<ExitCode, std::io::Error> {
         let verbosity = Verbosity::Normal;
@@ -198,7 +195,7 @@ mod tests {
         color.set(&std::io::stderr());
         color.set(&std::io::stdout());
 
-        let src_files = Path::new("examples").read_dir()?;
+        let src_files = std::fs::read_dir("examples/project_euler")?;
 
         for src_file in src_files {
             let src_path = src_file?.path();

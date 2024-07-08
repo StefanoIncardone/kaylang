@@ -11,68 +11,67 @@ pub struct Args {
     pub command: Command,
 }
 
+// TODO(stefano): create implementations than accept the name of the executable
 impl TryFrom<Vec<String>> for Args {
     type Error = Error;
 
     // TODO(stefano): split patterns and avoid unreachable macro calls by factoring to functions
     fn try_from(args: Vec<String>) -> Result<Self, Self::Error> {
-        let mut args_iter = args.iter().enumerate();
+        let mut args_iter = args.iter();
+        // TODO(stefano): implement an error that fires when no executable name is present
         let executable_name = match args_iter.next() {
-            Some((_, name)) => PathBuf::from(name),
+            Some(name) => PathBuf::from(name),
             None => unreachable!("executable name is always present"),
         };
 
-        let mut color_args = args_iter.clone();
+        let mut color_args = args_iter.clone().enumerate();
 
         Color::Auto.set(&std::io::stderr());
         let mut color_option: Option<(Color, CliOption)> = None;
 
         while let Some((color_flag_idx, arg)) = color_args.next() {
-            if arg == "-c" || arg == "--color" {
-                let cli_option = match arg.as_str() {
-                    "-c" => CliOption::ColorShort,
-                    "--color" => CliOption::ColorLong,
-                    _ => unreachable!(),
-                };
+            let cli_option = match arg.as_str() {
+                "-c" => CliOption::ColorShort,
+                "--color" => CliOption::ColorLong,
+                _ => continue,
+            };
 
-                if let Some((_mode, previous_cli_option)) = color_option {
-                    return Err(Error {
-                        args,
-                        erroneous_arg_index: color_flag_idx,
-                        kind: ErrorKind::RepeatedOption(cli_option),
-                        cause: ErrorCause::OptionAlreadySelected {
-                            current: cli_option,
-                            previous: previous_cli_option,
-                        },
-                    });
-                }
-
-                let Some((color_mode_idx, mode)) = color_args.next() else {
-                    return Err(Error {
-                        args,
-                        erroneous_arg_index: color_flag_idx,
-                        kind: ErrorKind::MissingColorMode,
-                        cause: ErrorCause::MustBeFollowedByColorMode,
-                    });
-                };
-
-                let color_mode = match mode.as_str() {
-                    "auto" => Color::Auto,
-                    "always" => Color::Always,
-                    "never" => Color::Never,
-                    _ => {
-                        let unrecognized_mode = mode.to_owned();
-                        return Err(Error {
-                            args,
-                            erroneous_arg_index: color_mode_idx,
-                            kind: ErrorKind::UnrecognizedColorMode { mode: unrecognized_mode },
-                            cause: ErrorCause::UnrecognizedColorMode,
-                        });
-                    }
-                };
-
-                color_option = Some((color_mode, cli_option));
+            if let Some((_mode, previous_cli_option)) = color_option {
+                return Err(Error {
+                    kind: ErrorKind::RepeatedOption(cli_option),
+                    cause: ErrorCause::OptionAlreadySelected {
+                        current: cli_option,
+                        previous: previous_cli_option,
+                    },
+                    args,
+                    erroneous_arg_index: color_flag_idx,
+                });
             }
+
+            let Some((color_mode_idx, mode)) = color_args.next() else {
+                return Err(Error {
+                    kind: ErrorKind::MissingColorMode,
+                    cause: ErrorCause::MustBeFollowedByColorMode,
+                    args,
+                    erroneous_arg_index: color_flag_idx,
+                });
+            };
+
+            let color_mode = match mode.as_str() {
+                "auto" => Color::Auto,
+                "always" => Color::Always,
+                "never" => Color::Never,
+                unrecognized => {
+                    return Err(Error {
+                        kind: ErrorKind::UnrecognizedColorMode { mode: unrecognized.to_owned() },
+                        cause: ErrorCause::UnrecognizedColorMode,
+                        args,
+                        erroneous_arg_index: color_mode_idx,
+                    })
+                }
+            };
+
+            color_option = Some((color_mode, cli_option));
         }
 
         let color = match color_option {
@@ -84,12 +83,12 @@ impl TryFrom<Vec<String>> for Args {
         let mut verbosity_option: Option<(Verbosity, CliOption)> = None;
         let mut command_option: Option<(Command, CliCommand)> = None;
 
-        let mut other_args = args_iter.clone().peekable();
+        let mut other_args = args_iter.clone().enumerate().peekable();
 
         while let Some((flag_idx, arg)) = other_args.next() {
             match arg.as_str() {
-                "-q" | "--quiet" | "-V" | "--verbose" => {
-                    let cli_option = match arg.as_str() {
+                quiet_flag @ ("-q" | "--quiet" | "-V" | "--verbose") => {
+                    let cli_option = match quiet_flag {
                         "-q" => CliOption::QuietShort,
                         "--quiet" => CliOption::QuietLong,
                         "-V" => CliOption::VerboseShort,
@@ -99,13 +98,13 @@ impl TryFrom<Vec<String>> for Args {
 
                     if let Some((_mode, previous_cli_option)) = verbosity_option {
                         return Err(Error {
-                            args,
-                            erroneous_arg_index: flag_idx,
                             kind: ErrorKind::RepeatedOption(cli_option),
                             cause: ErrorCause::OptionAlreadySelected {
                                 current: cli_option,
                                 previous: previous_cli_option,
                             },
+                            args,
+                            erroneous_arg_index: flag_idx,
                         });
                     }
 
@@ -117,8 +116,8 @@ impl TryFrom<Vec<String>> for Args {
 
                     verbosity_option = Some((verbosity_mode, cli_option));
                 }
-                "help" | "-h" | "--help" => {
-                    let cli_command = match arg.as_str() {
+                help_command @ ("help" | "-h" | "--help") => {
+                    let cli_command = match help_command {
                         "help" => CliCommand::Help,
                         "-h" => CliCommand::HelpShort,
                         "--help" => CliCommand::HelpLong,
@@ -128,24 +127,24 @@ impl TryFrom<Vec<String>> for Args {
                     match command_option {
                         Some((Command::Help { .. }, previous_cli_command)) => {
                             return Err(Error {
-                                args,
-                                erroneous_arg_index: flag_idx,
                                 kind: ErrorKind::RepeatedCommand(previous_cli_command),
                                 cause: ErrorCause::CommandAlreadySelected {
                                     current: cli_command,
                                     previous: previous_cli_command,
                                 },
+                                args,
+                                erroneous_arg_index: flag_idx,
                             });
                         }
                         Some((Command::Version, previous_cli_command)) => {
                             return Err(Error {
-                                args,
-                                erroneous_arg_index: flag_idx,
                                 kind: ErrorKind::InvalidCommand(cli_command),
                                 cause: ErrorCause::CommandCannotBeUsedAtTheSameTime {
                                     current: cli_command,
                                     previous: previous_cli_command,
                                 },
+                                args,
+                                erroneous_arg_index: flag_idx,
                             });
                         }
                         _ => {
@@ -156,8 +155,8 @@ impl TryFrom<Vec<String>> for Args {
                         }
                     }
                 }
-                "version" | "-v" | "--version" => {
-                    let cli_command = match arg.as_str() {
+                version_command @ ("version" | "-v" | "--version") => {
+                    let cli_command = match version_command {
                         "version" => CliCommand::Version,
                         "-v" => CliCommand::VersionShort,
                         "--version" => CliCommand::VersionLong,
@@ -167,24 +166,24 @@ impl TryFrom<Vec<String>> for Args {
                     match command_option {
                         Some((Command::Version, previous_cli_command)) => {
                             return Err(Error {
-                                args,
-                                erroneous_arg_index: flag_idx,
                                 kind: ErrorKind::RepeatedCommand(previous_cli_command),
                                 cause: ErrorCause::CommandAlreadySelected {
                                     current: cli_command,
                                     previous: previous_cli_command,
                                 },
+                                args,
+                                erroneous_arg_index: flag_idx,
                             });
                         }
                         Some((Command::Help { .. }, previous_cli_command)) => {
                             return Err(Error {
-                                args,
-                                erroneous_arg_index: flag_idx,
                                 kind: ErrorKind::InvalidCommand(cli_command),
                                 cause: ErrorCause::CommandCannotBeUsedAtTheSameTime {
                                     current: cli_command,
                                     previous: previous_cli_command,
                                 },
+                                args,
+                                erroneous_arg_index: flag_idx,
                             });
                         }
                         _ => command_option = Some((Command::Version, cli_command)),
@@ -204,22 +203,22 @@ impl TryFrom<Vec<String>> for Args {
                     )) = command_option
                     {
                         return Err(Error {
-                            args,
-                            erroneous_arg_index: flag_idx,
                             kind: ErrorKind::InvalidCommand(cli_command),
                             cause: ErrorCause::CommandAlreadySelected {
                                 current: cli_command,
                                 previous: previous_cli_command,
                             },
+                            args,
+                            erroneous_arg_index: flag_idx,
                         });
                     }
 
                     let Some((_src_path_idx, src_path_str)) = other_args.next() else {
                         return Err(Error {
-                            args,
-                            erroneous_arg_index: flag_idx,
                             kind: ErrorKind::InvalidCommand(cli_command),
                             cause: ErrorCause::MustBeFollowedByASourceFilePath,
+                            args,
+                            erroneous_arg_index: flag_idx,
                         });
                     };
 
@@ -239,18 +238,16 @@ impl TryFrom<Vec<String>> for Args {
                                     let Some((_out_path_idx, out_path_str)) = other_args.next()
                                     else {
                                         return Err(Error {
-                                            args,
-                                            erroneous_arg_index: out_flag_idx,
                                             kind: ErrorKind::InvalidOption(
                                                 CliOption::OutFolderPath,
                                             ),
                                             cause: ErrorCause::MustBeFollowedByDirectoryFilePath,
+                                            args,
+                                            erroneous_arg_index: out_flag_idx,
                                         });
                                     };
 
-                                    let dir_path = PathBuf::from(out_path_str);
-
-                                    out_path = Some(dir_path);
+                                    out_path = Some(PathBuf::from(out_path_str));
                                 }
                             }
 
@@ -274,18 +271,18 @@ impl TryFrom<Vec<String>> for Args {
                 "-o" | "--output" => match other_args.next() {
                     None => {
                         return Err(Error {
-                            args,
-                            erroneous_arg_index: flag_idx,
                             kind: ErrorKind::InvalidOption(CliOption::OutFolderPath),
                             cause: ErrorCause::MustBeFollowedByDirectoryFilePath,
+                            args,
+                            erroneous_arg_index: flag_idx,
                         })
                     }
                     Some(_) => {
                         return Err(Error {
-                            args,
-                            erroneous_arg_index: flag_idx,
                             kind: ErrorKind::StrayOption(CliOption::OutFolderPath),
                             cause: ErrorCause::StrayOutputFolderPath,
+                            args,
+                            erroneous_arg_index: flag_idx,
                         })
                     }
                 },
@@ -295,10 +292,10 @@ impl TryFrom<Vec<String>> for Args {
                 unrecognized => {
                     let unrecognized_arg = unrecognized.to_owned();
                     return Err(Error {
-                        args,
-                        erroneous_arg_index: flag_idx,
                         kind: ErrorKind::UnrecognizedArg { arg: unrecognized_arg },
                         cause: ErrorCause::Unrecognized,
+                        args,
+                        erroneous_arg_index: flag_idx,
                     });
                 }
             }
@@ -454,10 +451,10 @@ impl Display for ErrorCause {
 
 #[derive(Debug)]
 pub struct Error {
-    pub args: Vec<String>,
-    pub erroneous_arg_index: usize,
     pub kind: ErrorKind,
     pub cause: ErrorCause,
+    pub args: Vec<String>,
+    pub erroneous_arg_index: usize,
 }
 
 impl std::error::Error for Error {}

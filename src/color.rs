@@ -78,13 +78,8 @@ impl Color {
     pub fn set<I: IsTerminal>(self, sink: &I) {
         unsafe {
             log = match self {
-                Self::Auto => {
-                    if sink.is_terminal() {
-                        log_color
-                    } else {
-                        log_no_color
-                    }
-                }
+                Self::Auto if sink.is_terminal() => log_color,
+                Self::Auto => log_no_color,
                 Self::Always => log_color,
                 Self::Never => log_no_color,
             }
