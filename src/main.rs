@@ -180,8 +180,7 @@ fn main() -> ExitCode {
 mod tests {
     use kaylang::{
         artifacts::Artifacts, compiler::Compiler, src_file::SrcFile, syntax::ast::Ast,
-        syntax::tokenizer::Tokenizer, Color, Logger, CHECKING,
-        COMPILING, RUNNING,
+        syntax::tokenizer::Tokenizer, Color, Logger, CHECKING, COMPILING, RUNNING,
     };
     use std::{path::PathBuf, process::ExitCode};
 

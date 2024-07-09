@@ -1804,8 +1804,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         };
 
         if this.ast.is_empty() {
-            this.asm += "exit:\
-                \n mov rdi, EXIT_SUCCESS";
+            _ = write!(
+                this.asm,
+                "exit:\
+                \n mov rdi, EXIT_SUCCESS"
+            );
         } else {
             for scope in this.ast {
                 for var in &scope.variables {
@@ -1853,9 +1856,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 );
             }
 
-            this.asm += " mov rdi, EXIT_SUCCESS\
+            _ = write!(
+                this.asm,
+                " mov rdi, EXIT_SUCCESS\
                 \n\
-                \nexit:";
+                \nexit:"
+            );
         }
 
         let program = format!(
@@ -2123,8 +2129,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     self.print(arg);
                 }
 
-                self.asm += " mov dil, newline\
-                    \n call ascii_print\n\n";
+                _ = writeln!(
+                    self.asm,
+                    " mov dil, newline\
+                    \n call ascii_print\n"
+                );
             }
             Node::Eprint(argument) => {
                 _ = writeln!(self.asm, " ; {node}");
@@ -2136,8 +2145,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     self.eprint(arg);
                 }
 
-                self.asm += " mov dil, newline\
-                    \n call ascii_eprint\n\n";
+                _ = writeln!(
+                    self.asm,
+                    " mov dil, newline\
+                    \n call ascii_eprint\n"
+                );
             }
             Node::If(if_statement) => {
                 let if_counter = self.if_counter;
@@ -2261,7 +2273,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                     // Note: *op*_equals operators can only take integer-like values
                     match op {
-                        AssignmentOp::Pow =>
+                        AssignmentOp::Pow => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2270,8 +2282,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n mov rdi, rax",
                                 line = op_position.line,
                                 col = op_position.col
-                            ),
-                        AssignmentOp::WrappingPow =>
+                            );
+                        }
+                        AssignmentOp::WrappingPow => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2280,8 +2293,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n mov rdi, rax",
                                 line = op_position.line,
                                 col = op_position.col
-                            ),
-                        AssignmentOp::SaturatingPow =>
+                            );
+                        }
+                        AssignmentOp::SaturatingPow => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2290,8 +2304,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n mov rdi, rax",
                                 line = op_position.line,
                                 col = op_position.col
-                            ),
-                        AssignmentOp::Times =>
+                            );
+                        }
+                        AssignmentOp::Times => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2299,10 +2314,13 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n call int_safe_mul",
                                 line = op_position.line,
                                 col = op_position.col
-                            ),
+                            );
+                        }
                         AssignmentOp::WrappingTimes => _ = writeln!(self.asm, " imul rdi, rsi"),
-                        AssignmentOp::SaturatingTimes => _ = writeln!(self.asm, " call int_saturating_mul"),
-                        AssignmentOp::Divide =>
+                        AssignmentOp::SaturatingTimes => {
+                            _ = writeln!(self.asm, " call int_saturating_mul");
+                        }
+                        AssignmentOp::Divide => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2310,8 +2328,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n call int_safe_div",
                                 line = op_position.line,
                                 col = op_position.col
-                            ),
-                        AssignmentOp::WrappingDivide =>
+                            );
+                        }
+                        AssignmentOp::WrappingDivide => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2319,8 +2338,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n call int_wrapping_div",
                                 line = op_position.line,
                                 col = op_position.col
-                            ),
-                        AssignmentOp::SaturatingDivide =>
+                            );
+                        }
+                        AssignmentOp::SaturatingDivide => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2328,8 +2348,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n call int_saturating_div",
                                 line = op_position.line,
                                 col = op_position.col
-                            ),
-                        AssignmentOp::Remainder =>
+                            );
+                        }
+                        AssignmentOp::Remainder => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2337,8 +2358,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n call int_safe_remainder",
                                 line = op_position.line,
                                 col = op_position.col
-                            ),
-                        AssignmentOp::Plus =>
+                            );
+                        }
+                        AssignmentOp::Plus => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2346,10 +2368,13 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n call int_safe_add",
                                 line = op_position.line,
                                 col = op_position.col,
-                            ),
+                            );
+                        }
                         AssignmentOp::WrappingPlus => _ = writeln!(self.asm, " add rdi, rsi"),
-                        AssignmentOp::SaturatingPlus => _ = writeln!(self.asm, " call int_saturating_add"),
-                        AssignmentOp::Minus =>
+                        AssignmentOp::SaturatingPlus => {
+                            _ = writeln!(self.asm, " call int_saturating_add");
+                        }
+                        AssignmentOp::Minus => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2357,13 +2382,20 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n call int_safe_sub",
                                 line = op_position.line,
                                 col = op_position.col,
-                            ),
+                            );
+                        }
                         AssignmentOp::WrappingMinus => _ = writeln!(self.asm, " sub rdi, rsi"),
-                        AssignmentOp::SaturatingMinus => _ = writeln!(self.asm, " call int_saturating_sub"),
-                        AssignmentOp::And | AssignmentOp::BitAnd => _ = writeln!(self.asm, " and rdi, rsi"),
-                        AssignmentOp::Or | AssignmentOp::BitOr => _ = writeln!(self.asm, " or rdi, rsi"),
+                        AssignmentOp::SaturatingMinus => {
+                            _ = writeln!(self.asm, " call int_saturating_sub");
+                        }
+                        AssignmentOp::And | AssignmentOp::BitAnd => {
+                            _ = writeln!(self.asm, " and rdi, rsi");
+                        }
+                        AssignmentOp::Or | AssignmentOp::BitOr => {
+                            _ = writeln!(self.asm, " or rdi, rsi");
+                        }
                         AssignmentOp::BitXor => _ = writeln!(self.asm, " xor rdi, rsi"),
-                        AssignmentOp::LeftShift =>
+                        AssignmentOp::LeftShift => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2371,8 +2403,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n call int_safe_left_shift",
                                 line = op_position.line,
                                 col = op_position.col,
-                            ),
-                        AssignmentOp::WrappingLeftShift =>
+                            );
+                        }
+                        AssignmentOp::WrappingLeftShift => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2380,8 +2413,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n call int_wrapping_left_shift",
                                 line = op_position.line,
                                 col = op_position.col,
-                            ),
-                        AssignmentOp::SaturatingLeftShift =>
+                            );
+                        }
+                        AssignmentOp::SaturatingLeftShift => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2389,8 +2423,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n call int_saturating_left_shift",
                                 line = op_position.line,
                                 col = op_position.col,
-                            ),
-                        AssignmentOp::RightShift =>
+                            );
+                        }
+                        AssignmentOp::RightShift => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2398,8 +2433,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n call int_safe_right_shift",
                                 line = op_position.line,
                                 col = op_position.col,
-                            ),
-                        AssignmentOp::LeftRotate =>
+                            );
+                        }
+                        AssignmentOp::LeftRotate => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2407,8 +2443,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n call int_safe_left_rotate",
                                 line = op_position.line,
                                 col = op_position.col,
-                            ),
-                        AssignmentOp::RightRotate =>
+                            );
+                        }
+                        AssignmentOp::RightRotate => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2416,7 +2453,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n call int_safe_right_rotate",
                                 line = op_position.line,
                                 col = op_position.col,
-                            ),
+                            );
+                        }
                         AssignmentOp::Equals => unreachable!("handled in the previous branch"),
                     };
 
@@ -2520,36 +2558,43 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     #[allow(clippy::single_call_fn)]
     fn binary_str_str(op: BinaryOp) -> &'static str {
         return match op {
-            BinaryOp::EqualsEquals =>
+            BinaryOp::EqualsEquals => {
                 " call str_eq\
-                \n movzx rdi, al",
-            BinaryOp::NotEquals =>
+                \n movzx rdi, al"
+            }
+            BinaryOp::NotEquals => {
                 " call str_eq\
                 \n xor rax, 1\
-                \n movzx rdi, al",
-            BinaryOp::Greater =>
+                \n movzx rdi, al"
+            }
+            BinaryOp::Greater => {
                 " call str_cmp\
                 \n cmp rax, EQUAL\
                 \n mov rdi, false\
-                \n setg dil",
-            BinaryOp::GreaterOrEquals =>
+                \n setg dil"
+            }
+            BinaryOp::GreaterOrEquals => {
                 " call str_cmp\
                 \n cmp rax, EQUAL\
                 \n mov rdi, false\
-                \n setge dil",
-            BinaryOp::Less =>
+                \n setge dil"
+            }
+            BinaryOp::Less => {
                 " call str_cmp\
                 \n cmp rax, EQUAL\
                 \n mov rdi, false\
-                \n setl dil",
-            BinaryOp::LessOrEquals =>
+                \n setl dil"
+            }
+            BinaryOp::LessOrEquals => {
                 " call str_cmp\
                 \n cmp rax, EQUAL\
                 \n mov rdi, false\
-                \n setle dil",
-            BinaryOp::Compare =>
+                \n setle dil"
+            }
+            BinaryOp::Compare => {
                 " call str_cmp\
-                \n mov rdi, rax",
+                \n mov rdi, rax"
+            }
             BinaryOp::Pow
             | BinaryOp::WrappingPow
             | BinaryOp::SaturatingPow
@@ -2577,7 +2622,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             | BinaryOp::RightShift
             | BinaryOp::LeftRotate
             | BinaryOp::RightRotate => unreachable!("math operation not allowed on strings"),
-        }
+        };
     }
 
     // IDEA(stefano): array comparison operators could also return the index where
@@ -2617,13 +2662,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     " call str_array_eq\
                     \n movzx rdi, al"
                 }
-                Type::Array { .. } => {
-                    unreachable!("nested arrays not supported yet")
-                }
-                Type::Infer => {
-                    unreachable!("should have been coerced to a concrete type")
-                }
-            }
+                Type::Array { .. } => unreachable!("nested arrays not supported yet"),
+                Type::Infer => unreachable!("should have been coerced to a concrete type"),
+            },
             BinaryOp::NotEquals => match elements_type {
                 Type::Int => {
                     " mov rdi, rcx\
@@ -2644,13 +2685,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n xor rax, 1\
                     \n movzx rdi, al"
                 }
-                Type::Array { .. } => {
-                    unreachable!("nested arrays not supported yet")
-                }
-                Type::Infer => {
-                    unreachable!("should have been coerced to a concrete type")
-                }
-            }
+                Type::Array { .. } => unreachable!("nested arrays not supported yet"),
+                Type::Infer => unreachable!("should have been coerced to a concrete type"),
+            },
             BinaryOp::Greater => match elements_type {
                 Type::Int => {
                     " mov rdi, rcx\
@@ -2672,13 +2709,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n mov rdi, false\
                     \n setg dil"
                 }
-                Type::Array { .. } => {
-                    unreachable!("nested arrays not supported yet")
-                }
-                Type::Infer => {
-                    unreachable!("should have been coerced to a concrete type")
-                }
-            }
+                Type::Array { .. } => unreachable!("nested arrays not supported yet"),
+                Type::Infer => unreachable!("should have been coerced to a concrete type"),
+            },
             BinaryOp::GreaterOrEquals => match elements_type {
                 Type::Int => {
                     " mov rdi, rcx\
@@ -2700,13 +2733,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n mov rdi, false\
                     \n setge dil"
                 }
-                Type::Array { .. } => {
-                    unreachable!("nested arrays not supported yet")
-                }
-                Type::Infer => {
-                    unreachable!("should have been coerced to a concrete type")
-                }
-            }
+                Type::Array { .. } => unreachable!("nested arrays not supported yet"),
+                Type::Infer => unreachable!("should have been coerced to a concrete type"),
+            },
             BinaryOp::Less => match elements_type {
                 Type::Int => {
                     " mov rdi, rcx\
@@ -2728,13 +2757,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n mov rdi, false\
                     \n setl dil"
                 }
-                Type::Array { .. } => {
-                    unreachable!("nested arrays not supported yet")
-                }
-                Type::Infer => {
-                    unreachable!("should have been coerced to a concrete type")
-                }
-            }
+                Type::Array { .. } => unreachable!("nested arrays not supported yet"),
+                Type::Infer => unreachable!("should have been coerced to a concrete type"),
+            },
             BinaryOp::LessOrEquals => match elements_type {
                 Type::Int => {
                     " mov rdi, rcx\
@@ -2756,13 +2781,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n mov rdi, false\
                     \n setle dil"
                 }
-                Type::Array { .. } => {
-                    unreachable!("nested arrays not supported yet")
-                }
-                Type::Infer => {
-                    unreachable!("should have been coerced to a concrete type")
-                }
-            }
+                Type::Array { .. } => unreachable!("nested arrays not supported yet"),
+                Type::Infer => unreachable!("should have been coerced to a concrete type"),
+            },
             BinaryOp::Compare => match elements_type {
                 Type::Int => {
                     " mov rdi, rcx\
@@ -2788,13 +2809,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     " call str_array_cmp\
                     \n mov rdi, rax"
                 }
-                Type::Array { .. } => {
-                    unreachable!("nested arrays not supported yet")
-                }
-                Type::Infer => {
-                    unreachable!("should have been coerced to a concrete type")
-                }
-            }
+                Type::Array { .. } => unreachable!("nested arrays not supported yet"),
+                Type::Infer => unreachable!("should have been coerced to a concrete type"),
+            },
             BinaryOp::Pow
             | BinaryOp::WrappingPow
             | BinaryOp::SaturatingPow
@@ -2822,7 +2839,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             | BinaryOp::RightShift
             | BinaryOp::LeftRotate
             | BinaryOp::RightRotate => unreachable!("math operation not allowed on arrays"),
-        }
+        };
     }
 
     // IDEA(stefano): limit shift/rotation rhs to an 8bit integer, and different strategies to deal
@@ -2833,200 +2850,177 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     #[allow(clippy::single_call_fn)]
     fn binary_int_like_int_like(op: BinaryOp, op_position: Position) -> Cow<'static, str> {
         return match op {
-            BinaryOp::Pow =>
-                format!(
-                    " mov rdx, {line}\
-                    \n mov rcx, {col}\
-                    \n call int_safe_pow\
-                    \n mov rdi, rax",
-                    line = op_position.line,
-                    col = op_position.col
-                )
-                .into(),
-            BinaryOp::WrappingPow =>
-                format!(
-                    " mov rdx, {line}\
-                    \n mov rcx, {col}\
-                    \n call int_wrapping_pow\
-                    \n mov rdi, rax",
-                    line = op_position.line,
-                    col = op_position.col
-                )
-                .into(),
-            BinaryOp::SaturatingPow =>
-                format!(
-                    " mov rdx, {line}\
-                    \n mov rcx, {col}\
-                    \n call int_saturating_pow\
-                    \n mov rdi, rax",
-                    line = op_position.line,
-                    col = op_position.col
-                )
-                .into(),
-            BinaryOp::Times =>
-                format!(
-                    " mov rdx, {line}\
-                    \n mov rcx, {col}\
-                    \n call int_safe_mul",
-                    line = op_position.line,
-                    col = op_position.col
-                )
-                .into(),
+            BinaryOp::Pow => format!(
+                " mov rdx, {line}\
+                \n mov rcx, {col}\
+                \n call int_safe_pow\
+                \n mov rdi, rax",
+                line = op_position.line,
+                col = op_position.col
+            )
+            .into(),
+            BinaryOp::WrappingPow => format!(
+                " mov rdx, {line}\
+                \n mov rcx, {col}\
+                \n call int_wrapping_pow\
+                \n mov rdi, rax",
+                line = op_position.line,
+                col = op_position.col
+            )
+            .into(),
+            BinaryOp::SaturatingPow => format!(
+                " mov rdx, {line}\
+                \n mov rcx, {col}\
+                \n call int_saturating_pow\
+                \n mov rdi, rax",
+                line = op_position.line,
+                col = op_position.col
+            )
+            .into(),
+            BinaryOp::Times => format!(
+                " mov rdx, {line}\
+                \n mov rcx, {col}\
+                \n call int_safe_mul",
+                line = op_position.line,
+                col = op_position.col
+            )
+            .into(),
             BinaryOp::WrappingTimes => " imul rdi, rsi".into(),
             BinaryOp::SaturatingTimes => " call int_saturating_mul".into(),
-            BinaryOp::Divide =>
-                format!(
-                    " mov rdx, {line}\
-                    \n mov rcx, {col}\
-                    \n call int_safe_div",
-                    line = op_position.line,
-                    col = op_position.col
-                )
-                .into(),
-            BinaryOp::WrappingDivide =>
-                format!(
-                    " mov rdx, {line}\
-                    \n mov rcx, {col}\
-                    \n call int_wrapping_div",
-                    line = op_position.line,
-                    col = op_position.col
-                )
-                .into(),
-            BinaryOp::SaturatingDivide =>
-                format!(
-                    " mov rdx, {line}\
-                    \n mov rcx, {col}\
-                    \n call int_saturating_div",
-                    line = op_position.line,
-                    col = op_position.col
-                )
-                .into(),
-            BinaryOp::Remainder =>
-                format!(
-                    " mov rdx, {line}\
-                    \n mov rcx, {col}\
-                    \n call int_safe_remainder",
-                    line = op_position.line,
-                    col = op_position.col
-                )
-                .into(),
-            BinaryOp::Plus =>
-                format!(
-                    " mov rdx, {line}\
-                    \n mov rcx, {col}\
-                    \n call int_safe_add",
-                    line = op_position.line,
-                    col = op_position.col,
-                )
-                .into(),
+            BinaryOp::Divide => format!(
+                " mov rdx, {line}\
+                \n mov rcx, {col}\
+                \n call int_safe_div",
+                line = op_position.line,
+                col = op_position.col
+            )
+            .into(),
+            BinaryOp::WrappingDivide => format!(
+                " mov rdx, {line}\
+                \n mov rcx, {col}\
+                \n call int_wrapping_div",
+                line = op_position.line,
+                col = op_position.col
+            )
+            .into(),
+            BinaryOp::SaturatingDivide => format!(
+                " mov rdx, {line}\
+                \n mov rcx, {col}\
+                \n call int_saturating_div",
+                line = op_position.line,
+                col = op_position.col
+            )
+            .into(),
+            BinaryOp::Remainder => format!(
+                " mov rdx, {line}\
+                \n mov rcx, {col}\
+                \n call int_safe_remainder",
+                line = op_position.line,
+                col = op_position.col
+            )
+            .into(),
+            BinaryOp::Plus => format!(
+                " mov rdx, {line}\
+                \n mov rcx, {col}\
+                \n call int_safe_add",
+                line = op_position.line,
+                col = op_position.col,
+            )
+            .into(),
             BinaryOp::WrappingPlus => " add rdi, rsi".into(),
             BinaryOp::SaturatingPlus => " call int_saturating_add".into(),
-            BinaryOp::Minus =>
-                format!(
-                    " mov rdx, {line}\
-                    \n mov rcx, {col}\
-                    \n call int_safe_sub",
-                    line = op_position.line,
-                    col = op_position.col,
-                )
-                .into(),
+            BinaryOp::Minus => format!(
+                " mov rdx, {line}\
+                \n mov rcx, {col}\
+                \n call int_safe_sub",
+                line = op_position.line,
+                col = op_position.col,
+            )
+            .into(),
             BinaryOp::WrappingMinus => " sub rdi, rsi".into(),
             BinaryOp::SaturatingMinus => " call int_saturating_sub".into(),
-            BinaryOp::EqualsEquals =>
-                " cmp rdi, rsi\
+            BinaryOp::EqualsEquals => " cmp rdi, rsi\
                 \n mov rdi, false\
                 \n sete dil"
-                    .into(),
-            BinaryOp::NotEquals =>
-                " cmp rdi, rsi\
+                .into(),
+            BinaryOp::NotEquals => " cmp rdi, rsi\
                 \n mov rdi, false\
                 \n setne dil"
-                    .into(),
-            BinaryOp::Greater =>
-                " cmp rdi, rsi\
+                .into(),
+            BinaryOp::Greater => " cmp rdi, rsi\
                 \n mov rdi, false\
                 \n setg dil"
-                    .into(),
-            BinaryOp::GreaterOrEquals =>
-                " cmp rdi, rsi\
+                .into(),
+            BinaryOp::GreaterOrEquals => " cmp rdi, rsi\
                 \n mov rdi, false\
                 \n setge dil"
-                    .into(),
-            BinaryOp::Less =>
-                " cmp rdi, rsi\
+                .into(),
+            BinaryOp::Less => " cmp rdi, rsi\
                 \n mov rdi, false\
                 \n setl dil"
-                    .into(),
-            BinaryOp::LessOrEquals =>
-                " cmp rdi, rsi\
+                .into(),
+            BinaryOp::LessOrEquals => " cmp rdi, rsi\
                 \n mov rdi, false\
                 \n setle dil"
-                    .into(),
-            BinaryOp::Compare =>
-                " cmp rdi, rsi\
+                .into(),
+            BinaryOp::Compare => " cmp rdi, rsi\
                 \n mov rdi, LESS\
                 \n mov rsi, EQUAL\
                 \n cmove rdi, rsi\
                 \n mov rsi, GREATER\
                 \n cmovg rdi, rsi"
-                    .into(),
+                .into(),
             BinaryOp::And | BinaryOp::BitAnd => " and rdi, rsi".into(),
             BinaryOp::Or | BinaryOp::BitOr => " or rdi, rsi".into(),
             BinaryOp::BitXor => " xor rdi, rsi".into(),
-            BinaryOp::LeftShift =>
-                format!(
-                    " mov rdx, {line}\
-                    \n mov rcx, {col}\
-                    \n call int_safe_left_shift",
-                    line = op_position.line,
-                    col = op_position.col,
-                )
-                .into(),
-            BinaryOp::WrappingLeftShift =>
-                format!(
-                    " mov rdx, {line}\
-                    \n mov rcx, {col}\
-                    \n call int_wrapping_left_shift",
-                    line = op_position.line,
-                    col = op_position.col,
-                )
-                .into(),
-            BinaryOp::SaturatingLeftShift =>
-                format!(
-                    " mov rdx, {line}\
-                    \n mov rcx, {col}\
-                    \n call int_saturating_left_shift",
-                    line = op_position.line,
-                    col = op_position.col,
-                )
-                .into(),
-            BinaryOp::RightShift =>
-                format!(
-                    " mov rdx, {line}\
-                    \n mov rcx, {col}\
-                    \n call int_safe_right_shift",
-                    line = op_position.line,
-                    col = op_position.col,
-                )
-                .into(),
-            BinaryOp::LeftRotate =>
-                format!(
-                    " mov rdx, {line}\
-                    \n mov rcx, {col}\
-                    \n call int_safe_left_rotate",
-                    line = op_position.line,
-                    col = op_position.col,
-                )
-                .into(),
-            BinaryOp::RightRotate =>
-                format!(
-                    " mov rdx, {line}\
-                    \n mov rcx, {col}\
-                    \n call int_safe_right_rotate",
-                    line = op_position.line,
-                    col = op_position.col,
-                )
-                .into(),
+            BinaryOp::LeftShift => format!(
+                " mov rdx, {line}\
+                \n mov rcx, {col}\
+                \n call int_safe_left_shift",
+                line = op_position.line,
+                col = op_position.col,
+            )
+            .into(),
+            BinaryOp::WrappingLeftShift => format!(
+                " mov rdx, {line}\
+                \n mov rcx, {col}\
+                \n call int_wrapping_left_shift",
+                line = op_position.line,
+                col = op_position.col,
+            )
+            .into(),
+            BinaryOp::SaturatingLeftShift => format!(
+                " mov rdx, {line}\
+                \n mov rcx, {col}\
+                \n call int_saturating_left_shift",
+                line = op_position.line,
+                col = op_position.col,
+            )
+            .into(),
+            BinaryOp::RightShift => format!(
+                " mov rdx, {line}\
+                \n mov rcx, {col}\
+                \n call int_safe_right_shift",
+                line = op_position.line,
+                col = op_position.col,
+            )
+            .into(),
+            BinaryOp::LeftRotate => format!(
+                " mov rdx, {line}\
+                \n mov rcx, {col}\
+                \n call int_safe_left_rotate",
+                line = op_position.line,
+                col = op_position.col,
+            )
+            .into(),
+            BinaryOp::RightRotate => format!(
+                " mov rdx, {line}\
+                \n mov rcx, {col}\
+                \n call int_safe_right_rotate",
+                line = op_position.line,
+                col = op_position.col,
+            )
+            .into(),
         };
     }
 
@@ -3041,7 +3035,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
         match rhs {
             // these expressions do not need to save the value of the lhs
-            Expression::Unary { op: UnaryOp::Not | UnaryOp::WrappingMinus, .. } | Expression::Literal(_) | Expression::Identifier { .. } => {
+            Expression::Unary { op: UnaryOp::Not | UnaryOp::WrappingMinus, .. }
+            | Expression::Literal(_)
+            | Expression::Identifier { .. } => {
                 self.expression(rhs, rhs_dst);
                 return;
             }
@@ -3049,7 +3045,6 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Binary { .. }
             | Expression::Unary { .. }
             | Expression::ArrayIndex { .. } => {}
-
             Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
         }
 
@@ -3119,34 +3114,38 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             // NOTE(stefano): hard-coding the first and second operand until a better way to manage
             // dst and src are developed
             Expression::Binary { lhs, op_position, op, rhs } => {
-                let (lhs_dst, rhs_dst, op_asm): (Dst, Dst, Cow<'static, str>) = match (lhs.typ(), rhs.typ()) {
-                    (Type::Str, Type::Str) => (
-                        Dst::View { len: Rdi, ptr: Rsi },
-                        Dst::View { len: Rdx, ptr: Rcx },
-                        Self::binary_str_str(*op).into()
-                    ),
-                    // Note: we can only compare non-empty arrays of the same type and length, so
-                    // its safe to only match on the first array type and not to check for empty arrays
-                    (Type::Array { typ, .. }, Type::Array { .. }) => (
-                        Dst::View { len: Rdi, ptr: Rsi },
-                        Dst::View { len: Rdx, ptr: Rcx },
-                        Self::binary_array_array(&typ, *op).into()
-                    ),
-                    (Type::Int | Type::Bool | Type::Ascii, Type::Int | Type::Bool | Type::Ascii) => (
-                        Dst::Reg(Rdi),
-                        Dst::Reg(Rsi),
-                        Self::binary_int_like_int_like(*op, *op_position)
-                    ),
-                    (Type::Str, _) | (_, Type::Str) => {
-                        unreachable!("cannot compare strings and non strings")
-                    }
-                    (Type::Array { .. }, _) | (_, Type::Array { .. }) => {
-                        unreachable!("cannot compare arrays and non arrays")
-                    }
-                    (Type::Infer, _) | (_, Type::Infer) => {
-                        unreachable!("should have been coerced to a concrete type")
-                    }
-                };
+                let (lhs_dst, rhs_dst, op_asm): (Dst, Dst, Cow<'static, str>) =
+                    match (lhs.typ(), rhs.typ()) {
+                        (Type::Str, Type::Str) => (
+                            Dst::View { len: Rdi, ptr: Rsi },
+                            Dst::View { len: Rdx, ptr: Rcx },
+                            Self::binary_str_str(*op).into(),
+                        ),
+                        // Note: we can only compare non-empty arrays of the same type and length, so
+                        // its safe to only match on the first array type and not to check for empty arrays
+                        (Type::Array { typ, .. }, Type::Array { .. }) => (
+                            Dst::View { len: Rdi, ptr: Rsi },
+                            Dst::View { len: Rdx, ptr: Rcx },
+                            Self::binary_array_array(&typ, *op).into(),
+                        ),
+                        (
+                            Type::Int | Type::Bool | Type::Ascii,
+                            Type::Int | Type::Bool | Type::Ascii,
+                        ) => (
+                            Dst::Reg(Rdi),
+                            Dst::Reg(Rsi),
+                            Self::binary_int_like_int_like(*op, *op_position),
+                        ),
+                        (Type::Str, _)
+                        | (_, Type::Str)
+                        | (Type::Array { .. }, _)
+                        | (_, Type::Array { .. }) => {
+                            unreachable!("strings and arrays cannot appear in expressions");
+                        }
+                        (Type::Infer, _) | (_, Type::Infer) => {
+                            unreachable!("should have been coerced to a concrete type");
+                        }
+                    };
 
                 self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
 
@@ -3205,13 +3204,21 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             let var = self.resolve(name);
                             let var_offset = var.offset;
                             match typ {
-                                Type::Str => _ = writeln!(self.asm, " mov {reg}, [rbp + {var_offset}]"),
-                                Type::Array { len, .. } => _ = writeln!(self.asm, " mov {reg}, {len}"),
-                                Type::Int | Type::Bool | Type::Ascii => unreachable!("cannot take the length of numerical types"),
+                                Type::Str => {
+                                    _ = writeln!(self.asm, " mov {reg}, [rbp + {var_offset}]");
+                                }
+                                Type::Array { len, .. } => {
+                                    _ = writeln!(self.asm, " mov {reg}, {len}");
+                                }
+                                Type::Int | Type::Bool | Type::Ascii => {
+                                    unreachable!("cannot take the length of numerical types")
+                                }
                                 Type::Infer => unreachable!("should have been inferred"),
                             }
                         }
-                        Expression::Array { items, .. } => _ = writeln!(self.asm, " mov {reg}, {}", items.len()),
+                        Expression::Array { items, .. } => {
+                            _ = writeln!(self.asm, " mov {reg}, {}", items.len());
+                        }
                         Expression::ArrayIndex { typ, var_name, bracket_position, index } => {
                             self.expression(index, Dst::Reg(Rdi));
 
@@ -3237,15 +3244,18 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         }
                         Expression::Literal(_)
                         | Expression::Unary { .. }
-                        | Expression::Binary { .. } => unreachable!("cannot take the length of numerical types"),
-                    }
+                        | Expression::Binary { .. } => {
+                            unreachable!("cannot take the length of numerical types")
+                        }
+                    },
                     UnaryOp::Not => {
                         self.expression(operand, dst);
                         match operand.typ() {
                             Type::Bool => _ = writeln!(self.asm, " xor {reg}, 1"),
                             Type::Int | Type::Ascii => _ = writeln!(self.asm, " not {reg}"),
-                            Type::Array { .. } => unreachable!("cannot invert array values"),
-                            Type::Str => unreachable!("cannot invert string values"),
+                            Type::Str | Type::Array { .. } => {
+                                unreachable!("cannot invert non numerical values");
+                            }
                             Type::Infer => unreachable!("should have been inferred"),
                         }
                     }
@@ -3262,12 +3272,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     col = op_position.col
                                 );
                             }
-                            Type::Ascii => unreachable!("cannot take absolute value of ascii values"),
-                            Type::Bool => unreachable!("cannot take absolute value of boolean values"),
-                            Type::Array { .. } => {
-                                unreachable!("cannot take absolute value of array values")
+                            Type::Ascii | Type::Bool | Type::Array { .. } | Type::Str => {
+                                unreachable!("cannot take absolute value of non numerical values");
                             }
-                            Type::Str => unreachable!("cannot take absolute value of string values"),
                             Type::Infer => unreachable!("should have been inferred"),
                         }
                     }
@@ -3275,12 +3282,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         self.expression(operand, dst);
                         match operand.typ() {
                             Type::Int => _ = writeln!(self.asm, " call int_wrapping_abs"),
-                            Type::Ascii => unreachable!("cannot take absolute value of ascii values"),
-                            Type::Bool => unreachable!("cannot take absolute value of boolean values"),
-                            Type::Array { .. } => {
-                                unreachable!("cannot take absolute value of array values")
+                            Type::Bool | Type::Ascii | Type::Str | Type::Array { .. } => {
+                                unreachable!("cannot take absolute value of non int values");
                             }
-                            Type::Str => unreachable!("cannot take absolute value of string values"),
                             Type::Infer => unreachable!("should have been inferred"),
                         }
                     }
@@ -3297,12 +3301,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     col = op_position.col
                                 );
                             }
-                            Type::Ascii => unreachable!("cannot take absolute value of ascii values"),
-                            Type::Bool => unreachable!("cannot take absolute value of boolean values"),
-                            Type::Array { .. } => {
-                                unreachable!("cannot take absolute value of array values")
+                            Type::Bool | Type::Ascii | Type::Str | Type::Array { .. } => {
+                                unreachable!("cannot take absolute value of non int values");
                             }
-                            Type::Str => unreachable!("cannot take absolute value of string values"),
                             Type::Infer => unreachable!("should have been inferred"),
                         }
                     }
@@ -3319,9 +3320,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     col = op_position.col
                                 );
                             }
-                            Type::Bool => unreachable!("cannot negate boolean values"),
-                            Type::Array { .. } => unreachable!("cannot negate array values"),
-                            Type::Str => unreachable!("cannot negate string values"),
+                            Type::Bool | Type::Str | Type::Array { .. } => {
+                                unreachable!("cannot negate non int/ascii values");
+                            }
                             Type::Infer => unreachable!("should have been inferred"),
                         }
                     }
@@ -3329,9 +3330,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         self.expression(operand, dst);
                         match operand.typ() {
                             Type::Int | Type::Ascii => _ = writeln!(self.asm, " neg {reg}"),
-                            Type::Bool => unreachable!("cannot negate boolean values"),
-                            Type::Array { .. } => unreachable!("cannot negate array values"),
-                            Type::Str => unreachable!("cannot negate string values"),
+                            Type::Bool | Type::Str | Type::Array { .. } => {
+                                unreachable!("cannot negate non int/ascii values");
+                            }
                             Type::Infer => unreachable!("should have been inferred"),
                         }
                     }
@@ -3348,9 +3349,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     col = op_position.col
                                 );
                             }
-                            Type::Bool => unreachable!("cannot negate boolean values"),
-                            Type::Array { .. } => unreachable!("cannot negate array values"),
-                            Type::Str => unreachable!("cannot negate string values"),
+                            Type::Bool | Type::Str | Type::Array { .. } => {
+                                unreachable!("cannot negate non int/ascii values");
+                            }
                             Type::Infer => unreachable!("should have been inferred"),
                         }
                     }
@@ -3683,8 +3684,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     Type::Ascii | Type::Bool => {
                         _ = writeln!(self.asm, " mov [rbp + {dst_offset}], dil\n");
                     }
-                    Type::Array { .. } => unreachable!("arrays cannot appear in expressions"),
-                    Type::Str => unreachable!("strings cannot appear in expressions"),
+                    Type::Str | Type::Array { .. } => {
+                        unreachable!("strings and arrays cannot appear in expressions");
+                    }
                     Type::Infer => unreachable!("should have been inferred"),
                 }
             }
@@ -3754,7 +3756,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 UnaryOp::Len => match &**operand {
                     Expression::Literal(Literal::Str(string)) => {
                         let index = self.string_label_index(string);
-                        _ = writeln!(self.asm, " mov qword [rbp + {dst_offset}], str_{index}_len\n");
+                        _ = writeln!(
+                            self.asm,
+                            " mov qword [rbp + {dst_offset}], str_{index}_len\n"
+                        );
                     }
                     Expression::Identifier { typ, name } => {
                         let var = self.resolve(name);
@@ -3766,13 +3771,23 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     " mov rdi, [rbp + {var_offset}]\
                                     \n mov [rbp + {dst_offset}], rdi\n"
                                 );
-                            },
-                            Type::Array { len, .. } => _ = writeln!(self.asm, " mov qword [rbp + {dst_offset}], {len}\n"),
-                            Type::Int | Type::Bool | Type::Ascii => unreachable!("cannot take the length of numerical types"),
+                            }
+                            Type::Array { len, .. } => {
+                                _ = writeln!(self.asm, " mov qword [rbp + {dst_offset}], {len}\n");
+                            }
+                            Type::Int | Type::Bool | Type::Ascii => {
+                                unreachable!("cannot take the length of numerical types")
+                            }
                             Type::Infer => unreachable!("should have been inferred"),
                         }
                     }
-                    Expression::Array { items, .. } => _ = writeln!(self.asm, " mov qword [rbp + {dst_offset}], {}\n", items.len()),
+                    Expression::Array { items, .. } => {
+                        _ = writeln!(
+                            self.asm,
+                            " mov qword [rbp + {dst_offset}], {}\n",
+                            items.len()
+                        );
+                    }
                     Expression::ArrayIndex { typ, var_name, bracket_position, index } => {
                         self.expression(index, Dst::Reg(Rdi));
 
@@ -3799,8 +3814,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
                     Expression::Literal(_)
                     | Expression::Unary { .. }
-                    | Expression::Binary { .. } => unreachable!("cannot take the length of numerical types"),
-                }
+                    | Expression::Binary { .. } => {
+                        unreachable!("cannot take the length of numerical types")
+                    }
+                },
                 UnaryOp::Not => {
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
@@ -3825,25 +3842,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n mov [rbp + {dst_offset}], rdi\n"
                             );
                         }
-                        Type::Array { .. } => unreachable!("cannot invert array values"),
-                        Type::Str => unreachable!("cannot invert string values"),
+                        Type::Str | Type::Array { .. } => {
+                            unreachable!("cannot invert non numerical values");
+                        }
                         Type::Infer => unreachable!("should have been inferred"),
                     }
                 }
                 UnaryOp::Plus => {
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
-                        Type::Ascii => {
-                            _ = writeln!(
-                                self.asm,
-                                " mov rdx, {line}\
-                                \n mov rcx, {col}\
-                                \n call int_safe_abs\
-                                \n mov [rbp + {dst_offset}], dil\n",
-                                line = op_position.line,
-                                col = op_position.col
-                            );
-                        }
                         Type::Int => {
                             _ = writeln!(
                                 self.asm,
@@ -3855,24 +3862,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 col = op_position.col
                             );
                         }
-                        Type::Bool => unreachable!("cannot take absolute value of boolean values"),
-                        Type::Array { .. } => {
-                            unreachable!("cannot take absolute value of array values")
+                        Type::Ascii | Type::Bool | Type::Array { .. } | Type::Str => {
+                            unreachable!("cannot take absolute value of non numerical values");
                         }
-                        Type::Str => unreachable!("cannot take absolute value of string values"),
                         Type::Infer => unreachable!("should have been inferred"),
                     }
                 }
                 UnaryOp::WrappingPlus => {
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
-                        Type::Ascii => {
-                            _ = writeln!(
-                                self.asm,
-                                " call int_wrapping_abs\
-                                \n mov [rbp + {dst_offset}], dil\n"
-                            );
-                        }
                         Type::Int => {
                             _ = writeln!(
                                 self.asm,
@@ -3880,28 +3878,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n mov [rbp + {dst_offset}], rdi\n"
                             );
                         }
-                        Type::Bool => unreachable!("cannot take absolute value of boolean values"),
-                        Type::Array { .. } => {
-                            unreachable!("cannot take absolute value of array values")
+                        Type::Ascii | Type::Bool | Type::Array { .. } | Type::Str => {
+                            unreachable!("cannot take absolute value of non numerical values");
                         }
-                        Type::Str => unreachable!("cannot take absolute value of string values"),
                         Type::Infer => unreachable!("should have been inferred"),
                     }
                 }
                 UnaryOp::SaturatingPlus => {
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
-                        Type::Ascii => {
-                            _ = writeln!(
-                                self.asm,
-                                " mov rdx, {line}\
-                                \n mov rcx, {col}\
-                                \n call int_saturating_abs\
-                                \n mov [rbp + {dst_offset}], dil\n",
-                                line = op_position.line,
-                                col = op_position.col
-                            );
-                        }
                         Type::Int => {
                             _ = writeln!(
                                 self.asm,
@@ -3913,11 +3898,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 col = op_position.col
                             );
                         }
-                        Type::Bool => unreachable!("cannot take absolute value of boolean values"),
-                        Type::Array { .. } => {
-                            unreachable!("cannot take absolute value of array values")
+                        Type::Ascii | Type::Bool | Type::Array { .. } | Type::Str => {
+                            unreachable!("cannot take absolute value of non numerical values");
                         }
-                        Type::Str => unreachable!("cannot take absolute value of string values"),
                         Type::Infer => unreachable!("should have been inferred"),
                     }
                 }
@@ -3946,9 +3929,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 col = op_position.col
                             );
                         }
-                        Type::Bool => unreachable!("cannot negate boolean values"),
-                        Type::Array { .. } => unreachable!("cannot negate array values"),
-                        Type::Str => unreachable!("cannot negate string values"),
+                        Type::Bool | Type::Str | Type::Array { .. } => {
+                            unreachable!("cannot negate non int/ascii values");
+                        }
                         Type::Infer => unreachable!("should have been inferred"),
                     }
                 }
@@ -3969,9 +3952,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n mov [rbp + {dst_offset}], rdi\n"
                             );
                         }
-                        Type::Bool => unreachable!("cannot negate boolean values"),
-                        Type::Array { .. } => unreachable!("cannot negate array values"),
-                        Type::Str => unreachable!("cannot negate string values"),
+                        Type::Bool | Type::Str | Type::Array { .. } => {
+                            unreachable!("cannot negate non int/ascii values");
+                        }
                         Type::Infer => unreachable!("should have been inferred"),
                     }
                 }
@@ -4000,13 +3983,13 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 col = op_position.col
                             );
                         }
-                        Type::Bool => unreachable!("cannot negate boolean values"),
-                        Type::Array { .. } => unreachable!("cannot negate array values"),
-                        Type::Str => unreachable!("cannot negate string values"),
+                        Type::Bool | Type::Str | Type::Array { .. } => {
+                            unreachable!("cannot negate non int/ascii values");
+                        }
                         Type::Infer => unreachable!("should have been inferred"),
                     }
                 }
-            }
+            },
             Expression::Array { typ, items } => {
                 let typ_size = typ.size();
                 for (index, item) in items.iter().enumerate() {
@@ -4053,15 +4036,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         self.expression(value, Dst::default(&value_typ));
 
         match value_typ {
-            Type::Int => self.asm += " call int_print\n\n",
-            Type::Ascii => self.asm += " call ascii_print\n\n",
-            Type::Bool => self.asm += " call bool_print\n\n",
-            Type::Str => self.asm += " call str_print\n\n",
+            Type::Int => _ = writeln!(self.asm, " call int_print\n"),
+            Type::Ascii => _ = writeln!(self.asm, " call ascii_print\n"),
+            Type::Bool => _ = writeln!(self.asm, " call bool_print\n"),
+            Type::Str => _ = writeln!(self.asm, " call str_print\n"),
             Type::Array { typ, .. } => match &*typ {
-                Type::Int => self.asm += " call int_array_debug_print\n\n",
-                Type::Ascii => self.asm += " call ascii_array_debug_print\n\n",
-                Type::Bool => self.asm += " call bool_array_debug_print\n\n",
-                Type::Str => self.asm += " call str_array_debug_print\n\n",
+                Type::Int => _ = writeln!(self.asm, " call int_array_debug_print\n"),
+                Type::Ascii => _ = writeln!(self.asm, " call ascii_array_debug_print\n"),
+                Type::Bool => _ = writeln!(self.asm, " call bool_array_debug_print\n"),
+                Type::Str => _ = writeln!(self.asm, " call str_array_debug_print\n"),
                 Type::Array { .. } => unreachable!("nested arrays are not supported yet"),
                 Type::Infer => unreachable!("should have been inferred"),
             },
@@ -4074,15 +4057,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         self.expression(value, Dst::default(&value_typ));
 
         match value_typ {
-            Type::Int => self.asm += " call int_eprint\n\n",
-            Type::Ascii => self.asm += " call ascii_eprint\n\n",
-            Type::Bool => self.asm += " call bool_eprint\n\n",
-            Type::Str => self.asm += " call str_eprint\n\n",
+            Type::Int => _ = writeln!(self.asm, " call int_eprint\n"),
+            Type::Ascii => _ = writeln!(self.asm, " call ascii_eprint\n"),
+            Type::Bool => _ = writeln!(self.asm, " call bool_eprint\n"),
+            Type::Str => _ = writeln!(self.asm, " call str_eprint\n"),
             Type::Array { typ, .. } => match &*typ {
-                Type::Int => self.asm += " call int_array_debug_eprint\n\n",
-                Type::Ascii => self.asm += " call ascii_array_debug_eprint\n\n",
-                Type::Bool => self.asm += " call bool_array_debug_eprint\n\n",
-                Type::Str => self.asm += " call str_array_debug_eprint\n\n",
+                Type::Int => _ = writeln!(self.asm, " call int_array_debug_eprint\n"),
+                Type::Ascii => _ = writeln!(self.asm, " call ascii_array_debug_eprint\n"),
+                Type::Bool => _ = writeln!(self.asm, " call bool_array_debug_eprint\n"),
+                Type::Str => _ = writeln!(self.asm, " call str_array_debug_eprint\n"),
                 Type::Array { .. } => unreachable!("nested arrays are not supported yet"),
                 Type::Infer => unreachable!("should have been inferred"),
             },

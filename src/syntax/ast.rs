@@ -1,6 +1,7 @@
 use super::{
     tokenizer::{
-        ascii, int, uint, AssignmentOp, BinaryOp, BracketKind, Literal, Mutability, Op, SrcCodeLen, Token, TokenKind, UnaryOp
+        ascii, int, uint, AssignmentOp, BinaryOp, BracketKind, Literal, Mutability, Op, SrcCodeLen,
+        Token, TokenKind, UnaryOp,
     },
     Errors, RawError,
 };
@@ -298,8 +299,12 @@ impl TypeOf for Expression<'_> {
                 | (UnaryOp::Plus | UnaryOp::WrappingPlus | UnaryOp::SaturatingPlus, _)
                 | (UnaryOp::Not, Type::Int | Type::Ascii) => Type::Int,
                 (UnaryOp::Not, Type::Bool) => Type::Bool,
-                (UnaryOp::Not, _) => unreachable!("'!' operator can only be use with integers and booleans"),
-                (UnaryOp::Len, _) => unreachable!("'len' operator can only be used with strings and arrays"),
+                (UnaryOp::Not, _) => {
+                    unreachable!("'!' operator can only be use with integers and booleans")
+                }
+                (UnaryOp::Len, _) => {
+                    unreachable!("'len' operator can only be used with strings and arrays")
+                }
             },
             Self::Binary { op, .. } => op.typ(),
             Self::Identifier { typ, .. } => typ.clone(),
@@ -395,10 +400,21 @@ pub(crate) enum Node<'src> {
     Break,
     Continue,
 
-    Definition { scope_index: usize, var_index: usize },
-    Assignment { scope_index: usize, var_index: usize, op: AssignmentOp, op_position: Position, new_value: Expression<'src> },
+    Definition {
+        scope_index: usize,
+        var_index: usize,
+    },
+    Assignment {
+        scope_index: usize,
+        var_index: usize,
+        op: AssignmentOp,
+        op_position: Position,
+        new_value: Expression<'src>,
+    },
 
-    Scope { index: usize },
+    Scope {
+        index: usize,
+    },
 }
 
 impl Display for Node<'_> {
@@ -1219,62 +1235,55 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         Literal::Str(_) => Ok(Expression::Unary {
                             op_position: Position::new(self.src, current_token.col).0,
                             op: UnaryOp::Len,
-                            operand: Box::new(operand)
+                            operand: Box::new(operand),
                         }),
-                        Literal::Int(_)
-                        | Literal::Ascii(_)
-                        | Literal::Bool(_) => Err(RawError {
+                        Literal::Int(_) | Literal::Ascii(_) | Literal::Bool(_) => Err(RawError {
                             kind: ErrorKind::Invalid(Statement::Len),
                             cause: ErrorCause::CannotTakeLenOfNumericValue(literal.typ()),
                             col: current_token.col,
-                            len: current_token.kind.src_code_len()
+                            len: current_token.kind.src_code_len(),
                         }),
-                    }
-                    Expression::Unary { .. }
-                    | Expression::Binary { .. } => Err(RawError {
+                    },
+                    Expression::Unary { .. } | Expression::Binary { .. } => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Len),
                         cause: ErrorCause::CannotTakeLenOfNumericValue(operand.typ()),
                         col: current_token.col,
-                        len: current_token.kind.src_code_len()
+                        len: current_token.kind.src_code_len(),
                     }),
                     Expression::Identifier { typ, .. } => match typ {
                         Type::Str | Type::Array { .. } => Ok(Expression::Unary {
                             op_position: Position::new(self.src, current_token.col).0,
                             op: UnaryOp::Len,
-                            operand: Box::new(operand)
+                            operand: Box::new(operand),
                         }),
-                        Type::Int
-                        | Type::Ascii
-                        | Type::Bool => Err(RawError {
+                        Type::Int | Type::Ascii | Type::Bool => Err(RawError {
                             kind: ErrorKind::Invalid(Statement::Len),
                             cause: ErrorCause::CannotTakeLenOfNumericValue(typ.clone()),
                             col: current_token.col,
-                            len: current_token.kind.src_code_len()
+                            len: current_token.kind.src_code_len(),
                         }),
                         Type::Infer => unreachable!("variables with no type are not allowed"),
                     },
                     Expression::Array { .. } => Ok(Expression::Unary {
                         op_position: Position::new(self.src, current_token.col).0,
                         op: UnaryOp::Len,
-                        operand: Box::new(operand)
+                        operand: Box::new(operand),
                     }),
                     Expression::ArrayIndex { typ, .. } => match typ {
                         Type::Str | Type::Array { .. } => Ok(Expression::Unary {
                             op_position: Position::new(self.src, current_token.col).0,
                             op: UnaryOp::Len,
-                            operand: Box::new(operand)
+                            operand: Box::new(operand),
                         }),
-                        Type::Int
-                        | Type::Ascii
-                        | Type::Bool => Err(RawError {
+                        Type::Int | Type::Ascii | Type::Bool => Err(RawError {
                             kind: ErrorKind::Invalid(Statement::Len),
                             cause: ErrorCause::CannotTakeLenOfNumericValue(typ.clone()),
                             col: current_token.col,
-                            len: current_token.kind.src_code_len()
+                            len: current_token.kind.src_code_len(),
                         }),
                         Type::Infer => unreachable!("variables with no type are not allowed"),
                     },
-                }
+                };
             }
             TokenKind::Op(Op::Plus) => {
                 let mut should_be_made_positive = true;
@@ -1300,12 +1309,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_typ @ (Type::Ascii | Type::Bool | Type::Str | Type::Array { .. }) => Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotTakeAbsValueOf(invalid_typ),
-                        col: current_token.col,
-                        len: current_token.kind.src_code_len(),
-                    }),
+                    invalid_typ @ (Type::Ascii | Type::Bool | Type::Str | Type::Array { .. }) => {
+                        Err(RawError {
+                            kind: ErrorKind::Invalid(Statement::Expression),
+                            cause: ErrorCause::CannotTakeAbsValueOf(invalid_typ),
+                            col: current_token.col,
+                            len: current_token.kind.src_code_len(),
+                        })
+                    }
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 };
             }
@@ -1335,12 +1346,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_typ @ (Type::Ascii | Type::Bool | Type::Str | Type::Array { .. }) => Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotTakeAbsValueOf(invalid_typ),
-                        col: current_token.col,
-                        len: current_token.kind.src_code_len(),
-                    }),
+                    invalid_typ @ (Type::Ascii | Type::Bool | Type::Str | Type::Array { .. }) => {
+                        Err(RawError {
+                            kind: ErrorKind::Invalid(Statement::Expression),
+                            cause: ErrorCause::CannotTakeAbsValueOf(invalid_typ),
+                            col: current_token.col,
+                            len: current_token.kind.src_code_len(),
+                        })
+                    }
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 };
             }
@@ -1370,12 +1383,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_typ @ (Type::Ascii | Type::Bool |Type::Str | Type::Array { .. }) => Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotTakeAbsValueOf(invalid_typ),
-                        col: current_token.col,
-                        len: current_token.kind.src_code_len(),
-                    }),
+                    invalid_typ @ (Type::Ascii | Type::Bool | Type::Str | Type::Array { .. }) => {
+                        Err(RawError {
+                            kind: ErrorKind::Invalid(Statement::Expression),
+                            cause: ErrorCause::CannotTakeAbsValueOf(invalid_typ),
+                            col: current_token.col,
+                            len: current_token.kind.src_code_len(),
+                        })
+                    }
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 };
             }
@@ -1566,7 +1581,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 Op::Pow => BinaryOp::Pow,
                 Op::WrappingPow => BinaryOp::WrappingPow,
                 Op::SaturatingPow => BinaryOp::SaturatingPow,
-                _ => unreachable!()
+                _ => unreachable!(),
             };
 
             lhs = Expression::Binary {
@@ -1609,7 +1624,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 Op::WrappingDivide => BinaryOp::WrappingDivide,
                 Op::SaturatingDivide => BinaryOp::SaturatingDivide,
                 Op::Remainder => BinaryOp::Remainder,
-                _ => unreachable!()
+                _ => unreachable!(),
             };
 
             lhs = Expression::Binary {
@@ -1648,7 +1663,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 Op::Minus => BinaryOp::Minus,
                 Op::WrappingMinus => BinaryOp::WrappingMinus,
                 Op::SaturatingMinus => BinaryOp::SaturatingMinus,
-                _ => unreachable!()
+                _ => unreachable!(),
             };
 
             lhs = Expression::Binary {
@@ -2228,7 +2243,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         };
     }
 
-    fn variable_reassignment(&mut self, op: Op) -> Result<Node<'src>, RawError<ErrorKind, ErrorCause>> {
+    fn variable_reassignment(
+        &mut self,
+        op: Op,
+    ) -> Result<Node<'src>, RawError<ErrorKind, ErrorCause>> {
         let name_token = &self.tokens[self.token];
         let TokenKind::Identifier(name) = name_token.kind else {
             unreachable!("cannot be different from an identifier");
@@ -2338,15 +2356,17 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             })
                         }
                         (AssignmentOp::Equals, _, _)
-                        | (_, Type::Int | Type::Bool | Type::Ascii, Type::Int | Type::Bool | Type::Ascii) => {
-                            Ok(Node::Assignment {
-                                scope_index,
-                                var_index,
-                                op: assignment_op,
-                                op_position: Position::new(self.src, op_token.col).0,
-                                new_value: rhs
-                            })
-                        }
+                        | (
+                            _,
+                            Type::Int | Type::Bool | Type::Ascii,
+                            Type::Int | Type::Bool | Type::Ascii,
+                        ) => Ok(Node::Assignment {
+                            scope_index,
+                            var_index,
+                            op: assignment_op,
+                            op_position: Position::new(self.src, op_token.col).0,
+                            new_value: rhs,
+                        }),
                         _ => Err(RawError {
                             kind: ErrorKind::Invalid(Statement::VariableAssignment),
                             cause: ErrorCause::VariableAssignmentTypeMismatch {
@@ -2355,7 +2375,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             },
                             col: name_token.col,
                             len: name_token.kind.src_code_len(),
-                        })
+                        }),
                     }
                 }
             },

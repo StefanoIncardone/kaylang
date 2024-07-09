@@ -291,7 +291,7 @@ impl Display for AssignmentOp {
 // shift amount (maybe <<?, >>?, <<<?, >>>?, or <<!, >>!, <<<!, >>>!)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Op {
-    Len,    // temporary way of getting the length of strings and arrays
+    Len, // temporary way of getting the length of strings and arrays
     Equals,
     Not,
 
@@ -629,10 +629,10 @@ pub(crate) enum TokenKind<'src> {
     Definition(Mutability),
 
     // Keywords
-    Print,      // temporary way of printing values to stdout
-    PrintLn,    // temporary way of printing values followed by a newline to stdout
-    Eprint,     // temporary way of printing values to stderr
-    EprintLn,   // temporary way of printing values followed by a newline to stderr
+    Print,    // temporary way of printing values to stdout
+    PrintLn,  // temporary way of printing values followed by a newline to stdout
+    Eprint,   // temporary way of printing values to stderr
+    EprintLn, // temporary way of printing values followed by a newline to stderr
     Do,
     If,
     Else,
