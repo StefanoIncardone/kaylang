@@ -1300,27 +1300,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    Type::Ascii => Err(RawError {
+                    invalid_typ @ (Type::Ascii | Type::Bool | Type::Str | Type::Array { .. }) => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotTakeAbsValueOfAscii,
-                        col: current_token.col,
-                        len: current_token.kind.src_code_len(),
-                    }),
-                    Type::Bool => Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotTakeAbsValueOfBoolean,
-                        col: current_token.col,
-                        len: current_token.kind.src_code_len(),
-                    }),
-                    Type::Str => Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotTakeAbsValueOfString,
-                        col: current_token.col,
-                        len: current_token.kind.src_code_len(),
-                    }),
-                    Type::Array { .. } => Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotTakeAbsValueOfArray,
+                        cause: ErrorCause::CannotTakeAbsValueOf(invalid_typ),
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
@@ -1353,27 +1335,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    Type::Ascii => Err(RawError {
+                    invalid_typ @ (Type::Ascii | Type::Bool | Type::Str | Type::Array { .. }) => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotTakeAbsValueOfAscii,
-                        col: current_token.col,
-                        len: current_token.kind.src_code_len(),
-                    }),
-                    Type::Bool => Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotTakeAbsValueOfBoolean,
-                        col: current_token.col,
-                        len: current_token.kind.src_code_len(),
-                    }),
-                    Type::Str => Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotTakeAbsValueOfString,
-                        col: current_token.col,
-                        len: current_token.kind.src_code_len(),
-                    }),
-                    Type::Array { .. } => Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotTakeAbsValueOfArray,
+                        cause: ErrorCause::CannotTakeAbsValueOf(invalid_typ),
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
@@ -1406,27 +1370,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    Type::Ascii => Err(RawError {
+                    invalid_typ @ (Type::Ascii | Type::Bool |Type::Str | Type::Array { .. }) => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotTakeAbsValueOfAscii,
-                        col: current_token.col,
-                        len: current_token.kind.src_code_len(),
-                    }),
-                    Type::Bool => Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotTakeAbsValueOfBoolean,
-                        col: current_token.col,
-                        len: current_token.kind.src_code_len(),
-                    }),
-                    Type::Str => Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotTakeAbsValueOfString,
-                        col: current_token.col,
-                        len: current_token.kind.src_code_len(),
-                    }),
-                    Type::Array { .. } => Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotTakeAbsValueOfArray,
+                        cause: ErrorCause::CannotTakeAbsValueOf(invalid_typ),
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
@@ -1457,21 +1403,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    Type::Bool => Err(RawError {
+                    invalid_typ @ (Type::Bool | Type::Str | Type::Array { .. }) => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotNegateBoolean,
-                        col: current_token.col,
-                        len: current_token.kind.src_code_len(),
-                    }),
-                    Type::Str => Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotNegateString,
-                        col: current_token.col,
-                        len: current_token.kind.src_code_len(),
-                    }),
-                    Type::Array { .. } => Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotNegateArray,
+                        cause: ErrorCause::CannotNegate(invalid_typ),
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
@@ -1504,21 +1438,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    Type::Bool => Err(RawError {
+                    invalid_typ @ (Type::Bool | Type::Str | Type::Array { .. }) => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotNegateBoolean,
-                        col: current_token.col,
-                        len: current_token.kind.src_code_len(),
-                    }),
-                    Type::Str => Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotNegateString,
-                        col: current_token.col,
-                        len: current_token.kind.src_code_len(),
-                    }),
-                    Type::Array { .. } => Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotNegateArray,
+                        cause: ErrorCause::CannotNegate(invalid_typ),
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
@@ -1551,21 +1473,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    Type::Bool => Err(RawError {
+                    invalid_typ @ (Type::Bool | Type::Str | Type::Array { .. }) => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotNegateBoolean,
-                        col: current_token.col,
-                        len: current_token.kind.src_code_len(),
-                    }),
-                    Type::Str => Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotNegateString,
-                        col: current_token.col,
-                        len: current_token.kind.src_code_len(),
-                    }),
-                    Type::Array { .. } => Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotNegateArray,
+                        cause: ErrorCause::CannotNegate(invalid_typ),
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
@@ -1596,15 +1506,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    Type::Str => Err(RawError {
+                    invalid_typ @ (Type::Str | Type::Array { .. }) => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotInvertString,
-                        col: current_token.col,
-                        len: current_token.kind.src_code_len(),
-                    }),
-                    Type::Array { .. } => Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotInvertArray,
+                        cause: ErrorCause::CannotInvert(invalid_typ),
                         col: current_token.col,
                         len: current_token.kind.src_code_len(),
                     }),
@@ -2287,7 +2191,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             len: token.kind.src_code_len(),
                         });
                     }
-                } else if value.typ().should_be_inferred() {
+                }
+
+                if value.typ().should_be_inferred() {
                     return Err(RawError {
                         kind: ErrorKind::Invalid(Statement::VariableDefinition),
                         cause: ErrorCause::ExpectedTypeAnnotation,
@@ -2892,15 +2798,9 @@ pub enum ErrorCause {
     WasPreviouslyDefined,
 
     CannotBeATypeName,
-    CannotNegateBoolean,
-    CannotNegateString,
-    CannotNegateArray,
-    CannotInvertString,
-    CannotInvertArray,
-    CannotTakeAbsValueOfAscii,
-    CannotTakeAbsValueOfBoolean,
-    CannotTakeAbsValueOfString,
-    CannotTakeAbsValueOfArray,
+    CannotNegate(Type),
+    CannotInvert(Type),
+    CannotTakeAbsValueOf(Type),
     CannotMutateImmutableVariable,
     CannotChainComparisons,
     CannotIndexNonArrayType(Type),
@@ -2971,22 +2871,11 @@ impl Display for ErrorCause {
             Self::MismatchedArrayElementType { expected, actual } => {
                 write!(f, "expected item of type '{expected}', but got '{actual}'")
             }
-            Self::CannotNegateBoolean => {
-                write!(
-                    f,
-                    "cannot negate a boolean value, use the '!' operator instead to invert it"
-                )
+            Self::CannotNegate(typ) => write!(f, "cannot negate a value of type '{typ}'"),
+            Self::CannotInvert(typ) => write!(f, "cannot invert a value of type '{typ}'"),
+            Self::CannotTakeAbsValueOf(typ) => {
+                write!(f, "cannot take the absolute value of a variable of type '{typ}'")
             }
-            Self::CannotNegateString => write!(f, "cannot negate a string"),
-            Self::CannotNegateArray => write!(f, "cannot negate an array"),
-            Self::CannotInvertString => write!(f, "cannot invert a string"),
-            Self::CannotInvertArray => write!(f, "cannot invert an array"),
-            Self::CannotTakeAbsValueOfAscii => {
-                write!(f, "cannot take the absolute value of an ascii character")
-            }
-            Self::CannotTakeAbsValueOfBoolean => write!(f, "cannot take the absolute value of a boolean"),
-            Self::CannotTakeAbsValueOfString => write!(f, "cannot take the absolute value of a string"),
-            Self::CannotTakeAbsValueOfArray => write!(f, "cannot take the absolute value of an array"),
             Self::CannotTakeLenOfNumericValue(typ) => {
                 write!(f, "cannot take the length of '{typ}', only of arrays and strings")
             }
