@@ -1,6 +1,6 @@
 use super::{
     tokenizer::{
-        ascii, int, uint, BracketKind, Literal, Mutability, Op, SrcCodeLen, Token, TokenKind, UnaryOp,
+        ascii, int, uint, AssignmentOp, BinaryOp, BracketKind, Literal, Mutability, Op, SrcCodeLen, Token, TokenKind, UnaryOp
     },
     Errors, RawError,
 };
@@ -109,6 +109,48 @@ impl TypeOf for Literal {
     }
 }
 
+impl TypeOf for BinaryOp {
+    fn typ(&self) -> Type {
+        return match self {
+            Self::Pow
+            | Self::WrappingPow
+            | Self::SaturatingPow
+            | Self::Times
+            | Self::WrappingTimes
+            | Self::SaturatingTimes
+            | Self::Divide
+            | Self::WrappingDivide
+            | Self::SaturatingDivide
+            | Self::Remainder
+            | Self::Plus
+            | Self::WrappingPlus
+            | Self::SaturatingPlus
+            | Self::Minus
+            | Self::WrappingMinus
+            | Self::SaturatingMinus
+            | Self::BitAnd
+            | Self::BitOr
+            | Self::BitXor
+            | Self::LeftShift
+            | Self::WrappingLeftShift
+            | Self::SaturatingLeftShift
+            | Self::RightShift
+            | Self::LeftRotate
+            | Self::RightRotate
+            | Self::Compare => Type::Int,
+
+            Self::EqualsEquals
+            | Self::NotEquals
+            | Self::Greater
+            | Self::GreaterOrEquals
+            | Self::Less
+            | Self::LessOrEquals
+            | Self::And
+            | Self::Or => Type::Bool,
+        };
+    }
+}
+
 impl TypeOf for Op {
     fn typ(&self) -> Type {
         return match self {
@@ -193,7 +235,7 @@ pub(crate) enum Expression<'src> {
     Binary {
         lhs: Box<Expression<'src>>,
         op_position: Position,
-        op: Op,
+        op: BinaryOp,
         rhs: Box<Expression<'src>>,
     },
     Identifier {
@@ -254,7 +296,7 @@ impl TypeOf for Expression<'_> {
                 (UnaryOp::Len, Type::Str | Type::Array { .. } | Type::Infer)
                 | (UnaryOp::Minus | UnaryOp::WrappingMinus | UnaryOp::SaturatingMinus, _)
                 | (UnaryOp::Plus | UnaryOp::WrappingPlus | UnaryOp::SaturatingPlus, _)
-                | (UnaryOp::Not, Type::Int) => Type::Int,
+                | (UnaryOp::Not, Type::Int | Type::Ascii) => Type::Int,
                 (UnaryOp::Not, Type::Bool) => Type::Bool,
                 (UnaryOp::Not, _) => unreachable!("'!' operator can only be use with integers and booleans"),
                 (UnaryOp::Len, _) => unreachable!("'len' operator can only be used with strings and arrays"),
@@ -354,7 +396,7 @@ pub(crate) enum Node<'src> {
     Continue,
 
     Definition { scope_index: usize, var_index: usize },
-    Assignment { scope_index: usize, var_index: usize, new_value: Expression<'src> },
+    Assignment { scope_index: usize, var_index: usize, op: AssignmentOp, op_position: Position, new_value: Expression<'src> },
 
     Scope { index: usize },
 }
@@ -537,7 +579,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::Identifier(_) => match self.peek_next_token() {
                 Some(op) => match op.kind {
                     TokenKind::Op(
-                        Op::Equals
+                        op_kind @ (Op::Equals
                         | Op::PowEquals
                         | Op::WrappingPowEquals
                         | Op::SaturatingPowEquals
@@ -564,8 +606,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         | Op::AndEquals
                         | Op::OrEquals
                         | Op::LeftRotateEquals
-                        | Op::RightRotateEquals,
-                    ) => Ok(Some(self.variable_reassignment()?)),
+                        | Op::RightRotateEquals),
+                    ) => Ok(Some(self.variable_reassignment(op_kind)?)),
                     TokenKind::Op(_)
                     | TokenKind::Comment(_)
                     | TokenKind::Unexpected(_)
@@ -1615,10 +1657,18 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             let rhs = self.primary_expression()?;
             Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
+            #[allow(clippy::wildcard_enum_match_arm)]
+            let binary_op = match op {
+                Op::Pow => BinaryOp::Pow,
+                Op::WrappingPow => BinaryOp::WrappingPow,
+                Op::SaturatingPow => BinaryOp::SaturatingPow,
+                _ => unreachable!()
+            };
+
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
                 op_position: Position::new(self.src, op_token.col).0,
-                op,
+                op: binary_op,
                 rhs: Box::new(rhs),
             };
         }
@@ -1646,10 +1696,22 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             let rhs = self.exponentiative_expression()?;
             Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
+            #[allow(clippy::wildcard_enum_match_arm)]
+            let binary_op = match op {
+                Op::Times => BinaryOp::Times,
+                Op::WrappingTimes => BinaryOp::WrappingTimes,
+                Op::SaturatingTimes => BinaryOp::SaturatingTimes,
+                Op::Divide => BinaryOp::Divide,
+                Op::WrappingDivide => BinaryOp::WrappingDivide,
+                Op::SaturatingDivide => BinaryOp::SaturatingDivide,
+                Op::Remainder => BinaryOp::Remainder,
+                _ => unreachable!()
+            };
+
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
                 op_position: Position::new(self.src, op_token.col).0,
-                op,
+                op: binary_op,
                 rhs: Box::new(rhs),
             };
         }
@@ -1674,10 +1736,21 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             let rhs = self.multiplicative_expression()?;
             Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
+            #[allow(clippy::wildcard_enum_match_arm)]
+            let binary_op = match op {
+                Op::Plus => BinaryOp::Plus,
+                Op::WrappingPlus => BinaryOp::WrappingPlus,
+                Op::SaturatingPlus => BinaryOp::SaturatingPlus,
+                Op::Minus => BinaryOp::Minus,
+                Op::WrappingMinus => BinaryOp::WrappingMinus,
+                Op::SaturatingMinus => BinaryOp::SaturatingMinus,
+                _ => unreachable!()
+            };
+
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
                 op_position: Position::new(self.src, op_token.col).0,
-                op,
+                op: binary_op,
                 rhs: Box::new(rhs),
             };
         }
@@ -1704,10 +1777,21 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             let rhs = self.additive_expression()?;
             Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
+            #[allow(clippy::wildcard_enum_match_arm)]
+            let binary_op = match op {
+                Op::LeftShift => BinaryOp::LeftShift,
+                Op::WrappingLeftShift => BinaryOp::WrappingLeftShift,
+                Op::SaturatingLeftShift => BinaryOp::SaturatingLeftShift,
+                Op::RightShift => BinaryOp::RightShift,
+                Op::LeftRotate => BinaryOp::LeftRotate,
+                Op::RightRotate => BinaryOp::RightRotate,
+                _ => unreachable!(),
+            };
+
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
                 op_position: Position::new(self.src, op_token.col).0,
-                op,
+                op: binary_op,
                 rhs: Box::new(rhs),
             };
         }
@@ -1724,10 +1808,16 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             let rhs = self.shift_expression()?;
             Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
+            #[allow(clippy::wildcard_enum_match_arm)]
+            let binary_op = match op {
+                Op::BitAnd => BinaryOp::BitAnd,
+                _ => unreachable!(),
+            };
+
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
                 op_position: Position::new(self.src, op_token.col).0,
-                op,
+                op: binary_op,
                 rhs: Box::new(rhs),
             };
         }
@@ -1744,10 +1834,16 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             let rhs = self.bitand_expression()?;
             Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
+            #[allow(clippy::wildcard_enum_match_arm)]
+            let binary_op = match op {
+                Op::BitXor => BinaryOp::BitXor,
+                _ => unreachable!(),
+            };
+
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
                 op_position: Position::new(self.src, op_token.col).0,
-                op,
+                op: binary_op,
                 rhs: Box::new(rhs),
             };
         }
@@ -1764,10 +1860,16 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             let rhs = self.bitxor_expression()?;
             Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
+            #[allow(clippy::wildcard_enum_match_arm)]
+            let binary_op = match op {
+                Op::BitOr => BinaryOp::BitOr,
+                _ => unreachable!(),
+            };
+
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
                 op_position: Position::new(self.src, op_token.col).0,
-                op,
+                op: binary_op,
                 rhs: Box::new(rhs),
             };
         }
@@ -1815,10 +1917,22 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             }
             is_chained = true;
 
+            #[allow(clippy::wildcard_enum_match_arm)]
+            let binary_op = match op {
+                Op::Compare => BinaryOp::Compare,
+                Op::EqualsEquals => BinaryOp::EqualsEquals,
+                Op::NotEquals => BinaryOp::NotEquals,
+                Op::Greater => BinaryOp::Greater,
+                Op::GreaterOrEquals => BinaryOp::GreaterOrEquals,
+                Op::Less => BinaryOp::Less,
+                Op::LessOrEquals => BinaryOp::LessOrEquals,
+                _ => unreachable!(),
+            };
+
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
                 op_position: Position::new(self.src, op_token.col).0,
-                op,
+                op: binary_op,
                 rhs: Box::new(rhs),
             };
         }
@@ -1849,10 +1963,16 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 });
             };
 
+            #[allow(clippy::wildcard_enum_match_arm)]
+            let binary_op = match op {
+                Op::And => BinaryOp::And,
+                _ => unreachable!(),
+            };
+
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
                 op_position: Position::new(self.src, op_token.col).0,
-                op,
+                op: binary_op,
                 rhs: Box::new(rhs),
             };
         }
@@ -1883,10 +2003,16 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 });
             };
 
+            #[allow(clippy::wildcard_enum_match_arm)]
+            let binary_op = match op {
+                Op::Or => BinaryOp::Or,
+                _ => unreachable!(),
+            };
+
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
                 op_position: Position::new(self.src, op_token.col).0,
-                op,
+                op: binary_op,
                 rhs: Box::new(rhs),
             };
         }
@@ -2196,7 +2322,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         };
     }
 
-    fn variable_reassignment(&mut self) -> Result<Node<'src>, RawError<ErrorKind, ErrorCause>> {
+    fn variable_reassignment(&mut self, op: Op) -> Result<Node<'src>, RawError<ErrorKind, ErrorCause>> {
         let name_token = &self.tokens[self.token];
         let TokenKind::Identifier(name) = name_token.kind else {
             unreachable!("cannot be different from an identifier");
@@ -2226,47 +2352,100 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     len: name_token.kind.src_code_len(),
                 }),
                 Mutability::Var => {
-                    let new_value = match &op_token.kind {
-                        TokenKind::Op(Op::Equals) => rhs,
-                        TokenKind::Op(op) => Expression::Binary {
-                            lhs: Box::new(Expression::Identifier { typ: op.typ(), name }),
-                            op_position: Position::new(self.src, op_token.col).0,
-                            op: *op,
-                            rhs: Box::new(rhs),
-                        },
-                        TokenKind::Comment(_)
-                        | TokenKind::Unexpected(_)
-                        | TokenKind::Bracket(_)
-                        | TokenKind::Colon
-                        | TokenKind::SemiColon
-                        | TokenKind::Comma
-                        | TokenKind::Literal(_)
-                        | TokenKind::True
-                        | TokenKind::False
-                        | TokenKind::Identifier(_)
-                        | TokenKind::Definition(_)
-                        | TokenKind::Print
-                        | TokenKind::PrintLn
-                        | TokenKind::Eprint
-                        | TokenKind::EprintLn
-                        | TokenKind::Do
-                        | TokenKind::If
-                        | TokenKind::Else
-                        | TokenKind::Loop
-                        | TokenKind::Break
-                        | TokenKind::Continue => {
-                            unreachable!("cannot be different from an operator")
-                        }
+                    let assignment_op = match op {
+                        Op::Equals => AssignmentOp::Equals,
+                        Op::PowEquals => AssignmentOp::Pow,
+                        Op::WrappingPowEquals => AssignmentOp::WrappingPow,
+                        Op::SaturatingPowEquals => AssignmentOp::SaturatingPow,
+                        Op::TimesEquals => AssignmentOp::Times,
+                        Op::WrappingTimesEquals => AssignmentOp::WrappingTimes,
+                        Op::SaturatingTimesEquals => AssignmentOp::SaturatingTimes,
+                        Op::DivideEquals => AssignmentOp::Divide,
+                        Op::WrappingDivideEquals => AssignmentOp::WrappingDivide,
+                        Op::SaturatingDivideEquals => AssignmentOp::SaturatingDivide,
+                        Op::RemainderEquals => AssignmentOp::Remainder,
+                        Op::PlusEquals => AssignmentOp::Plus,
+                        Op::WrappingPlusEquals => AssignmentOp::WrappingPlus,
+                        Op::SaturatingPlusEquals => AssignmentOp::SaturatingPlus,
+                        Op::MinusEquals => AssignmentOp::Minus,
+                        Op::WrappingMinusEquals => AssignmentOp::WrappingMinus,
+                        Op::SaturatingMinusEquals => AssignmentOp::SaturatingMinus,
+                        Op::LeftShiftEquals => AssignmentOp::LeftShift,
+                        Op::WrappingLeftShiftEquals => AssignmentOp::WrappingLeftShift,
+                        Op::SaturatingLeftShiftEquals => AssignmentOp::SaturatingLeftShift,
+                        Op::RightShiftEquals => AssignmentOp::RightShift,
+                        Op::BitAndEquals => AssignmentOp::BitAnd,
+                        Op::BitXorEquals => AssignmentOp::BitXor,
+                        Op::BitOrEquals => AssignmentOp::BitOr,
+                        Op::AndEquals => AssignmentOp::And,
+                        Op::OrEquals => AssignmentOp::Or,
+                        Op::LeftRotateEquals => AssignmentOp::LeftRotate,
+                        Op::RightRotateEquals => AssignmentOp::RightRotate,
+                        Op::Len
+                        | Op::Not
+                        | Op::Pow
+                        | Op::WrappingPow
+                        | Op::SaturatingPow
+                        | Op::Times
+                        | Op::WrappingTimes
+                        | Op::SaturatingTimes
+                        | Op::Divide
+                        | Op::WrappingDivide
+                        | Op::SaturatingDivide
+                        | Op::Remainder
+                        | Op::Plus
+                        | Op::WrappingPlus
+                        | Op::SaturatingPlus
+                        | Op::Minus
+                        | Op::WrappingMinus
+                        | Op::SaturatingMinus
+                        | Op::LeftShift
+                        | Op::WrappingLeftShift
+                        | Op::SaturatingLeftShift
+                        | Op::RightShift
+                        | Op::LeftRotate
+                        | Op::RightRotate
+                        | Op::And
+                        | Op::BitAnd
+                        | Op::BitXor
+                        | Op::Or
+                        | Op::BitOr
+                        | Op::Compare
+                        | Op::EqualsEquals
+                        | Op::NotEquals
+                        | Op::Greater
+                        | Op::GreaterOrEquals
+                        | Op::Less
+                        | Op::LessOrEquals => unreachable!("not an 'equals' operator"),
                     };
 
-                    if var.value.typ() == new_value.typ() {
-                        Ok(Node::Assignment { scope_index, var_index, new_value })
-                    } else {
-                        Err(RawError {
+                    match (assignment_op, var.value.typ(), rhs.typ()) {
+                        (AssignmentOp::Equals, var_type, rhs_typ) if var_type != rhs_typ => {
+                            Err(RawError {
+                                kind: ErrorKind::Invalid(Statement::VariableAssignment),
+                                cause: ErrorCause::VariableAssignmentTypeMismatch {
+                                    expected: var.value.typ(),
+                                    actual: rhs.typ(),
+                                },
+                                col: name_token.col,
+                                len: name_token.kind.src_code_len(),
+                            })
+                        }
+                        (AssignmentOp::Equals, _, _)
+                        | (_, Type::Int | Type::Bool | Type::Ascii, Type::Int | Type::Bool | Type::Ascii) => {
+                            Ok(Node::Assignment {
+                                scope_index,
+                                var_index,
+                                op: assignment_op,
+                                op_position: Position::new(self.src, op_token.col).0,
+                                new_value: rhs
+                            })
+                        }
+                        _ => Err(RawError {
                             kind: ErrorKind::Invalid(Statement::VariableAssignment),
                             cause: ErrorCause::VariableAssignmentTypeMismatch {
                                 expected: var.value.typ(),
-                                actual: new_value.typ(),
+                                actual: rhs.typ(),
                             },
                             col: name_token.col,
                             len: name_token.kind.src_code_len(),

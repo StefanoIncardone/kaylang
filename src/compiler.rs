@@ -7,7 +7,7 @@ use crate::{
     src_file::{Position, SrcFile},
     syntax::{
         ast::{self, Expression, IfStatement, LoopKind, Node, Scope, Type, TypeOf},
-        tokenizer::{ascii, Literal, Op, UnaryOp},
+        tokenizer::{ascii, AssignmentOp, BinaryOp, Literal, UnaryOp},
     },
     CAUSE, ERROR,
 };
@@ -2238,17 +2238,190 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 let dst_offset = var.offset;
 
                 _ = writeln!(self.asm, " ; {name} = {value}");
-                self.assignment(value, dst_offset);
+                self.definition(value, dst_offset);
             }
-            Node::Assignment { scope_index, var_index, new_value } => {
+            Node::Assignment { scope_index, var_index, op, op_position, new_value } => {
                 let ast_var = &self.ast[*scope_index].variables[*var_index];
                 let name = ast_var.name;
 
                 let var = self.resolve(name);
                 let dst_offset = var.offset;
 
-                _ = writeln!(self.asm, " ; {name} = {new_value}");
-                self.assignment(new_value, dst_offset);
+                _ = writeln!(self.asm, " ; {name} {op} {new_value}");
+                if let AssignmentOp::Equals = op {
+                    self.definition(new_value, dst_offset);
+                } else {
+                    self.expression(new_value, Dst::Reg(Rdi));
+
+                    _ = writeln!(
+                        self.asm,
+                        " mov rsi, rdi\
+                        \n mov rdi, [rbp + {dst_offset}]"
+                    );
+
+                    // Note: *op*_equals operators can only take integer-like values
+                    match op {
+                        AssignmentOp::Pow =>
+                            _ = writeln!(
+                                self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_safe_pow\
+                                \n mov rdi, rax",
+                                line = op_position.line,
+                                col = op_position.col
+                            ),
+                        AssignmentOp::WrappingPow =>
+                            _ = writeln!(
+                                self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_wrapping_pow\
+                                \n mov rdi, rax",
+                                line = op_position.line,
+                                col = op_position.col
+                            ),
+                        AssignmentOp::SaturatingPow =>
+                            _ = writeln!(
+                                self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_saturating_pow\
+                                \n mov rdi, rax",
+                                line = op_position.line,
+                                col = op_position.col
+                            ),
+                        AssignmentOp::Times =>
+                            _ = writeln!(
+                                self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_safe_mul",
+                                line = op_position.line,
+                                col = op_position.col
+                            ),
+                        AssignmentOp::WrappingTimes => _ = writeln!(self.asm, " imul rdi, rsi"),
+                        AssignmentOp::SaturatingTimes => _ = writeln!(self.asm, " call int_saturating_mul"),
+                        AssignmentOp::Divide =>
+                            _ = writeln!(
+                                self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_safe_div",
+                                line = op_position.line,
+                                col = op_position.col
+                            ),
+                        AssignmentOp::WrappingDivide =>
+                            _ = writeln!(
+                                self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_wrapping_div",
+                                line = op_position.line,
+                                col = op_position.col
+                            ),
+                        AssignmentOp::SaturatingDivide =>
+                            _ = writeln!(
+                                self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_saturating_div",
+                                line = op_position.line,
+                                col = op_position.col
+                            ),
+                        AssignmentOp::Remainder =>
+                            _ = writeln!(
+                                self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_safe_remainder",
+                                line = op_position.line,
+                                col = op_position.col
+                            ),
+                        AssignmentOp::Plus =>
+                            _ = writeln!(
+                                self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_safe_add",
+                                line = op_position.line,
+                                col = op_position.col,
+                            ),
+                        AssignmentOp::WrappingPlus => _ = writeln!(self.asm, " add rdi, rsi"),
+                        AssignmentOp::SaturatingPlus => _ = writeln!(self.asm, " call int_saturating_add"),
+                        AssignmentOp::Minus =>
+                            _ = writeln!(
+                                self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_safe_sub",
+                                line = op_position.line,
+                                col = op_position.col,
+                            ),
+                        AssignmentOp::WrappingMinus => _ = writeln!(self.asm, " sub rdi, rsi"),
+                        AssignmentOp::SaturatingMinus => _ = writeln!(self.asm, " call int_saturating_sub"),
+                        AssignmentOp::And | AssignmentOp::BitAnd => _ = writeln!(self.asm, " and rdi, rsi"),
+                        AssignmentOp::Or | AssignmentOp::BitOr => _ = writeln!(self.asm, " or rdi, rsi"),
+                        AssignmentOp::BitXor => _ = writeln!(self.asm, " xor rdi, rsi"),
+                        AssignmentOp::LeftShift =>
+                            _ = writeln!(
+                                self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_safe_left_shift",
+                                line = op_position.line,
+                                col = op_position.col,
+                            ),
+                        AssignmentOp::WrappingLeftShift =>
+                            _ = writeln!(
+                                self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_wrapping_left_shift",
+                                line = op_position.line,
+                                col = op_position.col,
+                            ),
+                        AssignmentOp::SaturatingLeftShift =>
+                            _ = writeln!(
+                                self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_saturating_left_shift",
+                                line = op_position.line,
+                                col = op_position.col,
+                            ),
+                        AssignmentOp::RightShift =>
+                            _ = writeln!(
+                                self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_safe_right_shift",
+                                line = op_position.line,
+                                col = op_position.col,
+                            ),
+                        AssignmentOp::LeftRotate =>
+                            _ = writeln!(
+                                self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_safe_left_rotate",
+                                line = op_position.line,
+                                col = op_position.col,
+                            ),
+                        AssignmentOp::RightRotate =>
+                            _ = writeln!(
+                                self.asm,
+                                " mov rdx, {line}\
+                                \n mov rcx, {col}\
+                                \n call int_safe_right_rotate",
+                                line = op_position.line,
+                                col = op_position.col,
+                            ),
+                        AssignmentOp::Equals => unreachable!("handled in the previous branch"),
+                    };
+
+                    _ = writeln!(self.asm, "\n mov [rbp + {dst_offset}], rdi\n");
+                }
             }
             Node::Scope { index } => self.scope(*index),
             Node::Expression(expression) => {
@@ -2345,16 +2518,16 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     // sub rdx, rcx
     // dec rdx
     #[allow(clippy::single_call_fn)]
-    fn binary_str_str_dst_and_asm(op: Op) -> (Dst, Dst, Cow<'static, str>) {
+    fn binary_str_str_dst_and_asm(op: BinaryOp) -> (Dst, Dst, Cow<'static, str>) {
         return match op {
-            Op::EqualsEquals => (
+            BinaryOp::EqualsEquals => (
                 Dst::View { len: Rdi, ptr: Rsi },
                 Dst::View { len: Rdx, ptr: Rcx },
                 " call str_eq\
                 \n movzx rdi, al"
                     .into(),
             ),
-            Op::NotEquals => (
+            BinaryOp::NotEquals => (
                 Dst::View { len: Rdi, ptr: Rsi },
                 Dst::View { len: Rdx, ptr: Rcx },
                 " call str_eq\
@@ -2362,7 +2535,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 \n movzx rdi, al"
                     .into(),
             ),
-            Op::Greater => (
+            BinaryOp::Greater => (
                 Dst::View { len: Rdi, ptr: Rsi },
                 Dst::View { len: Rdx, ptr: Rcx },
                 " call str_cmp\
@@ -2371,7 +2544,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 \n setg dil"
                     .into(),
             ),
-            Op::GreaterOrEquals => (
+            BinaryOp::GreaterOrEquals => (
                 Dst::View { len: Rdi, ptr: Rsi },
                 Dst::View { len: Rdx, ptr: Rcx },
                 " call str_cmp\
@@ -2380,7 +2553,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 \n setge dil"
                     .into(),
             ),
-            Op::Less => (
+            BinaryOp::Less => (
                 Dst::View { len: Rdi, ptr: Rsi },
                 Dst::View { len: Rdx, ptr: Rcx },
                 " call str_cmp\
@@ -2389,7 +2562,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 \n setl dil"
                     .into(),
             ),
-            Op::LessOrEquals => (
+            BinaryOp::LessOrEquals => (
                 Dst::View { len: Rdi, ptr: Rsi },
                 Dst::View { len: Rdx, ptr: Rcx },
                 " call str_cmp\
@@ -2398,71 +2571,40 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 \n setle dil"
                     .into(),
             ),
-            Op::Compare => (
+            BinaryOp::Compare => (
                 Dst::View { len: Rdi, ptr: Rsi },
                 Dst::View { len: Rdx, ptr: Rcx },
                 " call str_cmp\
                 \n mov rdi, rax"
                     .into(),
             ),
-            Op::Pow
-            | Op::WrappingPow
-            | Op::SaturatingPow
-            | Op::PowEquals
-            | Op::WrappingPowEquals
-            | Op::SaturatingPowEquals
-            | Op::Times
-            | Op::WrappingTimes
-            | Op::SaturatingTimes
-            | Op::TimesEquals
-            | Op::WrappingTimesEquals
-            | Op::SaturatingTimesEquals
-            | Op::Divide
-            | Op::WrappingDivide
-            | Op::SaturatingDivide
-            | Op::DivideEquals
-            | Op::WrappingDivideEquals
-            | Op::SaturatingDivideEquals
-            | Op::Remainder
-            | Op::RemainderEquals
-            | Op::Plus
-            | Op::WrappingPlus
-            | Op::SaturatingPlus
-            | Op::PlusEquals
-            | Op::WrappingPlusEquals
-            | Op::SaturatingPlusEquals
-            | Op::Minus
-            | Op::WrappingMinus
-            | Op::SaturatingMinus
-            | Op::MinusEquals
-            | Op::WrappingMinusEquals
-            | Op::SaturatingMinusEquals
-            | Op::And
-            | Op::AndEquals
-            | Op::BitAnd
-            | Op::BitAndEquals
-            | Op::Or
-            | Op::OrEquals
-            | Op::BitOr
-            | Op::BitOrEquals
-            | Op::BitXor
-            | Op::BitXorEquals
-            | Op::LeftShift
-            | Op::WrappingLeftShift
-            | Op::SaturatingLeftShift
-            | Op::LeftShiftEquals
-            | Op::WrappingLeftShiftEquals
-            | Op::SaturatingLeftShiftEquals
-            | Op::RightShift
-            | Op::RightShiftEquals
-            | Op::LeftRotate
-            | Op::LeftRotateEquals
-            | Op::RightRotate
-            | Op::RightRotateEquals => {
-                unreachable!("math operation not allowed on strings")
-            }
-            Op::Equals => unreachable!("should not be present in the ast"),
-            Op::Not | Op::Len => unreachable!("should only appear in unary expressions"),
+            BinaryOp::Pow
+            | BinaryOp::WrappingPow
+            | BinaryOp::SaturatingPow
+            | BinaryOp::Times
+            | BinaryOp::WrappingTimes
+            | BinaryOp::SaturatingTimes
+            | BinaryOp::Divide
+            | BinaryOp::WrappingDivide
+            | BinaryOp::SaturatingDivide
+            | BinaryOp::Remainder
+            | BinaryOp::Plus
+            | BinaryOp::WrappingPlus
+            | BinaryOp::SaturatingPlus
+            | BinaryOp::Minus
+            | BinaryOp::WrappingMinus
+            | BinaryOp::SaturatingMinus
+            | BinaryOp::And
+            | BinaryOp::BitAnd
+            | BinaryOp::Or
+            | BinaryOp::BitOr
+            | BinaryOp::BitXor
+            | BinaryOp::LeftShift
+            | BinaryOp::WrappingLeftShift
+            | BinaryOp::SaturatingLeftShift
+            | BinaryOp::RightShift
+            | BinaryOp::LeftRotate
+            | BinaryOp::RightRotate => unreachable!("math operation not allowed on strings"),
         }
     }
 
@@ -2482,9 +2624,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     // sub rdx, rcx
     // dec rdx
     #[allow(clippy::single_call_fn)]
-    fn binary_array_array_dst_and_asm(elements_type: &Type, op: Op) -> (Dst, Dst, Cow<'static, str>) {
+    fn binary_array_array_dst_and_asm(elements_type: &Type, op: BinaryOp) -> (Dst, Dst, Cow<'static, str>) {
         return match op {
-            Op::EqualsEquals => {
+            BinaryOp::EqualsEquals => {
                 let eq_fn = match elements_type {
                     Type::Int => {
                         " mov rdi, rcx\
@@ -2518,7 +2660,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     eq_fn.into(),
                 )
             }
-            Op::NotEquals => {
+            BinaryOp::NotEquals => {
                 let eq_fn = match elements_type {
                     Type::Int => {
                         " mov rdi, rcx\
@@ -2553,7 +2695,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     eq_fn.into(),
                 )
             }
-            Op::Greater => {
+            BinaryOp::Greater => {
                 let eq_fn = match elements_type {
                     Type::Int => {
                         " mov rdi, rcx\
@@ -2589,7 +2731,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     eq_fn.into(),
                 )
             }
-            Op::GreaterOrEquals => {
+            BinaryOp::GreaterOrEquals => {
                 let eq_fn = match elements_type {
                     Type::Int => {
                         " mov rdi, rcx\
@@ -2625,7 +2767,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     eq_fn.into(),
                 )
             }
-            Op::Less => {
+            BinaryOp::Less => {
                 let eq_fn = match elements_type {
                     Type::Int => {
                         " mov rdi, rcx\
@@ -2661,7 +2803,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     eq_fn.into(),
                 )
             }
-            Op::LessOrEquals => {
+            BinaryOp::LessOrEquals => {
                 let eq_fn = match elements_type {
                     Type::Int => {
                         " mov rdi, rcx\
@@ -2697,7 +2839,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     eq_fn.into(),
                 )
             }
-            Op::Compare => {
+            BinaryOp::Compare => {
                 let eq_fn = match elements_type {
                     Type::Int => {
                         " mov rdi, rcx\
@@ -2737,64 +2879,33 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     eq_fn.into(),
                 )
             }
-            Op::Pow
-            | Op::WrappingPow
-            | Op::SaturatingPow
-            | Op::PowEquals
-            | Op::WrappingPowEquals
-            | Op::SaturatingPowEquals
-            | Op::Times
-            | Op::WrappingTimes
-            | Op::SaturatingTimes
-            | Op::TimesEquals
-            | Op::WrappingTimesEquals
-            | Op::SaturatingTimesEquals
-            | Op::Divide
-            | Op::WrappingDivide
-            | Op::SaturatingDivide
-            | Op::DivideEquals
-            | Op::WrappingDivideEquals
-            | Op::SaturatingDivideEquals
-            | Op::Remainder
-            | Op::RemainderEquals
-            | Op::Plus
-            | Op::WrappingPlus
-            | Op::SaturatingPlus
-            | Op::PlusEquals
-            | Op::WrappingPlusEquals
-            | Op::SaturatingPlusEquals
-            | Op::Minus
-            | Op::WrappingMinus
-            | Op::SaturatingMinus
-            | Op::MinusEquals
-            | Op::WrappingMinusEquals
-            | Op::SaturatingMinusEquals
-            | Op::And
-            | Op::AndEquals
-            | Op::BitAnd
-            | Op::BitAndEquals
-            | Op::Or
-            | Op::OrEquals
-            | Op::BitOr
-            | Op::BitOrEquals
-            | Op::BitXor
-            | Op::BitXorEquals
-            | Op::LeftShift
-            | Op::WrappingLeftShift
-            | Op::SaturatingLeftShift
-            | Op::LeftShiftEquals
-            | Op::WrappingLeftShiftEquals
-            | Op::SaturatingLeftShiftEquals
-            | Op::RightShift
-            | Op::RightShiftEquals
-            | Op::LeftRotate
-            | Op::LeftRotateEquals
-            | Op::RightRotate
-            | Op::RightRotateEquals => {
-                unreachable!("math operation not allowed on arrays")
-            }
-            Op::Equals => unreachable!("should not be present in the ast"),
-            Op::Not | Op::Len => unreachable!("should only appear in unary expressions"),
+            BinaryOp::Pow
+            | BinaryOp::WrappingPow
+            | BinaryOp::SaturatingPow
+            | BinaryOp::Times
+            | BinaryOp::WrappingTimes
+            | BinaryOp::SaturatingTimes
+            | BinaryOp::Divide
+            | BinaryOp::WrappingDivide
+            | BinaryOp::SaturatingDivide
+            | BinaryOp::Remainder
+            | BinaryOp::Plus
+            | BinaryOp::WrappingPlus
+            | BinaryOp::SaturatingPlus
+            | BinaryOp::Minus
+            | BinaryOp::WrappingMinus
+            | BinaryOp::SaturatingMinus
+            | BinaryOp::And
+            | BinaryOp::BitAnd
+            | BinaryOp::Or
+            | BinaryOp::BitOr
+            | BinaryOp::BitXor
+            | BinaryOp::LeftShift
+            | BinaryOp::WrappingLeftShift
+            | BinaryOp::SaturatingLeftShift
+            | BinaryOp::RightShift
+            | BinaryOp::LeftRotate
+            | BinaryOp::RightRotate => unreachable!("math operation not allowed on arrays"),
         }
     }
 
@@ -2804,9 +2915,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     // - silently discard the missing bits
     // - create dedicate operators that implement those strategies
     #[allow(clippy::single_call_fn)]
-    fn binary_int_like_int_line_dst_and_asm(op_position: Position, op: Op) -> (Dst, Dst, Cow<'static, str>) {
+    fn binary_int_like_int_like_dst_and_asm(op: BinaryOp, op_position: Position) -> (Dst, Dst, Cow<'static, str>) {
         return match op {
-            Op::Pow | Op::PowEquals => (
+            BinaryOp::Pow => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 format!(
@@ -2819,7 +2930,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 )
                 .into(),
             ),
-            Op::WrappingPow | Op::WrappingPowEquals => (
+            BinaryOp::WrappingPow => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 format!(
@@ -2832,7 +2943,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 )
                 .into(),
             ),
-            Op::SaturatingPow | Op::SaturatingPowEquals => (
+            BinaryOp::SaturatingPow => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 format!(
@@ -2845,7 +2956,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 )
                 .into(),
             ),
-            Op::Times | Op::TimesEquals => (
+            BinaryOp::Times => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 format!(
@@ -2857,13 +2968,13 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 )
                 .into(),
             ),
-            Op::WrappingTimes | Op::WrappingTimesEquals => {
+            BinaryOp::WrappingTimes => {
                 (Dst::Reg(Rdi), Dst::Reg(Rsi), " imul rdi, rsi".into())
             }
-            Op::SaturatingTimes | Op::SaturatingTimesEquals => {
+            BinaryOp::SaturatingTimes => {
                 (Dst::Reg(Rdi), Dst::Reg(Rsi), " call int_saturating_mul".into())
             }
-            Op::Divide | Op::DivideEquals => (
+            BinaryOp::Divide => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 format!(
@@ -2875,7 +2986,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 )
                 .into(),
             ),
-            Op::WrappingDivide | Op::WrappingDivideEquals => (
+            BinaryOp::WrappingDivide => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 format!(
@@ -2887,7 +2998,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 )
                 .into(),
             ),
-            Op::SaturatingDivide | Op::SaturatingDivideEquals => (
+            BinaryOp::SaturatingDivide => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 format!(
@@ -2899,7 +3010,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 )
                 .into(),
             ),
-            Op::Remainder | Op::RemainderEquals => (
+            BinaryOp::Remainder => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 format!(
@@ -2911,7 +3022,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 )
                 .into(),
             ),
-            Op::Plus | Op::PlusEquals => (
+            BinaryOp::Plus => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 format!(
@@ -2923,13 +3034,13 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 )
                 .into(),
             ),
-            Op::WrappingPlus | Op::WrappingPlusEquals => {
+            BinaryOp::WrappingPlus => {
                 (Dst::Reg(Rdi), Dst::Reg(Rsi), " add rdi, rsi".into())
             }
-            Op::SaturatingPlus | Op::SaturatingPlusEquals => {
+            BinaryOp::SaturatingPlus => {
                 (Dst::Reg(Rdi), Dst::Reg(Rsi), " call int_saturating_add".into())
             }
-            Op::Minus | Op::MinusEquals => (
+            BinaryOp::Minus => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 format!(
@@ -2941,13 +3052,13 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 )
                 .into(),
             ),
-            Op::WrappingMinus | Op::WrappingMinusEquals => {
+            BinaryOp::WrappingMinus => {
                 (Dst::Reg(Rdi), Dst::Reg(Rsi), " sub rdi, rsi".into())
             }
-            Op::SaturatingMinus | Op::SaturatingMinusEquals => {
+            BinaryOp::SaturatingMinus => {
                 (Dst::Reg(Rdi), Dst::Reg(Rsi), " call int_saturating_sub".into())
             }
-            Op::EqualsEquals => (
+            BinaryOp::EqualsEquals => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 " cmp rdi, rsi\
@@ -2955,7 +3066,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 \n sete dil"
                     .into(),
             ),
-            Op::NotEquals => (
+            BinaryOp::NotEquals => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 " cmp rdi, rsi\
@@ -2963,7 +3074,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 \n setne dil"
                     .into(),
             ),
-            Op::Greater => (
+            BinaryOp::Greater => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 " cmp rdi, rsi\
@@ -2971,7 +3082,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 \n setg dil"
                     .into(),
             ),
-            Op::GreaterOrEquals => (
+            BinaryOp::GreaterOrEquals => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 " cmp rdi, rsi\
@@ -2979,7 +3090,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 \n setge dil"
                     .into(),
             ),
-            Op::Less => (
+            BinaryOp::Less => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 " cmp rdi, rsi\
@@ -2987,7 +3098,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 \n setl dil"
                     .into(),
             ),
-            Op::LessOrEquals => (
+            BinaryOp::LessOrEquals => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 " cmp rdi, rsi\
@@ -2995,7 +3106,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 \n setle dil"
                     .into(),
             ),
-            Op::Compare => (
+            BinaryOp::Compare => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 " cmp rdi, rsi\
@@ -3006,16 +3117,16 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 \n cmovg rdi, rsi"
                     .into(),
             ),
-            Op::And | Op::AndEquals | Op::BitAnd | Op::BitAndEquals => {
+            BinaryOp::And | BinaryOp::BitAnd => {
                 (Dst::Reg(Rdi), Dst::Reg(Rsi), " and rdi, rsi".into())
             }
-            Op::Or | Op::OrEquals | Op::BitOr | Op::BitOrEquals => {
+            BinaryOp::Or | BinaryOp::BitOr => {
                 (Dst::Reg(Rdi), Dst::Reg(Rsi), " or rdi, rsi".into())
             }
-            Op::BitXor | Op::BitXorEquals => {
+            BinaryOp::BitXor => {
                 (Dst::Reg(Rdi), Dst::Reg(Rsi), " xor rdi, rsi".into())
             }
-            Op::LeftShift | Op::LeftShiftEquals => (
+            BinaryOp::LeftShift => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 format!(
@@ -3027,7 +3138,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 )
                 .into(),
             ),
-            Op::WrappingLeftShift | Op::WrappingLeftShiftEquals => (
+            BinaryOp::WrappingLeftShift => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 format!(
@@ -3039,7 +3150,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 )
                 .into(),
             ),
-            Op::SaturatingLeftShift | Op::SaturatingLeftShiftEquals => (
+            BinaryOp::SaturatingLeftShift => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 format!(
@@ -3051,7 +3162,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 )
                 .into(),
             ),
-            Op::RightShift | Op::RightShiftEquals => (
+            BinaryOp::RightShift => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 format!(
@@ -3063,7 +3174,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 )
                 .into(),
             ),
-            Op::LeftRotate | Op::LeftRotateEquals => (
+            BinaryOp::LeftRotate => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 format!(
@@ -3075,7 +3186,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 )
                 .into(),
             ),
-            Op::RightRotate | Op::RightRotateEquals => (
+            BinaryOp::RightRotate => (
                 Dst::Reg(Rdi),
                 Dst::Reg(Rsi),
                 format!(
@@ -3087,9 +3198,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 )
                 .into(),
             ),
-            Op::Equals => unreachable!("should not be present in the ast"),
-            Op::Not | Op::Len => unreachable!("should only appear in unary expressions"),
-        }
+        };
     }
 
     fn binary_expression(
@@ -3187,7 +3296,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     // its safe to only match on the first array type and not to check for empty arrays
                     (Type::Array { typ, .. }, Type::Array { .. }) => Self::binary_array_array_dst_and_asm(&typ, *op),
                     (Type::Int | Type::Bool | Type::Ascii, Type::Int | Type::Bool | Type::Ascii) => {
-                        Self::binary_int_like_int_line_dst_and_asm(*op_position, *op)
+                        Self::binary_int_like_int_like_dst_and_asm(*op, *op_position)
                     }
                     (Type::Str, _) | (_, Type::Str) => {
                         unreachable!("cannot compare strings and non strings")
@@ -3525,69 +3634,41 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
 
                 match op {
-                    Op::EqualsEquals => self.asm += " cmp rdi, rsi\n jne",
-                    Op::NotEquals => self.asm += " cmp rdi, rsi\n je",
-                    Op::Greater => self.asm += " cmp rdi, rsi\n jle",
-                    Op::GreaterOrEquals => self.asm += " cmp rdi, rsi\n jl",
-                    Op::Less => self.asm += " cmp rdi, rsi\n jge",
-                    Op::LessOrEquals => self.asm += " cmp rdi, rsi\n jg",
-                    Op::And | Op::AndEquals => self.asm += " and rdi, rsi\n jz",
-                    Op::Or | Op::OrEquals => self.asm += " or rdi, rsi\n jz",
+                    BinaryOp::EqualsEquals => self.asm += " cmp rdi, rsi\n jne",
+                    BinaryOp::NotEquals => self.asm += " cmp rdi, rsi\n je",
+                    BinaryOp::Greater => self.asm += " cmp rdi, rsi\n jle",
+                    BinaryOp::GreaterOrEquals => self.asm += " cmp rdi, rsi\n jl",
+                    BinaryOp::Less => self.asm += " cmp rdi, rsi\n jge",
+                    BinaryOp::LessOrEquals => self.asm += " cmp rdi, rsi\n jg",
+                    BinaryOp::And => self.asm += " and rdi, rsi\n jz",
+                    BinaryOp::Or => self.asm += " or rdi, rsi\n jz",
 
-                    Op::Len
-                    | Op::Equals
-                    | Op::Not
-                    | Op::Pow
-                    | Op::WrappingPow
-                    | Op::SaturatingPow
-                    | Op::PowEquals
-                    | Op::WrappingPowEquals
-                    | Op::SaturatingPowEquals
-                    | Op::Times
-                    | Op::WrappingTimes
-                    | Op::SaturatingTimes
-                    | Op::TimesEquals
-                    | Op::WrappingTimesEquals
-                    | Op::SaturatingTimesEquals
-                    | Op::Divide
-                    | Op::WrappingDivide
-                    | Op::SaturatingDivide
-                    | Op::DivideEquals
-                    | Op::WrappingDivideEquals
-                    | Op::SaturatingDivideEquals
-                    | Op::Remainder
-                    | Op::RemainderEquals
-                    | Op::Plus
-                    | Op::WrappingPlus
-                    | Op::SaturatingPlus
-                    | Op::PlusEquals
-                    | Op::WrappingPlusEquals
-                    | Op::SaturatingPlusEquals
-                    | Op::Minus
-                    | Op::WrappingMinus
-                    | Op::SaturatingMinus
-                    | Op::MinusEquals
-                    | Op::WrappingMinusEquals
-                    | Op::SaturatingMinusEquals
-                    | Op::Compare
-                    | Op::BitAnd
-                    | Op::BitAndEquals
-                    | Op::BitOr
-                    | Op::BitOrEquals
-                    | Op::BitXor
-                    | Op::BitXorEquals
-                    | Op::LeftShift
-                    | Op::WrappingLeftShift
-                    | Op::SaturatingLeftShift
-                    | Op::LeftShiftEquals
-                    | Op::WrappingLeftShiftEquals
-                    | Op::SaturatingLeftShiftEquals
-                    | Op::RightShift
-                    | Op::RightShiftEquals
-                    | Op::LeftRotate
-                    | Op::LeftRotateEquals
-                    | Op::RightRotate
-                    | Op::RightRotateEquals => {
+                    BinaryOp::Pow
+                    | BinaryOp::WrappingPow
+                    | BinaryOp::SaturatingPow
+                    | BinaryOp::Times
+                    | BinaryOp::WrappingTimes
+                    | BinaryOp::SaturatingTimes
+                    | BinaryOp::Divide
+                    | BinaryOp::WrappingDivide
+                    | BinaryOp::SaturatingDivide
+                    | BinaryOp::Remainder
+                    | BinaryOp::Plus
+                    | BinaryOp::WrappingPlus
+                    | BinaryOp::SaturatingPlus
+                    | BinaryOp::Minus
+                    | BinaryOp::WrappingMinus
+                    | BinaryOp::SaturatingMinus
+                    | BinaryOp::Compare
+                    | BinaryOp::BitAnd
+                    | BinaryOp::BitOr
+                    | BinaryOp::BitXor
+                    | BinaryOp::LeftShift
+                    | BinaryOp::WrappingLeftShift
+                    | BinaryOp::SaturatingLeftShift
+                    | BinaryOp::RightShift
+                    | BinaryOp::LeftRotate
+                    | BinaryOp::RightRotate => {
                         unreachable!("non-boolean operators should not appear here")
                     }
                 }
@@ -3656,69 +3737,41 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
 
                 match op {
-                    Op::EqualsEquals => self.asm += " cmp rdi, rsi\n je",
-                    Op::NotEquals => self.asm += " cmp rdi, rsi\n jne",
-                    Op::Greater => self.asm += " cmp rdi, rsi\n jg",
-                    Op::GreaterOrEquals => self.asm += " cmp rdi, rsi\n jge",
-                    Op::Less => self.asm += " cmp rdi, rsi\n jl",
-                    Op::LessOrEquals => self.asm += " cmp rdi, rsi\n jle",
-                    Op::And | Op::AndEquals => self.asm += " and rdi, rsi\n jnz",
-                    Op::Or | Op::OrEquals => self.asm += " or rdi, rsi\n jnz",
+                    BinaryOp::EqualsEquals => self.asm += " cmp rdi, rsi\n je",
+                    BinaryOp::NotEquals => self.asm += " cmp rdi, rsi\n jne",
+                    BinaryOp::Greater => self.asm += " cmp rdi, rsi\n jg",
+                    BinaryOp::GreaterOrEquals => self.asm += " cmp rdi, rsi\n jge",
+                    BinaryOp::Less => self.asm += " cmp rdi, rsi\n jl",
+                    BinaryOp::LessOrEquals => self.asm += " cmp rdi, rsi\n jle",
+                    BinaryOp::And => self.asm += " and rdi, rsi\n jnz",
+                    BinaryOp::Or => self.asm += " or rdi, rsi\n jnz",
 
-                    Op::Len
-                    | Op::Equals
-                    | Op::Not
-                    | Op::Pow
-                    | Op::WrappingPow
-                    | Op::SaturatingPow
-                    | Op::PowEquals
-                    | Op::WrappingPowEquals
-                    | Op::SaturatingPowEquals
-                    | Op::Times
-                    | Op::WrappingTimes
-                    | Op::SaturatingTimes
-                    | Op::TimesEquals
-                    | Op::WrappingTimesEquals
-                    | Op::SaturatingTimesEquals
-                    | Op::Divide
-                    | Op::WrappingDivide
-                    | Op::SaturatingDivide
-                    | Op::DivideEquals
-                    | Op::WrappingDivideEquals
-                    | Op::SaturatingDivideEquals
-                    | Op::Remainder
-                    | Op::RemainderEquals
-                    | Op::Plus
-                    | Op::WrappingPlus
-                    | Op::SaturatingPlus
-                    | Op::PlusEquals
-                    | Op::WrappingPlusEquals
-                    | Op::SaturatingPlusEquals
-                    | Op::Minus
-                    | Op::WrappingMinus
-                    | Op::SaturatingMinus
-                    | Op::MinusEquals
-                    | Op::WrappingMinusEquals
-                    | Op::SaturatingMinusEquals
-                    | Op::Compare
-                    | Op::BitAnd
-                    | Op::BitAndEquals
-                    | Op::BitOr
-                    | Op::BitOrEquals
-                    | Op::BitXor
-                    | Op::BitXorEquals
-                    | Op::LeftShift
-                    | Op::WrappingLeftShift
-                    | Op::SaturatingLeftShift
-                    | Op::LeftShiftEquals
-                    | Op::WrappingLeftShiftEquals
-                    | Op::SaturatingLeftShiftEquals
-                    | Op::RightShift
-                    | Op::RightShiftEquals
-                    | Op::LeftRotate
-                    | Op::LeftRotateEquals
-                    | Op::RightRotate
-                    | Op::RightRotateEquals => {
+                    BinaryOp::Pow
+                    | BinaryOp::WrappingPow
+                    | BinaryOp::SaturatingPow
+                    | BinaryOp::Times
+                    | BinaryOp::WrappingTimes
+                    | BinaryOp::SaturatingTimes
+                    | BinaryOp::Divide
+                    | BinaryOp::WrappingDivide
+                    | BinaryOp::SaturatingDivide
+                    | BinaryOp::Remainder
+                    | BinaryOp::Plus
+                    | BinaryOp::WrappingPlus
+                    | BinaryOp::SaturatingPlus
+                    | BinaryOp::Minus
+                    | BinaryOp::WrappingMinus
+                    | BinaryOp::SaturatingMinus
+                    | BinaryOp::Compare
+                    | BinaryOp::BitAnd
+                    | BinaryOp::BitOr
+                    | BinaryOp::BitXor
+                    | BinaryOp::LeftShift
+                    | BinaryOp::WrappingLeftShift
+                    | BinaryOp::SaturatingLeftShift
+                    | BinaryOp::RightShift
+                    | BinaryOp::LeftRotate
+                    | BinaryOp::RightRotate => {
                         unreachable!("non-boolean operators should not appear here")
                     }
                 }
@@ -3757,7 +3810,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         }
     }
 
-    fn assignment(&mut self, value: &'ast Expression<'src>, dst_offset: usize) {
+    fn definition(&mut self, value: &'ast Expression<'src>, dst_offset: usize) {
         match value {
             Expression::Literal(literal) => match literal {
                 Literal::Int(integer) => {
@@ -3810,7 +3863,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     Type::Ascii | Type::Bool => {
                         _ = writeln!(
                             self.asm,
-                            " movzx rdi, byte [rbp + {src_offset}]\
+                            " mov dil, [rbp + {src_offset}]\
                             \n mov [rbp + {dst_offset}], dil\n"
                         );
                     }
@@ -4118,7 +4171,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Array { typ, items } => {
                 let typ_size = typ.size();
                 for (index, item) in items.iter().enumerate() {
-                    self.assignment(item, dst_offset + index * typ_size);
+                    self.definition(item, dst_offset + index * typ_size);
                 }
             }
             Expression::ArrayIndex { typ, .. } => {

@@ -87,6 +87,7 @@ pub enum UnaryOp {
 }
 
 impl Display for UnaryOp {
+    #[rustfmt::skip]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         return match self {
             Self::Len               => write!(f, "len"),
@@ -103,8 +104,191 @@ impl Display for UnaryOp {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BinaryOp {
+    Pow,
+    WrappingPow,
+    SaturatingPow,
+
+    Times,
+    WrappingTimes,
+    SaturatingTimes,
+
+    Divide,
+    WrappingDivide,
+    SaturatingDivide,
+
+    Remainder,
+
+    Plus,
+    WrappingPlus,
+    SaturatingPlus,
+
+    Minus,
+    WrappingMinus,
+    SaturatingMinus,
+
+    LeftShift,
+    WrappingLeftShift,
+    SaturatingLeftShift,
+
+    RightShift,
+    LeftRotate,
+    RightRotate,
+    And,
+    BitAnd,
+    BitXor,
+    Or,
+    BitOr,
+    Compare,
+    EqualsEquals,
+    NotEquals,
+    Greater,
+    GreaterOrEquals,
+    Less,
+    LessOrEquals,
+}
+
+impl Display for BinaryOp {
+    #[rustfmt::skip]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        return match self {
+            Self::Pow           => write!(f,  "**"),
+            Self::WrappingPow   => write!(f, r"**\"),
+            Self::SaturatingPow => write!(f,  "**|"),
+
+            Self::Times             => write!(f,  "*"),
+            Self::WrappingTimes     => write!(f, r"*\"),
+            Self::SaturatingTimes   => write!(f,  "*|"),
+
+            Self::Divide            => write!(f,  "/"),
+            Self::WrappingDivide    => write!(f, r"/\"),
+            Self::SaturatingDivide  => write!(f,  "/|"),
+
+            Self::Remainder => write!(f, "%"),
+
+            Self::Plus              => write!(f,  "+"),
+            Self::WrappingPlus      => write!(f, r"+\"),
+            Self::SaturatingPlus    => write!(f,  "+|"),
+
+            Self::Minus             => write!(f,  "-"),
+            Self::WrappingMinus     => write!(f, r"-\"),
+            Self::SaturatingMinus   => write!(f,  "-|"),
+
+            Self::And       => write!(f, "&&"),
+            Self::BitAnd    => write!(f, "&"),
+            Self::Or        => write!(f, "||"),
+            Self::BitOr     => write!(f, "|"),
+            Self::BitXor    => write!(f, "^"),
+
+            Self::LeftShift             => write!(f,  "<<"),
+            Self::WrappingLeftShift     => write!(f, r"<<\"),
+            Self::SaturatingLeftShift   => write!(f,  "<<|"),
+
+            Self::RightShift    => write!(f,  ">>"),
+            Self::LeftRotate    => write!(f, "<<<"),
+            Self::RightRotate   => write!(f, ">>>"),
+
+            Self::EqualsEquals      => write!(f, "=="),
+            Self::NotEquals         => write!(f, "!="),
+            Self::Greater           => write!(f, ">"),
+            Self::GreaterOrEquals   => write!(f, ">="),
+            Self::Less              => write!(f, "<"),
+            Self::LessOrEquals      => write!(f, "<="),
+            Self::Compare           => write!(f, "<=>"),
+        };
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssignmentOp {
+    Equals,
+
+    Pow,
+    WrappingPow,
+    SaturatingPow,
+
+    Times,
+    WrappingTimes,
+    SaturatingTimes,
+
+    Divide,
+    WrappingDivide,
+    SaturatingDivide,
+
+    Remainder,
+
+    Plus,
+    WrappingPlus,
+    SaturatingPlus,
+
+    Minus,
+    WrappingMinus,
+    SaturatingMinus,
+
+    LeftShift,
+    WrappingLeftShift,
+    SaturatingLeftShift,
+
+    RightShift,
+
+    LeftRotate,
+    RightRotate,
+
+    And,
+    BitAnd,
+    BitXor,
+    Or,
+    BitOr,
+}
+
+impl Display for AssignmentOp {
+    #[rustfmt::skip]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        return match self {
+            Self::Equals => write!(f, "="),
+
+            Self::Pow           => write!(f,  "**="),
+            Self::WrappingPow   => write!(f, r"**\="),
+            Self::SaturatingPow => write!(f,  "**|="),
+
+            Self::Times             => write!(f,  "*="),
+            Self::WrappingTimes     => write!(f, r"*\="),
+            Self::SaturatingTimes   => write!(f,  "*|="),
+
+            Self::Divide            => write!(f,  "/="),
+            Self::WrappingDivide    => write!(f, r"/\="),
+            Self::SaturatingDivide  => write!(f,  "/|="),
+
+            Self::Remainder => write!(f, "%="),
+
+            Self::Plus              => write!(f,  "+="),
+            Self::WrappingPlus      => write!(f, r"+\="),
+            Self::SaturatingPlus    => write!(f,  "+|="),
+
+            Self::Minus             => write!(f,  "-="),
+            Self::WrappingMinus     => write!(f, r"-\="),
+            Self::SaturatingMinus   => write!(f,  "-|="),
+
+            Self::And       => write!(f, "&&="),
+            Self::BitAnd    => write!(f, "&="),
+            Self::Or        => write!(f, "||="),
+            Self::BitOr     => write!(f, "|="),
+            Self::BitXor    => write!(f, "^="),
+
+            Self::LeftShift             => write!(f,  "<<="),
+            Self::WrappingLeftShift     => write!(f, r"<<\="),
+            Self::SaturatingLeftShift   => write!(f,  "<<|="),
+
+            Self::RightShift    => write!(f,  ">>="),
+            Self::LeftRotate    => write!(f, "<<<="),
+            Self::RightRotate   => write!(f, ">>>="),
+        };
+    }
+}
+
 // IDEA(stefano): introduce left/right shift/rotate opertors that skip the check for a positive 6bit
-// shift amount (maybe <<?, >>?, <<<?, >>>?)
+// shift amount (maybe <<?, >>?, <<<?, >>>?, or <<!, >>!, <<<!, >>>!)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Op {
     Len,    // temporary way of getting the length of strings and arrays
@@ -192,16 +376,16 @@ impl Display for Op {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         return match self {
-            Self::Len => write!(f, "len"),
-            Self::Equals => write!(f, "="),
-            Self::Not => write!(f, "!"),
+            Self::Len       => write!(f, "len"),
+            Self::Equals    => write!(f, "="),
+            Self::Not       => write!(f, "!"),
 
-            Self::Pow                 => write!(f,  "**"),
-            Self::WrappingPow         => write!(f, r"**\"),
-            Self::SaturatingPow       => write!(f,  "**|"),
-            Self::PowEquals           => write!(f,  "**="),
-            Self::WrappingPowEquals   => write!(f, r"**\="),
-            Self::SaturatingPowEquals => write!(f,  "**|="),
+            Self::Pow                   => write!(f,  "**"),
+            Self::WrappingPow           => write!(f, r"**\"),
+            Self::SaturatingPow         => write!(f,  "**|"),
+            Self::PowEquals             => write!(f,  "**="),
+            Self::WrappingPowEquals     => write!(f, r"**\="),
+            Self::SaturatingPowEquals   => write!(f,  "**|="),
 
             Self::Times                 => write!(f,  "*"),
             Self::WrappingTimes         => write!(f, r"*\"),
@@ -210,22 +394,22 @@ impl Display for Op {
             Self::WrappingTimesEquals   => write!(f, r"*\="),
             Self::SaturatingTimesEquals => write!(f,  "*|="),
 
-            Self::Divide                 => write!(f,  "/"),
-            Self::WrappingDivide         => write!(f, r"/\"),
-            Self::SaturatingDivide       => write!(f,  "/|"),
-            Self::DivideEquals           => write!(f,  "/="),
-            Self::WrappingDivideEquals   => write!(f, r"/\="),
-            Self::SaturatingDivideEquals => write!(f,  "/|="),
+            Self::Divide                    => write!(f,  "/"),
+            Self::WrappingDivide            => write!(f, r"/\"),
+            Self::SaturatingDivide          => write!(f,  "/|"),
+            Self::DivideEquals              => write!(f,  "/="),
+            Self::WrappingDivideEquals      => write!(f, r"/\="),
+            Self::SaturatingDivideEquals    => write!(f,  "/|="),
 
-            Self::Remainder       => write!(f, "%"),
-            Self::RemainderEquals => write!(f, "%="),
+            Self::Remainder         => write!(f, "%"),
+            Self::RemainderEquals   => write!(f, "%="),
 
-            Self::Plus                 => write!(f,  "+"), // also unary safe absolute value
-            Self::WrappingPlus         => write!(f, r"+\"), // also unary wrapping absolute value
-            Self::SaturatingPlus       => write!(f,  "+|"), // also unary saturating absolute value
-            Self::PlusEquals           => write!(f,  "+="),
-            Self::WrappingPlusEquals   => write!(f, r"+\="),
-            Self::SaturatingPlusEquals => write!(f,  "+|="),
+            Self::Plus                  => write!(f,  "+"), // also unary safe absolute value
+            Self::WrappingPlus          => write!(f, r"+\"), // also unary wrapping absolute value
+            Self::SaturatingPlus        => write!(f,  "+|"), // also unary saturating absolute value
+            Self::PlusEquals            => write!(f,  "+="),
+            Self::WrappingPlusEquals    => write!(f, r"+\="),
+            Self::SaturatingPlusEquals  => write!(f,  "+|="),
 
             Self::Minus                 => write!(f,  "-"), // also unary integer negation
             Self::WrappingMinus         => write!(f, r"-\"), // also unary wrapping integer negation
@@ -237,17 +421,17 @@ impl Display for Op {
             Self::And       => write!(f, "&&"),
             Self::AndEquals => write!(f, "&&="),
 
-            Self::BitAnd       => write!(f, "&"),
-            Self::BitAndEquals => write!(f, "&="),
+            Self::BitAnd        => write!(f, "&"),
+            Self::BitAndEquals  => write!(f, "&="),
 
-            Self::Or       => write!(f, "||"),
-            Self::OrEquals => write!(f, "||="),
+            Self::Or        => write!(f, "||"),
+            Self::OrEquals  => write!(f, "||="),
 
-            Self::BitOr       => write!(f, "|"),
-            Self::BitOrEquals => write!(f, "|="),
+            Self::BitOr         => write!(f, "|"),
+            Self::BitOrEquals   => write!(f, "|="),
 
-            Self::BitXor       => write!(f, "^"),
-            Self::BitXorEquals => write!(f, "^="),
+            Self::BitXor        => write!(f, "^"),
+            Self::BitXorEquals  => write!(f, "^="),
 
             Self::LeftShift                 => write!(f,  "<<"),
             Self::WrappingLeftShift         => write!(f, r"<<\"),
@@ -256,21 +440,21 @@ impl Display for Op {
             Self::WrappingLeftShiftEquals   => write!(f, r"<<\="),
             Self::SaturatingLeftShiftEquals => write!(f,  "<<|="),
 
-            Self::RightShift                 => write!(f,  ">>"),
-            Self::RightShiftEquals           => write!(f,  ">>="),
+            Self::RightShift        => write!(f,  ">>"),
+            Self::RightShiftEquals  => write!(f,  ">>="),
 
             Self::LeftRotate        => write!(f, "<<<"),
             Self::LeftRotateEquals  => write!(f, "<<<="),
             Self::RightRotate       => write!(f, ">>>"),
             Self::RightRotateEquals => write!(f, ">>>="),
 
-            Self::EqualsEquals    => write!(f, "=="),
-            Self::NotEquals       => write!(f, "!="),
-            Self::Greater         => write!(f, ">"),
-            Self::GreaterOrEquals => write!(f, ">="),
-            Self::Less            => write!(f, "<"),
-            Self::LessOrEquals    => write!(f, "<="),
-            Self::Compare         => write!(f, "<=>"),
+            Self::EqualsEquals      => write!(f, "=="),
+            Self::NotEquals         => write!(f, "!="),
+            Self::Greater           => write!(f, ">"),
+            Self::GreaterOrEquals   => write!(f, ">="),
+            Self::Less              => write!(f, "<"),
+            Self::LessOrEquals      => write!(f, "<="),
+            Self::Compare           => write!(f, "<=>"),
         };
     }
 }
