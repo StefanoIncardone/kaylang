@@ -57,14 +57,14 @@ Changes to error messages, help message and alike would **not** be considered br
 
 - help message now prints the name of the executable that run the command
 - Improved generated asm code
-- Runtime crashes now print to `stderr`
-- **BREAKING**: `<=>` now has the same precedence as `==`, `!=`, `<`, `<=`, `>`, `>=` operators
-- **BREAKING**: non-wrapping and non-saturating operators will crash on overflow
-- **BREAKING**: `char` type renamed to `ascii`
 - Improved error messages
+- Runtime crashes now print to `stderr`
 - Allowed non utf-8 paths in cli arguments
 - `run` command now returns the exit code of the executed program
 - `compile` command now returns the exit code of the assembler and linker in the case of a failure
+- **BREAKING**: `<=>` now has the same precedence as `==`, `!=`, `<`, `<=`, `>`, `>=` operators
+- **BREAKING**: non-wrapping and non-saturating operators will crash on overflow
+- **BREAKING**: `char` type renamed to `ascii`
 - **BREAKING**: Split `Error`s into `ErrorKind` and `ErrorCause`
 - **BREAKING**: `Tokenizer::tokenize` and `Ast::build` now return a `Errors` struct as an
     iterator over lightweight `RawError`s that lazily construct full `Error`s

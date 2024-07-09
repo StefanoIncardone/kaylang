@@ -2518,66 +2518,38 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     // sub rdx, rcx
     // dec rdx
     #[allow(clippy::single_call_fn)]
-    fn binary_str_str_dst_and_asm(op: BinaryOp) -> (Dst, Dst, Cow<'static, str>) {
+    fn binary_str_str(op: BinaryOp) -> &'static str {
         return match op {
-            BinaryOp::EqualsEquals => (
-                Dst::View { len: Rdi, ptr: Rsi },
-                Dst::View { len: Rdx, ptr: Rcx },
+            BinaryOp::EqualsEquals =>
                 " call str_eq\
-                \n movzx rdi, al"
-                    .into(),
-            ),
-            BinaryOp::NotEquals => (
-                Dst::View { len: Rdi, ptr: Rsi },
-                Dst::View { len: Rdx, ptr: Rcx },
+                \n movzx rdi, al",
+            BinaryOp::NotEquals =>
                 " call str_eq\
                 \n xor rax, 1\
-                \n movzx rdi, al"
-                    .into(),
-            ),
-            BinaryOp::Greater => (
-                Dst::View { len: Rdi, ptr: Rsi },
-                Dst::View { len: Rdx, ptr: Rcx },
+                \n movzx rdi, al",
+            BinaryOp::Greater =>
                 " call str_cmp\
                 \n cmp rax, EQUAL\
                 \n mov rdi, false\
-                \n setg dil"
-                    .into(),
-            ),
-            BinaryOp::GreaterOrEquals => (
-                Dst::View { len: Rdi, ptr: Rsi },
-                Dst::View { len: Rdx, ptr: Rcx },
+                \n setg dil",
+            BinaryOp::GreaterOrEquals =>
                 " call str_cmp\
                 \n cmp rax, EQUAL\
                 \n mov rdi, false\
-                \n setge dil"
-                    .into(),
-            ),
-            BinaryOp::Less => (
-                Dst::View { len: Rdi, ptr: Rsi },
-                Dst::View { len: Rdx, ptr: Rcx },
+                \n setge dil",
+            BinaryOp::Less =>
                 " call str_cmp\
                 \n cmp rax, EQUAL\
                 \n mov rdi, false\
-                \n setl dil"
-                    .into(),
-            ),
-            BinaryOp::LessOrEquals => (
-                Dst::View { len: Rdi, ptr: Rsi },
-                Dst::View { len: Rdx, ptr: Rcx },
+                \n setl dil",
+            BinaryOp::LessOrEquals =>
                 " call str_cmp\
                 \n cmp rax, EQUAL\
                 \n mov rdi, false\
-                \n setle dil"
-                    .into(),
-            ),
-            BinaryOp::Compare => (
-                Dst::View { len: Rdi, ptr: Rsi },
-                Dst::View { len: Rdx, ptr: Rcx },
+                \n setle dil",
+            BinaryOp::Compare =>
                 " call str_cmp\
-                \n mov rdi, rax"
-                    .into(),
-            ),
+                \n mov rdi, rax",
             BinaryOp::Pow
             | BinaryOp::WrappingPow
             | BinaryOp::SaturatingPow
@@ -2624,260 +2596,204 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     // sub rdx, rcx
     // dec rdx
     #[allow(clippy::single_call_fn)]
-    fn binary_array_array_dst_and_asm(elements_type: &Type, op: BinaryOp) -> (Dst, Dst, Cow<'static, str>) {
+    fn binary_array_array(elements_type: &Type, op: BinaryOp) -> &'static str {
         return match op {
-            BinaryOp::EqualsEquals => {
-                let eq_fn = match elements_type {
-                    Type::Int => {
-                        " mov rdi, rcx\
-                        \n mov rcx, rdx\
-                        \n repe cmpsq\
-                        \n mov rdi, false\
-                        \n sete dil"
-                    }
-                    Type::Ascii | Type::Bool => {
-                        " mov rdi, rcx\
-                        \n mov rcx, rdx\
-                        \n repe cmpsb\
-                        \n mov rdi, false\
-                        \n sete dil"
-                    }
-                    Type::Str => {
-                        " call str_array_eq\
-                        \n movzx rdi, al"
-                    }
-                    Type::Array { .. } => {
-                        unreachable!("nested arrays not supported yet")
-                    }
-                    Type::Infer => {
-                        unreachable!("should have been coerced to a concrete type")
-                    }
-                };
-
-                (
-                    Dst::View { len: Rdi, ptr: Rsi },
-                    Dst::View { len: Rdx, ptr: Rcx },
-                    eq_fn.into(),
-                )
+            BinaryOp::EqualsEquals => match elements_type {
+                Type::Int => {
+                    " mov rdi, rcx\
+                    \n mov rcx, rdx\
+                    \n repe cmpsq\
+                    \n mov rdi, false\
+                    \n sete dil"
+                }
+                Type::Ascii | Type::Bool => {
+                    " mov rdi, rcx\
+                    \n mov rcx, rdx\
+                    \n repe cmpsb\
+                    \n mov rdi, false\
+                    \n sete dil"
+                }
+                Type::Str => {
+                    " call str_array_eq\
+                    \n movzx rdi, al"
+                }
+                Type::Array { .. } => {
+                    unreachable!("nested arrays not supported yet")
+                }
+                Type::Infer => {
+                    unreachable!("should have been coerced to a concrete type")
+                }
             }
-            BinaryOp::NotEquals => {
-                let eq_fn = match elements_type {
-                    Type::Int => {
-                        " mov rdi, rcx\
-                        \n mov rcx, rdx\
-                        \n repe cmpsq\
-                        \n mov rdi, false\
-                        \n setne dil"
-                    }
-                    Type::Ascii | Type::Bool => {
-                        " mov rdi, rcx\
-                        \n mov rcx, rdx\
-                        \n repe cmpsb\
-                        \n mov rdi, false\
-                        \n setne dil"
-                    }
-                    Type::Str => {
-                        " cmp str_array_eq\
-                        \n xor rax, 1\
-                        \n movzx rdi, al"
-                    }
-                    Type::Array { .. } => {
-                        unreachable!("nested arrays not supported yet")
-                    }
-                    Type::Infer => {
-                        unreachable!("should have been coerced to a concrete type")
-                    }
-                };
-
-                (
-                    Dst::View { len: Rdi, ptr: Rsi },
-                    Dst::View { len: Rdx, ptr: Rcx },
-                    eq_fn.into(),
-                )
+            BinaryOp::NotEquals => match elements_type {
+                Type::Int => {
+                    " mov rdi, rcx\
+                    \n mov rcx, rdx\
+                    \n repe cmpsq\
+                    \n mov rdi, false\
+                    \n setne dil"
+                }
+                Type::Ascii | Type::Bool => {
+                    " mov rdi, rcx\
+                    \n mov rcx, rdx\
+                    \n repe cmpsb\
+                    \n mov rdi, false\
+                    \n setne dil"
+                }
+                Type::Str => {
+                    " cmp str_array_eq\
+                    \n xor rax, 1\
+                    \n movzx rdi, al"
+                }
+                Type::Array { .. } => {
+                    unreachable!("nested arrays not supported yet")
+                }
+                Type::Infer => {
+                    unreachable!("should have been coerced to a concrete type")
+                }
             }
-            BinaryOp::Greater => {
-                let eq_fn = match elements_type {
-                    Type::Int => {
-                        " mov rdi, rcx\
-                        \n mov rcx, rdx\
-                        \n repe cmpsq\
-                        \n mov rdi, false\
-                        \n setg dil"
-                    }
-                    Type::Ascii | Type::Bool => {
-                        " mov rdi, rcx\
-                        \n mov rcx, rdx\
-                        \n repe cmpsb\
-                        \n mov rdi, false\
-                        \n setg dil"
-                    }
-                    Type::Str => {
-                        " call str_array_cmp\
-                        \n cmp rax, EQUAL\
-                        \n mov rdi, false\
-                        \n setg dil"
-                    }
-                    Type::Array { .. } => {
-                        unreachable!("nested arrays not supported yet")
-                    }
-                    Type::Infer => {
-                        unreachable!("should have been coerced to a concrete type")
-                    }
-                };
-
-                (
-                    Dst::View { len: Rdi, ptr: Rsi },
-                    Dst::View { len: Rdx, ptr: Rcx },
-                    eq_fn.into(),
-                )
+            BinaryOp::Greater => match elements_type {
+                Type::Int => {
+                    " mov rdi, rcx\
+                    \n mov rcx, rdx\
+                    \n repe cmpsq\
+                    \n mov rdi, false\
+                    \n setg dil"
+                }
+                Type::Ascii | Type::Bool => {
+                    " mov rdi, rcx\
+                    \n mov rcx, rdx\
+                    \n repe cmpsb\
+                    \n mov rdi, false\
+                    \n setg dil"
+                }
+                Type::Str => {
+                    " call str_array_cmp\
+                    \n cmp rax, EQUAL\
+                    \n mov rdi, false\
+                    \n setg dil"
+                }
+                Type::Array { .. } => {
+                    unreachable!("nested arrays not supported yet")
+                }
+                Type::Infer => {
+                    unreachable!("should have been coerced to a concrete type")
+                }
             }
-            BinaryOp::GreaterOrEquals => {
-                let eq_fn = match elements_type {
-                    Type::Int => {
-                        " mov rdi, rcx\
-                        \n mov rcx, rdx\
-                        \n repe cmpsq\
-                        \n mov rdi, false\
-                        \n setge dil"
-                    }
-                    Type::Ascii | Type::Bool => {
-                        " mov rdi, rcx\
-                        \n mov rcx, rdx\
-                        \n repe cmpsb\
-                        \n mov rdi, false\
-                        \n setge dil"
-                    }
-                    Type::Str => {
-                        " call str_array_cmp\
-                        \n cmp rax, EQUAL\
-                        \n mov rdi, false\
-                        \n setge dil"
-                    }
-                    Type::Array { .. } => {
-                        unreachable!("nested arrays not supported yet")
-                    }
-                    Type::Infer => {
-                        unreachable!("should have been coerced to a concrete type")
-                    }
-                };
-
-                (
-                    Dst::View { len: Rdi, ptr: Rsi },
-                    Dst::View { len: Rdx, ptr: Rcx },
-                    eq_fn.into(),
-                )
+            BinaryOp::GreaterOrEquals => match elements_type {
+                Type::Int => {
+                    " mov rdi, rcx\
+                    \n mov rcx, rdx\
+                    \n repe cmpsq\
+                    \n mov rdi, false\
+                    \n setge dil"
+                }
+                Type::Ascii | Type::Bool => {
+                    " mov rdi, rcx\
+                    \n mov rcx, rdx\
+                    \n repe cmpsb\
+                    \n mov rdi, false\
+                    \n setge dil"
+                }
+                Type::Str => {
+                    " call str_array_cmp\
+                    \n cmp rax, EQUAL\
+                    \n mov rdi, false\
+                    \n setge dil"
+                }
+                Type::Array { .. } => {
+                    unreachable!("nested arrays not supported yet")
+                }
+                Type::Infer => {
+                    unreachable!("should have been coerced to a concrete type")
+                }
             }
-            BinaryOp::Less => {
-                let eq_fn = match elements_type {
-                    Type::Int => {
-                        " mov rdi, rcx\
-                        \n mov rcx, rdx\
-                        \n repe cmpsq\
-                        \n mov rdi, false\
-                        \n setl dil"
-                    }
-                    Type::Ascii | Type::Bool => {
-                        " mov rdi, rcx\
-                        \n mov rcx, rdx\
-                        \n repe cmpsb\
-                        \n mov rdi, false\
-                        \n setl dil"
-                    }
-                    Type::Str => {
-                        " call str_array_cmp\
-                        \n cmp rax, EQUAL\
-                        \n mov rdi, false\
-                        \n setl dil"
-                    }
-                    Type::Array { .. } => {
-                        unreachable!("nested arrays not supported yet")
-                    }
-                    Type::Infer => {
-                        unreachable!("should have been coerced to a concrete type")
-                    }
-                };
-
-                (
-                    Dst::View { len: Rdi, ptr: Rsi },
-                    Dst::View { len: Rdx, ptr: Rcx },
-                    eq_fn.into(),
-                )
+            BinaryOp::Less => match elements_type {
+                Type::Int => {
+                    " mov rdi, rcx\
+                    \n mov rcx, rdx\
+                    \n repe cmpsq\
+                    \n mov rdi, false\
+                    \n setl dil"
+                }
+                Type::Ascii | Type::Bool => {
+                    " mov rdi, rcx\
+                    \n mov rcx, rdx\
+                    \n repe cmpsb\
+                    \n mov rdi, false\
+                    \n setl dil"
+                }
+                Type::Str => {
+                    " call str_array_cmp\
+                    \n cmp rax, EQUAL\
+                    \n mov rdi, false\
+                    \n setl dil"
+                }
+                Type::Array { .. } => {
+                    unreachable!("nested arrays not supported yet")
+                }
+                Type::Infer => {
+                    unreachable!("should have been coerced to a concrete type")
+                }
             }
-            BinaryOp::LessOrEquals => {
-                let eq_fn = match elements_type {
-                    Type::Int => {
-                        " mov rdi, rcx\
-                        \n mov rcx, rdx\
-                        \n repe cmpsq\
-                        \n mov rdi, false\
-                        \n setle dil"
-                    }
-                    Type::Ascii | Type::Bool => {
-                        " mov rdi, rcx\
-                        \n mov rcx, rdx\
-                        \n repe cmpsb\
-                        \n mov rdi, false\
-                        \n setle dil"
-                    }
-                    Type::Str => {
-                        " call str_array_cmp\
-                        \n cmp rax, EQUAL\
-                        \n mov rdi, false\
-                        \n setle dil"
-                    }
-                    Type::Array { .. } => {
-                        unreachable!("nested arrays not supported yet")
-                    }
-                    Type::Infer => {
-                        unreachable!("should have been coerced to a concrete type")
-                    }
-                };
-
-                (
-                    Dst::View { len: Rdi, ptr: Rsi },
-                    Dst::View { len: Rdx, ptr: Rcx },
-                    eq_fn.into(),
-                )
+            BinaryOp::LessOrEquals => match elements_type {
+                Type::Int => {
+                    " mov rdi, rcx\
+                    \n mov rcx, rdx\
+                    \n repe cmpsq\
+                    \n mov rdi, false\
+                    \n setle dil"
+                }
+                Type::Ascii | Type::Bool => {
+                    " mov rdi, rcx\
+                    \n mov rcx, rdx\
+                    \n repe cmpsb\
+                    \n mov rdi, false\
+                    \n setle dil"
+                }
+                Type::Str => {
+                    " call str_array_cmp\
+                    \n cmp rax, EQUAL\
+                    \n mov rdi, false\
+                    \n setle dil"
+                }
+                Type::Array { .. } => {
+                    unreachable!("nested arrays not supported yet")
+                }
+                Type::Infer => {
+                    unreachable!("should have been coerced to a concrete type")
+                }
             }
-            BinaryOp::Compare => {
-                let eq_fn = match elements_type {
-                    Type::Int => {
-                        " mov rdi, rcx\
-                        \n mov rcx, rdx\
-                        \n repe cmpsq\
-                        \n mov rdi, LESS\
-                        \n mov rsi, EQUAL\
-                        \n cmove rdi, rsi\
-                        \n mov rsi, GREATER\
-                        \n cmovg rdi, rsi"
-                    }
-                    Type::Ascii | Type::Bool => {
-                        " mov rdi, rcx\
-                        \n mov rcx, rdx\
-                        \n repe cmpsb\
-                        \n mov rdi, LESS\
-                        \n mov rsi, EQUAL\
-                        \n cmove rdi, rsi\
-                        \n mov rsi, GREATER\
-                        \n cmovg rdi, rsi"
-                    }
-                    Type::Str => {
-                        " call str_array_cmp\
-                        \n mov rdi, rax"
-                    }
-                    Type::Array { .. } => {
-                        unreachable!("nested arrays not supported yet")
-                    }
-                    Type::Infer => {
-                        unreachable!("should have been coerced to a concrete type")
-                    }
-                };
-
-                (
-                    Dst::View { len: Rdi, ptr: Rsi },
-                    Dst::View { len: Rdx, ptr: Rcx },
-                    eq_fn.into(),
-                )
+            BinaryOp::Compare => match elements_type {
+                Type::Int => {
+                    " mov rdi, rcx\
+                    \n mov rcx, rdx\
+                    \n repe cmpsq\
+                    \n mov rdi, LESS\
+                    \n mov rsi, EQUAL\
+                    \n cmove rdi, rsi\
+                    \n mov rsi, GREATER\
+                    \n cmovg rdi, rsi"
+                }
+                Type::Ascii | Type::Bool => {
+                    " mov rdi, rcx\
+                    \n mov rcx, rdx\
+                    \n repe cmpsb\
+                    \n mov rdi, LESS\
+                    \n mov rsi, EQUAL\
+                    \n cmove rdi, rsi\
+                    \n mov rsi, GREATER\
+                    \n cmovg rdi, rsi"
+                }
+                Type::Str => {
+                    " call str_array_cmp\
+                    \n mov rdi, rax"
+                }
+                Type::Array { .. } => {
+                    unreachable!("nested arrays not supported yet")
+                }
+                Type::Infer => {
+                    unreachable!("should have been coerced to a concrete type")
+                }
             }
             BinaryOp::Pow
             | BinaryOp::WrappingPow
@@ -2915,11 +2831,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     // - silently discard the missing bits
     // - create dedicate operators that implement those strategies
     #[allow(clippy::single_call_fn)]
-    fn binary_int_like_int_like_dst_and_asm(op: BinaryOp, op_position: Position) -> (Dst, Dst, Cow<'static, str>) {
+    fn binary_int_like_int_like(op: BinaryOp, op_position: Position) -> Cow<'static, str> {
         return match op {
-            BinaryOp::Pow => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::Pow =>
                 format!(
                     " mov rdx, {line}\
                     \n mov rcx, {col}\
@@ -2929,10 +2843,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     col = op_position.col
                 )
                 .into(),
-            ),
-            BinaryOp::WrappingPow => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::WrappingPow =>
                 format!(
                     " mov rdx, {line}\
                     \n mov rcx, {col}\
@@ -2942,10 +2853,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     col = op_position.col
                 )
                 .into(),
-            ),
-            BinaryOp::SaturatingPow => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::SaturatingPow =>
                 format!(
                     " mov rdx, {line}\
                     \n mov rcx, {col}\
@@ -2955,10 +2863,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     col = op_position.col
                 )
                 .into(),
-            ),
-            BinaryOp::Times => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::Times =>
                 format!(
                     " mov rdx, {line}\
                     \n mov rcx, {col}\
@@ -2967,16 +2872,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     col = op_position.col
                 )
                 .into(),
-            ),
-            BinaryOp::WrappingTimes => {
-                (Dst::Reg(Rdi), Dst::Reg(Rsi), " imul rdi, rsi".into())
-            }
-            BinaryOp::SaturatingTimes => {
-                (Dst::Reg(Rdi), Dst::Reg(Rsi), " call int_saturating_mul".into())
-            }
-            BinaryOp::Divide => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::WrappingTimes => " imul rdi, rsi".into(),
+            BinaryOp::SaturatingTimes => " call int_saturating_mul".into(),
+            BinaryOp::Divide =>
                 format!(
                     " mov rdx, {line}\
                     \n mov rcx, {col}\
@@ -2985,10 +2883,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     col = op_position.col
                 )
                 .into(),
-            ),
-            BinaryOp::WrappingDivide => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::WrappingDivide =>
                 format!(
                     " mov rdx, {line}\
                     \n mov rcx, {col}\
@@ -2997,10 +2892,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     col = op_position.col
                 )
                 .into(),
-            ),
-            BinaryOp::SaturatingDivide => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::SaturatingDivide =>
                 format!(
                     " mov rdx, {line}\
                     \n mov rcx, {col}\
@@ -3009,10 +2901,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     col = op_position.col
                 )
                 .into(),
-            ),
-            BinaryOp::Remainder => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::Remainder =>
                 format!(
                     " mov rdx, {line}\
                     \n mov rcx, {col}\
@@ -3021,10 +2910,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     col = op_position.col
                 )
                 .into(),
-            ),
-            BinaryOp::Plus => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::Plus =>
                 format!(
                     " mov rdx, {line}\
                     \n mov rcx, {col}\
@@ -3033,16 +2919,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     col = op_position.col,
                 )
                 .into(),
-            ),
-            BinaryOp::WrappingPlus => {
-                (Dst::Reg(Rdi), Dst::Reg(Rsi), " add rdi, rsi".into())
-            }
-            BinaryOp::SaturatingPlus => {
-                (Dst::Reg(Rdi), Dst::Reg(Rsi), " call int_saturating_add".into())
-            }
-            BinaryOp::Minus => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::WrappingPlus => " add rdi, rsi".into(),
+            BinaryOp::SaturatingPlus => " call int_saturating_add".into(),
+            BinaryOp::Minus =>
                 format!(
                     " mov rdx, {line}\
                     \n mov rcx, {col}\
@@ -3051,64 +2930,39 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     col = op_position.col,
                 )
                 .into(),
-            ),
-            BinaryOp::WrappingMinus => {
-                (Dst::Reg(Rdi), Dst::Reg(Rsi), " sub rdi, rsi".into())
-            }
-            BinaryOp::SaturatingMinus => {
-                (Dst::Reg(Rdi), Dst::Reg(Rsi), " call int_saturating_sub".into())
-            }
-            BinaryOp::EqualsEquals => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::WrappingMinus => " sub rdi, rsi".into(),
+            BinaryOp::SaturatingMinus => " call int_saturating_sub".into(),
+            BinaryOp::EqualsEquals =>
                 " cmp rdi, rsi\
                 \n mov rdi, false\
                 \n sete dil"
                     .into(),
-            ),
-            BinaryOp::NotEquals => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::NotEquals =>
                 " cmp rdi, rsi\
                 \n mov rdi, false\
                 \n setne dil"
                     .into(),
-            ),
-            BinaryOp::Greater => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::Greater =>
                 " cmp rdi, rsi\
                 \n mov rdi, false\
                 \n setg dil"
                     .into(),
-            ),
-            BinaryOp::GreaterOrEquals => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::GreaterOrEquals =>
                 " cmp rdi, rsi\
                 \n mov rdi, false\
                 \n setge dil"
                     .into(),
-            ),
-            BinaryOp::Less => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::Less =>
                 " cmp rdi, rsi\
                 \n mov rdi, false\
                 \n setl dil"
                     .into(),
-            ),
-            BinaryOp::LessOrEquals => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::LessOrEquals =>
                 " cmp rdi, rsi\
                 \n mov rdi, false\
                 \n setle dil"
                     .into(),
-            ),
-            BinaryOp::Compare => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::Compare =>
                 " cmp rdi, rsi\
                 \n mov rdi, LESS\
                 \n mov rsi, EQUAL\
@@ -3116,19 +2970,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 \n mov rsi, GREATER\
                 \n cmovg rdi, rsi"
                     .into(),
-            ),
-            BinaryOp::And | BinaryOp::BitAnd => {
-                (Dst::Reg(Rdi), Dst::Reg(Rsi), " and rdi, rsi".into())
-            }
-            BinaryOp::Or | BinaryOp::BitOr => {
-                (Dst::Reg(Rdi), Dst::Reg(Rsi), " or rdi, rsi".into())
-            }
-            BinaryOp::BitXor => {
-                (Dst::Reg(Rdi), Dst::Reg(Rsi), " xor rdi, rsi".into())
-            }
-            BinaryOp::LeftShift => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::And | BinaryOp::BitAnd => " and rdi, rsi".into(),
+            BinaryOp::Or | BinaryOp::BitOr => " or rdi, rsi".into(),
+            BinaryOp::BitXor => " xor rdi, rsi".into(),
+            BinaryOp::LeftShift =>
                 format!(
                     " mov rdx, {line}\
                     \n mov rcx, {col}\
@@ -3137,10 +2982,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     col = op_position.col,
                 )
                 .into(),
-            ),
-            BinaryOp::WrappingLeftShift => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::WrappingLeftShift =>
                 format!(
                     " mov rdx, {line}\
                     \n mov rcx, {col}\
@@ -3149,10 +2991,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     col = op_position.col,
                 )
                 .into(),
-            ),
-            BinaryOp::SaturatingLeftShift => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::SaturatingLeftShift =>
                 format!(
                     " mov rdx, {line}\
                     \n mov rcx, {col}\
@@ -3161,10 +3000,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     col = op_position.col,
                 )
                 .into(),
-            ),
-            BinaryOp::RightShift => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::RightShift =>
                 format!(
                     " mov rdx, {line}\
                     \n mov rcx, {col}\
@@ -3173,10 +3009,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     col = op_position.col,
                 )
                 .into(),
-            ),
-            BinaryOp::LeftRotate => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::LeftRotate =>
                 format!(
                     " mov rdx, {line}\
                     \n mov rcx, {col}\
@@ -3185,10 +3018,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     col = op_position.col,
                 )
                 .into(),
-            ),
-            BinaryOp::RightRotate => (
-                Dst::Reg(Rdi),
-                Dst::Reg(Rsi),
+            BinaryOp::RightRotate =>
                 format!(
                     " mov rdx, {line}\
                     \n mov rcx, {col}\
@@ -3197,7 +3027,6 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     col = op_position.col,
                 )
                 .into(),
-            ),
         };
     }
 
@@ -3290,14 +3119,24 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             // NOTE(stefano): hard-coding the first and second operand until a better way to manage
             // dst and src are developed
             Expression::Binary { lhs, op_position, op, rhs } => {
-                let (lhs_dst, rhs_dst, op_asm) = match (lhs.typ(), rhs.typ()) {
-                    (Type::Str, Type::Str) => Self::binary_str_str_dst_and_asm(*op),
+                let (lhs_dst, rhs_dst, op_asm): (Dst, Dst, Cow<'static, str>) = match (lhs.typ(), rhs.typ()) {
+                    (Type::Str, Type::Str) => (
+                        Dst::View { len: Rdi, ptr: Rsi },
+                        Dst::View { len: Rdx, ptr: Rcx },
+                        Self::binary_str_str(*op).into()
+                    ),
                     // Note: we can only compare non-empty arrays of the same type and length, so
                     // its safe to only match on the first array type and not to check for empty arrays
-                    (Type::Array { typ, .. }, Type::Array { .. }) => Self::binary_array_array_dst_and_asm(&typ, *op),
-                    (Type::Int | Type::Bool | Type::Ascii, Type::Int | Type::Bool | Type::Ascii) => {
-                        Self::binary_int_like_int_like_dst_and_asm(*op, *op_position)
-                    }
+                    (Type::Array { typ, .. }, Type::Array { .. }) => (
+                        Dst::View { len: Rdi, ptr: Rsi },
+                        Dst::View { len: Rdx, ptr: Rcx },
+                        Self::binary_array_array(&typ, *op).into()
+                    ),
+                    (Type::Int | Type::Bool | Type::Ascii, Type::Int | Type::Bool | Type::Ascii) => (
+                        Dst::Reg(Rdi),
+                        Dst::Reg(Rsi),
+                        Self::binary_int_like_int_like(*op, *op_position)
+                    ),
                     (Type::Str, _) | (_, Type::Str) => {
                         unreachable!("cannot compare strings and non strings")
                     }
