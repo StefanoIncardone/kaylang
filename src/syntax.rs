@@ -211,6 +211,7 @@ impl<'src, K: ErrorKind, C: ErrorCause> IntoIterator for Errors<'src, K, C> {
     }
 }
 
+#[allow(clippy::iter_without_into_iter)]
 impl<'src, K: ErrorKind, C: ErrorCause> Errors<'src, K, C> {
     #[must_use]
     pub fn iter(&self) -> ErrorsIter<'_, 'src, K, C> {

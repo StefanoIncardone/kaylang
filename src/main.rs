@@ -1,10 +1,13 @@
 #![allow(clippy::print_stdout, clippy::print_stderr)] // it's a cli tool, it's normal to print to stderr and stdout
 
 use kaylang::{
-    artifacts::Artifacts, cli::Args, compiler::Compiler, src_file::SrcFile, syntax::ast::Ast,
-    syntax::tokenizer::Tokenizer, Command, Help, Logger, Version, ASSEMBLING, BUILDING_AST,
-    CHECKING, COMPILING, GENERATING_ASM, LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE,
-    TOKENIZATION,
+    cli::Args,
+    compiler::{artifacts::Artifacts, Compiler},
+    src_file::SrcFile,
+    syntax::ast::Ast,
+    syntax::tokenizer::Tokenizer,
+    Command, Help, Logger, Version, ASSEMBLING, BUILDING_AST, CHECKING, COMPILING, GENERATING_ASM,
+    LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
 };
 use std::process::ExitCode;
 
@@ -179,8 +182,11 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use kaylang::{
-        artifacts::Artifacts, compiler::Compiler, src_file::SrcFile, syntax::ast::Ast,
-        syntax::tokenizer::Tokenizer, Color, Logger, CHECKING, COMPILING, RUNNING,
+        compiler::{artifacts::Artifacts, Compiler},
+        src_file::SrcFile,
+        syntax::ast::Ast,
+        syntax::tokenizer::Tokenizer,
+        Color, Logger, CHECKING, COMPILING, RUNNING,
     };
     use std::{path::PathBuf, process::ExitCode};
 

@@ -77,8 +77,8 @@ Changes to error messages, help message and alike would **not** be considered br
 
 - `Error`, `ColoredString` and `ColoredStr` type aliases, to allow for more explicit type signatures
 - Module specific `*Error` and `*ErrorInfo` structs
-- `logging` module inlined inside the root module
-- `assembler`, `linker` and `run` modules integrated in the new `artifacts` module.
+- `logging` module inlined inside the root `kaylang` module
+- `assembler`, `linker` and `run` modules integrated in the new `compiler::artifacts` module.
     `Assembler::assemble`, `Linker::link` and `Run::run` are now substituted by
     `Artifacts::assembler`, `Artifacts::linker` and `Artifacts::runner` member functions and now
     return the relative `std::process::Command` to allow for finer control

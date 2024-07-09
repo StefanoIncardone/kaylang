@@ -101,12 +101,13 @@ impl SrcFile {
 
             let mut end = code.len() - 1;
             if end > start {
-                if let cr @ b'\r' = &mut unsafe { code.as_bytes_mut() }[end - 1] {
+                let code_bytes = unsafe { code.as_mut_vec() };
+
+                if let cr @ b'\r' = &mut code_bytes[end - 1] {
                     *cr = b'\n';
 
-                    // NOTE(stefano): might change to "safe" options
                     unsafe {
-                        code.as_mut_vec().set_len(end);
+                        code_bytes.set_len(end);
                     }
 
                     end -= 1;

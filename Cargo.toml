@@ -50,6 +50,10 @@ pedantic = { level = "warn", priority = -1 }
 restriction = { level = "warn", priority = -1 }
 cargo = { level = "forbid", priority = -1 }
 
+# still not convinced on the benefits of either approaches
+self_named_module_files = "allow"
+mod_module_files = "warn"
+
 # this is not a no_std crate
 std_instead_of_core = "allow"
 std_instead_of_alloc = "allow"
@@ -65,11 +69,12 @@ needless_return = "allow"
 # separated_literal_suffix = "allow"
 semicolon_inside_block = "forbid"
 semicolon_outside_block = "allow"
-# # # redundant_pub_crate = "allow"
+redundant_pub_crate = "allow"
 multiple_inherent_impl = "allow" # allows "related" functions to be in the same block, useful for code folding
 pub_with_shorthand = "allow"
 absolute_paths = "allow"
 match_same_arms = "allow" # used for a more descriptive formatting of match arms, might get removed
+unnested_or_patterns = "allow"
 
 # factoring into smaller components is not the solution
 too_many_lines = "allow"
@@ -98,6 +103,8 @@ unreachable = "allow" # trust me, might be changed to "warn" to encourage better
 undocumented_unsafe_blocks = "allow" # trust me
 missing_errors_doc = "allow" # will be changed to "warn" in the future when it comes time to document everything
 as_conversions = "allow" # do as i say please
+cast_possible_truncation = "allow" # do as i say please
+cast_sign_loss = "allow" # do as i say please
 question_mark_used = "allow" # needlessly advocates for a macro instead of a language feature
 
 # doesn't solve the problem, i.e.:

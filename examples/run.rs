@@ -1,6 +1,5 @@
 use kaylang::{
-    artifacts::Artifacts,
-    compiler::Compiler,
+    compiler::{artifacts::Artifacts, Compiler},
     src_file::SrcFile,
     syntax::{ast::Ast, tokenizer::Tokenizer},
     Color, Logger, ASSEMBLING, BUILDING_AST, CHECKING, COMPILING, GENERATING_ASM, LINKING,

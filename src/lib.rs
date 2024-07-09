@@ -1,6 +1,5 @@
 #![warn(clippy::print_stdout, clippy::print_stderr)]
 
-pub mod artifacts;
 pub mod cli;
 pub mod color;
 pub mod compiler;
