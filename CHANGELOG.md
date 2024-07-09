@@ -62,6 +62,8 @@ Changes to error messages, help message and alike would **not** be considered br
 - Allowed non utf-8 paths in cli arguments
 - `run` command now returns the exit code of the executed program
 - `compile` command now returns the exit code of the assembler and linker in the case of a failure
+- An error is now returned when no executable name is provided when parsing arguments in the form of
+    `Vec<String>`
 - **BREAKING**: `<=>` now has the same precedence as `==`, `!=`, `<`, `<=`, `>`, `>=` operators
 - **BREAKING**: non-wrapping and non-saturating operators will crash on overflow
 - **BREAKING**: `char` type renamed to `ascii`

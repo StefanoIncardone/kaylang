@@ -1129,8 +1129,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn primary_expression(&mut self) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let current_token = self.current_token_bounded(Expected::Expression)?;
         let factor = match &current_token.kind {
-            // TODO(stefano): move parsing of numbers to here to allow for negative numbers natively
-            // i.e.: -9223372036854775808 (INT_MIN) is currently not allowed
             TokenKind::Literal(literal) => Ok(Expression::Literal(literal.clone())),
             TokenKind::True => Ok(Expression::Literal(Literal::Bool(true))),
             TokenKind::False => Ok(Expression::Literal(Literal::Bool(false))),
@@ -1394,6 +1392,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 };
             }
+            // TODO(stefano): move parsing of numbers to here to allow for negative numbers natively
+            // i.e.: -9223372036854775808 (INT_MIN) is currently not allowed
             TokenKind::Op(Op::Minus) => {
                 let mut should_be_negated = true;
 

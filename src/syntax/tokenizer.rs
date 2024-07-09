@@ -6,6 +6,7 @@ use std::{
 
 use super::{Errors, RawError};
 
+// TODO(stefano): remove this trait and store the length of the tokens directly
 pub(crate) trait SrcCodeLen {
     fn src_code_len(&self) -> usize;
 }

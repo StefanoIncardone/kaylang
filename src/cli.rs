@@ -11,17 +11,19 @@ pub struct Args {
     pub command: Command,
 }
 
-// TODO(stefano): create implementations than accept the name of the executable
 impl TryFrom<Vec<String>> for Args {
     type Error = Error;
 
     // TODO(stefano): split patterns and avoid unreachable macro calls by factoring to functions
     fn try_from(args: Vec<String>) -> Result<Self, Self::Error> {
         let mut args_iter = args.iter();
-        // TODO(stefano): implement an error that fires when no executable name is present
         let executable_name = match args_iter.next() {
             Some(name) => PathBuf::from(name),
-            None => unreachable!("executable name is always present"),
+            None => return Err(Error {
+                kind: ErrorKind::MissingExecutableName,
+                cause: ErrorCause::ExecutableNameShouldAlwaysBePresent,
+                args: None,
+            }),
         };
 
         let mut color_args = args_iter.clone().enumerate();
@@ -43,8 +45,7 @@ impl TryFrom<Vec<String>> for Args {
                         current: cli_option,
                         previous: previous_cli_option,
                     },
-                    args,
-                    erroneous_arg_index: color_flag_idx,
+                    args: Some((args, color_flag_idx + 1)),
                 });
             }
 
@@ -52,8 +53,7 @@ impl TryFrom<Vec<String>> for Args {
                 return Err(Error {
                     kind: ErrorKind::MissingColorMode,
                     cause: ErrorCause::MustBeFollowedByColorMode,
-                    args,
-                    erroneous_arg_index: color_flag_idx,
+                    args: Some((args, color_flag_idx + 1)),
                 });
             };
 
@@ -65,8 +65,7 @@ impl TryFrom<Vec<String>> for Args {
                     return Err(Error {
                         kind: ErrorKind::UnrecognizedColorMode { mode: unrecognized.to_owned() },
                         cause: ErrorCause::UnrecognizedColorMode,
-                        args,
-                        erroneous_arg_index: color_mode_idx,
+                        args: Some((args, color_mode_idx + 1)),
                     })
                 }
             };
@@ -103,8 +102,7 @@ impl TryFrom<Vec<String>> for Args {
                                 current: cli_option,
                                 previous: previous_cli_option,
                             },
-                            args,
-                            erroneous_arg_index: flag_idx,
+                            args: Some((args, flag_idx + 1)),
                         });
                     }
 
@@ -132,8 +130,7 @@ impl TryFrom<Vec<String>> for Args {
                                     current: cli_command,
                                     previous: previous_cli_command,
                                 },
-                                args,
-                                erroneous_arg_index: flag_idx,
+                                args: Some((args, flag_idx + 1)),
                             });
                         }
                         Some((Command::Version, previous_cli_command)) => {
@@ -143,8 +140,7 @@ impl TryFrom<Vec<String>> for Args {
                                     current: cli_command,
                                     previous: previous_cli_command,
                                 },
-                                args,
-                                erroneous_arg_index: flag_idx,
+                                args: Some((args, flag_idx + 1)),
                             });
                         }
                         _ => {
@@ -171,8 +167,7 @@ impl TryFrom<Vec<String>> for Args {
                                     current: cli_command,
                                     previous: previous_cli_command,
                                 },
-                                args,
-                                erroneous_arg_index: flag_idx,
+                                args: Some((args, flag_idx + 1)),
                             });
                         }
                         Some((Command::Help { .. }, previous_cli_command)) => {
@@ -182,8 +177,7 @@ impl TryFrom<Vec<String>> for Args {
                                     current: cli_command,
                                     previous: previous_cli_command,
                                 },
-                                args,
-                                erroneous_arg_index: flag_idx,
+                                args: Some((args, flag_idx + 1)),
                             });
                         }
                         _ => command_option = Some((Command::Version, cli_command)),
@@ -208,8 +202,7 @@ impl TryFrom<Vec<String>> for Args {
                                 current: cli_command,
                                 previous: previous_cli_command,
                             },
-                            args,
-                            erroneous_arg_index: flag_idx,
+                            args: Some((args, flag_idx + 1)),
                         });
                     }
 
@@ -217,8 +210,7 @@ impl TryFrom<Vec<String>> for Args {
                         return Err(Error {
                             kind: ErrorKind::InvalidCommand(cli_command),
                             cause: ErrorCause::MustBeFollowedByASourceFilePath,
-                            args,
-                            erroneous_arg_index: flag_idx,
+                            args: Some((args, flag_idx + 1)),
                         });
                     };
 
@@ -242,8 +234,7 @@ impl TryFrom<Vec<String>> for Args {
                                                 CliOption::OutFolderPath,
                                             ),
                                             cause: ErrorCause::MustBeFollowedByDirectoryFilePath,
-                                            args,
-                                            erroneous_arg_index: out_flag_idx,
+                                            args: Some((args, out_flag_idx + 1)),
                                         });
                                     };
 
@@ -273,16 +264,14 @@ impl TryFrom<Vec<String>> for Args {
                         return Err(Error {
                             kind: ErrorKind::InvalidOption(CliOption::OutFolderPath),
                             cause: ErrorCause::MustBeFollowedByDirectoryFilePath,
-                            args,
-                            erroneous_arg_index: flag_idx,
+                            args: Some((args, flag_idx + 1)),
                         })
                     }
                     Some(_) => {
                         return Err(Error {
                             kind: ErrorKind::StrayOption(CliOption::OutFolderPath),
                             cause: ErrorCause::StrayOutputFolderPath,
-                            args,
-                            erroneous_arg_index: flag_idx,
+                            args: Some((args, flag_idx + 1)),
                         })
                     }
                 },
@@ -294,8 +283,7 @@ impl TryFrom<Vec<String>> for Args {
                     return Err(Error {
                         kind: ErrorKind::UnrecognizedArg { arg: unrecognized_arg },
                         cause: ErrorCause::Unrecognized,
-                        args,
-                        erroneous_arg_index: flag_idx,
+                        args: Some((args, flag_idx + 1)),
                     });
                 }
             }
@@ -381,6 +369,7 @@ impl Display for CliCommand {
 
 #[derive(Debug)]
 pub enum ErrorKind {
+    MissingExecutableName,
     MissingColorMode,
     UnrecognizedColorMode { mode: String },
     RepeatedOption(CliOption),
@@ -394,6 +383,7 @@ pub enum ErrorKind {
 impl Display for ErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         return match self {
+            Self::MissingExecutableName => write!(f, "missing executable name"),
             Self::MissingColorMode => write!(f, "missing color mode"),
             Self::UnrecognizedColorMode { mode } => write!(f, "unrecognized color mode '{mode}'"),
             Self::RepeatedOption(option) => write!(f, "repeated '{option}' option"),
@@ -408,6 +398,7 @@ impl Display for ErrorKind {
 
 #[derive(Debug)]
 pub enum ErrorCause {
+    ExecutableNameShouldAlwaysBePresent,
     CommandAlreadySelected { current: CliCommand, previous: CliCommand },
     OptionAlreadySelected { current: CliOption, previous: CliOption },
     CommandCannotBeUsedAtTheSameTime { current: CliCommand, previous: CliCommand },
@@ -422,6 +413,9 @@ pub enum ErrorCause {
 impl Display for ErrorCause {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         return match self {
+            Self::ExecutableNameShouldAlwaysBePresent => {
+                write!(f, "executable name should always be present")
+            }
             Self::CommandAlreadySelected { current, previous } => {
                 write!(f, "cannot use '{current}' again because '{previous}' was already selected")
             }
@@ -449,44 +443,45 @@ impl Display for ErrorCause {
     }
 }
 
+// IDEA(stefano): split into Errors coming from std::env::Args and Vec<String>, since the missing
+// executable name error is not possible when parsing std::env::Args, therefore the args field
+// is never None in that case since the os always puts the name of the executable as the first
+// argument
 #[derive(Debug)]
 pub struct Error {
     pub kind: ErrorKind,
     pub cause: ErrorCause,
-    pub args: Vec<String>,
-    pub erroneous_arg_index: usize,
+    pub args: Option<(Vec<String>, usize)>, // args and erroneus arg index
 }
 
 impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut pointer_offset = 0;
-        for arg in self.args.iter().take(self.erroneous_arg_index) {
-            pointer_offset += arg.len() + 1; // + 1 to account for the space between args
-        }
+        let (args, pointers_offset, pointers_len) = match &self.args {
+            Some((args, erroneous_arg_index)) => {
+                let executable_name = &args[0];
+                let mut args_text = executable_name.to_owned();
+                for arg in &args[1..] { // skipping the executable name
+                    _ = write!(args_text, " {arg}");
+                }
 
-        let mut args = String::new();
-        let mut args_iter = self.args.iter();
-        let Some(last_arg) = args_iter.next_back() else {
-            unreachable!("program executable name should always be present");
+                let mut pointers_offset = 0;
+                for arg in args.iter().take(*erroneous_arg_index) {
+                    pointers_offset += arg.len() + 1; // + 1 to account for the space between args
+                }
+
+                let pointers_len = args[*erroneous_arg_index].len();
+                (args_text, pointers_offset, pointers_len)
+            }
+            None => (String::new(), 0, 1)
         };
-
-        for arg in args_iter {
-            _ = write!(args, "{arg} ");
-        }
-        args += last_arg.as_str();
 
         let msg = Colored {
             text: &self.kind.to_string(),
             fg: Fg::White,
             bg: Bg::Default,
             flags: Flag::Bold,
-        };
-
-        let pointers_len = match self.args.get(self.erroneous_arg_index) {
-            Some(erroneous_arg) => erroneous_arg.len(),
-            None => 0,
         };
 
         let pointers_and_cause = Colored {
@@ -501,7 +496,7 @@ impl Display for Error {
             "{ERROR}: {msg}\
             \n{BAR}\
             \n{BAR} {args}\
-            \n{BAR} {spaces:>pointer_offset$}{pointers_and_cause}",
+            \n{BAR} {spaces:>pointers_offset$}{pointers_and_cause}",
             spaces = ""
         );
     }
