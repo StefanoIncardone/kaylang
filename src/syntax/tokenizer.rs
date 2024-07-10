@@ -1,15 +1,9 @@
+use super::{Errors, RawError};
 use crate::src_file::{Line, SrcFile};
 use std::{
     fmt::Display,
     num::{IntErrorKind, ParseIntError},
 };
-
-use super::{Errors, RawError};
-
-// TODO(stefano): remove this trait and store the length of the tokens directly
-pub(crate) trait SrcCodeLen {
-    fn src_code_len(&self) -> usize;
-}
 
 /// kay's equivalent to pointer sized signed integer
 #[allow(non_camel_case_types)]
@@ -51,23 +45,6 @@ impl Display for Literal {
                     write!(f, "{}", ch.escape_ascii())?;
                 }
                 write!(f, "\"")
-            }
-        };
-    }
-}
-
-impl SrcCodeLen for Literal {
-    fn src_code_len(&self) -> usize {
-        return match self {
-            Self::Int(integer) => integer.to_string().len(),
-            Self::Ascii(code) => code.escape_ascii().len() + 2, // + 2 for the quotes
-            Self::Bool(boolean) => boolean.to_string().len(),
-            Self::Str(string) => {
-                let mut len = 0;
-                for ch in string {
-                    len += ch.escape_ascii().len();
-                }
-                len + 2 // + 2 for the quotes
             }
         };
     }
@@ -460,92 +437,6 @@ impl Display for Op {
     }
 }
 
-impl SrcCodeLen for Op {
-    fn src_code_len(&self) -> usize {
-        return match self {
-            Self::Len => 3,
-            Self::Equals => 1,
-            Self::Not => 1,
-
-            Self::Pow => 2,
-            Self::WrappingPow => 3,
-            Self::SaturatingPow => 3,
-            Self::PowEquals => 3,
-            Self::WrappingPowEquals => 4,
-            Self::SaturatingPowEquals => 4,
-
-            Self::Times => 1,
-            Self::WrappingTimes => 2,
-            Self::SaturatingTimes => 2,
-            Self::TimesEquals => 2,
-            Self::WrappingTimesEquals => 3,
-            Self::SaturatingTimesEquals => 3,
-
-            Self::Divide => 1,
-            Self::WrappingDivide => 2,
-            Self::SaturatingDivide => 2,
-            Self::DivideEquals => 2,
-            Self::WrappingDivideEquals => 3,
-            Self::SaturatingDivideEquals => 3,
-
-            Self::Remainder => 1,
-            Self::RemainderEquals => 2,
-
-            Self::Plus => 1,
-            Self::WrappingPlus => 2,
-            Self::SaturatingPlus => 2,
-            Self::PlusEquals => 2,
-            Self::WrappingPlusEquals => 3,
-            Self::SaturatingPlusEquals => 3,
-
-            Self::Minus => 1,
-            Self::WrappingMinus => 2,
-            Self::SaturatingMinus => 2,
-            Self::MinusEquals => 2,
-            Self::WrappingMinusEquals => 3,
-            Self::SaturatingMinusEquals => 3,
-
-            Self::And => 2,
-            Self::AndEquals => 3,
-
-            Self::BitAnd => 1,
-            Self::BitAndEquals => 2,
-
-            Self::Or => 2,
-            Self::OrEquals => 3,
-
-            Self::BitOr => 1,
-            Self::BitOrEquals => 2,
-
-            Self::BitXor => 1,
-            Self::BitXorEquals => 2,
-
-            Self::LeftShift => 2,
-            Self::WrappingLeftShift => 3,
-            Self::SaturatingLeftShift => 3,
-            Self::LeftShiftEquals => 3,
-            Self::WrappingLeftShiftEquals => 4,
-            Self::SaturatingLeftShiftEquals => 4,
-
-            Self::RightShift => 2,
-            Self::RightShiftEquals => 3,
-
-            Self::LeftRotate => 3,
-            Self::LeftRotateEquals => 4,
-            Self::RightRotate => 3,
-            Self::RightRotateEquals => 4,
-
-            Self::EqualsEquals => 2,
-            Self::NotEquals => 2,
-            Self::Greater => 1,
-            Self::GreaterOrEquals => 2,
-            Self::Less => 1,
-            Self::LessOrEquals => 2,
-            Self::Compare => 3,
-        };
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Mutability {
     Let,
@@ -557,15 +448,6 @@ impl Display for Mutability {
         return match self {
             Self::Let => write!(f, "let"),
             Self::Var => write!(f, "var"),
-        };
-    }
-}
-
-impl SrcCodeLen for Mutability {
-    fn src_code_len(&self) -> usize {
-        return match self {
-            Self::Let => 3,
-            Self::Var => 3,
         };
     }
 }
@@ -589,19 +471,6 @@ impl Display for BracketKind {
             Self::CloseSquare => write!(f, "]"),
             Self::OpenCurly => write!(f, "{{"),
             Self::CloseCurly => write!(f, "}}"),
-        };
-    }
-}
-
-impl SrcCodeLen for BracketKind {
-    fn src_code_len(&self) -> usize {
-        return match self {
-            Self::OpenRound => 1,
-            Self::CloseRound => 1,
-            Self::OpenSquare => 1,
-            Self::CloseSquare => 1,
-            Self::OpenCurly => 1,
-            Self::CloseCurly => 1,
         };
     }
 }
@@ -675,42 +544,11 @@ impl Display for TokenKind<'_> {
     }
 }
 
-impl SrcCodeLen for TokenKind<'_> {
-    fn src_code_len(&self) -> usize {
-        return match self {
-            Self::Comment(text) => text.chars().count(),
-            Self::Unexpected(text) => text.chars().count(),
-
-            Self::Bracket(bracket) => bracket.src_code_len(),
-            Self::Colon => 1,
-            Self::SemiColon => 1,
-            Self::Comma => 1,
-            Self::Op(op) => op.src_code_len(),
-
-            Self::Literal(typ) => typ.src_code_len(),
-            Self::True => 4,
-            Self::False => 5,
-            Self::Identifier(name) => name.chars().count(),
-            Self::Definition(kind) => kind.src_code_len(),
-
-            Self::Print => 5,
-            Self::PrintLn => 7,
-            Self::Eprint => 6,
-            Self::EprintLn => 8,
-            Self::Do => 2,
-            Self::If => 2,
-            Self::Else => 4,
-            Self::Loop => 4,
-            Self::Break => 5,
-            Self::Continue => 8,
-        };
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Token<'src> {
     pub(crate) kind: TokenKind<'src>,
     pub(crate) col: usize,
+    pub(crate) len: usize,
 }
 
 #[derive(Debug)]
@@ -782,7 +620,13 @@ impl<'src> Tokenizer<'src> {
                 }
             };
 
-            this.tokens.push(Token { kind, col: this.token_start_col });
+            let token = Token {
+                kind,
+                col: this.token_start_col,
+                len: this.col - this.token_start_col
+            };
+
+            this.tokens.push(token);
         }
 
         for bracket in &this.brackets {
