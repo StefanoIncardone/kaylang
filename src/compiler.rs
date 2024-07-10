@@ -260,6 +260,11 @@ _start:
 
 
 section .rodata
+ %macro str 2
+  %1: db %2
+  %1_len: equ $ - %1
+ %endmacro
+
  stdout: equ 1
  stderr: equ 2
  SYS_write: equ 1
@@ -269,108 +274,51 @@ section .rodata
 
  newline: equ `\n`
 
- CRASH: db "Crash"
- CRASH_len: equ $ - CRASH
+ str CRASH, "Crash"
+ str _AT, "at"
+ str file, "{src_path}"
 
- _AT: db "at"
- _AT_len: equ $ - _AT
-
- attempt_division_by_zero: db "attempt to divide by zero"
- attempt_division_by_zero_len: equ $ - attempt_division_by_zero
-
- attempt_int_min_div_by_minus_one: db "attempt to divide the minimum integer value by -1"
- attempt_int_min_div_by_minus_one_len: equ $ - attempt_int_min_div_by_minus_one
-
- attempt_remainder_zero: db "attempt to take the remainder of a division by zero"
- attempt_remainder_zero_len: equ $ - attempt_remainder_zero
-
- attempt_remainder_int_min_div_by_minus_one: db "attempt to take the remainder of the minimun integer value divided by -1"
- attempt_remainder_int_min_div_by_minus_one_len: equ $ - attempt_remainder_int_min_div_by_minus_one
-
- attempt_exponent_negative: db "attempt to raise a number to a negative power"
- attempt_exponent_negative_len: equ $ - attempt_exponent_negative
-
- attempt_array_index_underflow: db "negative array index"
- attempt_array_index_underflow_len: equ $ - attempt_array_index_underflow
-
- attempt_array_index_overflow: db "array index out of bounds"
- attempt_array_index_overflow_len: equ $ - attempt_array_index_overflow
-
- attempt_int_bit_index_underflow: db "negative int bit array index"
- attempt_int_bit_index_underflow_len: equ $ - attempt_int_bit_index_underflow
-
- attempt_int_bit_index_overflow: db "int bit array index out of bounds"
- attempt_int_bit_index_overflow_len: equ $ - attempt_int_bit_index_overflow
-
- attempt_str_index_underflow: db "negative string index"
- attempt_str_index_underflow_len: equ $ - attempt_str_index_underflow
-
- attempt_str_index_overflow: db "string index out of bounds"
- attempt_str_index_overflow_len: equ $ - attempt_str_index_overflow
-
- attempt_left_shift_negative: db "attempting to shift left by a negative quantity"
- attempt_left_shift_negative_len: equ $ - attempt_left_shift_negative
-
- attempt_left_shift_over_6_bits: db "attempting to shift left by a quantity over a 6 bit integer"
- attempt_left_shift_over_6_bits_len: equ $ - attempt_left_shift_over_6_bits
-
- attempt_right_shift_negative: db "attempting to shift right by a negative quantity"
- attempt_right_shift_negative_len: equ $ - attempt_right_shift_negative
-
- attempt_right_shift_over_6_bits: db "attempting to shift right by a quantity over a 6 bit integer"
- attempt_right_shift_over_6_bits_len: equ $ - attempt_right_shift_over_6_bits
-
- attempt_left_rotate_negative: db "attempting to rotate left by a negative quantity"
- attempt_left_rotate_negative_len: equ $ - attempt_left_rotate_negative
-
- attempt_left_rotate_over_6_bits: db "attempting to rotate left by a quantity over a 6 bit integer"
- attempt_left_rotate_over_6_bits_len: equ $ - attempt_left_rotate_over_6_bits
-
- attempt_right_rotate_negative: db "attempting to rotate right by a negative quantity"
- attempt_right_rotate_negative_len: equ $ - attempt_right_rotate_negative
-
- attempt_right_rotate_over_6_bits: db "attempting to rotate right by a quantity over a 6 bit integer"
- attempt_right_rotate_over_6_bits_len: equ $ - attempt_right_rotate_over_6_bits
-
- pow_overflow: db "exponentiation operation resulted in an overflow"
- pow_overflow_len: equ $ - pow_overflow
-
- mul_overflow: db "multiplication operation resulted in an overflow"
- mul_overflow_len: equ $ - mul_overflow
-
- add_overflow: db "add operation resulted in an overflow"
- add_overflow_len: equ $ - add_overflow
-
- abs_overflow: db "unary absolute value operation resulted in an overflow"
- abs_overflow_len: equ $ - abs_overflow
-
- sub_overflow: db "subtraction operation resulted in an overflow"
- sub_overflow_len: equ $ - sub_overflow
-
- negate_overflow: db "unary negation operation resulted in an overflow"
- negate_overflow_len: equ $ - negate_overflow
-
- left_shift_overflow: db "left shift operation resulted in an overflow"
- left_shift_overflow_len: equ $ - left_shift_overflow
-
- file: db "{src_path}"
- file_len: equ $ - file
+ str attempt_division_by_zero, "attempt to divide by zero"
+ str attempt_int_min_div_by_minus_one, "attempt to divide the minimum integer value by -1"
+ str attempt_remainder_zero, "attempt to take the remainder of a division by zero"
+ str attempt_remainder_int_min_div_by_minus_one, "attempt to take the remainder of the minimun integer value divided by -1"
+ str attempt_exponent_negative, "attempt to raise a number to a negative power"
+ str attempt_array_index_underflow, "negative array index"
+ str attempt_array_index_overflow, "array index out of bounds"
+ str attempt_int_bit_index_underflow, "negative int bit array index"
+ str attempt_int_bit_index_overflow, "int bit array index out of bounds"
+ str attempt_str_index_underflow, "negative string index"
+ str attempt_str_index_overflow, "string index out of bounds"
+ str attempt_left_shift_negative, "attempting to shift left by a negative quantity"
+ str attempt_left_shift_over_6_bits, "attempting to shift left by a quantity over a 6 bit integer"
+ str attempt_right_shift_negative, "attempting to shift right by a negative quantity"
+ str attempt_right_shift_over_6_bits, "attempting to shift right by a quantity over a 6 bit integer"
+ str attempt_left_rotate_negative, "attempting to rotate left by a negative quantity"
+ str attempt_left_rotate_over_6_bits, "attempting to rotate left by a quantity over a 6 bit integer"
+ str attempt_right_rotate_negative, "attempting to rotate right by a negative quantity"
+ str attempt_right_rotate_over_6_bits, "attempting to rotate right by a quantity over a 6 bit integer"
+ str pow_overflow, "exponentiation operation resulted in an overflow"
+ str mul_overflow, "multiplication operation resulted in an overflow"
+ str add_overflow, "add operation resulted in an overflow"
+ str abs_overflow, "unary absolute value operation resulted in an overflow"
+ str sub_overflow, "subtraction operation resulted in an overflow"
+ str negate_overflow, "unary negation operation resulted in an overflow"
+ str left_shift_overflow, "left shift operation resulted in an overflow"
 
  INT_MIN: equ 1 << 63
  INT_MAX: equ ~INT_MIN
  INT_BITS: equ 64
 
  true: equ 1
- true_str: db "true"
- true_str_len: equ $ - true_str
+ str true_str, "true"
 
  false: equ 0
- false_str: db "false"
- false_str_len: equ $ - false_str
+ str false_str, "false"
 
  LESS: equ -1
  EQUAL: equ 0
  GREATER: equ 1
+
 {strings}
 
 section .data
@@ -813,13 +761,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             string_index += 1;
         }
 
-        let string_bytes = unsafe { std::str::from_utf8_unchecked(string) };
-        let string_chars = string_bytes.escape_debug();
-        _ = writeln!(
-            self.string_labels,
-            "\n str_{string_index}: db `{string_chars}`\
-            \n str_{string_index}_len: equ $ - str_{string_index}",
-        );
+        let string_str = unsafe { std::str::from_utf8_unchecked(string) };
+        let string_chars = string_str.escape_debug();
+        _ = writeln!(self.string_labels, " str str_{string_index}, `{string_chars}`");
 
         self.strings.push(string);
         return string_index;
