@@ -218,7 +218,6 @@ mod tests {
             }
 
             let execution_step = Logger::new();
-
             Logger::info(&CHECKING, &src_path);
 
             let src = match SrcFile::load(&src_path) {
@@ -293,6 +292,7 @@ mod tests {
 
             execution_step.step_done();
 
+            let running_step = Logger::new();
             Logger::info(&RUNNING, &artifacts.exe_path);
 
             let mut run_command = artifacts.runner();
@@ -303,6 +303,7 @@ mod tests {
                     return Err(ExitCode::FAILURE);
                 }
             };
+            running_step.step_done();
 
             let stdout = String::from_utf8_lossy(&run_result.stdout);
             let stderr = String::from_utf8_lossy(&run_result.stderr);
