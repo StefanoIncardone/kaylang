@@ -32,8 +32,8 @@ type byte = u8;
 
 ## 0.6.0 -
 
-From version `0.6.0` breaking changes may appear in **patch** version changes, meaning that
-features in `0.6.0` could not work or could be totally **removed** in `0.6.1`.
+From version `0.6.0` breaking changes may appear at any time, meaning that features in `0.6.0`
+could not work or could be totally **removed** in `0.6.1`.
 This is to prevent an explosion in version numbers, since breaking and non-breaking changes will be
 frequent.
 It will also prevent the stagnation of features and will allow possibly **braking bug fixes**.
@@ -64,16 +64,19 @@ Changes to error messages, help message and alike would **not** be considered br
 - `compile` command now returns the exit code of the assembler and linker in the case of a failure
 - An error is now returned when no executable name is provided when parsing arguments in the form of
     `Vec<String>`
-- **BREAKING**: `<=>` now has the same precedence as `==`, `!=`, `<`, `<=`, `>`, `>=` operators
-- **BREAKING**: non-wrapping and non-saturating operators will crash on overflow
-- **BREAKING**: `char` type renamed to `ascii`
-- **BREAKING**: Split `Error`s into `ErrorKind` and `ErrorCause`
-- **BREAKING**: `Tokenizer::tokenize` and `Ast::build` now return a `Errors` struct as an
-    iterator over lightweight `RawError`s that lazily construct full `Error`s
-- **BREAKING**: `Compiler::compile` no longer returns an `Artifacts` struct, it is instead
-    constructed beforehand and is now required in compilation steps instead of generic `PathBuf`s
-- **BREAKING**: Updated consistency of compilation steps names and static variables
-- **BREAKING**: Compilation steps are now managed by the `Logger` struct
+
+#### Breaking
+
+- `<=>` now has the same precedence as `==`, `!=`, `<`, `<=`, `>`, `>=` operators
+- non-wrapping and non-saturating operators will crash on overflow
+- `char` type renamed to `ascii`
+- Split `Error`s into `ErrorKind` and `ErrorCause`
+- `Tokenizer::tokenize` and `Ast::build` now return a `Errors` struct as an iterator over
+    lightweight `RawError`s that lazily construct full `Error`s
+- `Compiler::compile` no longer returns an `Artifacts` struct, it is instead constructed beforehand
+    and is now required in compilation steps instead of generic `PathBuf`s
+- Updated consistency of compilation steps names and static variables
+- Compilation steps are now managed by the `Logger` struct
 
 ### Removed
 
@@ -91,8 +94,7 @@ Changes to error messages, help message and alike would **not** be considered br
 - Bug in expressions code generations
 - Bug in crash error messages printing
 - Bug in parsing of do-loop statements
-- Bug in result of division/remainder assembly code that would produce incorrect results when
-    division happend on negative numbers
+- Bug in result of division/remainder assembly code that would crash when dividing INT_MIN by -1
 
 
 ## 0.5.3 - 2024-03-02
