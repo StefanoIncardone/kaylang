@@ -317,13 +317,13 @@ match answer {
 let Ok(ok) = answer else {
     // oh no! how do i access the error value? which is exactly what an else case should allow for
     print!("{???}");
+    return ???;
 };
 
 // i need to completely refactor to this:
 // - repetition of `if let`
 // - complete change to code structure
 //  - need to extract ok to a separate variable
-//  - need to remember to explicity return in the Err case to match the let-else behaviour
 let ok = if let Ok(ok) = answer {
     ok
 } else if let Err(err) = answer {
@@ -344,7 +344,6 @@ let ok = match answer {
 
 ## Operators
 
-- add [Zig inspired arithmetic operators](https://ziglang.org/documentation/master/#Operators)
 - checked (`++`, `--`, `//`, ..., or `+?`, `-?`, `/?`, ...):
     - overflow/underflow may return both the result and the overflow of the addition
     - division will return either the result or an error value
@@ -513,7 +512,7 @@ if array_eq(a, b) is
 case let mismatch: none do println("equals"); # would not be reached since there was a mismatch
 else let mismatch: uint do println(f"mismatch at index {mismatch}"); # mismatch would have the value of 2
 
-fn mimatch_index: uint? = array_eq[T: type, N: uint](dst: T[N]*, src: T[N]*) {
+fn mismatch_index: uint? = array_eq[T: type, N: uint](dst: T[N]*, src: T[N]*) {
     loop var i = N; i > 0; i -= 1 {
         if dst* != src* {
             return i;
@@ -975,8 +974,8 @@ const answer = 40 + 2;
 #static let answer = 40 + 2;
 static answer = 40 + 2;
 static var answer = 40 + 2;
-answer := 40 + 2;
-answer: int := 40 + 2;
+let answer :: 40 + 2;
+let answer: int : 40 + 2;
 
 run some_function();
 @run some_function();
@@ -1014,7 +1013,7 @@ fn
 result: int, remainder: int
 
 # return values' names are optional
-[int, int]
+int, int
 
 # equals sign to make it easey to copy paste this function definition in code
 =

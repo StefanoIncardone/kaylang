@@ -59,7 +59,6 @@ pub struct SrcFile {
 }
 
 impl SrcFile {
-    // TODO(stefano): replace indentation tabs with spaces
     pub fn load(path: &Path) -> Result<Self, Error> {
         let file = match File::open(path) {
             Ok(f) => f,

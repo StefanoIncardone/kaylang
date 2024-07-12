@@ -564,10 +564,12 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     self.scopes[self.scope_index].nodes.push(node);
                 }
                 Ok(None) => break,
-                // NOTE(stefano): only parsing until the first error until a fault tolerant parser is developed,
-                // this is because the first truly relevant error is the first one, which in turn
-                // causes a ripple effect that propagates to the rest of the parsing, causing
-                // subsequent errors to be wrong
+                /*
+                NOTE(stefano): only parsing until the first error until a fault tolerant parser is
+                developed, this is because the first truly relevant error is the first one, which in
+                turn causes a ripple effect that propagates to the rest of the parsing, causing
+                subsequent errors to be wrong
+                */
                 Err(err) => {
                     self.errors.push(err);
 
@@ -1321,8 +1323,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::Op(Op::WrappingPlus) => {
                 let mut should_be_made_positive = true;
 
-                // removing extra "+%" symbols
                 // NOTE(stefano): this optimization should be moved to later stages
+                // removing extra "+\" symbols
                 while let Some(&Token { kind: TokenKind::Op(Op::WrappingPlus), .. }) =
                     self.next_token()
                 {
@@ -1358,8 +1360,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::Op(Op::SaturatingPlus) => {
                 let mut should_be_made_positive = true;
 
-                // removing extra "+%" symbols
                 // NOTE(stefano): this optimization should be moved to later stages
+                // removing extra "+|" symbols
                 while let Some(&Token { kind: TokenKind::Op(Op::SaturatingPlus), .. }) =
                     self.next_token()
                 {
@@ -1392,8 +1394,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 };
             }
-            // TODO(stefano): move parsing of numbers to here to allow for negative numbers natively
-            // i.e.: -9223372036854775808 (INT_MIN) is currently not allowed
+            /*
+            TODO(stefano): move parsing of numbers to here to allow for negative numbers natively
+            i.e.: -9223372036854775808 (INT_MIN) is currently not allowed
+            */
             TokenKind::Op(Op::Minus) => {
                 let mut should_be_negated = true;
 
@@ -1431,7 +1435,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 let mut should_be_negated = true;
 
                 // NOTE(stefano): this optimization should be moved to later stages
-                // removing extra "-" symbols
+                // removing extra "-\" symbols
                 while let Some(&Token { kind: TokenKind::Op(Op::WrappingMinus), .. }) =
                     self.next_token()
                 {
@@ -1466,7 +1470,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 let mut should_be_negated = true;
 
                 // NOTE(stefano): this optimization should be moved to later stages
-                // removing extra "-" symbols
+                // removing extra "-|" symbols
                 while let Some(&Token { kind: TokenKind::Op(Op::SaturatingMinus), .. }) =
                     self.next_token()
                 {
@@ -1677,8 +1681,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         return Ok(lhs);
     }
 
-    // IDEA(stefano): when the lhs is a literal integer shifts could be optimized to throw errors
-    // when preconditions such as negative numbers and shifts over 6bits are not met
+    /*
+    IDEA(stefano): when the lhs is a literal integer shifts could be optimized to throw errors
+    when preconditions such as negative numbers and shifts over 6bits are not met
+    */
     fn shift_expression(&mut self) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let mut lhs = self.additive_expression()?;
 

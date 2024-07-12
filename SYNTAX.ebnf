@@ -86,7 +86,7 @@ shift_expression          = additive_expression, [(operator_rightshift | operato
 bitand_expression         = shift_expression, [operator_bitand, shift_expression];
 bitxor_expression         = bitand_expression, [operator_bitxor, bitand_expression];
 bitor_expression          = bitxor_expression, [operator_bitor, bitxor_expression];
-(* comparison expressions cannot be chained*)
+(* comparison expressions cannot be chained *)
 comparison_expression     = bitor_expression, [comparison_operator, bitor_expression];
 and_expression            = comparison_expression, [operator_and, comparison_expression];
 or_expression             = and_expression, [operator_or, and_expression];

@@ -1,4 +1,3 @@
-// TODO(stefano): allow assembly print functions to accept the sink (stdout or stderr)
 // IDEA(stefano): reserve space for the biggest temporary value and reuse as necessary
 // IDEA(stefano): have built-in functions return their result in rdi instead of rax
 
@@ -769,21 +768,28 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         return string_index;
     }
 
-    // IDEA(stefano): string comparison operators could also return the index where
-    // the mismatch occured, since repe CMPcc stops at
-    // mismatch_index @rdx = len @rdx - reverse_mismatch_index @rcx - 1, so:
-    //
-    // repe cmpsq
-    // mov rdi, false
-    // setz dil
-    //
-    // would become this:
-    //
-    // repe cmpsq
-    // mov rdi, false
-    // setz dil
-    // sub rdx, rcx
-    // dec rdx
+    /*
+    IDEA(stefano): string comparison operators could also return the index where the mismatch
+    occured, since repe CMPcc stops at mismatch_index, i.e:
+    @rdx = len @rdx - reverse_mismatch_index @rcx - 1
+    so:
+
+    ```nasm
+    repe cmpsq
+    mov rdi, false
+    setz dil
+    ```
+
+    would become this:
+
+    ```nasmm
+    repe cmpsq
+    mov rdi, false
+    setz dil
+    sub rdx, rcx
+    dec rdx
+    ```
+    */
     #[allow(clippy::single_call_fn)]
     fn binary_str_str(op: BinaryOp) -> &'static str {
         return match op {
@@ -854,21 +860,28 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         };
     }
 
-    // IDEA(stefano): array comparison operators could also return the index where
-    // the mismatch occured, since repe CMPcc stops at
-    // mismatch_index @rdx = len @rdx - reverse_mismatch_index @rcx - 1, so:
-    //
-    // repe cmpsq
-    // mov rdi, false
-    // setz dil
-    //
-    // would become this:
-    //
-    // repe cmpsq
-    // mov rdi, false
-    // setz dil
-    // sub rdx, rcx
-    // dec rdx
+    /*
+    IDEA(stefano): array comparison operators could also return the index where the mismatch
+    occured, since repe CMPcc stops at mismatch_index, i.e:
+    @rdx = len @rdx - reverse_mismatch_index @rcx - 1
+    so:
+
+    ```nasm
+    repe cmpsq
+    mov rdi, false
+    setz dil
+    ```
+
+    would become this:
+
+    ```nasmm
+    repe cmpsq
+    mov rdi, false
+    setz dil
+    sub rdx, rcx
+    dec rdx
+    ```
+    */
     #[allow(clippy::single_call_fn)]
     fn binary_array_array(elements_type: &Type, op: BinaryOp) -> &'static str {
         return match op {
@@ -1071,11 +1084,13 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         };
     }
 
-    // IDEA(stefano): limit shift/rotation rhs to an 8bit integer, and different strategies to deal
-    // whit rhs over 6bits:
-    // - check for an rhs bigger than 8 bits and crash (current)
-    // - silently discard the missing bits
-    // - create dedicate operators that implement those strategies
+    /*
+    IDEA(stefano): limit shift/rotation rhs to an 8bit integer, and different strategies to deal
+    whit rhs over 6bits:
+    - check for an rhs bigger than 8 bits and crash (current)
+    - silently discard the missing bits
+    - create dedicate operators that implement those strategies
+    */
     #[allow(clippy::single_call_fn)]
     fn binary_int_like_int_like(op: BinaryOp, op_position: Position) -> Cow<'static, str> {
         return match op {
@@ -1340,8 +1355,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     Dst::Reg(_) => unreachable!(),
                 },
             },
-            // NOTE(stefano): hard-coding the first and second operand until a better way to manage
-            // dst and src are developed
+            /*
+            NOTE(stefano): hard-coding the first and second operand until a better way to manage
+            dst and src are developed
+            */
             Expression::Binary { lhs, op_position, op, rhs } => {
                 let (lhs_dst, rhs_dst, op_asm): (Dst, Dst, Cow<'static, str>) =
                     match (lhs.typ(), rhs.typ()) {

@@ -443,10 +443,11 @@ impl Display for ErrorCause {
     }
 }
 
-// IDEA(stefano): split into Errors coming from std::env::Args and Vec<String>, since the missing
-// executable name error is not possible when parsing std::env::Args, therefore the args field
-// is never None in that case since the os always puts the name of the executable as the first
-// argument
+/*
+IDEA(stefano): split into Errors coming from std::env::Args and Vec<String>, since the missing
+executable name error is not possible when parsing std::env::Args, therefore the args field is
+never None in that case since the os always puts the name of the executable as the first argument
+*/
 #[derive(Debug)]
 pub struct Error {
     pub kind: ErrorKind,

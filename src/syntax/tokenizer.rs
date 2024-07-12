@@ -265,8 +265,12 @@ impl Display for AssignmentOp {
     }
 }
 
-// IDEA(stefano): introduce left/right shift/rotate opertors that skip the check for a positive 6bit
-// shift amount (maybe <<?, >>?, <<<?, >>>?, or <<!, >>!, <<<!, >>>!)
+/*
+IDEA(stefano): introduce "unchecked" operators
+skip safety checks, maybe using the '?' or the '!' suffix, i.e:
+- <<?, <<<?, >>>?, or <<!, >>!, <<<!, >>>! -> skip the check for a positive 6bit shift amount
+- **? -> skip the check for a neagtive index
+*/
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Op {
     Len, // temporary way of getting the length of strings and arrays
@@ -952,7 +956,10 @@ impl<'src> Tokenizer<'src> {
 
                 Ok(TokenKind::Comment(comment))
             }
-            // FIX(stefano): add proper multiple error handling
+            /*
+            FIX(stefano): add proper multiple error handling, maybe implement an error pool to
+            avoid having to allocate a new vector each time
+            */
             b'"' => {
                 let previous_error_count = self.errors.len();
                 let mut string = Vec::<ascii>::new();
