@@ -1,9 +1,7 @@
 use super::{
-    tokenizer::{
-        ascii, int, uint, AssignmentOp, BinaryOp, BracketKind, Literal, Mutability, Op,
-        Token, TokenKind, UnaryOp,
-    },
-    Errors, RawError,
+    op::{AssignmentOp, ComparisonOp, BinaryOp, Op, UnaryOp}, tokenizer::{
+        ascii, int, uint, BracketKind, Literal, Mutability, Token, TokenKind
+    }, Errors, RawError
 };
 use crate::src_file::{Position, SrcFile};
 use std::fmt::{Debug, Display};
@@ -55,6 +53,17 @@ impl Display for Type {
     }
 }
 
+impl TypeOf for Literal {
+    fn typ(&self) -> Type {
+        return match self {
+            Self::Int(_) => Type::Int,
+            Self::Ascii(_) => Type::Ascii,
+            Self::Bool(_) => Type::Bool,
+            Self::Str(_) => Type::Str,
+        };
+    }
+}
+
 impl Type {
     pub(crate) fn size(&self) -> usize {
         return match self {
@@ -99,132 +108,6 @@ impl Type {
     }
 }
 
-impl TypeOf for Literal {
-    fn typ(&self) -> Type {
-        return match self {
-            Self::Int(_) => Type::Int,
-            Self::Ascii(_) => Type::Ascii,
-            Self::Bool(_) => Type::Bool,
-            Self::Str(_) => Type::Str,
-        };
-    }
-}
-
-impl TypeOf for BinaryOp {
-    fn typ(&self) -> Type {
-        return match self {
-            Self::Pow
-            | Self::WrappingPow
-            | Self::SaturatingPow
-            | Self::Times
-            | Self::WrappingTimes
-            | Self::SaturatingTimes
-            | Self::Divide
-            | Self::WrappingDivide
-            | Self::SaturatingDivide
-            | Self::Remainder
-            | Self::Plus
-            | Self::WrappingPlus
-            | Self::SaturatingPlus
-            | Self::Minus
-            | Self::WrappingMinus
-            | Self::SaturatingMinus
-            | Self::BitAnd
-            | Self::BitOr
-            | Self::BitXor
-            | Self::LeftShift
-            | Self::WrappingLeftShift
-            | Self::SaturatingLeftShift
-            | Self::RightShift
-            | Self::LeftRotate
-            | Self::RightRotate
-            | Self::Compare => Type::Int,
-
-            Self::EqualsEquals
-            | Self::NotEquals
-            | Self::Greater
-            | Self::GreaterOrEquals
-            | Self::Less
-            | Self::LessOrEquals
-            | Self::And
-            | Self::Or => Type::Bool,
-        };
-    }
-}
-
-impl TypeOf for Op {
-    fn typ(&self) -> Type {
-        return match self {
-            Self::Len
-            | Self::Compare
-            | Self::Pow
-            | Self::WrappingPow
-            | Self::SaturatingPow
-            | Self::PowEquals
-            | Self::WrappingPowEquals
-            | Self::SaturatingPowEquals
-            | Self::Times
-            | Self::WrappingTimes
-            | Self::SaturatingTimes
-            | Self::TimesEquals
-            | Self::WrappingTimesEquals
-            | Self::SaturatingTimesEquals
-            | Self::Divide
-            | Self::WrappingDivide
-            | Self::SaturatingDivide
-            | Self::DivideEquals
-            | Self::WrappingDivideEquals
-            | Self::SaturatingDivideEquals
-            | Self::Remainder
-            | Self::RemainderEquals
-            | Self::Plus
-            | Self::WrappingPlus
-            | Self::SaturatingPlus
-            | Self::PlusEquals
-            | Self::WrappingPlusEquals
-            | Self::SaturatingPlusEquals
-            | Self::Minus
-            | Self::WrappingMinus
-            | Self::SaturatingMinus
-            | Self::MinusEquals
-            | Self::WrappingMinusEquals
-            | Self::SaturatingMinusEquals
-            | Self::BitAnd
-            | Self::BitAndEquals
-            | Self::BitOr
-            | Self::BitOrEquals
-            | Self::BitXor
-            | Self::BitXorEquals
-            | Self::LeftShift
-            | Self::WrappingLeftShift
-            | Self::SaturatingLeftShift
-            | Self::LeftShiftEquals
-            | Self::WrappingLeftShiftEquals
-            | Self::SaturatingLeftShiftEquals
-            | Self::RightShift
-            | Self::RightShiftEquals
-            | Self::LeftRotate
-            | Self::LeftRotateEquals
-            | Self::RightRotate
-            | Self::RightRotateEquals => Type::Int,
-
-            Self::EqualsEquals
-            | Self::NotEquals
-            | Self::Greater
-            | Self::GreaterOrEquals
-            | Self::Less
-            | Self::LessOrEquals
-            | Self::Not
-            | Self::And
-            | Self::AndEquals
-            | Self::Or
-            | Self::OrEquals => Type::Bool,
-
-            Self::Equals => unreachable!("equals operator doesn't have a type"),
-        };
-    }
-}
-
 #[derive(Debug, Clone)]
 pub(crate) enum Expression<'src> {
     Literal(Literal),
@@ -237,6 +120,11 @@ pub(crate) enum Expression<'src> {
         lhs: Box<Expression<'src>>,
         op_position: Position,
         op: BinaryOp,
+        rhs: Box<Expression<'src>>,
+    },
+    Comparison {
+        lhs: Box<Expression<'src>>,
+        op: ComparisonOp,
         rhs: Box<Expression<'src>>,
     },
     Identifier {
@@ -267,6 +155,7 @@ impl Display for Expression<'_> {
                 }
             }
             Self::Binary { lhs, op, rhs, .. } => write!(f, "({lhs} {op} {rhs})"),
+            Self::Comparison { lhs, op, rhs } => write!(f, "({lhs} {op} {rhs})"),
             Self::Identifier { name, .. } => write!(f, "{name}"),
             Self::Array { items, .. } => {
                 write!(f, "[")?;
@@ -307,6 +196,7 @@ impl TypeOf for Expression<'_> {
                 }
             },
             Self::Binary { op, .. } => op.typ(),
+            Self::Comparison { .. } => Type::Bool,
             Self::Identifier { typ, .. } => typ.clone(),
             Self::Array { typ, items } => {
                 Type::Array { typ: Box::new(typ.clone()), len: items.len() }
@@ -1244,7 +1134,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             len: current_token.len,
                         }),
                     },
-                    Expression::Unary { .. } | Expression::Binary { .. } => Err(RawError {
+                    Expression::Unary { .. }
+                    | Expression::Binary { .. }
+                    | Expression::Comparison { .. } => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Len),
                         cause: ErrorCause::CannotTakeLenOfNumericValue(operand.typ()),
                         col: current_token.col,
@@ -1843,22 +1735,21 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             is_chained = true;
 
             #[allow(clippy::wildcard_enum_match_arm)]
-            let binary_op = match op {
-                Op::Compare => BinaryOp::Compare,
-                Op::EqualsEquals => BinaryOp::EqualsEquals,
-                Op::NotEquals => BinaryOp::NotEquals,
-                Op::Greater => BinaryOp::Greater,
-                Op::GreaterOrEquals => BinaryOp::GreaterOrEquals,
-                Op::Less => BinaryOp::Less,
-                Op::LessOrEquals => BinaryOp::LessOrEquals,
+            let comparison_op = match op {
+                Op::Compare => ComparisonOp::Compare,
+                Op::EqualsEquals => ComparisonOp::EqualsEquals,
+                Op::NotEquals => ComparisonOp::NotEquals,
+                Op::Greater => ComparisonOp::Greater,
+                Op::GreaterOrEquals => ComparisonOp::GreaterOrEquals,
+                Op::Less => ComparisonOp::Less,
+                Op::LessOrEquals => ComparisonOp::LessOrEquals,
                 _ => unreachable!(),
             };
 
-            lhs = Expression::Binary {
+            lhs = Expression::Comparison {
                 lhs: Box::new(lhs),
-                op_position: Position::new(self.src, op_token.col).0,
-                op: binary_op,
-                rhs: Box::new(rhs),
+                op: comparison_op,
+                rhs: Box::new(rhs)
             };
         }
 
