@@ -276,7 +276,7 @@ impl<'src> Tokenizer<'src> {
                 Ok(Some(*ascii_ch))
             }
             _utf8_ch => {
-                let rest_of_line = &self.src.code[self.col..];
+                let rest_of_line = &self.src.code[self.col..self.line.end];
 
                 let Some(utf8_ch) = rest_of_line.chars().next() else {
                     unreachable!("this branch assured we would have a valid utf8 character")
