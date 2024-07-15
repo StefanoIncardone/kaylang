@@ -233,11 +233,8 @@ impl<'src> Tokenizer<'src> {
                 }
             };
 
-            let token = Token {
-                kind,
-                col: this.token_start_col,
-                len: this.col - this.token_start_col
-            };
+            let token =
+                Token { kind, col: this.token_start_col, len: this.col - this.token_start_col };
 
             this.tokens.push(token);
         }

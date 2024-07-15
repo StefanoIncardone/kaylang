@@ -19,11 +19,13 @@ impl TryFrom<Vec<String>> for Args {
         let mut args_iter = args.iter();
         let executable_name = match args_iter.next() {
             Some(name) => PathBuf::from(name),
-            None => return Err(Error {
-                kind: ErrorKind::MissingExecutableName,
-                cause: ErrorCause::ExecutableNameShouldAlwaysBePresent,
-                args: None,
-            }),
+            None => {
+                return Err(Error {
+                    kind: ErrorKind::MissingExecutableName,
+                    cause: ErrorCause::ExecutableNameShouldAlwaysBePresent,
+                    args: None,
+                });
+            }
         };
 
         let mut color_args = args_iter.clone().enumerate();
@@ -463,7 +465,8 @@ impl Display for Error {
             Some((args, erroneous_arg_index)) => {
                 let executable_name = &args[0];
                 let mut args_text = executable_name.to_owned();
-                for arg in &args[1..] { // skipping the executable name
+                // skipping the executable name
+                for arg in &args[1..] {
                     _ = write!(args_text, " {arg}");
                 }
 
@@ -475,7 +478,7 @@ impl Display for Error {
                 let pointers_len = args[*erroneous_arg_index].len();
                 (args_text, pointers_offset, pointers_len)
             }
-            None => (String::new(), 0, 1)
+            None => (String::new(), 0, 1),
         };
 
         let msg = Colored {

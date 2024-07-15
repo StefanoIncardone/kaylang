@@ -1,7 +1,7 @@
 use super::{
-    op::{AssignmentOp, ComparisonOp, BinaryOp, Op, UnaryOp}, tokenizer::{
-        ascii, int, uint, BracketKind, Literal, Mutability, Token, TokenKind
-    }, Errors, RawError
+    op::{AssignmentOp, BinaryOp, ComparisonOp, Op, UnaryOp},
+    tokenizer::{ascii, int, uint, BracketKind, Literal, Mutability, Token, TokenKind},
+    Errors, RawError,
 };
 use crate::src_file::{Position, SrcFile};
 use std::fmt::{Debug, Display};
@@ -1749,7 +1749,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             lhs = Expression::Comparison {
                 lhs: Box::new(lhs),
                 op: comparison_op,
-                rhs: Box::new(rhs)
+                rhs: Box::new(rhs),
             };
         }
 

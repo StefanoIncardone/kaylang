@@ -9,7 +9,9 @@ use self::{artifacts::Artifacts, reg::Reg64};
 use crate::{
     src_file::SrcFile,
     syntax::{
-        ast::{self, Expression, IfStatement, LoopKind, Node, Scope, Type, TypeOf}, op::{AssignmentOp, BinaryOp, ComparisonOp, UnaryOp}, tokenizer::{ascii, Literal}
+        ast::{self, Expression, IfStatement, LoopKind, Node, Scope, Type, TypeOf},
+        op::{AssignmentOp, BinaryOp, ComparisonOp, UnaryOp},
+        tokenizer::{ascii, Literal},
     },
     CAUSE, ERROR,
 };
@@ -54,7 +56,6 @@ pub struct Compiler<'src, 'ast: 'src> {
 
     loop_counter: usize,
     loop_counters: Vec<usize>,
-
     // and_counter: usize,
     // or_counter: usize,
 }
@@ -1052,43 +1053,36 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             Dst::View { len: Rdi, ptr: Rsi },
                             Dst::View { len: Rdx, ptr: Rcx },
                             match op {
-                                ComparisonOp::EqualsEquals => {
-                                    " call str_eq\
-                                    \n movzx rdi, al".into()
-                                }
-                                ComparisonOp::NotEquals => {
-                                    " call str_eq\
+                                ComparisonOp::EqualsEquals => " call str_eq\
+                                    \n movzx rdi, al"
+                                    .into(),
+                                ComparisonOp::NotEquals => " call str_eq\
                                     \n xor rax, 1\
-                                    \n movzx rdi, al".into()
-                                }
-                                ComparisonOp::Greater => {
-                                    " call str_cmp\
+                                    \n movzx rdi, al"
+                                    .into(),
+                                ComparisonOp::Greater => " call str_cmp\
                                     \n cmp rax, EQUAL\
                                     \n mov rdi, false\
-                                    \n setg dil".into()
-                                }
-                                ComparisonOp::GreaterOrEquals => {
-                                    " call str_cmp\
+                                    \n setg dil"
+                                    .into(),
+                                ComparisonOp::GreaterOrEquals => " call str_cmp\
                                     \n cmp rax, EQUAL\
                                     \n mov rdi, false\
-                                    \n setge dil".into()
-                                }
-                                ComparisonOp::Less => {
-                                    " call str_cmp\
+                                    \n setge dil"
+                                    .into(),
+                                ComparisonOp::Less => " call str_cmp\
                                     \n cmp rax, EQUAL\
                                     \n mov rdi, false\
-                                    \n setl dil".into()
-                                }
-                                ComparisonOp::LessOrEquals => {
-                                    " call str_cmp\
+                                    \n setl dil"
+                                    .into(),
+                                ComparisonOp::LessOrEquals => " call str_cmp\
                                     \n cmp rax, EQUAL\
                                     \n mov rdi, false\
-                                    \n setle dil".into()
-                                }
-                                ComparisonOp::Compare => {
-                                    " call str_cmp\
-                                    \n mov rdi, rax".into()
-                                }
+                                    \n setle dil"
+                                    .into(),
+                                ComparisonOp::Compare => " call str_cmp\
+                                    \n mov rdi, rax"
+                                    .into(),
                             },
                         ),
                         // Note: we can only compare non-empty arrays of the same type and length, so
@@ -1098,175 +1092,182 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             Dst::View { len: Rdx, ptr: Rcx },
                             match op {
                                 ComparisonOp::EqualsEquals => match *typ {
-                                    Type::Int => {
-                                        " mov rdi, rcx\
+                                    Type::Int => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsq\
                                         \n mov rdi, false\
-                                        \n sete dil".into()
-                                    }
-                                    Type::Ascii | Type::Bool => {
-                                        " mov rdi, rcx\
+                                        \n sete dil"
+                                        .into(),
+                                    Type::Ascii | Type::Bool => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsb\
                                         \n mov rdi, false\
-                                        \n sete dil".into()
+                                        \n sete dil"
+                                        .into(),
+                                    Type::Str => " call str_array_eq\
+                                        \n movzx rdi, al"
+                                        .into(),
+                                    Type::Array { .. } => {
+                                        unreachable!("nested arrays not supported yet")
                                     }
-                                    Type::Str => {
-                                        " call str_array_eq\
-                                        \n movzx rdi, al".into()
+                                    Type::Infer => {
+                                        unreachable!("should have been coerced to a concrete type")
                                     }
-                                    Type::Array { .. } => unreachable!("nested arrays not supported yet"),
-                                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
                                 },
                                 ComparisonOp::NotEquals => match *typ {
-                                    Type::Int => {
-                                        " mov rdi, rcx\
+                                    Type::Int => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsq\
                                         \n mov rdi, false\
-                                        \n setne dil".into()
-                                    }
-                                    Type::Ascii | Type::Bool => {
-                                        " mov rdi, rcx\
+                                        \n setne dil"
+                                        .into(),
+                                    Type::Ascii | Type::Bool => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsb\
                                         \n mov rdi, false\
-                                        \n setne dil".into()
-                                    }
-                                    Type::Str => {
-                                        " cmp str_array_eq\
+                                        \n setne dil"
+                                        .into(),
+                                    Type::Str => " cmp str_array_eq\
                                         \n xor rax, 1\
-                                        \n movzx rdi, al".into()
+                                        \n movzx rdi, al"
+                                        .into(),
+                                    Type::Array { .. } => {
+                                        unreachable!("nested arrays not supported yet")
                                     }
-                                    Type::Array { .. } => unreachable!("nested arrays not supported yet"),
-                                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                                    Type::Infer => {
+                                        unreachable!("should have been coerced to a concrete type")
+                                    }
                                 },
                                 ComparisonOp::Greater => match *typ {
-                                    Type::Int => {
-                                        " mov rdi, rcx\
+                                    Type::Int => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsq\
                                         \n mov rdi, false\
-                                        \n setg dil".into()
-                                    }
-                                    Type::Ascii | Type::Bool => {
-                                        " mov rdi, rcx\
+                                        \n setg dil"
+                                        .into(),
+                                    Type::Ascii | Type::Bool => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsb\
                                         \n mov rdi, false\
-                                        \n setg dil".into()
-                                    }
-                                    Type::Str => {
-                                        " call str_array_cmp\
+                                        \n setg dil"
+                                        .into(),
+                                    Type::Str => " call str_array_cmp\
                                         \n cmp rax, EQUAL\
                                         \n mov rdi, false\
-                                        \n setg dil".into()
+                                        \n setg dil"
+                                        .into(),
+                                    Type::Array { .. } => {
+                                        unreachable!("nested arrays not supported yet")
                                     }
-                                    Type::Array { .. } => unreachable!("nested arrays not supported yet"),
-                                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                                    Type::Infer => {
+                                        unreachable!("should have been coerced to a concrete type")
+                                    }
                                 },
                                 ComparisonOp::GreaterOrEquals => match *typ {
-                                    Type::Int => {
-                                        " mov rdi, rcx\
+                                    Type::Int => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsq\
                                         \n mov rdi, false\
-                                        \n setge dil".into()
-                                    }
-                                    Type::Ascii | Type::Bool => {
-                                        " mov rdi, rcx\
+                                        \n setge dil"
+                                        .into(),
+                                    Type::Ascii | Type::Bool => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsb\
                                         \n mov rdi, false\
-                                        \n setge dil".into()
-                                    }
-                                    Type::Str => {
-                                        " call str_array_cmp\
+                                        \n setge dil"
+                                        .into(),
+                                    Type::Str => " call str_array_cmp\
                                         \n cmp rax, EQUAL\
                                         \n mov rdi, false\
-                                        \n setge dil".into()
+                                        \n setge dil"
+                                        .into(),
+                                    Type::Array { .. } => {
+                                        unreachable!("nested arrays not supported yet")
                                     }
-                                    Type::Array { .. } => unreachable!("nested arrays not supported yet"),
-                                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                                    Type::Infer => {
+                                        unreachable!("should have been coerced to a concrete type")
+                                    }
                                 },
                                 ComparisonOp::Less => match *typ {
-                                    Type::Int => {
-                                        " mov rdi, rcx\
+                                    Type::Int => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsq\
                                         \n mov rdi, false\
-                                        \n setl dil".into()
-                                    }
-                                    Type::Ascii | Type::Bool => {
-                                        " mov rdi, rcx\
+                                        \n setl dil"
+                                        .into(),
+                                    Type::Ascii | Type::Bool => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsb\
                                         \n mov rdi, false\
-                                        \n setl dil".into()
-                                    }
-                                    Type::Str => {
-                                        " call str_array_cmp\
+                                        \n setl dil"
+                                        .into(),
+                                    Type::Str => " call str_array_cmp\
                                         \n cmp rax, EQUAL\
                                         \n mov rdi, false\
-                                        \n setl dil".into()
+                                        \n setl dil"
+                                        .into(),
+                                    Type::Array { .. } => {
+                                        unreachable!("nested arrays not supported yet")
                                     }
-                                    Type::Array { .. } => unreachable!("nested arrays not supported yet"),
-                                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                                    Type::Infer => {
+                                        unreachable!("should have been coerced to a concrete type")
+                                    }
                                 },
                                 ComparisonOp::LessOrEquals => match *typ {
-                                    Type::Int => {
-                                        " mov rdi, rcx\
+                                    Type::Int => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsq\
                                         \n mov rdi, false\
-                                        \n setle dil".into()
-                                    }
-                                    Type::Ascii | Type::Bool => {
-                                        " mov rdi, rcx\
+                                        \n setle dil"
+                                        .into(),
+                                    Type::Ascii | Type::Bool => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsb\
                                         \n mov rdi, false\
-                                        \n setle dil".into()
-                                    }
-                                    Type::Str => {
-                                        " call str_array_cmp\
+                                        \n setle dil"
+                                        .into(),
+                                    Type::Str => " call str_array_cmp\
                                         \n cmp rax, EQUAL\
                                         \n mov rdi, false\
-                                        \n setle dil".into()
+                                        \n setle dil"
+                                        .into(),
+                                    Type::Array { .. } => {
+                                        unreachable!("nested arrays not supported yet")
                                     }
-                                    Type::Array { .. } => unreachable!("nested arrays not supported yet"),
-                                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
+                                    Type::Infer => {
+                                        unreachable!("should have been coerced to a concrete type")
+                                    }
                                 },
                                 ComparisonOp::Compare => match *typ {
-                                    Type::Int => {
-                                        " mov rdi, rcx\
+                                    Type::Int => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsq\
                                         \n mov rdi, LESS\
                                         \n mov rsi, EQUAL\
                                         \n cmove rdi, rsi\
                                         \n mov rsi, GREATER\
-                                        \n cmovg rdi, rsi".into()
-                                    }
-                                    Type::Ascii | Type::Bool => {
-                                        " mov rdi, rcx\
+                                        \n cmovg rdi, rsi"
+                                        .into(),
+                                    Type::Ascii | Type::Bool => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsb\
                                         \n mov rdi, LESS\
                                         \n mov rsi, EQUAL\
                                         \n cmove rdi, rsi\
                                         \n mov rsi, GREATER\
-                                        \n cmovg rdi, rsi".into()
+                                        \n cmovg rdi, rsi"
+                                        .into(),
+                                    Type::Str => " call str_array_cmp\
+                                        \n mov rdi, rax"
+                                        .into(),
+                                    Type::Array { .. } => {
+                                        unreachable!("nested arrays not supported yet")
                                     }
-                                    Type::Str => {
-                                        " call str_array_cmp\
-                                        \n mov rdi, rax".into()
+                                    Type::Infer => {
+                                        unreachable!("should have been coerced to a concrete type")
                                     }
-                                    Type::Array { .. } => unreachable!("nested arrays not supported yet"),
-                                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
                                 },
-                            }
+                            },
                         ),
                         (
                             Type::Int | Type::Bool | Type::Ascii,
@@ -1306,7 +1307,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     \n mov rsi, GREATER\
                                     \n cmovg rdi, rsi"
                                     .into(),
-                            }
+                            },
                         ),
                         (Type::Str, _)
                         | (_, Type::Str)

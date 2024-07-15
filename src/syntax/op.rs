@@ -67,7 +67,6 @@ pub enum Op {
     RightRotate,
     RightRotateEquals,
 
-
     BitAnd,
     BitAndEquals,
 
@@ -252,7 +251,6 @@ impl TypeOf for Op {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum UnaryOp {
     Len,
@@ -284,7 +282,6 @@ impl Display for UnaryOp {
         };
     }
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BinaryOp {
@@ -401,10 +398,9 @@ impl TypeOf for BinaryOp {
             | Self::BitOr => Type::Int,
 
             Self::And | Self::Or => Type::Bool,
-        }
+        };
     }
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ComparisonOp {
@@ -414,7 +410,7 @@ pub(crate) enum ComparisonOp {
     Greater,
     GreaterOrEquals,
     Less,
-    LessOrEquals
+    LessOrEquals,
 }
 
 impl Display for ComparisonOp {
@@ -442,11 +438,9 @@ impl TypeOf for ComparisonOp {
             | Self::GreaterOrEquals
             | Self::Less
             | Self::LessOrEquals => Type::Bool,
-
-        }
+        };
     }
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AssignmentOp {
