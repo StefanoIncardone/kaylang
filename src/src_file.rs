@@ -1,6 +1,7 @@
 use crate::{CAUSE, ERROR};
 use std::{
-    fmt::Display, path::{Path, PathBuf}
+    fmt::Display,
+    path::{Path, PathBuf},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

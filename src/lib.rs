@@ -140,10 +140,16 @@ const BAR_FG: Fg = Fg::LightBlue;
 const BAR_BG: Bg = Bg::Default;
 const BAR_FLAGS: Flags = Flag::Bold;
 
-#[rustfmt::skip] pub(crate) static ERROR: Colored<&str> = Colored { text: "Error", fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
-#[rustfmt::skip] pub(crate) static CAUSE: Colored<&str> = Colored { text: "Cause", fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
-#[rustfmt::skip] pub(crate) static AT:    Colored<&str> = Colored { text: "at",    fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
-#[rustfmt::skip] pub(crate) static BAR:   Colored<&str> = Colored { text: "|",     fg: BAR_FG, bg: BAR_BG, flags: BAR_FLAGS };
+#[rustfmt::skip] pub(crate) static ERROR: Colored<&str> = Colored { text: "Error",  fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
+#[rustfmt::skip] pub(crate) static CAUSE: Colored<&str> = Colored { text: "Cause",  fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
+#[rustfmt::skip] pub(crate) static AT:    Colored<&str> = Colored { text: "at",     fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
+#[rustfmt::skip] pub(crate) static BAR:   Colored<&str> = Colored { text: "|",      fg: BAR_FG, bg: BAR_BG, flags: BAR_FLAGS };
+
+#[rustfmt::skip] pub static COULD_NOT_RUN_ASSEMBLER:  Colored<&str> = Colored { text: "Could not run assembler",  fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
+#[rustfmt::skip] pub static COULD_NOT_RUN_LINKER:     Colored<&str> = Colored { text: "Could not run linker",     fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
+#[rustfmt::skip] pub static COULD_NOT_RUN_EXECUTABLE: Colored<&str> = Colored { text: "Could not run executable", fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
+#[rustfmt::skip] pub static ASSEMBLING_ERROR:         Colored<&str> = Colored { text: "Assembling Error",         fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
+#[rustfmt::skip] pub static LINKING_ERROR:            Colored<&str> = Colored { text: "Linking Error",            fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 
 pub struct Logger {
     pub start: Instant,

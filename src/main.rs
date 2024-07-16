@@ -6,8 +6,9 @@ use kaylang::{
     src_file::SrcFile,
     syntax::ast::Ast,
     syntax::tokenizer::Tokenizer,
-    Command, Help, Logger, Version, ASSEMBLING, BUILDING_AST, CHECKING, COMPILING, GENERATING_ASM,
-    LINKING, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
+    Command, Help, Logger, Version, ASSEMBLING, ASSEMBLING_ERROR, BUILDING_AST, CHECKING,
+    COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER,
+    GENERATING_ASM, LINKING, LINKING_ERROR, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
 };
 use std::process::ExitCode;
 
@@ -121,16 +122,18 @@ fn main() -> ExitCode {
     let _assembler_status: () = {
         let assembling_sub_step = Logger::new();
         let mut assembler_command = artifacts.assembler();
-        let assembler_result = assembler_command.status();
+        let assembler_result = assembler_command.output();
         assembling_sub_step.sub_step_done_with_verbosity(&ASSEMBLING, verbosity);
         match assembler_result {
-            Ok(status) => {
-                if !status.success() {
-                    return ExitCode::from(status.code().unwrap_or(1) as u8);
+            Ok(output) => {
+                if !output.status.success() {
+                    let stderr_out = String::from_utf8_lossy(&output.stderr);
+                    eprintln!("{ASSEMBLING_ERROR}:\n{stderr_out}");
+                    return ExitCode::from(output.status.code().unwrap_or(1) as u8);
                 }
             }
             Err(err) => {
-                eprintln!("{err}");
+                eprintln!("{COULD_NOT_RUN_ASSEMBLER}: {err}");
                 return ExitCode::FAILURE;
             }
         }
@@ -139,16 +142,18 @@ fn main() -> ExitCode {
     let _linker_status: () = {
         let linking_sub_step = Logger::new();
         let mut linker_command = artifacts.linker();
-        let linker_result = linker_command.status();
+        let linker_result = linker_command.output();
         linking_sub_step.sub_step_done_with_verbosity(&LINKING, verbosity);
         match linker_result {
-            Ok(status) => {
-                if !status.success() {
-                    return ExitCode::from(status.code().unwrap_or(1) as u8);
+            Ok(output) => {
+                if !output.status.success() {
+                    let stderr_out = String::from_utf8_lossy(&output.stderr);
+                    eprintln!("{LINKING_ERROR}:\n{stderr_out}");
+                    return ExitCode::from(output.status.code().unwrap_or(1) as u8);
                 }
             }
             Err(err) => {
-                eprintln!("{err}");
+                eprintln!("{COULD_NOT_RUN_LINKER}: {err}");
                 return ExitCode::FAILURE;
             }
         }
@@ -171,7 +176,7 @@ fn main() -> ExitCode {
             }
         }
         Err(err) => {
-            eprintln!("{err}");
+            eprintln!("{COULD_NOT_RUN_EXECUTABLE}: {err}");
             return ExitCode::FAILURE;
         }
     }
@@ -186,7 +191,8 @@ mod tests {
         src_file::SrcFile,
         syntax::ast::Ast,
         syntax::tokenizer::Tokenizer,
-        Color, Logger, CHECKING, COMPILING, RUNNING,
+        Color, Logger, ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER,
+        COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, LINKING_ERROR, RUNNING,
     };
     use std::{path::PathBuf, process::ExitCode};
 
@@ -266,26 +272,30 @@ mod tests {
                 }
             };
 
-            let _assembler_status: () = match artifacts.assembler().status() {
-                Ok(status) => {
-                    if !status.success() {
-                        return Err(ExitCode::from(status.code().unwrap_or(1) as u8));
+            let _assembler_status: () = match artifacts.assembler().output() {
+                Ok(output) => {
+                    if !output.status.success() {
+                        let stderr_out = String::from_utf8_lossy(&output.stderr);
+                        eprintln!("{ASSEMBLING_ERROR}:\n{stderr_out}");
+                        return Err(ExitCode::from(output.status.code().unwrap_or(1) as u8));
                     }
                 }
                 Err(err) => {
-                    eprintln!("{err}");
+                    eprintln!("{COULD_NOT_RUN_ASSEMBLER}: {err}");
                     return Err(ExitCode::FAILURE);
                 }
             };
 
-            let _linker_status: () = match artifacts.linker().status() {
-                Ok(status) => {
-                    if !status.success() {
-                        return Err(ExitCode::from(status.code().unwrap_or(1) as u8));
+            let _linker_status: () = match artifacts.linker().output() {
+                Ok(output) => {
+                    if !output.status.success() {
+                        let stderr_out = String::from_utf8_lossy(&output.stderr);
+                        eprintln!("{LINKING_ERROR}:\n{stderr_out}");
+                        return Err(ExitCode::from(output.status.code().unwrap_or(1) as u8));
                     }
                 }
                 Err(err) => {
-                    eprintln!("{err}");
+                    eprintln!("{COULD_NOT_RUN_LINKER}: {err}");
                     return Err(ExitCode::FAILURE);
                 }
             };
@@ -299,7 +309,7 @@ mod tests {
             let run_result = match run_command.output() {
                 Ok(output) => output,
                 Err(err) => {
-                    eprintln!("{err}");
+                    eprintln!("{COULD_NOT_RUN_EXECUTABLE}: {err}");
                     return Err(ExitCode::FAILURE);
                 }
             };
