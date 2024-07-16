@@ -42,6 +42,7 @@ impl Artifacts {
             exe_path = out_path_buf.join(exe_file_name);
         }
 
+        exe_path = PathBuf::from(".").join(exe_path);
         return Ok(Self { asm_path, obj_path, exe_path });
     }
 

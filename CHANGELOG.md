@@ -96,6 +96,7 @@ Changes to error messages, help message and alike would **not** be considered br
 - Bug in crash error messages printing
 - Bug in parsing of do-loop statements
 - Bug in result of division/remainder assembly code that would crash when dividing INT_MIN by -1
+- Bug when using the `run` command without a `-o` option
 
 
 ## 0.5.3 - 2024-03-02
