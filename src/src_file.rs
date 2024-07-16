@@ -1,9 +1,6 @@
 use crate::{CAUSE, ERROR};
 use std::{
-    fmt::Display,
-    fs::File,
-    io::{self, BufRead, BufReader},
-    path::{Path, PathBuf},
+    fmt::Display, path::{Path, PathBuf}
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -11,7 +8,7 @@ pub(crate) struct Line {
     /// inclusive
     pub(crate) start: usize,
 
-    /// not inclusive
+    /// not inclusive, points to the last non-newline character
     pub(crate) end: usize,
 }
 
@@ -60,116 +57,57 @@ pub struct SrcFile {
 
 impl SrcFile {
     pub fn load(path: &Path) -> Result<Self, Error> {
-        let file = match File::open(path) {
-            Ok(f) => f,
-            Err(err) => {
-                return Err(Error {
-                    kind: ErrorKind::CouldNotOpen { path: path.to_owned() },
-                    cause: ErrorCause::IoError(err),
-                });
-            }
+        let path_buf = path.to_owned();
+        let code = match std::fs::read_to_string(path) {
+            Ok(code) => code,
+            Err(err) => return Err(Error { path: path_buf, cause: err }),
         };
 
-        let file_len = match file.metadata() {
-            Ok(metadata) => metadata.len() as usize,
-            Err(err) => {
-                return Err(Error {
-                    kind: ErrorKind::CouldNotReadMetadata { path: path.to_owned() },
-                    cause: ErrorCause::IoError(err),
-                });
-            }
-        };
-
-        // plus one to account for a possible phantom newline at the end
-        let mut code = String::with_capacity(file_len + 1);
         let mut lines = Vec::<Line>::new();
         let mut start = 0;
-        let mut src = BufReader::new(file);
+        let mut current_ascii_index = 0;
 
-        loop {
-            let mut chars_read = match src.read_line(&mut code) {
-                Ok(0) => break,
-                Ok(read) => read,
-                Err(err) => {
-                    return Err(Error {
-                        kind: ErrorKind::CouldNotReadContents { path: path.to_owned() },
-                        cause: ErrorCause::IoError(err),
-                    });
+        let code_bytes = code.as_bytes();
+        while current_ascii_index < code_bytes.len() {
+            match code_bytes[current_ascii_index] {
+                b'\n' => {
+                    // we reached the end of the line on a LF (\n)
+                    lines.push(Line { start, end: current_ascii_index });
+                    start = current_ascii_index + 1;
                 }
-            };
+                b'\r' => {
+                    let Some(possible_new_line) = code_bytes.get(current_ascii_index + 1) else {
+                        // we reached the end of the file on a stray '\r'
+                        lines.push(Line { start, end: current_ascii_index });
+                        break;
+                    };
 
-            let mut end = code.len() - 1;
-            if end > start {
-                let code_bytes = unsafe { code.as_mut_vec() };
-
-                if let cr @ b'\r' = &mut code_bytes[end - 1] {
-                    *cr = b'\n';
-
-                    unsafe {
-                        code_bytes.set_len(end);
+                    if *possible_new_line == b'\n' {
+                        // we reached the end of the line on a CRLF (\r\n)
+                        lines.push(Line { start, end: current_ascii_index });
+                        current_ascii_index += 1;
+                        start = current_ascii_index + 1;
                     }
-
-                    end -= 1;
-                    chars_read -= 1;
                 }
+                _ => {}
             }
 
-            lines.push(Line { start, end });
-            start += chars_read;
+            current_ascii_index += 1;
         }
 
-        // it will make lexing simpler
-        if !code.is_empty() {
-            let last_char = code.len() - 1;
-            if code.as_bytes()[last_char] != b'\n' {
-                code.push('\n');
-                let last_line = lines.len() - 1;
-                lines[last_line].end += 1;
-            }
+        if !code.is_empty() && code_bytes[current_ascii_index - 1] != b'\n' {
+            // we reached the end of the file on a line without a trailing \n
+            lines.push(Line { start, end: current_ascii_index });
         }
 
-        return Ok(Self { path: path.to_owned(), code, lines });
-    }
-}
-
-#[derive(Debug)]
-pub enum ErrorKind {
-    CouldNotOpen { path: PathBuf },
-    CouldNotReadMetadata { path: PathBuf },
-    CouldNotReadContents { path: PathBuf },
-}
-
-impl Display for ErrorKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return match self {
-            Self::CouldNotOpen { path } => write!(f, "could not open '{}'", path.display()),
-            Self::CouldNotReadMetadata { path } => {
-                write!(f, "could not read metadata of '{}'", path.display())
-            }
-            Self::CouldNotReadContents { path } => {
-                write!(f, "could not read contents of '{}'", path.display())
-            }
-        };
-    }
-}
-
-#[derive(Debug)]
-pub enum ErrorCause {
-    IoError(io::Error),
-}
-
-impl Display for ErrorCause {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return match self {
-            Self::IoError(err) => write!(f, "{err} ({})", err.kind()),
-        };
+        return Ok(Self { path: path_buf, code, lines });
     }
 }
 
 #[derive(Debug)]
 pub struct Error {
-    pub kind: ErrorKind,
-    pub cause: ErrorCause,
+    pub path: PathBuf,
+    pub cause: std::io::Error,
 }
 
 impl std::error::Error for Error {}
@@ -178,10 +116,11 @@ impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         return write!(
             f,
-            "{ERROR}: {msg}\
-            \n{CAUSE}: {cause}",
-            msg = self.kind,
-            cause = self.cause
+            "{ERROR}: could not read '{file_path}'\
+            \n{CAUSE}: {err} ({io_err})",
+            file_path = self.path.display(),
+            err = self.cause,
+            io_err = self.cause.kind()
         );
     }
 }
