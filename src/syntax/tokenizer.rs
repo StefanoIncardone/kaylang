@@ -279,7 +279,7 @@ impl<'src> Tokenizer<'src> {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
 
                 let Some(utf8_ch) = rest_of_line.chars().next() else {
-                    unreachable!("this branch assured we would have a valid utf8 character")
+                    unreachable!("this branch assured we would have a valid utf8 character");
                 };
 
                 let utf8_ch_col = self.col;
@@ -305,7 +305,7 @@ impl<'src> Tokenizer<'src> {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
 
                 let Some(utf8_ch) = rest_of_line.chars().next() else {
-                    unreachable!("this branch assured we would have a valid utf8 character")
+                    unreachable!("this branch assured we would have a valid utf8 character");
                 };
 
                 self.col += utf8_ch.len_utf8();
@@ -325,7 +325,7 @@ impl<'src> Tokenizer<'src> {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
 
                 let Some(utf8_ch) = rest_of_line.chars().next() else {
-                    unreachable!("this branch assured we would have a valid utf8 character")
+                    unreachable!("this branch assured we would have a valid utf8 character");
                 };
 
                 Err(RawError {
@@ -346,7 +346,7 @@ impl<'src> Tokenizer<'src> {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
 
                 let Some(utf8_ch) = rest_of_line.chars().next() else {
-                    unreachable!("this branch assured we would have a valid utf8 character")
+                    unreachable!("this branch assured we would have a valid utf8 character");
                 };
 
                 Some(utf8_ch)
@@ -370,7 +370,7 @@ impl<'src> Tokenizer<'src> {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
 
                 let Some(utf8_ch) = rest_of_line.chars().next() else {
-                    unreachable!("this branch assured we would have a valid utf8 character")
+                    unreachable!("this branch assured we would have a valid utf8 character");
                 };
 
                 let utf8_ch_col = self.col;
@@ -401,7 +401,7 @@ impl<'src> Tokenizer<'src> {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
 
                 let Some(utf8_ch) = rest_of_line.chars().next() else {
-                    unreachable!("this branch assured we would have a valid utf8 character")
+                    unreachable!("this branch assured we would have a valid utf8 character");
                 };
 
                 let utf8_ch_col = self.col;

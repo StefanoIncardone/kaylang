@@ -10,7 +10,7 @@ use crate::{
     src_file::SrcFile,
     syntax::{
         ast::{self, Expression, IfStatement, LoopKind, Node, Scope, Type, TypeOf},
-        op::{AssignmentOp, BinaryOp, ComparisonOp, UnaryOp},
+        op::{AssignmentOp, BinaryOp, BooleanBinaryOp, ComparisonOp, UnaryOp},
         tokenizer::{ascii, Literal},
     },
     CAUSE, ERROR,
@@ -786,6 +786,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         match rhs {
             // these expressions do not need to save the value of the lhs
             Expression::Unary { op: UnaryOp::Not | UnaryOp::WrappingMinus, .. }
+            | Expression::BooleanUnary { .. }
             | Expression::Literal(_)
             | Expression::Identifier { .. } => {
                 self.expression(rhs, rhs_dst);
@@ -793,6 +794,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             }
             // these expressions need to save the value of the lhs
             Expression::Binary { .. }
+            | Expression::BooleanBinary { .. }
             | Expression::Comparison { .. }
             | Expression::Unary { .. }
             | Expression::ArrayIndex { .. } => {
@@ -967,8 +969,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     .into(),
                     BinaryOp::WrappingMinus => " sub rdi, rsi".into(),
                     BinaryOp::SaturatingMinus => " call int_saturating_sub".into(),
-                    BinaryOp::And | BinaryOp::BitAnd => " and rdi, rsi".into(),
-                    BinaryOp::Or | BinaryOp::BitOr => " or rdi, rsi".into(),
+                    BinaryOp::BitAnd => " and rdi, rsi".into(),
+                    BinaryOp::BitOr => " or rdi, rsi".into(),
                     BinaryOp::BitXor => " xor rdi, rsi".into(),
                     BinaryOp::LeftShift => format!(
                         " mov rdx, {line}\
@@ -1018,6 +1020,19 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         col = op_position.col,
                     )
                     .into(),
+                };
+
+                self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
+
+                _ = writeln!(self.asm, "{op_asm}\n");
+            }
+            // Note: strings and arrays cannot appear in expressions
+            Expression::BooleanBinary { lhs, op, rhs } => {
+                let lhs_dst = Dst::Reg(Rdi);
+                let rhs_dst = Dst::Reg(Rsi);
+                let op_asm = match op {
+                    BooleanBinaryOp::And => " and rdi, rsi",
+                    BooleanBinaryOp::Or => " or rdi, rsi",
                 };
 
                 self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
@@ -1417,21 +1432,20 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         }
                         Expression::Literal(_)
                         | Expression::Unary { .. }
+                        | Expression::BooleanUnary { .. }
                         | Expression::Binary { .. }
+                        | Expression::BooleanBinary { .. }
                         | Expression::Comparison { .. } => {
                             unreachable!("cannot take the length of numerical types")
                         }
                     },
                     UnaryOp::Not => {
                         self.expression(operand, dst);
-                        match operand.typ() {
-                            Type::Bool => _ = writeln!(self.asm, " xor {reg}, 1"),
-                            Type::Int | Type::Ascii => _ = writeln!(self.asm, " not {reg}"),
-                            Type::Str | Type::Array { .. } => {
-                                unreachable!("cannot invert non numerical values");
-                            }
-                            Type::Infer => unreachable!("should have been inferred"),
-                        }
+                        let Type::Int = operand.typ() else {
+                            unreachable!("can only invert integer and ascii values");
+                        };
+
+                        _ = writeln!(self.asm, " not {reg}");
                     }
                     UnaryOp::Plus => {
                         self.expression(operand, dst);
@@ -1531,6 +1545,17 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
                 }
             }
+            Expression::BooleanUnary { operand, .. } => {
+                let Dst::Reg(reg) = dst else {
+                    unreachable!();
+                };
+
+                let Type::Bool = operand.typ() else {
+                    unreachable!("can only invert boolean values");
+                };
+
+                _ = writeln!(self.asm, " xor {reg}, 1");
+            }
             Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
             Expression::ArrayIndex { typ, var_name, bracket_position, index } => {
                 self.expression(index, Dst::Reg(Rdi));
@@ -1620,72 +1645,53 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
     fn condition(&mut self, condition: &'ast Expression<'src>, false_tag: &str) {
         match condition {
-            Expression::Literal(Literal::Bool(boolean)) => {
-                _ = writeln!(
-                    self.asm,
-                    " mov dil, {bool}\
-                    \n cmp dil, true\
-                    \n jne {false_tag}\n",
-                    bool = usize::from(*boolean)
-                );
+            Expression::Literal(literal) => match literal {
+                Literal::Bool(boolean) => {
+                    _ = writeln!(
+                        self.asm,
+                        " mov dil, {bool}\
+                        \n cmp dil, true\
+                        \n jne {false_tag}\n",
+                        bool = usize::from(*boolean)
+                    );
+                }
+                Literal::Int(_) | Literal::Ascii(_) | Literal::Str(_) => {
+                    unreachable!("non-boolean expressions not allowed in conditions");
+                }
             }
-            Expression::Binary { lhs, op, rhs, .. } => {
+            Expression::BooleanBinary { lhs, op, rhs, .. } => {
                 let lhs_dst = match lhs.typ() {
-                    Type::Int | Type::Ascii | Type::Bool => Dst::Reg(Rdi),
-                    Type::Str | Type::Array { .. } => Dst::View { len: Rdi, ptr: Rsi },
+                    Type::Bool => Dst::Reg(Rdi),
+                    Type::Int | Type::Ascii | Type::Str | Type::Array { .. } => {
+                        unreachable!("non-boolean expressions not allowed in conditions");
+                    },
                     Type::Infer => unreachable!("should have been inferred"),
                 };
 
                 let rhs_dst = match rhs.typ() {
-                    Type::Int | Type::Ascii | Type::Bool => Dst::Reg(Rsi),
-                    Type::Str | Type::Array { .. } => Dst::View { len: Rdx, ptr: Rcx },
+                    Type::Bool => Dst::Reg(Rdi),
+                    Type::Int | Type::Ascii | Type::Str | Type::Array { .. } => {
+                        unreachable!("non-boolean expressions not allowed in conditions");
+                    },
                     Type::Infer => unreachable!("should have been inferred"),
                 };
 
                 self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
 
                 match op {
-                    BinaryOp::And => {
+                    BooleanBinaryOp::And => {
                         _ = writeln!(
                             self.asm,
                             " and rdi, rsi\
                             \n jz {false_tag}"
                         );
                     }
-                    BinaryOp::Or => {
+                    BooleanBinaryOp::Or => {
                         _ = writeln!(
                             self.asm,
                             " or rdi, rsi\
                             \n jz {false_tag}"
                         );
-                    }
-
-                    BinaryOp::Pow
-                    | BinaryOp::WrappingPow
-                    | BinaryOp::SaturatingPow
-                    | BinaryOp::Times
-                    | BinaryOp::WrappingTimes
-                    | BinaryOp::SaturatingTimes
-                    | BinaryOp::Divide
-                    | BinaryOp::WrappingDivide
-                    | BinaryOp::SaturatingDivide
-                    | BinaryOp::Remainder
-                    | BinaryOp::Plus
-                    | BinaryOp::WrappingPlus
-                    | BinaryOp::SaturatingPlus
-                    | BinaryOp::Minus
-                    | BinaryOp::WrappingMinus
-                    | BinaryOp::SaturatingMinus
-                    | BinaryOp::BitAnd
-                    | BinaryOp::BitOr
-                    | BinaryOp::BitXor
-                    | BinaryOp::LeftShift
-                    | BinaryOp::WrappingLeftShift
-                    | BinaryOp::SaturatingLeftShift
-                    | BinaryOp::RightShift
-                    | BinaryOp::LeftRotate
-                    | BinaryOp::RightRotate => {
-                        unreachable!("non-boolean operators should not appear here")
                     }
                 }
             }
@@ -1762,7 +1768,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n jne {false_tag}\n"
                 );
             }
-            Expression::Unary { operand, .. } => {
+            Expression::BooleanUnary { operand, .. } => {
                 self.expression(operand, Dst::Reg(Rdi));
 
                 // we can only have boolean expressions at this point, so it's safe to ignore the integer negation case
@@ -1780,8 +1786,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n jne {false_tag}\n"
                 );
             }
-            Expression::Literal(Literal::Int(_) | Literal::Ascii(_) | Literal::Str(_))
-            | Expression::Array { .. } => {
+            Expression::Unary { .. } | Expression::Binary { .. } | Expression::Array { .. } => {
                 unreachable!("non-boolean expressions not allowed in conditions")
             }
         }
@@ -1789,75 +1794,53 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
     fn condition_reversed(&mut self, condition: &'ast Expression<'src>, true_tag: &str) {
         match condition {
-            Expression::Literal(Literal::Bool(boolean)) => {
-                _ = writeln!(
-                    self.asm,
-                    " mov dil, {bool}\
-                    \n cmp dil, true\
-                    \n je {true_tag}\n",
-                    bool = usize::from(*boolean)
-                );
+            Expression::Literal(literal) => match literal {
+                Literal::Bool(boolean) => {
+                    _ = writeln!(
+                        self.asm,
+                        " mov dil, {bool}\
+                        \n cmp dil, true\
+                        \n je {true_tag}\n",
+                        bool = usize::from(*boolean)
+                    );
+                }
+                Literal::Int(_) | Literal::Ascii(_) | Literal::Str(_) => {
+                    unreachable!("non-boolean expressions not allowed in conditions");
+                }
             }
-            Expression::Literal(Literal::Int(_) | Literal::Ascii(_) | Literal::Str(_)) => {
-                unreachable!("non-boolean expressions should not appear here")
-            }
-            Expression::Binary { lhs, op, rhs, .. } => {
+            Expression::BooleanBinary { lhs, op, rhs, .. } => {
                 let lhs_dst = match lhs.typ() {
-                    Type::Int | Type::Ascii | Type::Bool => Dst::Reg(Rdi),
-                    Type::Str | Type::Array { .. } => Dst::View { len: Rdi, ptr: Rsi },
+                    Type::Bool => Dst::Reg(Rdi),
+                    Type::Int | Type::Ascii | Type::Str | Type::Array { .. } => {
+                        unreachable!("non-boolean expressions not allowed in conditions");
+                    },
                     Type::Infer => unreachable!("should have been inferred"),
                 };
 
                 let rhs_dst = match rhs.typ() {
-                    Type::Int | Type::Ascii | Type::Bool => Dst::Reg(Rsi),
-                    Type::Str | Type::Array { .. } => Dst::View { len: Rdx, ptr: Rcx },
+                    Type::Bool => Dst::Reg(Rdi),
+                    Type::Int | Type::Ascii | Type::Str | Type::Array { .. } => {
+                        unreachable!("non-boolean expressions not allowed in conditions");
+                    },
                     Type::Infer => unreachable!("should have been inferred"),
                 };
 
                 self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
 
                 match op {
-                    BinaryOp::And => {
+                    BooleanBinaryOp::And => {
                         _ = writeln!(
                             self.asm,
                             " and rdi, rsi\
                             \n jnz {true_tag}"
                         );
                     }
-                    BinaryOp::Or => {
+                    BooleanBinaryOp::Or => {
                         _ = writeln!(
                             self.asm,
                             " or rdi, rsi\
                             \n jnz {true_tag}"
                         );
-                    }
-
-                    BinaryOp::Pow
-                    | BinaryOp::WrappingPow
-                    | BinaryOp::SaturatingPow
-                    | BinaryOp::Times
-                    | BinaryOp::WrappingTimes
-                    | BinaryOp::SaturatingTimes
-                    | BinaryOp::Divide
-                    | BinaryOp::WrappingDivide
-                    | BinaryOp::SaturatingDivide
-                    | BinaryOp::Remainder
-                    | BinaryOp::Plus
-                    | BinaryOp::WrappingPlus
-                    | BinaryOp::SaturatingPlus
-                    | BinaryOp::Minus
-                    | BinaryOp::WrappingMinus
-                    | BinaryOp::SaturatingMinus
-                    | BinaryOp::BitAnd
-                    | BinaryOp::BitOr
-                    | BinaryOp::BitXor
-                    | BinaryOp::LeftShift
-                    | BinaryOp::WrappingLeftShift
-                    | BinaryOp::SaturatingLeftShift
-                    | BinaryOp::RightShift
-                    | BinaryOp::LeftRotate
-                    | BinaryOp::RightRotate => {
-                        unreachable!("non-boolean operators should not appear here")
                     }
                 }
             }
@@ -1934,7 +1917,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n je {true_tag}\n"
                 );
             }
-            Expression::Unary { operand, .. } => {
+            Expression::BooleanUnary { operand, .. } => {
                 self.expression(operand, Dst::Reg(Rdi));
 
                 // we can only have boolean expressions at this point, so it's safe to ignore the integer negation case
@@ -1944,7 +1927,6 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n jnz {true_tag}\n"
                 );
             }
-            Expression::Array { .. } => unreachable!("arrays cannot appear in conditions"),
             Expression::ArrayIndex { .. } => {
                 self.expression(condition, Dst::Reg(Rdi));
                 _ = writeln!(
@@ -1952,6 +1934,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     " cmp dil, true\
                     \n je {true_tag}\n"
                 );
+            }
+            Expression::Unary { .. } | Expression::Binary { .. } | Expression::Array { .. } => {
+                unreachable!("non-boolean expressions not allowed in conditions")
             }
         }
     }
@@ -1992,6 +1977,19 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
                     Type::Str | Type::Array { .. } | Type::Bool => {
                         unreachable!("cannot appear in expressions");
+                    }
+                    Type::Infer => unreachable!("should have been inferred"),
+                }
+            }
+            Expression::BooleanBinary { .. } => {
+                self.expression(value, Dst::Reg(Rdi));
+
+                match value.typ() {
+                    Type::Bool => {
+                        _ = writeln!(self.asm, " mov [rbp + {dst_offset}], dil\n");
+                    }
+                    Type::Int | Type::Str | Type::Array { .. } | Type::Ascii => {
+                        unreachable!("cannot appear in boolean expressions");
                     }
                     Type::Infer => unreachable!("should have been inferred"),
                 }
@@ -2128,7 +2126,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
                     Expression::Literal(_)
                     | Expression::Unary { .. }
+                    | Expression::BooleanUnary { .. }
                     | Expression::Binary { .. }
+                    | Expression::BooleanBinary { .. }
                     | Expression::Comparison { .. } => {
                         unreachable!("cannot take the length of numerical types")
                     }
@@ -2136,13 +2136,6 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 UnaryOp::Not => {
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
-                        Type::Bool => {
-                            _ = writeln!(
-                                self.asm,
-                                " xor rdi, 1\
-                                \n mov [rbp + {dst_offset}], dil\n"
-                            );
-                        }
                         Type::Ascii => {
                             _ = writeln!(
                                 self.asm,
@@ -2157,7 +2150,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n mov [rbp + {dst_offset}], rdi\n"
                             );
                         }
-                        Type::Str | Type::Array { .. } => {
+                        Type::Bool | Type::Str | Type::Array { .. } => {
                             unreachable!("cannot invert non numerical values");
                         }
                         Type::Infer => unreachable!("should have been inferred"),
@@ -2305,6 +2298,14 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
                 }
             },
+            Expression::BooleanUnary { operand, .. } => {
+                self.expression(operand, Dst::Reg(Rdi));
+                _ = writeln!(
+                    self.asm,
+                    " xor rdi, 1\
+                    \n mov [rbp + {dst_offset}], dil\n"
+                );
+            }
             Expression::Array { typ, items } => {
                 let typ_size = typ.size();
                 for (index, item) in items.iter().enumerate() {

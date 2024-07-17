@@ -283,6 +283,32 @@ impl Display for UnaryOp {
     }
 }
 
+impl TypeOf for UnaryOp {
+    fn typ(&self) -> Type {
+        return Type::Int;
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BooleanUnaryOp {
+    Not,
+}
+
+impl Display for BooleanUnaryOp {
+    #[rustfmt::skip]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        return match self {
+            Self::Not => write!(f, "!"),
+        };
+    }
+}
+
+impl TypeOf for BooleanUnaryOp {
+    fn typ(&self) -> Type {
+        return Type::Bool;
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BinaryOp {
     Pow,
@@ -319,9 +345,6 @@ pub(crate) enum BinaryOp {
     BitAnd,
     BitXor,
     BitOr,
-
-    And,
-    Or,
 }
 
 impl Display for BinaryOp {
@@ -361,44 +384,35 @@ impl Display for BinaryOp {
             Self::BitAnd    => write!(f, "&"),
             Self::BitOr     => write!(f, "|"),
             Self::BitXor    => write!(f, "^"),
-
-            Self::And   => write!(f, "&&"),
-            Self::Or    => write!(f, "||"),
         };
     }
 }
 
 impl TypeOf for BinaryOp {
     fn typ(&self) -> Type {
-        return match self {
-            Self::Pow
-            | Self::WrappingPow
-            | Self::SaturatingPow
-            | Self::Times
-            | Self::WrappingTimes
-            | Self::SaturatingTimes
-            | Self::Divide
-            | Self::WrappingDivide
-            | Self::SaturatingDivide
-            | Self::Remainder
-            | Self::Plus
-            | Self::WrappingPlus
-            | Self::SaturatingPlus
-            | Self::Minus
-            | Self::WrappingMinus
-            | Self::SaturatingMinus
-            | Self::LeftShift
-            | Self::WrappingLeftShift
-            | Self::SaturatingLeftShift
-            | Self::RightShift
-            | Self::LeftRotate
-            | Self::RightRotate
-            | Self::BitAnd
-            | Self::BitXor
-            | Self::BitOr => Type::Int,
+        return Type::Int;
+    }
+}
 
-            Self::And | Self::Or => Type::Bool,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BooleanBinaryOp {
+    And,
+    Or,
+}
+
+impl Display for BooleanBinaryOp {
+    #[rustfmt::skip]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        return match self {
+            Self::And   => write!(f, "&&"),
+            Self::Or    => write!(f, "||"),
         };
+    }
+}
+
+impl TypeOf for BooleanBinaryOp {
+    fn typ(&self) -> Type {
+        return Type::Bool;
     }
 }
 

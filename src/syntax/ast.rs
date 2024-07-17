@@ -1,5 +1,5 @@
 use super::{
-    op::{AssignmentOp, BinaryOp, ComparisonOp, Op, UnaryOp},
+    op::{AssignmentOp, BinaryOp, BooleanBinaryOp, BooleanUnaryOp, ComparisonOp, Op, UnaryOp},
     tokenizer::{ascii, int, uint, BracketKind, Literal, Mutability, Token, TokenKind},
     Errors, RawError,
 };
@@ -70,7 +70,7 @@ impl Type {
             Self::Int => std::mem::size_of::<int>(),
             Self::Ascii => std::mem::size_of::<ascii>(),
             Self::Bool => std::mem::size_of::<bool>(),
-            Self::Str => std::mem::size_of::<*const ascii>() + std::mem::size_of::<int>(),
+            Self::Str => std::mem::size_of::<*const ascii>() + std::mem::size_of::<uint>(),
             Self::Array { typ, len } => typ.size() * len,
 
             Self::Infer => unreachable!("should have been coerced to a concrete type"),
@@ -116,10 +116,19 @@ pub(crate) enum Expression<'src> {
         op: UnaryOp,
         operand: Box<Expression<'src>>,
     },
+    BooleanUnary {
+        op: BooleanUnaryOp,
+        operand: Box<Expression<'src>>,
+    },
     Binary {
         lhs: Box<Expression<'src>>,
         op_position: Position,
         op: BinaryOp,
+        rhs: Box<Expression<'src>>,
+    },
+    BooleanBinary {
+        lhs: Box<Expression<'src>>,
+        op: BooleanBinaryOp,
         rhs: Box<Expression<'src>>,
     },
     Comparison {
@@ -147,14 +156,11 @@ impl Display for Expression<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         return match self {
             Self::Literal(literal) => write!(f, "{literal}"),
-            Self::Unary { op, operand, .. } => {
-                if let UnaryOp::Len = op {
-                    write!(f, "{op} {operand}")
-                } else {
-                    write!(f, "{op}{operand}")
-                }
-            }
+            Self::Unary { op: UnaryOp::Len, operand, .. } => write!(f, "{op} {operand}", op = UnaryOp::Len),
+            Self::Unary { op, operand, .. } => write!(f, "{op}{operand}"),
+            Self::BooleanUnary { op, operand } => write!(f, "{op}{operand}"),
             Self::Binary { lhs, op, rhs, .. } => write!(f, "({lhs} {op} {rhs})"),
+            Self::BooleanBinary { lhs, op, rhs, .. } => write!(f, "({lhs} {op} {rhs})"),
             Self::Comparison { lhs, op, rhs } => write!(f, "({lhs} {op} {rhs})"),
             Self::Identifier { name, .. } => write!(f, "{name}"),
             Self::Array { items, .. } => {
@@ -182,21 +188,11 @@ impl TypeOf for Expression<'_> {
     fn typ(&self) -> Type {
         return match self {
             Self::Literal(literal) => literal.typ(),
-            Self::Unary { op, operand, .. } => match (op, operand.typ()) {
-                (UnaryOp::Len, Type::Str | Type::Array { .. } | Type::Infer)
-                | (UnaryOp::Minus | UnaryOp::WrappingMinus | UnaryOp::SaturatingMinus, _)
-                | (UnaryOp::Plus | UnaryOp::WrappingPlus | UnaryOp::SaturatingPlus, _)
-                | (UnaryOp::Not, Type::Int | Type::Ascii) => Type::Int,
-                (UnaryOp::Not, Type::Bool) => Type::Bool,
-                (UnaryOp::Not, _) => {
-                    unreachable!("'!' operator can only be use with integers and booleans")
-                }
-                (UnaryOp::Len, _) => {
-                    unreachable!("'len' operator can only be used with strings and arrays")
-                }
-            },
+            Self::Unary { op, .. } => op.typ(),
+            Self::BooleanUnary { op, .. } => op.typ(),
             Self::Binary { op, .. } => op.typ(),
-            Self::Comparison { .. } => Type::Bool,
+            Self::BooleanBinary { op, .. } => op.typ(),
+            Self::Comparison { op, .. } => op.typ(),
             Self::Identifier { typ, .. } => typ.clone(),
             Self::Array { typ, items } => {
                 Type::Array { typ: Box::new(typ.clone()), len: items.len() }
@@ -324,7 +320,7 @@ impl Display for Node<'_> {
             Self::Continue => write!(f, "continue"),
 
             Self::Definition { .. } | Self::Assignment { .. } | Self::Scope { .. } => {
-                unreachable!("should never be displayed")
+                unreachable!("should never be displayed");
             }
         };
     }
@@ -622,7 +618,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     path = self.src.path.display(),
                     line = position.line,
                     col = position.col,
-                )
+                );
             }
             TokenKind::Bracket(BracketKind::OpenSquare) => {
                 _ = self.expression()?;
@@ -642,7 +638,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     path = self.src.path.display(),
                     line = position.line,
                     col = position.col,
-                )
+                );
             }
             TokenKind::Colon => {
                 _ = self.next_token();
@@ -1135,7 +1131,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         }),
                     },
                     Expression::Unary { .. }
+                    | Expression::BooleanUnary { .. }
                     | Expression::Binary { .. }
+                    | Expression::BooleanBinary { .. }
                     | Expression::Comparison { .. } => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Len),
                         cause: ErrorCause::CannotTakeLenOfNumericValue(operand.typ()),
@@ -1406,11 +1404,21 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
                 // returning to avoid the call to tokens.next at the end of the function
                 return match operand.typ() {
-                    Type::Int | Type::Ascii | Type::Bool => {
+                    Type::Int | Type::Ascii => {
                         if should_be_inverted {
                             Ok(Expression::Unary {
                                 op_position: Position::new(self.src, current_token.col).0,
                                 op: UnaryOp::Not,
+                                operand: Box::new(operand),
+                            })
+                        } else {
+                            Ok(operand)
+                        }
+                    }
+                    Type::Bool => {
+                        if should_be_inverted {
+                            Ok(Expression::BooleanUnary {
+                                op: BooleanUnaryOp::Not,
                                 operand: Box::new(operand),
                             })
                         } else {
@@ -1781,13 +1789,12 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             #[allow(clippy::wildcard_enum_match_arm)]
             let binary_op = match op {
-                Op::And => BinaryOp::And,
+                Op::And => BooleanBinaryOp::And,
                 _ => unreachable!(),
             };
 
-            lhs = Expression::Binary {
+            lhs = Expression::BooleanBinary {
                 lhs: Box::new(lhs),
-                op_position: Position::new(self.src, op_token.col).0,
                 op: binary_op,
                 rhs: Box::new(rhs),
             };
@@ -1821,13 +1828,12 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             #[allow(clippy::wildcard_enum_match_arm)]
             let binary_op = match op {
-                Op::Or => BinaryOp::Or,
+                Op::Or => BooleanBinaryOp::Or,
                 _ => unreachable!(),
             };
 
-            lhs = Expression::Binary {
+            lhs = Expression::BooleanBinary {
                 lhs: Box::new(lhs),
-                op_position: Position::new(self.src, op_token.col).0,
                 op: binary_op,
                 rhs: Box::new(rhs),
             };

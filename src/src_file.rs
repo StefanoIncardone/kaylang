@@ -78,7 +78,7 @@ impl SrcFile {
                 }
                 b'\r' => {
                     let Some(possible_new_line) = code_bytes.get(current_ascii_index + 1) else {
-                        // we reached the end of the file on a stray '\r'
+                        // we reached the end of the file on a stray \r
                         lines.push(Line { start, end: current_ascii_index });
                         break;
                     };
