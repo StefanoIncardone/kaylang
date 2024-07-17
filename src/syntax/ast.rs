@@ -12,23 +12,23 @@ pub(crate) trait TypeOf {
 
 #[derive(Debug, Clone)]
 pub enum Type {
-    Infer,
     Int,
     Ascii,
     Bool,
     Str,
     // TODO(breaking)(stefano): enforce a max length
     Array { typ: Box<Type>, len: uint },
+    Infer,
 }
 
 impl PartialEq for Type {
     fn eq(&self, other: &Self) -> bool {
         return match (self, other) {
-            (Self::Infer, Self::Infer)
-            | (Self::Int, Self::Int)
+            (Self::Int, Self::Int)
             | (Self::Ascii, Self::Ascii)
             | (Self::Bool, Self::Bool)
-            | (Self::Str, Self::Str) => true,
+            | (Self::Str, Self::Str)
+            | (Self::Infer, Self::Infer) => true,
 
             (Self::Array { typ: typ_1, len: len_1 }, Self::Array { typ: typ_2, len: len_2 }) => {
                 len_1 == len_2 && typ_1 == typ_2
@@ -47,7 +47,6 @@ impl Display for Type {
             Self::Bool => write!(f, "bool"),
             Self::Str => write!(f, "str"),
             Self::Array { typ, len } => write!(f, "{typ}[{len}]"),
-
             Self::Infer => write!(f, "infer"),
         };
     }
@@ -72,16 +71,7 @@ impl Type {
             Self::Bool => std::mem::size_of::<bool>(),
             Self::Str => std::mem::size_of::<*const ascii>() + std::mem::size_of::<uint>(),
             Self::Array { typ, len } => typ.size() * len,
-
             Self::Infer => unreachable!("should have been coerced to a concrete type"),
-        };
-    }
-
-    pub(crate) fn should_be_inferred(&self) -> bool {
-        return match self {
-            Self::Infer => true,
-            Self::Array { typ, .. } => typ.should_be_inferred(),
-            Self::Int | Self::Ascii | Self::Bool | Self::Str => false,
         };
     }
 
@@ -205,9 +195,9 @@ impl TypeOf for Expression<'_> {
 impl From<Type> for Expression<'_> {
     fn from(typ: Type) -> Self {
         return match typ {
-            Type::Bool => Self::Literal(Literal::Bool(false)),
-            Type::Ascii => Self::Literal(Literal::Ascii(0)),
             Type::Int => Self::Literal(Literal::Int(0)),
+            Type::Ascii => Self::Literal(Literal::Ascii(0)),
+            Type::Bool => Self::Literal(Literal::Bool(false)),
             Type::Str => Self::Literal(Literal::Str(Vec::new())),
             Type::Array { typ: items_type, len } => {
                 let mut items = Vec::<Expression<'_>>::with_capacity(len);
@@ -255,7 +245,9 @@ pub(crate) enum LoopKind {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Loop<'src> {
+    // REMOVE(stefano): remove this kind field and create a different struct instead
     pub(crate) kind: LoopKind,
+
     pub(crate) condition: Expression<'src>,
     pub(crate) statement: Box<Node<'src>>,
 }
@@ -307,14 +299,18 @@ impl Display for Node<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         return match self {
             Self::Semicolon => write!(f, ";"),
+
             Self::Expression(expression) => write!(f, "{expression}"),
+
             Self::Print(arg) => write!(f, "print {arg}"),
             Self::Println(Some(arg)) => write!(f, "println {arg}"),
             Self::Println(None) => write!(f, "println"),
             Self::Eprint(arg) => write!(f, "eprint {arg}"),
             Self::Eprintln(Some(arg)) => write!(f, "eprintln {arg}"),
             Self::Eprintln(None) => write!(f, "eprintln"),
+
             Self::If(iff) => write!(f, "{}", iff.ifs[0]),
+
             Self::Loop(looop) => write!(f, "{looop}"),
             Self::Break => write!(f, "break"),
             Self::Continue => write!(f, "continue"),
@@ -434,6 +430,12 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         | Node::Println(_)
                         | Node::Eprint(_)
                         | Node::Eprintln(_) => {
+                            /*
+                            NOTE(stefano): only parsing until the first error until a fault tolerant
+                            parser is developed, this is because the first truly relevant error is
+                            the first one, which in turn causes a ripple effect that propagates to
+                            the rest of the parsing, causing subsequent errors to be wrong
+                            */
                             if let Err(err) = self.semicolon() {
                                 self.errors.push(err);
 
@@ -984,8 +986,20 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         };
 
         return match var_typ {
+            Type::Int => Ok(Expression::ArrayIndex {
+                typ: Type::Int,
+                var_name,
+                bracket_position: Position::new(self.src, open_bracket_token.col).0,
+                index: Box::new(index),
+            }),
+            Type::Str => Ok(Expression::ArrayIndex {
+                typ: Type::Ascii,
+                var_name,
+                bracket_position: Position::new(self.src, open_bracket_token.col).0,
+                index: Box::new(index),
+            }),
             Type::Array { typ, .. } => match &*typ {
-                Type::Int | Type::Bool | Type::Infer | Type::Ascii | Type::Str => {
+                Type::Int | Type::Ascii | Type::Bool | Type::Str => {
                     Ok(Expression::ArrayIndex {
                         typ: *typ,
                         var_name,
@@ -999,25 +1013,15 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     col: current_token.col,
                     len: current_token.len,
                 }),
+                Type::Infer => unreachable!("should have been inferred"),
             },
-            Type::Str => Ok(Expression::ArrayIndex {
-                typ: Type::Ascii,
-                var_name,
-                bracket_position: Position::new(self.src, open_bracket_token.col).0,
-                index: Box::new(index),
-            }),
-            Type::Int => Ok(Expression::ArrayIndex {
-                typ: Type::Int,
-                var_name,
-                bracket_position: Position::new(self.src, open_bracket_token.col).0,
-                index: Box::new(index),
-            }),
-            Type::Bool | Type::Infer | Type::Ascii => Err(RawError {
+            Type::Ascii | Type::Bool => Err(RawError {
                 kind: ErrorKind::Invalid(Statement::Expression),
                 cause: ErrorCause::CannotIndexNonArrayType(var_typ),
                 col: current_token.col,
                 len: current_token.len,
             }),
+            Type::Infer => unreachable!("should have been inferred"),
         };
     }
 
@@ -1086,6 +1090,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
                     let item = self.expression()?;
                     match (&items_typ, item.typ()) {
+                        (Type::Infer, other) => {
+                            items_typ = other;
+                            items.push(item);
+                        }
                         (_, Type::Array { .. }) => {
                             break 'array Err(RawError {
                                 kind: ErrorKind::Invalid(Statement::ArrayItem),
@@ -1093,10 +1101,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                                 col: current_token.col,
                                 len: current_token.len,
                             })
-                        }
-                        (Type::Infer, other) => {
-                            items_typ = other;
-                            items.push(item);
                         }
                         (expected, actual) if *expected != actual => {
                             break 'array Err(RawError {
@@ -2097,6 +2101,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         }
 
         return match expression {
+            /*
+            NOTE(stefano): this is the only place where Type::Infer is actually useful so it's
+            better to replace Type::Infer with Option<Type>, or to create a ConcreteType that
+            represents a type that has already been inferred
+            */
             Some(mut value) => {
                 if let Some((token, annotation_typ)) = &annotation {
                     if let Expression::Array { typ, .. } = &mut value {
@@ -2118,7 +2127,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     }
                 }
 
-                if value.typ().should_be_inferred() {
+                if let Type::Infer = value.typ() {
                     return Err(RawError {
                         kind: ErrorKind::Invalid(Statement::VariableDefinition),
                         cause: ErrorCause::ExpectedTypeAnnotation,
@@ -2268,8 +2277,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         (AssignmentOp::Equals, _, _)
                         | (
                             _,
-                            Type::Int | Type::Bool | Type::Ascii,
-                            Type::Int | Type::Bool | Type::Ascii,
+                            Type::Int | Type::Ascii | Type::Bool,
+                            Type::Int | Type::Ascii | Type::Bool,
                         ) => Ok(Node::Assignment {
                             scope_index,
                             var_index,
@@ -2328,7 +2337,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             let expression = self.expression()?;
             let condition = match &expression.typ() {
                 Type::Bool => expression,
-                Type::Ascii | Type::Int | Type::Str | Type::Array { .. } | Type::Infer => {
+                Type::Int | Type::Ascii | Type::Str | Type::Array { .. } | Type::Infer => {
                     return Err(RawError {
                         kind: ErrorKind::Invalid(Statement::If),
                         cause: ErrorCause::MustBeFollowedByABooleanExpression,
@@ -2514,7 +2523,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let expression = self.expression()?;
         let condition_result = match &expression.typ() {
             Type::Bool => Ok(expression),
-            Type::Ascii | Type::Int | Type::Str | Type::Array { .. } | Type::Infer => {
+            Type::Int | Type::Ascii | Type::Str | Type::Array { .. } | Type::Infer => {
                 Err(RawError {
                     kind: ErrorKind::Invalid(Statement::Loop),
                     cause: ErrorCause::MustBeFollowedByABooleanExpression,
