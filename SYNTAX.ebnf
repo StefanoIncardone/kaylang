@@ -69,7 +69,7 @@ binary_operator =
 assignment_operator = "=" | "**=" | "*=" | "/=" | "%=" | "+=" | "-=" | "<<=" | ">>=" | "&=" | "^=" | "|=" | "&&=" | "||=";
 
 (* expressions must be of the same type *)
-array       = "[", [{expression}], "]";
+array       = "[", expression, ",", expression, [{(",", expression)}], [","], "]";
 array_index = identifier, "[", integer_expression, "]";
 array_variable = identifier;
 string_index = identifier, "[", integer_expression, "]";

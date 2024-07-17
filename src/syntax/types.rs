@@ -44,12 +44,11 @@ impl SizeOf for BaseType {
 pub enum Type {
     Base(BaseType),
     // TODO(breaking)(stefano): enforce a max length
-    /*
-    TODO(breaking)(stefano): enforce a min length of 2:
-    - arrays of 0 elements are meaningless, they don't even occupy any memory
-    - arrays of 1 element are literaly just that element with extra steps to get to it
-    */
-    Array { typ: BaseType, len: uint },
+    Array {
+        typ: BaseType,
+        /// always greater than 1, i.e: arrays always contain at least 2 elements
+        len: uint,
+    },
 }
 
 impl Display for Type {

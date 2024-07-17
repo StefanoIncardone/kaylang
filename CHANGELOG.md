@@ -80,6 +80,10 @@ Changes to error messages, help message and alike would **not** be considered br
 - Compilation steps are now managed by the `Logger` struct
 - Moved type-related entities to `types` module
     - Pulled `BaseType` enum out of `Type` enum
+- Arrays are now mandated to contain at least 2 elements, so the `Type::Infer` type is no longer
+    needed:
+    - arrays of 0 elements are meaningless, they don't even occupy any memory
+    - arrays of 1 element are literaly just that element with extra steps
 
 ### Removed
 
@@ -90,7 +94,6 @@ Changes to error messages, help message and alike would **not** be considered br
     `Assembler::assemble`, `Linker::link` and `Run::run` are now substituted by
     `Artifacts::assembler`, `Artifacts::linker` and `Artifacts::runner` member functions and now
     return the relative `std::process::Command` to allow for finer control
-- `Type::Infer` type: now represented by `Expression::EmptyArray`
 
 ### Fixed
 

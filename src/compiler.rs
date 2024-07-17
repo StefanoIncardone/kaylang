@@ -832,7 +832,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     _ => unreachable!(),
                 }
             }
-            Expression::Array { .. } | Expression::EmptyArray { .. } => {
+            Expression::Array { .. } => {
                 unreachable!("arrays cannot appear in expressions");
             }
         }
@@ -893,9 +893,6 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         }
                         Expression::Array { items, .. } => {
                             _ = writeln!(self.asm, " mov {reg}, {}", items.len());
-                        }
-                        Expression::EmptyArray { .. } => {
-                            _ = writeln!(self.asm, " mov {reg}, 0");
                         }
                         Expression::ArrayIndex { typ, var_name, bracket_position, index } => {
                             self.expression(index, Dst::Reg(Rdi));
@@ -1585,8 +1582,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
                 }
             }
-            Expression::Array { .. }
-            | Expression::EmptyArray { .. } => unreachable!("arrays cannot appear in expressions"),
+            Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
         }
     }
 
@@ -1731,8 +1727,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             }
             Expression::Unary { .. }
             | Expression::Binary { .. }
-            | Expression::Array { .. }
-            | Expression::EmptyArray { .. } => {
+            | Expression::Array { .. } => {
                 unreachable!("non-boolean expressions not allowed in conditions")
             }
         }
@@ -1879,8 +1874,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             }
             Expression::Unary { .. }
             | Expression::Binary { .. }
-            | Expression::Array { .. }
-            | Expression::EmptyArray { .. }=> {
+            | Expression::Array { .. } => {
                 unreachable!("non-boolean expressions not allowed in conditions")
             }
         }
@@ -1946,9 +1940,6 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             " mov qword [rbp + {dst_offset}], {}\n",
                             items.len()
                         );
-                    }
-                    Expression::EmptyArray { .. } => {
-                        _ = writeln!(self.asm, " mov qword [rbp + {dst_offset}], 0\n");
                     }
                     Expression::ArrayIndex { typ, var_name, bracket_position, index } => {
                         self.expression(index, Dst::Reg(Rdi));
@@ -2246,9 +2237,6 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 for (index, item) in items.iter().enumerate() {
                     self.definition(item, dst_offset + index * typ_size);
                 }
-            }
-            Expression::EmptyArray { .. } => {
-                // nothing to do
             }
             Expression::ArrayIndex { typ, .. } => {
                 self.expression(value, Dst::default(&Type::Base(*typ)));
