@@ -147,27 +147,27 @@ pub(crate) struct If<'src> {
     pub(crate) els: Option<Box<Node<'src>>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LoopKind {
-    Loop,
-    DoLoop,
-}
-
 #[derive(Debug, Clone)]
 pub(crate) struct Loop<'src> {
-    // REMOVE(stefano): remove this kind field and create a different struct instead
-    pub(crate) kind: LoopKind,
-
     pub(crate) condition: Expression<'src>,
     pub(crate) statement: Box<Node<'src>>,
 }
 
 impl Display for Loop<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return match &self.kind {
-            LoopKind::Loop => write!(f, "loop {}", self.condition),
-            LoopKind::DoLoop => write!(f, "do loop {}", self.condition),
-        };
+        return write!(f, "loop {}", self.condition);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DoLoop<'src> {
+    pub(crate) condition: Expression<'src>,
+    pub(crate) statement: Box<Node<'src>>,
+}
+
+impl Display for DoLoop<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        return write!(f, "do loop {}", self.condition);
     }
 }
 
@@ -185,6 +185,7 @@ pub(crate) enum Node<'src> {
     If(If<'src>),
 
     Loop(Loop<'src>),
+    DoLoop(DoLoop<'src>),
     Break,
     Continue,
 
@@ -222,6 +223,7 @@ impl Display for Node<'_> {
             Self::If(iff) => write!(f, "{}", iff.ifs[0]),
 
             Self::Loop(looop) => write!(f, "{looop}"),
+            Self::DoLoop(looop) => write!(f, "{looop}"),
             Self::Break => write!(f, "break"),
             Self::Continue => write!(f, "continue"),
 
@@ -361,7 +363,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         }
 
                         // no need to check for a terminating semicolon
-                        Node::If(_) | Node::Loop(_) | Node::Scope { .. } => {}
+                        Node::If(_) | Node::Loop(_) | Node::DoLoop(_) | Node::Scope { .. } => {}
                     }
 
                     self.scopes[self.scope_index].nodes.push(node);
@@ -2553,10 +2555,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         let condition = condition_result?;
         let statement = statement_result?;
-        let kind =
-            if let TokenKind::Do = do_token.kind { LoopKind::DoLoop } else { LoopKind::Loop };
-
-        return Ok(Node::Loop(Loop { kind, condition, statement: Box::new(statement) }));
+        if let TokenKind::Do = do_token.kind {
+            return Ok(Node::DoLoop(DoLoop { condition, statement: Box::new(statement) }));
+        }
+        return Ok(Node::Loop(Loop { condition, statement: Box::new(statement) }));
     }
 }
 

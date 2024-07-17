@@ -9,7 +9,7 @@ use self::{artifacts::Artifacts, reg::Reg64};
 use crate::{
     src_file::SrcFile,
     syntax::{
-        ast::{self, Expression, IfStatement, LoopKind, Node, Scope},
+        ast::{self, Expression, IfStatement, Node, Scope},
         op::{AssignmentOp, BinaryOp, BooleanBinaryOp, ComparisonOp, UnaryOp},
         tokenizer::{ascii, uint, Literal}, types::{BaseType, SizeOf, Type, TypeOf},
     },
@@ -460,23 +460,26 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.loop_counter += 1;
 
                 _ = writeln!(self.asm, "{loop_tag}:; {looop}");
-                match looop.kind {
-                    LoopKind::Loop => {
-                        self.condition(&looop.condition, &loop_end_tag);
-                        self.node(&looop.statement);
+                self.condition(&looop.condition, &loop_end_tag);
+                self.node(&looop.statement);
 
-                        _ = writeln!(
-                            self.asm,
-                            " jmp {loop_tag}\
-                            \n{loop_end_tag}:\n"
-                        );
-                    }
-                    LoopKind::DoLoop => {
-                        self.node(&looop.statement);
-                        self.condition_reversed(&looop.condition, &loop_tag);
-                    }
-                }
+                _ = writeln!(
+                    self.asm,
+                    " jmp {loop_tag}\
+                    \n{loop_end_tag}:\n"
+                );
 
+                _ = self.loop_counters.pop();
+            }
+            Node::DoLoop(looop) => {
+                let loop_tag = format!("loop_{}", self.loop_counter);
+
+                self.loop_counters.push(self.loop_counter);
+                self.loop_counter += 1;
+
+                _ = writeln!(self.asm, "{loop_tag}:; {looop}");
+                self.node(&looop.statement);
+                self.condition_reversed(&looop.condition, &loop_tag);
                 _ = self.loop_counters.pop();
             }
             Node::Definition { scope_index, var_index } => {
