@@ -9,9 +9,9 @@ use self::{artifacts::Artifacts, reg::Reg64};
 use crate::{
     src_file::SrcFile,
     syntax::{
-        ast::{self, Expression, IfStatement, LoopKind, Node, Scope, Type, TypeOf},
+        ast::{self, Expression, IfStatement, LoopKind, Node, Scope},
         op::{AssignmentOp, BinaryOp, BooleanBinaryOp, ComparisonOp, UnaryOp},
-        tokenizer::{ascii, uint, Literal},
+        tokenizer::{ascii, uint, Literal}, types::{BaseType, SizeOf, Type, TypeOf},
     },
     CAUSE, ERROR,
 };
@@ -736,11 +736,10 @@ enum Dst {
 }
 
 impl Dst {
-    fn default(typ: &Type) -> Self {
+    const fn default(typ: &Type) -> Self {
         return match typ {
-            Type::Int | Type::Ascii | Type::Bool => Self::Reg(Rdi),
-            Type::Str | Type::Array { .. } => Self::View { len: Rdi, ptr: Rsi },
-            Type::Infer => unreachable!("should have been inferred"),
+            Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => Self::Reg(Rdi),
+            Type::Base(BaseType::Str) | Type::Array { .. } => Self::View { len: Rdi, ptr: Rsi },
         };
     }
 }
@@ -833,7 +832,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     _ => unreachable!(),
                 }
             }
-            Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
+            Expression::Array { .. } | Expression::EmptyArray { .. } => {
+                unreachable!("arrays cannot appear in expressions");
+            }
         }
     }
 
@@ -879,20 +880,22 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             let var = self.resolve(name);
                             let var_offset = var.offset;
                             match typ {
-                                Type::Str => {
+                                Type::Base(BaseType::Str) => {
                                     _ = writeln!(self.asm, " mov {reg}, [rbp + {var_offset}]");
                                 }
                                 Type::Array { len, .. } => {
                                     _ = writeln!(self.asm, " mov {reg}, {len}");
                                 }
-                                Type::Int | Type::Ascii | Type::Bool => {
+                                Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => {
                                     unreachable!("cannot take the length of numerical types")
                                 }
-                                Type::Infer => unreachable!("should have been inferred"),
                             }
                         }
                         Expression::Array { items, .. } => {
                             _ = writeln!(self.asm, " mov {reg}, {}", items.len());
+                        }
+                        Expression::EmptyArray { .. } => {
+                            _ = writeln!(self.asm, " mov {reg}, 0");
                         }
                         Expression::ArrayIndex { typ, var_name, bracket_position, index } => {
                             self.expression(index, Dst::Reg(Rdi));
@@ -928,7 +931,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     },
                     UnaryOp::Not => {
                         self.expression(operand, dst);
-                        let Type::Int = operand.typ() else {
+                        let Type::Base(BaseType::Int) = operand.typ() else {
                             unreachable!("can only invert integer and ascii values");
                         };
 
@@ -937,7 +940,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     UnaryOp::Plus => {
                         self.expression(operand, dst);
                         match operand.typ() {
-                            Type::Int => {
+                            Type::Base(BaseType::Int) => {
                                 _ = writeln!(
                                     self.asm,
                                     " mov rdx, {line}\
@@ -947,26 +950,24 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     col = op_position.col
                                 );
                             }
-                            Type::Ascii | Type::Bool | Type::Str | Type::Array { .. } => {
+                            Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
                                 unreachable!("cannot take absolute value of non numerical values");
                             }
-                            Type::Infer => unreachable!("should have been inferred"),
                         }
                     }
                     UnaryOp::WrappingPlus => {
                         self.expression(operand, dst);
                         match operand.typ() {
-                            Type::Int => _ = writeln!(self.asm, " call int_wrapping_abs"),
-                            Type::Ascii | Type::Bool | Type::Str | Type::Array { .. } => {
+                            Type::Base(BaseType::Int) => _ = writeln!(self.asm, " call int_wrapping_abs"),
+                            Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
                                 unreachable!("cannot take absolute value of non int values");
                             }
-                            Type::Infer => unreachable!("should have been inferred"),
                         }
                     }
                     UnaryOp::SaturatingPlus => {
                         self.expression(operand, dst);
                         match operand.typ() {
-                            Type::Int => {
+                            Type::Base(BaseType::Int) => {
                                 _ = writeln!(
                                     self.asm,
                                     " mov rdx, {line}\
@@ -976,16 +977,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     col = op_position.col
                                 );
                             }
-                            Type::Ascii | Type::Bool | Type::Str | Type::Array { .. } => {
+                            Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
                                 unreachable!("cannot take absolute value of non int values");
                             }
-                            Type::Infer => unreachable!("should have been inferred"),
                         }
                     }
                     UnaryOp::Minus => {
                         self.expression(operand, dst);
                         match operand.typ() {
-                            Type::Int | Type::Ascii => {
+                            Type::Base(BaseType::Int | BaseType::Ascii) => {
                                 _ = writeln!(
                                     self.asm,
                                     " mov rdx, {line}\
@@ -995,26 +995,24 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     col = op_position.col
                                 );
                             }
-                            Type::Bool | Type::Str | Type::Array { .. } => {
+                            Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
                                 unreachable!("cannot negate non int/ascii values");
                             }
-                            Type::Infer => unreachable!("should have been inferred"),
                         }
                     }
                     UnaryOp::WrappingMinus => {
                         self.expression(operand, dst);
                         match operand.typ() {
-                            Type::Int | Type::Ascii => _ = writeln!(self.asm, " neg {reg}"),
-                            Type::Bool | Type::Str | Type::Array { .. } => {
+                            Type::Base(BaseType::Int | BaseType::Ascii) => _ = writeln!(self.asm, " neg {reg}"),
+                            Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
                                 unreachable!("cannot negate non int/ascii values");
                             }
-                            Type::Infer => unreachable!("should have been inferred"),
                         }
                     }
                     UnaryOp::SaturatingMinus => {
                         self.expression(operand, dst);
                         match operand.typ() {
-                            Type::Int | Type::Ascii => {
+                            Type::Base(BaseType::Int | BaseType::Ascii) => {
                                 _ = writeln!(
                                     self.asm,
                                     " mov rdx, {line}\
@@ -1024,10 +1022,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     col = op_position.col
                                 );
                             }
-                            Type::Bool | Type::Str | Type::Array { .. } => {
+                            Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
                                 unreachable!("cannot negate non int/ascii values");
                             }
-                            Type::Infer => unreachable!("should have been inferred"),
                         }
                     }
                 }
@@ -1037,9 +1034,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     unreachable!();
                 };
 
-                let Type::Bool = operand.typ() else {
+                let Type::Base(BaseType::Bool) = operand.typ() else {
                     unreachable!("can only invert boolean values");
                 };
+
+                self.expression(operand, dst);
 
                 _ = writeln!(self.asm, " xor {reg}, 1");
             }
@@ -1243,7 +1242,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Comparison { lhs, op, rhs } => {
                 let (lhs_dst, rhs_dst, op_asm): (Dst, Dst, Cow<'static, str>) =
                     match (lhs.typ(), rhs.typ()) {
-                        (Type::Str, Type::Str) => (
+                        (Type::Base(BaseType::Str), Type::Base(BaseType::Str)) => (
                             Dst::View { len: Rdi, ptr: Rsi },
                             Dst::View { len: Rdx, ptr: Rcx },
                             match op {
@@ -1285,155 +1284,119 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             Dst::View { len: Rdi, ptr: Rsi },
                             Dst::View { len: Rdx, ptr: Rcx },
                             match op {
-                                ComparisonOp::EqualsEquals => match *typ {
-                                    Type::Int => " mov rdi, rcx\
+                                ComparisonOp::EqualsEquals => match typ {
+                                    BaseType::Int => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsq\
                                         \n mov rdi, false\
                                         \n sete dil"
                                         .into(),
-                                    Type::Ascii | Type::Bool => " mov rdi, rcx\
+                                    BaseType::Ascii | BaseType::Bool => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsb\
                                         \n mov rdi, false\
                                         \n sete dil"
                                         .into(),
-                                    Type::Str => " call str_array_eq\
+                                    BaseType::Str => " call str_array_eq\
                                         \n movzx rdi, al"
                                         .into(),
-                                    Type::Array { .. } => {
-                                        unreachable!("nested arrays not supported yet")
-                                    }
-                                    Type::Infer => {
-                                        unreachable!("should have been coerced to a concrete type")
-                                    }
                                 },
-                                ComparisonOp::NotEquals => match *typ {
-                                    Type::Int => " mov rdi, rcx\
+                                ComparisonOp::NotEquals => match typ {
+                                    BaseType::Int => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsq\
                                         \n mov rdi, false\
                                         \n setne dil"
                                         .into(),
-                                    Type::Ascii | Type::Bool => " mov rdi, rcx\
+                                    BaseType::Ascii | BaseType::Bool => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsb\
                                         \n mov rdi, false\
                                         \n setne dil"
                                         .into(),
-                                    Type::Str => " cmp str_array_eq\
+                                    BaseType::Str => " cmp str_array_eq\
                                         \n xor rax, 1\
                                         \n movzx rdi, al"
                                         .into(),
-                                    Type::Array { .. } => {
-                                        unreachable!("nested arrays not supported yet")
-                                    }
-                                    Type::Infer => {
-                                        unreachable!("should have been coerced to a concrete type")
-                                    }
                                 },
-                                ComparisonOp::Greater => match *typ {
-                                    Type::Int => " mov rdi, rcx\
+                                ComparisonOp::Greater => match typ {
+                                    BaseType::Int => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsq\
                                         \n mov rdi, false\
                                         \n setg dil"
                                         .into(),
-                                    Type::Ascii | Type::Bool => " mov rdi, rcx\
+                                    BaseType::Ascii | BaseType::Bool => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsb\
                                         \n mov rdi, false\
                                         \n setg dil"
                                         .into(),
-                                    Type::Str => " call str_array_cmp\
+                                    BaseType::Str => " call str_array_cmp\
                                         \n cmp rax, EQUAL\
                                         \n mov rdi, false\
                                         \n setg dil"
                                         .into(),
-                                    Type::Array { .. } => {
-                                        unreachable!("nested arrays not supported yet")
-                                    }
-                                    Type::Infer => {
-                                        unreachable!("should have been coerced to a concrete type")
-                                    }
                                 },
-                                ComparisonOp::GreaterOrEquals => match *typ {
-                                    Type::Int => " mov rdi, rcx\
+                                ComparisonOp::GreaterOrEquals => match typ {
+                                    BaseType::Int => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsq\
                                         \n mov rdi, false\
                                         \n setge dil"
                                         .into(),
-                                    Type::Ascii | Type::Bool => " mov rdi, rcx\
+                                    BaseType::Ascii | BaseType::Bool => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsb\
                                         \n mov rdi, false\
                                         \n setge dil"
                                         .into(),
-                                    Type::Str => " call str_array_cmp\
+                                    BaseType::Str => " call str_array_cmp\
                                         \n cmp rax, EQUAL\
                                         \n mov rdi, false\
                                         \n setge dil"
                                         .into(),
-                                    Type::Array { .. } => {
-                                        unreachable!("nested arrays not supported yet")
-                                    }
-                                    Type::Infer => {
-                                        unreachable!("should have been coerced to a concrete type")
-                                    }
                                 },
-                                ComparisonOp::Less => match *typ {
-                                    Type::Int => " mov rdi, rcx\
+                                ComparisonOp::Less => match typ {
+                                    BaseType::Int => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsq\
                                         \n mov rdi, false\
                                         \n setl dil"
                                         .into(),
-                                    Type::Ascii | Type::Bool => " mov rdi, rcx\
+                                    BaseType::Ascii | BaseType::Bool => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsb\
                                         \n mov rdi, false\
                                         \n setl dil"
                                         .into(),
-                                    Type::Str => " call str_array_cmp\
+                                    BaseType::Str => " call str_array_cmp\
                                         \n cmp rax, EQUAL\
                                         \n mov rdi, false\
                                         \n setl dil"
                                         .into(),
-                                    Type::Array { .. } => {
-                                        unreachable!("nested arrays not supported yet")
-                                    }
-                                    Type::Infer => {
-                                        unreachable!("should have been coerced to a concrete type")
-                                    }
                                 },
-                                ComparisonOp::LessOrEquals => match *typ {
-                                    Type::Int => " mov rdi, rcx\
+                                ComparisonOp::LessOrEquals => match typ {
+                                    BaseType::Int => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsq\
                                         \n mov rdi, false\
                                         \n setle dil"
                                         .into(),
-                                    Type::Ascii | Type::Bool => " mov rdi, rcx\
+                                    BaseType::Ascii | BaseType::Bool => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsb\
                                         \n mov rdi, false\
                                         \n setle dil"
                                         .into(),
-                                    Type::Str => " call str_array_cmp\
+                                    BaseType::Str => " call str_array_cmp\
                                         \n cmp rax, EQUAL\
                                         \n mov rdi, false\
                                         \n setle dil"
                                         .into(),
-                                    Type::Array { .. } => {
-                                        unreachable!("nested arrays not supported yet")
-                                    }
-                                    Type::Infer => {
-                                        unreachable!("should have been coerced to a concrete type")
-                                    }
                                 },
-                                ComparisonOp::Compare => match *typ {
-                                    Type::Int => " mov rdi, rcx\
+                                ComparisonOp::Compare => match typ {
+                                    BaseType::Int => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsq\
                                         \n mov rdi, LESS\
@@ -1442,7 +1405,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                         \n mov rsi, GREATER\
                                         \n cmovg rdi, rsi"
                                         .into(),
-                                    Type::Ascii | Type::Bool => " mov rdi, rcx\
+                                    BaseType::Ascii | BaseType::Bool => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsb\
                                         \n mov rdi, LESS\
@@ -1451,21 +1414,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                         \n mov rsi, GREATER\
                                         \n cmovg rdi, rsi"
                                         .into(),
-                                    Type::Str => " call str_array_cmp\
+                                    BaseType::Str => " call str_array_cmp\
                                         \n mov rdi, rax"
                                         .into(),
-                                    Type::Array { .. } => {
-                                        unreachable!("nested arrays not supported yet")
-                                    }
-                                    Type::Infer => {
-                                        unreachable!("should have been coerced to a concrete type")
-                                    }
                                 },
                             },
                         ),
                         (
-                            Type::Int | Type::Ascii | Type::Bool,
-                            Type::Int | Type::Ascii | Type::Bool,
+                            Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool),
+                            Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool),
                         ) => (
                             Dst::Reg(Rdi),
                             Dst::Reg(Rsi),
@@ -1503,14 +1460,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     .into(),
                             },
                         ),
-                        (Type::Str, _)
-                        | (_, Type::Str)
+                        (Type::Base(BaseType::Str), _)
+                        | (_, Type::Base(BaseType::Str))
                         | (Type::Array { .. }, _)
                         | (_, Type::Array { .. }) => {
                             unreachable!("strings and arrays cannot appear in expressions");
-                        }
-                        (Type::Infer, _) | (_, Type::Infer) => {
-                            unreachable!("should have been coerced to a concrete type");
                         }
                     };
 
@@ -1522,17 +1476,17 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 let var = self.resolve(name);
                 let var_offset = var.offset;
                 match typ {
-                    Type::Int => match dst {
+                    Type::Base(BaseType::Int) => match dst {
                         Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, [rbp + {var_offset}]"),
                         Dst::View { .. } => unreachable!(),
                     },
-                    Type::Ascii | Type::Bool => match dst {
+                    Type::Base(BaseType::Ascii | BaseType::Bool) => match dst {
                         Dst::Reg(reg) => {
                             _ = writeln!(self.asm, " movzx {reg}, byte [rbp + {var_offset}]");
                         }
                         Dst::View { .. } => unreachable!(),
                     },
-                    Type::Str => match dst {
+                    Type::Base(BaseType::Str) => match dst {
                         Dst::View { len, ptr } => {
                             _ = writeln!(
                                 self.asm,
@@ -1553,10 +1507,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         }
                         Dst::Reg(_) => unreachable!(),
                     },
-                    Type::Infer => unreachable!("should have been inferred"),
                 }
             }
-            Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
             Expression::ArrayIndex { typ, var_name, bracket_position, index } => {
                 self.expression(index, Dst::Reg(Rdi));
 
@@ -1567,7 +1519,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 let var_typ = var.inner.value.typ();
 
                 match var_typ {
-                    Type::Str => {
+                    Type::Base(BaseType::Str) => {
                         _ = writeln!(
                             self.asm,
                             " mov rsi, [rbp + {var_offset}]\
@@ -1589,19 +1541,19 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         );
 
                         match typ {
-                            Type::Int => {
+                            BaseType::Int => {
                                 _ = writeln!(
                                     self.asm,
                                     " mov rdi, [rbp + {var_offset} + rdi * 8]\n"
                                 );
                             }
-                            Type::Ascii | Type::Bool => {
+                            BaseType::Ascii | BaseType::Bool => {
                                 _ = writeln!(
                                     self.asm,
                                     " movzx rdi, byte [rbp + {var_offset} + rdi]\n"
                                 );
                             }
-                            Type::Str => {
+                            BaseType::Str => {
                                 _ = writeln!(
                                     self.asm,
                                     " imul rdi, {typ_size}\
@@ -1611,15 +1563,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     ptr_offset = std::mem::size_of::<uint>()
                                 );
                             }
-                            Type::Array { .. } => {
-                                unreachable!("arrays cannot appear in expressions")
-                            }
-                            Type::Infer => {
-                                unreachable!("should have been coerced to a concrete type")
-                            }
                         }
                     }
-                    Type::Int => {
+                    Type::Base(BaseType::Int) => {
                         _ = writeln!(
                             self.asm,
                             " mov rsi, INT_BITS\
@@ -1632,14 +1578,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             \n and rdi, rsi\n"
                         );
                     }
-                    Type::Ascii | Type::Bool => {
+                    Type::Base(BaseType::Ascii | BaseType::Bool) => {
                         unreachable!(
                             "only arrays, strings and integers are allowed in index espressions"
                         )
                     }
-                    Type::Infer => unreachable!("should have been inferred"),
                 }
             }
+            Expression::Array { .. }
+            | Expression::EmptyArray { .. } => unreachable!("arrays cannot appear in expressions"),
         }
     }
 
@@ -1671,19 +1618,17 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             }
             Expression::BooleanBinary { lhs, op, rhs, .. } => {
                 let lhs_dst = match lhs.typ() {
-                    Type::Bool => Dst::Reg(Rdi),
-                    Type::Int | Type::Ascii | Type::Str | Type::Array { .. } => {
+                    Type::Base(BaseType::Bool) => Dst::Reg(Rdi),
+                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str) | Type::Array { .. } => {
                         unreachable!("non-boolean expressions not allowed in conditions");
                     },
-                    Type::Infer => unreachable!("should have been inferred"),
                 };
 
                 let rhs_dst = match rhs.typ() {
-                    Type::Bool => Dst::Reg(Rdi),
-                    Type::Int | Type::Ascii | Type::Str | Type::Array { .. } => {
+                    Type::Base(BaseType::Bool) => Dst::Reg(Rsi),
+                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str) | Type::Array { .. } => {
                         unreachable!("non-boolean expressions not allowed in conditions");
                     },
-                    Type::Infer => unreachable!("should have been inferred"),
                 };
 
                 self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
@@ -1693,29 +1638,27 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         _ = writeln!(
                             self.asm,
                             " and rdi, rsi\
-                            \n jz {false_tag}"
+                            \n jz {false_tag}\n"
                         );
                     }
                     BooleanBinaryOp::Or => {
                         _ = writeln!(
                             self.asm,
                             " or rdi, rsi\
-                            \n jz {false_tag}"
+                            \n jz {false_tag}\n"
                         );
                     }
                 }
             }
             Expression::Comparison { lhs, op, rhs, .. } => {
                 let lhs_dst = match lhs.typ() {
-                    Type::Int | Type::Ascii | Type::Bool => Dst::Reg(Rdi),
-                    Type::Str | Type::Array { .. } => Dst::View { len: Rdi, ptr: Rsi },
-                    Type::Infer => unreachable!("should have been inferred"),
+                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => Dst::Reg(Rdi),
+                    Type::Base(BaseType::Str) | Type::Array { .. } => Dst::View { len: Rdi, ptr: Rsi },
                 };
 
                 let rhs_dst = match rhs.typ() {
-                    Type::Int | Type::Ascii | Type::Bool => Dst::Reg(Rsi),
-                    Type::Str | Type::Array { .. } => Dst::View { len: Rdx, ptr: Rcx },
-                    Type::Infer => unreachable!("should have been inferred"),
+                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => Dst::Reg(Rsi),
+                    Type::Base(BaseType::Str) | Type::Array { .. } => Dst::View { len: Rdx, ptr: Rcx },
                 };
 
                 self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
@@ -1725,42 +1668,42 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         _ = writeln!(
                             self.asm,
                             " cmp rdi, rsi\
-                            \n jne {false_tag}"
+                            \n jne {false_tag}\n"
                         );
                     }
                     ComparisonOp::NotEquals => {
                         _ = writeln!(
                             self.asm,
                             " cmp rdi, rsi\
-                            \n je {false_tag}"
+                            \n je {false_tag}\n"
                         );
                     }
                     ComparisonOp::Greater => {
                         _ = writeln!(
                             self.asm,
                             " cmp rdi, rsi\
-                            \n jle {false_tag}"
+                            \n jle {false_tag}\n"
                         );
                     }
                     ComparisonOp::GreaterOrEquals => {
                         _ = writeln!(
                             self.asm,
                             " cmp rdi, rsi\
-                            \n jl {false_tag}"
+                            \n jl {false_tag}\n"
                         );
                     }
                     ComparisonOp::Less => {
                         _ = writeln!(
                             self.asm,
                             " cmp rdi, rsi\
-                            \n jge {false_tag}"
+                            \n jge {false_tag}\n"
                         );
                     }
                     ComparisonOp::LessOrEquals => {
                         _ = writeln!(
                             self.asm,
                             " cmp rdi, rsi\
-                            \n jg {false_tag}"
+                            \n jg {false_tag}\n"
                         );
                     }
                     ComparisonOp::Compare => {
@@ -1786,7 +1729,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n jne {false_tag}\n"
                 );
             }
-            Expression::Unary { .. } | Expression::Binary { .. } | Expression::Array { .. } => {
+            Expression::Unary { .. }
+            | Expression::Binary { .. }
+            | Expression::Array { .. }
+            | Expression::EmptyArray { .. } => {
                 unreachable!("non-boolean expressions not allowed in conditions")
             }
         }
@@ -1820,19 +1766,17 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             }
             Expression::BooleanBinary { lhs, op, rhs, .. } => {
                 let lhs_dst = match lhs.typ() {
-                    Type::Bool => Dst::Reg(Rdi),
-                    Type::Int | Type::Ascii | Type::Str | Type::Array { .. } => {
+                    Type::Base(BaseType::Bool) => Dst::Reg(Rdi),
+                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str) | Type::Array { .. } => {
                         unreachable!("non-boolean expressions not allowed in conditions");
                     },
-                    Type::Infer => unreachable!("should have been inferred"),
                 };
 
                 let rhs_dst = match rhs.typ() {
-                    Type::Bool => Dst::Reg(Rdi),
-                    Type::Int | Type::Ascii | Type::Str | Type::Array { .. } => {
+                    Type::Base(BaseType::Bool) => Dst::Reg(Rsi),
+                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str) | Type::Array { .. } => {
                         unreachable!("non-boolean expressions not allowed in conditions");
                     },
-                    Type::Infer => unreachable!("should have been inferred"),
                 };
 
                 self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
@@ -1842,29 +1786,27 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         _ = writeln!(
                             self.asm,
                             " and rdi, rsi\
-                            \n jnz {true_tag}"
+                            \n jnz {true_tag}\n"
                         );
                     }
                     BooleanBinaryOp::Or => {
                         _ = writeln!(
                             self.asm,
                             " or rdi, rsi\
-                            \n jnz {true_tag}"
+                            \n jnz {true_tag}\n"
                         );
                     }
                 }
             }
             Expression::Comparison { lhs, op, rhs, .. } => {
                 let lhs_dst = match lhs.typ() {
-                    Type::Int | Type::Ascii | Type::Bool => Dst::Reg(Rdi),
-                    Type::Str | Type::Array { .. } => Dst::View { len: Rdi, ptr: Rsi },
-                    Type::Infer => unreachable!("should have been inferred"),
+                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => Dst::Reg(Rdi),
+                    Type::Base(BaseType::Str) | Type::Array { .. } => Dst::View { len: Rdi, ptr: Rsi },
                 };
 
                 let rhs_dst = match rhs.typ() {
-                    Type::Int | Type::Ascii | Type::Bool => Dst::Reg(Rsi),
-                    Type::Str | Type::Array { .. } => Dst::View { len: Rdx, ptr: Rcx },
-                    Type::Infer => unreachable!("should have been inferred"),
+                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => Dst::Reg(Rsi),
+                    Type::Base(BaseType::Str) | Type::Array { .. } => Dst::View { len: Rdx, ptr: Rcx },
                 };
 
                 self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
@@ -1874,42 +1816,42 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         _ = writeln!(
                             self.asm,
                             " cmp rdi, rsi\
-                            \n je {true_tag}"
+                            \n je {true_tag}\n"
                         );
                     }
                     ComparisonOp::NotEquals => {
                         _ = writeln!(
                             self.asm,
                             " cmp rdi, rsi\
-                            \n jne {true_tag}"
+                            \n jne {true_tag}\n"
                         );
                     }
                     ComparisonOp::Greater => {
                         _ = writeln!(
                             self.asm,
                             " cmp rdi, rsi\
-                            \n jg {true_tag}"
+                            \n jg {true_tag}\n"
                         );
                     }
                     ComparisonOp::GreaterOrEquals => {
                         _ = writeln!(
                             self.asm,
                             " cmp rdi, rsi\
-                            \n jge {true_tag}"
+                            \n jge {true_tag}\n"
                         );
                     }
                     ComparisonOp::Less => {
                         _ = writeln!(
                             self.asm,
                             " cmp rdi, rsi\
-                            \n jl {true_tag}"
+                            \n jl {true_tag}\n"
                         );
                     }
                     ComparisonOp::LessOrEquals => {
                         _ = writeln!(
                             self.asm,
                             " cmp rdi, rsi\
-                            \n jle {true_tag}"
+                            \n jle {true_tag}\n"
                         );
                     }
                     ComparisonOp::Compare => {
@@ -1935,7 +1877,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n je {true_tag}\n"
                 );
             }
-            Expression::Unary { .. } | Expression::Binary { .. } | Expression::Array { .. } => {
+            Expression::Unary { .. }
+            | Expression::Binary { .. }
+            | Expression::Array { .. }
+            | Expression::EmptyArray { .. }=> {
                 unreachable!("non-boolean expressions not allowed in conditions")
             }
         }
@@ -1980,7 +1925,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         let var = self.resolve(name);
                         let var_offset = var.offset;
                         match typ {
-                            Type::Str => {
+                            Type::Base(BaseType::Str) => {
                                 _ = writeln!(
                                     self.asm,
                                     " mov rdi, [rbp + {var_offset}]\
@@ -1990,10 +1935,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             Type::Array { len, .. } => {
                                 _ = writeln!(self.asm, " mov qword [rbp + {dst_offset}], {len}\n");
                             }
-                            Type::Int | Type::Ascii | Type::Bool => {
+                            Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => {
                                 unreachable!("cannot take the length of numerical types")
                             }
-                            Type::Infer => unreachable!("should have been inferred"),
                         }
                     }
                     Expression::Array { items, .. } => {
@@ -2002,6 +1946,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             " mov qword [rbp + {dst_offset}], {}\n",
                             items.len()
                         );
+                    }
+                    Expression::EmptyArray { .. } => {
+                        _ = writeln!(self.asm, " mov qword [rbp + {dst_offset}], 0\n");
                     }
                     Expression::ArrayIndex { typ, var_name, bracket_position, index } => {
                         self.expression(index, Dst::Reg(Rdi));
@@ -2039,30 +1986,29 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 UnaryOp::Not => {
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
-                        Type::Int => {
+                        Type::Base(BaseType::Int) => {
                             _ = writeln!(
                                 self.asm,
                                 " not rdi\
                                 \n mov [rbp + {dst_offset}], rdi\n"
                             );
                         }
-                        Type::Ascii => {
+                        Type::Base(BaseType::Ascii) => {
                             _ = writeln!(
                                 self.asm,
                                 " not rdi\
                                 \n mov [rbp + {dst_offset}], dil\n"
                             );
                         }
-                        Type::Bool | Type::Str | Type::Array { .. } => {
+                        Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
                             unreachable!("cannot invert non numerical values");
                         }
-                        Type::Infer => unreachable!("should have been inferred"),
                     }
                 }
                 UnaryOp::Plus => {
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
-                        Type::Int => {
+                        Type::Base(BaseType::Int) => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2073,32 +2019,30 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 col = op_position.col
                             );
                         }
-                        Type::Ascii | Type::Bool | Type::Array { .. } | Type::Str => {
+                        Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
                             unreachable!("cannot take absolute value of non numerical values");
                         }
-                        Type::Infer => unreachable!("should have been inferred"),
                     }
                 }
                 UnaryOp::WrappingPlus => {
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
-                        Type::Int => {
+                        Type::Base(BaseType::Int) => {
                             _ = writeln!(
                                 self.asm,
                                 " call int_wrapping_abs\
                                 \n mov [rbp + {dst_offset}], rdi\n"
                             );
                         }
-                        Type::Ascii | Type::Bool | Type::Array { .. } | Type::Str => {
+                        Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
                             unreachable!("cannot take absolute value of non numerical values");
                         }
-                        Type::Infer => unreachable!("should have been inferred"),
                     }
                 }
                 UnaryOp::SaturatingPlus => {
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
-                        Type::Int => {
+                        Type::Base(BaseType::Int) => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2109,16 +2053,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 col = op_position.col
                             );
                         }
-                        Type::Ascii | Type::Bool | Type::Array { .. } | Type::Str => {
+                        Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
                             unreachable!("cannot take absolute value of non numerical values");
                         }
-                        Type::Infer => unreachable!("should have been inferred"),
                     }
                 }
                 UnaryOp::Minus => {
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
-                        Type::Int => {
+                        Type::Base(BaseType::Int) => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2129,7 +2072,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 col = op_position.col
                             );
                         }
-                        Type::Ascii => {
+                        Type::Base(BaseType::Ascii) => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2140,39 +2083,37 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 col = op_position.col
                             );
                         }
-                        Type::Bool | Type::Str | Type::Array { .. } => {
+                        Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
                             unreachable!("cannot negate non int/ascii values");
                         }
-                        Type::Infer => unreachable!("should have been inferred"),
                     }
                 }
                 UnaryOp::WrappingMinus => {
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
-                        Type::Int => {
+                        Type::Base(BaseType::Int) => {
                             _ = writeln!(
                                 self.asm,
                                 " neg rdi\
                                 \n mov [rbp + {dst_offset}], rdi\n"
                             );
                         }
-                        Type::Ascii => {
+                        Type::Base(BaseType::Ascii) => {
                             _ = writeln!(
                                 self.asm,
                                 " neg rdi\
                                 \n mov [rbp + {dst_offset}], dil\n"
                             );
                         }
-                        Type::Bool | Type::Str | Type::Array { .. } => {
+                        Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
                             unreachable!("cannot negate non int/ascii values");
                         }
-                        Type::Infer => unreachable!("should have been inferred"),
                     }
                 }
                 UnaryOp::SaturatingMinus => {
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
-                        Type::Int => {
+                        Type::Base(BaseType::Int) => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2183,7 +2124,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 col = op_position.col
                             );
                         }
-                        Type::Ascii => {
+                        Type::Base(BaseType::Ascii) => {
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
@@ -2194,10 +2135,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 col = op_position.col
                             );
                         }
-                        Type::Bool | Type::Str | Type::Array { .. } => {
+                        Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
                             unreachable!("cannot negate non int/ascii values");
                         }
-                        Type::Infer => unreachable!("should have been inferred"),
                     }
                 }
             },
@@ -2213,31 +2153,29 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.expression(value, Dst::Reg(Rdi));
 
                 match value.typ() {
-                    Type::Int => _ = writeln!(self.asm, " mov [rbp + {dst_offset}], rdi\n"),
-                    Type::Ascii => {
+                    Type::Base(BaseType::Int) => _ = writeln!(self.asm, " mov [rbp + {dst_offset}], rdi\n"),
+                    Type::Base(BaseType::Ascii) => {
                         _ = writeln!(self.asm, " mov [rbp + {dst_offset}], dil\n");
                     }
-                    Type::Bool | Type::Str | Type::Array { .. } => {
+                    Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
                         unreachable!("cannot appear in expressions");
                     }
-                    Type::Infer => unreachable!("should have been inferred"),
                 }
             }
             Expression::BooleanBinary { .. } => {
                 self.expression(value, Dst::Reg(Rdi));
 
                 match value.typ() {
-                    Type::Bool => {
+                    Type::Base(BaseType::Bool) => {
                         _ = writeln!(self.asm, " mov [rbp + {dst_offset}], dil\n");
                     }
-                    Type::Int | Type::Ascii | Type::Str | Type::Array { .. } => {
+                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str) | Type::Array { .. } => {
                         unreachable!("cannot appear in boolean expressions");
                     }
-                    Type::Infer => unreachable!("should have been inferred"),
                 }
             }
             Expression::Comparison { .. } => {
-                let Type::Bool = value.typ() else {
+                let Type::Base(BaseType::Bool) = value.typ() else {
                     unreachable!("only booleans can result from comparison expressions");
                 };
 
@@ -2248,21 +2186,21 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 let var = self.resolve(name);
                 let src_offset = var.offset;
                 match identifier_typ {
-                    Type::Int => {
+                    Type::Base(BaseType::Int) => {
                         _ = writeln!(
                             self.asm,
                             " mov rdi, [rbp + {src_offset}]\
                             \n mov [rbp + {dst_offset}], rdi\n"
                         );
                     }
-                    Type::Ascii | Type::Bool => {
+                    Type::Base(BaseType::Ascii | BaseType::Bool) => {
                         _ = writeln!(
                             self.asm,
                             " mov dil, [rbp + {src_offset}]\
                             \n mov [rbp + {dst_offset}], dil\n"
                         );
                     }
-                    Type::Str => {
+                    Type::Base(BaseType::Str) => {
                         _ = writeln!(
                             self.asm,
                             " mov rdi, [rbp + {src_offset}]\
@@ -2272,8 +2210,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             ptr_offset = std::mem::size_of::<uint>()
                         );
                     }
-                    Type::Array { typ: array_typ, len } => match &**array_typ {
-                        Type::Int => {
+                    Type::Array { typ: array_typ, len } => match *array_typ {
+                        BaseType::Int => {
                             _ = writeln!(
                                 self.asm,
                                 " lea rdi, [rbp + {dst_offset}]\
@@ -2282,7 +2220,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n rep movsq\n"
                             );
                         }
-                        Type::Ascii | Type::Bool => {
+                        BaseType::Ascii | BaseType::Bool => {
                             _ = writeln!(
                                 self.asm,
                                 " lea rdi, [rbp + {dst_offset}]\
@@ -2291,7 +2229,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n rep movsb\n"
                             );
                         }
-                        Type::Str => {
+                        BaseType::Str => {
                             _ = writeln!(
                                 self.asm,
                                 " lea rdi, [rbp + {dst_offset}]\
@@ -2300,10 +2238,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n rep movsq\n"
                             );
                         }
-                        Type::Array { .. } => unreachable!("nested arrays not supported yet)"),
-                        Type::Infer => unreachable!("should have been inferred"),
                     },
-                    Type::Infer => unreachable!("should have been inferred"),
                 }
             }
             Expression::Array { typ, items } => {
@@ -2312,15 +2247,18 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     self.definition(item, dst_offset + index * typ_size);
                 }
             }
+            Expression::EmptyArray { .. } => {
+                // nothing to do
+            }
             Expression::ArrayIndex { typ, .. } => {
-                self.expression(value, Dst::default(typ));
+                self.expression(value, Dst::default(&Type::Base(*typ)));
 
                 match typ {
-                    Type::Int => _ = writeln!(self.asm, " mov [rbp + {dst_offset}], rdi\n"),
-                    Type::Ascii | Type::Bool => {
+                    BaseType::Int => _ = writeln!(self.asm, " mov [rbp + {dst_offset}], rdi\n"),
+                    BaseType::Ascii | BaseType::Bool => {
                         _ = writeln!(self.asm, " mov [rbp + {dst_offset}], dil\n");
                     }
-                    Type::Str => {
+                    BaseType::Str => {
                         _ = writeln!(
                             self.asm,
                             " mov [rbp + {dst_offset}], rdi\
@@ -2328,8 +2266,6 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             ptr_offset = std::mem::size_of::<uint>()
                         );
                     }
-                    Type::Array { .. } => unreachable!("nested arrays are not supported yet"),
-                    Type::Infer => unreachable!("should have been inferred"),
                 }
             }
         }
@@ -2352,19 +2288,16 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         self.expression(value, Dst::default(&value_typ));
 
         match value_typ {
-            Type::Int => _ = writeln!(self.asm, " call int_print\n"),
-            Type::Ascii => _ = writeln!(self.asm, " call ascii_print\n"),
-            Type::Bool => _ = writeln!(self.asm, " call bool_print\n"),
-            Type::Str => _ = writeln!(self.asm, " call str_print\n"),
-            Type::Array { typ, .. } => match &*typ {
-                Type::Int => _ = writeln!(self.asm, " call int_array_debug_print\n"),
-                Type::Ascii => _ = writeln!(self.asm, " call ascii_array_debug_print\n"),
-                Type::Bool => _ = writeln!(self.asm, " call bool_array_debug_print\n"),
-                Type::Str => _ = writeln!(self.asm, " call str_array_debug_print\n"),
-                Type::Array { .. } => unreachable!("nested arrays are not supported yet"),
-                Type::Infer => unreachable!("should have been inferred"),
+            Type::Base(BaseType::Int) => _ = writeln!(self.asm, " call int_print\n"),
+            Type::Base(BaseType::Ascii) => _ = writeln!(self.asm, " call ascii_print\n"),
+            Type::Base(BaseType::Bool) => _ = writeln!(self.asm, " call bool_print\n"),
+            Type::Base(BaseType::Str) => _ = writeln!(self.asm, " call str_print\n"),
+            Type::Array { typ, .. } => match typ {
+                BaseType::Int => _ = writeln!(self.asm, " call int_array_debug_print\n"),
+                BaseType::Ascii => _ = writeln!(self.asm, " call ascii_array_debug_print\n"),
+                BaseType::Bool => _ = writeln!(self.asm, " call bool_array_debug_print\n"),
+                BaseType::Str => _ = writeln!(self.asm, " call str_array_debug_print\n"),
             },
-            Type::Infer => unreachable!("should have been inferred"),
         }
     }
 
@@ -2373,19 +2306,16 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         self.expression(value, Dst::default(&value_typ));
 
         match value_typ {
-            Type::Int => _ = writeln!(self.asm, " call int_eprint\n"),
-            Type::Ascii => _ = writeln!(self.asm, " call ascii_eprint\n"),
-            Type::Bool => _ = writeln!(self.asm, " call bool_eprint\n"),
-            Type::Str => _ = writeln!(self.asm, " call str_eprint\n"),
-            Type::Array { typ, .. } => match &*typ {
-                Type::Int => _ = writeln!(self.asm, " call int_array_debug_eprint\n"),
-                Type::Ascii => _ = writeln!(self.asm, " call ascii_array_debug_eprint\n"),
-                Type::Bool => _ = writeln!(self.asm, " call bool_array_debug_eprint\n"),
-                Type::Str => _ = writeln!(self.asm, " call str_array_debug_eprint\n"),
-                Type::Array { .. } => unreachable!("nested arrays are not supported yet"),
-                Type::Infer => unreachable!("should have been inferred"),
+            Type::Base(BaseType::Int) => _ = writeln!(self.asm, " call int_eprint\n"),
+            Type::Base(BaseType::Ascii) => _ = writeln!(self.asm, " call ascii_eprint\n"),
+            Type::Base(BaseType::Bool) => _ = writeln!(self.asm, " call bool_eprint\n"),
+            Type::Base(BaseType::Str) => _ = writeln!(self.asm, " call str_eprint\n"),
+            Type::Array { typ, .. } => match typ {
+                BaseType::Int => _ = writeln!(self.asm, " call int_array_debug_eprint\n"),
+                BaseType::Ascii => _ = writeln!(self.asm, " call ascii_array_debug_eprint\n"),
+                BaseType::Bool => _ = writeln!(self.asm, " call bool_array_debug_eprint\n"),
+                BaseType::Str => _ = writeln!(self.asm, " call str_array_debug_eprint\n"),
             },
-            Type::Infer => unreachable!("should have been inferred"),
         }
     }
 }

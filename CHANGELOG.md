@@ -78,6 +78,8 @@ Changes to error messages, help message and alike would **not** be considered br
     and is now required in compilation steps instead of generic `PathBuf`s
 - Updated consistency of compilation steps names and static variables
 - Compilation steps are now managed by the `Logger` struct
+- Moved type-related entities to `types` module
+    - Pulled `BaseType` enum out of `Type` enum
 
 ### Removed
 
@@ -88,6 +90,7 @@ Changes to error messages, help message and alike would **not** be considered br
     `Assembler::assemble`, `Linker::link` and `Run::run` are now substituted by
     `Artifacts::assembler`, `Artifacts::linker` and `Artifacts::runner` member functions and now
     return the relative `std::process::Command` to allow for finer control
+- `Type::Infer` type: now represented by `Expression::EmptyArray`
 
 ### Fixed
 

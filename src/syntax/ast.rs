@@ -1,102 +1,8 @@
 use super::{
-    op::{AssignmentOp, BinaryOp, BooleanBinaryOp, BooleanUnaryOp, ComparisonOp, Op, UnaryOp},
-    tokenizer::{ascii, int, uint, BracketKind, Literal, Mutability, Token, TokenKind},
-    Errors, RawError,
+    op::{AssignmentOp, BinaryOp, BooleanBinaryOp, BooleanUnaryOp, ComparisonOp, Op, UnaryOp}, tokenizer::{uint, BracketKind, Literal, Mutability, Token, TokenKind}, types::{BaseType, Type, TypeOf}, Errors, RawError
 };
 use crate::src_file::{Position, SrcFile};
 use std::fmt::{Debug, Display};
-
-pub(crate) trait TypeOf {
-    fn typ(&self) -> Type;
-}
-
-#[derive(Debug, Clone)]
-pub enum Type {
-    Int,
-    Ascii,
-    Bool,
-    Str,
-    // TODO(breaking)(stefano): enforce a max length
-    Array { typ: Box<Type>, len: uint },
-    Infer,
-}
-
-impl PartialEq for Type {
-    fn eq(&self, other: &Self) -> bool {
-        return match (self, other) {
-            (Self::Int, Self::Int)
-            | (Self::Ascii, Self::Ascii)
-            | (Self::Bool, Self::Bool)
-            | (Self::Str, Self::Str)
-            | (Self::Infer, Self::Infer) => true,
-
-            (Self::Array { typ: typ_1, len: len_1 }, Self::Array { typ: typ_2, len: len_2 }) => {
-                len_1 == len_2 && typ_1 == typ_2
-            }
-
-            _ => false,
-        };
-    }
-}
-
-impl Display for Type {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return match self {
-            Self::Int => write!(f, "int"),
-            Self::Ascii => write!(f, "ascii"),
-            Self::Bool => write!(f, "bool"),
-            Self::Str => write!(f, "str"),
-            Self::Array { typ, len } => write!(f, "{typ}[{len}]"),
-            Self::Infer => write!(f, "infer"),
-        };
-    }
-}
-
-impl TypeOf for Literal {
-    fn typ(&self) -> Type {
-        return match self {
-            Self::Int(_) => Type::Int,
-            Self::Ascii(_) => Type::Ascii,
-            Self::Bool(_) => Type::Bool,
-            Self::Str(_) => Type::Str,
-        };
-    }
-}
-
-impl Type {
-    pub(crate) fn size(&self) -> usize {
-        return match self {
-            Self::Int => std::mem::size_of::<int>(),
-            Self::Ascii => std::mem::size_of::<ascii>(),
-            Self::Bool => std::mem::size_of::<bool>(),
-            Self::Str => std::mem::size_of::<*const ascii>() + std::mem::size_of::<uint>(),
-            Self::Array { typ, len } => typ.size() * len,
-            Self::Infer => unreachable!("should have been coerced to a concrete type"),
-        };
-    }
-
-    pub(crate) fn inner(&self) -> Self {
-        return match self {
-            Self::Array { typ, .. } => typ.inner(),
-            Self::Infer | Self::Int | Self::Ascii | Self::Bool | Self::Str => self.clone(),
-        };
-    }
-
-    pub(crate) fn can_be_compared_to(&self, other: &Self) -> bool {
-        return match (self, other) {
-            (Self::Str, Self::Str)
-            | (Self::Int | Self::Bool | Self::Ascii, Self::Int | Self::Bool | Self::Ascii) => true,
-
-            (Self::Array { typ: typ_1, len: len_1 }, Self::Array { typ: typ_2, len: len_2 }) => {
-                // comparing empty arrays makes no sense, so it's not going to be allowed
-                *len_1 != 0 && *len_2 != 0 && len_1 == len_2 && typ_1.can_be_compared_to(typ_2)
-            }
-
-            (Self::Str | Self::Array { .. } | Self::Infer, _)
-            | (_, Self::Str | Self::Array { .. } | Self::Infer) => false,
-        };
-    }
-}
 
 #[derive(Debug, Clone)]
 pub(crate) enum Expression<'src> {
@@ -131,11 +37,14 @@ pub(crate) enum Expression<'src> {
         name: &'src str,
     },
     Array {
-        typ: Type,
+        typ: BaseType,
         items: Vec<Expression<'src>>,
     },
+    EmptyArray {
+        typ: Option<BaseType>,
+    },
     ArrayIndex {
-        typ: Type,
+        typ: BaseType,
         var_name: &'src str,
         bracket_position: Position,
         index: Box<Expression<'src>>,
@@ -155,20 +64,18 @@ impl Display for Expression<'_> {
             Self::Identifier { name, .. } => write!(f, "{name}"),
             Self::Array { items, .. } => {
                 write!(f, "[")?;
-                if !items.is_empty() {
-                    let mut items_iter = items.iter();
-                    let Some(last_item) = items_iter.next_back() else {
-                        unreachable!("this branch ensured there would be at least one item");
-                    };
+                let mut items_iter = items.iter();
+                let Some(last_item) = items_iter.next_back() else {
+                    unreachable!("this variant ensured there would be at least one item");
+                };
 
-                    for item in items_iter {
-                        write!(f, "{item}, ")?;
-                    }
-
-                    write!(f, "{last_item}")?;
+                for item in items_iter {
+                    write!(f, "{item}, ")?;
                 }
-                write!(f, "]")
+
+                write!(f, "{last_item}]")
             }
+            Self::EmptyArray { .. } => write!(f, "[]"),
             Self::ArrayIndex { var_name, index, .. } => write!(f, "{var_name}[{index}]"),
         };
     }
@@ -177,17 +84,35 @@ impl Display for Expression<'_> {
 impl TypeOf for Expression<'_> {
     fn typ(&self) -> Type {
         return match self {
-            Self::Literal(literal) => literal.typ(),
-            Self::Unary { op, .. } => op.typ(),
-            Self::BooleanUnary { op, .. } => op.typ(),
-            Self::Binary { op, .. } => op.typ(),
-            Self::BooleanBinary { op, .. } => op.typ(),
-            Self::Comparison { op, .. } => op.typ(),
-            Self::Identifier { typ, .. } => typ.clone(),
-            Self::Array { typ, items } => {
-                Type::Array { typ: Box::new(typ.clone()), len: items.len() }
+            Self::Literal(literal) => match literal {
+                Literal::Int(_) => Type::Base(BaseType::Int),
+                Literal::Ascii(_) => Type::Base(BaseType::Ascii),
+                Literal::Bool(_) => Type::Base(BaseType::Bool),
+                Literal::Str(_) => Type::Base(BaseType::Str),
             }
-            Self::ArrayIndex { typ, .. } => typ.clone(),
+            Self::Unary { op, .. } => Type::Base(op.typ()),
+            Self::BooleanUnary { op, .. } => Type::Base(op.typ()),
+            Self::Binary { op, .. } => Type::Base(op.typ()),
+            Self::BooleanBinary { op, .. } => Type::Base(op.typ()),
+            Self::Comparison { op, .. } => Type::Base(op.typ()),
+            Self::Identifier { typ, .. } => *typ,
+            Self::Array { typ, items } => Type::Array{ typ: *typ, len: items.len() },
+            Self::EmptyArray { typ } => match typ {
+                Some(parsed_type) => Type::Array { typ: *parsed_type, len: 0 },
+                None => unreachable!("does not have a type yet"),
+            }
+            Self::ArrayIndex { typ, .. } => Type::Base(*typ),
+        };
+    }
+}
+
+impl From<BaseType> for Expression<'_> {
+    fn from(typ: BaseType) -> Self {
+        return match typ {
+            BaseType::Int => Self::Literal(Literal::Int(0)),
+            BaseType::Ascii => Self::Literal(Literal::Ascii(0)),
+            BaseType::Bool => Self::Literal(Literal::Bool(false)),
+            BaseType::Str => Self::Literal(Literal::Str(Vec::new())),
         };
     }
 }
@@ -195,19 +120,11 @@ impl TypeOf for Expression<'_> {
 impl From<Type> for Expression<'_> {
     fn from(typ: Type) -> Self {
         return match typ {
-            Type::Int => Self::Literal(Literal::Int(0)),
-            Type::Ascii => Self::Literal(Literal::Ascii(0)),
-            Type::Bool => Self::Literal(Literal::Bool(false)),
-            Type::Str => Self::Literal(Literal::Str(Vec::new())),
-            Type::Array { typ: items_type, len } => {
-                let mut items = Vec::<Expression<'_>>::with_capacity(len);
-                for _ in 0..=len {
-                    let inner_typ = *items_type.clone();
-                    items.push(inner_typ.into());
-                }
-                Self::Array { typ: *items_type, items }
-            }
-            Type::Infer => unreachable!("should have been coerced to a concrete type"),
+            Type::Base(base_typ) => base_typ.into(),
+            Type::Array{ typ: items_type, len } => Expression::Array {
+                typ: items_type,
+                items: vec![items_type.into(); len]
+            },
         };
     }
 }
@@ -325,7 +242,7 @@ impl Display for Node<'_> {
 #[derive(Debug, Clone)]
 pub struct Scope<'src> {
     pub(crate) parent: usize,
-    pub(crate) types: Vec<Type>,
+    pub(crate) base_types: Vec<BaseType>,
     pub(crate) variables: Vec<Variable<'src>>,
     pub(crate) nodes: Vec<Node<'src>>,
 }
@@ -377,7 +294,12 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             scope_index: 0,
             scopes: vec![Scope {
                 parent: 0,
-                types: vec![Type::Int, Type::Ascii, Type::Bool, Type::Str],
+                base_types: vec![
+                    BaseType::Int,
+                    BaseType::Ascii,
+                    BaseType::Bool,
+                    BaseType::Str,
+                ],
                 variables: Vec::new(),
                 nodes: Vec::new(),
             }],
@@ -751,7 +673,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 let new_scope_index = self.scopes.len();
                 self.scopes.push(Scope {
                     parent: self.scope_index,
-                    types: Vec::new(),
+                    base_types: Vec::new(),
                     variables: Vec::new(),
                     nodes: Vec::new(),
                 });
@@ -884,7 +806,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         op_token: &'tokens Token<'src>,
         lhs: &Expression<'src>,
     ) -> Result<(), RawError<ErrorKind, ErrorCause>> {
-        if let Type::Str = lhs.typ() {
+        if let Type::Base(BaseType::Str) = lhs.typ() {
             return Err(RawError {
                 kind: ErrorKind::Invalid(Statement::Expression),
                 cause: ErrorCause::StringLeftOperand,
@@ -908,7 +830,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         op_token: &'tokens Token<'src>,
         rhs: &Expression<'src>,
     ) -> Result<(), RawError<ErrorKind, ErrorCause>> {
-        if let Type::Str = rhs.typ() {
+        if let Type::Base(BaseType::Str) = rhs.typ() {
             return Err(RawError {
                 kind: ErrorKind::Invalid(Statement::Expression),
                 cause: ErrorCause::StringRightOperand,
@@ -948,23 +870,23 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn index(
         &mut self,
         var_name: &'src str,
-        var_typ: Type,
+        var_type: Type,
     ) -> Result<Expression<'src>, RawError<ErrorKind, ErrorCause>> {
         let current_token = &self.tokens[self.token];
 
         let Some(open_bracket_token) = self.peek_next_token() else {
-            return Ok(Expression::Identifier { typ: var_typ, name: var_name });
+            return Ok(Expression::Identifier { typ: var_type, name: var_name });
         };
 
         let TokenKind::Bracket(BracketKind::OpenSquare) = open_bracket_token.kind else {
-            return Ok(Expression::Identifier { typ: var_typ, name: var_name });
+            return Ok(Expression::Identifier { typ: var_type, name: var_name });
         };
 
         let _open_square = self.next_token();
         let _start_of_index = self.next_token();
 
         let index = self.expression()?;
-        let Type::Int = index.typ() else {
+        let Type::Base(BaseType::Int) = index.typ() else {
             return Err(RawError {
                 kind: ErrorKind::Invalid(Statement::ArrayIndex),
                 cause: ErrorCause::MustBeFollowedByIntegerExpression,
@@ -985,43 +907,33 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             });
         };
 
-        return match var_typ {
-            Type::Int => Ok(Expression::ArrayIndex {
-                typ: Type::Int,
-                var_name,
-                bracket_position: Position::new(self.src, open_bracket_token.col).0,
-                index: Box::new(index),
-            }),
-            Type::Str => Ok(Expression::ArrayIndex {
-                typ: Type::Ascii,
-                var_name,
-                bracket_position: Position::new(self.src, open_bracket_token.col).0,
-                index: Box::new(index),
-            }),
-            Type::Array { typ, .. } => match &*typ {
-                Type::Int | Type::Ascii | Type::Bool | Type::Str => {
-                    Ok(Expression::ArrayIndex {
-                        typ: *typ,
-                        var_name,
-                        bracket_position: Position::new(self.src, open_bracket_token.col).0,
-                        index: Box::new(index),
-                    })
-                }
-                Type::Array { .. } => Err(RawError {
-                    kind: ErrorKind::Invalid(Statement::ArrayItem),
-                    cause: ErrorCause::NestedArrayNotSupportedYet,
+        return match var_type {
+            Type::Base(primitive_type) => match primitive_type {
+                BaseType::Int => Ok(Expression::ArrayIndex {
+                    typ: BaseType::Int,
+                    var_name,
+                    bracket_position: Position::new(self.src, open_bracket_token.col).0,
+                    index: Box::new(index),
+                }),
+                BaseType::Str => Ok(Expression::ArrayIndex {
+                    typ: BaseType::Ascii,
+                    var_name,
+                    bracket_position: Position::new(self.src, open_bracket_token.col).0,
+                    index: Box::new(index),
+                }),
+                BaseType::Ascii | BaseType::Bool => Err(RawError {
+                    kind: ErrorKind::Invalid(Statement::Expression),
+                    cause: ErrorCause::CannotIndexNonArrayType(var_type),
                     col: current_token.col,
                     len: current_token.len,
                 }),
-                Type::Infer => unreachable!("should have been inferred"),
-            },
-            Type::Ascii | Type::Bool => Err(RawError {
-                kind: ErrorKind::Invalid(Statement::Expression),
-                cause: ErrorCause::CannotIndexNonArrayType(var_typ),
-                col: current_token.col,
-                len: current_token.len,
+            }
+            Type::Array { typ, .. } => Ok(Expression::ArrayIndex {
+                typ,
+                var_name,
+                bracket_position: Position::new(self.src, open_bracket_token.col).0,
+                index: Box::new(index),
             }),
-            Type::Infer => unreachable!("should have been inferred"),
         };
     }
 
@@ -1078,21 +990,35 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::Bracket(BracketKind::OpenSquare) => 'array: {
                 _ = self.next_token();
                 let mut items = Vec::<Expression<'src>>::new();
-                let mut items_typ = Type::Infer;
+                let mut items_type: Option<BaseType> = None;
 
                 loop {
                     let item_token =
                         self.current_token_bounded(Expected::ArrayElementOrClosingSquareBracket)?;
 
                     if let TokenKind::Bracket(BracketKind::CloseSquare) = item_token.kind {
-                        break 'array Ok(Expression::Array { typ: items_typ, items });
+                        break 'array match items_type {
+                            Some(typ) => Ok(Expression::Array { typ, items }),
+                            None => Ok(Expression::EmptyArray { typ: None }),
+                        };
                     }
 
                     let item = self.expression()?;
-                    match (&items_typ, item.typ()) {
-                        (Type::Infer, other) => {
-                            items_typ = other;
+                    match (items_type, item.typ()) {
+                        (None, Type::Base(base_type)) => {
+                            items_type = Some(base_type);
                             items.push(item);
+                        }
+                        (Some(expected), Type::Base(base_type)) if expected != base_type => {
+                            break 'array Err(RawError {
+                                kind: ErrorKind::Invalid(Statement::ArrayItem),
+                                cause: ErrorCause::MismatchedArrayElementType {
+                                    expected,
+                                    actual: base_type,
+                                },
+                                col: item_token.col,
+                                len: item_token.len,
+                            })
                         }
                         (_, Type::Array { .. }) => {
                             break 'array Err(RawError {
@@ -1100,17 +1026,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                                 cause: ErrorCause::NestedArrayNotSupportedYet,
                                 col: current_token.col,
                                 len: current_token.len,
-                            })
-                        }
-                        (expected, actual) if *expected != actual => {
-                            break 'array Err(RawError {
-                                kind: ErrorKind::Invalid(Statement::ArrayItem),
-                                cause: ErrorCause::MismatchedArrayElementType {
-                                    expected: expected.clone(),
-                                    actual,
-                                },
-                                col: item_token.col,
-                                len: item_token.len,
                             })
                         }
                         (_, _) => items.push(item),
@@ -1134,56 +1049,91 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             op: UnaryOp::Len,
                             operand: Box::new(operand),
                         }),
-                        Literal::Int(_) | Literal::Ascii(_) | Literal::Bool(_) => Err(RawError {
+                        Literal::Int(_) => Err(RawError {
                             kind: ErrorKind::Invalid(Statement::Len),
-                            cause: ErrorCause::CannotTakeLenOfNumericValue(literal.typ()),
+                            cause: ErrorCause::CannotTakeLenOfNumericValue(BaseType::Int),
+                            col: current_token.col,
+                            len: current_token.len,
+                        }),
+                        Literal::Ascii(_) => Err(RawError {
+                            kind: ErrorKind::Invalid(Statement::Len),
+                            cause: ErrorCause::CannotTakeLenOfNumericValue(BaseType::Ascii),
+                            col: current_token.col,
+                            len: current_token.len,
+                        }),
+                        Literal::Bool(_) => Err(RawError {
+                            kind: ErrorKind::Invalid(Statement::Len),
+                            cause: ErrorCause::CannotTakeLenOfNumericValue(BaseType::Bool),
                             col: current_token.col,
                             len: current_token.len,
                         }),
                     },
-                    Expression::Unary { .. }
-                    | Expression::BooleanUnary { .. }
-                    | Expression::Binary { .. }
-                    | Expression::BooleanBinary { .. }
-                    | Expression::Comparison { .. } => Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::Len),
-                        cause: ErrorCause::CannotTakeLenOfNumericValue(operand.typ()),
-                        col: current_token.col,
-                        len: current_token.len,
-                    }),
                     Expression::Identifier { typ, .. } => match typ {
-                        Type::Str | Type::Array { .. } => Ok(Expression::Unary {
+                        Type::Base(BaseType::Str) | Type::Array { .. } => Ok(Expression::Unary {
                             op_position: Position::new(self.src, current_token.col).0,
                             op: UnaryOp::Len,
                             operand: Box::new(operand),
                         }),
-                        Type::Int | Type::Ascii | Type::Bool => Err(RawError {
+                        Type::Base(base_type @ (BaseType::Int | BaseType::Ascii | BaseType::Bool)) => Err(RawError {
                             kind: ErrorKind::Invalid(Statement::Len),
-                            cause: ErrorCause::CannotTakeLenOfNumericValue(typ.clone()),
+                            cause: ErrorCause::CannotTakeLenOfNumericValue(*base_type),
                             col: current_token.col,
                             len: current_token.len,
                         }),
-                        Type::Infer => unreachable!("variables with no type are not allowed"),
                     },
                     Expression::Array { .. } => Ok(Expression::Unary {
                         op_position: Position::new(self.src, current_token.col).0,
                         op: UnaryOp::Len,
                         operand: Box::new(operand),
                     }),
+                    Expression::EmptyArray { .. } => Ok(Expression::Unary {
+                        op_position: Position::new(self.src, current_token.col).0,
+                        op: UnaryOp::Len,
+                        operand: Box::new(operand),
+                    }),
                     Expression::ArrayIndex { typ, .. } => match typ {
-                        Type::Str | Type::Array { .. } => Ok(Expression::Unary {
+                        BaseType::Str => Ok(Expression::Unary {
                             op_position: Position::new(self.src, current_token.col).0,
                             op: UnaryOp::Len,
                             operand: Box::new(operand),
                         }),
-                        Type::Int | Type::Ascii | Type::Bool => Err(RawError {
+                        BaseType::Int | BaseType::Ascii | BaseType::Bool => Err(RawError {
                             kind: ErrorKind::Invalid(Statement::Len),
-                            cause: ErrorCause::CannotTakeLenOfNumericValue(typ.clone()),
+                            cause: ErrorCause::CannotTakeLenOfNumericValue(*typ),
                             col: current_token.col,
                             len: current_token.len,
                         }),
-                        Type::Infer => unreachable!("variables with no type are not allowed"),
                     },
+                    Expression::Unary { op, .. } => Err(RawError {
+                        kind: ErrorKind::Invalid(Statement::Len),
+                        cause: ErrorCause::CannotTakeLenOfNumericValue(op.typ()),
+                        col: current_token.col,
+                        len: current_token.len,
+                    }),
+                    Expression::BooleanUnary { op, .. } => Err(RawError {
+                        kind: ErrorKind::Invalid(Statement::Len),
+                        cause: ErrorCause::CannotTakeLenOfNumericValue(op.typ()),
+                        col: current_token.col,
+                        len: current_token.len,
+                    }),
+                    Expression::Binary { op, .. } => Err(RawError {
+                        kind: ErrorKind::Invalid(Statement::Len),
+                        cause: ErrorCause::CannotTakeLenOfNumericValue(op.typ()),
+                        col: current_token.col,
+                        len: current_token.len,
+                    }),
+                    Expression::BooleanBinary { op, .. } => Err(RawError {
+                        kind: ErrorKind::Invalid(Statement::Len),
+                        cause: ErrorCause::CannotTakeLenOfNumericValue(op.typ()),
+                        col: current_token.col,
+                        len: current_token.len,
+                    }),
+                    Expression::Comparison { op, .. } => Err(RawError {
+                        kind: ErrorKind::Invalid(Statement::Len),
+                        cause: ErrorCause::CannotTakeLenOfNumericValue(op.typ()),
+                        col: current_token.col,
+                        len: current_token.len,
+                    }),
                 };
             }
             TokenKind::Op(Op::Plus) => {
@@ -1199,7 +1149,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
                 // returning to avoid the call to tokens.next at the end of the function
                 return match operand.typ() {
-                    Type::Int => {
+                    Type::Base(BaseType::Int) => {
                         if should_be_made_positive {
                             Ok(Expression::Unary {
                                 op_position: Position::new(self.src, current_token.col).0,
@@ -1210,15 +1160,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_typ @ (Type::Ascii | Type::Bool | Type::Str | Type::Array { .. }) => {
+                    invalid_type @ (Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str) | Type::Array { .. }) => {
                         Err(RawError {
                             kind: ErrorKind::Invalid(Statement::Expression),
-                            cause: ErrorCause::CannotTakeAbsValueOf(invalid_typ),
+                            cause: ErrorCause::CannotTakeAbsValueOf(invalid_type),
                             col: current_token.col,
                             len: current_token.len,
                         })
                     }
-                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 };
             }
             TokenKind::Op(Op::WrappingPlus) => {
@@ -1236,7 +1185,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
                 // returning to avoid the call to tokens.next at the end of the function
                 return match operand.typ() {
-                    Type::Int => {
+                    Type::Base(BaseType::Int) => {
                         if should_be_made_positive {
                             Ok(Expression::Unary {
                                 op_position: Position::new(self.src, current_token.col).0,
@@ -1247,15 +1196,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_typ @ (Type::Ascii | Type::Bool | Type::Str | Type::Array { .. }) => {
+                    invalid_type @ (Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str) | Type::Array { .. }) => {
                         Err(RawError {
                             kind: ErrorKind::Invalid(Statement::Expression),
-                            cause: ErrorCause::CannotTakeAbsValueOf(invalid_typ),
+                            cause: ErrorCause::CannotTakeAbsValueOf(invalid_type),
                             col: current_token.col,
                             len: current_token.len,
                         })
                     }
-                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 };
             }
             TokenKind::Op(Op::SaturatingPlus) => {
@@ -1273,7 +1221,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
                 // returning to avoid the call to tokens.next at the end of the function
                 return match operand.typ() {
-                    Type::Int => {
+                    Type::Base(BaseType::Int) => {
                         if should_be_made_positive {
                             Ok(Expression::Unary {
                                 op_position: Position::new(self.src, current_token.col).0,
@@ -1284,7 +1232,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_typ @ (Type::Ascii | Type::Bool | Type::Str | Type::Array { .. }) => {
+                    invalid_typ @ (Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str) | Type::Array { .. }) => {
                         Err(RawError {
                             kind: ErrorKind::Invalid(Statement::Expression),
                             cause: ErrorCause::CannotTakeAbsValueOf(invalid_typ),
@@ -1292,7 +1240,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             len: current_token.len,
                         })
                     }
-                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 };
             }
             /*
@@ -1312,7 +1259,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
                 // returning to avoid the call to tokens.next at the end of the function
                 return match operand.typ() {
-                    Type::Int | Type::Ascii => {
+                    Type::Base(BaseType::Int | BaseType::Ascii) => {
                         if should_be_negated {
                             Ok(Expression::Unary {
                                 op_position: Position::new(self.src, current_token.col).0,
@@ -1323,13 +1270,12 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_typ @ (Type::Bool | Type::Str | Type::Array { .. }) => Err(RawError {
+                    invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. }) => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotNegate(invalid_typ),
                         col: current_token.col,
                         len: current_token.len,
                     }),
-                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 };
             }
             TokenKind::Op(Op::WrappingMinus) => {
@@ -1347,7 +1293,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
                 // returning to avoid the call to tokens.next at the end of the function
                 return match operand.typ() {
-                    Type::Int | Type::Ascii => {
+                    Type::Base(BaseType::Int | BaseType::Ascii) => {
                         if should_be_negated {
                             Ok(Expression::Unary {
                                 op_position: Position::new(self.src, current_token.col).0,
@@ -1358,13 +1304,12 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_typ @ (Type::Bool | Type::Str | Type::Array { .. }) => Err(RawError {
+                    invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. }) => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotNegate(invalid_typ),
                         col: current_token.col,
                         len: current_token.len,
                     }),
-                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 };
             }
             TokenKind::Op(Op::SaturatingMinus) => {
@@ -1382,7 +1327,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
                 // returning to avoid the call to tokens.next at the end of the function
                 return match operand.typ() {
-                    Type::Int | Type::Ascii => {
+                    Type::Base(BaseType::Int | BaseType::Ascii) => {
                         if should_be_negated {
                             Ok(Expression::Unary {
                                 op_position: Position::new(self.src, current_token.col).0,
@@ -1393,13 +1338,12 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_typ @ (Type::Bool | Type::Str | Type::Array { .. }) => Err(RawError {
+                    invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. }) => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotNegate(invalid_typ),
                         col: current_token.col,
                         len: current_token.len,
                     }),
-                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 };
             }
             TokenKind::Op(Op::Not) => {
@@ -1415,7 +1359,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
                 // returning to avoid the call to tokens.next at the end of the function
                 return match operand.typ() {
-                    Type::Int | Type::Ascii => {
+                    Type::Base(BaseType::Int | BaseType::Ascii) => {
                         if should_be_inverted {
                             Ok(Expression::Unary {
                                 op_position: Position::new(self.src, current_token.col).0,
@@ -1426,7 +1370,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    Type::Bool => {
+                    Type::Base(BaseType::Bool) => {
                         if should_be_inverted {
                             Ok(Expression::BooleanUnary {
                                 op: BooleanUnaryOp::Not,
@@ -1436,13 +1380,12 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_typ @ (Type::Str | Type::Array { .. }) => Err(RawError {
+                    invalid_typ @ (Type::Base(BaseType::Str) | Type::Array { .. }) => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotInvert(invalid_typ),
                         col: current_token.col,
                         len: current_token.len,
                     }),
-                    Type::Infer => unreachable!("should have been coerced to a concrete type"),
                 };
             }
             TokenKind::Definition(_)
@@ -1734,7 +1677,16 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             let lhs_typ = lhs.typ();
             let rhs_typ = rhs.typ();
-            if !lhs_typ.can_be_compared_to(&rhs_typ) {
+            let can_compare = match (lhs_typ, rhs_typ) {
+                (Type::Base(lhs_base_typ), Type::Base(rhs_base_typ)) => lhs_base_typ == rhs_base_typ,
+                (Type::Array { typ: lhs_base_typ, len: lhs_len }, Type::Array { typ: rhs_base_typ, len: rhs_len }) => {
+                    // comparing empty arrays makes no sense, so it's not going to be allowed
+                    lhs_base_typ == rhs_base_typ && lhs_len > 0 && rhs_len > 0 && lhs_len == rhs_len
+                }
+                _ => false,
+            };
+
+            if !can_compare {
                 return Err(RawError {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::CannotCompareOperands { lhs_typ, rhs_typ },
@@ -1779,7 +1731,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let mut lhs = self.comparison_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::And])? {
-            let Type::Bool = lhs.typ() else {
+            let Type::Base(BaseType::Bool) = lhs.typ() else {
                 return Err(RawError {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::NonBooleanLeftOperand,
@@ -1789,7 +1741,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             };
 
             let rhs = self.comparison_expression()?;
-            let Type::Bool = rhs.typ() else {
+            let Type::Base(BaseType::Bool) = rhs.typ() else {
                 return Err(RawError {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::NonBooleanRightOperand,
@@ -1818,7 +1770,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let mut lhs = self.and_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::Or])? {
-            let Type::Bool = lhs.typ() else {
+            let Type::Base(BaseType::Bool) = lhs.typ() else {
                 return Err(RawError {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::NonBooleanLeftOperand,
@@ -1828,7 +1780,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             };
 
             let rhs = self.and_expression()?;
-            let Type::Bool = rhs.typ() else {
+            let Type::Base(BaseType::Bool) = rhs.typ() else {
                 return Err(RawError {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::NonBooleanRightOperand,
@@ -1882,13 +1834,13 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         }
     }
 
-    fn resolve_type(&self, name: &'src str) -> Option<&Type> {
+    fn resolve_type(&self, name: &'src str) -> Option<BaseType> {
         let mut scope_index = self.scope_index;
         loop {
             let scope = &self.scopes[scope_index];
-            for typ in &scope.types {
+            for typ in &scope.base_types {
                 if typ.to_string() == name {
-                    return Some(typ);
+                    return Some(*typ);
                 }
             }
 
@@ -1919,7 +1871,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             });
         };
 
-        let Some(typ) = self.resolve_type(type_name) else {
+        let Some(base_type) = self.resolve_type(type_name) else {
             return match self.resolve_variable(type_name) {
                 Some((_, _, var)) => Ok(Some((type_token, var.value.typ()))),
                 None => Err(RawError {
@@ -1932,14 +1884,13 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         };
 
         let Some(open_square_bracket_token) = self.peek_next_token() else {
-            return Ok(Some((type_token, typ.clone())));
+            return Ok(Some((type_token, Type::Base(base_type))));
         };
 
         let TokenKind::Bracket(BracketKind::OpenSquare) = open_square_bracket_token.kind else {
-            return Ok(Some((type_token, typ.clone())));
+            return Ok(Some((type_token, Type::Base(base_type))));
         };
 
-        let array_type = Box::new(typ.clone());
         let _open_square_bracket = self.next_token();
 
         let len_token = self.next_token_bounded(Expected::ArrayLength)?;
@@ -1982,7 +1933,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: TokenKind::Bracket(BracketKind::CloseSquare),
                     ..
                 },
-            ) => Ok(Some((close_square_bracket_token, Type::Array { typ: array_type, len }))),
+            ) => Ok(Some((close_square_bracket_token, Type::Array { typ: base_type, len }))),
             Some(_) | None => Err(RawError {
                 kind: ErrorKind::Invalid(Statement::TypeAnnotation),
                 cause: ErrorCause::MustBeFollowedByClosingSquareBracket,
@@ -2101,39 +2052,73 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         }
 
         return match expression {
-            /*
-            NOTE(stefano): this is the only place where Type::Infer is actually useful so it's
-            better to replace Type::Infer with Option<Type>, or to create a ConcreteType that
-            represents a type that has already been inferred
-            */
             Some(mut value) => {
-                if let Some((token, annotation_typ)) = &annotation {
-                    if let Expression::Array { typ, .. } = &mut value {
-                        if let Type::Infer = typ {
-                            *typ = annotation_typ.inner();
-                        }
-                    }
-
-                    if *annotation_typ != value.typ() {
+                match (annotation, &mut value) {
+                    (None, Expression::EmptyArray { .. }) => {
                         return Err(RawError {
                             kind: ErrorKind::Invalid(Statement::VariableDefinition),
-                            cause: ErrorCause::VariableDefinitionTypeMismatch {
-                                expected: annotation_typ.clone(),
-                                actual: value.typ(),
-                            },
-                            col: token.col,
-                            len: token.len,
+                            cause: ErrorCause::ExpectedTypeAnnotation,
+                            col: name_token.col,
+                            len: name_token.len,
                         });
                     }
-                }
+                    (Some((token, annotation_typ)), Expression::EmptyArray { typ: Some(empty_array_typ) }) => {
+                        let base_annotation_type = match annotation_typ {
+                            Type::Base(base_type) => base_type,
+                            Type::Array { typ: base_type, .. } => base_type,
+                        };
 
-                if let Type::Infer = value.typ() {
-                    return Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::VariableDefinition),
-                        cause: ErrorCause::ExpectedTypeAnnotation,
-                        col: name_token.col,
-                        len: name_token.len,
-                    });
+                        if base_annotation_type != *empty_array_typ {
+                            return Err(RawError {
+                                kind: ErrorKind::Invalid(Statement::VariableDefinition),
+                                cause: ErrorCause::VariableDefinitionTypeMismatch {
+                                    expected: annotation_typ,
+                                    actual: Type::Base(*empty_array_typ),
+                                },
+                                col: token.col,
+                                len: token.len,
+                            });
+                        }
+                    }
+                    (Some((token, annotation_typ)), Expression::EmptyArray { typ: empty_array_typ @ None }) => {
+                        let base_annotation_type = match annotation_typ {
+                            Type::Base(base_type) => base_type,
+                            Type::Array { typ: base_type, len } => {
+                                if len != 0 {
+                                    return Err(RawError {
+                                        kind: ErrorKind::Invalid(Statement::VariableDefinition),
+                                        cause: ErrorCause::VariableDefinitionTypeMismatch {
+                                            expected: annotation_typ,
+                                            actual: Type::Array { typ: base_type, len: 0 },
+                                        },
+                                        col: token.col,
+                                        len: token.len,
+                                    });
+                                }
+
+                                base_type
+                            },
+                        };
+
+                        *empty_array_typ = Some(base_annotation_type);
+                    }
+                    (Some((token, annotation_typ)), expr) => {
+                        let expr_typ = expr.typ();
+                        if annotation_typ != expr_typ {
+                            return Err(RawError {
+                                kind: ErrorKind::Invalid(Statement::VariableDefinition),
+                                cause: ErrorCause::VariableDefinitionTypeMismatch {
+                                    expected: annotation_typ,
+                                    actual: expr_typ,
+                                },
+                                col: token.col,
+                                len: token.len,
+                            });
+                        }
+                    }
+                    (None, _) => {
+                        // type is inferred from the rhs of the assignment
+                    }
                 }
 
                 let variables = &mut self.scopes[self.scope_index].variables;
@@ -2144,6 +2129,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 })
             }
             None => match annotation {
+                Some((_, Type::Array { typ, len: 0 })) => {
+                    let variables = &mut self.scopes[self.scope_index].variables;
+                    variables.push(Variable { mutability, name, value: Expression::EmptyArray { typ: Some(typ) } });
+                    Ok(Node::Definition {
+                        scope_index: self.scope_index,
+                        var_index: variables.len() - 1,
+                    })
+                }
                 Some((_, typ)) => {
                     let variables = &mut self.scopes[self.scope_index].variables;
                     variables.push(Variable { mutability, name, value: typ.into() });
@@ -2277,8 +2270,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         (AssignmentOp::Equals, _, _)
                         | (
                             _,
-                            Type::Int | Type::Ascii | Type::Bool,
-                            Type::Int | Type::Ascii | Type::Bool,
+                            Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool),
+                            Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool),
                         ) => Ok(Node::Assignment {
                             scope_index,
                             var_index,
@@ -2336,8 +2329,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             let expression = self.expression()?;
             let condition = match &expression.typ() {
-                Type::Bool => expression,
-                Type::Int | Type::Ascii | Type::Str | Type::Array { .. } | Type::Infer => {
+                Type::Base(BaseType::Bool) => expression,
+                Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str) | Type::Array { .. } => {
                     return Err(RawError {
                         kind: ErrorKind::Invalid(Statement::If),
                         cause: ErrorCause::MustBeFollowedByABooleanExpression,
@@ -2522,8 +2515,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         _ = self.next_token_bounded(Expected::BooleanExpression)?;
         let expression = self.expression()?;
         let condition_result = match &expression.typ() {
-            Type::Bool => Ok(expression),
-            Type::Int | Type::Ascii | Type::Str | Type::Array { .. } | Type::Infer => {
+            Type::Base(BaseType::Bool) => Ok(expression),
+            Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str) | Type::Array { .. } => {
                 Err(RawError {
                     kind: ErrorKind::Invalid(Statement::Loop),
                     cause: ErrorCause::MustBeFollowedByABooleanExpression,
@@ -2731,7 +2724,7 @@ pub enum ErrorCause {
     NestedArrayNotSupportedYet,
     EmptyExpression,
     UnclosedBracket(BracketKind),
-    MismatchedArrayElementType { expected: Type, actual: Type },
+    MismatchedArrayElementType { expected: BaseType, actual: BaseType },
 
     WasNotPreviouslyDefined,
     WasPreviouslyDefined,
@@ -2744,7 +2737,7 @@ pub enum ErrorCause {
     CannotChainComparisons,
     CannotIndexNonArrayType(Type),
     CannotCompareOperands { lhs_typ: Type, rhs_typ: Type },
-    CannotTakeLenOfNumericValue(Type),
+    CannotTakeLenOfNumericValue(BaseType),
 
     KeywordInExpression,
     VariableDefinitionTypeMismatch { expected: Type, actual: Type },

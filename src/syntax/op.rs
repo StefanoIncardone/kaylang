@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use super::ast::{Type, TypeOf};
+use super::types::BaseType;
 
 /*
 IDEA(stefano): introduce "unchecked" operators
@@ -178,79 +178,6 @@ impl Display for Op {
     }
 }
 
-impl TypeOf for Op {
-    fn typ(&self) -> Type {
-        return match self {
-            Self::Len
-            | Self::Compare
-            | Self::Pow
-            | Self::WrappingPow
-            | Self::SaturatingPow
-            | Self::PowEquals
-            | Self::WrappingPowEquals
-            | Self::SaturatingPowEquals
-            | Self::Times
-            | Self::WrappingTimes
-            | Self::SaturatingTimes
-            | Self::TimesEquals
-            | Self::WrappingTimesEquals
-            | Self::SaturatingTimesEquals
-            | Self::Divide
-            | Self::WrappingDivide
-            | Self::SaturatingDivide
-            | Self::DivideEquals
-            | Self::WrappingDivideEquals
-            | Self::SaturatingDivideEquals
-            | Self::Remainder
-            | Self::RemainderEquals
-            | Self::Plus
-            | Self::WrappingPlus
-            | Self::SaturatingPlus
-            | Self::PlusEquals
-            | Self::WrappingPlusEquals
-            | Self::SaturatingPlusEquals
-            | Self::Minus
-            | Self::WrappingMinus
-            | Self::SaturatingMinus
-            | Self::MinusEquals
-            | Self::WrappingMinusEquals
-            | Self::SaturatingMinusEquals
-            | Self::BitAnd
-            | Self::BitAndEquals
-            | Self::BitOr
-            | Self::BitOrEquals
-            | Self::BitXor
-            | Self::BitXorEquals
-            | Self::LeftShift
-            | Self::WrappingLeftShift
-            | Self::SaturatingLeftShift
-            | Self::LeftShiftEquals
-            | Self::WrappingLeftShiftEquals
-            | Self::SaturatingLeftShiftEquals
-            | Self::RightShift
-            | Self::RightShiftEquals
-            | Self::LeftRotate
-            | Self::LeftRotateEquals
-            | Self::RightRotate
-            | Self::RightRotateEquals => Type::Int,
-
-            Self::EqualsEquals
-            | Self::NotEquals
-            | Self::Greater
-            | Self::GreaterOrEquals
-            | Self::Less
-            | Self::LessOrEquals
-            | Self::Not
-            | Self::And
-            | Self::AndEquals
-            | Self::Or
-            | Self::OrEquals => Type::Bool,
-
-            Self::Equals => unreachable!("equals operator doesn't have a type"),
-        };
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum UnaryOp {
     Len,
@@ -283,9 +210,10 @@ impl Display for UnaryOp {
     }
 }
 
-impl TypeOf for UnaryOp {
-    fn typ(&self) -> Type {
-        return Type::Int;
+impl UnaryOp {
+    #[allow(clippy::unused_self)]
+    pub(crate) const fn typ(self) -> BaseType {
+        return BaseType::Int;
     }
 }
 
@@ -303,9 +231,10 @@ impl Display for BooleanUnaryOp {
     }
 }
 
-impl TypeOf for BooleanUnaryOp {
-    fn typ(&self) -> Type {
-        return Type::Bool;
+impl BooleanUnaryOp {
+    #[allow(clippy::unused_self)]
+    pub(crate) const fn typ(self) -> BaseType {
+        return BaseType::Bool;
     }
 }
 
@@ -388,9 +317,10 @@ impl Display for BinaryOp {
     }
 }
 
-impl TypeOf for BinaryOp {
-    fn typ(&self) -> Type {
-        return Type::Int;
+impl BinaryOp {
+    #[allow(clippy::unused_self)]
+    pub(crate) const fn typ(self) -> BaseType {
+        return BaseType::Int;
     }
 }
 
@@ -410,9 +340,10 @@ impl Display for BooleanBinaryOp {
     }
 }
 
-impl TypeOf for BooleanBinaryOp {
-    fn typ(&self) -> Type {
-        return Type::Bool;
+impl BooleanBinaryOp {
+    #[allow(clippy::unused_self)]
+    pub(crate) const fn typ(self) -> BaseType {
+        return BaseType::Bool;
     }
 }
 
@@ -442,16 +373,16 @@ impl Display for ComparisonOp {
     }
 }
 
-impl TypeOf for ComparisonOp {
-    fn typ(&self) -> Type {
+impl ComparisonOp {
+    pub(crate) const fn typ(self) -> BaseType {
         return match self {
-            Self::Compare => Type::Int,
+            Self::Compare => BaseType::Int,
             Self::EqualsEquals
             | Self::NotEquals
             | Self::Greater
             | Self::GreaterOrEquals
             | Self::Less
-            | Self::LessOrEquals => Type::Bool,
+            | Self::LessOrEquals => BaseType::Bool,
         };
     }
 }
