@@ -478,7 +478,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::False
             | TokenKind::Bracket(BracketKind::OpenRound)
             | TokenKind::Op(
-                Op::Plus | Op::WrappingPlus | Op::Minus | Op::WrappingMinus | Op::Not,
+                Op::Len
+                | Op::Not
+                | Op::Plus
+                | Op::WrappingPlus
+                | Op::SaturatingPlus
+                | Op::Minus
+                | Op::WrappingMinus
+                | Op::SaturatingMinus
             ) => Ok(Some(Node::Expression(self.expression()?))),
             TokenKind::Identifier(_) => match self.peek_next_token() {
                 Some(op) => match op.kind {
