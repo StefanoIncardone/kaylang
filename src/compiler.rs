@@ -11,7 +11,7 @@ use crate::{
     syntax::{
         ast::{self, Expression, IfStatement, Node, Scope},
         op::{AssignmentOp, BinaryOp, BooleanBinaryOp, ComparisonOp, UnaryOp},
-        tokenizer::{ascii, uint, Literal}, types::{BaseType, SizeOf, Type, TypeOf},
+        tokenizer::{ascii, uint, Literal, Mutability}, types::{BaseType, SizeOf, Type, TypeOf},
     },
     CAUSE, ERROR,
 };
@@ -101,7 +101,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             );
         } else {
             for scope in this.ast {
-                for var in &scope.variables {
+                for var in &scope.let_variables {
+                    this.variables.push(Variable { inner: var, offset: 0 /* placeholder */ });
+                }
+
+                for var in &scope.var_variables {
                     this.variables.push(Variable { inner: var, offset: 0 /* placeholder */ });
                 }
             }
@@ -482,8 +486,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.condition_reversed(&looop.condition, &loop_tag);
                 _ = self.loop_counters.pop();
             }
-            Node::Definition { scope_index, var_index } => {
-                let ast_var = &self.ast[*scope_index].variables[*var_index];
+            Node::Definition { mutability, scope_index, var_index } => {
+                let ast_var = match mutability {
+                    Mutability::Let => &self.ast[*scope_index].let_variables[*var_index],
+                    Mutability::Var => &self.ast[*scope_index].var_variables[*var_index],
+                };
+
                 let name = ast_var.name;
                 let value = &ast_var.value;
 
@@ -494,7 +502,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.definition(value, dst_offset);
             }
             Node::Assignment { scope_index, var_index, op, op_position, new_value } => {
-                let ast_var = &self.ast[*scope_index].variables[*var_index];
+                // Note: assignments are only allowed on mutable variables
+                let ast_var = &self.ast[*scope_index].var_variables[*var_index];
                 let name = ast_var.name;
 
                 let var = self.resolve(name);

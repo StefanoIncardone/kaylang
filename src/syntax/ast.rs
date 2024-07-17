@@ -123,13 +123,6 @@ impl From<Type> for Expression<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Variable<'src> {
-    pub(crate) mutability: Mutability,
-    pub(crate) name: &'src str,
-    pub(crate) value: Expression<'src>,
-}
-
-#[derive(Debug, Clone)]
 pub(crate) struct IfStatement<'src> {
     pub(crate) condition: Expression<'src>,
     pub(crate) statement: Node<'src>,
@@ -172,6 +165,12 @@ impl Display for DoLoop<'_> {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct Variable<'src> {
+    pub(crate) name: &'src str,
+    pub(crate) value: Expression<'src>,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) enum Node<'src> {
     Semicolon,
 
@@ -190,6 +189,7 @@ pub(crate) enum Node<'src> {
     Continue,
 
     Definition {
+        mutability: Mutability,
         scope_index: usize,
         var_index: usize,
     },
@@ -238,7 +238,8 @@ impl Display for Node<'_> {
 pub struct Scope<'src> {
     pub(crate) parent: usize,
     pub(crate) base_types: Vec<BaseType>,
-    pub(crate) variables: Vec<Variable<'src>>,
+    pub(crate) let_variables: Vec<Variable<'src>>,
+    pub(crate) var_variables: Vec<Variable<'src>>,
     pub(crate) nodes: Vec<Node<'src>>,
 }
 
@@ -295,7 +296,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     BaseType::Bool,
                     BaseType::Str,
                 ],
-                variables: Vec::new(),
+                let_variables: Vec::new(),
+                var_variables: Vec::new(),
                 nodes: Vec::new(),
             }],
             loop_depth: 0,
@@ -406,7 +408,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 | Op::WrappingMinus
                 | Op::SaturatingMinus
             ) => Ok(Some(Node::Expression(self.expression()?))),
-            TokenKind::Identifier(_) => match self.peek_next_token() {
+            TokenKind::Identifier(name) => match self.peek_next_token() {
                 Some(op) => match op.kind {
                     TokenKind::Op(
                         op_kind @ (Op::Equals
@@ -437,7 +439,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         | Op::OrEquals
                         | Op::LeftRotateEquals
                         | Op::RightRotateEquals),
-                    ) => Ok(Some(self.variable_reassignment(op_kind)?)),
+                    ) => Ok(Some(self.variable_reassignment(op_kind, name)?)),
                     TokenKind::Op(_)
                     | TokenKind::Comment(_)
                     | TokenKind::Unexpected(_)
@@ -463,7 +465,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 },
                 None => Ok(Some(Node::Expression(self.expression()?))),
             },
-            TokenKind::Definition(_) => Ok(Some(self.variable_definition()?)),
+            TokenKind::Definition(mutability) => Ok(Some(self.variable_definition(mutability)?)),
             TokenKind::Print => {
                 let arg = self.print_arg()?;
                 Ok(Some(Node::Print(arg)))
@@ -669,7 +671,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 self.scopes.push(Scope {
                     parent: self.scope_index,
                     base_types: Vec::new(),
-                    variables: Vec::new(),
+                    let_variables: Vec::new(),
+                    var_variables: Vec::new(),
                     nodes: Vec::new(),
                 });
                 self.scope_index = new_scope_index;
@@ -940,7 +943,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::False => Ok(Expression::Literal(Literal::Bool(false))),
             TokenKind::Identifier(name) => match self.resolve_type(name) {
                 None => match self.resolve_variable(name) {
-                    Some((_, _, var)) => self.index(var.name, var.value.typ()),
+                    Some((_, _, _, var)) => self.index(var.name, var.value.typ()),
                     None => Err(RawError {
                         kind: ErrorKind::VariableNotPreviouslyDefined,
                         cause: ErrorCause::WasNotPreviouslyDefined,
@@ -1845,13 +1848,19 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn resolve_variable(
         &self,
         name: &'src str,
-    ) -> Option<(usize /* scope index */, usize /* variable index */, &Variable<'src>)> {
+    ) -> Option<(Mutability, usize /* scope index */, usize /* variable index */, &Variable<'src>)> {
         let mut scope_index = self.scope_index;
         loop {
             let scope = &self.scopes[scope_index];
-            for (var_index, var) in scope.variables.iter().enumerate() {
+            for (var_index, var) in scope.let_variables.iter().enumerate() {
                 if var.name == name {
-                    return Some((scope_index, var_index, var));
+                    return Some((Mutability::Let, scope_index, var_index, var));
+                }
+            }
+
+            for (var_index, var) in scope.var_variables.iter().enumerate() {
+                if var.name == name {
+                    return Some((Mutability::Var, scope_index, var_index, var));
                 }
             }
 
@@ -1901,7 +1910,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         let Some(base_type) = self.resolve_type(type_name) else {
             return match self.resolve_variable(type_name) {
-                Some((_, _, var)) => Ok(Some((type_token, var.value.typ()))),
+                Some((_, _, _, var)) => Ok(Some((type_token, var.value.typ()))),
                 None => Err(RawError {
                     kind: ErrorKind::Invalid(Statement::TypeAnnotation),
                     cause: ErrorCause::WasNotPreviouslyDefined,
@@ -1969,28 +1978,24 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             }
         };
 
-        return match self.next_token() {
-            Some(
-                close_square_bracket_token @ Token {
-                    kind: TokenKind::Bracket(BracketKind::CloseSquare),
-                    ..
-                },
-            ) => Ok(Some((close_square_bracket_token, Type::Array { typ: base_type, len }))),
-            Some(_) | None => Err(RawError {
+        let Some(
+            close_square_bracket_token @ Token {
+                kind: TokenKind::Bracket(BracketKind::CloseSquare),
+                ..
+            },
+        ) = self.next_token() else {
+            return Err(RawError {
                 kind: ErrorKind::Invalid(Statement::TypeAnnotation),
                 cause: ErrorCause::MustBeFollowedByClosingSquareBracket,
                 col: open_square_bracket_token.col,
                 len: open_square_bracket_token.len,
-            }),
+            });
         };
+
+        return Ok(Some((close_square_bracket_token, Type::Array { typ: base_type, len })));
     }
 
-    fn variable_definition(&mut self) -> Result<Node<'src>, RawError<ErrorKind, ErrorCause>> {
-        let definition_token = &self.tokens[self.token];
-        let TokenKind::Definition(mutability) = definition_token.kind else {
-            unreachable!("cannot be anything different from 'let' or 'var'");
-        };
-
+    fn variable_definition(&mut self, mutability: Mutability) -> Result<Node<'src>, RawError<ErrorKind, ErrorCause>> {
         let name_token = self.next_token_bounded(Expected::Identifier)?;
         let name = match name_token.kind {
             TokenKind::Identifier(name) => match self.resolve_type(name) {
@@ -2084,14 +2089,15 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             },
         };
 
-        if self.resolve_variable(name).is_some() {
+
+        let None = self.resolve_variable(name) else {
             return Err(RawError {
                 kind: ErrorKind::VariableRedefinition,
                 cause: ErrorCause::WasPreviouslyDefined,
                 col: name_token.col,
                 len: name_token.len,
             });
-        }
+        };
 
         return match expression {
             Some(value) => {
@@ -2110,18 +2116,28 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     }
                 }
 
-                let variables = &mut self.scopes[self.scope_index].variables;
-                variables.push(Variable { mutability, name, value });
+                let variables = match mutability {
+                    Mutability::Let => &mut self.scopes[self.scope_index].let_variables,
+                    Mutability::Var => &mut self.scopes[self.scope_index].var_variables,
+                };
+
+                variables.push(Variable { name, value });
                 Ok(Node::Definition {
+                    mutability,
                     scope_index: self.scope_index,
                     var_index: variables.len() - 1,
                 })
             }
             None => match annotation {
                 Some((_, typ)) => {
-                    let variables = &mut self.scopes[self.scope_index].variables;
-                    variables.push(Variable { mutability, name, value: typ.into() });
+                    let variables = match mutability {
+                        Mutability::Let => &mut self.scopes[self.scope_index].let_variables,
+                        Mutability::Var => &mut self.scopes[self.scope_index].var_variables,
+                    };
+
+                    variables.push(Variable { name, value: typ.into() });
                     Ok(Node::Definition {
+                        mutability,
                         scope_index: self.scope_index,
                         var_index: variables.len() - 1,
                     })
@@ -2139,11 +2155,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn variable_reassignment(
         &mut self,
         op: Op,
+        name: &'src str,
     ) -> Result<Node<'src>, RawError<ErrorKind, ErrorCause>> {
         let name_token = &self.tokens[self.token];
-        let TokenKind::Identifier(name) = name_token.kind else {
-            unreachable!("cannot be different from an identifier");
-        };
 
         if self.resolve_type(name).is_some() {
             return Err(RawError {
@@ -2160,124 +2174,163 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         _ = self.next_token();
         let rhs = self.expression()?;
-        return match self.resolve_variable(name) {
-            Some((scope_index, var_index, var)) => match var.mutability {
-                Mutability::Let => Err(RawError {
-                    kind: ErrorKind::Invalid(Statement::VariableAssignment),
-                    cause: ErrorCause::CannotMutateImmutableVariable,
-                    col: name_token.col,
-                    len: name_token.len,
-                }),
-                Mutability::Var => {
-                    let assignment_op = match op {
-                        Op::Equals => AssignmentOp::Equals,
-                        Op::PowEquals => AssignmentOp::Pow,
-                        Op::WrappingPowEquals => AssignmentOp::WrappingPow,
-                        Op::SaturatingPowEquals => AssignmentOp::SaturatingPow,
-                        Op::TimesEquals => AssignmentOp::Times,
-                        Op::WrappingTimesEquals => AssignmentOp::WrappingTimes,
-                        Op::SaturatingTimesEquals => AssignmentOp::SaturatingTimes,
-                        Op::DivideEquals => AssignmentOp::Divide,
-                        Op::WrappingDivideEquals => AssignmentOp::WrappingDivide,
-                        Op::SaturatingDivideEquals => AssignmentOp::SaturatingDivide,
-                        Op::RemainderEquals => AssignmentOp::Remainder,
-                        Op::PlusEquals => AssignmentOp::Plus,
-                        Op::WrappingPlusEquals => AssignmentOp::WrappingPlus,
-                        Op::SaturatingPlusEquals => AssignmentOp::SaturatingPlus,
-                        Op::MinusEquals => AssignmentOp::Minus,
-                        Op::WrappingMinusEquals => AssignmentOp::WrappingMinus,
-                        Op::SaturatingMinusEquals => AssignmentOp::SaturatingMinus,
-                        Op::LeftShiftEquals => AssignmentOp::LeftShift,
-                        Op::WrappingLeftShiftEquals => AssignmentOp::WrappingLeftShift,
-                        Op::SaturatingLeftShiftEquals => AssignmentOp::SaturatingLeftShift,
-                        Op::RightShiftEquals => AssignmentOp::RightShift,
-                        Op::BitAndEquals => AssignmentOp::BitAnd,
-                        Op::BitXorEquals => AssignmentOp::BitXor,
-                        Op::BitOrEquals => AssignmentOp::BitOr,
-                        Op::AndEquals => AssignmentOp::And,
-                        Op::OrEquals => AssignmentOp::Or,
-                        Op::LeftRotateEquals => AssignmentOp::LeftRotate,
-                        Op::RightRotateEquals => AssignmentOp::RightRotate,
-                        Op::Len
-                        | Op::Not
-                        | Op::Pow
-                        | Op::WrappingPow
-                        | Op::SaturatingPow
-                        | Op::Times
-                        | Op::WrappingTimes
-                        | Op::SaturatingTimes
-                        | Op::Divide
-                        | Op::WrappingDivide
-                        | Op::SaturatingDivide
-                        | Op::Remainder
-                        | Op::Plus
-                        | Op::WrappingPlus
-                        | Op::SaturatingPlus
-                        | Op::Minus
-                        | Op::WrappingMinus
-                        | Op::SaturatingMinus
-                        | Op::LeftShift
-                        | Op::WrappingLeftShift
-                        | Op::SaturatingLeftShift
-                        | Op::RightShift
-                        | Op::LeftRotate
-                        | Op::RightRotate
-                        | Op::And
-                        | Op::BitAnd
-                        | Op::BitXor
-                        | Op::Or
-                        | Op::BitOr
-                        | Op::Compare
-                        | Op::EqualsEquals
-                        | Op::NotEquals
-                        | Op::Greater
-                        | Op::GreaterOrEquals
-                        | Op::Less
-                        | Op::LessOrEquals => unreachable!("not an 'equals' operator"),
-                    };
 
-                    match (assignment_op, var.value.typ(), rhs.typ()) {
-                        (AssignmentOp::Equals, var_type, rhs_typ) if var_type != rhs_typ => {
-                            Err(RawError {
-                                kind: ErrorKind::Invalid(Statement::VariableAssignment),
-                                cause: ErrorCause::VariableAssignmentTypeMismatch {
-                                    expected: var.value.typ(),
-                                    actual: rhs.typ(),
-                                },
-                                col: name_token.col,
-                                len: name_token.len,
-                            })
-                        }
-                        (AssignmentOp::Equals, _, _)
-                        | (
-                            _,
-                            Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool),
-                            Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool),
-                        ) => Ok(Node::Assignment {
-                            scope_index,
-                            var_index,
-                            op: assignment_op,
-                            op_position: Position::new(self.src, op_token.col).0,
-                            new_value: rhs,
-                        }),
-                        _ => Err(RawError {
-                            kind: ErrorKind::Invalid(Statement::VariableAssignment),
-                            cause: ErrorCause::VariableAssignmentTypeMismatch {
-                                expected: var.value.typ(),
-                                actual: rhs.typ(),
-                            },
-                            col: name_token.col,
-                            len: name_token.len,
-                        }),
-                    }
-                }
-            },
-            None => Err(RawError {
+        let Some((mutability, scope_index, var_index, var)) = self.resolve_variable(name) else {
+            return Err(RawError {
                 kind: ErrorKind::Invalid(Statement::VariableAssignment),
                 cause: ErrorCause::WasNotPreviouslyDefined,
                 col: name_token.col,
                 len: name_token.len,
+            });
+        };
+
+        let Mutability::Var = mutability else {
+            return Err(RawError {
+                kind: ErrorKind::Invalid(Statement::VariableAssignment),
+                cause: ErrorCause::CannotMutateImmutableVariable,
+                col: name_token.col,
+                len: name_token.len,
+            });
+        };
+
+        let assignment_op = match op {
+            Op::Equals => AssignmentOp::Equals,
+            Op::PowEquals => AssignmentOp::Pow,
+            Op::WrappingPowEquals => AssignmentOp::WrappingPow,
+            Op::SaturatingPowEquals => AssignmentOp::SaturatingPow,
+            Op::TimesEquals => AssignmentOp::Times,
+            Op::WrappingTimesEquals => AssignmentOp::WrappingTimes,
+            Op::SaturatingTimesEquals => AssignmentOp::SaturatingTimes,
+            Op::DivideEquals => AssignmentOp::Divide,
+            Op::WrappingDivideEquals => AssignmentOp::WrappingDivide,
+            Op::SaturatingDivideEquals => AssignmentOp::SaturatingDivide,
+            Op::RemainderEquals => AssignmentOp::Remainder,
+            Op::PlusEquals => AssignmentOp::Plus,
+            Op::WrappingPlusEquals => AssignmentOp::WrappingPlus,
+            Op::SaturatingPlusEquals => AssignmentOp::SaturatingPlus,
+            Op::MinusEquals => AssignmentOp::Minus,
+            Op::WrappingMinusEquals => AssignmentOp::WrappingMinus,
+            Op::SaturatingMinusEquals => AssignmentOp::SaturatingMinus,
+            Op::LeftShiftEquals => AssignmentOp::LeftShift,
+            Op::WrappingLeftShiftEquals => AssignmentOp::WrappingLeftShift,
+            Op::SaturatingLeftShiftEquals => AssignmentOp::SaturatingLeftShift,
+            Op::RightShiftEquals => AssignmentOp::RightShift,
+            Op::BitAndEquals => AssignmentOp::BitAnd,
+            Op::BitXorEquals => AssignmentOp::BitXor,
+            Op::BitOrEquals => AssignmentOp::BitOr,
+            Op::AndEquals => AssignmentOp::And,
+            Op::OrEquals => AssignmentOp::Or,
+            Op::LeftRotateEquals => AssignmentOp::LeftRotate,
+            Op::RightRotateEquals => AssignmentOp::RightRotate,
+            Op::Len
+            | Op::Not
+            | Op::Pow
+            | Op::WrappingPow
+            | Op::SaturatingPow
+            | Op::Times
+            | Op::WrappingTimes
+            | Op::SaturatingTimes
+            | Op::Divide
+            | Op::WrappingDivide
+            | Op::SaturatingDivide
+            | Op::Remainder
+            | Op::Plus
+            | Op::WrappingPlus
+            | Op::SaturatingPlus
+            | Op::Minus
+            | Op::WrappingMinus
+            | Op::SaturatingMinus
+            | Op::LeftShift
+            | Op::WrappingLeftShift
+            | Op::SaturatingLeftShift
+            | Op::RightShift
+            | Op::LeftRotate
+            | Op::RightRotate
+            | Op::And
+            | Op::BitAnd
+            | Op::BitXor
+            | Op::Or
+            | Op::BitOr
+            | Op::Compare
+            | Op::EqualsEquals
+            | Op::NotEquals
+            | Op::Greater
+            | Op::GreaterOrEquals
+            | Op::Less
+            | Op::LessOrEquals => unreachable!("not an 'equals' operator"),
+        };
+
+        let var_type = var.value.typ();
+        let rhs_type = rhs.typ();
+
+        /*
+        NOTE(stefano): this entire match statement could be collapsed to just check if the lhs is of
+        the same type as the rhs once implicit conversions are removed
+        */
+        return match assignment_op {
+            AssignmentOp::Equals if var_type == rhs_type => Ok(Node::Assignment {
+                scope_index,
+                var_index,
+                op: assignment_op,
+                op_position: Position::new(self.src, op_token.col).0,
+                new_value: rhs,
             }),
+            AssignmentOp::Equals => Err(RawError {
+                kind: ErrorKind::Invalid(Statement::VariableAssignment),
+                cause: ErrorCause::VariableAssignmentTypeMismatch {
+                    expected: var_type,
+                    actual: rhs_type,
+                },
+                col: name_token.col,
+                len: name_token.len,
+            }),
+            AssignmentOp::Pow
+            | AssignmentOp::WrappingPow
+            | AssignmentOp::SaturatingPow
+            | AssignmentOp::Times
+            | AssignmentOp::WrappingTimes
+            | AssignmentOp::SaturatingTimes
+            | AssignmentOp::Divide
+            | AssignmentOp::WrappingDivide
+            | AssignmentOp::SaturatingDivide
+            | AssignmentOp::Remainder
+            | AssignmentOp::Plus
+            | AssignmentOp::WrappingPlus
+            | AssignmentOp::SaturatingPlus
+            | AssignmentOp::Minus
+            | AssignmentOp::WrappingMinus
+            | AssignmentOp::SaturatingMinus
+            | AssignmentOp::LeftShift
+            | AssignmentOp::WrappingLeftShift
+            | AssignmentOp::SaturatingLeftShift
+            | AssignmentOp::RightShift
+            | AssignmentOp::LeftRotate
+            | AssignmentOp::RightRotate
+            | AssignmentOp::And
+            | AssignmentOp::BitAnd
+            | AssignmentOp::BitXor
+            | AssignmentOp::Or
+            | AssignmentOp::BitOr => match (var_type, rhs_type) {
+                (
+                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool),
+                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool)
+                ) => Ok(Node::Assignment {
+                    scope_index,
+                    var_index,
+                    op: assignment_op,
+                    op_position: Position::new(self.src, op_token.col).0,
+                    new_value: rhs,
+                }),
+                _ => Err(RawError {
+                    kind: ErrorKind::Invalid(Statement::VariableAssignment),
+                    cause: ErrorCause::VariableAssignmentTypeMismatch {
+                        expected: var_type,
+                        actual: rhs_type,
+                    },
+                    col: name_token.col,
+                    len: name_token.len,
+                })
+            }
         };
     }
 }
@@ -2308,17 +2361,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         'iff: while let Some(if_token) = self.tokens.get(self.token) {
             _ = self.next_token_bounded(Expected::BooleanExpression)?;
 
-            let expression = self.expression()?;
-            let condition = match &expression.typ() {
-                Type::Base(BaseType::Bool) => expression,
-                Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str) | Type::Array { .. } => {
-                    return Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::If),
-                        cause: ErrorCause::MustBeFollowedByABooleanExpression,
-                        col: if_token.col,
-                        len: if_token.len,
-                    })
-                }
+            let condition = self.expression()?;
+            let Type::Base(BaseType::Bool) = condition.typ() else {
+                return Err(RawError {
+                    kind: ErrorKind::Invalid(Statement::If),
+                    cause: ErrorCause::MustBeFollowedByABooleanExpression,
+                    col: if_token.col,
+                    len: if_token.len,
+                });
             };
 
             let after_condition_token = self.current_token_bounded(Expected::DoOrBlock)?;
@@ -2459,16 +2509,16 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let loop_token = match do_token.kind {
             TokenKind::Do => {
                 let loop_token = self.next_token_bounded(Expected::LoopStatement)?;
-                if let TokenKind::Loop = loop_token.kind {
-                    loop_token
-                } else {
+                let TokenKind::Loop = loop_token.kind else {
                     return Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Loop),
                         cause: ErrorCause::MustBeFollowedByLoop,
                         col: do_token.col,
                         len: do_token.len,
                     });
-                }
+                };
+
+                loop_token
             }
             TokenKind::Comment(_)
             | TokenKind::Unexpected(_)
@@ -2494,17 +2544,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         };
 
         _ = self.next_token_bounded(Expected::BooleanExpression)?;
-        let expression = self.expression()?;
-        let condition_result = match &expression.typ() {
-            Type::Base(BaseType::Bool) => Ok(expression),
-            Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str) | Type::Array { .. } => {
-                Err(RawError {
-                    kind: ErrorKind::Invalid(Statement::Loop),
-                    cause: ErrorCause::MustBeFollowedByABooleanExpression,
-                    col: loop_token.col,
-                    len: loop_token.len,
-                })
-            }
+        let condition = self.expression()?;
+        let Type::Base(BaseType::Bool) = condition.typ() else {
+            return Err(RawError {
+                kind: ErrorKind::Invalid(Statement::Loop),
+                cause: ErrorCause::MustBeFollowedByABooleanExpression,
+                col: loop_token.col,
+                len: loop_token.len,
+            });
         };
 
         let after_condition_token = self.current_token_bounded(Expected::DoOrBlock)?;
@@ -2553,7 +2600,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             }
         };
 
-        let condition = condition_result?;
         let statement = statement_result?;
         if let TokenKind::Do = do_token.kind {
             return Ok(Node::DoLoop(DoLoop { condition, statement: Box::new(statement) }));
