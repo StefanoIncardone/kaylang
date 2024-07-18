@@ -1,7 +1,7 @@
 pub mod ast;
-pub mod types;
 pub mod op;
 pub mod tokenizer;
+pub mod types;
 
 use crate::{
     src_file::{Position, SrcFile},

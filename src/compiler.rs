@@ -11,7 +11,8 @@ use crate::{
     syntax::{
         ast::{self, Expression, IfStatement, Node, Scope},
         op::{AssignmentOp, BinaryOp, BooleanBinaryOp, ComparisonOp, UnaryOp},
-        tokenizer::{ascii, uint, Literal, Mutability}, types::{BaseType, SizeOf, Type, TypeOf},
+        tokenizer::{ascii, uint, Literal, Mutability},
+        types::{BaseType, SizeOf, Type, TypeOf},
     },
     CAUSE, ERROR,
 };
@@ -959,7 +960,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     col = op_position.col
                                 );
                             }
-                            Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
+                            Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
+                            | Type::Array { .. } => {
                                 unreachable!("cannot take absolute value of non numerical values");
                             }
                         }
@@ -967,8 +969,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     UnaryOp::WrappingPlus => {
                         self.expression(operand, dst);
                         match operand.typ() {
-                            Type::Base(BaseType::Int) => _ = writeln!(self.asm, " call int_wrapping_abs"),
-                            Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
+                            Type::Base(BaseType::Int) => {
+                                _ = writeln!(self.asm, " call int_wrapping_abs");
+                            }
+                            Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
+                            | Type::Array { .. } => {
                                 unreachable!("cannot take absolute value of non int values");
                             }
                         }
@@ -986,7 +991,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     col = op_position.col
                                 );
                             }
-                            Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
+                            Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
+                            | Type::Array { .. } => {
                                 unreachable!("cannot take absolute value of non int values");
                             }
                         }
@@ -1012,7 +1018,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     UnaryOp::WrappingMinus => {
                         self.expression(operand, dst);
                         match operand.typ() {
-                            Type::Base(BaseType::Int | BaseType::Ascii) => _ = writeln!(self.asm, " neg {reg}"),
+                            Type::Base(BaseType::Int | BaseType::Ascii) => {
+                                _ = writeln!(self.asm, " neg {reg}");
+                            }
                             Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
                                 unreachable!("cannot negate non int/ascii values");
                             }
@@ -1613,7 +1621,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 Literal::Int(_) | Literal::Ascii(_) | Literal::Str(_) => {
                     unreachable!("non-boolean expressions not allowed in conditions");
                 }
-            }
+            },
             Expression::BooleanUnary { operand, .. } => {
                 self.expression(operand, Dst::Reg(Rdi));
 
@@ -1627,16 +1635,18 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::BooleanBinary { lhs, op, rhs, .. } => {
                 let lhs_dst = match lhs.typ() {
                     Type::Base(BaseType::Bool) => Dst::Reg(Rdi),
-                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str) | Type::Array { .. } => {
+                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str)
+                    | Type::Array { .. } => {
                         unreachable!("non-boolean expressions not allowed in conditions");
-                    },
+                    }
                 };
 
                 let rhs_dst = match rhs.typ() {
                     Type::Base(BaseType::Bool) => Dst::Reg(Rsi),
-                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str) | Type::Array { .. } => {
+                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str)
+                    | Type::Array { .. } => {
                         unreachable!("non-boolean expressions not allowed in conditions");
-                    },
+                    }
                 };
 
                 self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
@@ -1661,12 +1671,16 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Comparison { lhs, op, rhs, .. } => {
                 let lhs_dst = match lhs.typ() {
                     Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => Dst::Reg(Rdi),
-                    Type::Base(BaseType::Str) | Type::Array { .. } => Dst::View { len: Rdi, ptr: Rsi },
+                    Type::Base(BaseType::Str) | Type::Array { .. } => {
+                        Dst::View { len: Rdi, ptr: Rsi }
+                    }
                 };
 
                 let rhs_dst = match rhs.typ() {
                     Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => Dst::Reg(Rsi),
-                    Type::Base(BaseType::Str) | Type::Array { .. } => Dst::View { len: Rdx, ptr: Rcx },
+                    Type::Base(BaseType::Str) | Type::Array { .. } => {
+                        Dst::View { len: Rdx, ptr: Rcx }
+                    }
                 };
 
                 self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
@@ -1737,9 +1751,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n jne {false_tag}\n"
                 );
             }
-            Expression::Unary { .. }
-            | Expression::Binary { .. }
-            | Expression::Array { .. } => {
+            Expression::Unary { .. } | Expression::Binary { .. } | Expression::Array { .. } => {
                 unreachable!("non-boolean expressions not allowed in conditions")
             }
         }
@@ -1760,7 +1772,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 Literal::Int(_) | Literal::Ascii(_) | Literal::Str(_) => {
                     unreachable!("non-boolean expressions not allowed in conditions");
                 }
-            }
+            },
             Expression::BooleanUnary { operand, .. } => {
                 self.expression(operand, Dst::Reg(Rdi));
 
@@ -1774,16 +1786,18 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::BooleanBinary { lhs, op, rhs, .. } => {
                 let lhs_dst = match lhs.typ() {
                     Type::Base(BaseType::Bool) => Dst::Reg(Rdi),
-                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str) | Type::Array { .. } => {
+                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str)
+                    | Type::Array { .. } => {
                         unreachable!("non-boolean expressions not allowed in conditions");
-                    },
+                    }
                 };
 
                 let rhs_dst = match rhs.typ() {
                     Type::Base(BaseType::Bool) => Dst::Reg(Rsi),
-                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str) | Type::Array { .. } => {
+                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str)
+                    | Type::Array { .. } => {
                         unreachable!("non-boolean expressions not allowed in conditions");
-                    },
+                    }
                 };
 
                 self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
@@ -1808,12 +1822,16 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Comparison { lhs, op, rhs, .. } => {
                 let lhs_dst = match lhs.typ() {
                     Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => Dst::Reg(Rdi),
-                    Type::Base(BaseType::Str) | Type::Array { .. } => Dst::View { len: Rdi, ptr: Rsi },
+                    Type::Base(BaseType::Str) | Type::Array { .. } => {
+                        Dst::View { len: Rdi, ptr: Rsi }
+                    }
                 };
 
                 let rhs_dst = match rhs.typ() {
                     Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => Dst::Reg(Rsi),
-                    Type::Base(BaseType::Str) | Type::Array { .. } => Dst::View { len: Rdx, ptr: Rcx },
+                    Type::Base(BaseType::Str) | Type::Array { .. } => {
+                        Dst::View { len: Rdx, ptr: Rcx }
+                    }
                 };
 
                 self.binary_expression(lhs, rhs, lhs_dst, rhs_dst);
@@ -1884,9 +1902,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n je {true_tag}\n"
                 );
             }
-            Expression::Unary { .. }
-            | Expression::Binary { .. }
-            | Expression::Array { .. } => {
+            Expression::Unary { .. } | Expression::Binary { .. } | Expression::Array { .. } => {
                 unreachable!("non-boolean expressions not allowed in conditions")
             }
         }
@@ -2022,7 +2038,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 col = op_position.col
                             );
                         }
-                        Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
+                        Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
+                        | Type::Array { .. } => {
                             unreachable!("cannot take absolute value of non numerical values");
                         }
                     }
@@ -2037,7 +2054,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 \n mov [rbp + {dst_offset}], rdi\n"
                             );
                         }
-                        Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
+                        Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
+                        | Type::Array { .. } => {
                             unreachable!("cannot take absolute value of non numerical values");
                         }
                     }
@@ -2056,7 +2074,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 col = op_position.col
                             );
                         }
-                        Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
+                        Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
+                        | Type::Array { .. } => {
                             unreachable!("cannot take absolute value of non numerical values");
                         }
                     }
@@ -2156,7 +2175,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.expression(value, Dst::Reg(Rdi));
 
                 match value.typ() {
-                    Type::Base(BaseType::Int) => _ = writeln!(self.asm, " mov [rbp + {dst_offset}], rdi\n"),
+                    Type::Base(BaseType::Int) => {
+                        _ = writeln!(self.asm, " mov [rbp + {dst_offset}], rdi\n");
+                    }
                     Type::Base(BaseType::Ascii) => {
                         _ = writeln!(self.asm, " mov [rbp + {dst_offset}], dil\n");
                     }
@@ -2172,7 +2193,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     Type::Base(BaseType::Bool) => {
                         _ = writeln!(self.asm, " mov [rbp + {dst_offset}], dil\n");
                     }
-                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str) | Type::Array { .. } => {
+                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str)
+                    | Type::Array { .. } => {
                         unreachable!("cannot appear in boolean expressions");
                     }
                 }

@@ -1,5 +1,8 @@
 use super::{
-    op::{AssignmentOp, BinaryOp, BooleanBinaryOp, BooleanUnaryOp, ComparisonOp, Op, UnaryOp}, tokenizer::{uint, BracketKind, Literal, Mutability, Token, TokenKind}, types::{BaseType, Type, TypeOf}, Errors, RawError
+    op::{AssignmentOp, BinaryOp, BooleanBinaryOp, BooleanUnaryOp, ComparisonOp, Op, UnaryOp},
+    tokenizer::{uint, BracketKind, Literal, Mutability, Token, TokenKind},
+    types::{BaseType, Type, TypeOf},
+    Errors, RawError,
 };
 use crate::src_file::{Position, SrcFile};
 use std::fmt::{Debug, Display};
@@ -53,7 +56,7 @@ impl Display for Expression<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         return match self {
             Self::Literal(literal) => write!(f, "{literal}"),
-            Self::Unary { op: UnaryOp::Len, operand, .. } => write!(f, "{op} {operand}", op = UnaryOp::Len),
+            Self::Unary { op: len @ UnaryOp::Len, operand, .. } => write!(f, "{len} {operand}"),
             Self::Unary { op, operand, .. } => write!(f, "{op}{operand}"),
             Self::BooleanUnary { op, operand } => write!(f, "{op}{operand}"),
             Self::Binary { lhs, op, rhs, .. } => write!(f, "({lhs} {op} {rhs})"),
@@ -86,14 +89,14 @@ impl TypeOf for Expression<'_> {
                 Literal::Ascii(_) => Type::Base(BaseType::Ascii),
                 Literal::Bool(_) => Type::Base(BaseType::Bool),
                 Literal::Str(_) => Type::Base(BaseType::Str),
-            }
+            },
             Self::Unary { op, .. } => Type::Base(op.typ()),
             Self::BooleanUnary { op, .. } => Type::Base(op.typ()),
             Self::Binary { op, .. } => Type::Base(op.typ()),
             Self::BooleanBinary { op, .. } => Type::Base(op.typ()),
             Self::Comparison { op, .. } => Type::Base(op.typ()),
             Self::Identifier { typ, .. } => *typ,
-            Self::Array { typ, items } => Type::Array{ typ: *typ, len: items.len() },
+            Self::Array { typ, items } => Type::Array { typ: *typ, len: items.len() },
             Self::ArrayIndex { typ, .. } => Type::Base(*typ),
         };
     }
@@ -114,10 +117,9 @@ impl From<Type> for Expression<'_> {
     fn from(typ: Type) -> Self {
         return match typ {
             Type::Base(base_typ) => base_typ.into(),
-            Type::Array{ typ: items_type, len } => Expression::Array {
-                typ: items_type,
-                items: vec![items_type.into(); len]
-            },
+            Type::Array { typ: items_type, len } => {
+                Expression::Array { typ: items_type, items: vec![items_type.into(); len] }
+            }
         };
     }
 }
@@ -290,12 +292,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             scope_index: 0,
             scopes: vec![Scope {
                 parent: 0,
-                base_types: vec![
-                    BaseType::Int,
-                    BaseType::Ascii,
-                    BaseType::Bool,
-                    BaseType::Str,
-                ],
+                base_types: vec![BaseType::Int, BaseType::Ascii, BaseType::Bool, BaseType::Str],
                 let_variables: Vec::new(),
                 var_variables: Vec::new(),
                 nodes: Vec::new(),
@@ -406,7 +403,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 | Op::SaturatingPlus
                 | Op::Minus
                 | Op::WrappingMinus
-                | Op::SaturatingMinus
+                | Op::SaturatingMinus,
             ) => Ok(Some(Node::Expression(self.expression()?))),
             TokenKind::Identifier(name) => match self.peek_next_token() {
                 Some(op) => match op.kind {
@@ -925,7 +922,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     col: current_token.col,
                     len: current_token.len,
                 }),
-            }
+            },
             Type::Array { typ, .. } => Ok(Expression::ArrayIndex {
                 typ,
                 var_name,
@@ -1001,7 +998,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 let first_item = self.expression()?;
 
                 bracket_or_comma_token =
-                        self.current_token_bounded(Expected::CommaOrClosingSquareBracket)?;
+                    self.current_token_bounded(Expected::CommaOrClosingSquareBracket)?;
 
                 if let TokenKind::Comma = bracket_or_comma_token.kind {
                     bracket_or_comma_token =
@@ -1048,7 +1045,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             },
                             col: bracket_or_comma_token.col,
                             len: bracket_or_comma_token.len,
-                        })
+                        });
                     }
 
                     if let Type::Array { .. } = item.typ() {
@@ -1070,7 +1067,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             self.next_token_bounded(Expected::ArrayElementOrClosingSquareBracket)?;
                     }
 
-                    if let TokenKind::Bracket(BracketKind::CloseSquare) = bracket_or_comma_token.kind {
+                    if let TokenKind::Bracket(BracketKind::CloseSquare) =
+                        bracket_or_comma_token.kind
+                    {
                         break 'array Ok(Expression::Array { typ: items_type, items });
                     }
                 }
@@ -1087,19 +1086,25 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         }),
                         Literal::Int(_) => Err(RawError {
                             kind: ErrorKind::Invalid(Statement::Len),
-                            cause: ErrorCause::CannotTakeLenOfNumericValue(Type::Base(BaseType::Int)),
+                            cause: ErrorCause::CannotTakeLenOfNumericValue(Type::Base(
+                                BaseType::Int,
+                            )),
                             col: current_token.col,
                             len: current_token.len,
                         }),
                         Literal::Ascii(_) => Err(RawError {
                             kind: ErrorKind::Invalid(Statement::Len),
-                            cause: ErrorCause::CannotTakeLenOfNumericValue(Type::Base(BaseType::Ascii)),
+                            cause: ErrorCause::CannotTakeLenOfNumericValue(Type::Base(
+                                BaseType::Ascii,
+                            )),
                             col: current_token.col,
                             len: current_token.len,
                         }),
                         Literal::Bool(_) => Err(RawError {
                             kind: ErrorKind::Invalid(Statement::Len),
-                            cause: ErrorCause::CannotTakeLenOfNumericValue(Type::Base(BaseType::Bool)),
+                            cause: ErrorCause::CannotTakeLenOfNumericValue(Type::Base(
+                                BaseType::Bool,
+                            )),
                             col: current_token.col,
                             len: current_token.len,
                         }),
@@ -1110,7 +1115,9 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             op: UnaryOp::Len,
                             operand: Box::new(operand),
                         }),
-                        Type::Base(base_type @ (BaseType::Int | BaseType::Ascii | BaseType::Bool)) => Err(RawError {
+                        Type::Base(
+                            base_type @ (BaseType::Int | BaseType::Ascii | BaseType::Bool),
+                        ) => Err(RawError {
                             kind: ErrorKind::Invalid(Statement::Len),
                             cause: ErrorCause::CannotTakeLenOfNumericValue(Type::Base(*base_type)),
                             col: current_token.col,
@@ -1191,14 +1198,15 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_type @ (Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str) | Type::Array { .. }) => {
-                        Err(RawError {
-                            kind: ErrorKind::Invalid(Statement::Expression),
-                            cause: ErrorCause::CannotTakeAbsValueOf(invalid_type),
-                            col: current_token.col,
-                            len: current_token.len,
-                        })
-                    }
+                    invalid_type @ (Type::Base(
+                        BaseType::Ascii | BaseType::Bool | BaseType::Str,
+                    )
+                    | Type::Array { .. }) => Err(RawError {
+                        kind: ErrorKind::Invalid(Statement::Expression),
+                        cause: ErrorCause::CannotTakeAbsValueOf(invalid_type),
+                        col: current_token.col,
+                        len: current_token.len,
+                    }),
                 };
             }
             TokenKind::Op(Op::WrappingPlus) => {
@@ -1227,14 +1235,15 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_type @ (Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str) | Type::Array { .. }) => {
-                        Err(RawError {
-                            kind: ErrorKind::Invalid(Statement::Expression),
-                            cause: ErrorCause::CannotTakeAbsValueOf(invalid_type),
-                            col: current_token.col,
-                            len: current_token.len,
-                        })
-                    }
+                    invalid_type @ (Type::Base(
+                        BaseType::Ascii | BaseType::Bool | BaseType::Str,
+                    )
+                    | Type::Array { .. }) => Err(RawError {
+                        kind: ErrorKind::Invalid(Statement::Expression),
+                        cause: ErrorCause::CannotTakeAbsValueOf(invalid_type),
+                        col: current_token.col,
+                        len: current_token.len,
+                    }),
                 };
             }
             TokenKind::Op(Op::SaturatingPlus) => {
@@ -1263,14 +1272,13 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_typ @ (Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str) | Type::Array { .. }) => {
-                        Err(RawError {
-                            kind: ErrorKind::Invalid(Statement::Expression),
-                            cause: ErrorCause::CannotTakeAbsValueOf(invalid_typ),
-                            col: current_token.col,
-                            len: current_token.len,
-                        })
-                    }
+                    invalid_typ @ (Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
+                    | Type::Array { .. }) => Err(RawError {
+                        kind: ErrorKind::Invalid(Statement::Expression),
+                        cause: ErrorCause::CannotTakeAbsValueOf(invalid_typ),
+                        col: current_token.col,
+                        len: current_token.len,
+                    }),
                 };
             }
             /*
@@ -1301,7 +1309,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. }) => Err(RawError {
+                    invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str)
+                    | Type::Array { .. }) => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotNegate(invalid_typ),
                         col: current_token.col,
@@ -1335,7 +1344,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. }) => Err(RawError {
+                    invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str)
+                    | Type::Array { .. }) => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotNegate(invalid_typ),
                         col: current_token.col,
@@ -1369,7 +1379,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. }) => Err(RawError {
+                    invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str)
+                    | Type::Array { .. }) => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotNegate(invalid_typ),
                         col: current_token.col,
@@ -1411,12 +1422,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_typ @ (Type::Base(BaseType::Str) | Type::Array { .. }) => Err(RawError {
-                        kind: ErrorKind::Invalid(Statement::Expression),
-                        cause: ErrorCause::CannotInvert(invalid_typ),
-                        col: current_token.col,
-                        len: current_token.len,
-                    }),
+                    invalid_typ @ (Type::Base(BaseType::Str) | Type::Array { .. }) => {
+                        Err(RawError {
+                            kind: ErrorKind::Invalid(Statement::Expression),
+                            cause: ErrorCause::CannotInvert(invalid_typ),
+                            col: current_token.col,
+                            len: current_token.len,
+                        })
+                    }
                 };
             }
             TokenKind::Definition(_)
@@ -1709,8 +1722,13 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             let lhs_typ = lhs.typ();
             let rhs_typ = rhs.typ();
             let can_compare = match (lhs_typ, rhs_typ) {
-                (Type::Base(lhs_base_typ), Type::Base(rhs_base_typ)) => lhs_base_typ == rhs_base_typ,
-                (Type::Array { typ: lhs_base_typ, len: lhs_len }, Type::Array { typ: rhs_base_typ, len: rhs_len }) => {
+                (Type::Base(lhs_base_typ), Type::Base(rhs_base_typ)) => {
+                    lhs_base_typ == rhs_base_typ
+                }
+                (
+                    Type::Array { typ: lhs_base_typ, len: lhs_len },
+                    Type::Array { typ: rhs_base_typ, len: rhs_len },
+                ) => {
                     // comparing empty arrays makes no sense, so it's not going to be allowed
                     lhs_base_typ == rhs_base_typ && lhs_len > 0 && rhs_len > 0 && lhs_len == rhs_len
                 }
@@ -1787,11 +1805,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 _ => unreachable!(),
             };
 
-            lhs = Expression::BooleanBinary {
-                lhs: Box::new(lhs),
-                op: binary_op,
-                rhs: Box::new(rhs),
-            };
+            lhs =
+                Expression::BooleanBinary { lhs: Box::new(lhs), op: binary_op, rhs: Box::new(rhs) };
         }
 
         return Ok(lhs);
@@ -1826,11 +1841,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 _ => unreachable!(),
             };
 
-            lhs = Expression::BooleanBinary {
-                lhs: Box::new(lhs),
-                op: binary_op,
-                rhs: Box::new(rhs),
-            };
+            lhs =
+                Expression::BooleanBinary { lhs: Box::new(lhs), op: binary_op, rhs: Box::new(rhs) };
         }
 
         return Ok(lhs);
@@ -1848,7 +1860,12 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn resolve_variable(
         &self,
         name: &'src str,
-    ) -> Option<(Mutability, usize /* scope index */, usize /* variable index */, &Variable<'src>)> {
+    ) -> Option<(
+        Mutability,
+        usize, /* scope index */
+        usize, /* variable index */
+        &Variable<'src>,
+    )> {
         let mut scope_index = self.scope_index;
         loop {
             let scope = &self.scopes[scope_index];
@@ -1933,18 +1950,22 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let len_token = self.next_token_bounded(Expected::ArrayLength)?;
         let len = match len_token.kind {
             TokenKind::Literal(Literal::Int(len)) => match len {
-                0 => return Err(RawError {
-                    kind: ErrorKind::Invalid(Statement::Array),
-                    cause: ErrorCause::ArrayOfZeroElements,
-                    col: len_token.col,
-                    len: len_token.len,
-                }),
-                1 => return Err(RawError {
-                    kind: ErrorKind::Invalid(Statement::Array),
-                    cause: ErrorCause::ArrayOfOneElement,
-                    col: len_token.col,
-                    len: len_token.len,
-                }),
+                0 => {
+                    return Err(RawError {
+                        kind: ErrorKind::Invalid(Statement::Array),
+                        cause: ErrorCause::ArrayOfZeroElements,
+                        col: len_token.col,
+                        len: len_token.len,
+                    })
+                }
+                1 => {
+                    return Err(RawError {
+                        kind: ErrorKind::Invalid(Statement::Array),
+                        cause: ErrorCause::ArrayOfOneElement,
+                        col: len_token.col,
+                        len: len_token.len,
+                    })
+                }
                 _ => len as uint,
             },
             TokenKind::Literal(_)
@@ -1983,7 +2004,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 kind: TokenKind::Bracket(BracketKind::CloseSquare),
                 ..
             },
-        ) = self.next_token() else {
+        ) = self.next_token()
+        else {
             return Err(RawError {
                 kind: ErrorKind::Invalid(Statement::TypeAnnotation),
                 cause: ErrorCause::MustBeFollowedByClosingSquareBracket,
@@ -1995,7 +2017,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         return Ok(Some((close_square_bracket_token, Type::Array { typ: base_type, len })));
     }
 
-    fn variable_definition(&mut self, mutability: Mutability) -> Result<Node<'src>, RawError<ErrorKind, ErrorCause>> {
+    fn variable_definition(
+        &mut self,
+        mutability: Mutability,
+    ) -> Result<Node<'src>, RawError<ErrorKind, ErrorCause>> {
         let name_token = self.next_token_bounded(Expected::Identifier)?;
         let name = match name_token.kind {
             TokenKind::Identifier(name) => match self.resolve_type(name) {
@@ -2088,7 +2113,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 }
             },
         };
-
 
         let None = self.resolve_variable(name) else {
             return Err(RawError {
@@ -2313,7 +2337,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | AssignmentOp::BitOr => match (var_type, rhs_type) {
                 (
                     Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool),
-                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool)
+                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool),
                 ) => Ok(Node::Assignment {
                     scope_index,
                     var_index,
@@ -2329,8 +2353,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     },
                     col: name_token.col,
                     len: name_token.len,
-                })
-            }
+                }),
+            },
         };
     }
 }
@@ -2825,10 +2849,10 @@ impl Display for ErrorCause {
             }
             Self::ArrayOfZeroElements => {
                 write!(f, "arrays of zero elements are not allowed, as they are pratically phantom values")
-            },
+            }
             Self::ArrayOfOneElement => {
                 write!(f, "arrays of one element are not allowed, as they are pratically the same as the value itself")
-            },
+            }
             Self::NestedArrayNotSupportedYet => write!(f, "nested arrays not supported yet"),
             Self::CannotIndexNonArrayType(typ) => {
                 write!(f, "cannot index into a value of type '{typ}'")
