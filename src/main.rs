@@ -1,13 +1,12 @@
 #![allow(clippy::print_stdout, clippy::print_stderr)] // it's a cli tool, it's normal to print to stderr and stdout
 
 use kaylang::{
-    cli::{Args, Command},
     compiler::{artifacts::Artifacts, Compiler},
     src_file::SrcFile,
     syntax::{ast::Ast, tokenizer::Tokenizer},
-    Help, Logger, Version, ASSEMBLING, ASSEMBLING_ERROR, BUILDING_AST, CHECKING, COMPILING,
-    COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, GENERATING_ASM,
-    LINKING, LINKING_ERROR, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
+    Args, Command, Help, Logger, Version, ASSEMBLING, ASSEMBLING_ERROR, BUILDING_AST, CHECKING,
+    COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER,
+    GENERATING_ASM, LINKING, LINKING_ERROR, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
 };
 use std::process::ExitCode;
 
@@ -186,11 +185,10 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use kaylang::{
-        cli::Color,
         compiler::{artifacts::Artifacts, Compiler},
         src_file::SrcFile,
         syntax::{ast::Ast, tokenizer::Tokenizer},
-        Logger, ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER,
+        Color, Logger, ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER,
         COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, LINKING_ERROR, RUNNING,
     };
     use std::{path::PathBuf, process::ExitCode};

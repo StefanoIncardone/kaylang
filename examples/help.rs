@@ -1,4 +1,4 @@
-use kaylang::{cli::Color, Help};
+use kaylang::{Color, Help};
 use std::path::PathBuf;
 
 fn main() {

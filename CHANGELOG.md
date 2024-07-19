@@ -86,13 +86,12 @@ Changes to error messages, help message and alike would **not** be considered br
 - Updated consistency of compilation steps names and static variables
 - Compilation steps are now managed by the `Logger` struct
 - Moved types related entities to `types` module: pulled `BaseType` enum out of `Type` enum
-- Moved cli related entities to `cli` module, i.e. `Color`, `Verbosity` and `Command`
 
 ### Removed
 
 - `Error`, `ColoredString` and `ColoredStr` type aliases, to allow for more explicit type signatures
 - Module specific `*Error` and `*ErrorInfo` structs
-- `logging` module inlined inside the root `kaylang` module
+- `logging` and `cli` modules inlined inside the root `kaylang` module, thus removed
 - `assembler`, `linker` and `run` modules integrated in the new `compiler::artifacts` module.
     `Assembler::assemble`, `Linker::link` and `Run::run` are now substituted by
     `Artifacts::assembler`, `Artifacts::linker` and `Artifacts::runner` member functions and now

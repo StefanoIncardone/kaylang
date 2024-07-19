@@ -1,8 +1,7 @@
 use kaylang::{
-    cli::Color,
     src_file::SrcFile,
     syntax::{ast::Ast, tokenizer::Tokenizer},
-    Logger, BUILDING_AST, CHECKING, LOADING_SOURCE, SUBSTEP_DONE, TOKENIZATION,
+    Color, Logger, BUILDING_AST, CHECKING, LOADING_SOURCE, SUBSTEP_DONE, TOKENIZATION,
 };
 use std::{path::PathBuf, process::ExitCode};
 
