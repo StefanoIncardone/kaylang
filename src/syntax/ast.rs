@@ -39,12 +39,14 @@ impl Display for BaseType {
 }
 
 impl TypeOf for BaseType {
+    #[inline(always)]
     fn typ(&self) -> Type {
         return Type::Base(*self);
     }
 }
 
 impl SizeOf for BaseType {
+    #[inline(always)]
     fn size(&self) -> usize {
         return match self {
             Self::Int => std::mem::size_of::<int>(),
@@ -76,6 +78,7 @@ impl Display for Type {
 }
 
 impl BaseTypeOf for Type {
+    #[inline(always)]
     fn base_typ(&self) -> BaseType {
         return match self {
             Self::Base(typ) => *typ,
@@ -85,6 +88,7 @@ impl BaseTypeOf for Type {
 }
 
 impl SizeOf for Type {
+    #[inline(always)]
     fn size(&self) -> usize {
         return match self {
             Self::Base(typ) => typ.size(),
@@ -126,12 +130,14 @@ impl Display for UnaryOp {
 }
 
 impl BaseTypeOf for UnaryOp {
+    #[inline(always)]
     fn base_typ(&self) -> BaseType {
         return BaseType::Int;
     }
 }
 
 impl TypeOf for UnaryOp {
+    #[inline(always)]
     fn typ(&self) -> Type {
         return Type::Base(self.base_typ());
     }
@@ -152,12 +158,14 @@ impl Display for BooleanUnaryOp {
 }
 
 impl BaseTypeOf for BooleanUnaryOp {
+    #[inline(always)]
     fn base_typ(&self) -> BaseType {
         return BaseType::Bool;
     }
 }
 
 impl TypeOf for BooleanUnaryOp {
+    #[inline(always)]
     fn typ(&self) -> Type {
         return Type::Base(self.base_typ());
     }
@@ -243,12 +251,14 @@ impl Display for BinaryOp {
 }
 
 impl BaseTypeOf for BinaryOp {
+    #[inline(always)]
     fn base_typ(&self) -> BaseType {
         return BaseType::Int;
     }
 }
 
 impl TypeOf for BinaryOp {
+    #[inline(always)]
     fn typ(&self) -> Type {
         return Type::Base(self.base_typ());
     }
@@ -271,12 +281,14 @@ impl Display for BooleanBinaryOp {
 }
 
 impl BaseTypeOf for BooleanBinaryOp {
+    #[inline(always)]
     fn base_typ(&self) -> BaseType {
         return BaseType::Bool;
     }
 }
 
 impl TypeOf for BooleanBinaryOp {
+    #[inline(always)]
     fn typ(&self) -> Type {
         return Type::Base(self.base_typ());
     }
@@ -309,6 +321,7 @@ impl Display for ComparisonOp {
 }
 
 impl BaseTypeOf for ComparisonOp {
+    #[inline(always)]
     fn base_typ(&self) -> BaseType {
         return match self {
             Self::Compare => BaseType::Int,
@@ -323,6 +336,7 @@ impl BaseTypeOf for ComparisonOp {
 }
 
 impl TypeOf for ComparisonOp {
+    #[inline(always)]
     fn typ(&self) -> Type {
         return Type::Base(self.base_typ());
     }
