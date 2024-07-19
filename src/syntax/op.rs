@@ -1,4 +1,4 @@
-use super::ast::BaseType;
+use super::ast::{BaseType, BaseTypeOf, Type, TypeOf};
 use std::fmt::Display;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,10 +33,15 @@ impl Display for UnaryOp {
     }
 }
 
-impl UnaryOp {
-    #[allow(clippy::unused_self)]
-    pub(crate) const fn typ(self) -> BaseType {
+impl BaseTypeOf for UnaryOp {
+    fn base_typ(&self) -> BaseType {
         return BaseType::Int;
+    }
+}
+
+impl TypeOf for UnaryOp {
+    fn typ(&self) -> Type {
+        return Type::Base(self.base_typ());
     }
 }
 
@@ -54,10 +59,15 @@ impl Display for BooleanUnaryOp {
     }
 }
 
-impl BooleanUnaryOp {
-    #[allow(clippy::unused_self)]
-    pub(crate) const fn typ(self) -> BaseType {
+impl BaseTypeOf for BooleanUnaryOp {
+    fn base_typ(&self) -> BaseType {
         return BaseType::Bool;
+    }
+}
+
+impl TypeOf for BooleanUnaryOp {
+    fn typ(&self) -> Type {
+        return Type::Base(self.base_typ());
     }
 }
 
@@ -140,10 +150,15 @@ impl Display for BinaryOp {
     }
 }
 
-impl BinaryOp {
-    #[allow(clippy::unused_self)]
-    pub(crate) const fn typ(self) -> BaseType {
+impl BaseTypeOf for BinaryOp {
+    fn base_typ(&self) -> BaseType {
         return BaseType::Int;
+    }
+}
+
+impl TypeOf for BinaryOp {
+    fn typ(&self) -> Type {
+        return Type::Base(self.base_typ());
     }
 }
 
@@ -163,10 +178,15 @@ impl Display for BooleanBinaryOp {
     }
 }
 
-impl BooleanBinaryOp {
-    #[allow(clippy::unused_self)]
-    pub(crate) const fn typ(self) -> BaseType {
+impl BaseTypeOf for BooleanBinaryOp {
+    fn base_typ(&self) -> BaseType {
         return BaseType::Bool;
+    }
+}
+
+impl TypeOf for BooleanBinaryOp {
+    fn typ(&self) -> Type {
+        return Type::Base(self.base_typ());
     }
 }
 
@@ -196,8 +216,8 @@ impl Display for ComparisonOp {
     }
 }
 
-impl ComparisonOp {
-    pub(crate) const fn typ(self) -> BaseType {
+impl BaseTypeOf for ComparisonOp {
+    fn base_typ(&self) -> BaseType {
         return match self {
             Self::Compare => BaseType::Int,
             Self::EqualsEquals
@@ -207,6 +227,12 @@ impl ComparisonOp {
             | Self::Less
             | Self::LessOrEquals => BaseType::Bool,
         };
+    }
+}
+
+impl TypeOf for ComparisonOp {
+    fn typ(&self) -> Type {
+        return Type::Base(self.base_typ());
     }
 }
 

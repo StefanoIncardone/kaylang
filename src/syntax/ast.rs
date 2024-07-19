@@ -6,9 +6,12 @@ use super::{
 use crate::src_file::{Position, SrcFile};
 use std::fmt::{Debug, Display};
 
+pub(crate) trait BaseTypeOf {
+    fn base_typ(&self) -> BaseType;
+}
+
 pub(crate) trait TypeOf {
     fn typ(&self) -> Type;
-    // fn base_typ(&self) -> BaseType;
 }
 
 pub(crate) trait SizeOf {
@@ -31,6 +34,12 @@ impl Display for BaseType {
             Self::Bool => write!(f, "bool"),
             Self::Str => write!(f, "str"),
         };
+    }
+}
+
+impl TypeOf for BaseType {
+    fn typ(&self) -> Type {
+        return Type::Base(*self);
     }
 }
 
@@ -61,6 +70,15 @@ impl Display for Type {
         return match self {
             Self::Base(typ) => write!(f, "{typ}"),
             Self::Array { typ, len } => write!(f, "{typ}[{len}]"),
+        };
+    }
+}
+
+impl BaseTypeOf for Type {
+    fn base_typ(&self) -> BaseType {
+        return match self {
+            Self::Base(typ) => *typ,
+            Self::Array { typ, .. } => *typ,
         };
     }
 }
@@ -157,11 +175,11 @@ impl TypeOf for Expression<'_> {
                 Literal::Bool(_) => Type::Base(BaseType::Bool),
                 Literal::Str(_) => Type::Base(BaseType::Str),
             },
-            Self::Unary { op, .. } => Type::Base(op.typ()),
-            Self::BooleanUnary { op, .. } => Type::Base(op.typ()),
-            Self::Binary { op, .. } => Type::Base(op.typ()),
-            Self::BooleanBinary { op, .. } => Type::Base(op.typ()),
-            Self::Comparison { op, .. } => Type::Base(op.typ()),
+            Self::Unary { op, .. } => op.typ(),
+            Self::BooleanUnary { op, .. } => op.typ(),
+            Self::Binary { op, .. } => op.typ(),
+            Self::BooleanBinary { op, .. } => op.typ(),
+            Self::Comparison { op, .. } => op.typ(),
             Self::Identifier { typ, .. } => *typ,
             Self::Array { typ, items } => Type::Array { typ: *typ, len: items.len() },
             Self::ArrayIndex { typ, .. } => Type::Base(*typ),
@@ -1211,31 +1229,31 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     },
                     Expression::Unary { op, .. } => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Len),
-                        cause: ErrorCause::CannotTakeLenOfNumericValue(Type::Base(op.typ())),
+                        cause: ErrorCause::CannotTakeLenOfNumericValue(op.typ()),
                         col: current_token.col,
                         len: current_token.kind.display_len()
                     }),
                     Expression::BooleanUnary { op, .. } => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Len),
-                        cause: ErrorCause::CannotTakeLenOfNumericValue(Type::Base(op.typ())),
+                        cause: ErrorCause::CannotTakeLenOfNumericValue(op.typ()),
                         col: current_token.col,
                         len: current_token.kind.display_len()
                     }),
                     Expression::Binary { op, .. } => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Len),
-                        cause: ErrorCause::CannotTakeLenOfNumericValue(Type::Base(op.typ())),
+                        cause: ErrorCause::CannotTakeLenOfNumericValue(op.typ()),
                         col: current_token.col,
                         len: current_token.kind.display_len()
                     }),
                     Expression::BooleanBinary { op, .. } => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Len),
-                        cause: ErrorCause::CannotTakeLenOfNumericValue(Type::Base(op.typ())),
+                        cause: ErrorCause::CannotTakeLenOfNumericValue(op.typ()),
                         col: current_token.col,
                         len: current_token.kind.display_len()
                     }),
                     Expression::Comparison { op, .. } => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Len),
-                        cause: ErrorCause::CannotTakeLenOfNumericValue(Type::Base(op.typ())),
+                        cause: ErrorCause::CannotTakeLenOfNumericValue(op.typ()),
                         col: current_token.col,
                         len: current_token.kind.display_len()
                     }),
