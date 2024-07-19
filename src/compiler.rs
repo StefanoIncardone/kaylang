@@ -9,7 +9,10 @@ use self::{artifacts::Artifacts, reg::Reg64};
 use crate::{
     src_file::SrcFile,
     syntax::{
-        ast::{self, AssignmentOp, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression, IfStatement, Node, Scope, SizeOf, Type, TypeOf, UnaryOp},
+        ast::{
+            self, AssignmentOp, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression,
+            IfStatement, Node, Scope, SizeOf, Type, TypeOf, UnaryOp,
+        },
         tokenizer::{ascii, uint, Literal, Mutability},
     },
     CAUSE, ERROR,
