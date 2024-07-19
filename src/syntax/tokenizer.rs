@@ -1,4 +1,4 @@
-use super::{op::Op, Errors, RawError};
+use super::{Errors, RawError};
 use crate::src_file::{Line, SrcFile};
 use std::{
     fmt::Display,
@@ -145,6 +145,269 @@ impl DisplayLen for BracketKind {
 struct Bracket {
     kind: BracketKind,
     col: usize,
+}
+
+/*
+IDEA(stefano): introduce "unchecked" operators
+skip safety checks, maybe using the '?' or the '!' suffix, i.e:
+- <<?, <<<?, >>>?, or <<!, >>!, <<<!, >>>! -> skip the check for a positive 6bit shift amount
+- **? -> skip the check for a neagtive index
+*/
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Op {
+    Len, // temporary way of getting the length of strings and arrays
+    Equals,
+    Not,
+
+    Pow,
+    WrappingPow,
+    SaturatingPow,
+    PowEquals,
+    WrappingPowEquals,
+    SaturatingPowEquals,
+
+    Times,
+    WrappingTimes,
+    SaturatingTimes,
+    TimesEquals,
+    WrappingTimesEquals,
+    SaturatingTimesEquals,
+
+    Divide,
+    WrappingDivide,
+    SaturatingDivide,
+    DivideEquals,
+    WrappingDivideEquals,
+    SaturatingDivideEquals,
+
+    Remainder,
+    RemainderEquals,
+
+    Plus,
+    WrappingPlus,
+    SaturatingPlus,
+    PlusEquals,
+    WrappingPlusEquals,
+    SaturatingPlusEquals,
+
+    Minus,
+    WrappingMinus,
+    SaturatingMinus,
+    MinusEquals,
+    WrappingMinusEquals,
+    SaturatingMinusEquals,
+
+    LeftShift,
+    WrappingLeftShift,
+    SaturatingLeftShift,
+    LeftShiftEquals,
+    WrappingLeftShiftEquals,
+    SaturatingLeftShiftEquals,
+
+    RightShift,
+    RightShiftEquals,
+
+    LeftRotate,
+    LeftRotateEquals,
+    RightRotate,
+    RightRotateEquals,
+
+    BitAnd,
+    BitAndEquals,
+
+    BitXor,
+    BitXorEquals,
+
+    BitOr,
+    BitOrEquals,
+
+    And,
+    AndEquals,
+
+    Or,
+    OrEquals,
+
+    Compare,
+    EqualsEquals,
+    NotEquals,
+    Greater,
+    GreaterOrEquals,
+    Less,
+    LessOrEquals,
+}
+
+impl Display for Op {
+    #[rustfmt::skip]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        return match self {
+            Self::Len       => write!(f, "len"),
+            Self::Equals    => write!(f, "="),
+            Self::Not       => write!(f, "!"),
+
+            Self::Pow                   => write!(f,  "**"),
+            Self::WrappingPow           => write!(f, r"**\"),
+            Self::SaturatingPow         => write!(f,  "**|"),
+            Self::PowEquals             => write!(f,  "**="),
+            Self::WrappingPowEquals     => write!(f, r"**\="),
+            Self::SaturatingPowEquals   => write!(f,  "**|="),
+
+            Self::Times                 => write!(f,  "*"),
+            Self::WrappingTimes         => write!(f, r"*\"),
+            Self::SaturatingTimes       => write!(f,  "*|"),
+            Self::TimesEquals           => write!(f,  "*="),
+            Self::WrappingTimesEquals   => write!(f, r"*\="),
+            Self::SaturatingTimesEquals => write!(f,  "*|="),
+
+            Self::Divide                    => write!(f,  "/"),
+            Self::WrappingDivide            => write!(f, r"/\"),
+            Self::SaturatingDivide          => write!(f,  "/|"),
+            Self::DivideEquals              => write!(f,  "/="),
+            Self::WrappingDivideEquals      => write!(f, r"/\="),
+            Self::SaturatingDivideEquals    => write!(f,  "/|="),
+
+            Self::Remainder         => write!(f, "%"),
+            Self::RemainderEquals   => write!(f, "%="),
+
+            Self::Plus                  => write!(f,  "+"), // also unary safe absolute value
+            Self::WrappingPlus          => write!(f, r"+\"), // also unary wrapping absolute value
+            Self::SaturatingPlus        => write!(f,  "+|"), // also unary saturating absolute value
+            Self::PlusEquals            => write!(f,  "+="),
+            Self::WrappingPlusEquals    => write!(f, r"+\="),
+            Self::SaturatingPlusEquals  => write!(f,  "+|="),
+
+            Self::Minus                 => write!(f,  "-"), // also unary integer negation
+            Self::WrappingMinus         => write!(f, r"-\"), // also unary wrapping integer negation
+            Self::SaturatingMinus       => write!(f,  "-|"), // also unary saturating integer negation
+            Self::MinusEquals           => write!(f,  "-="),
+            Self::WrappingMinusEquals   => write!(f, r"-\="),
+            Self::SaturatingMinusEquals => write!(f,  "-|="),
+
+            Self::LeftShift                 => write!(f,  "<<"),
+            Self::WrappingLeftShift         => write!(f, r"<<\"),
+            Self::SaturatingLeftShift       => write!(f,  "<<|"),
+            Self::LeftShiftEquals           => write!(f,  "<<="),
+            Self::WrappingLeftShiftEquals   => write!(f, r"<<\="),
+            Self::SaturatingLeftShiftEquals => write!(f,  "<<|="),
+
+            Self::RightShift        => write!(f,  ">>"),
+            Self::RightShiftEquals  => write!(f,  ">>="),
+
+            Self::LeftRotate        => write!(f, "<<<"),
+            Self::LeftRotateEquals  => write!(f, "<<<="),
+            Self::RightRotate       => write!(f, ">>>"),
+            Self::RightRotateEquals => write!(f, ">>>="),
+
+            Self::BitAnd        => write!(f, "&"),
+            Self::BitAndEquals  => write!(f, "&="),
+
+            Self::BitOr         => write!(f, "|"),
+            Self::BitOrEquals   => write!(f, "|="),
+
+            Self::BitXor        => write!(f, "^"),
+            Self::BitXorEquals  => write!(f, "^="),
+
+            Self::And       => write!(f, "&&"),
+            Self::AndEquals => write!(f, "&&="),
+
+            Self::Or        => write!(f, "||"),
+            Self::OrEquals  => write!(f, "||="),
+
+            Self::Compare           => write!(f, "<=>"),
+            Self::EqualsEquals      => write!(f, "=="),
+            Self::NotEquals         => write!(f, "!="),
+            Self::Greater           => write!(f, ">"),
+            Self::GreaterOrEquals   => write!(f, ">="),
+            Self::Less              => write!(f, "<"),
+            Self::LessOrEquals      => write!(f, "<="),
+        };
+    }
+}
+
+impl DisplayLen for Op {
+    #[inline(always)]
+    fn display_len(&self) -> usize {
+        return match self {
+            Self::Len => 3,
+            Self::Equals => 1,
+            Self::Not => 1,
+
+            Self::Pow => 2,
+            Self::WrappingPow => 3,
+            Self::SaturatingPow => 3,
+            Self::PowEquals => 3,
+            Self::WrappingPowEquals => 4,
+            Self::SaturatingPowEquals => 4,
+
+            Self::Times => 1,
+            Self::WrappingTimes => 2,
+            Self::SaturatingTimes => 2,
+            Self::TimesEquals => 2,
+            Self::WrappingTimesEquals => 3,
+            Self::SaturatingTimesEquals => 3,
+
+            Self::Divide => 1,
+            Self::WrappingDivide => 2,
+            Self::SaturatingDivide => 2,
+            Self::DivideEquals => 2,
+            Self::WrappingDivideEquals => 3,
+            Self::SaturatingDivideEquals => 3,
+
+            Self::Remainder => 1,
+            Self::RemainderEquals => 2,
+
+            Self::Plus => 1,
+            Self::WrappingPlus => 2,
+            Self::SaturatingPlus => 2,
+            Self::PlusEquals => 2,
+            Self::WrappingPlusEquals => 3,
+            Self::SaturatingPlusEquals => 3,
+
+            Self::Minus => 1,
+            Self::WrappingMinus => 2,
+            Self::SaturatingMinus => 2,
+            Self::MinusEquals => 2,
+            Self::WrappingMinusEquals => 3,
+            Self::SaturatingMinusEquals => 3,
+
+            Self::And => 2,
+            Self::AndEquals => 3,
+
+            Self::BitAnd => 1,
+            Self::BitAndEquals => 2,
+
+            Self::Or => 2,
+            Self::OrEquals => 3,
+
+            Self::BitOr => 1,
+            Self::BitOrEquals => 2,
+
+            Self::BitXor => 1,
+            Self::BitXorEquals => 2,
+
+            Self::LeftShift => 2,
+            Self::WrappingLeftShift => 3,
+            Self::SaturatingLeftShift => 3,
+            Self::LeftShiftEquals => 3,
+            Self::WrappingLeftShiftEquals => 4,
+            Self::SaturatingLeftShiftEquals => 4,
+
+            Self::RightShift => 2,
+            Self::RightShiftEquals => 3,
+
+            Self::LeftRotate => 3,
+            Self::LeftRotateEquals => 4,
+            Self::RightRotate => 3,
+            Self::RightRotateEquals => 4,
+
+            Self::EqualsEquals => 2,
+            Self::NotEquals => 2,
+            Self::Greater => 1,
+            Self::GreaterOrEquals => 2,
+            Self::Less => 1,
+            Self::LessOrEquals => 2,
+            Self::Compare => 3,
+        };
+    }
 }
 
 #[derive(Debug, Clone)]

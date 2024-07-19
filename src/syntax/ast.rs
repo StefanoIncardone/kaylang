@@ -1,6 +1,6 @@
 use super::{
-    op::{AssignmentOp, BinaryOp, BooleanBinaryOp, BooleanUnaryOp, ComparisonOp, Op, UnaryOp},
-    tokenizer::{uint, BracketKind, DisplayLen, Literal, Mutability, Token, TokenKind},
+    op::{AssignmentOp, BinaryOp, BooleanBinaryOp, BooleanUnaryOp, ComparisonOp, UnaryOp},
+    tokenizer::{Op, uint, BracketKind, DisplayLen, Literal, Mutability, Token, TokenKind},
     types::{BaseType, Type, TypeOf},
     Errors, RawError,
 };
