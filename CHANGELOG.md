@@ -50,15 +50,17 @@ Changes to error messages, help message and alike would **not** be considered br
 - saturating operators: `...|` (e.g.: `*` -> `*|`)
 - Raw string literals: `r"hello\nworld"` where `\n` would not get escaped
 - Printing to `stderr`: `eprint` and `eprintln` keywords
+<!-- -->
 - `help` and `version` commands
 - usage examples
 
 ### Changed
 
-- help message now prints the name of the executable that run the command
 - Improved generated asm code
 - Improved error messages
 - Runtime crashes now print to `stderr`
+<!--  -->
+- help message now prints the name of the executable that run the command
 - Allowed non utf-8 paths in cli arguments
 - `run` command now returns the exit code of the executed program
 - `compile` command now returns the exit code of the assembler and linker in the case of a failure
@@ -71,6 +73,11 @@ Changes to error messages, help message and alike would **not** be considered br
 - `<=>` now has the same precedence as `==`, `!=`, `<`, `<=`, `>`, `>=` operators
 - non-wrapping and non-saturating operators will crash on overflow
 - `char` type renamed to `ascii`
+- Arrays are now mandated to contain at least 2 elements, so the `Type::Infer` type is no longer
+    needed:
+    - arrays of 0 elements are meaningless, they don't even occupy any memory
+    - arrays of 1 element are literaly just that element with extra steps
+<!--  -->
 - Split `Error`s into `ErrorKind` and `ErrorCause`
 - `Tokenizer::tokenize` and `Ast::build` now return a `Errors` struct as an iterator over
     lightweight `RawError`s that lazily construct full `Error`s
@@ -78,12 +85,8 @@ Changes to error messages, help message and alike would **not** be considered br
     and is now required in compilation steps instead of generic `PathBuf`s
 - Updated consistency of compilation steps names and static variables
 - Compilation steps are now managed by the `Logger` struct
-- Moved type-related entities to `types` module
-    - Pulled `BaseType` enum out of `Type` enum
-- Arrays are now mandated to contain at least 2 elements, so the `Type::Infer` type is no longer
-    needed:
-    - arrays of 0 elements are meaningless, they don't even occupy any memory
-    - arrays of 1 element are literaly just that element with extra steps
+- Moved types related entities to `types` module: pulled `BaseType` enum out of `Type` enum
+- Moved cli related entities to `cli` module, i.e. `Color`, `Verbosity` and `Command`
 
 ### Removed
 

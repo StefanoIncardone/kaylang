@@ -1,8 +1,9 @@
 use kaylang::{
+    cli::Color,
     compiler::{artifacts::Artifacts, Compiler},
     src_file::SrcFile,
     syntax::{ast::Ast, tokenizer::Tokenizer},
-    Color, Logger, ASSEMBLING, ASSEMBLING_ERROR, BUILDING_AST, CHECKING, COMPILING,
+    Logger, ASSEMBLING, ASSEMBLING_ERROR, BUILDING_AST, CHECKING, COMPILING,
     COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_LINKER, GENERATING_ASM, LINKING, LINKING_ERROR,
     LOADING_SOURCE, SUBSTEP_DONE, TOKENIZATION,
 };

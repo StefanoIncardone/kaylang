@@ -1,6 +1,5 @@
-use std::fmt::Display;
-
 use super::tokenizer::{ascii, int, uint};
+use std::fmt::Display;
 
 pub(crate) trait TypeOf {
     fn typ(&self) -> Type;

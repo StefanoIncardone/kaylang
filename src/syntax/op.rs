@@ -1,6 +1,5 @@
-use std::fmt::Display;
-
 use super::types::BaseType;
+use std::fmt::Display;
 
 /*
 IDEA(stefano): introduce "unchecked" operators

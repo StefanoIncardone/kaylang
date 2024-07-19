@@ -6,6 +6,7 @@ pub mod compiler;
 pub mod src_file;
 pub mod syntax;
 
+use cli::{Color, ColorFlag, CommandFlag, OutputFlag, Verbosity, VerbosityFlag};
 use color::{Bg, Colored, Fg, Flag, Flags};
 use std::{
     fmt::Display,
@@ -13,38 +14,7 @@ use std::{
     time::Instant,
 };
 
-#[derive(Debug, Default, Clone, Copy)]
-pub enum Color {
-    #[default]
-    Auto,
-    Always,
-    Never,
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-pub enum Verbosity {
-    #[default]
-    Normal,
-    Quiet,
-    Verbose,
-}
-
-#[derive(Debug, Clone)]
-pub enum Command {
-    Help { executable_name: PathBuf },
-    Version,
-    Check { src_path: PathBuf },
-    Compile { src_path: PathBuf, out_path: Option<PathBuf> },
-    Run { src_path: PathBuf, out_path: Option<PathBuf> },
-}
-
-impl Default for Command {
-    fn default() -> Self {
-        return Self::Help { executable_name: PathBuf::from("kay") };
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Version {
     pub color: Color,
 }
@@ -56,36 +26,63 @@ impl Display for Version {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Help {
     pub executable_name: PathBuf,
     pub color: Color,
 }
 
 impl Display for Help {
+    #[rustfmt::skip]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         return write!(
             f,
-            r"{version}
+            r"{Version}
 
 {USAGE}: {executable_name} [{OPTIONS}] [{COMMAND}]
 
 {OPTIONS}:
-    -c, --color <{MODE}>    Wether to display colored output ({MODE}: auto (default), never, always)
-    -q, --quiet           Don't display any diagnostic messages
-    -V, --verbose         Display extra diagnostic messages
+    {_c}, {__color} <{MODE}>    Wether to display colored output ({MODE}: {auto} (default), {always}, {never})
+    {_q}, {__quiet}           Don't display any diagnostic messages
+    {_V}, {__verbose}         Display extra diagnostic messages
 
 {COMMAND}s:
-    help,    -h, --help         Display this message (default)
-    version, -v, --version      Display the compiler version
-    check    <{FILE}>             Check the source code for correctness
-    compile  <{FILE}> [{OUTPUT}]    Compile the source code down to an executable
-    run      <{FILE}> [{OUTPUT}]    Compile and run the generated executable
+    {help},    {_h}, {__help}         Display this message (default)
+    {version}, {_v}, {__version}      Display the compiler version
+    {check}    <{FILE}>             Check the source code for correctness
+    {compile}  <{FILE}> [{OUTPUT}]    Compile the source code down to an executable
+    {run}      <{FILE}> [{OUTPUT}]    Compile and run the generated executable
 
 {OUTPUT}:
-    -o, --output <{PATH}>   Folder to populate with compilation artifacts (.asm, .o, executable) (default: '.')",
+    {_o}, {__output} <{PATH}>   Folder to populate with compilation artifacts (.asm, .o, executable) (default: '.')",
+            Version = Version { color: self.color },
             executable_name = self.executable_name.display(),
-            version = Version { color: self.color }
+
+            _c = ColorFlag::Short,
+            __color = ColorFlag::Long,
+            auto = Color::Auto,
+            always = Color::Always,
+            never = Color::Never,
+
+            _q = VerbosityFlag::QuietShort,
+            __quiet = VerbosityFlag::QuietLong,
+            _V = VerbosityFlag::VerboseShort,
+            __verbose = VerbosityFlag::VerboseLong,
+
+            help = CommandFlag::Help,
+            _h = CommandFlag::HelpShort,
+            __help = CommandFlag::HelpLong,
+
+            version = CommandFlag::Version,
+            _v = CommandFlag::VersionShort,
+            __version = CommandFlag::VersionLong,
+
+            check = CommandFlag::Check,
+            compile = CommandFlag::Compile,
+            run = CommandFlag::Run,
+
+            _o = OutputFlag::Short,
+            __output = OutputFlag::Long,
         );
     }
 }
@@ -151,6 +148,7 @@ const BAR_FLAGS: Flags = Flag::Bold;
 #[rustfmt::skip] pub static ASSEMBLING_ERROR:         Colored<&str> = Colored { text: "Assembling Error",         fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 #[rustfmt::skip] pub static LINKING_ERROR:            Colored<&str> = Colored { text: "Linking Error",            fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 
+#[derive(Debug)]
 pub struct Logger {
     pub start: Instant,
 }
