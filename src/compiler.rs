@@ -12,7 +12,7 @@ use crate::{
         ast::{self, Expression, IfStatement, Node, Scope},
         op::{AssignmentOp, BinaryOp, BooleanBinaryOp, ComparisonOp, UnaryOp},
         tokenizer::{ascii, uint, Literal, Mutability},
-        types::{BaseType, SizeOf, Type, TypeOf},
+        ast::{BaseType, SizeOf, Type, TypeOf},
     },
     CAUSE, ERROR,
 };

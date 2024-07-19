@@ -89,7 +89,7 @@ Changes to error messages, help message and alike would **not** be considered br
     and is now required in compilation steps instead of generic `PathBuf`s
 - Updated consistency of compilation steps names and static variables
 - Compilation steps are now managed by the `Logger` struct
-- Moved types related entities to `types` module: pulled `BaseType` enum out of `Type` enum
+- Pulled `BaseType` enum out of `Type` enum
 
 ### Removed
 

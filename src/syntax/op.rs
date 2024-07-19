@@ -1,4 +1,4 @@
-use super::types::BaseType;
+use super::ast::BaseType;
 use std::fmt::Display;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
