@@ -1,5 +1,4 @@
 pub mod ast;
-pub mod op;
 pub mod tokenizer;
 
 use crate::{
