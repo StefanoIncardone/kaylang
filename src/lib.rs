@@ -17,14 +17,15 @@ const HELP_FG: Fg = Fg::White;
 const HELP_BG: Bg = Bg::Default;
 const HELP_FLAGS: Flags = Flag::Bold;
 
-#[rustfmt::skip] pub(crate) static VERSION: Colored<&str> = Colored { text: env!("CARGO_PKG_VERSION"), fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static USAGE:   Colored<&str> = Colored { text: "Usage",                   fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static OPTIONS: Colored<&str> = Colored { text: "Options",                 fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static COMMAND: Colored<&str> = Colored { text: "Command",                 fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static MODE:    Colored<&str> = Colored { text: "mode",                    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static FILE:    Colored<&str> = Colored { text: "file",                    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static PATH:    Colored<&str> = Colored { text: "path",                    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static OUTPUT:  Colored<&str> = Colored { text: "Output",                  fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+#[rustfmt::skip] pub(crate) static VERSION:   Colored<&str> = Colored { text: env!("CARGO_PKG_VERSION"), fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+#[rustfmt::skip] pub(crate) static USAGE:     Colored<&str> = Colored { text: "Usage",                   fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+#[rustfmt::skip] pub(crate) static OPTIONS:   Colored<&str> = Colored { text: "Options",                 fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+#[rustfmt::skip] pub(crate) static COMMAND:   Colored<&str> = Colored { text: "Command",                 fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+#[rustfmt::skip] pub(crate) static MODE:      Colored<&str> = Colored { text: "mode",                    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+#[rustfmt::skip] pub(crate) static FILE:      Colored<&str> = Colored { text: "file",                    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+#[rustfmt::skip] pub(crate) static PATH:      Colored<&str> = Colored { text: "path",                    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+#[rustfmt::skip] pub(crate) static OUTPUT:    Colored<&str> = Colored { text: "Output",                  fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+#[rustfmt::skip] pub(crate) static VERBOSITY: Colored<&str> = Colored { text: "Verbosity",               fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
 
 // main compilation steps (displayed when verbosity level is normal or verbose)
 const STEP_FG: Fg = Fg::LightGreen;
@@ -192,33 +193,6 @@ impl Display for ColorMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VerbosityFlag {
-    QuietShort,
-    QuietLong,
-    VerboseShort,
-    VerboseLong,
-}
-
-impl Display for VerbosityFlag {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return match self {
-            Self::QuietShort => write!(f, "-q"),
-            Self::QuietLong => write!(f, "--quiet"),
-            Self::VerboseShort => write!(f, "-V"),
-            Self::VerboseLong => write!(f, "--verbose"),
-        };
-    }
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub enum Verbosity {
-    #[default]
-    Normal,
-    Quiet,
-    Verbose,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandFlag {
     Help,
     HelpShort,
@@ -262,13 +236,40 @@ impl Display for OutputFlag {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VerbosityFlag {
+    QuietShort,
+    QuietLong,
+    VerboseShort,
+    VerboseLong,
+}
+
+impl Display for VerbosityFlag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        return match self {
+            Self::QuietShort => write!(f, "-q"),
+            Self::QuietLong => write!(f, "--quiet"),
+            Self::VerboseShort => write!(f, "-V"),
+            Self::VerboseLong => write!(f, "--verbose"),
+        };
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum Verbosity {
+    #[default]
+    Normal,
+    Quiet,
+    Verbose,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Version,
     Help { executable_name: PathBuf },
-    Check { src_path: PathBuf },
-    Compile { src_path: PathBuf, out_path: Option<PathBuf> },
-    Run { src_path: PathBuf, out_path: Option<PathBuf> },
+    Check { src_path: PathBuf, verbosity: Verbosity },
+    Compile { src_path: PathBuf, out_path: Option<PathBuf>, verbosity: Verbosity },
+    Run { src_path: PathBuf, out_path: Option<PathBuf>, verbosity: Verbosity },
 }
 
 impl Default for Command {
@@ -306,18 +307,20 @@ impl Display for Help {
 
 {OPTIONS}:
     {_c}, {__color} <{MODE}>    Wether to display colored output ({MODE}: {auto} (default), {always}, {never})
-    {_q}, {__quiet}           Don't display any diagnostic messages
-    {_V}, {__verbose}         Display extra diagnostic messages
 
 {COMMAND}s:
-    {help},    {_h}, {__help}         Display this message (default)
-    {version}, {_v}, {__version}      Display the compiler version
-    {check}    <{FILE}>             Check the source code for correctness
-    {compile}  <{FILE}> [{OUTPUT}]    Compile the source code down to an executable
-    {run}      <{FILE}> [{OUTPUT}]    Compile and run the generated executable
+    {help},    {_h}, {__help}                     Display this message (default)
+    {version}, {_v}, {__version}                  Display the compiler version
+    {check}    <{FILE}>          [{VERBOSITY}]    Check the source code for correctness
+    {compile}  <{FILE}> [{OUTPUT}] [{VERBOSITY}]    Compile the source code down to an executable
+    {run}      <{FILE}> [{OUTPUT}] [{VERBOSITY}]    Compile and run the generated executable
 
-{OUTPUT}:
-    {_o}, {__output} <{PATH}>   Folder to populate with compilation artifacts (.asm, .o, executable) (default: '.')",
+    {VERBOSITY}:
+        {_q}, {__quiet}     Don't display any compilation information
+        {_V}, {__verbose}   Display extra compilation information
+
+    {OUTPUT}:
+        {_o}, {__output} <{PATH}>   Folder to populate with compilation artifacts (default: '.')",
             Version = Version { color: self.color },
             executable_name = self.executable_name.display(),
 
@@ -326,11 +329,6 @@ impl Display for Help {
             auto = Color::Auto,
             always = Color::Always,
             never = Color::Never,
-
-            _q = VerbosityFlag::QuietShort,
-            __quiet = VerbosityFlag::QuietLong,
-            _V = VerbosityFlag::VerboseShort,
-            __verbose = VerbosityFlag::VerboseLong,
 
             help = CommandFlag::Help,
             _h = CommandFlag::HelpShort,
@@ -346,6 +344,11 @@ impl Display for Help {
 
             _o = OutputFlag::Short,
             __output = OutputFlag::Long,
+
+            _q = VerbosityFlag::QuietShort,
+            __quiet = VerbosityFlag::QuietLong,
+            _V = VerbosityFlag::VerboseShort,
+            __verbose = VerbosityFlag::VerboseLong,
         );
     }
 }
@@ -353,7 +356,6 @@ impl Display for Help {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Args {
     pub color: Color,
-    pub verbosity: Verbosity,
     pub command: Command,
 }
 
@@ -361,6 +363,15 @@ impl TryFrom<Vec<String>> for Args {
     type Error = Error;
 
     fn try_from(args: Vec<String>) -> Result<Self, Self::Error> {
+        fn is_verbosity_flag((_verbosity_flag_index, verbosity_flag): &(usize, &String)) -> bool {
+            return matches!(verbosity_flag.as_str(), "-q" | "--quiet" | "-V" | "--verbose");
+        }
+
+        #[allow(clippy::single_call_fn)]
+        fn is_out_flag((_out_flag_index, out_flag): &(usize, &String)) -> bool {
+            return matches!(out_flag.as_str(), "-o" | "--output");
+        }
+
         Color::Auto.set(&std::io::stderr());
 
         let mut args_iter = args.iter().enumerate();
@@ -421,7 +432,6 @@ impl TryFrom<Vec<String>> for Args {
         };
         color.set(&std::io::stderr());
 
-        let mut verbosity_mode: Option<VerbosityFlag> = None;
         let mut command_option: Option<(CommandFlag, Command)> = None;
 
         let mut other_args = args_iter.clone().peekable();
@@ -431,28 +441,6 @@ impl TryFrom<Vec<String>> for Args {
                     let Some(_) = other_args.next() else {
                         unreachable!("color mode should have already been correctly parsed");
                     };
-                }
-                verbosity_flag @ ("-q" | "--quiet" | "-V" | "--verbose") => {
-                    let flag = match verbosity_flag {
-                        "-q" => VerbosityFlag::QuietShort,
-                        "--quiet" => VerbosityFlag::QuietLong,
-                        "-V" => VerbosityFlag::VerboseShort,
-                        "--verbose" => VerbosityFlag::VerboseLong,
-                        _ => unreachable!(),
-                    };
-
-                    if let Some(previous_flag) = verbosity_mode {
-                        return Err(Error::FromArgs {
-                            kind: ErrorKind::VerbosityAlreadySelected {
-                                current: flag,
-                                previous: previous_flag,
-                            },
-                            args,
-                            erroneous_arg_index: selected_flag_index,
-                        });
-                    }
-
-                    verbosity_mode = Some(flag);
                 }
                 help_command @ ("help" | "-h" | "--help") => {
                     let help_flag = match help_command {
@@ -503,9 +491,64 @@ impl TryFrom<Vec<String>> for Args {
 
                     command_option = Some((version_flag, Command::Version));
                 }
-                command @ ("check" | "compile" | "run") => {
+                "check" => {
+                    let command_flag = CommandFlag::Check;
+
+                    if let Some((
+                        previous_command_flag,
+                        Command::Check { .. } | Command::Compile { .. } | Command::Run { .. },
+                    )) = command_option
+                    {
+                        return Err(Error::FromArgs {
+                            kind: ErrorKind::CommandAlreadySelected {
+                                current: command_flag,
+                                previous: previous_command_flag,
+                            },
+                            args,
+                            erroneous_arg_index: selected_flag_index,
+                        });
+                    }
+
+                    let Some((src_path_index, src_path_string)) = other_args.next() else {
+                        return Err(Error::FromArgs {
+                            kind: ErrorKind::MustBeFollowedByASourceFilePath(command_flag),
+                            args,
+                            erroneous_arg_index: selected_flag_index,
+                        });
+                    };
+
+                    let src_path = PathBuf::from(src_path_string);
+                    if src_path.is_dir() {
+                        return Err(Error::FromArgs {
+                            kind: ErrorKind::MustBeAFilePath(src_path),
+                            args,
+                            erroneous_arg_index: src_path_index,
+                        });
+                    }
+
+                    let verbosity = if let Some((_verbosity_flag_index, verbosity_flag)) =
+                        other_args.next_if(is_verbosity_flag)
+                    {
+                        match verbosity_flag.as_str() {
+                            "-q" | "--quiet" => Verbosity::Quiet,
+                            "-V" | "--verbose" => Verbosity::Verbose,
+                            _ => unreachable!(),
+                        }
+                    } else {
+                        Verbosity::Normal
+                    };
+
+                    if let Some((_, Command::Help { .. } | Command::Version)) = command_option {
+                        // this is just to make sure that run modes commands are properly formatted,
+                        // so we do nothing in the case where the
+                        // help, -h, --help, version, -v or --version command was already selected
+                    } else {
+                        command_option =
+                            Some((command_flag, Command::Check { src_path, verbosity }));
+                    }
+                }
+                command @ ("compile" | "run") => {
                     let command_flag = match command {
-                        "check" => CommandFlag::Check,
                         "compile" => CommandFlag::Compile,
                         "run" => CommandFlag::Run,
                         _ => unreachable!(),
@@ -543,73 +586,71 @@ impl TryFrom<Vec<String>> for Args {
                         });
                     }
 
-                    let mode = match command_flag {
-                        CommandFlag::Check => Command::Check { src_path },
-                        CommandFlag::Compile | CommandFlag::Run => {
-                            let mut out_path = None;
+                    let mut out_path = None;
 
-                            if let Some((out_flag_index, out_flag)) =
-                                other_args.next_if(|(_out_flag_index, out_flag)| {
-                                    return *out_flag == "-o" || *out_flag == "--output";
-                                })
-                            {
-                                let out_option = match out_flag.as_str() {
-                                    "-o" => OutputFlag::Short,
-                                    "--output" => OutputFlag::Long,
-                                    _ => unreachable!(),
-                                };
+                    if let Some((out_flag_index, out_flag)) = other_args.next_if(is_out_flag) {
+                        let out_option = match out_flag.as_str() {
+                            "-o" => OutputFlag::Short,
+                            "--output" => OutputFlag::Long,
+                            _ => unreachable!(),
+                        };
 
-                                let Some((out_path_index, out_path_string)) = other_args.next()
-                                else {
-                                    return Err(Error::FromArgs {
-                                        kind: ErrorKind::MustBeFollowedByDirectoryPath(out_option),
-                                        args,
-                                        erroneous_arg_index: out_flag_index,
-                                    });
-                                };
+                        let Some((out_path_index, out_path_string)) = other_args.next() else {
+                            return Err(Error::FromArgs {
+                                kind: ErrorKind::MustBeFollowedByDirectoryPath(out_option),
+                                args,
+                                erroneous_arg_index: out_flag_index,
+                            });
+                        };
 
-                                let out_path_buf = PathBuf::from(out_path_string);
-                                if out_path_buf.is_file() {
-                                    return Err(Error::FromArgs {
-                                        kind: ErrorKind::MustBeADirectoryPath(out_path_buf),
-                                        args,
-                                        erroneous_arg_index: out_path_index,
-                                    });
-                                }
-
-                                out_path = Some(out_path_buf);
-                            }
-
-                            match command_flag {
-                                CommandFlag::Compile => Command::Compile { src_path, out_path },
-                                CommandFlag::Run => Command::Run { src_path, out_path },
-                                CommandFlag::Help
-                                | CommandFlag::HelpShort
-                                | CommandFlag::HelpLong
-                                | CommandFlag::Version
-                                | CommandFlag::VersionShort
-                                | CommandFlag::VersionLong
-                                | CommandFlag::Check => unreachable!(),
-                            }
+                        let out_path_buf = PathBuf::from(out_path_string);
+                        if out_path_buf.is_file() {
+                            return Err(Error::FromArgs {
+                                kind: ErrorKind::MustBeADirectoryPath(out_path_buf),
+                                args,
+                                erroneous_arg_index: out_path_index,
+                            });
                         }
-                        CommandFlag::Help
-                        | CommandFlag::HelpShort
-                        | CommandFlag::HelpLong
-                        | CommandFlag::Version
-                        | CommandFlag::VersionShort
-                        | CommandFlag::VersionLong => unreachable!(),
+
+                        out_path = Some(out_path_buf);
+                    }
+
+                    let verbosity = if let Some((_verbosity_flag_index, verbosity_flag)) =
+                        other_args.next_if(is_verbosity_flag)
+                    {
+                        match verbosity_flag.as_str() {
+                            "-q" | "--quiet" => Verbosity::Quiet,
+                            "-V" | "--verbose" => Verbosity::Verbose,
+                            _ => unreachable!(),
+                        }
+                    } else {
+                        Verbosity::Normal
                     };
 
                     if let Some((_, Command::Help { .. } | Command::Version)) = command_option {
                         // this is just to make sure that run modes commands are properly formatted,
                         // so we do nothing in the case where the
-                        // help, -h, --help, version,  -v or --version command was already selected
+                        // help, -h, --help, version, -v or --version command was already selected
                     } else {
+                        let mode = match command_flag {
+                            CommandFlag::Compile => {
+                                Command::Compile { src_path, out_path, verbosity }
+                            }
+                            CommandFlag::Run => Command::Run { src_path, out_path, verbosity },
+                            CommandFlag::Help
+                            | CommandFlag::HelpShort
+                            | CommandFlag::HelpLong
+                            | CommandFlag::Version
+                            | CommandFlag::VersionShort
+                            | CommandFlag::VersionLong
+                            | CommandFlag::Check => unreachable!(),
+                        };
+
                         command_option = Some((command_flag, mode));
                     }
                 }
                 out_flag @ ("-o" | "--output") => {
-                    let out_option = match out_flag {
+                    let flag = match out_flag {
                         "-o" => OutputFlag::Short,
                         "--output" => OutputFlag::Long,
                         _ => unreachable!(),
@@ -617,7 +658,7 @@ impl TryFrom<Vec<String>> for Args {
 
                     let Some((out_path_index, out_path_string)) = other_args.next() else {
                         return Err(Error::FromArgs {
-                            kind: ErrorKind::MustBeFollowedByDirectoryPath(out_option),
+                            kind: ErrorKind::MustBeFollowedByDirectoryPath(flag),
                             args,
                             erroneous_arg_index: selected_flag_index,
                         });
@@ -633,7 +674,22 @@ impl TryFrom<Vec<String>> for Args {
                     }
 
                     return Err(Error::FromArgs {
-                        kind: ErrorKind::StrayOutputDirectoryOption(out_option),
+                        kind: ErrorKind::StrayOutputDirectoryOption(flag),
+                        args,
+                        erroneous_arg_index: selected_flag_index,
+                    });
+                }
+                verbosity_flag @ ("-q" | "--quiet" | "-V" | "--verbose") => {
+                    let flag = match verbosity_flag {
+                        "-q" => VerbosityFlag::QuietShort,
+                        "--quiet" => VerbosityFlag::QuietLong,
+                        "-V" => VerbosityFlag::VerboseShort,
+                        "--verbose" => VerbosityFlag::VerboseLong,
+                        _ => unreachable!(),
+                    };
+
+                    return Err(Error::FromArgs {
+                        kind: ErrorKind::StrayVerbosityOption(flag),
                         args,
                         erroneous_arg_index: selected_flag_index,
                     });
@@ -648,18 +704,12 @@ impl TryFrom<Vec<String>> for Args {
             }
         }
 
-        let verbosity = match verbosity_mode {
-            Some(VerbosityFlag::QuietShort | VerbosityFlag::QuietLong) => Verbosity::Quiet,
-            Some(VerbosityFlag::VerboseShort | VerbosityFlag::VerboseLong) => Verbosity::Verbose,
-            None => Verbosity::Normal,
-        };
-
         let command = match command_option {
             Some((_, command)) => command,
             None => Command::Help { executable_name },
         };
 
-        return Ok(Self { color, verbosity, command });
+        return Ok(Self { color, command });
     }
 }
 
@@ -677,14 +727,14 @@ pub enum ErrorKind {
     UnrecognizedColorMode,
     ColorModeAlreadySelected { current: ColorMode, previous: ColorMode },
 
-    VerbosityAlreadySelected { current: VerbosityFlag, previous: VerbosityFlag },
-
     CommandAlreadySelected { current: CommandFlag, previous: CommandFlag },
 
     MustBeFollowedByASourceFilePath(CommandFlag),
     MustBeAFilePath(PathBuf),
     MustBeFollowedByDirectoryPath(OutputFlag),
     MustBeADirectoryPath(PathBuf),
+
+    StrayVerbosityOption(VerbosityFlag),
     StrayOutputDirectoryOption(OutputFlag),
 
     Unrecognized,
@@ -755,13 +805,6 @@ impl Display for Error {
                             "cannot use '{current}' because '{previous}' was already selected"
                         );
                     }
-                    ErrorKind::VerbosityAlreadySelected { current, previous } => {
-                        _ = write!(error_message, "repeated '{current}' verbosity mode");
-                        _ = write!(
-                            error_cause_message,
-                            "cannot use '{current}' because '{previous}' was already selected"
-                        );
-                    }
                     ErrorKind::CommandAlreadySelected { current, previous } => {
                         _ = write!(error_message, "repeated '{current}' command");
                         _ = write!(
@@ -800,6 +843,13 @@ impl Display for Error {
                         _ = write!(
                             error_cause_message,
                             "'{option}' can only be used after a 'compile' or 'run' command"
+                        );
+                    }
+                    ErrorKind::StrayVerbosityOption(option) => {
+                        _ = write!(error_message, "stray '{option}' option");
+                        _ = write!(
+                            error_cause_message,
+                            "'{option}' can only be used after a 'check', 'compile' or 'run' command"
                         );
                     }
                     ErrorKind::Unrecognized => {

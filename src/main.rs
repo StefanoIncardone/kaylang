@@ -10,8 +10,9 @@ use kaylang::{
 };
 use std::process::ExitCode;
 
+// Note: this is aslo an example of how it's possible to create cli tools based on this compiler
 fn main() -> ExitCode {
-    let Args { color, verbosity, command } = match Args::try_from(std::env::args()) {
+    let Args { color, command } = match Args::try_from(std::env::args()) {
         Ok(args) => args,
         Err(err) => {
             eprintln!("{err}");
@@ -31,12 +32,14 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    let (Command::Check { src_path }
-    | Command::Compile { src_path, .. }
-    | Command::Run { src_path, .. }) = &command
+    let (Command::Check { src_path, verbosity: verbosity_ref }
+    | Command::Compile { src_path, verbosity: verbosity_ref, .. }
+    | Command::Run { src_path, verbosity: verbosity_ref, .. }) = &command
     else {
         unreachable!()
     };
+
+    let verbosity = *verbosity_ref;
 
     let execution_step = Logger::new();
 

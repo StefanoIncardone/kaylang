@@ -78,6 +78,10 @@ Changes to error messages, help message and alike would **not** be considered br
     - arrays of 0 elements are meaningless, they don't even occupy any memory
     - arrays of 1 element are literaly just that element with extra steps
 <!--  -->
+- verbosity options are now mandated to come after a `check`, `compile` or `run` commands as the
+    last option
+- `verbosity` field of `Args` struct is now integrated in `Command::Check`, `Command::Compile` and
+    `Command::Run` variants, thus removed
 - Split `Error`s into `ErrorKind` and `ErrorCause`
 - `Tokenizer::tokenize` and `Ast::build` now return a `Errors` struct as an iterator over
     lightweight `RawError`s that lazily construct full `Error`s
