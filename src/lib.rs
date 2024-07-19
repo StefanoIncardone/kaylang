@@ -437,11 +437,6 @@ impl TryFrom<Vec<String>> for Args {
         let mut other_args = args_iter.clone().peekable();
         while let Some((selected_flag_index, selected_flag)) = other_args.next() {
             match selected_flag.as_str() {
-                "-c" | "--color" => {
-                    let Some(_) = other_args.next() else {
-                        unreachable!("color mode should have already been correctly parsed");
-                    };
-                }
                 help_command @ ("help" | "-h" | "--help") => {
                     let help_flag = match help_command {
                         "help" => CommandFlag::Help,
@@ -494,21 +489,6 @@ impl TryFrom<Vec<String>> for Args {
                 "check" => {
                     let command_flag = CommandFlag::Check;
 
-                    if let Some((
-                        previous_command_flag,
-                        Command::Check { .. } | Command::Compile { .. } | Command::Run { .. },
-                    )) = command_option
-                    {
-                        return Err(Error::FromArgs {
-                            kind: ErrorKind::CommandAlreadySelected {
-                                current: command_flag,
-                                previous: previous_command_flag,
-                            },
-                            args,
-                            erroneous_arg_index: selected_flag_index,
-                        });
-                    }
-
                     let Some((src_path_index, src_path_string)) = other_args.next() else {
                         return Err(Error::FromArgs {
                             kind: ErrorKind::MustBeFollowedByASourceFilePath(command_flag),
@@ -518,7 +498,7 @@ impl TryFrom<Vec<String>> for Args {
                     };
 
                     let src_path = PathBuf::from(src_path_string);
-                    if src_path.is_dir() {
+                    if !src_path.is_file() {
                         return Err(Error::FromArgs {
                             kind: ErrorKind::MustBeAFilePath(src_path),
                             args,
@@ -538,13 +518,31 @@ impl TryFrom<Vec<String>> for Args {
                         Verbosity::Normal
                     };
 
-                    if let Some((_, Command::Help { .. } | Command::Version)) = command_option {
-                        // this is just to make sure that run modes commands are properly formatted,
-                        // so we do nothing in the case where the
-                        // help, -h, --help, version, -v or --version command was already selected
-                    } else {
-                        command_option =
-                            Some((command_flag, Command::Check { src_path, verbosity }));
+                    match &command_option {
+                        None => {
+                            let mode = Command::Check { src_path, verbosity };
+                            command_option = Some((command_flag, mode));
+                        }
+                        Some((previous_command_flag, previous_command)) => match previous_command {
+                            Command::Help { .. } | Command::Version => {
+                                // this is just to make sure that run modes commands are properly
+                                // formatted, so we do nothing in the case where the
+                                // help, -h, --help, version, -v or --version command was already
+                                // selected
+                            }
+                            Command::Check { .. }
+                            | Command::Compile { .. }
+                            | Command::Run { .. } => {
+                                return Err(Error::FromArgs {
+                                    kind: ErrorKind::CommandAlreadySelected {
+                                        current: command_flag,
+                                        previous: *previous_command_flag,
+                                    },
+                                    args,
+                                    erroneous_arg_index: selected_flag_index,
+                                });
+                            }
+                        },
                     }
                 }
                 command @ ("compile" | "run") => {
@@ -554,21 +552,6 @@ impl TryFrom<Vec<String>> for Args {
                         _ => unreachable!(),
                     };
 
-                    if let Some((
-                        previous_command_flag,
-                        Command::Check { .. } | Command::Compile { .. } | Command::Run { .. },
-                    )) = command_option
-                    {
-                        return Err(Error::FromArgs {
-                            kind: ErrorKind::CommandAlreadySelected {
-                                current: command_flag,
-                                previous: previous_command_flag,
-                            },
-                            args,
-                            erroneous_arg_index: selected_flag_index,
-                        });
-                    }
-
                     let Some((src_path_index, src_path_string)) = other_args.next() else {
                         return Err(Error::FromArgs {
                             kind: ErrorKind::MustBeFollowedByASourceFilePath(command_flag),
@@ -578,7 +561,7 @@ impl TryFrom<Vec<String>> for Args {
                     };
 
                     let src_path = PathBuf::from(src_path_string);
-                    if src_path.is_dir() {
+                    if !src_path.is_file() {
                         return Err(Error::FromArgs {
                             kind: ErrorKind::MustBeAFilePath(src_path),
                             args,
@@ -586,34 +569,35 @@ impl TryFrom<Vec<String>> for Args {
                         });
                     }
 
-                    let mut out_path = None;
+                    let out_path =
+                        if let Some((out_flag_index, out_flag)) = other_args.next_if(is_out_flag) {
+                            let out_option = match out_flag.as_str() {
+                                "-o" => OutputFlag::Short,
+                                "--output" => OutputFlag::Long,
+                                _ => unreachable!(),
+                            };
 
-                    if let Some((out_flag_index, out_flag)) = other_args.next_if(is_out_flag) {
-                        let out_option = match out_flag.as_str() {
-                            "-o" => OutputFlag::Short,
-                            "--output" => OutputFlag::Long,
-                            _ => unreachable!(),
+                            let Some((out_path_index, out_path_string)) = other_args.next() else {
+                                return Err(Error::FromArgs {
+                                    kind: ErrorKind::MustBeFollowedByDirectoryPath(out_option),
+                                    args,
+                                    erroneous_arg_index: out_flag_index,
+                                });
+                            };
+
+                            let out_path_buf = PathBuf::from(out_path_string);
+                            if !out_path_buf.is_dir() {
+                                return Err(Error::FromArgs {
+                                    kind: ErrorKind::MustBeADirectoryPath(out_path_buf),
+                                    args,
+                                    erroneous_arg_index: out_path_index,
+                                });
+                            }
+
+                            Some(out_path_buf)
+                        } else {
+                            None
                         };
-
-                        let Some((out_path_index, out_path_string)) = other_args.next() else {
-                            return Err(Error::FromArgs {
-                                kind: ErrorKind::MustBeFollowedByDirectoryPath(out_option),
-                                args,
-                                erroneous_arg_index: out_flag_index,
-                            });
-                        };
-
-                        let out_path_buf = PathBuf::from(out_path_string);
-                        if out_path_buf.is_file() {
-                            return Err(Error::FromArgs {
-                                kind: ErrorKind::MustBeADirectoryPath(out_path_buf),
-                                args,
-                                erroneous_arg_index: out_path_index,
-                            });
-                        }
-
-                        out_path = Some(out_path_buf);
-                    }
 
                     let verbosity = if let Some((_verbosity_flag_index, verbosity_flag)) =
                         other_args.next_if(is_verbosity_flag)
@@ -627,26 +611,44 @@ impl TryFrom<Vec<String>> for Args {
                         Verbosity::Normal
                     };
 
-                    if let Some((_, Command::Help { .. } | Command::Version)) = command_option {
-                        // this is just to make sure that run modes commands are properly formatted,
-                        // so we do nothing in the case where the
-                        // help, -h, --help, version, -v or --version command was already selected
-                    } else {
-                        let mode = match command_flag {
-                            CommandFlag::Compile => {
-                                Command::Compile { src_path, out_path, verbosity }
-                            }
-                            CommandFlag::Run => Command::Run { src_path, out_path, verbosity },
-                            CommandFlag::Help
-                            | CommandFlag::HelpShort
-                            | CommandFlag::HelpLong
-                            | CommandFlag::Version
-                            | CommandFlag::VersionShort
-                            | CommandFlag::VersionLong
-                            | CommandFlag::Check => unreachable!(),
-                        };
+                    match &command_option {
+                        None => {
+                            let mode = match command_flag {
+                                CommandFlag::Compile => {
+                                    Command::Compile { src_path, out_path, verbosity }
+                                }
+                                CommandFlag::Run => Command::Run { src_path, out_path, verbosity },
+                                CommandFlag::Help
+                                | CommandFlag::HelpShort
+                                | CommandFlag::HelpLong
+                                | CommandFlag::Version
+                                | CommandFlag::VersionShort
+                                | CommandFlag::VersionLong
+                                | CommandFlag::Check => unreachable!(),
+                            };
 
-                        command_option = Some((command_flag, mode));
+                            command_option = Some((command_flag, mode));
+                        }
+                        Some((previous_command_flag, previous_command)) => match previous_command {
+                            Command::Help { .. } | Command::Version => {
+                                // this is just to make sure that run modes commands are properly
+                                // formatted, so we do nothing in the case where the
+                                // help, -h, --help, version, -v or --version command was already
+                                // selected
+                            }
+                            Command::Check { .. }
+                            | Command::Compile { .. }
+                            | Command::Run { .. } => {
+                                return Err(Error::FromArgs {
+                                    kind: ErrorKind::CommandAlreadySelected {
+                                        current: command_flag,
+                                        previous: *previous_command_flag,
+                                    },
+                                    args,
+                                    erroneous_arg_index: selected_flag_index,
+                                });
+                            }
+                        },
                     }
                 }
                 out_flag @ ("-o" | "--output") => {
@@ -665,7 +667,7 @@ impl TryFrom<Vec<String>> for Args {
                     };
 
                     let out_path_buf = PathBuf::from(out_path_string);
-                    if out_path_buf.is_file() {
+                    if !out_path_buf.is_dir() {
                         return Err(Error::FromArgs {
                             kind: ErrorKind::MustBeADirectoryPath(out_path_buf),
                             args,
@@ -693,6 +695,11 @@ impl TryFrom<Vec<String>> for Args {
                         args,
                         erroneous_arg_index: selected_flag_index,
                     });
+                }
+                "-c" | "--color" => {
+                    let Some(_) = other_args.next() else {
+                        unreachable!("color mode should have already been correctly parsed");
+                    };
                 }
                 _ => {
                     return Err(Error::FromArgs {
