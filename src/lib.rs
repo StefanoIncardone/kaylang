@@ -419,7 +419,7 @@ impl TryFrom<Vec<String>> for Args {
                         previous: previous_color_mode,
                     },
                     args,
-                    erroneous_arg_index: selected_color_index,
+                    erroneous_arg_index: color_flag_index,
                 });
             }
 
@@ -806,6 +806,10 @@ impl Display for Error {
                         );
                     }
                     ErrorKind::ColorModeAlreadySelected { current, previous } => {
+                        // starting the pointers at the flag and extending them up to the color mode
+                        let erroneous_color = &args[*erroneous_arg_index + 1];
+                        pointers_count += erroneous_color.len() + 1; // + 1 to account for the space between args
+
                         _ = write!(error_message, "repeated '{current}' color mode");
                         _ = write!(
                             error_cause_message,
