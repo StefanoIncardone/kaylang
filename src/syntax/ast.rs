@@ -1,6 +1,6 @@
 use super::{
     op::{AssignmentOp, BinaryOp, BooleanBinaryOp, BooleanUnaryOp, ComparisonOp, Op, UnaryOp},
-    tokenizer::{uint, BracketKind, Literal, Mutability, Token, TokenKind},
+    tokenizer::{uint, BracketKind, DisplayLen, Literal, Mutability, Token, TokenKind},
     types::{BaseType, Type, TypeOf},
     Errors, RawError,
 };
@@ -317,7 +317,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 kind: ErrorKind::Invalid(Statement::Statement),
                 cause: ErrorCause::MissingSemicolon,
                 col: previous_token.col,
-                len: previous_token.len,
+                len: previous_token.kind.display_len()
             });
         };
 
@@ -496,7 +496,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: ErrorKind::Invalid(Statement::If),
                     cause: ErrorCause::StrayElseBlock,
                     col: current_token.col,
-                    len: current_token.len,
+                    len: current_token.kind.display_len()
                 })
             }
             TokenKind::Do | TokenKind::Loop => {
@@ -515,7 +515,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         kind: ErrorKind::Invalid(Statement::Break),
                         cause: ErrorCause::CanOnlyBeUsedInLoops,
                         col: current_token.col,
-                        len: current_token.len,
+                        len: current_token.kind.display_len()
                     }),
                     _ => Ok(Some(Node::Break)),
                 }
@@ -527,7 +527,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         kind: ErrorKind::Invalid(Statement::Continue),
                         cause: ErrorCause::CanOnlyBeUsedInLoops,
                         col: current_token.col,
-                        len: current_token.len,
+                        len: current_token.kind.display_len()
                     }),
                     _ => Ok(Some(Node::Continue)),
                 }
@@ -551,7 +551,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: ErrorKind::Invalid(Statement::Statement),
                     cause: ErrorCause::TemporaryArrayNotSupportedYet,
                     col: current_token.col,
-                    len: current_token.len,
+                    len: current_token.kind.display_len()
                 })
             }
             TokenKind::Bracket(
@@ -571,7 +571,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: ErrorKind::Invalid(Statement::TypeAnnotation),
                     cause: ErrorCause::StrayColon,
                     col: current_token.col,
-                    len: current_token.len,
+                    len: current_token.kind.display_len()
                 })
             }
             TokenKind::Comma => {
@@ -580,7 +580,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: ErrorKind::Invalid(Statement::ItemSeparator),
                     cause: ErrorCause::StrayComma,
                     col: current_token.col,
-                    len: current_token.len,
+                    len: current_token.kind.display_len()
                 })
             }
             TokenKind::Op(Op::Equals) => {
@@ -589,7 +589,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: ErrorKind::Invalid(Statement::Assignment),
                     cause: ErrorCause::StrayEquals,
                     col: current_token.col,
-                    len: current_token.len,
+                    len: current_token.kind.display_len()
                 })
             }
             TokenKind::Op(op) => {
@@ -598,7 +598,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::StrayBinaryOperator(op),
                     col: current_token.col,
-                    len: current_token.len,
+                    len: current_token.kind.display_len()
                 })
             }
             TokenKind::Comment(_) => unreachable!("should be skipped by the token iterator"),
@@ -620,7 +620,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         in_: Statement::Do,
                     },
                     col: current_token.col,
-                    len: current_token.len,
+                    len: current_token.kind.display_len()
                 })
             }
             TokenKind::Definition(_) => {
@@ -632,7 +632,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         in_: Statement::Do,
                     },
                     col: current_token.col,
-                    len: current_token.len,
+                    len: current_token.kind.display_len()
                 })
             }
             TokenKind::Bracket(_)
@@ -721,7 +721,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 kind: ErrorKind::Expected(expected),
                 cause: ErrorCause::NoMoreTokens,
                 col: previous.col,
-                len: previous.len,
+                len: previous.kind.display_len()
             });
         };
 
@@ -755,7 +755,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: ErrorKind::Expected(expected),
                     cause: ErrorCause::NoMoreTokens,
                     col: previous.col,
-                    len: previous.len,
+                    len: previous.kind.display_len()
                 });
             }
 
@@ -806,7 +806,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 kind: ErrorKind::Invalid(Statement::Expression),
                 cause: ErrorCause::StringLeftOperand,
                 col: op_token.col,
-                len: op_token.len,
+                len: op_token.kind.display_len()
             });
         }
         if let Type::Array { .. } = lhs.typ() {
@@ -814,7 +814,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 kind: ErrorKind::Invalid(Statement::Expression),
                 cause: ErrorCause::ArrayLeftOperand,
                 col: op_token.col,
-                len: op_token.len,
+                len: op_token.kind.display_len()
             });
         }
 
@@ -830,7 +830,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 kind: ErrorKind::Invalid(Statement::Expression),
                 cause: ErrorCause::StringRightOperand,
                 col: op_token.col,
-                len: op_token.len,
+                len: op_token.kind.display_len()
             });
         }
         if let Type::Array { .. } = rhs.typ() {
@@ -838,7 +838,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 kind: ErrorKind::Invalid(Statement::Expression),
                 cause: ErrorCause::ArrayRightOperand,
                 col: op_token.col,
-                len: op_token.len,
+                len: op_token.kind.display_len()
             });
         }
 
@@ -886,7 +886,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 kind: ErrorKind::Invalid(Statement::ArrayIndex),
                 cause: ErrorCause::MustBeFollowedByIntegerExpression,
                 col: open_bracket_token.col,
-                len: open_bracket_token.len,
+                len: open_bracket_token.kind.display_len()
             });
         };
 
@@ -898,7 +898,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 kind: ErrorKind::Invalid(Statement::ArrayIndex),
                 cause: ErrorCause::MustBeFollowedByClosingSquareBracket,
                 col: before_index_token.col,
-                len: before_index_token.len,
+                len: before_index_token.kind.display_len()
             });
         };
 
@@ -920,7 +920,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::CannotIndexNonArrayType(var_type),
                     col: current_token.col,
-                    len: current_token.len,
+                    len: current_token.kind.display_len()
                 }),
             },
             Type::Array { typ, .. } => Ok(Expression::ArrayIndex {
@@ -945,14 +945,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         kind: ErrorKind::VariableNotPreviouslyDefined,
                         cause: ErrorCause::WasNotPreviouslyDefined,
                         col: current_token.col,
-                        len: current_token.len,
+                        len: current_token.kind.display_len()
                     }),
                 },
                 Some(_) => Err(RawError {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::CannotBeATypeName,
                     col: current_token.col,
-                    len: current_token.len,
+                    len: current_token.kind.display_len()
                 }),
             },
             TokenKind::Bracket(BracketKind::OpenRound) => 'parenthesis: {
@@ -963,7 +963,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::EmptyExpression,
                         col: expression_start_token.col,
-                        len: expression_start_token.len,
+                        len: expression_start_token.kind.display_len()
                     });
                 }
 
@@ -976,7 +976,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::UnclosedBracket(BracketKind::OpenRound),
                         col: current_token.col,
-                        len: current_token.len,
+                        len: current_token.kind.display_len()
                     });
                 };
 
@@ -991,7 +991,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         kind: ErrorKind::Invalid(Statement::Array),
                         cause: ErrorCause::ArrayOfZeroElements,
                         col: current_token.col,
-                        len: current_token.len,
+                        len: current_token.kind.display_len()
                     });
                 }
 
@@ -1010,7 +1010,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         kind: ErrorKind::Invalid(Statement::Array),
                         cause: ErrorCause::ArrayOfOneElement,
                         col: current_token.col,
-                        len: current_token.len,
+                        len: current_token.kind.display_len()
                     });
                 }
 
@@ -1021,7 +1021,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             kind: ErrorKind::Invalid(Statement::ArrayItem),
                             cause: ErrorCause::NestedArrayNotSupportedYet,
                             col: current_token.col,
-                            len: current_token.len,
+                            len: current_token.kind.display_len()
                         })
                     }
                 };
@@ -1044,7 +1044,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                                 actual: item_typ,
                             },
                             col: bracket_or_comma_token.col,
-                            len: bracket_or_comma_token.len,
+                            len: bracket_or_comma_token.kind.display_len()
                         });
                     }
 
@@ -1053,7 +1053,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             kind: ErrorKind::Invalid(Statement::ArrayItem),
                             cause: ErrorCause::NestedArrayNotSupportedYet,
                             col: current_token.col,
-                            len: current_token.len,
+                            len: current_token.kind.display_len()
                         });
                     };
 
@@ -1090,7 +1090,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                                 BaseType::Int,
                             )),
                             col: current_token.col,
-                            len: current_token.len,
+                            len: current_token.kind.display_len()
                         }),
                         Literal::Ascii(_) => Err(RawError {
                             kind: ErrorKind::Invalid(Statement::Len),
@@ -1098,7 +1098,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                                 BaseType::Ascii,
                             )),
                             col: current_token.col,
-                            len: current_token.len,
+                            len: current_token.kind.display_len()
                         }),
                         Literal::Bool(_) => Err(RawError {
                             kind: ErrorKind::Invalid(Statement::Len),
@@ -1106,7 +1106,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                                 BaseType::Bool,
                             )),
                             col: current_token.col,
-                            len: current_token.len,
+                            len: current_token.kind.display_len()
                         }),
                     },
                     Expression::Identifier { typ, .. } => match typ {
@@ -1121,7 +1121,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             kind: ErrorKind::Invalid(Statement::Len),
                             cause: ErrorCause::CannotTakeLenOfNumericValue(Type::Base(*base_type)),
                             col: current_token.col,
-                            len: current_token.len,
+                            len: current_token.kind.display_len()
                         }),
                     },
                     Expression::Array { .. } => Ok(Expression::Unary {
@@ -1139,38 +1139,38 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             kind: ErrorKind::Invalid(Statement::Len),
                             cause: ErrorCause::CannotTakeLenOfNumericValue(Type::Base(*typ)),
                             col: current_token.col,
-                            len: current_token.len,
+                            len: current_token.kind.display_len()
                         }),
                     },
                     Expression::Unary { op, .. } => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Len),
                         cause: ErrorCause::CannotTakeLenOfNumericValue(Type::Base(op.typ())),
                         col: current_token.col,
-                        len: current_token.len,
+                        len: current_token.kind.display_len()
                     }),
                     Expression::BooleanUnary { op, .. } => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Len),
                         cause: ErrorCause::CannotTakeLenOfNumericValue(Type::Base(op.typ())),
                         col: current_token.col,
-                        len: current_token.len,
+                        len: current_token.kind.display_len()
                     }),
                     Expression::Binary { op, .. } => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Len),
                         cause: ErrorCause::CannotTakeLenOfNumericValue(Type::Base(op.typ())),
                         col: current_token.col,
-                        len: current_token.len,
+                        len: current_token.kind.display_len()
                     }),
                     Expression::BooleanBinary { op, .. } => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Len),
                         cause: ErrorCause::CannotTakeLenOfNumericValue(Type::Base(op.typ())),
                         col: current_token.col,
-                        len: current_token.len,
+                        len: current_token.kind.display_len()
                     }),
                     Expression::Comparison { op, .. } => Err(RawError {
                         kind: ErrorKind::Invalid(Statement::Len),
                         cause: ErrorCause::CannotTakeLenOfNumericValue(Type::Base(op.typ())),
                         col: current_token.col,
-                        len: current_token.len,
+                        len: current_token.kind.display_len()
                     }),
                 };
             }
@@ -1205,7 +1205,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotTakeAbsValueOf(invalid_type),
                         col: current_token.col,
-                        len: current_token.len,
+                        len: current_token.kind.display_len()
                     }),
                 };
             }
@@ -1242,7 +1242,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotTakeAbsValueOf(invalid_type),
                         col: current_token.col,
-                        len: current_token.len,
+                        len: current_token.kind.display_len()
                     }),
                 };
             }
@@ -1277,7 +1277,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotTakeAbsValueOf(invalid_typ),
                         col: current_token.col,
-                        len: current_token.len,
+                        len: current_token.kind.display_len()
                     }),
                 };
             }
@@ -1314,7 +1314,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotNegate(invalid_typ),
                         col: current_token.col,
-                        len: current_token.len,
+                        len: current_token.kind.display_len()
                     }),
                 };
             }
@@ -1349,7 +1349,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotNegate(invalid_typ),
                         col: current_token.col,
-                        len: current_token.len,
+                        len: current_token.kind.display_len()
                     }),
                 };
             }
@@ -1384,7 +1384,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         kind: ErrorKind::Invalid(Statement::Expression),
                         cause: ErrorCause::CannotNegate(invalid_typ),
                         col: current_token.col,
-                        len: current_token.len,
+                        len: current_token.kind.display_len()
                     }),
                 };
             }
@@ -1427,7 +1427,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             kind: ErrorKind::Invalid(Statement::Expression),
                             cause: ErrorCause::CannotInvert(invalid_typ),
                             col: current_token.col,
-                            len: current_token.len,
+                            len: current_token.kind.display_len()
                         })
                     }
                 };
@@ -1443,7 +1443,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 kind: ErrorKind::Invalid(Statement::Expression),
                 cause: ErrorCause::KeywordInExpression,
                 col: current_token.col,
-                len: current_token.len,
+                len: current_token.kind.display_len()
             }),
             TokenKind::Bracket(_)
             | TokenKind::Op(_)
@@ -1458,7 +1458,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 kind: ErrorKind::Invalid(Statement::Expression),
                 cause: ErrorCause::ExpectedOperand,
                 col: current_token.col,
-                len: current_token.len,
+                len: current_token.kind.display_len()
             }),
         };
 
@@ -1740,7 +1740,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::CannotCompareOperands { lhs_typ, rhs_typ },
                     col: op_token.col,
-                    len: op_token.len,
+                    len: op_token.kind.display_len()
                 });
             }
 
@@ -1749,7 +1749,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::CannotChainComparisons,
                     col: op_token.col,
-                    len: op_token.len,
+                    len: op_token.kind.display_len()
                 });
             }
             is_chained = true;
@@ -1785,7 +1785,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::NonBooleanLeftOperand,
                     col: op_token.col,
-                    len: op_token.len,
+                    len: op_token.kind.display_len()
                 });
             };
 
@@ -1795,7 +1795,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::NonBooleanRightOperand,
                     col: op_token.col,
-                    len: op_token.len,
+                    len: op_token.kind.display_len()
                 });
             };
 
@@ -1821,7 +1821,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::NonBooleanLeftOperand,
                     col: op_token.col,
-                    len: op_token.len,
+                    len: op_token.kind.display_len()
                 });
             };
 
@@ -1831,7 +1831,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: ErrorKind::Invalid(Statement::Expression),
                     cause: ErrorCause::NonBooleanRightOperand,
                     col: op_token.col,
-                    len: op_token.len,
+                    len: op_token.kind.display_len()
                 });
             };
 
@@ -1921,7 +1921,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 kind: ErrorKind::Invalid(Statement::TypeAnnotation),
                 cause: ErrorCause::ExpectedTypeName,
                 col: colon_token.col,
-                len: colon_token.len,
+                len: colon_token.kind.display_len()
             });
         };
 
@@ -1932,7 +1932,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: ErrorKind::Invalid(Statement::TypeAnnotation),
                     cause: ErrorCause::WasNotPreviouslyDefined,
                     col: type_token.col,
-                    len: type_token.len,
+                    len: type_token.kind.display_len()
                 }),
             };
         };
@@ -1955,7 +1955,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         kind: ErrorKind::Invalid(Statement::Array),
                         cause: ErrorCause::ArrayOfZeroElements,
                         col: len_token.col,
-                        len: len_token.len,
+                        len: len_token.kind.display_len()
                     })
                 }
                 1 => {
@@ -1963,7 +1963,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         kind: ErrorKind::Invalid(Statement::Array),
                         cause: ErrorCause::ArrayOfOneElement,
                         col: len_token.col,
-                        len: len_token.len,
+                        len: len_token.kind.display_len()
                     })
                 }
                 _ => len as uint,
@@ -1994,7 +1994,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: ErrorKind::Invalid(Statement::TypeAnnotation),
                     cause: ErrorCause::MustBeFollowedByIntegerExpression,
                     col: open_square_bracket_token.col,
-                    len: open_square_bracket_token.len,
+                    len: open_square_bracket_token.kind.display_len()
                 })
             }
         };
@@ -2010,7 +2010,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 kind: ErrorKind::Invalid(Statement::TypeAnnotation),
                 cause: ErrorCause::MustBeFollowedByClosingSquareBracket,
                 col: open_square_bracket_token.col,
-                len: open_square_bracket_token.len,
+                len: open_square_bracket_token.kind.display_len()
             });
         };
 
@@ -2030,7 +2030,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         kind: ErrorKind::Invalid(Statement::VariableName),
                         cause: ErrorCause::CannotBeATypeName,
                         col: name_token.col,
-                        len: name_token.len,
+                        len: name_token.kind.display_len()
                     })
                 }
             },
@@ -2059,7 +2059,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: ErrorKind::Invalid(Statement::VariableDefinition),
                     cause: ErrorCause::ExpectedVariableName,
                     col: name_token.col,
-                    len: name_token.len,
+                    len: name_token.kind.display_len()
                 })
             }
         };
@@ -2100,7 +2100,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         kind: ErrorKind::Invalid(Statement::VariableDefinition),
                         cause: ErrorCause::ExpectedEqualsOrSemicolonAfterVariableName,
                         col: name_token.col,
-                        len: name_token.len,
+                        len: name_token.kind.display_len()
                     })
                 }
                 Some((annotation_token, _)) => {
@@ -2108,7 +2108,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         kind: ErrorKind::Invalid(Statement::VariableDefinition),
                         cause: ErrorCause::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
                         col: annotation_token.col,
-                        len: annotation_token.len,
+                        len: annotation_token.kind.display_len()
                     })
                 }
             },
@@ -2119,7 +2119,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 kind: ErrorKind::VariableRedefinition,
                 cause: ErrorCause::WasPreviouslyDefined,
                 col: name_token.col,
-                len: name_token.len,
+                len: name_token.kind.display_len()
             });
         };
 
@@ -2135,7 +2135,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                                 actual: value_typ,
                             },
                             col: token.col,
-                            len: token.len,
+                            len: token.kind.display_len()
                         });
                     }
                 }
@@ -2170,7 +2170,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: ErrorKind::Invalid(Statement::VariableDefinition),
                     cause: ErrorCause::ExpectedTypeAnnotationOrValue,
                     col: name_token.col,
-                    len: name_token.len,
+                    len: name_token.kind.display_len()
                 }),
             },
         };
@@ -2188,7 +2188,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 kind: ErrorKind::Invalid(Statement::VariableAssignment),
                 cause: ErrorCause::CannotBeATypeName,
                 col: name_token.col,
-                len: name_token.len,
+                len: name_token.kind.display_len()
             });
         }
 
@@ -2204,7 +2204,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 kind: ErrorKind::Invalid(Statement::VariableAssignment),
                 cause: ErrorCause::WasNotPreviouslyDefined,
                 col: name_token.col,
-                len: name_token.len,
+                len: name_token.kind.display_len()
             });
         };
 
@@ -2213,7 +2213,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 kind: ErrorKind::Invalid(Statement::VariableAssignment),
                 cause: ErrorCause::CannotMutateImmutableVariable,
                 col: name_token.col,
-                len: name_token.len,
+                len: name_token.kind.display_len()
             });
         };
 
@@ -2306,7 +2306,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     actual: rhs_type,
                 },
                 col: name_token.col,
-                len: name_token.len,
+                len: name_token.kind.display_len()
             }),
             AssignmentOp::Pow
             | AssignmentOp::WrappingPow
@@ -2352,7 +2352,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         actual: rhs_type,
                     },
                     col: name_token.col,
-                    len: name_token.len,
+                    len: name_token.kind.display_len()
                 }),
             },
         };
@@ -2372,7 +2372,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             kind: ErrorKind::Invalid(Statement::Expression),
             cause: ErrorCause::TemporaryArrayNotSupportedYet,
             col: start_of_expression_token.col,
-            len: start_of_expression_token.len,
+            len: start_of_expression_token.kind.display_len()
         });
     }
 }
@@ -2391,7 +2391,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: ErrorKind::Invalid(Statement::If),
                     cause: ErrorCause::MustBeFollowedByABooleanExpression,
                     col: if_token.col,
-                    len: if_token.len,
+                    len: if_token.kind.display_len()
                 });
             };
 
@@ -2438,7 +2438,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         kind: ErrorKind::Invalid(Statement::If),
                         cause: ErrorCause::MustBeFollowedByDoOrBlock,
                         col: before_curly_bracket_token.col,
-                        len: before_curly_bracket_token.len,
+                        len: before_curly_bracket_token.kind.display_len()
                     });
                 }
             };
@@ -2514,7 +2514,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         kind: ErrorKind::Invalid(Statement::If),
                         cause: ErrorCause::MustBeFollowedByDoOrBlockOrIfStatement,
                         col: else_token.col,
-                        len: else_token.len,
+                        len: else_token.kind.display_len()
                     }),
                 };
 
@@ -2538,7 +2538,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         kind: ErrorKind::Invalid(Statement::Loop),
                         cause: ErrorCause::MustBeFollowedByLoop,
                         col: do_token.col,
-                        len: do_token.len,
+                        len: do_token.kind.display_len()
                     });
                 };
 
@@ -2574,7 +2574,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 kind: ErrorKind::Invalid(Statement::Loop),
                 cause: ErrorCause::MustBeFollowedByABooleanExpression,
                 col: loop_token.col,
-                len: loop_token.len,
+                len: loop_token.kind.display_len()
             });
         };
 
@@ -2619,7 +2619,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: ErrorKind::Invalid(Statement::Loop),
                     cause: ErrorCause::MustBeFollowedByDoOrBlock,
                     col: before_curly_bracket_token.col,
-                    len: before_curly_bracket_token.len,
+                    len: before_curly_bracket_token.kind.display_len()
                 })
             }
         };

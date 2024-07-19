@@ -1,4 +1,4 @@
-use super::types::BaseType;
+use super::{tokenizer::DisplayLen, types::BaseType};
 use std::fmt::Display;
 
 /*
@@ -173,6 +173,93 @@ impl Display for Op {
             Self::GreaterOrEquals   => write!(f, ">="),
             Self::Less              => write!(f, "<"),
             Self::LessOrEquals      => write!(f, "<="),
+        };
+    }
+}
+
+impl DisplayLen for Op {
+    #[inline(always)]
+    fn display_len(&self) -> usize {
+        return match self {
+            Self::Len => 3,
+            Self::Equals => 1,
+            Self::Not => 1,
+
+            Self::Pow => 2,
+            Self::WrappingPow => 3,
+            Self::SaturatingPow => 3,
+            Self::PowEquals => 3,
+            Self::WrappingPowEquals => 4,
+            Self::SaturatingPowEquals => 4,
+
+            Self::Times => 1,
+            Self::WrappingTimes => 2,
+            Self::SaturatingTimes => 2,
+            Self::TimesEquals => 2,
+            Self::WrappingTimesEquals => 3,
+            Self::SaturatingTimesEquals => 3,
+
+            Self::Divide => 1,
+            Self::WrappingDivide => 2,
+            Self::SaturatingDivide => 2,
+            Self::DivideEquals => 2,
+            Self::WrappingDivideEquals => 3,
+            Self::SaturatingDivideEquals => 3,
+
+            Self::Remainder => 1,
+            Self::RemainderEquals => 2,
+
+            Self::Plus => 1,
+            Self::WrappingPlus => 2,
+            Self::SaturatingPlus => 2,
+            Self::PlusEquals => 2,
+            Self::WrappingPlusEquals => 3,
+            Self::SaturatingPlusEquals => 3,
+
+            Self::Minus => 1,
+            Self::WrappingMinus => 2,
+            Self::SaturatingMinus => 2,
+            Self::MinusEquals => 2,
+            Self::WrappingMinusEquals => 3,
+            Self::SaturatingMinusEquals => 3,
+
+            Self::And => 2,
+            Self::AndEquals => 3,
+
+            Self::BitAnd => 1,
+            Self::BitAndEquals => 2,
+
+            Self::Or => 2,
+            Self::OrEquals => 3,
+
+            Self::BitOr => 1,
+            Self::BitOrEquals => 2,
+
+            Self::BitXor => 1,
+            Self::BitXorEquals => 2,
+
+            Self::LeftShift => 2,
+            Self::WrappingLeftShift => 3,
+            Self::SaturatingLeftShift => 3,
+            Self::LeftShiftEquals => 3,
+            Self::WrappingLeftShiftEquals => 4,
+            Self::SaturatingLeftShiftEquals => 4,
+
+            Self::RightShift => 2,
+            Self::RightShiftEquals => 3,
+
+            Self::LeftRotate => 3,
+            Self::LeftRotateEquals => 4,
+            Self::RightRotate => 3,
+            Self::RightRotateEquals => 4,
+
+            Self::EqualsEquals => 2,
+            Self::NotEquals => 2,
+            Self::Greater => 1,
+            Self::GreaterOrEquals => 2,
+            Self::Less => 1,
+            Self::LessOrEquals => 2,
+            Self::Compare => 3,
         };
     }
 }

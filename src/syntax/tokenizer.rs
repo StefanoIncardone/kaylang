@@ -5,6 +5,10 @@ use std::{
     num::{IntErrorKind, ParseIntError},
 };
 
+pub(super) trait DisplayLen {
+    fn display_len(&self) -> usize;
+}
+
 /// kay's equivalent to pointer sized signed integer
 #[allow(non_camel_case_types)]
 pub(crate) type int = isize;
@@ -50,6 +54,32 @@ impl Display for Literal {
     }
 }
 
+impl DisplayLen for Literal {
+    #[inline(always)]
+    fn display_len(&self) -> usize {
+        #[inline(always)]
+        fn ascii_escaped_len(ascii_char: ascii) -> usize {
+            // Note: ascii type guarantees the value to be valid utf8
+            let utf8_char = ascii_char as utf8;
+            return utf8_char.escape_debug().len();
+        }
+
+        return match self {
+            Self::Int(integer) => integer.to_string().len(),
+            Self::Ascii(ascii_char) => ascii_escaped_len(*ascii_char) + 2, // + 2 to account for the quotes
+            Self::Bool(true) => 4,
+            Self::Bool(false) => 5,
+            Self::Str(text) => {
+                let mut len = 2; // starting at 2 to account for the quotes
+                for ascii_char in text {
+                    len += ascii_escaped_len(*ascii_char);
+                }
+                return len;
+            }
+        };
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Mutability {
     Let,
@@ -61,6 +91,15 @@ impl Display for Mutability {
         return match self {
             Self::Let => write!(f, "let"),
             Self::Var => write!(f, "var"),
+        };
+    }
+}
+
+impl DisplayLen for Mutability {
+    #[inline(always)]
+    fn display_len(&self) -> usize {
+        return match self {
+            Self::Let | Self::Var => 3,
         };
     }
 }
@@ -84,6 +123,20 @@ impl Display for BracketKind {
             Self::CloseSquare => write!(f, "]"),
             Self::OpenCurly => write!(f, "{{"),
             Self::CloseCurly => write!(f, "}}"),
+        };
+    }
+}
+
+impl DisplayLen for BracketKind {
+    #[inline(always)]
+    fn display_len(&self) -> usize {
+        return match self {
+            Self::OpenRound
+            | Self::CloseRound
+            | Self::OpenSquare
+            | Self::CloseSquare
+            | Self::OpenCurly
+            | Self::CloseCurly => 1,
         };
     }
 }
@@ -157,11 +210,43 @@ impl Display for TokenKind<'_> {
     }
 }
 
+impl DisplayLen for TokenKind<'_> {
+    #[inline(always)]
+    fn display_len(&self) -> usize {
+        return match self {
+            Self::Comment(text) => text.chars().count(),
+            Self::Unexpected(text) => text.chars().count(),
+
+            Self::Bracket(bracket) => bracket.display_len(),
+            Self::Colon => 1,
+            Self::SemiColon => 1,
+            Self::Comma => 1,
+            Self::Op(op) => op.display_len(),
+
+            Self::Literal(typ) => typ.display_len(),
+            Self::True => 4,
+            Self::False => 5,
+            Self::Identifier(name) => name.chars().count(),
+            Self::Definition(kind) => kind.display_len(),
+
+            Self::Print => 5,
+            Self::PrintLn => 7,
+            Self::Eprint => 6,
+            Self::EprintLn => 8,
+            Self::Do => 2,
+            Self::If => 2,
+            Self::Else => 4,
+            Self::Loop => 4,
+            Self::Break => 5,
+            Self::Continue => 8,
+        };
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Token<'src> {
     pub(crate) kind: TokenKind<'src>,
     pub(crate) col: usize,
-    pub(crate) len: usize,
 }
 
 #[derive(Debug)]
@@ -233,10 +318,7 @@ impl<'src> Tokenizer<'src> {
                 }
             };
 
-            let token =
-                Token { kind, col: this.token_start_col, len: this.col - this.token_start_col };
-
-            this.tokens.push(token);
+            this.tokens.push(Token { kind, col: this.token_start_col });
         }
 
         for bracket in &this.brackets {
@@ -271,7 +353,7 @@ impl<'src> Tokenizer<'src> {
         };
 
         return match next {
-            ascii_ch @ ..=b'\x7F' => {
+            ascii_ch @ 0..=b'\x7F' => {
                 self.col += 1;
                 Ok(Some(*ascii_ch))
             }
@@ -297,7 +379,7 @@ impl<'src> Tokenizer<'src> {
     fn next_utf8_char(&mut self) -> Option<utf8> {
         let next = self.src.code.as_bytes().get(self.col)?;
         return match next {
-            ascii_ch @ ..=b'\x7F' => {
+            ascii_ch @ 0..=b'\x7F' => {
                 self.col += 1;
                 Some(*ascii_ch as utf8)
             }
@@ -320,7 +402,7 @@ impl<'src> Tokenizer<'src> {
         };
 
         return match next {
-            ascii_ch @ ..=b'\x7F' => Ok(Some(ascii_ch)),
+            ascii_ch @ 0..=b'\x7F' => Ok(Some(ascii_ch)),
             _utf8_ch => {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
 
@@ -341,7 +423,7 @@ impl<'src> Tokenizer<'src> {
     fn peek_next_utf8_char(&mut self) -> Option<utf8> {
         let next = self.src.code.as_bytes().get(self.col)?;
         return match next {
-            ascii_ch @ ..=b'\x7F' => Some(*ascii_ch as utf8),
+            ascii_ch @ 0..=b'\x7F' => Some(*ascii_ch as utf8),
             _utf8_ch => {
                 let rest_of_line = &self.src.code[self.col..self.line.end];
 
@@ -362,7 +444,7 @@ impl<'src> Tokenizer<'src> {
                 col: self.token_start_col,
                 len: self.token_len(),
             }),
-            Some(ascii_ch @ ..=b'\x7F') => {
+            Some(ascii_ch @ 0..=b'\x7F') => {
                 self.col += 1;
                 Ok(*ascii_ch)
             }
@@ -393,7 +475,7 @@ impl<'src> Tokenizer<'src> {
                 col: self.token_start_col,
                 len: self.token_len(),
             }),
-            Some(ascii_ch @ ..=b'\x7F') => {
+            Some(ascii_ch @ 0..=b'\x7F') => {
                 self.col += 1;
                 Ok(*ascii_ch)
             }
