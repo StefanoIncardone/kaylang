@@ -2,7 +2,7 @@ pub mod ast;
 pub mod tokenizer;
 
 use crate::{
-    src_file::{Position, SrcFile},
+    src_file::SrcFile,
     Bg, Colored, Fg, Flag, AT, BAR, ERROR,
 };
 use std::{
@@ -39,7 +39,7 @@ pub struct Error<'src, K: ErrorKind, C: ErrorCause> {
 
 impl<'src, K: ErrorKind, C: ErrorCause> Error<'src, K, C> {
     pub(crate) fn from_raw(src: &'src SrcFile, raw: &RawError<K, C>) -> Self {
-        let (position, line_text) = Position::new(src, raw.col);
+        let (position, line_text) = src.position(raw.col);
         return Self {
             path: &src.path,
             line: position.line,

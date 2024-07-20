@@ -14,39 +14,9 @@ pub(crate) struct Line {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Position {
-    pub line: usize,
-    pub col: usize,
-}
-
-impl<'src> Position {
-    pub(crate) fn new(src: &'src SrcFile, col: usize) -> (Self, &'src str) {
-        let mut left = 0;
-        let mut right = src.lines.len() - 1;
-        while left < right {
-            #[allow(clippy::integer_division)] // it's intended to lose precision
-            let middle = left + (right - left) / 2;
-            if col < src.lines[middle].end {
-                right = middle;
-            } else {
-                left = middle + 1;
-            }
-        }
-
-        // converting from column offset to display offset (useful for utf8 characters)
-        let line = &src.lines[left];
-        let line_text = &src.code[line.start..line.end];
-        let target_col = col - line.start;
-        let mut display_col = 0;
-        for (index, _) in line_text.char_indices() {
-            display_col += 1;
-            if index == target_col {
-                break;
-            }
-        }
-
-        return (Self { line: left + 1, col: display_col }, line_text);
-    }
+pub(crate) struct Position {
+    pub(crate) line: usize,
+    pub(crate) col: usize,
 }
 
 #[derive(Debug)]
@@ -102,6 +72,34 @@ impl SrcFile {
         }
 
         return Ok(Self { path: path_buf, code, lines });
+    }
+
+    pub(crate) fn position(&self, col: usize) -> (Position, &str) {
+        let mut left = 0;
+        let mut right = self.lines.len() - 1;
+        while left < right {
+            #[allow(clippy::integer_division)] // it's intended to lose precision
+            let middle = left + (right - left) / 2;
+            if col < self.lines[middle].end {
+                right = middle;
+            } else {
+                left = middle + 1;
+            }
+        }
+
+        // converting from column offset to display offset (useful for utf8 characters)
+        let line = &self.lines[left];
+        let line_text = &self.code[line.start..line.end];
+        let target_col = col - line.start;
+        let mut display_col = 0;
+        for (index, _) in line_text.char_indices() {
+            display_col += 1;
+            if index == target_col {
+                break;
+            }
+        }
+
+        return (Position { line: left + 1, col: display_col }, line_text);
     }
 }
 

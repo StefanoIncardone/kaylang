@@ -959,7 +959,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 Ok(Some(Node::Semicolon))
             }
             TokenKind::Bracket(BracketKind::OpenCurly) => {
-                let (position, _) = Position::new(self.src, current_token.col);
+                let (position, _) = self.src.position(current_token.col);
                 unreachable!(
                     "blocks not allowed in single statements: {path}:{line}:{col}",
                     path = self.src.path.display(),
@@ -979,7 +979,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             TokenKind::Bracket(
                 BracketKind::CloseCurly | BracketKind::CloseSquare | BracketKind::CloseRound,
             ) => {
-                let (position, _) = Position::new(self.src, current_token.col);
+                let (position, _) = self.src.position(current_token.col);
                 unreachable!(
                     "should have been cought during tokenization: {path}:{line}:{col}",
                     path = self.src.path.display(),
@@ -1330,13 +1330,13 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 BaseType::Int => Ok(Expression::ArrayIndex {
                     typ: BaseType::Int,
                     var_name,
-                    bracket_position: Position::new(self.src, open_bracket_token.col).0,
+                    bracket_position: self.src.position(open_bracket_token.col).0,
                     index: Box::new(index),
                 }),
                 BaseType::Str => Ok(Expression::ArrayIndex {
                     typ: BaseType::Ascii,
                     var_name,
-                    bracket_position: Position::new(self.src, open_bracket_token.col).0,
+                    bracket_position: self.src.position(open_bracket_token.col).0,
                     index: Box::new(index),
                 }),
                 BaseType::Ascii | BaseType::Bool => Err(RawError {
@@ -1349,7 +1349,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             Type::Array { typ, .. } => Ok(Expression::ArrayIndex {
                 typ,
                 var_name,
-                bracket_position: Position::new(self.src, open_bracket_token.col).0,
+                bracket_position: self.src.position(open_bracket_token.col).0,
                 index: Box::new(index),
             }),
         };
@@ -1503,7 +1503,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 return match &operand {
                     Expression::Literal(literal) => match literal {
                         Literal::Str(_) => Ok(Expression::Unary {
-                            op_position: Position::new(self.src, current_token.col).0,
+                            op_position: self.src.position(current_token.col).0,
                             op: UnaryOp::Len,
                             operand: Box::new(operand),
                         }),
@@ -1534,7 +1534,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     },
                     Expression::Identifier { typ, .. } => match typ {
                         Type::Base(BaseType::Str) | Type::Array { .. } => Ok(Expression::Unary {
-                            op_position: Position::new(self.src, current_token.col).0,
+                            op_position: self.src.position(current_token.col).0,
                             op: UnaryOp::Len,
                             operand: Box::new(operand),
                         }),
@@ -1548,13 +1548,13 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         }),
                     },
                     Expression::Array { .. } => Ok(Expression::Unary {
-                        op_position: Position::new(self.src, current_token.col).0,
+                        op_position: self.src.position(current_token.col).0,
                         op: UnaryOp::Len,
                         operand: Box::new(operand),
                     }),
                     Expression::ArrayIndex { typ, .. } => match typ {
                         BaseType::Str => Ok(Expression::Unary {
-                            op_position: Position::new(self.src, current_token.col).0,
+                            op_position: self.src.position(current_token.col).0,
                             op: UnaryOp::Len,
                             operand: Box::new(operand),
                         }),
@@ -1613,7 +1613,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     Type::Base(BaseType::Int) => {
                         if should_be_made_positive {
                             Ok(Expression::Unary {
-                                op_position: Position::new(self.src, current_token.col).0,
+                                op_position: self.src.position(current_token.col).0,
                                 op: UnaryOp::Plus,
                                 operand: Box::new(operand),
                             })
@@ -1650,7 +1650,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     Type::Base(BaseType::Int) => {
                         if should_be_made_positive {
                             Ok(Expression::Unary {
-                                op_position: Position::new(self.src, current_token.col).0,
+                                op_position: self.src.position(current_token.col).0,
                                 op: UnaryOp::WrappingPlus,
                                 operand: Box::new(operand),
                             })
@@ -1687,7 +1687,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     Type::Base(BaseType::Int) => {
                         if should_be_made_positive {
                             Ok(Expression::Unary {
-                                op_position: Position::new(self.src, current_token.col).0,
+                                op_position: self.src.position(current_token.col).0,
                                 op: UnaryOp::SaturatingPlus,
                                 operand: Box::new(operand),
                             })
@@ -1724,7 +1724,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     Type::Base(BaseType::Int | BaseType::Ascii) => {
                         if should_be_negated {
                             Ok(Expression::Unary {
-                                op_position: Position::new(self.src, current_token.col).0,
+                                op_position: self.src.position(current_token.col).0,
                                 op: UnaryOp::Minus,
                                 operand: Box::new(operand),
                             })
@@ -1759,7 +1759,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     Type::Base(BaseType::Int | BaseType::Ascii) => {
                         if should_be_negated {
                             Ok(Expression::Unary {
-                                op_position: Position::new(self.src, current_token.col).0,
+                                op_position: self.src.position(current_token.col).0,
                                 op: UnaryOp::WrappingMinus,
                                 operand: Box::new(operand),
                             })
@@ -1794,7 +1794,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     Type::Base(BaseType::Int | BaseType::Ascii) => {
                         if should_be_negated {
                             Ok(Expression::Unary {
-                                op_position: Position::new(self.src, current_token.col).0,
+                                op_position: self.src.position(current_token.col).0,
                                 op: UnaryOp::SaturatingMinus,
                                 operand: Box::new(operand),
                             })
@@ -1827,7 +1827,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     Type::Base(BaseType::Int | BaseType::Ascii) => {
                         if should_be_inverted {
                             Ok(Expression::Unary {
-                                op_position: Position::new(self.src, current_token.col).0,
+                                op_position: self.src.position(current_token.col).0,
                                 op: UnaryOp::Not,
                                 operand: Box::new(operand),
                             })
@@ -1911,7 +1911,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: Position::new(self.src, op_token.col).0,
+                op_position: self.src.position(op_token.col).0,
                 op: binary_op,
                 rhs: Box::new(rhs),
             };
@@ -1954,7 +1954,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: Position::new(self.src, op_token.col).0,
+                op_position: self.src.position(op_token.col).0,
                 op: binary_op,
                 rhs: Box::new(rhs),
             };
@@ -1993,7 +1993,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: Position::new(self.src, op_token.col).0,
+                op_position: self.src.position(op_token.col).0,
                 op: binary_op,
                 rhs: Box::new(rhs),
             };
@@ -2036,7 +2036,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: Position::new(self.src, op_token.col).0,
+                op_position: self.src.position(op_token.col).0,
                 op: binary_op,
                 rhs: Box::new(rhs),
             };
@@ -2062,7 +2062,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: Position::new(self.src, op_token.col).0,
+                op_position: self.src.position(op_token.col).0,
                 op: binary_op,
                 rhs: Box::new(rhs),
             };
@@ -2088,7 +2088,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: Position::new(self.src, op_token.col).0,
+                op_position: self.src.position(op_token.col).0,
                 op: binary_op,
                 rhs: Box::new(rhs),
             };
@@ -2114,7 +2114,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
             lhs = Expression::Binary {
                 lhs: Box::new(lhs),
-                op_position: Position::new(self.src, op_token.col).0,
+                op_position: self.src.position(op_token.col).0,
                 op: binary_op,
                 rhs: Box::new(rhs),
             };
@@ -2719,7 +2719,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 scope_index,
                 var_index,
                 op: assignment_op,
-                op_position: Position::new(self.src, op_token.col).0,
+                op_position: self.src.position(op_token.col).0,
                 new_value: rhs,
             }),
             AssignmentOp::Equals => Err(RawError {
@@ -2765,7 +2765,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     scope_index,
                     var_index,
                     op: assignment_op,
-                    op_position: Position::new(self.src, op_token.col).0,
+                    op_position: self.src.position(op_token.col).0,
                     new_value: rhs,
                 }),
                 _ => Err(RawError {
