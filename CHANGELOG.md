@@ -53,6 +53,7 @@ Changes to error messages, help message and alike would **not** be considered br
 <!-- -->
 - `help` and `version` commands
 - usage examples
+- getters for `SrcFile` field: `SrcFile::path()`, `SrcFile::code()` and `SrcFile::lines()`
 
 ### Changed
 

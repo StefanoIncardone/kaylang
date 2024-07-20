@@ -5,15 +5,15 @@ use std::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Line {
+pub struct Line {
     /// inclusive
-    pub(crate) start: usize,
+    pub start: usize,
 
     /// not inclusive, points to the last non-newline character
-    pub(crate) end: usize,
+    pub end: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Position {
     pub(crate) line: usize,
     pub(crate) col: usize,
@@ -72,6 +72,24 @@ impl SrcFile {
         }
 
         return Ok(Self { path: path_buf, code, lines });
+    }
+
+    #[must_use]
+    #[inline(always)]
+    pub fn path(&self) -> &Path {
+        return &self.path;
+    }
+
+    #[must_use]
+    #[inline(always)]
+    pub fn code(&self) -> &str {
+        return &self.code;
+    }
+
+    #[must_use]
+    #[inline(always)]
+    pub fn lines(&self) -> &[Line] {
+        return &self.lines;
     }
 
     pub(crate) fn position(&self, col: usize) -> (Position, &str) {
