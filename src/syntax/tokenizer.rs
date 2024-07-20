@@ -590,7 +590,7 @@ impl<'src> Tokenizer<'src> {
                 kind: ErrorKind::UnclosedBracket(bracket.kind),
                 cause: ErrorCause::UnclosedBracket,
                 col: bracket.col,
-                len: 1,
+                pointers_count: 1,
             });
         }
 
@@ -633,7 +633,7 @@ impl<'src> Tokenizer<'src> {
                     kind: ErrorKind::NonAsciiCharacter(utf8_ch),
                     cause: ErrorCause::NonAsciiCharacter,
                     col: utf8_ch_col,
-                    len: 1,
+                    pointers_count: 1,
                 })
             }
         };
@@ -677,7 +677,7 @@ impl<'src> Tokenizer<'src> {
                     kind: ErrorKind::NonAsciiCharacter(utf8_ch),
                     cause: ErrorCause::NonAsciiCharacter,
                     col: self.col,
-                    len: 1,
+                    pointers_count: 1,
                 })
             }
         };
@@ -705,7 +705,7 @@ impl<'src> Tokenizer<'src> {
                 kind: ErrorKind::InvalidCharacterLiteral,
                 cause: ErrorCause::MissingClosingSingleQuote,
                 col: self.token_start_col,
-                len: self.token_len(),
+                pointers_count: self.token_len(),
             }),
             Some(ascii_ch @ 0..=b'\x7F') => {
                 self.col += 1;
@@ -724,7 +724,7 @@ impl<'src> Tokenizer<'src> {
                     kind: ErrorKind::NonAsciiCharacter(utf8_ch),
                     cause: ErrorCause::NonAsciiCharacter,
                     col: utf8_ch_col,
-                    len: 1,
+                    pointers_count: 1,
                 })
             }
         };
@@ -736,7 +736,7 @@ impl<'src> Tokenizer<'src> {
                 kind: ErrorKind::InvalidStringLiteral,
                 cause: ErrorCause::MissingClosingDoubleQuote,
                 col: self.token_start_col,
-                len: self.token_len(),
+                pointers_count: self.token_len(),
             }),
             Some(ascii_ch @ 0..=b'\x7F') => {
                 self.col += 1;
@@ -755,7 +755,7 @@ impl<'src> Tokenizer<'src> {
                     kind: ErrorKind::NonAsciiCharacter(utf8_ch),
                     cause: ErrorCause::NonAsciiCharacter,
                     col: utf8_ch_col,
-                    len: 1,
+                    pointers_count: 1,
                 })
             }
         };
@@ -780,7 +780,7 @@ impl<'src> Tokenizer<'src> {
                 kind: ErrorKind::InvalidIdentifier,
                 cause: ErrorCause::ContainsNonAsciiCharacters,
                 col: self.token_start_col,
-                len: self.token_len(),
+                pointers_count: self.token_len(),
             });
         }
 
@@ -825,7 +825,7 @@ impl<'src> Tokenizer<'src> {
                                     kind: ErrorKind::InvalidStringLiteral,
                                     cause: ErrorCause::ControlCharacterNotAllowed(control as utf8),
                                     col: self.col - 1,
-                                    len: 1,
+                                    pointers_count: 1,
                                 });
                                 control
                             }
@@ -888,7 +888,7 @@ impl<'src> Tokenizer<'src> {
                             kind: ErrorKind::InvalidNumberLiteral,
                             cause,
                             col: self.token_start_col,
-                            len: self.token_len(),
+                            pointers_count: self.token_len(),
                         })
                     }
                 }
@@ -932,7 +932,7 @@ impl<'src> Tokenizer<'src> {
                                         unrecognized as utf8,
                                     ),
                                     col: self.col - 2,
-                                    len: 2,
+                                    pointers_count: 2,
                                 });
                                 string.push(b'\\');
                                 unrecognized
@@ -943,7 +943,7 @@ impl<'src> Tokenizer<'src> {
                                 kind: ErrorKind::InvalidStringLiteral,
                                 cause: ErrorCause::ControlCharacterNotAllowed(control as utf8),
                                 col: self.col - 1,
-                                len: 1,
+                                pointers_count: 1,
                             });
                             control
                         }
@@ -978,20 +978,20 @@ impl<'src> Tokenizer<'src> {
                             kind: ErrorKind::InvalidCharacterLiteral,
                             cause: ErrorCause::UnrecognizedEscapeCharacter(unrecognized as utf8),
                             col: self.col - 2,
-                            len: 2,
+                            pointers_count: 2,
                         }),
                     },
                     control @ (b'\x00'..=b'\x1F' | b'\x7F') => Err(RawError {
                         kind: ErrorKind::InvalidCharacterLiteral,
                         cause: ErrorCause::ControlCharacterNotAllowed(control as utf8),
                         col: self.col - 1,
-                        len: 1,
+                        pointers_count: 1,
                     }),
                     b'\'' => Err(RawError {
                         kind: ErrorKind::InvalidCharacterLiteral,
                         cause: ErrorCause::MustNotBeEmpty,
                         col: self.token_start_col,
-                        len: 2,
+                        pointers_count: 2,
                     }),
                     ch => Ok(ch),
                 };
@@ -1001,7 +1001,7 @@ impl<'src> Tokenizer<'src> {
                         kind: ErrorKind::InvalidCharacterLiteral,
                         cause: ErrorCause::MissingClosingSingleQuote,
                         col: self.token_start_col,
-                        len: self.token_len(),
+                        pointers_count: self.token_len(),
                     });
                 };
 
@@ -1026,14 +1026,14 @@ impl<'src> Tokenizer<'src> {
                             actual,
                         },
                         col: self.token_start_col,
-                        len: 1,
+                        pointers_count: 1,
                     }),
                 },
                 None => Err(RawError {
                     kind: ErrorKind::UnopenedBracket(BracketKind::CloseRound),
                     cause: ErrorCause::UnopenedBracket,
                     col: self.token_start_col,
-                    len: 1,
+                    pointers_count: 1,
                 }),
             },
             b'[' => {
@@ -1054,14 +1054,14 @@ impl<'src> Tokenizer<'src> {
                             actual,
                         },
                         col: self.token_start_col,
-                        len: 1,
+                        pointers_count: 1,
                     }),
                 },
                 None => Err(RawError {
                     kind: ErrorKind::UnopenedBracket(BracketKind::CloseSquare),
                     cause: ErrorCause::UnopenedBracket,
                     col: self.token_start_col,
-                    len: 1,
+                    pointers_count: 1,
                 }),
             },
             b'{' => {
@@ -1082,14 +1082,14 @@ impl<'src> Tokenizer<'src> {
                             actual,
                         },
                         col: self.token_start_col,
-                        len: 1,
+                        pointers_count: 1,
                     }),
                 },
                 None => Err(RawError {
                     kind: ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
                     cause: ErrorCause::UnopenedBracket,
                     col: self.token_start_col,
-                    len: 1,
+                    pointers_count: 1,
                 }),
             },
             b':' => Ok(TokenKind::Colon),
@@ -1379,7 +1379,7 @@ impl<'src> Tokenizer<'src> {
                 kind: ErrorKind::UnrecognizedCharacter(unrecognized as utf8),
                 cause: ErrorCause::UnrecognizedCharacter,
                 col: self.token_start_col,
-                len: 1,
+                pointers_count: 1,
             }),
         };
     }

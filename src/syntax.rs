@@ -23,15 +23,16 @@ pub struct RawError<K: ErrorKind, C: ErrorCause> {
     pub cause: C,
     /// absolute source code byte position
     pub col: usize,
-    pub len: usize,
+    pub pointers_count: usize,
 }
 
 #[derive(Debug, Clone)]
 pub struct Error<'src, K: ErrorKind, C: ErrorCause> {
     pub path: &'src Path,
-    pub position: Position,
-    pub len: usize,
+    pub line: usize,
+    pub col: usize,
     pub line_text: &'src str,
+    pub pointers_count: usize,
     pub kind: K,
     pub cause: C,
 }
@@ -41,9 +42,10 @@ impl<'src, K: ErrorKind, C: ErrorCause> Error<'src, K, C> {
         let (position, line_text) = Position::new(src, raw.col);
         return Self {
             path: &src.path,
-            position,
-            len: raw.len,
+            line: position.line,
+            col: position.col,
             line_text,
+            pointers_count: raw.pointers_count,
             kind: raw.kind.clone(),
             cause: raw.cause.clone(),
         };
@@ -59,7 +61,7 @@ impl<K: ErrorKind, C: ErrorCause> Display for Error<'_, K, C> {
             flags: Flag::Bold,
         };
         let line_number = Colored {
-            text: self.position.line.to_string(),
+            text: self.line.to_string(),
             fg: Fg::LightBlue,
             bg: Bg::Default,
             flags: Flag::Bold,
@@ -67,9 +69,9 @@ impl<K: ErrorKind, C: ErrorCause> Display for Error<'_, K, C> {
         let line_number_padding = line_number.text.len() + 1 + BAR.text.len();
         let pointers_and_cause = Colored {
             text: format!(
-                "{spaces:^>len$} {cause}",
+                "{spaces:^>pointers_count$} {cause}",
                 spaces = "",
-                len = self.len,
+                pointers_count = self.pointers_count,
                 cause = self.cause
             ),
             fg: Fg::LightRed,
@@ -86,8 +88,8 @@ impl<K: ErrorKind, C: ErrorCause> Display for Error<'_, K, C> {
             \n{BAR:>line_number_padding$}{spaces:>col$}{pointers_and_cause}",
             at_padding = line_number_padding - 1,
             path = self.path.display(),
-            line = self.position.line,
-            col = self.position.col,
+            line = self.line,
+            col = self.col,
             line_text = self.line_text,
             spaces = "",
         );
