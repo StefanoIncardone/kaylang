@@ -782,7 +782,10 @@ impl Display for Error {
                 }
 
                 let erroneous_arg = &args[*erroneous_arg_index];
-                pointers_count = erroneous_arg.len();
+                pointers_count = match erroneous_arg.len() {
+                    0 => 1, // empty arguments will at least get one pointer
+                    other => other
+                };
 
                 match kind {
                     ErrorKind::MissingColorMode(flag) => {

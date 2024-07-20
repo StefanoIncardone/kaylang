@@ -1,7 +1,6 @@
 use crate::{src_file::SrcFile, CAUSE, ERROR};
 use std::{
-    fmt::Display,
-    io,
+    fmt::{Display, Write as _},
     path::{Path, PathBuf},
     process::Command,
 };
@@ -14,36 +13,44 @@ pub struct Artifacts {
 }
 
 impl Artifacts {
-    pub fn new(src: &SrcFile, out_path: Option<&Path>) -> Result<Self, Error> {
-        let mut asm_path: PathBuf = src.path.with_extension("asm");
-        let mut obj_path: PathBuf = src.path.with_extension("o");
-        let mut exe_path: PathBuf = src.path.with_extension("");
+    #[must_use]
+    pub fn new(src: &SrcFile) -> Self {
+        let src_path_stem = match src.path.file_stem() {
+            Some(path_name) => PathBuf::from(path_name),
+            None => unreachable!("file stem should always be present"),
+        };
 
-        if let Some(out_path_buf) = out_path {
-            match std::fs::create_dir_all(out_path_buf) {
-                Ok(()) => {}
-                Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
-                Err(err) => {
-                    return Err(Error {
-                        kind: ErrorKind::CouldNotCreateOutputDirectory {
-                            path: out_path_buf.to_owned(),
-                        },
-                        cause: ErrorCause::IoError(err),
-                    });
-                }
-            }
+        return Self {
+            asm_path: src_path_stem.with_extension("asm"),
+            obj_path: src_path_stem.with_extension("o"),
+            exe_path: PathBuf::from(".").join(src_path_stem),
+        };
+    }
 
-            let asm_file_name = unsafe { asm_path.file_name().unwrap_unchecked() };
-            let obj_file_name = unsafe { obj_path.file_name().unwrap_unchecked() };
-            let exe_file_name = unsafe { exe_path.file_name().unwrap_unchecked() };
-
-            asm_path = out_path_buf.join(asm_file_name);
-            obj_path = out_path_buf.join(obj_file_name);
-            exe_path = out_path_buf.join(exe_file_name);
+    pub fn new_with_out_path(src: &SrcFile, out_path: &Path) -> Result<Self, Error> {
+        if !out_path.is_dir() {
+            return Err(Error::MustBeADirectoryPath(out_path.to_owned()));
         }
 
-        exe_path = PathBuf::from(".").join(exe_path);
-        return Ok(Self { asm_path, obj_path, exe_path });
+        match std::fs::create_dir_all(out_path) {
+            Ok(()) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(err) => return Err(Error::CouldNotCreateOutputDirectory {
+                path: out_path.to_owned(),
+                err,
+            }),
+        }
+
+        let src_path_stem = match src.path.file_stem() {
+            Some(path_name) => PathBuf::from(path_name),
+            None => unreachable!("file stem should always be present"),
+        };
+
+        return Ok(Self {
+            asm_path: out_path.join(&src_path_stem).with_extension("asm"),
+            obj_path: out_path.join(&src_path_stem).with_extension("o"),
+            exe_path: PathBuf::from(".").join(out_path).join(src_path_stem),
+        });
     }
 
     #[must_use]
@@ -74,49 +81,37 @@ impl Artifacts {
 }
 
 #[derive(Debug)]
-pub enum ErrorKind {
-    CouldNotCreateOutputDirectory { path: PathBuf },
-}
-
-impl Display for ErrorKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return match self {
-            Self::CouldNotCreateOutputDirectory { path } => {
-                write!(f, "could not create output directory '{}", path.display())
-            }
-        };
-    }
-}
-
-#[derive(Debug)]
-pub enum ErrorCause {
-    IoError(io::Error),
-}
-
-impl Display for ErrorCause {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return match self {
-            Self::IoError(err) => write!(f, "{err} ({})", err.kind()),
-        };
-    }
-}
-
-#[derive(Debug)]
-pub struct Error {
-    pub kind: ErrorKind,
-    pub cause: ErrorCause,
+pub enum Error {
+    CouldNotCreateOutputDirectory { path: PathBuf, err: std::io::Error },
+    MustBeADirectoryPath(PathBuf),
 }
 
 impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut message = String::new();
+        let mut cause = String::new();
+
+        match self {
+            Self::CouldNotCreateOutputDirectory { path, err } => {
+                _ = write!(message, "could not create output directory '{}", path.display());
+                _ = write!(cause, "{err} ({})", err.kind());
+            }
+            Self::MustBeADirectoryPath(path) => {
+                _ = write!(message, "invalid '{}' path", path.display());
+                _ = write!(
+                    cause,
+                    "'{}' must be a directory path",
+                    path.display()
+                );
+            }
+        }
+
         return write!(
             f,
-            "{ERROR}: {msg}\
+            "{ERROR}: {message}\
             \n{CAUSE}: {cause}",
-            msg = self.kind,
-            cause = self.cause
         );
     }
 }

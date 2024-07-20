@@ -70,7 +70,7 @@ fn main() -> ExitCode {
     checking_sub_step.sub_step_done(&SUBSTEP_DONE);
 
     let out_path = PathBuf::from("out");
-    let artifacts = match Artifacts::new(&src, Some(&out_path)) {
+    let artifacts = match Artifacts::new_with_out_path(&src, &out_path) {
         Ok(artifacts) => artifacts,
         Err(err) => {
             eprintln!("{err}");

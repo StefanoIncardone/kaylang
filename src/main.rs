@@ -99,11 +99,14 @@ fn main() -> ExitCode {
     Logger::info_with_verbosity(&COMPILING, src_path, verbosity);
     let compilation_sub_step = Logger::new();
 
-    let artifacts = match Artifacts::new(&src, out_path.as_deref()) {
-        Ok(artifacts) => artifacts,
-        Err(err) => {
-            eprintln!("{err}");
-            return ExitCode::FAILURE;
+    let artifacts = match out_path {
+        None => Artifacts::new(&src),
+        Some(path) => match Artifacts::new_with_out_path(&src, path) {
+            Ok(artifacts) => artifacts,
+            Err(err) => {
+                eprintln!("{err}");
+                return ExitCode::FAILURE;
+            }
         }
     };
 
@@ -256,7 +259,7 @@ mod tests {
 
             Logger::info(&COMPILING, &src_path);
 
-            let artifacts = match Artifacts::new(&src, Some(&out_path)) {
+            let artifacts = match Artifacts::new_with_out_path(&src, &out_path) {
                 Ok(artifacts) => artifacts,
                 Err(err) => {
                     eprintln!("{err}");
