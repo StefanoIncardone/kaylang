@@ -1,6 +1,9 @@
-use crate::src_file::{Line, SrcFile};
-use std::{fmt::Display, num::{IntErrorKind, ParseIntError}};
 use super::{Error, ErrorInfo, IntoErrorInfo};
+use crate::src_file::{Line, SrcFile};
+use std::{
+    fmt::Display,
+    num::{IntErrorKind, ParseIntError},
+};
 
 pub(super) trait DisplayLen {
     fn display_len(&self) -> usize;
@@ -525,9 +528,7 @@ pub struct Tokenizer<'src> {
 }
 
 impl<'src> Tokenizer<'src> {
-    pub fn tokenize(
-        src: &'src SrcFile,
-    ) -> Result<Vec<Token<'src>>, Vec<Error<ErrorKind>>> {
+    pub fn tokenize(src: &'src SrcFile) -> Result<Vec<Token<'src>>, Vec<Error<ErrorKind>>> {
         let Some(first_line) = src.lines.first() else {
             return Ok(Vec::new());
         };
@@ -590,11 +591,7 @@ impl<'src> Tokenizer<'src> {
             });
         }
 
-        return if this.errors.is_empty() {
-            Ok(this.tokens)
-        } else {
-            Err(this.errors)
-        };
+        return if this.errors.is_empty() { Ok(this.tokens) } else { Err(this.errors) };
     }
 }
 
@@ -795,10 +792,7 @@ impl<'src> Tokenizer<'src> {
         return Ok(identifier);
     }
 
-    fn next_token(
-        &mut self,
-        next: ascii,
-    ) -> Result<TokenKind<'src>, Error<ErrorKind>> {
+    fn next_token(&mut self, next: ascii) -> Result<TokenKind<'src>, Error<ErrorKind>> {
         return match next {
             b'r' => match self.peek_next_utf8_char() {
                 Some('"') => {
@@ -811,7 +805,9 @@ impl<'src> Tokenizer<'src> {
                         let next_ch = match self.next_in_ascii_str_literal()? {
                             control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                                 self.errors.push(Error {
-                                    kind: ErrorKind::ControlCharacterInStringLiteral(control as utf8),
+                                    kind: ErrorKind::ControlCharacterInStringLiteral(
+                                        control as utf8,
+                                    ),
                                     col: self.col - 1,
                                     pointers_count: 1,
                                 });
@@ -960,7 +956,9 @@ impl<'src> Tokenizer<'src> {
                         b't' => Ok(b'\t'),
                         b'0' => Ok(b'\0'),
                         unrecognized => Err(Error {
-                            kind: ErrorKind::UnrecognizedEscapeCharacterInCharacterLiteral(unrecognized as utf8),
+                            kind: ErrorKind::UnrecognizedEscapeCharacterInCharacterLiteral(
+                                unrecognized as utf8,
+                            ),
                             col: self.col - 2,
                             pointers_count: 2,
                         }),
@@ -1388,6 +1386,7 @@ pub enum ErrorKind {
 
 impl IntoErrorInfo for ErrorKind {
     fn info(&self) -> ErrorInfo {
+        #[rustfmt::skip]
         let (error_message, error_cause_message) = match self {
             Self::UnclosedBracket(bracket) => (
                 format!("unclosed '{bracket}' bracket").into(),
@@ -1467,7 +1466,6 @@ impl IntoErrorInfo for ErrorKind {
                 "invalid character".into(),
                 format!("unrecognized '{unrecognized}' ({}) character", unrecognized.escape_unicode()).into(),
             ),
-
         };
 
         return ErrorInfo { error_message, error_cause_message };

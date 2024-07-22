@@ -1,6 +1,9 @@
-use super::{ tokenizer::{
-    ascii, int, uint, BracketKind, DisplayLen, Literal, Mutability, Op, Token, TokenKind,
-}, Error, ErrorInfo, IntoErrorInfo};
+use super::{
+    tokenizer::{
+        ascii, int, uint, BracketKind, DisplayLen, Literal, Mutability, Op, Token, TokenKind,
+    },
+    Error, ErrorInfo, IntoErrorInfo,
+};
 use crate::src_file::{Position, SrcFile};
 use std::fmt::{Debug, Display};
 
@@ -528,7 +531,9 @@ impl TypeOf for Expression<'_> {
             Self::BooleanBinary { op, .. } => op.typ(),
             Self::Comparison { op, .. } => op.typ(),
             Self::Identifier { typ, .. } => *typ,
-            Self::Array { base_type, items } => Type::Array { base_type: *base_type, len: items.len() },
+            Self::Array { base_type, items } => {
+                Type::Array { base_type: *base_type, len: items.len() }
+            }
             Self::ArrayIndex { base_type, .. } => Type::Base(*base_type),
         };
     }
@@ -734,11 +739,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         this.parse_scope();
 
-        return if this.errors.is_empty() {
-            Ok(this.scopes)
-        } else {
-            Err(this.errors)
-        };
+        return if this.errors.is_empty() { Ok(this.scopes) } else { Err(this.errors) };
     }
 
     fn semicolon(&mut self) -> Result<(), Error<ErrorKind>> {
@@ -816,9 +817,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         }
     }
 
-    fn parse_single_statement(
-        &mut self,
-    ) -> Result<Option<Node<'src>>, Error<ErrorKind>> {
+    fn parse_single_statement(&mut self) -> Result<Option<Node<'src>>, Error<ErrorKind>> {
         let Some(current_token) = self.tokens.get(self.token) else { return Ok(None) };
 
         return match current_token.kind {
@@ -1017,9 +1016,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         };
     }
 
-    fn parse_do_statement(
-        &mut self,
-    ) -> Result<Option<Node<'src>>, Error<ErrorKind>> {
+    fn parse_do_statement(&mut self) -> Result<Option<Node<'src>>, Error<ErrorKind>> {
         let current_token = self.next_token_bounded(Expected::StatementAfterDo)?;
         return match current_token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
@@ -1512,11 +1509,13 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             op_col: current_token.col,
                             operand: Box::new(operand),
                         }),
-                        Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => Err(Error {
-                            kind: ErrorKind::CannotTakeLenOf(*typ),
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
-                        }),
+                        Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => {
+                            Err(Error {
+                                kind: ErrorKind::CannotTakeLenOf(*typ),
+                                col: current_token.col,
+                                pointers_count: current_token.kind.display_len(),
+                            })
+                        }
                     },
                     Expression::Array { .. } => Ok(Expression::Unary {
                         op: UnaryOp::Len,
@@ -1586,10 +1585,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_type @ (
-                        Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
-                        | Type::Array { .. }
-                    ) => Err(Error {
+                    invalid_type @ (Type::Base(
+                        BaseType::Ascii | BaseType::Bool | BaseType::Str,
+                    )
+                    | Type::Array { .. }) => Err(Error {
                         kind: ErrorKind::CannotTakeAbsoluteValueOf(invalid_type),
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(),
@@ -1622,10 +1621,10 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_type @ (
-                        Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
-                        | Type::Array { .. }
-                    ) => Err(Error {
+                    invalid_type @ (Type::Base(
+                        BaseType::Ascii | BaseType::Bool | BaseType::Str,
+                    )
+                    | Type::Array { .. }) => Err(Error {
                         kind: ErrorKind::CannotTakeAbsoluteValueOf(invalid_type),
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(),
@@ -1658,10 +1657,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_typ @ (
-                        Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
-                        | Type::Array { .. }
-                    ) => Err(Error {
+                    invalid_typ @ (Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
+                    | Type::Array { .. }) => Err(Error {
                         kind: ErrorKind::CannotTakeAbsoluteValueOf(invalid_typ),
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(),
@@ -1696,10 +1693,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_typ @ (
-                        Type::Base(BaseType::Bool | BaseType::Str)
-                        | Type::Array { .. }
-                    ) => Err(Error {
+                    invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str)
+                    | Type::Array { .. }) => Err(Error {
                         kind: ErrorKind::CannotNegate(invalid_typ),
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(),
@@ -1732,10 +1727,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_typ @ (
-                        Type::Base(BaseType::Bool | BaseType::Str)
-                        | Type::Array { .. }
-                    ) => Err(Error {
+                    invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str)
+                    | Type::Array { .. }) => Err(Error {
                         kind: ErrorKind::CannotNegate(invalid_typ),
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(),
@@ -1768,10 +1761,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_typ @ (
-                        Type::Base(BaseType::Bool | BaseType::Str)
-                        | Type::Array { .. }
-                    ) => Err(Error {
+                    invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str)
+                    | Type::Array { .. }) => Err(Error {
                         kind: ErrorKind::CannotNegate(invalid_typ),
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(),
@@ -1812,13 +1803,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             Ok(operand)
                         }
                     }
-                    invalid_typ @ (Type::Base(BaseType::Str) | Type::Array { .. }) => {
-                        Err(Error {
-                            kind: ErrorKind::CannotInvert(invalid_typ),
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
-                        })
-                    }
+                    invalid_typ @ (Type::Base(BaseType::Str) | Type::Array { .. }) => Err(Error {
+                        kind: ErrorKind::CannotInvert(invalid_typ),
+                        col: current_token.col,
+                        pointers_count: current_token.kind.display_len(),
+                    }),
                 };
             }
             TokenKind::Definition(_)
@@ -1853,9 +1842,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         return factor;
     }
 
-    fn exponentiative_expression(
-        &mut self,
-    ) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn exponentiative_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
         let mut lhs = self.primary_expression()?;
 
         let ops = [Op::Pow, Op::WrappingPow, Op::SaturatingPow];
@@ -1884,9 +1871,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         return Ok(lhs);
     }
 
-    fn multiplicative_expression(
-        &mut self,
-    ) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn multiplicative_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
         let mut lhs = self.exponentiative_expression()?;
 
         let ops = [
@@ -2087,9 +2072,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         return Ok(lhs);
     }
 
-    fn comparison_expression(
-        &mut self,
-    ) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn comparison_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
         let mut lhs = self.bitor_expression()?;
 
         let ops = [

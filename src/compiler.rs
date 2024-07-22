@@ -76,10 +76,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         let asm_file = match File::create(&artifacts.asm_path) {
             Ok(file) => file,
             Err(err) => {
-                return Err(Error::CouldNotCreateFile {
-                    path: artifacts.asm_path.clone(),
-                    err,
-                });
+                return Err(Error::CouldNotCreateFile { path: artifacts.asm_path.clone(), err });
             }
         };
 
@@ -1147,7 +1144,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             \n mov rcx, {col}\
                             \n call int_safe_sub",
                         )
-                       .into()
+                        .into()
                     }
                     BinaryOp::WrappingMinus => " sub rdi, rsi".into(),
                     BinaryOp::SaturatingMinus => " call int_saturating_sub".into(),
@@ -2343,7 +2340,7 @@ impl Display for Error {
                 _ = write!(message, "could not create file '{}'", path.display());
                 _ = write!(cause, "{err} ({})", err.kind());
             }
-            Self::WritingAssemblyFailed { err }=> {
+            Self::WritingAssemblyFailed { err } => {
                 _ = write!(message, "writing to assembly file failed");
                 _ = write!(cause, "{err} ({})", err.kind());
             }

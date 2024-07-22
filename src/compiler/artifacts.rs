@@ -35,10 +35,9 @@ impl Artifacts {
         match std::fs::create_dir_all(out_path) {
             Ok(()) => {}
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(err) => return Err(Error::CouldNotCreateOutputDirectory {
-                path: out_path.to_owned(),
-                err,
-            }),
+            Err(err) => {
+                return Err(Error::CouldNotCreateOutputDirectory { path: out_path.to_owned(), err })
+            }
         }
 
         let src_path_stem = match src.path.file_stem() {
@@ -100,11 +99,7 @@ impl Display for Error {
             }
             Self::MustBeADirectoryPath(path) => {
                 _ = write!(message, "invalid '{}' path", path.display());
-                _ = write!(
-                    cause,
-                    "'{}' must be a directory path",
-                    path.display()
-                );
+                _ = write!(cause, "'{}' must be a directory path", path.display());
             }
         }
 

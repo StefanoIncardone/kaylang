@@ -784,7 +784,7 @@ impl Display for Error {
                 let erroneous_arg = &args[*erroneous_arg_index];
                 pointers_count = match erroneous_arg.len() {
                     0 => 1, // empty arguments will at least get one pointer
-                    other => other
+                    other => other,
                 };
 
                 match kind {

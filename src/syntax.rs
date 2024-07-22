@@ -5,7 +5,11 @@ use crate::{
     src_file::{Position, SrcFile},
     Bg, Colored, Fg, Flag, AT, BAR, ERROR,
 };
-use std::{borrow::Cow, fmt::{Debug, Display}, path::Path};
+use std::{
+    borrow::Cow,
+    fmt::{Debug, Display},
+    path::Path,
+};
 
 pub trait IntoErrorInfo: Debug + Clone {
     fn info(&self) -> ErrorInfo;

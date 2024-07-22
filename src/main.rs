@@ -107,7 +107,7 @@ fn main() -> ExitCode {
                 eprintln!("{err}");
                 return ExitCode::FAILURE;
             }
-        }
+        },
     };
 
     let _compiler_result: () = {
