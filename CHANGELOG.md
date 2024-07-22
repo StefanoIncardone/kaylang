@@ -87,6 +87,7 @@ Changes to error messages, help message and alike would **not** be considered br
     with the `ErrorDisplay` using the `display` method, or alternatively error messages, error cause
     messages, line column and line text information can be obtained separately with the `ErrorInfo`
     struct and `SrcFile::position` method
+- `Expression` now only stores the column of the operators instead of a `Position` struct
 - `Compiler::compile` no longer returns an `Artifacts` struct, it is instead constructed beforehand
     and is now required in compilation steps instead of generic `PathBuf`s
 - Updated consistency of compilation steps names and static variables
