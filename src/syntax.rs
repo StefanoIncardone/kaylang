@@ -5,74 +5,85 @@ use crate::{
     src_file::SrcFile,
     Bg, Colored, Fg, Flag, AT, BAR, ERROR,
 };
-use std::{
-    fmt::{Debug, Display},
-    iter::FusedIterator,
-    path::Path,
-    slice::Iter,
-    vec::IntoIter,
-};
+use std::{borrow::Cow, fmt::{Debug, Display}, path::Path};
 
-pub trait ErrorKind: Debug + Display + Clone {}
+pub trait IntoErrorInfo: Debug + Clone {
+    fn info(&self) -> ErrorInfo;
+}
 
-pub trait ErrorCause: Debug + Display + Clone {}
+/*
+IDEA(stefano): refactor to allow for errors without a proper or redundant cause message, i.e.:
+Error: unrecognized character
+at: file.kay:21:5
+   |
+21 | blah . dadasd
+   |      ^ unrecognized
+*/
+#[derive(Debug, Clone)]
+pub struct ErrorInfo {
+    pub error_message: Cow<'static, str>,
+    pub error_cause_message: Cow<'static, str>,
+}
 
 #[derive(Debug, Clone)]
-pub struct RawError<K: ErrorKind, C: ErrorCause> {
+pub struct Error<K: IntoErrorInfo> {
     pub kind: K,
-    pub cause: C,
     /// absolute source code byte position
     pub col: usize,
     pub pointers_count: usize,
 }
 
-#[derive(Debug, Clone)]
-pub struct Error<'src, K: ErrorKind, C: ErrorCause> {
-    pub path: &'src Path,
-    pub line: usize,
-    pub col: usize,
-    pub line_text: &'src str,
-    pub pointers_count: usize,
-    pub kind: K,
-    pub cause: C,
-}
-
-impl<'src, K: ErrorKind, C: ErrorCause> Error<'src, K, C> {
-    pub(crate) fn from_raw(src: &'src SrcFile, raw: &RawError<K, C>) -> Self {
-        let (position, line_text) = src.position(raw.col);
-        return Self {
-            path: &src.path,
+impl<K: IntoErrorInfo> Error<K> {
+    pub fn display<'src>(&self, src: &'src SrcFile) -> ErrorDisplay<'src> {
+        let (position, line_text) = src.position(self.col);
+        let ErrorInfo { error_message, error_cause_message } = self.kind.info();
+        return ErrorDisplay {
+            error_message,
+            file: &src.path,
             line: position.line,
             col: position.col,
             line_text,
-            pointers_count: raw.pointers_count,
-            kind: raw.kind.clone(),
-            cause: raw.cause.clone(),
+            pointers_count: self.pointers_count,
+            error_cause_message,
         };
     }
 }
 
-impl<K: ErrorKind, C: ErrorCause> Display for Error<'_, K, C> {
+#[derive(Debug, Clone)]
+pub struct ErrorDisplay<'src> {
+    pub error_message: Cow<'static, str>,
+    pub file: &'src Path,
+    pub line: usize,
+    pub col: usize,
+    pub line_text: &'src str,
+    pub pointers_count: usize,
+    pub error_cause_message: Cow<'static, str>,
+}
+
+impl Display for ErrorDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let msg = Colored {
-            text: &self.kind.to_string(),
+        let error_message = Colored {
+            text: &self.error_message,
             fg: Fg::White,
             bg: Bg::Default,
             flags: Flag::Bold,
         };
+
         let line_number = Colored {
             text: self.line.to_string(),
             fg: Fg::LightBlue,
             bg: Bg::Default,
             flags: Flag::Bold,
         };
+
         let line_number_padding = line_number.text.len() + 1 + BAR.text.len();
+
         let pointers_and_cause = Colored {
             text: format!(
                 "{spaces:^>pointers_count$} {cause}",
                 spaces = "",
                 pointers_count = self.pointers_count,
-                cause = self.cause
+                cause = self.error_cause_message
             ),
             fg: Fg::LightRed,
             bg: Bg::Default,
@@ -81,13 +92,13 @@ impl<K: ErrorKind, C: ErrorCause> Display for Error<'_, K, C> {
 
         return write!(
             f,
-            "{ERROR}: {msg}\
+            "{ERROR}: {error_message}\
             \n{AT:>at_padding$}: {path}:{line}:{col}\
             \n{BAR:>line_number_padding$}\
             \n{line_number} {BAR} {line_text}\
             \n{BAR:>line_number_padding$}{spaces:>col$}{pointers_and_cause}",
             at_padding = line_number_padding - 1,
-            path = self.path.display(),
+            path = self.file.display(),
             line = self.line,
             col = self.col,
             line_text = self.line_text,
@@ -96,148 +107,4 @@ impl<K: ErrorKind, C: ErrorCause> Display for Error<'_, K, C> {
     }
 }
 
-impl<K: ErrorKind, C: ErrorCause> std::error::Error for Error<'_, K, C> {}
-
-#[derive(Debug, Clone)]
-pub struct ErrorsIter<'err, 'src: 'err, K: ErrorKind, C: ErrorCause> {
-    pub(crate) src: &'src SrcFile,
-    pub(crate) raw_errors: Iter<'err, RawError<K, C>>,
-}
-
-impl<'err, 'src: 'err, K: ErrorKind, C: ErrorCause> Iterator for ErrorsIter<'err, 'src, K, C> {
-    type Item = Error<'src, K, C>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let raw_error = self.raw_errors.next()?;
-        return Some(Error::from_raw(self.src, raw_error));
-    }
-}
-
-impl<'err, 'src: 'err, K: ErrorKind, C: ErrorCause> DoubleEndedIterator
-    for ErrorsIter<'err, 'src, K, C>
-{
-    fn next_back(&mut self) -> Option<Self::Item> {
-        let raw_error = self.raw_errors.next_back()?;
-        return Some(Error::from_raw(self.src, raw_error));
-    }
-}
-
-impl<'err, 'src: 'err, K: ErrorKind, C: ErrorCause> ExactSizeIterator
-    for ErrorsIter<'err, 'src, K, C>
-{
-    fn len(&self) -> usize {
-        return self.raw_errors.len();
-    }
-}
-
-impl<'err, 'src: 'err, K: ErrorKind, C: ErrorCause> FusedIterator for ErrorsIter<'err, 'src, K, C> {}
-
-#[allow(dead_code)]
-impl<'err, 'src: 'err, K: ErrorKind, C: ErrorCause> ErrorsIter<'err, 'src, K, C> {
-    #[must_use]
-    pub const fn src(&self) -> &SrcFile {
-        return self.src;
-    }
-
-    #[must_use]
-    pub fn as_raw(&self) -> &[RawError<K, C>] {
-        return self.raw_errors.as_slice();
-    }
-
-    #[must_use]
-    pub fn into_raw(self) -> Vec<RawError<K, C>> {
-        return self.raw_errors.cloned().collect();
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ErrorsIntoIter<'src, K: ErrorKind, C: ErrorCause> {
-    pub(crate) src: &'src SrcFile,
-    pub(crate) raw_errors: IntoIter<RawError<K, C>>,
-}
-
-impl<'src, K: ErrorKind, C: ErrorCause> Iterator for ErrorsIntoIter<'src, K, C> {
-    type Item = Error<'src, K, C>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let raw_error = self.raw_errors.next()?;
-        return Some(Error::from_raw(self.src, &raw_error));
-    }
-}
-
-impl<'src, K: ErrorKind, C: ErrorCause> DoubleEndedIterator for ErrorsIntoIter<'src, K, C> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        let raw_error = self.raw_errors.next_back()?;
-        return Some(Error::from_raw(self.src, &raw_error));
-    }
-}
-
-impl<'src, K: ErrorKind, C: ErrorCause> ExactSizeIterator for ErrorsIntoIter<'src, K, C> {
-    fn len(&self) -> usize {
-        return self.raw_errors.len();
-    }
-}
-
-impl<'src, K: ErrorKind, C: ErrorCause> FusedIterator for ErrorsIntoIter<'src, K, C> {}
-
-#[allow(dead_code)]
-impl<'src, K: ErrorKind, C: ErrorCause> ErrorsIntoIter<'src, K, C> {
-    #[must_use]
-    pub const fn src(&self) -> &SrcFile {
-        return self.src;
-    }
-
-    #[must_use]
-    pub fn as_raw(&self) -> &[RawError<K, C>] {
-        return self.raw_errors.as_slice();
-    }
-
-    #[must_use]
-    pub fn into_raw(self) -> Vec<RawError<K, C>> {
-        return self.raw_errors.collect();
-    }
-}
-
-#[derive(Debug)]
-pub struct Errors<'src, K: ErrorKind, C: ErrorCause> {
-    pub(crate) src: &'src SrcFile,
-    pub(crate) raw_errors: Vec<RawError<K, C>>,
-}
-
-impl<'src, K: ErrorKind, C: ErrorCause> IntoIterator for Errors<'src, K, C> {
-    type IntoIter = ErrorsIntoIter<'src, K, C>;
-    type Item = Error<'src, K, C>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        return Self::IntoIter { src: self.src, raw_errors: self.raw_errors.into_iter() };
-    }
-}
-
-#[allow(clippy::iter_without_into_iter)]
-impl<'src, K: ErrorKind, C: ErrorCause> Errors<'src, K, C> {
-    #[must_use]
-    pub fn iter(&self) -> ErrorsIter<'_, 'src, K, C> {
-        return ErrorsIter { src: self.src, raw_errors: self.raw_errors.iter() };
-    }
-
-    #[must_use]
-    pub fn get(&self, index: usize) -> Option<Error<'src, K, C>> {
-        let raw_error = self.raw_errors.get(index)?;
-        return Some(Error::from_raw(self.src, raw_error));
-    }
-
-    #[must_use]
-    pub const fn src(&self) -> &SrcFile {
-        return self.src;
-    }
-
-    #[must_use]
-    pub fn as_raw(&self) -> &[RawError<K, C>] {
-        return &self.raw_errors;
-    }
-
-    #[must_use]
-    pub fn into_raw(self) -> Vec<RawError<K, C>> {
-        return self.raw_errors;
-    }
-}
+impl std::error::Error for ErrorDisplay<'_> {}

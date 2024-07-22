@@ -13,10 +13,11 @@ pub struct Line {
     pub end: usize,
 }
 
+// TODO(stefano): include line text
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Position {
-    pub(crate) line: usize,
-    pub(crate) col: usize,
+pub struct Position {
+    pub line: usize,
+    pub col: usize,
 }
 
 #[derive(Debug)]
@@ -92,7 +93,8 @@ impl SrcFile {
         return &self.lines;
     }
 
-    pub(crate) fn position(&self, col: usize) -> (Position, &str) {
+    #[must_use]
+    pub fn position(&self, col: usize) -> (Position, &str) {
         let mut left = 0;
         let mut right = self.lines.len() - 1;
         while left < right {

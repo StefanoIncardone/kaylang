@@ -28,7 +28,7 @@ fn main() -> ExitCode {
         Ok(tokens) => tokens,
         Err(errors) => {
             for error in errors {
-                eprintln!("{error}\n");
+                eprintln!("{}\n", error.display(&src));
             }
             return ExitCode::FAILURE;
         }
@@ -38,7 +38,7 @@ fn main() -> ExitCode {
         Ok(ast) => ast,
         Err(errors) => {
             for error in errors {
-                eprintln!("{error}\n");
+                eprintln!("{}\n", error.display(&src));
             }
             return ExitCode::FAILURE;
         }

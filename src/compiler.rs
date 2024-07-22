@@ -902,7 +902,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Expression::Array { items, .. } => {
                             _ = writeln!(self.asm, " mov {reg}, {}", items.len());
                         }
-                        Expression::ArrayIndex { typ, var_name, bracket_position, index } => {
+                        Expression::ArrayIndex { base_type: typ, var_name, bracket_position, index } => {
                             self.expression(index, Dst::Reg(Rdi));
 
                             let var = self.resolve(var_name);
@@ -1292,7 +1292,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         ),
                         // Note: we can only compare non-empty arrays of the same type and length, so
                         // its safe to only match on the first array type and not to check for empty arrays
-                        (Type::Array { typ, .. }, Type::Array { .. }) => (
+                        (Type::Array { base_type: typ, .. }, Type::Array { .. }) => (
                             Dst::View { len: Rdi, ptr: Rsi },
                             Dst::View { len: Rdx, ptr: Rcx },
                             match op {
@@ -1521,7 +1521,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     },
                 }
             }
-            Expression::ArrayIndex { typ, var_name, bracket_position, index } => {
+            Expression::ArrayIndex { base_type: typ, var_name, bracket_position, index } => {
                 self.expression(index, Dst::Reg(Rdi));
 
                 let line = bracket_position.line;
@@ -1964,7 +1964,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             items.len()
                         );
                     }
-                    Expression::ArrayIndex { typ, var_name, bracket_position, index } => {
+                    Expression::ArrayIndex { base_type: typ, var_name, bracket_position, index } => {
                         self.expression(index, Dst::Reg(Rdi));
 
                         let var = self.resolve(var_name);
@@ -2230,7 +2230,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             ptr_offset = std::mem::size_of::<uint>()
                         );
                     }
-                    Type::Array { typ: array_typ, len } => match *array_typ {
+                    Type::Array { base_type: array_typ, len } => match *array_typ {
                         BaseType::Int => {
                             _ = writeln!(
                                 self.asm,
@@ -2261,13 +2261,13 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     },
                 }
             }
-            Expression::Array { typ, items } => {
+            Expression::Array { base_type: typ, items } => {
                 let typ_size = typ.size();
                 for (index, item) in items.iter().enumerate() {
                     self.definition(item, dst_offset + index * typ_size);
                 }
             }
-            Expression::ArrayIndex { typ, .. } => {
+            Expression::ArrayIndex { base_type: typ, .. } => {
                 self.expression(value, Dst::default(&Type::Base(*typ)));
 
                 match typ {
@@ -2309,7 +2309,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Type::Base(BaseType::Ascii) => _ = writeln!(self.asm, " call ascii_print\n"),
             Type::Base(BaseType::Bool) => _ = writeln!(self.asm, " call bool_print\n"),
             Type::Base(BaseType::Str) => _ = writeln!(self.asm, " call str_print\n"),
-            Type::Array { typ, .. } => match typ {
+            Type::Array { base_type: typ, .. } => match typ {
                 BaseType::Int => _ = writeln!(self.asm, " call int_array_debug_print\n"),
                 BaseType::Ascii => _ = writeln!(self.asm, " call ascii_array_debug_print\n"),
                 BaseType::Bool => _ = writeln!(self.asm, " call bool_array_debug_print\n"),
@@ -2327,7 +2327,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Type::Base(BaseType::Ascii) => _ = writeln!(self.asm, " call ascii_eprint\n"),
             Type::Base(BaseType::Bool) => _ = writeln!(self.asm, " call bool_eprint\n"),
             Type::Base(BaseType::Str) => _ = writeln!(self.asm, " call str_eprint\n"),
-            Type::Array { typ, .. } => match typ {
+            Type::Array { base_type: typ, .. } => match typ {
                 BaseType::Int => _ = writeln!(self.asm, " call int_array_debug_eprint\n"),
                 BaseType::Ascii => _ = writeln!(self.asm, " call ascii_array_debug_eprint\n"),
                 BaseType::Bool => _ = writeln!(self.asm, " call bool_array_debug_eprint\n"),
