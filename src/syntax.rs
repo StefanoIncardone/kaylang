@@ -2,7 +2,7 @@ pub mod ast;
 pub mod tokenizer;
 
 use crate::{
-    src_file::SrcFile,
+    src_file::{Position, SrcFile},
     Bg, Colored, Fg, Flag, AT, BAR, ERROR,
 };
 use std::{borrow::Cow, fmt::{Debug, Display}, path::Path};
@@ -35,13 +35,13 @@ pub struct Error<K: IntoErrorInfo> {
 
 impl<K: IntoErrorInfo> Error<K> {
     pub fn display<'src>(&self, src: &'src SrcFile) -> ErrorDisplay<'src> {
-        let (position, line_text) = src.position(self.col);
+        let Position { line, col, line_text } = src.position(self.col);
         let ErrorInfo { error_message, error_cause_message } = self.kind.info();
         return ErrorDisplay {
             error_message,
             file: &src.path,
-            line: position.line,
-            col: position.col,
+            line,
+            col,
             line_text,
             pointers_count: self.pointers_count,
             error_cause_message,
