@@ -92,6 +92,8 @@ Changes to error messages, help message and alike would **not** be considered br
 - `tokenizer::Literal::Bool` now split into `tokenizer::Literal::True` and
     `tokenizer::Literal::False`, thus removed `TokenKind::True` and `TokenKind::False`
 <!--  -->
+- `Expression::Literal` inlined into `Expression::False`, `Expression::True`, `Expression::Int`,
+    `Expression::Ascii` and `Expression::Str`
 - `Expression` now only stores the column of the operators instead of a `Position` struct
 - Pulled `BaseType` enum out of `Type` enum
 - `Compiler::compile`

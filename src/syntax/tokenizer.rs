@@ -37,10 +37,10 @@ pub(crate) enum Literal {
 impl Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         return match self {
+            Self::False => write!(f, "false"),
+            Self::True => write!(f, "true"),
             Self::Int(integer) => write!(f, "{integer}"),
             Self::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
-            Self::True => write!(f, "true"),
-            Self::False => write!(f, "false"),
             Self::Str(string) => {
                 write!(f, "\"")?;
                 for ch in string {

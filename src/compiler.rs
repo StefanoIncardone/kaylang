@@ -12,7 +12,7 @@ use crate::{
         ast::{
             self, AssignmentOp, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression, IfStatement, Node, Scope, SizeOf, Type, TypeOf, UnaryOp
         },
-        tokenizer::{Literal, ascii, uint, Mutability},
+        tokenizer::{ascii, uint, Mutability},
     },
     CAUSE, ERROR,
 };
@@ -778,7 +778,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             }
 
             // these expressions do not need to save the value of the lhs
-            Expression::Literal(_)
+            Expression::False
+            | Expression::True
+            | Expression::Int(_)
+            | Expression::Ascii(_)
+            | Expression::Str(_)
             | Expression::Unary { op: UnaryOp::Not | UnaryOp::WrappingMinus, .. }
             | Expression::BooleanUnary { .. }
             | Expression::Identifier { .. } => {
@@ -831,23 +835,23 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
     fn expression(&mut self, factor: &'ast Expression<'src>, dst: Dst) {
         match factor {
-            Expression::Literal(Literal::Int(integer)) => match dst {
+            Expression::Int(integer) => match dst {
                 Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, {integer}"),
                 Dst::View { .. } => unreachable!(),
             },
-            Expression::Literal(Literal::Ascii(code)) => match dst {
+            Expression::Ascii(code) => match dst {
                 Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, {code}"),
                 Dst::View { .. } => unreachable!(),
             },
-            Expression::Literal(Literal::True) => match dst {
+            Expression::True => match dst {
                 Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, true"),
                 Dst::View { .. } => unreachable!(),
             },
-            Expression::Literal(Literal::False) => match dst {
+            Expression::False => match dst {
                 Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, false"),
                 Dst::View { .. } => unreachable!(),
             },
-            Expression::Literal(Literal::Str(string)) => match dst {
+            Expression::Str(string) => match dst {
                 Dst::View { len, ptr } => {
                     let index = self.string_label_index(string);
                     _ = writeln!(
@@ -866,7 +870,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 match op {
                     UnaryOp::Len => match &**operand {
-                        Expression::Literal(Literal::Str(string)) => {
+                        Expression::Str(string) => {
                             let index = self.string_label_index(string);
                             _ = writeln!(self.asm, " mov {reg}, str_{index}_len");
                         }
@@ -911,7 +915,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 base_type_size = base_type.size(),
                             );
                         }
-                        Expression::Literal(_)
+                        Expression::False
+                        | Expression::True
+                        | Expression::Int(_)
+                        | Expression::Ascii(_)
                         | Expression::Unary { .. }
                         | Expression::BooleanUnary { .. }
                         | Expression::Binary { .. }
@@ -1600,7 +1607,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn condition(&mut self, condition: &'ast Expression<'src>, false_tag: &str) {
         match condition {
             // IDEA(stefano): remove these checks and do a plain jmp instead
-            Expression::Literal(Literal::True) => {
+            Expression::True => {
                 _ = writeln!(
                     self.asm,
                     " mov dil, true\
@@ -1608,7 +1615,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n jne {false_tag}\n",
                 );
             }
-            Expression::Literal(Literal::False) => {
+            Expression::False => {
                 _ = writeln!(
                     self.asm,
                     " mov dil, false\
@@ -1617,11 +1624,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 );
             }
             Expression::Array { .. }
-            | Expression::Literal(
-                Literal::Int(_)
-                | Literal::Ascii(_)
-                | Literal::Str(_)
-            ) => {
+            | Expression::Int(_)
+            | Expression::Ascii(_)
+            | Expression::Str(_) => {
                 unreachable!("non-boolean expressions not allowed in conditions");
             }
             Expression::BooleanUnary { operand, .. } => {
@@ -1762,7 +1767,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn condition_reversed(&mut self, condition: &'ast Expression<'src>, true_tag: &str) {
         match condition {
             // IDEA(stefano): remove these checks and do a plain jmp instead
-            Expression::Literal(Literal::True) => {
+            Expression::True => {
                 _ = writeln!(
                     self.asm,
                     " mov dil, true\
@@ -1770,7 +1775,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n je {true_tag}\n",
                 );
             }
-            Expression::Literal(Literal::False) => {
+            Expression::False => {
                 _ = writeln!(
                     self.asm,
                     " mov dil, false\
@@ -1779,11 +1784,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 );
             }
             Expression::Array { .. }
-            | Expression::Literal(
-                Literal::Int(_)
-                | Literal::Ascii(_)
-                | Literal::Str(_)
-            ) => {
+            | Expression::Int(_)
+            | Expression::Ascii(_)
+            | Expression::Str(_) => {
                 unreachable!("non-boolean expressions not allowed in conditions");
             }
             Expression::BooleanUnary { operand, .. } => {
@@ -1923,23 +1926,23 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
     fn definition(&mut self, value: &'ast Expression<'src>, dst_offset: usize) {
         match value {
-            Expression::Literal(Literal::Int(integer)) => {
+            Expression::Int(integer) => {
                 _ = writeln!(
                     self.asm,
                     " mov rdi, {integer}\
                     \n mov [rbp + {dst_offset}], rdi\n"
                 );
             }
-            Expression::Literal(Literal::Ascii(code)) => {
+            Expression::Ascii(code) => {
                 _ = writeln!(self.asm, " mov byte [rbp + {dst_offset}], {code}\n");
             }
-            Expression::Literal(Literal::True) => {
+            Expression::True => {
                 _ = writeln!(self.asm, " mov byte [rbp + {dst_offset}], true\n");
             }
-            Expression::Literal(Literal::False) => {
+            Expression::False => {
                 _ = writeln!(self.asm, " mov byte [rbp + {dst_offset}], false\n");
             }
-            Expression::Literal(Literal::Str(string)) => {
+            Expression::Str(string) => {
                 let index = self.string_label_index(string);
                 _ = writeln!(
                     self.asm,
@@ -1956,7 +1959,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             }
             Expression::Unary { op, op_col, operand } => match op {
                 UnaryOp::Len => match &**operand {
-                    Expression::Literal(Literal::Str(string)) => {
+                    Expression::Str(string) => {
                         let index = self.string_label_index(string);
                         _ = writeln!(
                             self.asm,
@@ -2013,7 +2016,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             typ_size = base_type.size(),
                         );
                     }
-                    Expression::Literal(_)
+                    Expression::False
+                    | Expression::True
+                    | Expression::Int(_)
+                    | Expression::Ascii(_)
                     | Expression::Unary { .. }
                     | Expression::BooleanUnary { .. }
                     | Expression::Binary { .. }

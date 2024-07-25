@@ -442,27 +442,14 @@ impl Display for AssignmentOp {
     }
 }
 
-impl TypeOf for Literal {
-    fn typ(&self) -> Type {
-        return Type::Base(self.base_typ());
-    }
-}
-
-impl BaseTypeOf for Literal {
-    fn base_typ(&self) -> BaseType {
-        return match self {
-            Self::Int(_) => BaseType::Int,
-            Self::Ascii(_) => BaseType::Ascii,
-            Self::True | Self::False => BaseType::Bool,
-            Self::Str(_) => BaseType::Str,
-        }
-    }
-}
-
 // IDEA(stefano): integrate operator column information only in relevant operator variants
 #[derive(Debug, Clone)]
 pub(crate) enum Expression<'src> {
-    Literal(Literal),
+    False,
+    True,
+    Int(int),
+    Ascii(ascii),
+    Str(Vec<ascii>),
     Array {
         base_type: BaseType,
         /// arrays always contain at least 2 items
@@ -509,21 +496,10 @@ pub(crate) enum Expression<'src> {
 impl From<BaseType> for Expression<'_> {
     fn from(typ: BaseType) -> Self {
         return match typ {
-            BaseType::Int => Self::Literal(Literal::Int(0)),
-            BaseType::Ascii => Self::Literal(Literal::Ascii(b'0')),
-            BaseType::Bool => Self::Literal(Literal::False),
-            BaseType::Str => Self::Literal(Literal::Str(Vec::new())),
-        };
-    }
-}
-
-impl From<Type> for Expression<'_> {
-    fn from(typ: Type) -> Self {
-        return match typ {
-            Type::Base(base_type) => base_type.into(),
-            Type::Array { base_type, len } => {
-                Self::Array { base_type, items: vec![base_type.into(); len] }
-            }
+            BaseType::Int => Self::Int(0),
+            BaseType::Ascii => Self::Ascii(b'0'),
+            BaseType::Bool => Self::False,
+            BaseType::Str => Self::Str(Vec::new()),
         };
     }
 }
@@ -531,7 +507,17 @@ impl From<Type> for Expression<'_> {
 impl Display for Expression<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         return match self {
-            Self::Literal(literal) => write!(f, "{literal}"),
+            Self::False => write!(f, "false"),
+            Self::True => write!(f, "true"),
+            Self::Int(integer) => write!(f, "{integer}"),
+            Self::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
+            Self::Str(string) => {
+                write!(f, "\"")?;
+                for ch in string {
+                    write!(f, "{}", ch.escape_ascii())?;
+                }
+                write!(f, "\"")
+            }
             Self::Array { items, .. } => {
                 write!(f, "[")?;
                 let mut items_iter = items.iter();
@@ -560,7 +546,10 @@ impl Display for Expression<'_> {
 impl TypeOf for Expression<'_> {
     fn typ(&self) -> Type {
         return match self {
-            Self::Literal(base) => base.typ(),
+            Self::False | Self::True => Type::Base(BaseType::Bool),
+            Self::Int(_) => Type::Base(BaseType::Int),
+            Self::Ascii(_) => Type::Base(BaseType::Ascii),
+            Self::Str(_) => Type::Base(BaseType::Str),
             Self::Array { base_type, items } => {
                 Type::Array { base_type: *base_type, len: items.len() }
             }
@@ -1354,7 +1343,13 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn primary_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
         let current_token = self.current_token_bounded(Expected::Expression)?;
         let factor = match &current_token.kind {
-            TokenKind::Literal(literal) => Ok(Expression::Literal(literal.clone())),
+            TokenKind::Literal(literal) => match literal {
+                Literal::False => Ok(Expression::False),
+                Literal::True => Ok(Expression::True),
+                Literal::Int(integer) => Ok(Expression::Int(*integer)),
+                Literal::Ascii(ascii_ch) => Ok(Expression::Ascii(*ascii_ch)),
+                Literal::Str(string) => Ok(Expression::Str(string.clone())),
+            }
             TokenKind::Identifier(name) => match self.resolve_type(name) {
                 None => match self.resolve_variable(name) {
                     Some((_, _, _, var)) => self.index(var.name, var.value.typ()),
@@ -1486,22 +1481,22 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 _ = self.next_token();
                 let operand = self.primary_expression()?;
                 return match &operand {
-                    Expression::Literal(Literal::Str(_)) => Ok(Expression::Unary {
+                    Expression::Str(_) => Ok(Expression::Unary {
                         op: UnaryOp::Len,
                         op_col: current_token.col,
                         operand: Box::new(operand),
                     }),
-                    Expression::Literal(Literal::Int(_)) => Err(Error {
+                    Expression::Int(_) => Err(Error {
                         kind: ErrorKind::CannotTakeLenOf(Type::Base(BaseType::Int)),
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(),
                     }),
-                    Expression::Literal(Literal::Ascii(_)) => Err(Error {
+                    Expression::Ascii(_) => Err(Error {
                         kind: ErrorKind::CannotTakeLenOf(Type::Base(BaseType::Ascii)),
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(),
                     }),
-                    Expression::Literal(Literal::True | Literal::False) => Err(Error {
+                    Expression::True | Expression::False => Err(Error {
                         kind: ErrorKind::CannotTakeLenOf(Type::Base(BaseType::Bool)),
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(),
@@ -2490,7 +2485,14 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                         Mutability::Var => &mut self.scopes[self.scope_index].var_variables,
                     };
 
-                    variables.push(Variable { name, value: typ.into() });
+                    let value = match typ {
+                        Type::Base(base_type) => base_type.into(),
+                        Type::Array { base_type, len } => {
+                            Expression::Array { base_type, items: vec![base_type.into(); len] }
+                        }
+                    };
+
+                    variables.push(Variable { name, value });
                     Ok(Node::Definition {
                         mutability,
                         scope_index: self.scope_index,
