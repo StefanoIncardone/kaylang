@@ -112,7 +112,7 @@ fn main() -> ExitCode {
 
     let _compiler_result: () = {
         let generating_asm_sub_step = Logger::new();
-        let compiler_result = Compiler::compile(&src, &artifacts, &ast);
+        let compiler_result = Compiler::compile(&src, &ast, &artifacts);
         generating_asm_sub_step.sub_step_done_with_verbosity(&GENERATING_ASM, verbosity);
         match compiler_result {
             Ok(()) => (),

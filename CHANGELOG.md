@@ -88,8 +88,11 @@ Changes to error messages, help message and alike would **not** be considered br
     messages, line column and line text information can be obtained separately with the `ErrorInfo`
     struct and `SrcFile::position` method
 - `Expression` now only stores the column of the operators instead of a `Position` struct
-- `Compiler::compile` no longer returns an `Artifacts` struct, it is instead constructed beforehand
-    and is now required in compilation steps instead of generic `PathBuf`s
+- `Compiler::compile`
+    - requires `SrcFile` to be explicitly provided
+    - no longer returns generic `PathBuf`s for assembly, object and executable files
+    - now requires an `Artifacts` struct instead of generic `PathBuf`s for source and out directory
+        path
 - Updated consistency of compilation steps names and static variables
 - Compilation steps are now managed by the `Logger` struct
 - Pulled `BaseType` enum out of `Type` enum

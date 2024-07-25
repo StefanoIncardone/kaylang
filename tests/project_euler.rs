@@ -77,7 +77,7 @@ fn check_project_euler() -> Result<(), ExitCode> {
             }
         };
 
-        let _compiler_result: () = match Compiler::compile(&src, &artifacts, &ast) {
+        let _compiler_result: () = match Compiler::compile(&src, &ast, &artifacts) {
             Ok(()) => (),
             Err(err) => {
                 eprintln!("{err}");

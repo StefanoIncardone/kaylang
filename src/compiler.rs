@@ -67,8 +67,8 @@ pub struct Compiler<'src, 'ast: 'src> {
 impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     pub fn compile(
         src: &'src SrcFile,
-        artifacts: &Artifacts,
         ast: &'ast [Scope<'src>],
+        artifacts: &Artifacts,
     ) -> Result<(), Error> {
         #[allow(clippy::wildcard_imports)]
         use asm::*;
