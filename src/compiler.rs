@@ -12,7 +12,7 @@ use crate::{
         ast::{
             self, AssignmentOp, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression, IfStatement, Node, Scope, SizeOf, Type, TypeOf, UnaryOp
         },
-        tokenizer::{ascii, uint, Mutability},
+        tokenizer::{uint, Mutability, Str},
     },
     CAUSE, ERROR,
 };
@@ -52,7 +52,7 @@ pub struct Compiler<'src, 'ast: 'src> {
     asm: String,
 
     variables: Vec<Variable<'src, 'ast>>,
-    strings: Vec<&'ast Vec<ascii>>,
+    strings: Vec<&'ast Str>,
 
     if_counter: usize,
 
@@ -746,7 +746,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         unreachable!("should always find a variable");
     }
 
-    fn string_label_index(&mut self, string: &'ast Vec<ascii>) -> usize {
+    fn string_label_index(&mut self, string: &'ast Str) -> usize {
         let mut string_index = 0;
         for string_label in &self.strings {
             if std::ptr::eq(string, *string_label) {

@@ -25,13 +25,16 @@ pub(crate) type ascii = u8;
 #[allow(non_camel_case_types)]
 pub(crate) type utf8 = char;
 
+/// kay's ascii string
+pub(crate) type Str = Box<[ascii]>;
+
 #[derive(Debug, Clone)]
 pub(crate) enum Literal {
     False,
     True,
     Int(int),
     Ascii(ascii),
-    Str(Vec<ascii>),
+    Str(Str),
 }
 
 impl Display for Literal {
@@ -43,7 +46,7 @@ impl Display for Literal {
             Self::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
             Self::Str(string) => {
                 write!(f, "\"")?;
-                for ch in string {
+                for ch in &**string {
                     write!(f, "{}", ch.escape_ascii())?;
                 }
                 write!(f, "\"")
@@ -69,7 +72,7 @@ impl DisplayLen for Literal {
             Self::False => 5,
             Self::Str(text) => {
                 let mut len = 2; // starting at 2 to account for the quotes
-                for ascii_char in text {
+                for ascii_char in &**text {
                     len += ascii_escaped_len(*ascii_char);
                 }
                 return len;
@@ -819,7 +822,7 @@ impl<'src> Tokenizer<'src> {
 
                         Err(last_error)
                     } else {
-                        Ok(TokenKind::Literal(Literal::Str(raw_string)))
+                        Ok(TokenKind::Literal(Literal::Str(raw_string.into())))
                     }
                 }
                 _ => self.identifier(),
@@ -934,7 +937,7 @@ impl<'src> Tokenizer<'src> {
 
                     Err(last_error)
                 } else {
-                    Ok(TokenKind::Literal(Literal::Str(string)))
+                    Ok(TokenKind::Literal(Literal::Str(string.into())))
                 }
             }
             b'\'' => {

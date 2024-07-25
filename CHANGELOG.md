@@ -84,18 +84,18 @@ Changes to error messages, help message and alike would **not** be considered br
 - `verbosity` field of `Args` struct is now integrated in `Command::Check`, `Command::Compile` and
     `Command::Run` variants, thus removed
 <!--  -->
+- `Vec<ascii>` is now `Str` (`Box<[ascii]>`)
+- `tokenizer::Literal::Bool` now split into `tokenizer::Literal::True` and
+    `tokenizer::Literal::False`, thus removed `TokenKind::True` and `TokenKind::False`
+- `Expression::Literal` inlined into `Expression::False`, `Expression::True`, `Expression::Int`,
+    `Expression::Ascii` and `Expression::Str`
+<!--  -->
+- `Expression` now only stores the column of the operators instead of a `Position` struct
+- Pulled `BaseType` enum out of `Type` enum
 - `Tokenizer::tokenize` and `Ast::build` now return `Error`s that can be displayed
     with the `ErrorDisplay` using the `display` method, or alternatively error messages, error cause
     messages, line column and line text information can be obtained separately with the `ErrorInfo`
     struct and `SrcFile::position` method
-<!--  -->
-- `tokenizer::Literal::Bool` now split into `tokenizer::Literal::True` and
-    `tokenizer::Literal::False`, thus removed `TokenKind::True` and `TokenKind::False`
-<!--  -->
-- `Expression::Literal` inlined into `Expression::False`, `Expression::True`, `Expression::Int`,
-    `Expression::Ascii` and `Expression::Str`
-- `Expression` now only stores the column of the operators instead of a `Position` struct
-- Pulled `BaseType` enum out of `Type` enum
 - `Compiler::compile`
     - requires `SrcFile` to be explicitly provided
     - no longer returns generic `PathBuf`s for assembly, object and executable files

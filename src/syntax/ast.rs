@@ -1,6 +1,6 @@
 use super::{
     tokenizer::{
-        ascii, int, uint, BracketKind, DisplayLen, Literal, Mutability, Op, Token, TokenKind
+        ascii, int, uint, BracketKind, DisplayLen, Literal, Mutability, Op, Str, Token, TokenKind
     },
     Error, ErrorInfo, IntoErrorInfo,
 };
@@ -449,7 +449,7 @@ pub(crate) enum Expression<'src> {
     True,
     Int(int),
     Ascii(ascii),
-    Str(Vec<ascii>),
+    Str(Str),
     Array {
         base_type: BaseType,
         /// arrays always contain at least 2 items
@@ -499,7 +499,7 @@ impl From<BaseType> for Expression<'_> {
             BaseType::Int => Self::Int(0),
             BaseType::Ascii => Self::Ascii(b'0'),
             BaseType::Bool => Self::False,
-            BaseType::Str => Self::Str(Vec::new()),
+            BaseType::Str => Self::Str(Vec::new().into()),
         };
     }
 }
@@ -513,7 +513,7 @@ impl Display for Expression<'_> {
             Self::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
             Self::Str(string) => {
                 write!(f, "\"")?;
-                for ch in string {
+                for ch in &**string {
                     write!(f, "{}", ch.escape_ascii())?;
                 }
                 write!(f, "\"")
