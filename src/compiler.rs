@@ -10,10 +10,9 @@ use crate::{
     src_file::{Position, SrcFile},
     syntax::{
         ast::{
-            self, AssignmentOp, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression,
-            IfStatement, Node, Scope, SizeOf, Type, TypeOf, UnaryOp,
+            self, AssignmentOp, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression, IfStatement, Node, Scope, SizeOf, Type, TypeOf, UnaryOp
         },
-        tokenizer::{ascii, uint, Literal, Mutability},
+        tokenizer::{Literal, ascii, uint, Mutability},
     },
     CAUSE, ERROR,
 };
@@ -774,6 +773,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         self.expression(lhs, lhs_dst);
 
         match rhs {
+            Expression::Array { .. } => {
+                unreachable!("arrays cannot appear in expressions");
+            }
+
             // these expressions do not need to save the value of the lhs
             Expression::Literal(_)
             | Expression::Unary { op: UnaryOp::Not | UnaryOp::WrappingMinus, .. }
@@ -823,39 +826,39 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     _ => unreachable!(),
                 }
             }
-            Expression::Array { .. } => {
-                unreachable!("arrays cannot appear in expressions");
-            }
         }
     }
 
     fn expression(&mut self, factor: &'ast Expression<'src>, dst: Dst) {
         match factor {
-            Expression::Literal(literal) => match literal {
-                Literal::Int(integer) => match dst {
-                    Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, {integer}"),
-                    Dst::View { .. } => unreachable!(),
-                },
-                Literal::Ascii(code) => match dst {
-                    Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, {code}"),
-                    Dst::View { .. } => unreachable!(),
-                },
-                Literal::Bool(boolean) => match dst {
-                    Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, {boolean}"),
-                    Dst::View { .. } => unreachable!(),
-                },
-                Literal::Str(string) => match dst {
-                    Dst::View { len, ptr } => {
-                        let index = self.string_label_index(string);
-                        _ = writeln!(
-                            self.asm,
-                            " mov {len}, str_{index}_len\
-                            \n mov {ptr}, str_{index}"
-                        );
-                    }
-                    Dst::Reg(_) => unreachable!(),
-                },
+            Expression::Literal(Literal::Int(integer)) => match dst {
+                Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, {integer}"),
+                Dst::View { .. } => unreachable!(),
             },
+            Expression::Literal(Literal::Ascii(code)) => match dst {
+                Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, {code}"),
+                Dst::View { .. } => unreachable!(),
+            },
+            Expression::Literal(Literal::True) => match dst {
+                Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, true"),
+                Dst::View { .. } => unreachable!(),
+            },
+            Expression::Literal(Literal::False) => match dst {
+                Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, false"),
+                Dst::View { .. } => unreachable!(),
+            },
+            Expression::Literal(Literal::Str(string)) => match dst {
+                Dst::View { len, ptr } => {
+                    let index = self.string_label_index(string);
+                    _ = writeln!(
+                        self.asm,
+                        " mov {len}, str_{index}_len\
+                        \n mov {ptr}, str_{index}"
+                    );
+                }
+                Dst::Reg(_) => unreachable!(),
+            },
+            Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
             Expression::Unary { op, op_col, operand } => {
                 let Dst::Reg(reg) = dst else {
                     unreachable!();
@@ -866,6 +869,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Expression::Literal(Literal::Str(string)) => {
                             let index = self.string_label_index(string);
                             _ = writeln!(self.asm, " mov {reg}, str_{index}_len");
+                        }
+                        Expression::Array { items, .. } => {
+                            _ = writeln!(self.asm, " mov {reg}, {}", items.len());
                         }
                         Expression::Identifier { typ, name } => {
                             let var = self.resolve(name);
@@ -881,9 +887,6 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     unreachable!("cannot take the length of numerical types")
                                 }
                             }
-                        }
-                        Expression::Array { items, .. } => {
-                            _ = writeln!(self.asm, " mov {reg}, {}", items.len());
                         }
                         Expression::ArrayIndex { base_type, var_name, bracket_col, index } => {
                             self.expression(index, Dst::Reg(Rdi));
@@ -1591,26 +1594,36 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
                 }
             }
-            Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
         }
     }
 
     fn condition(&mut self, condition: &'ast Expression<'src>, false_tag: &str) {
         match condition {
-            Expression::Literal(literal) => match literal {
-                Literal::Bool(boolean) => {
-                    _ = writeln!(
-                        self.asm,
-                        " mov dil, {bool}\
-                        \n cmp dil, true\
-                        \n jne {false_tag}\n",
-                        bool = usize::from(*boolean)
-                    );
-                }
-                Literal::Int(_) | Literal::Ascii(_) | Literal::Str(_) => {
-                    unreachable!("non-boolean expressions not allowed in conditions");
-                }
-            },
+            // IDEA(stefano): remove these checks and do a plain jmp instead
+            Expression::Literal(Literal::True) => {
+                _ = writeln!(
+                    self.asm,
+                    " mov dil, true\
+                    \n cmp dil, true\
+                    \n jne {false_tag}\n",
+                );
+            }
+            Expression::Literal(Literal::False) => {
+                _ = writeln!(
+                    self.asm,
+                    " mov dil, false\
+                    \n cmp dil, true\
+                    \n jne {false_tag}\n",
+                );
+            }
+            Expression::Array { .. }
+            | Expression::Literal(
+                Literal::Int(_)
+                | Literal::Ascii(_)
+                | Literal::Str(_)
+            ) => {
+                unreachable!("non-boolean expressions not allowed in conditions");
+            }
             Expression::BooleanUnary { operand, .. } => {
                 self.expression(operand, Dst::Reg(Rdi));
 
@@ -1740,7 +1753,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n jne {false_tag}\n"
                 );
             }
-            Expression::Unary { .. } | Expression::Binary { .. } | Expression::Array { .. } => {
+            Expression::Unary { .. } | Expression::Binary { .. } => {
                 unreachable!("non-boolean expressions not allowed in conditions")
             }
         }
@@ -1748,20 +1761,31 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
     fn condition_reversed(&mut self, condition: &'ast Expression<'src>, true_tag: &str) {
         match condition {
-            Expression::Literal(literal) => match literal {
-                Literal::Bool(boolean) => {
-                    _ = writeln!(
-                        self.asm,
-                        " mov dil, {bool}\
-                        \n cmp dil, true\
-                        \n je {true_tag}\n",
-                        bool = usize::from(*boolean)
-                    );
-                }
-                Literal::Int(_) | Literal::Ascii(_) | Literal::Str(_) => {
-                    unreachable!("non-boolean expressions not allowed in conditions");
-                }
-            },
+            // IDEA(stefano): remove these checks and do a plain jmp instead
+            Expression::Literal(Literal::True) => {
+                _ = writeln!(
+                    self.asm,
+                    " mov dil, true\
+                    \n cmp dil, true\
+                    \n je {true_tag}\n",
+                );
+            }
+            Expression::Literal(Literal::False) => {
+                _ = writeln!(
+                    self.asm,
+                    " mov dil, false\
+                    \n cmp dil, true\
+                    \n je {true_tag}\n",
+                );
+            }
+            Expression::Array { .. }
+            | Expression::Literal(
+                Literal::Int(_)
+                | Literal::Ascii(_)
+                | Literal::Str(_)
+            ) => {
+                unreachable!("non-boolean expressions not allowed in conditions");
+            }
             Expression::BooleanUnary { operand, .. } => {
                 self.expression(operand, Dst::Reg(Rdi));
 
@@ -1891,7 +1915,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n je {true_tag}\n"
                 );
             }
-            Expression::Unary { .. } | Expression::Binary { .. } | Expression::Array { .. } => {
+            Expression::Unary { .. } | Expression::Binary { .. } => {
                 unreachable!("non-boolean expressions not allowed in conditions")
             }
         }
@@ -1899,30 +1923,37 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
     fn definition(&mut self, value: &'ast Expression<'src>, dst_offset: usize) {
         match value {
-            Expression::Literal(literal) => match literal {
-                Literal::Int(integer) => {
-                    _ = writeln!(
-                        self.asm,
-                        " mov rdi, {integer}\
-                        \n mov [rbp + {dst_offset}], rdi\n"
-                    );
+            Expression::Literal(Literal::Int(integer)) => {
+                _ = writeln!(
+                    self.asm,
+                    " mov rdi, {integer}\
+                    \n mov [rbp + {dst_offset}], rdi\n"
+                );
+            }
+            Expression::Literal(Literal::Ascii(code)) => {
+                _ = writeln!(self.asm, " mov byte [rbp + {dst_offset}], {code}\n");
+            }
+            Expression::Literal(Literal::True) => {
+                _ = writeln!(self.asm, " mov byte [rbp + {dst_offset}], true\n");
+            }
+            Expression::Literal(Literal::False) => {
+                _ = writeln!(self.asm, " mov byte [rbp + {dst_offset}], false\n");
+            }
+            Expression::Literal(Literal::Str(string)) => {
+                let index = self.string_label_index(string);
+                _ = writeln!(
+                    self.asm,
+                    " mov qword [rbp + {dst_offset}], str_{index}_len\
+                    \n mov qword [rbp + {dst_offset} + {ptr_offset}], str_{index}\n",
+                    ptr_offset = std::mem::size_of::<uint>()
+                );
+            }
+            Expression::Array { base_type, items } => {
+                let typ_size = base_type.size();
+                for (index, item) in items.iter().enumerate() {
+                    self.definition(item, dst_offset + index * typ_size);
                 }
-                Literal::Ascii(code) => {
-                    _ = writeln!(self.asm, " mov byte [rbp + {dst_offset}], {code}\n");
-                }
-                Literal::Bool(boolean) => {
-                    _ = writeln!(self.asm, " mov byte [rbp + {dst_offset}], {boolean}\n");
-                }
-                Literal::Str(string) => {
-                    let index = self.string_label_index(string);
-                    _ = writeln!(
-                        self.asm,
-                        " mov qword [rbp + {dst_offset}], str_{index}_len\
-                        \n mov qword [rbp + {dst_offset} + {ptr_offset}], str_{index}\n",
-                        ptr_offset = std::mem::size_of::<uint>()
-                    );
-                }
-            },
+            }
             Expression::Unary { op, op_col, operand } => match op {
                 UnaryOp::Len => match &**operand {
                     Expression::Literal(Literal::Str(string)) => {
@@ -1930,6 +1961,13 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         _ = writeln!(
                             self.asm,
                             " mov qword [rbp + {dst_offset}], str_{index}_len\n"
+                        );
+                    }
+                    Expression::Array { items, .. } => {
+                        _ = writeln!(
+                            self.asm,
+                            " mov qword [rbp + {dst_offset}], {}\n",
+                            items.len()
                         );
                     }
                     Expression::Identifier { typ, name } => {
@@ -1950,13 +1988,6 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 unreachable!("cannot take the length of numerical types")
                             }
                         }
-                    }
-                    Expression::Array { items, .. } => {
-                        _ = writeln!(
-                            self.asm,
-                            " mov qword [rbp + {dst_offset}], {}\n",
-                            items.len()
-                        );
                     }
                     Expression::ArrayIndex { base_type, var_name, bracket_col, index } => {
                         self.expression(index, Dst::Reg(Rdi));
@@ -2247,12 +2278,6 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             );
                         }
                     },
-                }
-            }
-            Expression::Array { base_type, items } => {
-                let typ_size = base_type.size();
-                for (index, item) in items.iter().enumerate() {
-                    self.definition(item, dst_offset + index * typ_size);
                 }
             }
             Expression::ArrayIndex { base_type, .. } => {

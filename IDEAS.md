@@ -446,7 +446,7 @@ consistency with their right shifts counterparts
 
 ## Arrays
 
-stack-allocated collection of a compile time known fixed amount of elements:
+stack-allocated collection of a compile time known fixed amount of items:
 
 ```kay
 # initial capacity cannot be specified from variables
@@ -461,12 +461,12 @@ let code: int[capacity]; # works
 let codes: int[] = [1, 2, 3]; # will be of length 3
 
 # or (need to decide wether to keep these syntaxes and only allow to specify the type after the colon)
-let codes = int[1, 2 ,3];                   # array of three elements with indexes 0, 1 and 2 initialized to 1, 2, 3
-let codes = int[6: 1, 2, 3];                # array of six elements with indexes 0, 1 and 2 initialized to 1, 2, 3
-let codes = int[6: 1 = 1, 3 = 2, 0 = 3];    # array of six elements with indexes 1, 3 and 0 initialized to 1, 2, 3
+let codes = int[1, 2 ,3];                   # array of three items with indexes 0, 1 and 2 initialized to 1, 2, 3
+let codes = int[6: 1, 2, 3];                # array of six items with indexes 0, 1 and 2 initialized to 1, 2, 3
+let codes = int[6: 1 = 1, 3 = 2, 0 = 3];    # array of six items with indexes 1, 3 and 0 initialized to 1, 2, 3
 
 # or
-let codes = int[6][1 = 1, 3 = 2, 0 = 3];    # array of six elements with indexes 1, 3 and 0 initialized to 1, 2, 3
+let codes = int[6][1 = 1, 3 = 2, 0 = 3];    # array of six items with indexes 1, 3 and 0 initialized to 1, 2, 3
 ```
 
 will borrow useful features from C like indexed initialization:
@@ -475,7 +475,7 @@ will borrow useful features from C like indexed initialization:
 let codes: int[19] = [
     2 = 5, # element at index 2 will contain the value 5
     0 = 9,
-    3..18 = 3, # elements from index 3 to index 18 will contain the value 3
+    3..18 = 3, # items from index 3 to index 18 will contain the value 3
     42 = 7, # error, out of bounds
 ];
 ```
@@ -506,7 +506,7 @@ or just `bit[m = 8 * n + e]` -> `u8[n + ceil(e + 8)]`, so:
 
 ### References to bits
 
-reference to elements in arrays of bits, i.e. `let bits: bit[3]; let second = &bits[1]` or
+reference to items in arrays of bits, i.e. `let bits: bit[3]; let second = &bits[1]` or
 `let i = 3; let second = &i[1]` could be stored as fat pointers, containing the reference to the
 corresponding byte that contains that bit and an bit offset, so fat pointer to bit would be
 equivalent to the following struct:
@@ -540,7 +540,7 @@ println fourteenth.byte >> fourteenth.bit;
 
 ## Dynamic array (Lists)
 
-heap-allocated collections of a possibly unknown amount of elements:
+heap-allocated collections of a possibly unknown amount of items:
 
 ```kay
 # the question mark denotes a dynamic array, or a list

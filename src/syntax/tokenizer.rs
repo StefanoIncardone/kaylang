@@ -27,14 +27,11 @@ pub(crate) type utf8 = char;
 
 #[derive(Debug, Clone)]
 pub(crate) enum Literal {
-    // TODO(stefano): implement unsigned integers
-    // IDEA(stefano): have different size integers and default to 32 bits for literals
+    False,
+    True,
     Int(int),
-
-    Ascii(ascii), // only supporting ASCII characters for now
-
-    Bool(bool),
-    Str(Vec<ascii>), // only supporting ASCII characters for now
+    Ascii(ascii),
+    Str(Vec<ascii>),
 }
 
 impl Display for Literal {
@@ -42,7 +39,8 @@ impl Display for Literal {
         return match self {
             Self::Int(integer) => write!(f, "{integer}"),
             Self::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
-            Self::Bool(boolean) => write!(f, "{boolean}"),
+            Self::True => write!(f, "true"),
+            Self::False => write!(f, "false"),
             Self::Str(string) => {
                 write!(f, "\"")?;
                 for ch in string {
@@ -67,8 +65,8 @@ impl DisplayLen for Literal {
         return match self {
             Self::Int(integer) => integer.to_string().len(),
             Self::Ascii(ascii_char) => ascii_escaped_len(*ascii_char) + 2, // + 2 to account for the quotes
-            Self::Bool(true) => 4,
-            Self::Bool(false) => 5,
+            Self::True => 4,
+            Self::False => 5,
             Self::Str(text) => {
                 let mut len = 2; // starting at 2 to account for the quotes
                 for ascii_char in text {
@@ -422,12 +420,10 @@ pub(crate) enum TokenKind<'src> {
     Op(Op),
 
     Literal(Literal),
-    True,
-    False,
     Identifier(&'src str),
-    Definition(Mutability),
 
     // Keywords
+    Definition(Mutability),
     Print,    // temporary way of printing values to stdout
     PrintLn,  // temporary way of printing values followed by a newline to stdout
     Eprint,   // temporary way of printing values to stderr
@@ -461,8 +457,6 @@ impl Display for TokenKind<'_> {
             Self::PrintLn => write!(f, "println"),
             Self::Eprint => write!(f, "eprint"),
             Self::EprintLn => write!(f, "eprintln"),
-            Self::True => write!(f, "true"),
-            Self::False => write!(f, "false"),
             Self::Do => write!(f, "do"),
             Self::If => write!(f, "if"),
             Self::Else => write!(f, "else"),
@@ -487,8 +481,6 @@ impl DisplayLen for TokenKind<'_> {
             Self::Op(op) => op.display_len(),
 
             Self::Literal(typ) => typ.display_len(),
-            Self::True => 4,
-            Self::False => 5,
             Self::Identifier(name) => name.chars().count(),
             Self::Definition(kind) => kind.display_len(),
 
@@ -777,8 +769,8 @@ impl<'src> Tokenizer<'src> {
             "println" => TokenKind::PrintLn,
             "eprint" => TokenKind::Eprint,
             "eprintln" => TokenKind::EprintLn,
-            "true" => TokenKind::True,
-            "false" => TokenKind::False,
+            "true" => TokenKind::Literal(Literal::True),
+            "false" => TokenKind::Literal(Literal::False),
             "do" => TokenKind::Do,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,

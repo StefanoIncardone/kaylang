@@ -48,7 +48,7 @@ Changes to error messages, help message and alike would **not** be considered br
 - `+` as the unary absolute value operator
 - overflowing operators, will wrap in two's complemente: `...\` (e.g.: `*` -> `*\`)
 - saturating operators: `...|` (e.g.: `*` -> `*|`)
-- Raw string literals: `r"hello\nworld"` where `\n` would not get escaped
+- Raw string literals: for example `r"hello\nworld"` where `\n` would not get escaped
 - Printing to `stderr`: `eprint` and `eprintln` keywords
 <!-- -->
 - `help` and `version` commands
@@ -74,20 +74,26 @@ Changes to error messages, help message and alike would **not** be considered br
 - `<=>` now has the same precedence as `==`, `!=`, `<`, `<=`, `>`, `>=` operators
 - non-wrapping and non-saturating operators will crash on overflow
 - `char` type renamed to `ascii`
-- Arrays are now mandated to contain at least 2 elements, so the `Type::Infer` type is no longer
+- Arrays are now mandated to contain at least 2 items, so the `Type::Infer` type is no longer
     needed:
-    - arrays of 0 elements are meaningless, they don't even occupy any memory
+    - arrays of 0 items are meaningless, they don't even occupy any memory
     - arrays of 1 element are literaly just that element with extra steps
 <!--  -->
 - verbosity options are now mandated to come after a `check`, `compile` or `run` commands as the
     last option
 - `verbosity` field of `Args` struct is now integrated in `Command::Check`, `Command::Compile` and
     `Command::Run` variants, thus removed
+<!--  -->
 - `Tokenizer::tokenize` and `Ast::build` now return `Error`s that can be displayed
     with the `ErrorDisplay` using the `display` method, or alternatively error messages, error cause
     messages, line column and line text information can be obtained separately with the `ErrorInfo`
     struct and `SrcFile::position` method
+<!--  -->
+- `tokenizer::Literal::Bool` now split into `tokenizer::Literal::True` and
+    `tokenizer::Literal::False`, thus removed `TokenKind::True` and `TokenKind::False`
+<!--  -->
 - `Expression` now only stores the column of the operators instead of a `Position` struct
+- Pulled `BaseType` enum out of `Type` enum
 - `Compiler::compile`
     - requires `SrcFile` to be explicitly provided
     - no longer returns generic `PathBuf`s for assembly, object and executable files
@@ -95,7 +101,6 @@ Changes to error messages, help message and alike would **not** be considered br
         path
 - Updated consistency of compilation steps names and static variables
 - Compilation steps are now managed by the `Logger` struct
-- Pulled `BaseType` enum out of `Type` enum
 
 ### Removed
 

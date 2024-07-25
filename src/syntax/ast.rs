@@ -1,6 +1,6 @@
 use super::{
     tokenizer::{
-        ascii, int, uint, BracketKind, DisplayLen, Literal, Mutability, Op, Token, TokenKind,
+        ascii, int, uint, BracketKind, DisplayLen, Literal, Mutability, Op, Token, TokenKind
     },
     Error, ErrorInfo, IntoErrorInfo,
 };
@@ -70,7 +70,7 @@ pub enum Type {
     // TODO(breaking)(stefano): enforce a max length
     Array {
         base_type: BaseType,
-        /// always greater than 1, i.e: arrays always contain at least 2 elements
+        /// always greater than 1, i.e: arrays always contain at least 2 items
         len: uint,
     },
 }
@@ -142,17 +142,17 @@ impl Display for UnaryOp {
     }
 }
 
-impl BaseTypeOf for UnaryOp {
-    #[inline(always)]
-    fn base_typ(&self) -> BaseType {
-        return BaseType::Int;
-    }
-}
-
 impl TypeOf for UnaryOp {
     #[inline(always)]
     fn typ(&self) -> Type {
         return Type::Base(self.base_typ());
+    }
+}
+
+impl BaseTypeOf for UnaryOp {
+    #[inline(always)]
+    fn base_typ(&self) -> BaseType {
+        return BaseType::Int;
     }
 }
 
@@ -170,17 +170,17 @@ impl Display for BooleanUnaryOp {
     }
 }
 
-impl BaseTypeOf for BooleanUnaryOp {
-    #[inline(always)]
-    fn base_typ(&self) -> BaseType {
-        return BaseType::Bool;
-    }
-}
-
 impl TypeOf for BooleanUnaryOp {
     #[inline(always)]
     fn typ(&self) -> Type {
         return Type::Base(self.base_typ());
+    }
+}
+
+impl BaseTypeOf for BooleanUnaryOp {
+    #[inline(always)]
+    fn base_typ(&self) -> BaseType {
+        return BaseType::Bool;
     }
 }
 
@@ -263,17 +263,17 @@ impl Display for BinaryOp {
     }
 }
 
-impl BaseTypeOf for BinaryOp {
-    #[inline(always)]
-    fn base_typ(&self) -> BaseType {
-        return BaseType::Int;
-    }
-}
-
 impl TypeOf for BinaryOp {
     #[inline(always)]
     fn typ(&self) -> Type {
         return Type::Base(self.base_typ());
+    }
+}
+
+impl BaseTypeOf for BinaryOp {
+    #[inline(always)]
+    fn base_typ(&self) -> BaseType {
+        return BaseType::Int;
     }
 }
 
@@ -293,17 +293,17 @@ impl Display for BooleanBinaryOp {
     }
 }
 
-impl BaseTypeOf for BooleanBinaryOp {
-    #[inline(always)]
-    fn base_typ(&self) -> BaseType {
-        return BaseType::Bool;
-    }
-}
-
 impl TypeOf for BooleanBinaryOp {
     #[inline(always)]
     fn typ(&self) -> Type {
         return Type::Base(self.base_typ());
+    }
+}
+
+impl BaseTypeOf for BooleanBinaryOp {
+    #[inline(always)]
+    fn base_typ(&self) -> BaseType {
+        return BaseType::Bool;
     }
 }
 
@@ -333,6 +333,13 @@ impl Display for ComparisonOp {
     }
 }
 
+impl TypeOf for ComparisonOp {
+    #[inline(always)]
+    fn typ(&self) -> Type {
+        return Type::Base(self.base_typ());
+    }
+}
+
 impl BaseTypeOf for ComparisonOp {
     #[inline(always)]
     fn base_typ(&self) -> BaseType {
@@ -345,13 +352,6 @@ impl BaseTypeOf for ComparisonOp {
             | Self::Less
             | Self::LessOrEquals => BaseType::Bool,
         };
-    }
-}
-
-impl TypeOf for ComparisonOp {
-    #[inline(always)]
-    fn typ(&self) -> Type {
-        return Type::Base(self.base_typ());
     }
 }
 
@@ -442,10 +442,33 @@ impl Display for AssignmentOp {
     }
 }
 
+impl TypeOf for Literal {
+    fn typ(&self) -> Type {
+        return Type::Base(self.base_typ());
+    }
+}
+
+impl BaseTypeOf for Literal {
+    fn base_typ(&self) -> BaseType {
+        return match self {
+            Self::Int(_) => BaseType::Int,
+            Self::Ascii(_) => BaseType::Ascii,
+            Self::True | Self::False => BaseType::Bool,
+            Self::Str(_) => BaseType::Str,
+        }
+    }
+}
+
 // IDEA(stefano): integrate operator column information only in relevant operator variants
 #[derive(Debug, Clone)]
 pub(crate) enum Expression<'src> {
     Literal(Literal),
+    Array {
+        base_type: BaseType,
+        /// arrays always contain at least 2 items
+        items: Vec<Expression<'src>>,
+    },
+
     Unary {
         op: UnaryOp,
         op_col: usize,
@@ -475,11 +498,6 @@ pub(crate) enum Expression<'src> {
         typ: Type,
         name: &'src str,
     },
-    Array {
-        base_type: BaseType,
-        /// arrays always contain at least 2 elements
-        items: Vec<Expression<'src>>,
-    },
     ArrayIndex {
         base_type: BaseType,
         var_name: &'src str,
@@ -488,64 +506,12 @@ pub(crate) enum Expression<'src> {
     },
 }
 
-impl Display for Expression<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return match self {
-            Self::Literal(literal) => write!(f, "{literal}"),
-            Self::Unary { op: len @ UnaryOp::Len, operand, .. } => write!(f, "{len} {operand}"),
-            Self::Unary { op, operand, .. } => write!(f, "{op}{operand}"),
-            Self::BooleanUnary { op, operand } => write!(f, "{op}{operand}"),
-            Self::Binary { lhs, op, rhs, .. } => write!(f, "({lhs} {op} {rhs})"),
-            Self::BooleanBinary { lhs, op, rhs, .. } => write!(f, "({lhs} {op} {rhs})"),
-            Self::Comparison { lhs, op, rhs } => write!(f, "({lhs} {op} {rhs})"),
-            Self::Identifier { name, .. } => write!(f, "{name}"),
-            Self::Array { items, .. } => {
-                write!(f, "[")?;
-                let mut items_iter = items.iter();
-                let Some(last_item) = items_iter.next_back() else {
-                    unreachable!("arrays should always contain at least 2 elements");
-                };
-
-                for item in items_iter {
-                    write!(f, "{item}, ")?;
-                }
-
-                write!(f, "{last_item}]")
-            }
-            Self::ArrayIndex { var_name, index, .. } => write!(f, "{var_name}[{index}]"),
-        };
-    }
-}
-
-impl TypeOf for Expression<'_> {
-    fn typ(&self) -> Type {
-        return match self {
-            Self::Literal(literal) => match literal {
-                Literal::Int(_) => Type::Base(BaseType::Int),
-                Literal::Ascii(_) => Type::Base(BaseType::Ascii),
-                Literal::Bool(_) => Type::Base(BaseType::Bool),
-                Literal::Str(_) => Type::Base(BaseType::Str),
-            },
-            Self::Unary { op, .. } => op.typ(),
-            Self::BooleanUnary { op, .. } => op.typ(),
-            Self::Binary { op, .. } => op.typ(),
-            Self::BooleanBinary { op, .. } => op.typ(),
-            Self::Comparison { op, .. } => op.typ(),
-            Self::Identifier { typ, .. } => *typ,
-            Self::Array { base_type, items } => {
-                Type::Array { base_type: *base_type, len: items.len() }
-            }
-            Self::ArrayIndex { base_type, .. } => Type::Base(*base_type),
-        };
-    }
-}
-
 impl From<BaseType> for Expression<'_> {
     fn from(typ: BaseType) -> Self {
         return match typ {
             BaseType::Int => Self::Literal(Literal::Int(0)),
-            BaseType::Ascii => Self::Literal(Literal::Ascii(0)),
-            BaseType::Bool => Self::Literal(Literal::Bool(false)),
+            BaseType::Ascii => Self::Literal(Literal::Ascii(b'0')),
+            BaseType::Bool => Self::Literal(Literal::False),
             BaseType::Str => Self::Literal(Literal::Str(Vec::new())),
         };
     }
@@ -556,8 +522,55 @@ impl From<Type> for Expression<'_> {
         return match typ {
             Type::Base(base_type) => base_type.into(),
             Type::Array { base_type, len } => {
-                Expression::Array { base_type, items: vec![base_type.into(); len] }
+                Self::Array { base_type, items: vec![base_type.into(); len] }
             }
+        };
+    }
+}
+
+impl Display for Expression<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        return match self {
+            Self::Literal(literal) => write!(f, "{literal}"),
+            Self::Array { items, .. } => {
+                write!(f, "[")?;
+                let mut items_iter = items.iter();
+                let Some(last_item) = items_iter.next_back() else {
+                    unreachable!("arrays should always contain at least 2 items");
+                };
+
+                for item in items_iter {
+                    write!(f, "{item}, ")?;
+                }
+
+                write!(f, "{last_item}]")
+            }
+            Self::Unary { op: len @ UnaryOp::Len, operand, .. } => write!(f, "{len} {operand}"),
+            Self::Unary { op, operand, .. } => write!(f, "{op}{operand}"),
+            Self::BooleanUnary { op, operand } => write!(f, "{op}{operand}"),
+            Self::Binary { lhs, op, rhs, .. } => write!(f, "({lhs} {op} {rhs})"),
+            Self::BooleanBinary { lhs, op, rhs, .. } => write!(f, "({lhs} {op} {rhs})"),
+            Self::Comparison { lhs, op, rhs } => write!(f, "({lhs} {op} {rhs})"),
+            Self::Identifier { name, .. } => write!(f, "{name}"),
+            Self::ArrayIndex { var_name, index, .. } => write!(f, "{var_name}[{index}]"),
+        };
+    }
+}
+
+impl TypeOf for Expression<'_> {
+    fn typ(&self) -> Type {
+        return match self {
+            Self::Literal(base) => base.typ(),
+            Self::Array { base_type, items } => {
+                Type::Array { base_type: *base_type, len: items.len() }
+            }
+            Self::Unary { op, .. } => op.typ(),
+            Self::BooleanUnary { op, .. } => op.typ(),
+            Self::Binary { op, .. } => op.typ(),
+            Self::BooleanBinary { op, .. } => op.typ(),
+            Self::Comparison { op, .. } => op.typ(),
+            Self::Identifier { typ, .. } => *typ,
+            Self::ArrayIndex { base_type, .. } => Type::Base(*base_type),
         };
     }
 }
@@ -680,6 +693,7 @@ pub struct Scope<'src> {
     pub(crate) base_types: Vec<BaseType>,
     pub(crate) let_variables: Vec<Variable<'src>>,
     pub(crate) var_variables: Vec<Variable<'src>>,
+    // pub(crate) temporary_variables:
     pub(crate) nodes: Vec<Node<'src>>,
 }
 
@@ -823,8 +837,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         return match current_token.kind {
             TokenKind::Literal(_)
-            | TokenKind::True
-            | TokenKind::False
             | TokenKind::Bracket(BracketKind::OpenRound)
             | TokenKind::Op(
                 Op::Len
@@ -876,8 +888,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     | TokenKind::SemiColon
                     | TokenKind::Comma
                     | TokenKind::Literal(_)
-                    | TokenKind::True
-                    | TokenKind::False
                     | TokenKind::Identifier(_)
                     | TokenKind::Definition(_)
                     | TokenKind::Print
@@ -1044,8 +1054,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Comma
             | TokenKind::Op(_)
             | TokenKind::Literal(_)
-            | TokenKind::True
-            | TokenKind::False
             | TokenKind::Identifier(_)
             | TokenKind::Print
             | TokenKind::PrintLn
@@ -1092,8 +1100,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Comma
             | TokenKind::Op(_)
             | TokenKind::Literal(_)
-            | TokenKind::True
-            | TokenKind::False
             | TokenKind::Identifier(_)
             | TokenKind::Definition(_)
             | TokenKind::Print
@@ -1349,8 +1355,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let current_token = self.current_token_bounded(Expected::Expression)?;
         let factor = match &current_token.kind {
             TokenKind::Literal(literal) => Ok(Expression::Literal(literal.clone())),
-            TokenKind::True => Ok(Expression::Literal(Literal::Bool(true))),
-            TokenKind::False => Ok(Expression::Literal(Literal::Bool(false))),
             TokenKind::Identifier(name) => match self.resolve_type(name) {
                 None => match self.resolve_variable(name) {
                     Some((_, _, _, var)) => self.index(var.name, var.value.typ()),
@@ -1434,7 +1438,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
                 let mut items = vec![first_item];
 
-                // IDEA(stefano): gather all the elements and then check if they are of the correct type
+                // IDEA(stefano): gather all the items and then check if they are of the correct type
                 loop {
                     let item = self.expression()?;
                     let item_type = item.typ();
@@ -1482,28 +1486,31 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 _ = self.next_token();
                 let operand = self.primary_expression()?;
                 return match &operand {
-                    Expression::Literal(literal) => match literal {
-                        Literal::Str(_) => Ok(Expression::Unary {
-                            op: UnaryOp::Len,
-                            op_col: current_token.col,
-                            operand: Box::new(operand),
-                        }),
-                        Literal::Int(_) => Err(Error {
-                            kind: ErrorKind::CannotTakeLenOf(Type::Base(BaseType::Int)),
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
-                        }),
-                        Literal::Ascii(_) => Err(Error {
-                            kind: ErrorKind::CannotTakeLenOf(Type::Base(BaseType::Ascii)),
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
-                        }),
-                        Literal::Bool(_) => Err(Error {
-                            kind: ErrorKind::CannotTakeLenOf(Type::Base(BaseType::Bool)),
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
-                        }),
-                    },
+                    Expression::Literal(Literal::Str(_)) => Ok(Expression::Unary {
+                        op: UnaryOp::Len,
+                        op_col: current_token.col,
+                        operand: Box::new(operand),
+                    }),
+                    Expression::Literal(Literal::Int(_)) => Err(Error {
+                        kind: ErrorKind::CannotTakeLenOf(Type::Base(BaseType::Int)),
+                        col: current_token.col,
+                        pointers_count: current_token.kind.display_len(),
+                    }),
+                    Expression::Literal(Literal::Ascii(_)) => Err(Error {
+                        kind: ErrorKind::CannotTakeLenOf(Type::Base(BaseType::Ascii)),
+                        col: current_token.col,
+                        pointers_count: current_token.kind.display_len(),
+                    }),
+                    Expression::Literal(Literal::True | Literal::False) => Err(Error {
+                        kind: ErrorKind::CannotTakeLenOf(Type::Base(BaseType::Bool)),
+                        col: current_token.col,
+                        pointers_count: current_token.kind.display_len(),
+                    }),
+                    Expression::Array { .. } => Ok(Expression::Unary {
+                        op: UnaryOp::Len,
+                        op_col: current_token.col,
+                        operand: Box::new(operand),
+                    }),
                     Expression::Identifier { typ, .. } => match typ {
                         Type::Base(BaseType::Str) | Type::Array { .. } => Ok(Expression::Unary {
                             op: UnaryOp::Len,
@@ -1518,11 +1525,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             })
                         }
                     },
-                    Expression::Array { .. } => Ok(Expression::Unary {
-                        op: UnaryOp::Len,
-                        op_col: current_token.col,
-                        operand: Box::new(operand),
-                    }),
                     Expression::ArrayIndex { base_type, .. } => match base_type {
                         BaseType::Str => Ok(Expression::Unary {
                             op: UnaryOp::Len,
@@ -2313,8 +2315,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::SemiColon
             | TokenKind::Comma
             | TokenKind::Op(_)
-            | TokenKind::True
-            | TokenKind::False
             | TokenKind::Identifier(_)
             | TokenKind::Definition(_)
             | TokenKind::Print
@@ -2375,9 +2375,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::SemiColon
             | TokenKind::Comma
             | TokenKind::Op(_)
-            | TokenKind::Literal(_)
-            | TokenKind::True
-            | TokenKind::False => {
+            | TokenKind::Literal(_) => {
                 return Err(Error {
                     kind: ErrorKind::ExpectedVariableName,
                     col: name_token.col,
@@ -2420,8 +2418,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Colon
             | TokenKind::Comma
             | TokenKind::Literal(_)
-            | TokenKind::True
-            | TokenKind::False
             | TokenKind::Identifier(_)
             | TokenKind::Definition(_)
             | TokenKind::Print
@@ -2693,15 +2689,15 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     fn print_arg(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
         let start_of_expression_token = self.next_token_bounded(Expected::Expression)?;
         let argument = self.expression()?;
-        let Expression::Array { .. } = argument else {
-            return Ok(argument);
+        if let Expression::Array { .. } = argument {
+            return Err(Error {
+                kind: ErrorKind::TemporaryArrayNotSupportedYet,
+                col: start_of_expression_token.col,
+                pointers_count: start_of_expression_token.kind.display_len(),
+            });
         };
 
-        return Err(Error {
-            kind: ErrorKind::TemporaryArrayNotSupportedYet,
-            col: start_of_expression_token.col,
-            pointers_count: start_of_expression_token.kind.display_len(),
-        });
+        return Ok(argument);
     }
 }
 
@@ -2747,8 +2743,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 | TokenKind::Comma
                 | TokenKind::Op(_)
                 | TokenKind::Literal(_)
-                | TokenKind::True
-                | TokenKind::False
                 | TokenKind::Identifier(_)
                 | TokenKind::Definition(_)
                 | TokenKind::Print
@@ -2782,8 +2776,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     | TokenKind::Comma
                     | TokenKind::Op(_)
                     | TokenKind::Literal(_)
-                    | TokenKind::True
-                    | TokenKind::False
                     | TokenKind::Identifier(_)
                     | TokenKind::Definition(_)
                     | TokenKind::Print
@@ -2825,8 +2817,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     | TokenKind::Comma
                     | TokenKind::Op(_)
                     | TokenKind::Literal(_)
-                    | TokenKind::True
-                    | TokenKind::False
                     | TokenKind::Identifier(_)
                     | TokenKind::Definition(_)
                     | TokenKind::Print
@@ -2876,8 +2866,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Comma
             | TokenKind::Op(_)
             | TokenKind::Literal(_)
-            | TokenKind::True
-            | TokenKind::False
             | TokenKind::Identifier(_)
             | TokenKind::Definition(_)
             | TokenKind::Print
@@ -2924,8 +2912,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Comma
             | TokenKind::Op(_)
             | TokenKind::Literal(_)
-            | TokenKind::True
-            | TokenKind::False
             | TokenKind::Identifier(_)
             | TokenKind::Definition(_)
             | TokenKind::Print
@@ -2988,9 +2974,7 @@ impl Display for Expected {
             Self::ArrayElementOrClosingSquareBracket => {
                 write!(f, "array item or closing square bracket")
             }
-            Self::CommaOrClosingSquareBracket => {
-                write!(f, "comma or closing square bracket")
-            }
+            Self::CommaOrClosingSquareBracket => write!(f, "comma or closing square bracket"),
             Self::TypeAnnotationOrVariableDefinition => {
                 write!(f, "type annotation or variable definition")
             }
@@ -2999,9 +2983,7 @@ impl Display for Expected {
             Self::Identifier => write!(f, "identifier"),
             Self::EqualsOrSemicolon => write!(f, "'=' or ';'"),
             Self::DoOrBlock => write!(f, "do statement or block"),
-            Self::DoOrBlockOrIfStatement => {
-                write!(f, "do statement, block or if statement")
-            }
+            Self::DoOrBlockOrIfStatement => write!(f, "do statement, block or if statement"),
             Self::LoopStatement => write!(f, "loop statement"),
         };
     }
@@ -3075,7 +3057,7 @@ impl IntoErrorInfo for ErrorKind {
         let (error_message, error_cause_message) = match self {
             Self::PrematureEndOfFile(expected) => (
                 "premature end of file".into(),
-                format!("expected {expected}").into(),
+                format!("expected {expected} after here").into(),
             ),
 
             Self::MissingSemicolon => (
@@ -3137,7 +3119,7 @@ impl IntoErrorInfo for ErrorKind {
             ),
             Self::ArrayOfZeroElements => (
                 "invalid array".into(),
-                "arrays of zero elements are not allowed, as they are practically phantom values".into(),
+                "arrays of zero items are not allowed, as they are practically phantom values".into(),
             ),
             Self::ArrayOfOneElement => (
                 "invalid array".into(),
