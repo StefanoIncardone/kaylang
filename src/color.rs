@@ -66,28 +66,28 @@ impl Flag {
 }
 
 #[allow(non_upper_case_globals)]
-pub(crate) static mut log: fn(
+pub(crate) static mut print: fn(
     &str,
     Fg,
     Bg,
     Flags,
     &mut std::fmt::Formatter<'_>,
-) -> std::fmt::Result = log_color;
+) -> std::fmt::Result = print_color;
 
 impl Color {
     pub fn set<I: IsTerminal>(self, sink: &I) {
         unsafe {
-            log = match self {
-                Self::Auto if sink.is_terminal() => log_color,
-                Self::Auto => log_no_color,
-                Self::Always => log_color,
-                Self::Never => log_no_color,
+            print = match self {
+                Self::Auto if sink.is_terminal() => print_color,
+                Self::Auto => print_no_color,
+                Self::Always => print_color,
+                Self::Never => print_no_color,
             }
         }
     }
 }
 
-fn log_no_color(
+fn print_no_color(
     text: &str,
     _: Fg,
     _: Bg,
@@ -97,14 +97,14 @@ fn log_no_color(
     return text.fmt(f);
 }
 
-fn log_color(
+fn print_color(
     text: &str,
     fg: Fg,
     bg: Bg,
     flags: Flags,
     f: &mut std::fmt::Formatter<'_>,
 ) -> std::fmt::Result {
-    let mut codes = String::with_capacity(15);
+    let mut codes = String::with_capacity(24);
 
     if fg != Fg::Default {
         _ = write!(codes, "{};", fg as u8);
@@ -149,6 +149,6 @@ pub struct Colored<Text: AsRef<str>> {
 
 impl<Text: AsRef<str>> Display for Colored<Text> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return unsafe { log(self.text.as_ref(), self.fg, self.bg, self.flags, f) };
+        return unsafe { print(self.text.as_ref(), self.fg, self.bg, self.flags, f) };
     }
 }
