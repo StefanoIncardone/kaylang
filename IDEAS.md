@@ -2,6 +2,41 @@
 
 **IMPORTANT**: no feature is final, modifications can happen at any moment
 
+## More output file names flags
+
+currently only the output path (`-o`, `--output`) can be specified and the names of the generated artifacts is
+generated from the source file name, i.e:
+
+| source file path | output directory path | assembly file path | object file path | executable file path |
+| :--------------- | :-------------------- | :----------------- | :--------------- | :------------------- |
+| `test.kay`       |                       | `test.asm`         | `test.o`         | `test`               |
+| `test.kay`       | `out`                 | `out/test.asm`     | `out/test.o`     | `out/test`           |
+
+could introduce flags to customize individual file output directories and file names separately:
+
+| file kind   | output directory flag        | output file path flag      |
+| :---------- | :--------------------------- | :------------------------- |
+| general     | `-o`, `--output`             |                            |
+| assembly    | `-oa`, `--output-assembly`   | `-na`, `--name-assembly`   |
+| object file | `-oo`, `--output-object`     | `-no`, `--name-object`     |
+| executable  | `-oe`, `--output-exectuable` | `-ne`, `--name-exectuable` |
+
+or combined:
+
+- assembly output name and directory: `-oa .. -n ..`, `--output-assembly .. --name ..`
+- object output name and directory: `-oo .. -n ..`, `--output-object .. --name ..`
+- executable output name and directory: `-oe .. -n ..`, `--output-exectuable .. --name ..`
+
+so using the `compile` command with these extra arguments would work like:
+
+| command                                                    | assembly file path | object file path | executable file path  |
+| :--------------------------------------------------------- | :----------------- | :--------------- | :-------------------- |
+| `test.kay -oa asm`                                         | `asm/test.asm`     | `test.o`         | `test`                |
+| `test.kay -no test_obj`                                    | `test.asm`         | `test_obj.o`     | `test`                |
+| `test.kay -o out -oa asm`                                  | `out/asm/test.asm` | `out/test.o`     | `out/test`            |
+| `test.kay -o out -oa asm -oo obj -oe exe`                  | `out/asm/test.asm` | `out/obj/test.o` | `out/exe/test`        |
+| `test.kay -oa asm -ne test_executable -oo out/obj -oe exe` | `asm/test.asm`     | `out/obj/test.o` | `exe/test_executable` |
+
 ## Language version embedded in file extension or in the resulting binary executable
 
 From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProjects/bldaps_for/common/bldaps_under_inpext.htm#:~:text=Typical%20Fortran%20source%20files%20have,f.)
@@ -359,8 +394,8 @@ let ok = match answer {
 
 ### Revised remainder/mod operators
 
-| strategy                | symbol | math equation                                                          |
-| :---------------------- | :----: | :--------------------------------------------------------------------- |
+| strategy                    | symbol | math equation                                                          |
+| :-------------------------- | :----: | :--------------------------------------------------------------------- |
 | **with truncation**         |  `%`   | `remainder = dividend - divisor * trunc(dividend / divisor)`           |
 | **with floor**              |  `%-`  | `remainder = dividend - divisor * floor(dividend / divisor)`           |
 | **with ceil**               |  `%+`  | `remainder = dividend - divisor * ceil(dividend / divisor)`            |
@@ -369,8 +404,8 @@ let ok = match answer {
 
 ### Revised shift operator
 
-| strategy                 | symbol | x86-64 instruction |
-| :----------------------- | :----: | :----------------- |
+| strategy                     | symbol | x86-64 instruction |
+| :--------------------------- | :----: | :----------------- |
 | **left logical shift**       |  `<<`  | `shl` / `shlx`     |
 | **left arithmetical shift**  |  TBD   | `sal`              |
 | **right logical shift**      |  `>>`  | `shr` / `shrx`     |
