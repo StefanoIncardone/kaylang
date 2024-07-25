@@ -586,7 +586,7 @@ impl TryFrom<Vec<String>> for Args {
                             };
 
                             let out_path_buf = PathBuf::from(out_path_string);
-                            if !out_path_buf.is_dir() {
+                            if out_path_buf.is_file() {
                                 return Err(Error::FromArgs {
                                     kind: ErrorKind::MustBeADirectoryPath(out_path_buf),
                                     args,

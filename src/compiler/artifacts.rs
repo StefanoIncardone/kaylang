@@ -29,7 +29,7 @@ impl Artifacts {
     }
 
     pub fn new_with_out_path(src: &SrcFile, out_path: &Path) -> Result<Self, Error> {
-        if !out_path.is_dir() {
+        if out_path.is_file() {
             return Err(Error::MustBeADirectoryPath(out_path.to_owned()));
         }
 
