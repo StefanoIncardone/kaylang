@@ -445,6 +445,64 @@ let codes: int[19] = [
 ];
 ```
 
+### Arrays of bits
+
+boolean values just need 1 bit to store all possible states (true: 1, false: 0), hence a single
+`bool` (8 bits) wastes 7 bits. A `bool[n]` would waste `7 * n` bits, thus a solution maybe of
+storing arrays of booleans as a `u8[ceil(n / 8)]` and packing the information of 8 booleans into a
+single `u8`, or alternatively with the `bit[n]` type:
+
+- `bit[7]` -> `u8` and only use 7 out 8 bits
+- `bit[8]` -> `u8` and use 8 bits
+- `bit[9]` -> `u8[2]` and use 8 bits of the first element and only 1 out of 8 of the second
+    - `bit[9]` -> `u16` and use only 9 out of 16 bits
+- `bit[18]` -> `u16[2]` and use 16 bits of the first element and only 2 out of 16 of the second
+- `bit[32]` -> `u32` ...
+- `bit[33]` -> `u32[2]` ...
+- `bit[64]` -> `u64` ...
+- `bit[128]` -> `u64[2]` ...
+- `bit[64 * n]` -> `u64[n]`
+- `bit[64 * n + e]` -> `u64[n + ceil(e / 8)]`
+
+or just `bit[m = 8 * n + e]` -> `u8[n + ceil(e + 8)]`, so:
+
+- `m = 3` -> `bit[0 * n + 3]` -> `u8`
+- `m = 21` -> `bit[2 * n + 5]` -> `u8[2 + ceil(5 / 8)]` -> `u8[3]`
+
+### References to bits
+
+reference to elements in arrays of bits, i.e. `let bits: bit[3]; let second = &bits[1]` or
+`let i = 3; let second = &i[1]` could be stored as fat pointers, containing the reference to the
+corresponding byte that contains that bit and an bit offset, so fat pointer to bit would be
+equivalent to the following struct:
+
+```kay
+struct BitPointer {
+    byte: u8&,
+    bit: u8, # storing the index as a u8 since numbers can only be of 64 bits
+}
+```
+
+and would be accessed like this:
+
+```kay
+let bits: bit[18];
+# equivalent
+let bytes: u8[3];
+
+# so this
+let fourteenth = &bits[13];
+
+# would be equivalent to
+let fourteenth = BitPointer { byte: bytes[2], bit: 13 % mod 8 };
+
+# so this (reading)
+println fourteenth;
+
+# would be equivalent to this
+println fourteenth.byte >> fourteenth.bit;
+```
+
 ## Dynamic array (Lists)
 
 heap-allocated collections of a possibly unknown amount of elements:

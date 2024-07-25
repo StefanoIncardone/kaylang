@@ -5,6 +5,7 @@ use std::{
     process::Command,
 };
 
+// IDEA(stefano): remove to allow for more user freedom, hence introduce flags to customized output names
 #[derive(Debug)]
 pub struct Artifacts {
     pub asm_path: PathBuf,
