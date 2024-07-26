@@ -78,6 +78,7 @@ Changes to error messages, help message and alike would **not** be considered br
     needed:
     - arrays of 0 items are meaningless, they don't even occupy any memory
     - arrays of 1 element are literaly just that element with extra steps
+- number literal `-0` is no longer allowed, since it is not a valid two's complement number
 <!--  -->
 - verbosity options are now mandated to come after a `check`, `compile` or `run` commands as the
     last option

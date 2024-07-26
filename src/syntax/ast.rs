@@ -1738,6 +1738,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
                 if should_be_negated {
                     match parse_negative_int(literal) {
+                        Some(0) => Err(Error {
+                            kind: ErrorKind::MinusZeroNumberLiteral,
+                            col: current_token.col,
+                            pointers_count: current_token.kind.display_len(),
+                        }),
                         Some(integer) => Ok(Expression::Int(integer)),
                         None => Err(Error {
                             kind: ErrorKind::IntUnderflow,
@@ -1795,6 +1800,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
                 if should_be_negated {
                     match parse_negative_int(literal) {
+                        Some(0) => Err(Error {
+                            kind: ErrorKind::MinusZeroNumberLiteral,
+                            col: current_token.col,
+                            pointers_count: current_token.kind.display_len(),
+                        }),
                         Some(integer) => Ok(Expression::Int(integer)),
                         None => Err(Error {
                             kind: ErrorKind::IntUnderflow,
@@ -1852,6 +1862,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
                 if should_be_negated {
                     match parse_negative_int(literal) {
+                        Some(0) => Err(Error {
+                            kind: ErrorKind::MinusZeroNumberLiteral,
+                            col: current_token.col,
+                            pointers_count: current_token.kind.display_len(),
+                        }),
                         Some(integer) => Ok(Expression::Int(integer)),
                         None => Err(Error {
                             kind: ErrorKind::IntUnderflow,
@@ -3086,6 +3101,7 @@ impl Display for Expected {
 pub enum ErrorKind {
     PrematureEndOfFile(Expected),
 
+    MinusZeroNumberLiteral,
     IntOverflow,
     IntUnderflow,
 
@@ -3157,6 +3173,10 @@ impl IntoErrorInfo for ErrorKind {
                 format!("expected {expected} after here").into(),
             ),
 
+            Self::MinusZeroNumberLiteral => (
+                "invalid number literal".into(),
+                "-0 is not a valid two's complement number".into(),
+            ),
             Self::IntOverflow => (
                 "number literal overflow".into(),
                 format!("overflows a {bits} bit signed integer (over {max})", bits = int::BITS, max = int::MAX).into(),
