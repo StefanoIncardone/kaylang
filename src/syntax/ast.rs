@@ -2442,13 +2442,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             _ => literal_len as uint,
         };
 
-        let Some(
-            close_square_bracket_token @ Token {
-                kind: TokenKind::Bracket(BracketKind::CloseSquare),
-                ..
-            },
-        ) = self.next_token()
-        else {
+        let close_square_bracket_token = self.current_token_bounded(Expected::ClosingSquareBracket)?;
+        let TokenKind::Bracket(BracketKind::CloseSquare) = close_square_bracket_token.kind else {
             return Err(Error {
                 kind: ErrorKind::MissingClosingSquareBracketInArrayType,
                 col: open_square_bracket_token.col,
