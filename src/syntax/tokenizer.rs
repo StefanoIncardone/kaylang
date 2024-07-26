@@ -25,7 +25,11 @@ pub(crate) type ascii = u8;
 pub(crate) type utf8 = char;
 
 /// kay's ascii string
-pub(crate) type Str = Box<[ascii]>;
+#[derive(Debug, Clone)]
+pub(crate) struct Str(pub(crate) Box<[ascii]>);
+
+#[derive(Debug, Clone)]
+pub(crate) struct RawStr<'src>(pub(crate) &'src [ascii]);
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Mutability {
@@ -376,6 +380,7 @@ pub(crate) enum TokenKind<'src> {
     Integer(&'src str),
     Ascii(ascii),
     Str(Str),
+    RawStr(RawStr<'src>),
 
     Identifier(&'src str),
 
@@ -416,8 +421,15 @@ impl Display for TokenKind<'_> {
             Self::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
             Self::Str(string) => {
                 write!(f, "\"")?;
-                for ch in &**string {
+                for ch in &*string.0 {
                     write!(f, "{}", ch.escape_ascii())?;
+                }
+                write!(f, "\"")
+            }
+            Self::RawStr(string) => {
+                write!(f, "r\"")?;
+                for ch in string.0 {
+                    write!(f, "{}", *ch as utf8)?;
                 }
                 write!(f, "\"")
             }
@@ -466,11 +478,12 @@ impl DisplayLen for TokenKind<'_> {
             Self::False => 5,
             Self::Str(text) => {
                 let mut len = 2; // starting at 2 to account for the quotes
-                for ascii_char in &**text {
+                for ascii_char in &*text.0 {
                     len += ascii_escaped_len(*ascii_char);
                 }
-                return len;
+                len
             }
+            Self::RawStr(text) => text.0.len() + 3, // + 1 for the `r` prefix, and + 2 for the quotes
 
             Self::Identifier(name) => name.chars().count(),
 
@@ -783,10 +796,9 @@ impl<'src> Tokenizer<'src> {
                     self.col += 1;
 
                     let previous_error_count = self.errors.len();
-                    let mut raw_string = Vec::<ascii>::new();
 
                     loop {
-                        let next_ch = match self.next_in_ascii_str_literal()? {
+                        match self.next_in_ascii_str_literal()? {
                             control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                                 self.errors.push(Error {
                                     kind: ErrorKind::ControlCharacterInStringLiteral(
@@ -795,13 +807,10 @@ impl<'src> Tokenizer<'src> {
                                     col: self.col - 1,
                                     pointers_count: 1,
                                 });
-                                control
                             }
                             b'"' => break,
-                            ch => ch,
-                        };
-
-                        raw_string.push(next_ch);
+                            _ => {}
+                        }
                     }
 
                     if self.errors.len() > previous_error_count {
@@ -811,7 +820,10 @@ impl<'src> Tokenizer<'src> {
 
                         Err(last_error)
                     } else {
-                        Ok(TokenKind::Str(raw_string.into()))
+                        // starting at token_start_col + 2 to skip the r prefix, and ending at
+                        // col - 1 to skip the closing quote
+                        let raw_string = &self.src.code[self.token_start_col + 2..self.col - 1];
+                        Ok(TokenKind::RawStr(RawStr(raw_string.as_bytes())))
                     }
                 }
                 _ => self.identifier(),
@@ -916,7 +928,7 @@ impl<'src> Tokenizer<'src> {
 
                     Err(last_error)
                 } else {
-                    Ok(TokenKind::Str(string.into()))
+                    Ok(TokenKind::Str(Str(string.into())))
                 }
             }
             b'\'' => {

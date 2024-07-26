@@ -13,7 +13,7 @@ use crate::{
             self, AssignmentOp, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression,
             IfStatement, Node, Scope, SizeOf, Type, TypeOf, UnaryOp,
         },
-        tokenizer::{uint, Mutability, Str},
+        tokenizer::{ascii, uint, Mutability, RawStr, Str},
     },
     CAUSE, ERROR,
 };
@@ -53,7 +53,7 @@ pub struct Compiler<'src, 'ast: 'src> {
     asm: String,
 
     variables: Vec<Variable<'src, 'ast>>,
-    strings: Vec<&'ast Str>,
+    strings: Vec<&'ast [ascii]>,
 
     if_counter: usize,
 
@@ -747,21 +747,39 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         unreachable!("should always find a variable");
     }
 
-    fn string_label_index(&mut self, string: &'ast Str) -> usize {
-        let mut string_index = 0;
+    fn str_index(&mut self, string: &'ast Str) -> usize {
+        let mut index = 0;
         for string_label in &self.strings {
-            if std::ptr::eq(string, *string_label) {
-                return string_index;
+            if std::ptr::eq(&*string.0, *string_label) {
+                return index;
             }
-            string_index += 1;
+            index += 1;
         }
 
-        let string_str = unsafe { std::str::from_utf8_unchecked(string) };
-        let string_chars = string_str.escape_debug();
-        _ = writeln!(self.string_labels, " str str_{string_index}, `{string_chars}`");
+        // registering the string if it was not encountered before
+        self.strings.push(&string.0);
 
-        self.strings.push(string);
-        return string_index;
+        let string_str = unsafe { std::str::from_utf8_unchecked(&string.0) };
+        let string_chars = string_str.escape_debug();
+        _ = writeln!(self.string_labels, " str str_{index}, `{string_chars}`");
+        return index;
+    }
+
+    fn raw_str_index(&mut self, string: &'ast RawStr<'src>) -> usize {
+        let mut index = 0;
+        for string_label in &self.strings {
+            if std::ptr::eq(string.0, *string_label) {
+                return index;
+            }
+            index += 1;
+        }
+
+        // registering the string if it was not encountered before
+        self.strings.push(string.0);
+
+        let raw_string_str = unsafe { std::str::from_utf8_unchecked(string.0) };
+        _ = writeln!(self.string_labels, " str str_{index}, '{raw_string_str}'");
+        return index;
     }
 
     fn binary_expression(
@@ -784,6 +802,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             | Expression::Int(_)
             | Expression::Ascii(_)
             | Expression::Str(_)
+            | Expression::RawStr(_)
             | Expression::Unary { op: UnaryOp::Not | UnaryOp::WrappingMinus, .. }
             | Expression::BooleanUnary { .. }
             | Expression::Identifier { .. } => {
@@ -854,7 +873,18 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             },
             Expression::Str(string) => match dst {
                 Dst::View { len, ptr } => {
-                    let index = self.string_label_index(string);
+                    let index = self.str_index(string);
+                    _ = writeln!(
+                        self.asm,
+                        " mov {len}, str_{index}_len\
+                        \n mov {ptr}, str_{index}"
+                    );
+                }
+                Dst::Reg(_) => unreachable!(),
+            },
+            Expression::RawStr(string) => match dst {
+                Dst::View { len, ptr } => {
+                    let index = self.raw_str_index(string);
                     _ = writeln!(
                         self.asm,
                         " mov {len}, str_{index}_len\
@@ -872,7 +902,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 match op {
                     UnaryOp::Len => match &**operand {
                         Expression::Str(string) => {
-                            let index = self.string_label_index(string);
+                            let index = self.str_index(string);
+                            _ = writeln!(self.asm, " mov {reg}, str_{index}_len");
+                        }
+                        Expression::RawStr(string) => {
+                            let index = self.raw_str_index(string);
                             _ = writeln!(self.asm, " mov {reg}, str_{index}_len");
                         }
                         Expression::Array { items, .. } => {
@@ -1627,7 +1661,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Array { .. }
             | Expression::Int(_)
             | Expression::Ascii(_)
-            | Expression::Str(_) => {
+            | Expression::Str(_)
+            | Expression::RawStr(_) => {
                 unreachable!("non-boolean expressions not allowed in conditions");
             }
             Expression::BooleanUnary { operand, .. } => {
@@ -1787,7 +1822,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Array { .. }
             | Expression::Int(_)
             | Expression::Ascii(_)
-            | Expression::Str(_) => {
+            | Expression::Str(_)
+            | Expression::RawStr(_) => {
                 unreachable!("non-boolean expressions not allowed in conditions");
             }
             Expression::BooleanUnary { operand, .. } => {
@@ -1944,7 +1980,16 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 _ = writeln!(self.asm, " mov byte [rbp + {dst_offset}], false\n");
             }
             Expression::Str(string) => {
-                let index = self.string_label_index(string);
+                let index = self.str_index(string);
+                _ = writeln!(
+                    self.asm,
+                    " mov qword [rbp + {dst_offset}], str_{index}_len\
+                    \n mov qword [rbp + {dst_offset} + {ptr_offset}], str_{index}\n",
+                    ptr_offset = std::mem::size_of::<uint>()
+                );
+            }
+            Expression::RawStr(string) => {
+                let index = self.raw_str_index(string);
                 _ = writeln!(
                     self.asm,
                     " mov qword [rbp + {dst_offset}], str_{index}_len\
@@ -1961,7 +2006,14 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Unary { op, op_col, operand } => match op {
                 UnaryOp::Len => match &**operand {
                     Expression::Str(string) => {
-                        let index = self.string_label_index(string);
+                        let index = self.str_index(string);
+                        _ = writeln!(
+                            self.asm,
+                            " mov qword [rbp + {dst_offset}], str_{index}_len\n"
+                        );
+                    }
+                    Expression::RawStr(string) => {
+                        let index = self.raw_str_index(string);
                         _ = writeln!(
                             self.asm,
                             " mov qword [rbp + {dst_offset}], str_{index}_len\n"

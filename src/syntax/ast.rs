@@ -1,8 +1,8 @@
 use super::{
-    tokenizer::{ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, Str, Token, TokenKind},
+    tokenizer::{ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, RawStr, Str, Token, TokenKind},
     Error, ErrorInfo, IntoErrorInfo,
 };
-use crate::src_file::{Position, SrcFile};
+use crate::{src_file::{Position, SrcFile}, syntax::tokenizer::utf8};
 use std::fmt::{Debug, Display};
 
 pub(crate) trait TypeOf {
@@ -447,6 +447,7 @@ pub(crate) enum Expression<'src> {
     Int(int),
     Ascii(ascii),
     Str(Str),
+    RawStr(RawStr<'src>),
     Array {
         base_type: BaseType,
         /// arrays always contain at least 2 items
@@ -496,7 +497,7 @@ impl From<BaseType> for Expression<'_> {
             BaseType::Int => Self::Int(0),
             BaseType::Ascii => Self::Ascii(b'0'),
             BaseType::Bool => Self::False,
-            BaseType::Str => Self::Str(Vec::new().into()),
+            BaseType::Str => Self::Str(Str(Vec::new().into())),
         };
     }
 }
@@ -510,8 +511,15 @@ impl Display for Expression<'_> {
             Self::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
             Self::Str(string) => {
                 write!(f, "\"")?;
-                for ch in &**string {
+                for ch in &*string.0 {
                     write!(f, "{}", ch.escape_ascii())?;
+                }
+                write!(f, "\"")
+            }
+            Self::RawStr(string) => {
+                write!(f, "r\"")?;
+                for ch in string.0 {
+                    write!(f, "{}", *ch as utf8)?;
                 }
                 write!(f, "\"")
             }
@@ -546,7 +554,7 @@ impl TypeOf for Expression<'_> {
             Self::False | Self::True => Type::Base(BaseType::Bool),
             Self::Int(_) => Type::Base(BaseType::Int),
             Self::Ascii(_) => Type::Base(BaseType::Ascii),
-            Self::Str(_) => Type::Base(BaseType::Str),
+            Self::Str(_) | Self::RawStr(_) => Type::Base(BaseType::Str),
             Self::Array { base_type, items } => {
                 Type::Array { base_type: *base_type, len: items.len() }
             }
@@ -827,6 +835,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Integer(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
+            | TokenKind::RawStr(_)
             | TokenKind::Bracket(BracketKind::OpenRound)
             | TokenKind::Op(
                 Op::Len
@@ -882,6 +891,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     | TokenKind::Integer(_)
                     | TokenKind::Ascii(_)
                     | TokenKind::Str(_)
+                    | TokenKind::RawStr(_)
                     | TokenKind::Identifier(_)
                     | TokenKind::Definition(_)
                     | TokenKind::Print
@@ -1052,6 +1062,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Integer(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
+            | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
             | TokenKind::Print
             | TokenKind::PrintLn
@@ -1102,6 +1113,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Integer(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
+            | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
             | TokenKind::Definition(_)
             | TokenKind::Print
@@ -1393,6 +1405,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             },
             TokenKind::Ascii(ascii_ch) => Ok(Expression::Ascii(*ascii_ch)),
             TokenKind::Str(string) => Ok(Expression::Str(string.clone())),
+            TokenKind::RawStr(string) => Ok(Expression::RawStr(string.clone())),
             TokenKind::Identifier(name) => match self.resolve_type(name) {
                 None => match self.resolve_variable(name) {
                     Some((_, _, _, var)) => self.index(var.name, var.value.typ()),
@@ -1524,7 +1537,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 _ = self.next_token();
                 let operand = self.primary_expression()?;
                 return match &operand {
-                    Expression::Str(_) => Ok(Expression::Unary {
+                    Expression::Str(_) | Expression::RawStr(_) => Ok(Expression::Unary {
                         op: UnaryOp::Len,
                         op_col: current_token.col,
                         operand: Box::new(operand),
@@ -2480,7 +2493,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::True
             | TokenKind::Integer(_)
             | TokenKind::Ascii(_)
-            | TokenKind::Str(_) => {
+            | TokenKind::Str(_)
+            | TokenKind::RawStr(_) => {
                 return Err(Error {
                     kind: ErrorKind::ExpectedVariableName,
                     col: name_token.col,
@@ -2527,6 +2541,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Integer(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
+            | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
             | TokenKind::Definition(_)
             | TokenKind::Print
@@ -2863,6 +2878,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 | TokenKind::Integer(_)
                 | TokenKind::Ascii(_)
                 | TokenKind::Str(_)
+                | TokenKind::RawStr(_)
                 | TokenKind::Identifier(_)
                 | TokenKind::Definition(_)
                 | TokenKind::Print
@@ -2900,6 +2916,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     | TokenKind::Integer(_)
                     | TokenKind::Ascii(_)
                     | TokenKind::Str(_)
+                    | TokenKind::RawStr(_)
                     | TokenKind::Identifier(_)
                     | TokenKind::Definition(_)
                     | TokenKind::Print
@@ -2945,6 +2962,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     | TokenKind::Integer(_)
                     | TokenKind::Ascii(_)
                     | TokenKind::Str(_)
+                    | TokenKind::RawStr(_)
                     | TokenKind::Identifier(_)
                     | TokenKind::Definition(_)
                     | TokenKind::Print
@@ -2998,6 +3016,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Integer(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
+            | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
             | TokenKind::Definition(_)
             | TokenKind::Print
@@ -3048,6 +3067,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Integer(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
+            | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
             | TokenKind::Definition(_)
             | TokenKind::Print
