@@ -54,6 +54,7 @@ Changes to error messages, help message and alike would **not** be considered br
 
 ### Changed
 
+- Printing of temporary arrays is now allowed
 - Improved generated asm code
 - Improved error messages
 - Runtime crashes now print to `stderr`

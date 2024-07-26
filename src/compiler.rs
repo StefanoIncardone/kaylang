@@ -36,9 +36,46 @@ use self::reg::Reg8h::*;
 #[allow(unused_imports, clippy::enum_glob_use)]
 use self::reg::Reg8l::*;
 
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Dst {
+    Reg(Reg64),
+    View { len: Reg64, ptr: Reg64 },
+}
+
+impl Dst {
+    const fn default(typ: &Type) -> Self {
+        return match typ {
+            Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => Self::Reg(Rdi),
+            Type::Base(BaseType::Str) | Type::Array { .. } => Self::View { len: Rdi, ptr: Rsi },
+        };
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Base {
+    Rbp,
+    Temp,
+}
+
+impl Display for Base {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        return match self {
+            Self::Rbp => write!(f, "rbp"),
+            Self::Temp => write!(f, "temp"),
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Variable<'src, 'ast: 'src> {
     inner: &'ast ast::Variable<'src>,
+    offset: usize,
+}
+
+#[derive(Debug)]
+struct TemporaryValue<'ast> {
+    inner: &'ast Type,
     offset: usize,
 }
 
@@ -49,10 +86,12 @@ pub struct Compiler<'src, 'ast: 'src> {
     src: &'src SrcFile,
     ast: &'ast [Scope<'src>],
 
-    string_labels: String,
     asm: String,
 
     variables: Vec<Variable<'src, 'ast>>,
+    temporary_values: Vec<TemporaryValue<'ast>>,
+
+    string_labels: String,
     strings: Vec<&'ast [ascii]>,
 
     if_counter: usize,
@@ -83,9 +122,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         let mut this = Compiler {
             src,
             ast,
-            string_labels: String::new(),
             asm: String::new(),
             variables: Vec::new(),
+            temporary_values: Vec::new(),
+            string_labels: String::new(),
             strings: Vec::new(),
             if_counter: 0,
             loop_counter: 0,
@@ -93,6 +133,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             // and_counter: 0,
             // or_counter: 0,
         };
+
+        let mut temporary_values_bytes = 0;
 
         if this.ast.is_empty() {
             _ = write!(
@@ -108,6 +150,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 for var in &scope.var_variables {
                     this.variables.push(Variable { inner: var, offset: 0 /* placeholder */ });
+                }
+
+                for var_type in &scope.temporary_values {
+                    this.temporary_values.push(TemporaryValue { inner: var_type, offset: 0 });
+
+                    let var_size = var_type.size();
+                    if var_size > temporary_values_bytes {
+                        temporary_values_bytes = var_size;
+                    }
                 }
             }
 
@@ -333,6 +384,9 @@ section .rodata
 
 section .data
  int_str: times INT_BITS db 0
+
+section .bss
+ temp: resb {temporary_values_bytes}
 "#,
             asm = this.asm,
             src_path = src.path.display(),
@@ -494,7 +548,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 let dst_offset = var.offset;
 
                 _ = writeln!(self.asm, " ; {name} = {value}");
-                self.definition(value, dst_offset);
+                self.definition(value, Base::Rbp, dst_offset);
             }
             Node::Assignment { scope_index, var_index, op, op_col, new_value } => {
                 // Note: assignments are only allowed on mutable variables
@@ -506,7 +560,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 _ = writeln!(self.asm, " ; {name} {op} {new_value}");
                 if let AssignmentOp::Equals = op {
-                    self.definition(new_value, dst_offset);
+                    self.definition(new_value, Base::Rbp, dst_offset);
                 } else {
                     self.expression(new_value, Dst::Reg(Rdi));
 
@@ -692,7 +746,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             }
             Node::Scope { index } => self.scope(*index),
             Node::Expression(expression) => {
+                _ = writeln!(self.asm, " ; {node}");
                 self.expression(expression, Dst::default(&expression.typ()));
+                _ = writeln!(self.asm);
             }
             Node::Break => {
                 _ = writeln!(
@@ -720,21 +776,6 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Dst {
-    Reg(Reg64),
-    View { len: Reg64, ptr: Reg64 },
-}
-
-impl Dst {
-    const fn default(typ: &Type) -> Self {
-        return match typ {
-            Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => Self::Reg(Rdi),
-            Type::Base(BaseType::Str) | Type::Array { .. } => Self::View { len: Rdi, ptr: Rsi },
-        };
-    }
-}
-
 // expressions
 impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn resolve(&self, name: &'src str) -> &Variable<'src, 'ast> {
@@ -745,6 +786,16 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         }
 
         unreachable!("should always find a variable");
+    }
+
+    fn resolve_temporary(&self, typ: &'ast Type) -> &TemporaryValue<'ast> {
+        for temporary in &self.temporary_values {
+            if temporary.inner == typ {
+                return temporary;
+            }
+        }
+
+        unreachable!("should always find a temporary value");
     }
 
     fn str_index(&mut self, string: &'ast Str) -> usize {
@@ -782,16 +833,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         return index;
     }
 
-    fn binary_expression(
-        &mut self,
-        lhs: &'ast Expression<'src>,
-        rhs: &'ast Expression<'src>,
-        lhs_dst: Dst,
-        rhs_dst: Dst,
-    ) {
-        self.expression(lhs, lhs_dst);
-
-        match rhs {
+    fn lhs_needs_saving(expression: &'ast Expression<'src>) -> bool {
+        return match expression {
             Expression::Array { .. } => {
                 unreachable!("arrays cannot appear in expressions");
             }
@@ -805,51 +848,104 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             | Expression::RawStr(_)
             | Expression::Unary { op: UnaryOp::Not | UnaryOp::WrappingMinus, .. }
             | Expression::BooleanUnary { .. }
-            | Expression::Identifier { .. } => {
-                self.expression(rhs, rhs_dst);
-                return;
-            }
+            | Expression::Identifier { .. } => false,
+
             // these expressions need to save the value of the lhs
             Expression::Unary { .. }
             | Expression::Binary { .. }
             | Expression::BooleanBinary { .. }
             | Expression::Comparison { .. }
-            | Expression::ArrayIndex { .. } => {
-                match lhs_dst {
-                    Dst::Reg(reg) => _ = writeln!(self.asm, " push {reg}\n"),
-                    Dst::View { len, ptr } => {
-                        _ = writeln!(
-                            self.asm,
-                            " push {len}\
-                            \n push {ptr}\n"
-                        );
-                    }
-                }
+            | Expression::ArrayIndex { .. } => true,
 
-                self.expression(rhs, lhs_dst);
-                match (rhs_dst, lhs_dst) {
-                    (Dst::Reg(rhs_reg), Dst::Reg(lhs_reg)) => {
-                        _ = writeln!(
-                            self.asm,
-                            " mov {rhs_reg}, {lhs_reg}\
-                            \n pop {lhs_reg}\n"
-                        );
-                    }
-                    (
-                        Dst::View { len: rhs_len, ptr: rhs_ptr },
-                        Dst::View { len: lhs_len, ptr: lhs_ptr },
-                    ) => {
-                        _ = writeln!(
-                            self.asm,
-                            " mov {rhs_len}, {lhs_len}\
-                            \n mov {rhs_ptr}, {lhs_ptr}\
-                            \n pop {lhs_ptr}\
-                            \n pop {lhs_len}\n"
-                        );
-                    }
-                    _ => unreachable!(),
-                }
+            Expression::Temporary { expression: temporary_expression, .. } => {
+                Self::lhs_needs_saving(temporary_expression)
+            },
+        }
+    }
+
+    fn binary_expression(
+        &mut self,
+        lhs: &'ast Expression<'src>,
+        rhs: &'ast Expression<'src>,
+        lhs_dst: Dst,
+        rhs_dst: Dst,
+    ) {
+        self.expression(lhs, lhs_dst);
+
+        if !Self::lhs_needs_saving(rhs) {
+            self.expression(rhs, rhs_dst);
+            return;
+        }
+
+        match lhs_dst {
+            Dst::Reg(reg) => _ = writeln!(self.asm, " push {reg}\n"),
+            Dst::View { len, ptr } => {
+                _ = writeln!(
+                    self.asm,
+                    " push {len}\
+                    \n push {ptr}\n"
+                );
             }
+        }
+
+        self.expression(rhs, lhs_dst);
+        match (rhs_dst, lhs_dst) {
+            (Dst::Reg(rhs_reg), Dst::Reg(lhs_reg)) => {
+                _ = writeln!(
+                    self.asm,
+                    " mov {rhs_reg}, {lhs_reg}\
+                    \n pop {lhs_reg}\n"
+                );
+            }
+            (
+                Dst::View { len: rhs_len, ptr: rhs_ptr },
+                Dst::View { len: lhs_len, ptr: lhs_ptr },
+            ) => {
+                _ = writeln!(
+                    self.asm,
+                    " mov {rhs_len}, {lhs_len}\
+                    \n mov {rhs_ptr}, {lhs_ptr}\
+                    \n pop {lhs_ptr}\
+                    \n pop {lhs_len}\n"
+                );
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn identifier(&mut self, typ: Type, dst: Dst, base: Base, offset: usize) {
+        match typ {
+            Type::Base(BaseType::Int) => match dst {
+                Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, [{base} + {offset}]"),
+                Dst::View { .. } => unreachable!(),
+            },
+            Type::Base(BaseType::Ascii | BaseType::Bool) => match dst {
+                Dst::Reg(reg) => {
+                    _ = writeln!(self.asm, " movzx {reg}, byte [{base} + {offset}]");
+                }
+                Dst::View { .. } => unreachable!(),
+            },
+            Type::Base(BaseType::Str) => match dst {
+                Dst::View { len, ptr } => {
+                    _ = writeln!(
+                        self.asm,
+                        " mov {len}, [{base} + {offset}]\
+                        \n mov {ptr}, [{base} + {offset} + {ptr_offset}]",
+                        ptr_offset = std::mem::size_of::<uint>()
+                    );
+                }
+                Dst::Reg(_) => unreachable!(),
+            },
+            Type::Array { len: array_len, .. } => match dst {
+                Dst::View { len, ptr } => {
+                    _ = writeln!(
+                        self.asm,
+                        " mov {len}, {array_len}\
+                        \n lea {ptr}, [{base} + {offset}]"
+                    );
+                }
+                Dst::Reg(_) => unreachable!(),
+            },
         }
     }
 
@@ -960,6 +1056,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         | Expression::BooleanBinary { .. }
                         | Expression::Comparison { .. } => {
                             unreachable!("cannot take the length of numerical types")
+                        }
+                        Expression::Temporary { ..  } => {
+                            unreachable!("should not appear in expressions");
                         }
                     },
                     UnaryOp::Not => {
@@ -1524,42 +1623,18 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 _ = writeln!(self.asm, "{op_asm}\n");
             }
+            Expression::Temporary { expression, temporary_scope_index, temporary_value_index } => {
+                let temporary_value_type = &self.ast[*temporary_scope_index].temporary_values[*temporary_value_index];
+                let temporary_value = self.resolve_temporary(temporary_value_type);
+                let temporary_value_offset = temporary_value.offset;
+
+                self.definition(expression, Base::Temp, temporary_value_offset);
+                self.identifier(expression.typ(), dst, Base::Temp, temporary_value_offset);
+            },
             Expression::Identifier { typ, name } => {
                 let var = self.resolve(name);
                 let var_offset = var.offset;
-                match typ {
-                    Type::Base(BaseType::Int) => match dst {
-                        Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, [rbp + {var_offset}]"),
-                        Dst::View { .. } => unreachable!(),
-                    },
-                    Type::Base(BaseType::Ascii | BaseType::Bool) => match dst {
-                        Dst::Reg(reg) => {
-                            _ = writeln!(self.asm, " movzx {reg}, byte [rbp + {var_offset}]");
-                        }
-                        Dst::View { .. } => unreachable!(),
-                    },
-                    Type::Base(BaseType::Str) => match dst {
-                        Dst::View { len, ptr } => {
-                            _ = writeln!(
-                                self.asm,
-                                " mov {len}, [rbp + {var_offset}]\
-                                \n mov {ptr}, [rbp + {var_offset} + {ptr_offset}]",
-                                ptr_offset = std::mem::size_of::<uint>()
-                            );
-                        }
-                        Dst::Reg(_) => unreachable!(),
-                    },
-                    Type::Array { len: array_len, .. } => match dst {
-                        Dst::View { len, ptr } => {
-                            _ = writeln!(
-                                self.asm,
-                                " mov {len}, {array_len}\
-                                \n lea {ptr}, [rbp + {var_offset}]"
-                            );
-                        }
-                        Dst::Reg(_) => unreachable!(),
-                    },
-                }
+                self.identifier(*typ, dst, Base::Rbp, var_offset);
             }
             Expression::ArrayIndex { base_type, var_name, bracket_col, index } => {
                 self.expression(index, Dst::Reg(Rdi));
@@ -1665,6 +1740,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             | Expression::RawStr(_) => {
                 unreachable!("non-boolean expressions not allowed in conditions");
             }
+            Expression::Temporary { ..  } => {
+                unreachable!("should not appear in conditions");
+            },
             Expression::BooleanUnary { operand, .. } => {
                 self.expression(operand, Dst::Reg(Rdi));
 
@@ -1826,6 +1904,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             | Expression::RawStr(_) => {
                 unreachable!("non-boolean expressions not allowed in conditions");
             }
+            Expression::Temporary { ..  } => {
+                unreachable!("should not appear in conditions");
+            },
             Expression::BooleanUnary { operand, .. } => {
                 self.expression(operand, Dst::Reg(Rdi));
 
@@ -1961,30 +2042,30 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         }
     }
 
-    fn definition(&mut self, value: &'ast Expression<'src>, dst_offset: usize) {
+    fn definition(&mut self, value: &'ast Expression<'src>, base: Base, dst_offset: usize) {
         match value {
             Expression::Int(integer) => {
                 _ = writeln!(
                     self.asm,
                     " mov rdi, {integer}\
-                    \n mov [rbp + {dst_offset}], rdi\n"
+                    \n mov [{base} + {dst_offset}], rdi\n"
                 );
             }
             Expression::Ascii(code) => {
-                _ = writeln!(self.asm, " mov byte [rbp + {dst_offset}], {code}\n");
+                _ = writeln!(self.asm, " mov byte [{base} + {dst_offset}], {code}\n");
             }
             Expression::True => {
-                _ = writeln!(self.asm, " mov byte [rbp + {dst_offset}], true\n");
+                _ = writeln!(self.asm, " mov byte [{base} + {dst_offset}], true\n");
             }
             Expression::False => {
-                _ = writeln!(self.asm, " mov byte [rbp + {dst_offset}], false\n");
+                _ = writeln!(self.asm, " mov byte [{base} + {dst_offset}], false\n");
             }
             Expression::Str(string) => {
                 let index = self.str_index(string);
                 _ = writeln!(
                     self.asm,
-                    " mov qword [rbp + {dst_offset}], str_{index}_len\
-                    \n mov qword [rbp + {dst_offset} + {ptr_offset}], str_{index}\n",
+                    " mov qword [{base} + {dst_offset}], str_{index}_len\
+                    \n mov qword [{base} + {dst_offset} + {ptr_offset}], str_{index}\n",
                     ptr_offset = std::mem::size_of::<uint>()
                 );
             }
@@ -1992,15 +2073,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 let index = self.raw_str_index(string);
                 _ = writeln!(
                     self.asm,
-                    " mov qword [rbp + {dst_offset}], str_{index}_len\
-                    \n mov qword [rbp + {dst_offset} + {ptr_offset}], str_{index}\n",
+                    " mov qword [{base} + {dst_offset}], str_{index}_len\
+                    \n mov qword [{base} + {dst_offset} + {ptr_offset}], str_{index}\n",
                     ptr_offset = std::mem::size_of::<uint>()
                 );
             }
             Expression::Array { base_type, items } => {
                 let typ_size = base_type.size();
                 for (index, item) in items.iter().enumerate() {
-                    self.definition(item, dst_offset + index * typ_size);
+                    self.definition(item, base, dst_offset + index * typ_size);
                 }
             }
             Expression::Unary { op, op_col, operand } => match op {
@@ -2009,23 +2090,24 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         let index = self.str_index(string);
                         _ = writeln!(
                             self.asm,
-                            " mov qword [rbp + {dst_offset}], str_{index}_len\n"
+                            " mov qword [{base} + {dst_offset}], str_{index}_len\n"
                         );
                     }
                     Expression::RawStr(string) => {
                         let index = self.raw_str_index(string);
                         _ = writeln!(
                             self.asm,
-                            " mov qword [rbp + {dst_offset}], str_{index}_len\n"
+                            " mov qword [{base} + {dst_offset}], str_{index}_len\n"
                         );
                     }
                     Expression::Array { items, .. } => {
                         _ = writeln!(
                             self.asm,
-                            " mov qword [rbp + {dst_offset}], {}\n",
+                            " mov qword [{base} + {dst_offset}], {}\n",
                             items.len()
                         );
                     }
+                    Expression::Temporary { .. } => unreachable!("temporaries cannot appear in variables"),
                     Expression::Identifier { typ, name } => {
                         let var = self.resolve(name);
                         let var_offset = var.offset;
@@ -2033,12 +2115,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             Type::Base(BaseType::Str) => {
                                 _ = writeln!(
                                     self.asm,
-                                    " mov rdi, [rbp + {var_offset}]\
-                                    \n mov [rbp + {dst_offset}], rdi\n"
+                                    " mov rdi, [{base} + {var_offset}]\
+                                    \n mov [{base} + {dst_offset}], rdi\n"
                                 );
                             }
                             Type::Array { len, .. } => {
-                                _ = writeln!(self.asm, " mov qword [rbp + {dst_offset}], {len}\n");
+                                _ = writeln!(self.asm, " mov qword [{base} + {dst_offset}], {len}\n");
                             }
                             Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => {
                                 unreachable!("cannot take the length of numerical types")
@@ -2064,8 +2146,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             \n mov rcx, {col}\
                             \n call assert_array_index_in_range\
                             \n imul rdi, {typ_size}\
-                            \n mov rdi, [rbp + {var_offset} + rdi]\
-                            \n mov [rbp + {dst_offset}], rdi\n",
+                            \n mov rdi, [{base} + {var_offset} + rdi]\
+                            \n mov [{base} + {dst_offset}], rdi\n",
                             typ_size = base_type.size(),
                         );
                     }
@@ -2088,14 +2170,14 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             _ = writeln!(
                                 self.asm,
                                 " not rdi\
-                                \n mov [rbp + {dst_offset}], rdi\n"
+                                \n mov [{base} + {dst_offset}], rdi\n"
                             );
                         }
                         Type::Base(BaseType::Ascii) => {
                             _ = writeln!(
                                 self.asm,
                                 " not rdi\
-                                \n mov [rbp + {dst_offset}], dil\n"
+                                \n mov [{base} + {dst_offset}], dil\n"
                             );
                         }
                         Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
@@ -2113,7 +2195,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 " mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call int_safe_abs\
-                                \n mov [rbp + {dst_offset}], rdi\n",
+                                \n mov [{base} + {dst_offset}], rdi\n",
                             );
                         }
                         Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
@@ -2129,7 +2211,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             _ = writeln!(
                                 self.asm,
                                 " call int_wrapping_abs\
-                                \n mov [rbp + {dst_offset}], rdi\n"
+                                \n mov [{base} + {dst_offset}], rdi\n"
                             );
                         }
                         Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
@@ -2148,7 +2230,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 " mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call int_saturating_abs\
-                                \n mov [rbp + {dst_offset}], rdi\n",
+                                \n mov [{base} + {dst_offset}], rdi\n",
                             );
                         }
                         Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
@@ -2167,7 +2249,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 " mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call int_safe_negate\
-                                \n mov [rbp + {dst_offset}], rdi\n",
+                                \n mov [{base} + {dst_offset}], rdi\n",
                             );
                         }
                         Type::Base(BaseType::Ascii) => {
@@ -2177,7 +2259,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 " mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call int_safe_negate\
-                                \n mov [rbp + {dst_offset}], dil\n",
+                                \n mov [{base} + {dst_offset}], dil\n",
                             );
                         }
                         Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
@@ -2192,14 +2274,14 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             _ = writeln!(
                                 self.asm,
                                 " neg rdi\
-                                \n mov [rbp + {dst_offset}], rdi\n"
+                                \n mov [{base} + {dst_offset}], rdi\n"
                             );
                         }
                         Type::Base(BaseType::Ascii) => {
                             _ = writeln!(
                                 self.asm,
                                 " neg rdi\
-                                \n mov [rbp + {dst_offset}], dil\n"
+                                \n mov [{base} + {dst_offset}], dil\n"
                             );
                         }
                         Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
@@ -2217,7 +2299,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 " mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call int_saturating_negate\
-                                \n mov [rbp + {dst_offset}], rdi\n",
+                                \n mov [{base} + {dst_offset}], rdi\n",
                             );
                         }
                         Type::Base(BaseType::Ascii) => {
@@ -2227,7 +2309,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 " mov rdx, {line}\
                                 \n mov rcx, {col}\
                                 \n call int_saturating_negate\
-                                \n mov [rbp + {dst_offset}], dil\n",
+                                \n mov [{base} + {dst_offset}], dil\n",
                             );
                         }
                         Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
@@ -2241,7 +2323,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 _ = writeln!(
                     self.asm,
                     " xor rdi, 1\
-                    \n mov [rbp + {dst_offset}], dil\n"
+                    \n mov [{base} + {dst_offset}], dil\n"
                 );
             }
             Expression::Binary { .. } => {
@@ -2249,10 +2331,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 match value.typ() {
                     Type::Base(BaseType::Int) => {
-                        _ = writeln!(self.asm, " mov [rbp + {dst_offset}], rdi\n");
+                        _ = writeln!(self.asm, " mov [{base} + {dst_offset}], rdi\n");
                     }
                     Type::Base(BaseType::Ascii) => {
-                        _ = writeln!(self.asm, " mov [rbp + {dst_offset}], dil\n");
+                        _ = writeln!(self.asm, " mov [{base} + {dst_offset}], dil\n");
                     }
                     Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
                         unreachable!("cannot appear in expressions");
@@ -2264,7 +2346,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 match value.typ() {
                     Type::Base(BaseType::Bool) => {
-                        _ = writeln!(self.asm, " mov [rbp + {dst_offset}], dil\n");
+                        _ = writeln!(self.asm, " mov [{base} + {dst_offset}], dil\n");
                     }
                     Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str)
                     | Type::Array { .. } => {
@@ -2278,8 +2360,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 };
 
                 self.expression(value, Dst::Reg(Rdi));
-                _ = writeln!(self.asm, " mov [rbp + {dst_offset}], dil\n");
+                _ = writeln!(self.asm, " mov [{base} + {dst_offset}], dil\n");
             }
+            Expression::Temporary { .. } => unreachable!("temporaries cannot appear in variables"),
             Expression::Identifier { typ: identifier_typ, name } => {
                 let var = self.resolve(name);
                 let src_offset = var.offset;
@@ -2287,24 +2370,24 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     Type::Base(BaseType::Int) => {
                         _ = writeln!(
                             self.asm,
-                            " mov rdi, [rbp + {src_offset}]\
-                            \n mov [rbp + {dst_offset}], rdi\n"
+                            " mov rdi, [{base} + {src_offset}]\
+                            \n mov [{base} + {dst_offset}], rdi\n"
                         );
                     }
                     Type::Base(BaseType::Ascii | BaseType::Bool) => {
                         _ = writeln!(
                             self.asm,
-                            " mov dil, [rbp + {src_offset}]\
-                            \n mov [rbp + {dst_offset}], dil\n"
+                            " mov dil, [{base} + {src_offset}]\
+                            \n mov [{base} + {dst_offset}], dil\n"
                         );
                     }
                     Type::Base(BaseType::Str) => {
                         _ = writeln!(
                             self.asm,
-                            " mov rdi, [rbp + {src_offset}]\
-                            \n mov rsi, [rbp + {src_offset} + {ptr_offset}]\
-                            \n mov [rbp + {dst_offset}], rdi\
-                            \n mov [rbp + {dst_offset} + {ptr_offset}], rsi\n",
+                            " mov rdi, [{base} + {src_offset}]\
+                            \n mov rsi, [{base} + {src_offset} + {ptr_offset}]\
+                            \n mov [{base} + {dst_offset}], rdi\
+                            \n mov [{base} + {dst_offset} + {ptr_offset}], rsi\n",
                             ptr_offset = std::mem::size_of::<uint>()
                         );
                     }
@@ -2312,8 +2395,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         BaseType::Int => {
                             _ = writeln!(
                                 self.asm,
-                                " lea rdi, [rbp + {dst_offset}]\
-                                \n lea rsi, [rbp + {src_offset}]\
+                                " lea rdi, [{base} + {dst_offset}]\
+                                \n lea rsi, [{base} + {src_offset}]\
                                 \n mov rcx, {len}\
                                 \n rep movsq\n"
                             );
@@ -2321,8 +2404,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         BaseType::Ascii | BaseType::Bool => {
                             _ = writeln!(
                                 self.asm,
-                                " lea rdi, [rbp + {dst_offset}]\
-                                \n lea rsi, [rbp + {src_offset}]\
+                                " lea rdi, [{base} + {dst_offset}]\
+                                \n lea rsi, [{base} + {src_offset}]\
                                 \n mov rcx, {len}\
                                 \n rep movsb\n"
                             );
@@ -2330,8 +2413,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         BaseType::Str => {
                             _ = writeln!(
                                 self.asm,
-                                " lea rdi, [rbp + {dst_offset}]\
-                                \n lea rsi, [rbp + {src_offset}]\
+                                " lea rdi, [{base} + {dst_offset}]\
+                                \n lea rsi, [{base} + {src_offset}]\
                                 \n mov rcx, {len} * 2\
                                 \n rep movsq\n"
                             );
@@ -2343,15 +2426,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.expression(value, Dst::default(&Type::Base(*base_type)));
 
                 match base_type {
-                    BaseType::Int => _ = writeln!(self.asm, " mov [rbp + {dst_offset}], rdi\n"),
+                    BaseType::Int => _ = writeln!(self.asm, " mov [{base} + {dst_offset}], rdi\n"),
                     BaseType::Ascii | BaseType::Bool => {
-                        _ = writeln!(self.asm, " mov [rbp + {dst_offset}], dil\n");
+                        _ = writeln!(self.asm, " mov [{base} + {dst_offset}], dil\n");
                     }
                     BaseType::Str => {
                         _ = writeln!(
                             self.asm,
-                            " mov [rbp + {dst_offset}], rdi\
-                            \n mov [rbp + {dst_offset} + {ptr_offset}], rsi\n",
+                            " mov [{base} + {dst_offset}], rdi\
+                            \n mov [{base} + {dst_offset} + {ptr_offset}], rsi\n",
                             ptr_offset = std::mem::size_of::<uint>()
                         );
                     }

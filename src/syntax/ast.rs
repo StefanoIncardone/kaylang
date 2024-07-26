@@ -484,15 +484,23 @@ pub(crate) enum Expression<'src> {
         op: ComparisonOp,
         rhs: Box<Expression<'src>>,
     },
-    Identifier {
-        typ: Type,
-        name: &'src str,
-    },
     ArrayIndex {
         base_type: BaseType,
         var_name: &'src str,
         bracket_col: usize,
         index: Box<Expression<'src>>,
+    },
+
+    // TODO(stefano): represent as an index into the variables
+    Identifier {
+        typ: Type,
+        name: &'src str,
+    },
+    // TODO(stefano): represent as an index into the variables
+    Temporary {
+        expression: Box<Expression<'src>>,
+        temporary_scope_index: usize,
+        temporary_value_index: usize,
     },
 }
 
@@ -547,8 +555,9 @@ impl Display for Expression<'_> {
             Self::Binary { lhs, op, rhs, .. } => write!(f, "({lhs} {op} {rhs})"),
             Self::BooleanBinary { lhs, op, rhs, .. } => write!(f, "({lhs} {op} {rhs})"),
             Self::Comparison { lhs, op, rhs } => write!(f, "({lhs} {op} {rhs})"),
-            Self::Identifier { name, .. } => write!(f, "{name}"),
             Self::ArrayIndex { var_name, index, .. } => write!(f, "{var_name}[{index}]"),
+            Self::Temporary { expression, .. } => write!(f, "{expression}"),
+            Self::Identifier { name, .. } => write!(f, "{name}"),
         };
     }
 }
@@ -563,6 +572,7 @@ impl TypeOf for Expression<'_> {
             Self::Array { base_type, items } => {
                 Type::Array { base_type: *base_type, len: items.len() }
             }
+            Self::Temporary { expression, .. } => expression.typ(),
             Self::Unary { op, .. } => op.typ(),
             Self::BooleanUnary { op, .. } => op.typ(),
             Self::Binary { op, .. } => op.typ(),
@@ -692,7 +702,7 @@ pub struct Scope<'src> {
     pub(crate) base_types: Vec<BaseType>,
     pub(crate) let_variables: Vec<Variable<'src>>,
     pub(crate) var_variables: Vec<Variable<'src>>,
-    // pub(crate) temporary_variables:
+    pub(crate) temporary_values: Vec<Type>,
     pub(crate) nodes: Vec<Node<'src>>,
 }
 
@@ -746,6 +756,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 base_types: vec![BaseType::Int, BaseType::Ascii, BaseType::Bool, BaseType::Str],
                 let_variables: Vec::new(),
                 var_variables: Vec::new(),
+                temporary_values: Vec::new(),
                 nodes: Vec::new(),
             }],
             loop_depth: 0,
@@ -841,7 +852,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
-            | TokenKind::Bracket(BracketKind::OpenRound)
+            | TokenKind::Bracket(BracketKind::OpenRound | BracketKind::OpenSquare)
             | TokenKind::Op(
                 Op::Len
                 | Op::Not
@@ -851,7 +862,22 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 | Op::Minus
                 | Op::WrappingMinus
                 | Op::SaturatingMinus,
-            ) => Ok(Some(Node::Expression(self.expression()?))),
+            ) => {
+                let expression = self.expression()?;
+                if let Expression::Array { .. } = expression {
+                    let current_scope = &mut self.scopes[self.scope_index];
+                    let temporary_scope_index = self.scope_index;
+                    let temporary_value_index = current_scope.temporary_values.len();
+                    current_scope.temporary_values.push(expression.typ());
+                    return Ok(Some(Node::Expression(Expression::Temporary {
+                        expression: Box::new(expression),
+                        temporary_scope_index,
+                        temporary_value_index,
+                    })));
+                }
+
+                Ok(Some(Node::Expression(expression)))
+            }
             TokenKind::Identifier(name) => match self.peek_next_token() {
                 Some(op) => match op.kind {
                     TokenKind::Op(
@@ -990,14 +1016,6 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     file = self.src.path.display(),
                 );
             }
-            TokenKind::Bracket(BracketKind::OpenSquare) => {
-                _ = self.expression()?;
-                Err(Error {
-                    kind: ErrorKind::TemporaryArrayNotSupportedYet,
-                    col: current_token.col,
-                    pointers_count: current_token.kind.display_len(),
-                })
-            }
             TokenKind::Bracket(
                 BracketKind::CloseCurly | BracketKind::CloseSquare | BracketKind::CloseRound,
             ) => {
@@ -1093,6 +1111,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     base_types: Vec::new(),
                     let_variables: Vec::new(),
                     var_variables: Vec::new(),
+                    temporary_values: Vec::new(),
                     nodes: Vec::new(),
                 });
                 self.scope_index = new_scope_index;
@@ -1618,6 +1637,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(),
                     }),
+                    Expression::Temporary { .. } => {
+                        unreachable!("should be returned from expressions");
+                    },
                 };
             }
             TokenKind::Op(Op::Plus) => {
@@ -2824,13 +2846,17 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 // print statements
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn print_arg(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
-        let start_of_expression_token = self.next_token_bounded(Expected::Expression)?;
+        let _start_of_expression_token = self.next_token_bounded(Expected::Expression)?;
         let argument = self.expression()?;
         if let Expression::Array { .. } = argument {
-            return Err(Error {
-                kind: ErrorKind::TemporaryArrayNotSupportedYet,
-                col: start_of_expression_token.col,
-                pointers_count: start_of_expression_token.kind.display_len(),
+            let current_scope = &mut self.scopes[self.scope_index];
+            let temporary_scope_index = self.scope_index;
+            let temporary_value_index = current_scope.temporary_values.len();
+            current_scope.temporary_values.push(argument.typ());
+            return Ok(Expression::Temporary {
+                expression: Box::new(argument),
+                temporary_scope_index,
+                temporary_value_index,
             });
         };
 
@@ -3161,7 +3187,6 @@ pub enum ErrorKind {
 
     MissingSemicolon,
 
-    TemporaryArrayNotSupportedYet,
     LeftOperandTypeMismatch(Type),
     RightOperandTypeMismatch(Type),
     ExpectedNumberLiteralInArrayType,
@@ -3245,10 +3270,6 @@ impl IntoErrorInfo for ErrorKind {
                 "missing semicolon after here".into(),
             ),
 
-            Self::TemporaryArrayNotSupportedYet => (
-                "invalid statement".into(),
-                "temporary arrays are not supported yet, extract this to a variable first".into()
-            ),
             Self::LeftOperandTypeMismatch(invalid_type) => (
                 "invalid expression".into(),
                 format!("cannot be preceded by '{invalid_type}'").into(),
