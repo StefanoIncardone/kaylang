@@ -1,8 +1,10 @@
+// TODO(stefano): change all occurrencies of `number literal` to `integer literal`
+
 use super::{Error, ErrorInfo, IntoErrorInfo};
 use crate::src_file::{Line, SrcFile};
 use std::{
     fmt::Display,
-    num::{IntErrorKind, ParseIntError},
+    num::ParseIntError,
 };
 
 pub(super) trait DisplayLen {
@@ -28,21 +30,23 @@ pub(crate) type utf8 = char;
 /// kay's ascii string
 pub(crate) type Str = Box<[ascii]>;
 
+// TODO(stefano): inline into TokenKind
 #[derive(Debug, Clone)]
-pub(crate) enum Literal {
+pub(crate) enum Literal<'src> {
     False,
     True,
-    Int(int),
+    // Note: number literals are never empty and always contain valid ascii digits
+    Integer(&'src str),
     Ascii(ascii),
     Str(Str),
 }
 
-impl Display for Literal {
+impl Display for Literal<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         return match self {
             Self::False => write!(f, "false"),
             Self::True => write!(f, "true"),
-            Self::Int(integer) => write!(f, "{integer}"),
+            Self::Integer(integer) => write!(f, "{integer}"),
             Self::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
             Self::Str(string) => {
                 write!(f, "\"")?;
@@ -55,7 +59,7 @@ impl Display for Literal {
     }
 }
 
-impl DisplayLen for Literal {
+impl DisplayLen for Literal<'_> {
     #[inline(always)]
     fn display_len(&self) -> usize {
         #[inline(always)]
@@ -66,7 +70,7 @@ impl DisplayLen for Literal {
         }
 
         return match self {
-            Self::Int(integer) => integer.to_string().len(),
+            Self::Integer(integer) => integer.len(),
             Self::Ascii(ascii_char) => ascii_escaped_len(*ascii_char) + 2, // + 2 to account for the quotes
             Self::True => 4,
             Self::False => 5,
@@ -422,7 +426,7 @@ pub(crate) enum TokenKind<'src> {
     Comma,
     Op(Op),
 
-    Literal(Literal),
+    Literal(Literal<'src>),
     Identifier(&'src str),
 
     // Keywords
@@ -829,10 +833,14 @@ impl<'src> Tokenizer<'src> {
             },
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.identifier(),
             b'0'..=b'9' => {
+                let mut contains_non_digits = false;
                 let mut contains_utf8 = false;
                 loop {
                     match self.peek_next_ascii_char() {
-                        Ok(Some(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {}
+                        Ok(Some(b'0'..=b'9')) => {}
+                        Ok(Some(b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {
+                            contains_non_digits = true;
+                        }
                         Ok(Some(_) | None) => break,
                         Err(_) => contains_utf8 = true,
                     }
@@ -840,36 +848,52 @@ impl<'src> Tokenizer<'src> {
                     _ = self.next_ascii_char();
                 }
 
-                let token_text = &self.src.code[self.token_start_col..self.col];
-                match token_text.parse() {
-                    Ok(integer) => Ok(TokenKind::Literal(Literal::Int(integer))),
-                    Err(err) => {
-                        let kind = match err.kind() {
-                            IntErrorKind::InvalidDigit => {
-                                if contains_utf8 {
-                                    ErrorKind::Utf8InNumberLiteral
-                                } else {
-                                    ErrorKind::NonDigitInNumberLiteral
-                                }
-                            }
-                            IntErrorKind::PosOverflow => {
-                                ErrorKind::IntOverflow { bits: int::BITS, max: int::MAX }
-                            }
-                            IntErrorKind::NegOverflow => {
-                                ErrorKind::IntUnderflow { bits: int::BITS, min: int::MIN }
-                            }
-                            IntErrorKind::Empty => unreachable!("should never parse empty numbers"),
-                            IntErrorKind::Zero => unreachable!("numbers can also be zero"),
-                            _ => ErrorKind::InvalidNumberLiteral(err),
-                        };
-
-                        Err(Error {
-                            kind,
-                            col: self.token_start_col,
-                            pointers_count: self.token_len(),
-                        })
-                    }
+                if contains_non_digits {
+                    Err(Error {
+                        kind: ErrorKind::NonDigitInNumberLiteral,
+                        col: self.token_start_col,
+                        pointers_count: self.token_len(),
+                    })
+                } else if contains_utf8 {
+                    Err(Error {
+                        kind: ErrorKind::Utf8InNumberLiteral,
+                        col: self.token_start_col,
+                        pointers_count: self.token_len(),
+                    })
+                } else {
+                    let number_literal = &self.src.code[self.token_start_col..self.col];
+                    Ok(TokenKind::Literal(Literal::Integer(number_literal)))
                 }
+
+                // match number_literal.parse() {
+                //     Ok(integer) => Ok(TokenKind::Literal(Literal::Int(integer))),
+                //     Err(err) => {
+                //         let kind = match err.kind() {
+                //             IntErrorKind::InvalidDigit => {
+                //                 if contains_utf8 {
+                //                     ErrorKind::Utf8InNumberLiteral
+                //                 } else {
+                //                     ErrorKind::NonDigitInNumberLiteral
+                //                 }
+                //             }
+                //             IntErrorKind::PosOverflow => {
+                //                 ErrorKind::IntOverflow { bits: int::BITS, max: int::MAX }
+                //             }
+                //             IntErrorKind::NegOverflow => {
+                //                 ErrorKind::IntUnderflow { bits: int::BITS, min: int::MIN }
+                //             }
+                //             IntErrorKind::Empty => unreachable!("should never parse empty numbers"),
+                //             IntErrorKind::Zero => unreachable!("numbers can also be zero"),
+                //             _ => ErrorKind::InvalidNumberLiteral(err),
+                //         };
+
+                //         Err(Error {
+                //             kind,
+                //             col: self.token_start_col,
+                //             pointers_count: self.token_len(),
+                //         })
+                //     }
+                // }
             }
             b'#' => {
                 // ignoring the hash symbol
@@ -1369,8 +1393,6 @@ pub enum ErrorKind {
 
     Utf8InNumberLiteral,
     NonDigitInNumberLiteral,
-    IntOverflow { bits: u32, max: isize },
-    IntUnderflow { bits: u32, min: isize },
     InvalidNumberLiteral(ParseIntError),
 
     Utf8InIdentifier,
@@ -1434,14 +1456,6 @@ impl IntoErrorInfo for ErrorKind {
             Self::NonDigitInNumberLiteral => (
                 "invalid number literal".into(),
                 "must not contain non-digit characters".into(),
-            ),
-            Self::IntOverflow { bits, max } => (
-                "number literal overflow".into(),
-                format!("overflows a {bits} bit signed integer (over {max})").into(),
-            ),
-            Self::IntUnderflow { bits, min } => (
-                "number literal underflow".into(),
-                format!("underlows a {bits} bit signed integer (under {min})").into(),
             ),
             Self::InvalidNumberLiteral(err) => (
                 "invalid number literal".into(),

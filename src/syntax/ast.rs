@@ -1340,13 +1340,47 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         };
     }
 
+    // IDEA(stefano): disallow -0
     fn primary_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+        // TODO(stefano): measure speed and optimize if needed
+        #[allow(clippy::single_call_fn)] // this function exists just to be able to use the ? operator
+        fn parse_positive_int(literal: &str) -> Option<int> {
+            let mut integer: int = 0;
+            for ascii_digit in literal.as_bytes() {
+                let digit = (*ascii_digit - b'0') as usize;
+
+                integer = integer.checked_mul(10)?;
+                integer = integer.checked_add_unsigned(digit)?;
+            }
+            return Some(integer);
+        }
+
+        // TODO(stefano): measure speed and optimize if needed
+        #[allow(clippy::single_call_fn)] // this function exists just to be able to use the ? operator
+        fn parse_negative_int(literal: &str) -> Option<int> {
+            let mut integer: int = 0;
+            for ascii_digit in literal.as_bytes() {
+                let digit = (*ascii_digit - b'0') as usize;
+
+                integer = integer.checked_mul(10)?;
+                integer = integer.checked_sub_unsigned(digit)?;
+            }
+            return Some(integer);
+        }
+
         let current_token = self.current_token_bounded(Expected::Expression)?;
         let factor = match &current_token.kind {
             TokenKind::Literal(literal) => match literal {
                 Literal::False => Ok(Expression::False),
                 Literal::True => Ok(Expression::True),
-                Literal::Int(integer) => Ok(Expression::Int(*integer)),
+                Literal::Integer(integer_literal) => match parse_positive_int(integer_literal) {
+                    Some(integer) => Ok(Expression::Int(integer)),
+                    None => Err(Error {
+                        kind: ErrorKind::IntOverflow,
+                        col: current_token.col,
+                        pointers_count: current_token.kind.display_len(),
+                    })
+                },
                 Literal::Ascii(ascii_ch) => Ok(Expression::Ascii(*ascii_ch)),
                 Literal::Str(string) => Ok(Expression::Str(string.clone())),
             }
@@ -1676,28 +1710,51 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     should_be_negated = !should_be_negated;
                 }
 
-                let operand = self.primary_expression()?;
+                let start_of_expression = &self.tokens[self.token];
+                let TokenKind::Literal(Literal::Integer(literal)) = start_of_expression.kind else {
+                    let operand = self.primary_expression()?;
 
-                // returning to avoid the call to tokens.next at the end of the function
-                return match operand.typ() {
-                    Type::Base(BaseType::Int | BaseType::Ascii) => {
-                        if should_be_negated {
-                            Ok(Expression::Unary {
-                                op: UnaryOp::Minus,
-                                op_col: current_token.col,
-                                operand: Box::new(operand),
-                            })
-                        } else {
-                            Ok(operand)
+                    // returning to avoid the call to tokens.next at the end of the function
+                    return match operand.typ() {
+                        Type::Base(BaseType::Int | BaseType::Ascii) => {
+                            if should_be_negated {
+                                Ok(Expression::Unary {
+                                    op: UnaryOp::Minus,
+                                    op_col: current_token.col,
+                                    operand: Box::new(operand),
+                                })
+                            } else {
+                                Ok(operand)
+                            }
                         }
-                    }
-                    invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str)
-                    | Type::Array { .. }) => Err(Error {
-                        kind: ErrorKind::CannotNegate(invalid_typ),
-                        col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
-                    }),
+                        invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str)
+                        | Type::Array { .. }) => Err(Error {
+                            kind: ErrorKind::CannotNegate(invalid_typ),
+                            col: current_token.col,
+                            pointers_count: current_token.kind.display_len(),
+                        }),
+                    };
                 };
+
+                if should_be_negated {
+                    match parse_negative_int(literal) {
+                        Some(integer) => Ok(Expression::Int(integer)),
+                        None => Err(Error {
+                            kind: ErrorKind::IntUnderflow,
+                            col: current_token.col,
+                            pointers_count: current_token.kind.display_len(),
+                        })
+                    }
+                } else {
+                    match parse_positive_int(literal) {
+                        Some(integer) => Ok(Expression::Int(integer)),
+                        None => Err(Error {
+                            kind: ErrorKind::IntOverflow,
+                            col: current_token.col,
+                            pointers_count: current_token.kind.display_len(),
+                        })
+                    }
+                }
             }
             TokenKind::Op(Op::WrappingMinus) => {
                 let mut should_be_negated = true;
@@ -1710,28 +1767,51 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     should_be_negated = !should_be_negated;
                 }
 
-                let operand = self.primary_expression()?;
+                let start_of_expression = &self.tokens[self.token];
+                let TokenKind::Literal(Literal::Integer(literal)) = start_of_expression.kind else {
+                    let operand = self.primary_expression()?;
 
-                // returning to avoid the call to tokens.next at the end of the function
-                return match operand.typ() {
-                    Type::Base(BaseType::Int | BaseType::Ascii) => {
-                        if should_be_negated {
-                            Ok(Expression::Unary {
-                                op: UnaryOp::WrappingMinus,
-                                op_col: current_token.col,
-                                operand: Box::new(operand),
-                            })
-                        } else {
-                            Ok(operand)
+                    // returning to avoid the call to tokens.next at the end of the function
+                    return match operand.typ() {
+                        Type::Base(BaseType::Int | BaseType::Ascii) => {
+                            if should_be_negated {
+                                Ok(Expression::Unary {
+                                    op: UnaryOp::WrappingMinus,
+                                    op_col: current_token.col,
+                                    operand: Box::new(operand),
+                                })
+                            } else {
+                                Ok(operand)
+                            }
                         }
-                    }
-                    invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str)
-                    | Type::Array { .. }) => Err(Error {
-                        kind: ErrorKind::CannotNegate(invalid_typ),
-                        col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
-                    }),
+                        invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str)
+                        | Type::Array { .. }) => Err(Error {
+                            kind: ErrorKind::CannotNegate(invalid_typ),
+                            col: current_token.col,
+                            pointers_count: current_token.kind.display_len(),
+                        }),
+                    };
                 };
+
+                if should_be_negated {
+                    match parse_negative_int(literal) {
+                        Some(integer) => Ok(Expression::Int(integer)),
+                        None => Err(Error {
+                            kind: ErrorKind::IntUnderflow,
+                            col: current_token.col,
+                            pointers_count: current_token.kind.display_len(),
+                        })
+                    }
+                } else {
+                    match parse_positive_int(literal) {
+                        Some(integer) => Ok(Expression::Int(integer)),
+                        None => Err(Error {
+                            kind: ErrorKind::IntOverflow,
+                            col: current_token.col,
+                            pointers_count: current_token.kind.display_len(),
+                        })
+                    }
+                }
             }
             TokenKind::Op(Op::SaturatingMinus) => {
                 let mut should_be_negated = true;
@@ -1744,28 +1824,51 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     should_be_negated = !should_be_negated;
                 }
 
-                let operand = self.primary_expression()?;
+                let start_of_expression = &self.tokens[self.token];
+                let TokenKind::Literal(Literal::Integer(literal)) = start_of_expression.kind else {
+                    let operand = self.primary_expression()?;
 
-                // returning to avoid the call to tokens.next at the end of the function
-                return match operand.typ() {
-                    Type::Base(BaseType::Int | BaseType::Ascii) => {
-                        if should_be_negated {
-                            Ok(Expression::Unary {
-                                op: UnaryOp::SaturatingMinus,
-                                op_col: current_token.col,
-                                operand: Box::new(operand),
-                            })
-                        } else {
-                            Ok(operand)
+                    // returning to avoid the call to tokens.next at the end of the function
+                    return match operand.typ() {
+                        Type::Base(BaseType::Int | BaseType::Ascii) => {
+                            if should_be_negated {
+                                Ok(Expression::Unary {
+                                    op: UnaryOp::SaturatingMinus,
+                                    op_col: current_token.col,
+                                    operand: Box::new(operand),
+                                })
+                            } else {
+                                Ok(operand)
+                            }
                         }
-                    }
-                    invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str)
-                    | Type::Array { .. }) => Err(Error {
-                        kind: ErrorKind::CannotNegate(invalid_typ),
-                        col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
-                    }),
+                        invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str)
+                        | Type::Array { .. }) => Err(Error {
+                            kind: ErrorKind::CannotNegate(invalid_typ),
+                            col: current_token.col,
+                            pointers_count: current_token.kind.display_len(),
+                        }),
+                    };
                 };
+
+                if should_be_negated {
+                    match parse_negative_int(literal) {
+                        Some(integer) => Ok(Expression::Int(integer)),
+                        None => Err(Error {
+                            kind: ErrorKind::IntUnderflow,
+                            col: current_token.col,
+                            pointers_count: current_token.kind.display_len(),
+                        })
+                    }
+                } else {
+                    match parse_positive_int(literal) {
+                        Some(integer) => Ok(Expression::Int(integer)),
+                        None => Err(Error {
+                            kind: ErrorKind::IntOverflow,
+                            col: current_token.col,
+                            pointers_count: current_token.kind.display_len(),
+                        })
+                    }
+                }
             }
             TokenKind::Op(Op::Not) => {
                 let mut should_be_inverted = true;
@@ -2284,50 +2387,38 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let _open_square_bracket = self.next_token();
 
         let len_token = self.next_token_bounded(Expected::ArrayLength)?;
-        let len = match len_token.kind {
-            TokenKind::Literal(Literal::Int(len)) => match len {
-                0 => {
-                    return Err(Error {
-                        kind: ErrorKind::ArrayOfZeroElements,
-                        col: len_token.col,
-                        pointers_count: len_token.kind.display_len(),
-                    })
-                }
-                1 => {
-                    return Err(Error {
-                        kind: ErrorKind::ArrayOfOneElement,
-                        col: len_token.col,
-                        pointers_count: len_token.kind.display_len(),
-                    })
-                }
-                _ => len as uint,
-            },
-            TokenKind::Literal(_)
-            | TokenKind::Comment(_)
-            | TokenKind::Unexpected(_)
-            | TokenKind::Bracket(_)
-            | TokenKind::Colon
-            | TokenKind::SemiColon
-            | TokenKind::Comma
-            | TokenKind::Op(_)
-            | TokenKind::Identifier(_)
-            | TokenKind::Definition(_)
-            | TokenKind::Print
-            | TokenKind::PrintLn
-            | TokenKind::Eprint
-            | TokenKind::EprintLn
-            | TokenKind::Do
-            | TokenKind::If
-            | TokenKind::Else
-            | TokenKind::Loop
-            | TokenKind::Break
-            | TokenKind::Continue => {
+        let len_expression = self.expression()?;
+        let Expression::Int(literal_len) = len_expression else {
+            return Err(Error {
+                kind: ErrorKind::ExpectedNumberLiteralInArrayType,
+                col: open_square_bracket_token.col,
+                pointers_count: open_square_bracket_token.kind.display_len(),
+            });
+        };
+
+        let len = match literal_len {
+            len if len < 0 => {
                 return Err(Error {
-                    kind: ErrorKind::ExpectedNumberLiteralInArrayType,
-                    col: open_square_bracket_token.col,
-                    pointers_count: open_square_bracket_token.kind.display_len(),
-                })
+                    kind: ErrorKind::ArrayOfNegativeLength,
+                    col: len_token.col,
+                    pointers_count: len_token.kind.display_len(),
+                });
             }
+            0 => {
+                return Err(Error {
+                    kind: ErrorKind::ArrayOfZeroElements,
+                    col: len_token.col,
+                    pointers_count: len_token.kind.display_len(),
+                });
+            }
+            1 => {
+                return Err(Error {
+                    kind: ErrorKind::ArrayOfOneElement,
+                    col: len_token.col,
+                    pointers_count: len_token.kind.display_len(),
+                });
+            }
+            _ => literal_len as uint,
         };
 
         let Some(
@@ -2995,6 +3086,9 @@ impl Display for Expected {
 pub enum ErrorKind {
     PrematureEndOfFile(Expected),
 
+    IntOverflow,
+    IntUnderflow,
+
     MissingSemicolon,
 
     TemporaryArrayNotSupportedYet,
@@ -3008,6 +3102,7 @@ pub enum ErrorKind {
     TypeInExpression,
     EmptyExpression,
     UnclosedBracket(BracketKind),
+    ArrayOfNegativeLength,
     ArrayOfZeroElements,
     ArrayOfOneElement,
     NestedArrayNotSupportedYet,
@@ -3060,6 +3155,15 @@ impl IntoErrorInfo for ErrorKind {
             Self::PrematureEndOfFile(expected) => (
                 "premature end of file".into(),
                 format!("expected {expected} after here").into(),
+            ),
+
+            Self::IntOverflow => (
+                "number literal overflow".into(),
+                format!("overflows a {bits} bit signed integer (over {max})", bits = int::BITS, max = int::MAX).into(),
+            ),
+            Self::IntUnderflow => (
+                "number literal underflow".into(),
+                format!("underlows a {bits} bit signed integer (under {min})", bits = int::BITS, min = int::MIN).into(),
             ),
 
             Self::MissingSemicolon => (
@@ -3118,6 +3222,10 @@ impl IntoErrorInfo for ErrorKind {
             Self::UnclosedBracket(bracket) => (
                 "invalid expression".into(),
                 format!("'{bracket}' bracket was not closed").into(),
+            ),
+            Self::ArrayOfNegativeLength => (
+                "invalid array length".into(),
+                "array length must be greater than 1".into(),
             ),
             Self::ArrayOfZeroElements => (
                 "invalid array".into(),

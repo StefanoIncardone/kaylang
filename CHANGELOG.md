@@ -121,6 +121,8 @@ Changes to error messages, help message and alike would **not** be considered br
 - Bug in parsing of do-loop statements
 - Bug in result of division/remainder assembly code that would crash when dividing INT_MIN by -1
 - Bug when using the `run` command without a `-o` option
+- Bug in parsing of negative numbers that would not allow for literal INT_MIN to be represented,
+    i.e.: `-9223372036854775808` would not be allowed
 
 
 ## 0.5.3 - 2024-03-02
