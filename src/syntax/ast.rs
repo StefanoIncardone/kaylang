@@ -440,7 +440,6 @@ impl Display for AssignmentOp {
     }
 }
 
-// IDEA(stefano): integrate operator column information only in relevant operator variants
 #[derive(Debug, Clone)]
 pub(crate) enum Expression<'src> {
     False,

@@ -12,22 +12,19 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Temporary values
 - Shortcircuted and/or operators
 - Unsigned integers
+- Casting operator
+- Removal of implicit conversions
+- Type aliases, which are just alternative names to existing types:
 
-### Aliases
+    ```kay
+    alias byte = u8;
+    ```
 
-ability to create type aliases, which are just alternative names to existing types:
+- Distinct types, which are considered entirely different types:
 
-```kay
-alias byte = u8;
-```
-
-### Distinct types
-
-ability to create distinct types, which are considered entirely different types:
-
-```kay
-type byte = u8;
-```
+    ```kay
+    type byte = u8;
+    ```
 
 
 ## 0.6.0 -
@@ -80,15 +77,6 @@ Changes to error messages, help message and alike would **not** be considered br
     - arrays of 1 element are literaly just that element with extra steps
 - number literal `-0` is no longer allowed, since it is not a valid two's complement number
 <!--  -->
-- `tokenizer::Literal` variants inlined into `TokenKind`
-    - `TokenKind::Bool` is now `TokenKind::False` and `TokenKind::True`
-    - `TokenKind::Int` renamed to `TokenKind::Integer`
-    - `TokenKind::Integer` now contains unparsed integers in the form of a string and is now parsed
-        during AST building
-    - `TokenKind::Str(Vec<ascii>)` is now `TokenKind::Str(Str)` (where `Str` = `Box<[ascii]>`)
-- `Expression::Literal` inlined into `Expression::False`, `Expression::True`, `Expression::Int`,
-    `Expression::Ascii` and `Expression::Str`
-- `Expression` now only stores the column of the operators instead of a `Position` struct
 - Pulled `BaseType` enum out of `Type` enum
 - `Tokenizer::tokenize` and `Ast::build` now return `Error`s that can be displayed
     with the `ErrorDisplay` using the `display` method, or alternatively error messages, error cause
