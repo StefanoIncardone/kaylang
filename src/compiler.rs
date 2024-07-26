@@ -10,7 +10,8 @@ use crate::{
     src_file::{Position, SrcFile},
     syntax::{
         ast::{
-            self, AssignmentOp, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression, IfStatement, Node, Scope, SizeOf, Type, TypeOf, UnaryOp
+            self, AssignmentOp, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression,
+            IfStatement, Node, Scope, SizeOf, Type, TypeOf, UnaryOp,
         },
         tokenizer::{uint, Mutability, Str},
     },

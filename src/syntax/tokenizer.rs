@@ -2,10 +2,7 @@
 
 use super::{Error, ErrorInfo, IntoErrorInfo};
 use crate::src_file::{Line, SrcFile};
-use std::{
-    fmt::Display,
-    num::ParseIntError,
-};
+use std::fmt::Display;
 
 pub(super) trait DisplayLen {
     fn display_len(&self) -> usize;
@@ -1351,7 +1348,6 @@ pub enum ErrorKind {
 
     Utf8InNumberLiteral,
     NonDigitInNumberLiteral,
-    InvalidNumberLiteral(ParseIntError),
 
     Utf8InIdentifier,
 
@@ -1414,10 +1410,6 @@ impl IntoErrorInfo for ErrorKind {
             Self::NonDigitInNumberLiteral => (
                 "invalid number literal".into(),
                 "must not contain non-digit characters".into(),
-            ),
-            Self::InvalidNumberLiteral(err) => (
-                "invalid number literal".into(),
-                format!("{err}").into(),
             ),
 
             Self::Utf8InIdentifier => (

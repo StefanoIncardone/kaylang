@@ -1,7 +1,5 @@
 use super::{
-    tokenizer::{
-        ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, Str, Token, TokenKind
-    },
+    tokenizer::{ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, Str, Token, TokenKind},
     Error, ErrorInfo, IntoErrorInfo,
 };
 use crate::src_file::{Position, SrcFile};
@@ -1392,7 +1390,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     kind: ErrorKind::IntOverflow,
                     col: current_token.col,
                     pointers_count: current_token.kind.display_len(),
-                })
+                }),
             },
             TokenKind::Ascii(ascii_ch) => Ok(Expression::Ascii(*ascii_ch)),
             TokenKind::Str(string) => Ok(Expression::Str(string.clone())),
@@ -1756,7 +1754,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             kind: ErrorKind::IntUnderflow,
                             col: current_token.col,
                             pointers_count: current_token.kind.display_len(),
-                        })
+                        }),
                     }
                 } else {
                     match parse_positive_int(literal) {
@@ -1765,7 +1763,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             kind: ErrorKind::IntOverflow,
                             col: current_token.col,
                             pointers_count: current_token.kind.display_len(),
-                        })
+                        }),
                     }
                 }
             }
@@ -1818,7 +1816,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             kind: ErrorKind::IntUnderflow,
                             col: current_token.col,
                             pointers_count: current_token.kind.display_len(),
-                        })
+                        }),
                     }
                 } else {
                     match parse_positive_int(literal) {
@@ -1827,7 +1825,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             kind: ErrorKind::IntOverflow,
                             col: current_token.col,
                             pointers_count: current_token.kind.display_len(),
-                        })
+                        }),
                     }
                 }
             }
@@ -1880,7 +1878,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             kind: ErrorKind::IntUnderflow,
                             col: current_token.col,
                             pointers_count: current_token.kind.display_len(),
-                        })
+                        }),
                     }
                 } else {
                     match parse_positive_int(literal) {
@@ -1889,7 +1887,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                             kind: ErrorKind::IntOverflow,
                             col: current_token.col,
                             pointers_count: current_token.kind.display_len(),
-                        })
+                        }),
                     }
                 }
             }
