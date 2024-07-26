@@ -1,6 +1,6 @@
 use kaylang::{
     src_file::SrcFile,
-    syntax::{ast::Ast, tokenizer::Tokenizer},
+    syntax::{ast::Parser, tokenizer::Tokenizer},
     Color, Logger, CHECKING,
 };
 use std::{path::PathBuf, process::ExitCode};
@@ -34,7 +34,7 @@ fn main() -> ExitCode {
         }
     };
 
-    let _ast = match Ast::build(&src, &tokens) {
+    let _ast = match Parser::parse(&src, &tokens) {
         Ok(ast) => ast,
         Err(errors) => {
             for error in errors {

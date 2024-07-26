@@ -3,7 +3,7 @@
 use kaylang::{
     compiler::{artifacts::Artifacts, Compiler},
     src_file::SrcFile,
-    syntax::{ast::Ast, tokenizer::Tokenizer},
+    syntax::{ast::Parser, tokenizer::Tokenizer},
     Color, Logger, ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER,
     COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, LINKING_ERROR, RUNNING,
 };
@@ -57,7 +57,7 @@ fn check_project_euler() -> Result<(), ExitCode> {
             }
         };
 
-        let ast = match Ast::build(&src, &tokens) {
+        let ast = match Parser::parse(&src, &tokens) {
             Ok(ast) => ast,
             Err(errors) => {
                 for error in errors {

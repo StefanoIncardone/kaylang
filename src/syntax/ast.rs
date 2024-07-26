@@ -696,9 +696,9 @@ pub struct Scope<'src> {
     pub(crate) nodes: Vec<Node<'src>>,
 }
 
-// IDEA(stefano): create Parser class that builds the AST, and then validate the AST afterwards
+// IDEA(stefano): build the AST, and then validate the AST afterwards
 #[derive(Debug)]
-pub struct Ast<'src, 'tokens: 'src> {
+pub struct Parser<'src, 'tokens: 'src> {
     src: &'src SrcFile,
     errors: Vec<Error<ErrorKind>>,
 
@@ -711,8 +711,8 @@ pub struct Ast<'src, 'tokens: 'src> {
     loop_depth: usize,
 }
 
-impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
-    pub fn build(
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+    pub fn parse(
         src: &'src SrcFile,
         tokens: &'tokens [Token<'src>],
     ) -> Result<Vec<Scope<'src>>, Vec<Error<ErrorKind>>> {
@@ -773,7 +773,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 }
 
 // parsing of statements
-impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn parse_scope(&mut self) {
         loop {
             match self.parse_single_any() {
@@ -1136,7 +1136,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 }
 
 // iteration over tokens
-impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn current_token_bounded(
         &self,
         expected: Expected,
@@ -1221,7 +1221,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 }
 
 // expressions
-impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn assert_lhs_is_not_string_or_array(
         op_token: &'tokens Token<'src>,
         lhs: &Expression<'src>,
@@ -2335,7 +2335,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 }
 
 // variables and types
-impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn resolve_variable(
         &self,
         name: &'src str,
@@ -2822,7 +2822,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 }
 
 // print statements
-impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn print_arg(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
         let start_of_expression_token = self.next_token_bounded(Expected::Expression)?;
         let argument = self.expression()?;
@@ -2839,7 +2839,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 }
 
 // if statements
-impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn iff(&mut self) -> Result<Node<'src>, Error<ErrorKind>> {
         let mut if_statement = If { ifs: Vec::new(), els: None };
 
@@ -2994,7 +2994,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 }
 
 // loop statements
-impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn loop_statement(&mut self) -> Result<Node<'src>, Error<ErrorKind>> {
         let do_token = &self.tokens[self.token];
         let loop_token = match do_token.kind {

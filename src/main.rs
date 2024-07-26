@@ -3,7 +3,7 @@
 use kaylang::{
     compiler::{artifacts::Artifacts, Compiler},
     src_file::SrcFile,
-    syntax::{ast::Ast, tokenizer::Tokenizer},
+    syntax::{ast::Parser, tokenizer::Tokenizer},
     Args, Command, Help, Logger, Version, ASSEMBLING, ASSEMBLING_ERROR, BUILDING_AST, CHECKING,
     COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER,
     GENERATING_ASM, LINKING, LINKING_ERROR, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
@@ -76,7 +76,7 @@ fn main() -> ExitCode {
 
     let ast = {
         let building_ast_sub_step = Logger::new();
-        let building_ast_result = Ast::build(&src, &tokens);
+        let building_ast_result = Parser::parse(&src, &tokens);
         building_ast_sub_step.sub_step_done_with_verbosity(&BUILDING_AST, verbosity);
         match building_ast_result {
             Ok(ast) => ast,

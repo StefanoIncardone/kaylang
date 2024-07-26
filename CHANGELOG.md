@@ -77,8 +77,9 @@ Changes to error messages, help message and alike would **not** be considered br
     - arrays of 1 element are literaly just that element with extra steps
 - number literal `-0` is no longer allowed, since it is not a valid two's complement number
 <!--  -->
+- `Ast` renamed to `Parser`, and `Ast::build` to `Parser::parse`
 - Pulled `BaseType` enum out of `Type` enum
-- `Tokenizer::tokenize` and `Ast::build` now return `Error`s that can be displayed
+- `Tokenizer::tokenize` and `Parser::parse` now return `Error`s that can be displayed
     with the `ErrorDisplay` using the `display` method, or alternatively error messages, error cause
     messages, line column and line text information can be obtained separately with the `ErrorInfo`
     struct and `SrcFile::position` method
