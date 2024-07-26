@@ -42,10 +42,10 @@ Changes to error messages, help message and alike would **not** be considered br
 
 - String and Array comparison operators: `<=>`, `==`, `!=`, `<`, `<=`, `>`, `>=`
 - String and Array `len` operator: `len "hello" # -> 5`
+- Raw string literals: for example `r"hello\nworld"` where `\n` would not get escaped
 - `+` as the unary absolute value operator
 - overflowing operators, will wrap in two's complemente: `...\` (e.g.: `*` -> `*\`)
 - saturating operators: `...|` (e.g.: `*` -> `*|`)
-- Raw string literals: for example `r"hello\nworld"` where `\n` would not get escaped
 - Printing to `stderr`: `eprint` and `eprintln` keywords
 <!-- -->
 - `help` and `version` commands

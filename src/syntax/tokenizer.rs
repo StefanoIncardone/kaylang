@@ -379,6 +379,16 @@ pub(crate) enum TokenKind<'src> {
     /// integer literals are never empty and always contain valid ascii digits
     Integer(&'src str),
     Ascii(ascii),
+    /*
+    IDEA(stefano): make Str into an enum to reduce the amounts of allocations:
+    enum Str<'src> {
+        WithEscaped(Box<[ascii]>),
+        NoEscaped(&'src [ascii]),
+    }
+
+    or treat string with no escapes as raw strings.
+    or split into EscapedStr(Str) and Str(&'src [ascii]),
+    */
     Str(Str),
     RawStr(RawStr<'src>),
 
@@ -485,7 +495,7 @@ impl DisplayLen for TokenKind<'_> {
             }
             Self::RawStr(text) => text.0.len() + 3, // + 1 for the `r` prefix, and + 2 for the quotes
 
-            Self::Identifier(name) => name.chars().count(),
+            Self::Identifier(name) => name.len(),
 
             Self::Print => 5,
             Self::PrintLn => 7,

@@ -1,8 +1,13 @@
 use super::{
-    tokenizer::{ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, RawStr, Str, Token, TokenKind},
+    tokenizer::{
+        ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, RawStr, Str, Token, TokenKind,
+    },
     Error, ErrorInfo, IntoErrorInfo,
 };
-use crate::{src_file::{Position, SrcFile}, syntax::tokenizer::utf8};
+use crate::{
+    src_file::{Position, SrcFile},
+    syntax::tokenizer::utf8,
+};
 use std::fmt::{Debug, Display};
 
 pub(crate) trait TypeOf {
@@ -2454,7 +2459,8 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             _ => literal_len as uint,
         };
 
-        let close_square_bracket_token = self.current_token_bounded(Expected::ClosingSquareBracket)?;
+        let close_square_bracket_token =
+            self.current_token_bounded(Expected::ClosingSquareBracket)?;
         let TokenKind::Bracket(BracketKind::CloseSquare) = close_square_bracket_token.kind else {
             return Err(Error {
                 kind: ErrorKind::MissingClosingSquareBracketInArrayType,
