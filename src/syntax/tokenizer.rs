@@ -846,8 +846,8 @@ impl<'src> Tokenizer<'src> {
                         pointers_count: self.token_len(),
                     })
                 } else {
-                    let number_literal = &self.src.code[self.token_start_col..self.col];
-                    Ok(TokenKind::Integer(number_literal))
+                    let integer_literal = &self.src.code[self.token_start_col..self.col];
+                    Ok(TokenKind::Integer(integer_literal))
                 }
             }
             b'#' => {
@@ -1404,11 +1404,11 @@ impl IntoErrorInfo for ErrorKind {
             ),
 
             Self::Utf8InNumberLiteral => (
-                "invalid number literal".into(),
+                "invalid integer literal".into(),
                 "must not contain utf8 characters".into(),
             ),
             Self::NonDigitInNumberLiteral => (
-                "invalid number literal".into(),
+                "invalid integer literal".into(),
                 "must not contain non-digit characters".into(),
             ),
 

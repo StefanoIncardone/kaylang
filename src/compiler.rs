@@ -292,7 +292,7 @@ section .rodata
  str attempt_int_min_div_by_minus_one, "attempt to divide the minimum integer value by -1"
  str attempt_remainder_zero, "attempt to take the remainder of a division by zero"
  str attempt_remainder_int_min_div_by_minus_one, "attempt to take the remainder of the minimun integer value divided by -1"
- str attempt_exponent_negative, "attempt to raise a number to a negative power"
+ str attempt_exponent_negative, "attempt to raise an integer to a negative power"
  str attempt_array_index_underflow, "negative array index"
  str attempt_array_index_overflow, "array index out of bounds"
  str attempt_int_bit_index_underflow, "negative int bit array index"

@@ -3,7 +3,7 @@ UTF-8_character = ? U+0080.. ?;
 
 line_comment      = "#", [{ASCII_character | UTF-8_character}];
 digit             = "0".."9";
-number_literal    = {digit};
+integer_literal    = {digit};
 boolean_literal   = "true" | "false";
 escape_character  = "\\" | "\'" | '\"' | '"' | "\n" | "\r" | "\t" | "\0";
 character_literal = "'", (escape_character | ASCII_character), "'";
@@ -75,7 +75,7 @@ array_variable = identifier;
 string_index = identifier, "[", integer_expression, "]";
 
 (* from highest precedence to lowest *)
-int_factor                = [unary_operator], (number_literal | character_literal | identifier | ("(", integer_expression, ")") | array_index);
+int_factor                = [unary_operator], (integer_literal | character_literal | identifier | ("(", integer_expression, ")") | array_index);
 boolean_factor            = [operator_not], (boolean_literal | identifier | ("(", boolean_expression, ")"));
 
 primary_expression        = int_factor | boolean_factor | character_literal | string_index | array_index | ("(", expression, ")");
@@ -97,7 +97,7 @@ string_expression         = string_literal, comparison_operator, string_literal;
 array_expression          = array_variable, comparison_operator, array_variable;
 expression                = boolean_expression | integer_expression | string_literal | string_expression | array  | array_expression;
 
-type = identifier;
+type = identifier | (identifier, "[", integer_literal, "]");
 variable_declaration = ("let" | "var"), identifier, [[":", type], "=", expression], ";";
 
 variable_reassignment = identifier, assignment_operator, expression, ";";

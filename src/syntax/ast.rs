@@ -2075,7 +2075,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
     /*
     IDEA(stefano): when the lhs is a literal integer shifts could be optimized to throw errors
-    when preconditions such as negative numbers and shifts over 6bits are not met
+    when preconditions such as negative integers and shifts over 6bits are not met
     */
     fn shift_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
         let mut lhs = self.additive_expression()?;
@@ -3203,15 +3203,15 @@ impl IntoErrorInfo for ErrorKind {
             ),
 
             Self::MinusZeroNumberLiteral => (
-                "invalid number literal".into(),
-                "-0 is not a valid two's complement number".into(),
+                "invalid integer literal".into(),
+                "-0 is not a valid two's complement integer".into(),
             ),
             Self::IntOverflow => (
-                "number literal overflow".into(),
+                "integer literal overflow".into(),
                 format!("overflows a {bits} bit signed integer (over {max})", bits = int::BITS, max = int::MAX).into(),
             ),
             Self::IntUnderflow => (
-                "number literal underflow".into(),
+                "integer literal underflow".into(),
                 format!("underlows a {bits} bit signed integer (under {min})", bits = int::BITS, min = int::MIN).into(),
             ),
 
@@ -3234,11 +3234,11 @@ impl IntoErrorInfo for ErrorKind {
             ),
             Self::ExpectedNumberLiteralInArrayType => (
                 "invalid type".into(),
-                "must be followed by an number literal".into(),
+                "must be followed by an integer literal".into(),
             ),
             Self::ExpectedNumberLiteralInArrayIndex => (
                 "invalid array index".into(),
-                "must be followed by an number literal".into(),
+                "must be followed by an integer literal".into(),
             ),
             Self::MissingClosingSquareBracketInIndex => (
                 "invalid array index".into(),

@@ -140,14 +140,14 @@ int_to_str:
  mov rax, rdi
  cmp rax, 0
  je .write_zero
- jl .make_number_positive
+ jl .make_integer_positive
  jg .next_digit
 
 .write_zero:
  mov byte [rcx], '0'
  jmp .done
 
-.make_number_positive:
+.make_integer_positive:
  neg rax
 
 .next_digit:
