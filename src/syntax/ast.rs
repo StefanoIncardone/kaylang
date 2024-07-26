@@ -1,6 +1,6 @@
 use super::{
     tokenizer::{
-        ascii, int, uint, BracketKind, DisplayLen, Literal, Mutability, Op, Str, Token, TokenKind
+        ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, Str, Token, TokenKind
     },
     Error, ErrorInfo, IntoErrorInfo,
 };
@@ -825,7 +825,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         let Some(current_token) = self.tokens.get(self.token) else { return Ok(None) };
 
         return match current_token.kind {
-            TokenKind::Literal(_)
+            TokenKind::False
+            | TokenKind::True
+            | TokenKind::Integer(_)
+            | TokenKind::Ascii(_)
+            | TokenKind::Str(_)
             | TokenKind::Bracket(BracketKind::OpenRound)
             | TokenKind::Op(
                 Op::Len
@@ -876,7 +880,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     | TokenKind::Colon
                     | TokenKind::SemiColon
                     | TokenKind::Comma
-                    | TokenKind::Literal(_)
+                    | TokenKind::False
+                    | TokenKind::True
+                    | TokenKind::Integer(_)
+                    | TokenKind::Ascii(_)
+                    | TokenKind::Str(_)
                     | TokenKind::Identifier(_)
                     | TokenKind::Definition(_)
                     | TokenKind::Print
@@ -1042,7 +1050,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::SemiColon
             | TokenKind::Comma
             | TokenKind::Op(_)
-            | TokenKind::Literal(_)
+            | TokenKind::False
+            | TokenKind::True
+            | TokenKind::Integer(_)
+            | TokenKind::Ascii(_)
+            | TokenKind::Str(_)
             | TokenKind::Identifier(_)
             | TokenKind::Print
             | TokenKind::PrintLn
@@ -1088,7 +1100,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::SemiColon
             | TokenKind::Comma
             | TokenKind::Op(_)
-            | TokenKind::Literal(_)
+            | TokenKind::False
+            | TokenKind::True
+            | TokenKind::Integer(_)
+            | TokenKind::Ascii(_)
+            | TokenKind::Str(_)
             | TokenKind::Identifier(_)
             | TokenKind::Definition(_)
             | TokenKind::Print
@@ -1343,7 +1359,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
     // IDEA(stefano): disallow -0
     fn primary_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
         // TODO(stefano): measure speed and optimize if needed
-        #[allow(clippy::single_call_fn)] // this function exists just to be able to use the ? operator
         fn parse_positive_int(literal: &str) -> Option<int> {
             let mut integer: int = 0;
             for ascii_digit in literal.as_bytes() {
@@ -1356,7 +1371,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
         }
 
         // TODO(stefano): measure speed and optimize if needed
-        #[allow(clippy::single_call_fn)] // this function exists just to be able to use the ? operator
         fn parse_negative_int(literal: &str) -> Option<int> {
             let mut integer: int = 0;
             for ascii_digit in literal.as_bytes() {
@@ -1370,20 +1384,18 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
 
         let current_token = self.current_token_bounded(Expected::Expression)?;
         let factor = match &current_token.kind {
-            TokenKind::Literal(literal) => match literal {
-                Literal::False => Ok(Expression::False),
-                Literal::True => Ok(Expression::True),
-                Literal::Integer(integer_literal) => match parse_positive_int(integer_literal) {
-                    Some(integer) => Ok(Expression::Int(integer)),
-                    None => Err(Error {
-                        kind: ErrorKind::IntOverflow,
-                        col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
-                    })
-                },
-                Literal::Ascii(ascii_ch) => Ok(Expression::Ascii(*ascii_ch)),
-                Literal::Str(string) => Ok(Expression::Str(string.clone())),
-            }
+            TokenKind::False => Ok(Expression::False),
+            TokenKind::True => Ok(Expression::True),
+            TokenKind::Integer(integer_literal) => match parse_positive_int(integer_literal) {
+                Some(integer) => Ok(Expression::Int(integer)),
+                None => Err(Error {
+                    kind: ErrorKind::IntOverflow,
+                    col: current_token.col,
+                    pointers_count: current_token.kind.display_len(),
+                })
+            },
+            TokenKind::Ascii(ascii_ch) => Ok(Expression::Ascii(*ascii_ch)),
+            TokenKind::Str(string) => Ok(Expression::Str(string.clone())),
             TokenKind::Identifier(name) => match self.resolve_type(name) {
                 None => match self.resolve_variable(name) {
                     Some((_, _, _, var)) => self.index(var.name, var.value.typ()),
@@ -1697,10 +1709,6 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     }),
                 };
             }
-            /*
-            TODO(stefano): move parsing of numbers to here to allow for negative numbers natively
-            i.e.: -9223372036854775808 (INT_MIN) is currently not allowed
-            */
             TokenKind::Op(Op::Minus) => {
                 let mut should_be_negated = true;
 
@@ -1711,7 +1719,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 }
 
                 let start_of_expression = &self.tokens[self.token];
-                let TokenKind::Literal(Literal::Integer(literal)) = start_of_expression.kind else {
+                let TokenKind::Integer(literal) = start_of_expression.kind else {
                     let operand = self.primary_expression()?;
 
                     // returning to avoid the call to tokens.next at the end of the function
@@ -1773,7 +1781,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 }
 
                 let start_of_expression = &self.tokens[self.token];
-                let TokenKind::Literal(Literal::Integer(literal)) = start_of_expression.kind else {
+                let TokenKind::Integer(literal) = start_of_expression.kind else {
                     let operand = self.primary_expression()?;
 
                     // returning to avoid the call to tokens.next at the end of the function
@@ -1835,7 +1843,7 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 }
 
                 let start_of_expression = &self.tokens[self.token];
-                let TokenKind::Literal(Literal::Integer(literal)) = start_of_expression.kind else {
+                let TokenKind::Integer(literal) = start_of_expression.kind else {
                     let operand = self.primary_expression()?;
 
                     // returning to avoid the call to tokens.next at the end of the function
@@ -2476,7 +2484,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::SemiColon
             | TokenKind::Comma
             | TokenKind::Op(_)
-            | TokenKind::Literal(_) => {
+            | TokenKind::False
+            | TokenKind::True
+            | TokenKind::Integer(_)
+            | TokenKind::Ascii(_)
+            | TokenKind::Str(_) => {
                 return Err(Error {
                     kind: ErrorKind::ExpectedVariableName,
                     col: name_token.col,
@@ -2518,7 +2530,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::Bracket(_)
             | TokenKind::Colon
             | TokenKind::Comma
-            | TokenKind::Literal(_)
+            | TokenKind::False
+            | TokenKind::True
+            | TokenKind::Integer(_)
+            | TokenKind::Ascii(_)
+            | TokenKind::Str(_)
             | TokenKind::Identifier(_)
             | TokenKind::Definition(_)
             | TokenKind::Print
@@ -2850,7 +2866,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                 | TokenKind::SemiColon
                 | TokenKind::Comma
                 | TokenKind::Op(_)
-                | TokenKind::Literal(_)
+                | TokenKind::False
+                | TokenKind::True
+                | TokenKind::Integer(_)
+                | TokenKind::Ascii(_)
+                | TokenKind::Str(_)
                 | TokenKind::Identifier(_)
                 | TokenKind::Definition(_)
                 | TokenKind::Print
@@ -2883,7 +2903,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     | TokenKind::SemiColon
                     | TokenKind::Comma
                     | TokenKind::Op(_)
-                    | TokenKind::Literal(_)
+                    | TokenKind::False
+                    | TokenKind::True
+                    | TokenKind::Integer(_)
+                    | TokenKind::Ascii(_)
+                    | TokenKind::Str(_)
                     | TokenKind::Identifier(_)
                     | TokenKind::Definition(_)
                     | TokenKind::Print
@@ -2924,7 +2948,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
                     | TokenKind::SemiColon
                     | TokenKind::Comma
                     | TokenKind::Op(_)
-                    | TokenKind::Literal(_)
+                    | TokenKind::False
+                    | TokenKind::True
+                    | TokenKind::Integer(_)
+                    | TokenKind::Ascii(_)
+                    | TokenKind::Str(_)
                     | TokenKind::Identifier(_)
                     | TokenKind::Definition(_)
                     | TokenKind::Print
@@ -2973,7 +3001,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::SemiColon
             | TokenKind::Comma
             | TokenKind::Op(_)
-            | TokenKind::Literal(_)
+            | TokenKind::False
+            | TokenKind::True
+            | TokenKind::Integer(_)
+            | TokenKind::Ascii(_)
+            | TokenKind::Str(_)
             | TokenKind::Identifier(_)
             | TokenKind::Definition(_)
             | TokenKind::Print
@@ -3019,7 +3051,11 @@ impl<'src, 'tokens: 'src> Ast<'src, 'tokens> {
             | TokenKind::SemiColon
             | TokenKind::Comma
             | TokenKind::Op(_)
-            | TokenKind::Literal(_)
+            | TokenKind::False
+            | TokenKind::True
+            | TokenKind::Integer(_)
+            | TokenKind::Ascii(_)
+            | TokenKind::Str(_)
             | TokenKind::Identifier(_)
             | TokenKind::Definition(_)
             | TokenKind::Print

@@ -30,61 +30,6 @@ pub(crate) type utf8 = char;
 /// kay's ascii string
 pub(crate) type Str = Box<[ascii]>;
 
-// TODO(stefano): inline into TokenKind
-#[derive(Debug, Clone)]
-pub(crate) enum Literal<'src> {
-    False,
-    True,
-    // Note: number literals are never empty and always contain valid ascii digits
-    Integer(&'src str),
-    Ascii(ascii),
-    Str(Str),
-}
-
-impl Display for Literal<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return match self {
-            Self::False => write!(f, "false"),
-            Self::True => write!(f, "true"),
-            Self::Integer(integer) => write!(f, "{integer}"),
-            Self::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
-            Self::Str(string) => {
-                write!(f, "\"")?;
-                for ch in &**string {
-                    write!(f, "{}", ch.escape_ascii())?;
-                }
-                write!(f, "\"")
-            }
-        };
-    }
-}
-
-impl DisplayLen for Literal<'_> {
-    #[inline(always)]
-    fn display_len(&self) -> usize {
-        #[inline(always)]
-        fn ascii_escaped_len(ascii_char: ascii) -> usize {
-            // Note: ascii type guarantees the value to be valid utf8
-            let utf8_char = ascii_char as utf8;
-            return utf8_char.escape_debug().len();
-        }
-
-        return match self {
-            Self::Integer(integer) => integer.len(),
-            Self::Ascii(ascii_char) => ascii_escaped_len(*ascii_char) + 2, // + 2 to account for the quotes
-            Self::True => 4,
-            Self::False => 5,
-            Self::Str(text) => {
-                let mut len = 2; // starting at 2 to account for the quotes
-                for ascii_char in &**text {
-                    len += ascii_escaped_len(*ascii_char);
-                }
-                return len;
-            }
-        };
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Mutability {
     Let,
@@ -420,21 +365,34 @@ pub(crate) enum TokenKind<'src> {
     Comment(&'src str),
     Unexpected(&'src str),
 
+    // Symbols
     Bracket(BracketKind),
     Colon,
     SemiColon,
     Comma,
     Op(Op),
 
-    Literal(Literal<'src>),
+    // Literal values
+    False,
+    True,
+    /// integer literals are never empty and always contain valid ascii digits
+    Integer(&'src str),
+    Ascii(ascii),
+    Str(Str),
+
     Identifier(&'src str),
 
     // Keywords
+    /// temporary way of printing values to stdout
+    Print,
+    /// temporary way of printing values followed by a newline to stdout
+    PrintLn,
+    /// temporary way of printing values to stderr
+    Eprint,
+    /// temporary way of printing values followed by a newline to stderr
+    EprintLn,
+
     Definition(Mutability),
-    Print,    // temporary way of printing values to stdout
-    PrintLn,  // temporary way of printing values followed by a newline to stdout
-    Eprint,   // temporary way of printing values to stderr
-    EprintLn, // temporary way of printing values followed by a newline to stderr
     Do,
     If,
     Else,
@@ -453,17 +411,28 @@ impl Display for TokenKind<'_> {
             Self::Colon => write!(f, ":"),
             Self::SemiColon => write!(f, ";"),
             Self::Comma => write!(f, ","),
-
-            Self::Literal(literal) => write!(f, "{literal}"),
-            Self::Identifier(name) => write!(f, "{name}"),
-            Self::Definition(kind) => write!(f, "{kind}"),
-
             Self::Op(op) => write!(f, "{op}"),
+
+            Self::False => write!(f, "false"),
+            Self::True => write!(f, "true"),
+            Self::Integer(integer) => write!(f, "{integer}"),
+            Self::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
+            Self::Str(string) => {
+                write!(f, "\"")?;
+                for ch in &**string {
+                    write!(f, "{}", ch.escape_ascii())?;
+                }
+                write!(f, "\"")
+            }
+
+            Self::Identifier(name) => write!(f, "{name}"),
 
             Self::Print => write!(f, "print"),
             Self::PrintLn => write!(f, "println"),
             Self::Eprint => write!(f, "eprint"),
             Self::EprintLn => write!(f, "eprintln"),
+
+            Self::Definition(kind) => write!(f, "{kind}"),
             Self::Do => write!(f, "do"),
             Self::If => write!(f, "if"),
             Self::Else => write!(f, "else"),
@@ -477,6 +446,13 @@ impl Display for TokenKind<'_> {
 impl DisplayLen for TokenKind<'_> {
     #[inline(always)]
     fn display_len(&self) -> usize {
+        #[inline(always)]
+        fn ascii_escaped_len(ascii_char: ascii) -> usize {
+            // Note: ascii type guarantees the value to be valid utf8
+            let utf8_char = ascii_char as utf8;
+            return utf8_char.escape_debug().len();
+        }
+
         return match self {
             Self::Comment(text) => text.chars().count(),
             Self::Unexpected(text) => text.chars().count(),
@@ -487,14 +463,26 @@ impl DisplayLen for TokenKind<'_> {
             Self::Comma => 1,
             Self::Op(op) => op.display_len(),
 
-            Self::Literal(typ) => typ.display_len(),
+            Self::Integer(integer) => integer.len(),
+            Self::Ascii(ascii_char) => ascii_escaped_len(*ascii_char) + 2, // + 2 to account for the quotes
+            Self::True => 4,
+            Self::False => 5,
+            Self::Str(text) => {
+                let mut len = 2; // starting at 2 to account for the quotes
+                for ascii_char in &**text {
+                    len += ascii_escaped_len(*ascii_char);
+                }
+                return len;
+            }
+
             Self::Identifier(name) => name.chars().count(),
-            Self::Definition(kind) => kind.display_len(),
 
             Self::Print => 5,
             Self::PrintLn => 7,
             Self::Eprint => 6,
             Self::EprintLn => 8,
+
+            Self::Definition(kind) => kind.display_len(),
             Self::Do => 2,
             Self::If => 2,
             Self::Else => 4,
@@ -776,8 +764,8 @@ impl<'src> Tokenizer<'src> {
             "println" => TokenKind::PrintLn,
             "eprint" => TokenKind::Eprint,
             "eprintln" => TokenKind::EprintLn,
-            "true" => TokenKind::Literal(Literal::True),
-            "false" => TokenKind::Literal(Literal::False),
+            "true" => TokenKind::True,
+            "false" => TokenKind::False,
             "do" => TokenKind::Do,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,
@@ -826,7 +814,7 @@ impl<'src> Tokenizer<'src> {
 
                         Err(last_error)
                     } else {
-                        Ok(TokenKind::Literal(Literal::Str(raw_string.into())))
+                        Ok(TokenKind::Str(raw_string.into()))
                     }
                 }
                 _ => self.identifier(),
@@ -862,38 +850,8 @@ impl<'src> Tokenizer<'src> {
                     })
                 } else {
                     let number_literal = &self.src.code[self.token_start_col..self.col];
-                    Ok(TokenKind::Literal(Literal::Integer(number_literal)))
+                    Ok(TokenKind::Integer(number_literal))
                 }
-
-                // match number_literal.parse() {
-                //     Ok(integer) => Ok(TokenKind::Literal(Literal::Int(integer))),
-                //     Err(err) => {
-                //         let kind = match err.kind() {
-                //             IntErrorKind::InvalidDigit => {
-                //                 if contains_utf8 {
-                //                     ErrorKind::Utf8InNumberLiteral
-                //                 } else {
-                //                     ErrorKind::NonDigitInNumberLiteral
-                //                 }
-                //             }
-                //             IntErrorKind::PosOverflow => {
-                //                 ErrorKind::IntOverflow { bits: int::BITS, max: int::MAX }
-                //             }
-                //             IntErrorKind::NegOverflow => {
-                //                 ErrorKind::IntUnderflow { bits: int::BITS, min: int::MIN }
-                //             }
-                //             IntErrorKind::Empty => unreachable!("should never parse empty numbers"),
-                //             IntErrorKind::Zero => unreachable!("numbers can also be zero"),
-                //             _ => ErrorKind::InvalidNumberLiteral(err),
-                //         };
-
-                //         Err(Error {
-                //             kind,
-                //             col: self.token_start_col,
-                //             pointers_count: self.token_len(),
-                //         })
-                //     }
-                // }
             }
             b'#' => {
                 // ignoring the hash symbol
@@ -961,7 +919,7 @@ impl<'src> Tokenizer<'src> {
 
                     Err(last_error)
                 } else {
-                    Ok(TokenKind::Literal(Literal::Str(string.into())))
+                    Ok(TokenKind::Str(string.into()))
                 }
             }
             b'\'' => {
@@ -1004,7 +962,7 @@ impl<'src> Tokenizer<'src> {
                 };
 
                 self.col += 1;
-                Ok(TokenKind::Literal(Literal::Ascii(code?)))
+                Ok(TokenKind::Ascii(code?))
             }
             b'(' => {
                 let kind = BracketKind::OpenRound;

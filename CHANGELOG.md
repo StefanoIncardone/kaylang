@@ -80,17 +80,14 @@ Changes to error messages, help message and alike would **not** be considered br
     - arrays of 1 element are literaly just that element with extra steps
 - number literal `-0` is no longer allowed, since it is not a valid two's complement number
 <!--  -->
-- verbosity options are now mandated to come after a `check`, `compile` or `run` commands as the
-    last option
-- `verbosity` field of `Args` struct is now integrated in `Command::Check`, `Command::Compile` and
-    `Command::Run` variants, thus removed
-<!--  -->
-- `Vec<ascii>` is now `Str` (`Box<[ascii]>`)
-- `tokenizer::Literal::Bool` now split into `tokenizer::Literal::True` and
-    `tokenizer::Literal::False`, thus removed `TokenKind::True` and `TokenKind::False`
+- `tokenizer::Literal` variants inlined into `TokenKind`
+    - `TokenKind::Bool` is now `TokenKind::False` and `TokenKind::True`
+    - `TokenKind::Int` renamed to `TokenKind::Integer`
+    - `TokenKind::Integer` now contains unparsed integers in the form of a string and is now parsed
+        during AST building
+    - `TokenKind::Str(Vec<ascii>)` is now `TokenKind::Str(Str)` (where `Str` = `Box<[ascii]>`)
 - `Expression::Literal` inlined into `Expression::False`, `Expression::True`, `Expression::Int`,
     `Expression::Ascii` and `Expression::Str`
-<!--  -->
 - `Expression` now only stores the column of the operators instead of a `Position` struct
 - Pulled `BaseType` enum out of `Type` enum
 - `Tokenizer::tokenize` and `Ast::build` now return `Error`s that can be displayed
@@ -104,6 +101,10 @@ Changes to error messages, help message and alike would **not** be considered br
         path
 - Updated consistency of compilation steps names and static variables
 - Compilation steps are now managed by the `Logger` struct
+- verbosity options are now mandated to come after a `check`, `compile` or `run` commands as the
+    last option
+- `verbosity` field of `Args` struct is now integrated in `Command::Check`, `Command::Compile` and
+    `Command::Run` variants, thus removed
 
 ### Removed
 
