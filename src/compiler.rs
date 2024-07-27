@@ -10,8 +10,7 @@ use crate::{
     src_file::{Position, SrcFile},
     syntax::{
         ast::{
-            self, AssignmentOp, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression,
-            IfStatement, Node, Scope, SizeOf, Type, TypeOf, UnaryOp,
+            self, AssignmentOp, Ast, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression, IfStatement, Node, SizeOf, Type, TypeOf, UnaryOp
         },
         tokenizer::{ascii, uint, Mutability, RawStr, Str},
     },
@@ -84,7 +83,7 @@ const STACK_ALIGN: usize = std::mem::size_of::<usize>();
 #[derive(Debug)]
 pub struct Compiler<'src, 'ast: 'src> {
     src: &'src SrcFile,
-    ast: &'ast [Scope<'src>],
+    ast: &'ast Ast<'src>,
 
     asm: String,
 
@@ -106,7 +105,7 @@ pub struct Compiler<'src, 'ast: 'src> {
 impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     pub fn compile(
         src: &'src SrcFile,
-        ast: &'ast [Scope<'src>],
+        ast: &'ast Ast<'src>,
         artifacts: &Artifacts,
     ) -> Result<(), Error> {
         #[allow(clippy::wildcard_imports)]
@@ -136,14 +135,14 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
         let mut temporary_values_bytes = 0;
 
-        if this.ast.is_empty() {
+        if this.ast.scopes.is_empty() {
             _ = write!(
                 this.asm,
                 "exit:\
                 \n mov rdi, EXIT_SUCCESS"
             );
         } else {
-            for scope in this.ast {
+            for scope in this.ast.scopes.iter() {
                 for var in &scope.let_variables {
                     this.variables.push(Variable { inner: var, offset: 0 /* placeholder */ });
                 }
@@ -151,14 +150,14 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 for var in &scope.var_variables {
                     this.variables.push(Variable { inner: var, offset: 0 /* placeholder */ });
                 }
+            }
 
-                for var_type in &scope.temporary_values {
-                    this.temporary_values.push(TemporaryValue { inner: var_type, offset: 0 });
+            for var_type in this.ast.temporary_values.iter() {
+                this.temporary_values.push(TemporaryValue { inner: var_type, offset: 0 });
 
-                    let var_size = var_type.size();
-                    if var_size > temporary_values_bytes {
-                        temporary_values_bytes = var_size;
-                    }
+                let var_size = var_type.size();
+                if var_size > temporary_values_bytes {
+                    temporary_values_bytes = var_size;
                 }
             }
 
@@ -537,8 +536,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             }
             Node::Definition { mutability, scope_index, var_index } => {
                 let ast_var = match mutability {
-                    Mutability::Let => &self.ast[*scope_index].let_variables[*var_index],
-                    Mutability::Var => &self.ast[*scope_index].var_variables[*var_index],
+                    Mutability::Let => &self.ast.scopes[*scope_index].let_variables[*var_index],
+                    Mutability::Var => &self.ast.scopes[*scope_index].var_variables[*var_index],
                 };
 
                 let name = ast_var.name;
@@ -552,7 +551,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             }
             Node::Assignment { scope_index, var_index, op, op_col, new_value } => {
                 // Note: assignments are only allowed on mutable variables
-                let ast_var = &self.ast[*scope_index].var_variables[*var_index];
+                let ast_var = &self.ast.scopes[*scope_index].var_variables[*var_index];
                 let name = ast_var.name;
 
                 let var = self.resolve(name);
@@ -769,7 +768,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     }
 
     fn scope(&mut self, scope_index: usize) {
-        let scope = &self.ast[scope_index];
+        let scope = &self.ast.scopes[scope_index];
         for node in &scope.nodes {
             self.node(node);
         }
@@ -1623,8 +1622,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 _ = writeln!(self.asm, "{op_asm}\n");
             }
-            Expression::Temporary { expression, temporary_scope_index, temporary_value_index } => {
-                let temporary_value_type = &self.ast[*temporary_scope_index].temporary_values[*temporary_value_index];
+            Expression::Temporary { expression, temporary_value_index } => {
+                let temporary_value_type = &self.ast.temporary_values[*temporary_value_index];
                 let temporary_value = self.resolve_temporary(temporary_value_type);
                 let temporary_value_offset = temporary_value.offset;
 

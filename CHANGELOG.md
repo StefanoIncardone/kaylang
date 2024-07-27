@@ -79,6 +79,8 @@ Changes to error messages, help message and alike would **not** be considered br
 - number literal `-0` is no longer allowed, since it is not a valid two's complement number
 <!--  -->
 - `Ast` renamed to `Parser`, and `Ast::build` to `Parser::parse`
+- `Parser::parse` now returns an `Ast` instead of a `Vec<Scope>`
+- `Scope` is no longer public
 - Pulled `BaseType` enum out of `Type` enum
 - `Tokenizer::tokenize` and `Parser::parse` now return `Error`s that can be displayed
     with the `ErrorDisplay` using the `display` method, or alternatively error messages, error cause

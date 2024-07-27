@@ -499,7 +499,6 @@ pub(crate) enum Expression<'src> {
     // TODO(stefano): represent as an index into the variables
     Temporary {
         expression: Box<Expression<'src>>,
-        temporary_scope_index: usize,
         temporary_value_index: usize,
     },
 }
@@ -697,13 +696,18 @@ impl Display for Node<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Scope<'src> {
+pub(crate) struct Scope<'src> {
     pub(crate) parent: usize,
     pub(crate) base_types: Vec<BaseType>,
     pub(crate) let_variables: Vec<Variable<'src>>,
     pub(crate) var_variables: Vec<Variable<'src>>,
-    pub(crate) temporary_values: Vec<Type>,
     pub(crate) nodes: Vec<Node<'src>>,
+}
+
+#[derive(Debug)]
+pub struct Ast<'src> {
+    pub(crate) scopes: Box<[Scope<'src>]>,
+    pub(crate) temporary_values: Box<[Type]>,
 }
 
 // IDEA(stefano): build the AST, and then validate the AST afterwards
@@ -715,19 +719,24 @@ pub struct Parser<'src, 'tokens: 'src> {
     token: usize,
     tokens: &'tokens [Token<'src>],
 
-    scope_index: usize,
-    scopes: Vec<Scope<'src>>,
-
+    // Ast
     loop_depth: usize,
+
+    scope: usize,
+    scopes: Vec<Scope<'src>>,
+    temporary_values: Vec<Type>,
 }
 
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     pub fn parse(
         src: &'src SrcFile,
         tokens: &'tokens [Token<'src>],
-    ) -> Result<Vec<Scope<'src>>, Vec<Error<ErrorKind>>> {
+    ) -> Result<Ast<'src>, Vec<Error<ErrorKind>>> {
         if tokens.is_empty() {
-            return Ok(Vec::new());
+            return Ok(Ast {
+                scopes: Vec::new().into_boxed_slice(),
+                temporary_values: Vec::new().into_boxed_slice(),
+            });
         }
 
         // skipping to the first non-comment token
@@ -750,21 +759,28 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             errors: Vec::new(),
             token,
             tokens,
-            scope_index: 0,
+            loop_depth: 0,
+            scope: 0,
             scopes: vec![Scope {
                 parent: 0,
                 base_types: vec![BaseType::Int, BaseType::Ascii, BaseType::Bool, BaseType::Str],
                 let_variables: Vec::new(),
                 var_variables: Vec::new(),
-                temporary_values: Vec::new(),
                 nodes: Vec::new(),
             }],
-            loop_depth: 0,
+            temporary_values: Vec::new(),
         };
 
         this.parse_scope();
 
-        return if this.errors.is_empty() { Ok(this.scopes) } else { Err(this.errors) };
+        return if this.errors.is_empty() {
+            Ok(Ast {
+                scopes: this.scopes.into_boxed_slice(),
+                temporary_values: this.temporary_values.into_boxed_slice()
+            })
+        } else {
+            Err(this.errors)
+        };
     }
 
     fn semicolon(&mut self) -> Result<(), Error<ErrorKind>> {
@@ -822,7 +838,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         Node::If(_) | Node::Loop(_) | Node::DoLoop(_) | Node::Scope { .. } => {}
                     }
 
-                    self.scopes[self.scope_index].nodes.push(node);
+                    self.scopes[self.scope].nodes.push(node);
                 }
                 Ok(None) => break,
                 /*
@@ -865,13 +881,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             ) => {
                 let expression = self.expression()?;
                 if let Expression::Array { .. } = expression {
-                    let current_scope = &mut self.scopes[self.scope_index];
-                    let temporary_scope_index = self.scope_index;
-                    let temporary_value_index = current_scope.temporary_values.len();
-                    current_scope.temporary_values.push(expression.typ());
+                    let temporary_value_index = self.temporary_values.len();
+                    self.temporary_values.push(expression.typ());
                     return Ok(Some(Node::Expression(Expression::Temporary {
                         expression: Box::new(expression),
-                        temporary_scope_index,
                         temporary_value_index,
                     })));
                 }
@@ -1107,21 +1120,20 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
                 let new_scope_index = self.scopes.len();
                 self.scopes.push(Scope {
-                    parent: self.scope_index,
+                    parent: self.scope,
                     base_types: Vec::new(),
                     let_variables: Vec::new(),
                     var_variables: Vec::new(),
-                    temporary_values: Vec::new(),
                     nodes: Vec::new(),
                 });
-                self.scope_index = new_scope_index;
+                self.scope = new_scope_index;
 
                 _ = self.next_token();
                 self.parse_scope();
                 Ok(Some(Node::Scope { index: new_scope_index }))
             }
             TokenKind::Bracket(BracketKind::CloseCurly) => {
-                self.scope_index = self.scopes[self.scope_index].parent;
+                self.scope = self.scopes[self.scope].parent;
                 _ = self.next_token();
                 Ok(None)
             }
@@ -2367,7 +2379,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         usize, /* variable index */
         &Variable<'src>,
     )> {
-        let mut scope_index = self.scope_index;
+        let mut scope_index = self.scope;
         loop {
             let scope = &self.scopes[scope_index];
             for (var_index, var) in scope.let_variables.iter().enumerate() {
@@ -2390,7 +2402,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     }
 
     fn resolve_type(&self, name: &'src str) -> Option<BaseType> {
-        let mut scope_index = self.scope_index;
+        let mut scope_index = self.scope;
         loop {
             let scope = &self.scopes[scope_index];
             for typ in &scope.base_types {
@@ -2624,22 +2636,22 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
 
                 let variables = match mutability {
-                    Mutability::Let => &mut self.scopes[self.scope_index].let_variables,
-                    Mutability::Var => &mut self.scopes[self.scope_index].var_variables,
+                    Mutability::Let => &mut self.scopes[self.scope].let_variables,
+                    Mutability::Var => &mut self.scopes[self.scope].var_variables,
                 };
 
                 variables.push(Variable { name, value });
                 Ok(Node::Definition {
                     mutability,
-                    scope_index: self.scope_index,
+                    scope_index: self.scope,
                     var_index: variables.len() - 1,
                 })
             }
             None => match annotation {
                 Some((_, typ)) => {
                     let variables = match mutability {
-                        Mutability::Let => &mut self.scopes[self.scope_index].let_variables,
-                        Mutability::Var => &mut self.scopes[self.scope_index].var_variables,
+                        Mutability::Let => &mut self.scopes[self.scope].let_variables,
+                        Mutability::Var => &mut self.scopes[self.scope].var_variables,
                     };
 
                     let value = match typ {
@@ -2652,7 +2664,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     variables.push(Variable { name, value });
                     Ok(Node::Definition {
                         mutability,
-                        scope_index: self.scope_index,
+                        scope_index: self.scope,
                         var_index: variables.len() - 1,
                     })
                 }
@@ -2849,13 +2861,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         let _start_of_expression_token = self.next_token_bounded(Expected::Expression)?;
         let argument = self.expression()?;
         if let Expression::Array { .. } = argument {
-            let current_scope = &mut self.scopes[self.scope_index];
-            let temporary_scope_index = self.scope_index;
-            let temporary_value_index = current_scope.temporary_values.len();
-            current_scope.temporary_values.push(argument.typ());
+            let temporary_value_index = self.temporary_values.len();
+            self.temporary_values.push(argument.typ());
             return Ok(Expression::Temporary {
                 expression: Box::new(argument),
-                temporary_scope_index,
                 temporary_value_index,
             });
         };
