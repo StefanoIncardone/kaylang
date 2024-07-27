@@ -445,6 +445,10 @@ impl Display for AssignmentOp {
     }
 }
 
+pub(crate) type TokenIndex = usize;
+pub(crate) type VariableIndex = usize;
+pub(crate) type ScopeIndex = usize;
+
 #[derive(Debug, Clone)]
 pub(crate) enum Expression<'src> {
     False,
@@ -626,6 +630,12 @@ impl Display for DoLoop<'_> {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct VariableRef<'src> {
+    pub(crate) name: &'src str,
+    pub(crate) var_index: VariableIndex,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct Variable<'src> {
     pub(crate) name: &'src str,
     pub(crate) value: Expression<'src>,
@@ -650,20 +660,17 @@ pub(crate) enum Node<'src> {
     Continue,
 
     Definition {
-        mutability: Mutability,
-        scope_index: usize,
-        var_index: usize,
+        var_index: VariableIndex,
     },
     Assignment {
-        scope_index: usize,
-        var_index: usize,
+        var_index: VariableIndex,
         op: AssignmentOp,
         op_col: usize,
         new_value: Expression<'src>,
     },
 
     Scope {
-        index: usize,
+        index: ScopeIndex,
     },
 }
 
@@ -697,10 +704,10 @@ impl Display for Node<'_> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Scope<'src> {
-    pub(crate) parent: usize,
+    pub(crate) parent: ScopeIndex,
     pub(crate) base_types: Vec<BaseType>,
-    pub(crate) let_variables: Vec<Variable<'src>>,
-    pub(crate) var_variables: Vec<Variable<'src>>,
+    pub(crate) let_variables: Vec<VariableRef<'src>>,
+    pub(crate) var_variables: Vec<VariableRef<'src>>,
     pub(crate) nodes: Vec<Node<'src>>,
 }
 
@@ -708,6 +715,7 @@ pub(crate) struct Scope<'src> {
 pub struct Ast<'src> {
     pub(crate) scopes: Box<[Scope<'src>]>,
     pub(crate) temporary_values: Box<[Type]>,
+    pub(crate) variables: Box<[Variable<'src>]>,
 }
 
 // IDEA(stefano): build the AST, and then validate the AST afterwards
@@ -716,15 +724,16 @@ pub struct Parser<'src, 'tokens: 'src> {
     src: &'src SrcFile,
     errors: Vec<Error<ErrorKind>>,
 
-    token: usize,
+    token: TokenIndex,
     tokens: &'tokens [Token<'src>],
 
     // Ast
     loop_depth: usize,
 
-    scope: usize,
+    scope: ScopeIndex,
     scopes: Vec<Scope<'src>>,
     temporary_values: Vec<Type>,
+    variables: Vec<Variable<'src>>,
 }
 
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
@@ -736,6 +745,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             return Ok(Ast {
                 scopes: Vec::new().into_boxed_slice(),
                 temporary_values: Vec::new().into_boxed_slice(),
+                variables: Vec::new().into_boxed_slice(),
             });
         }
 
@@ -769,6 +779,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 nodes: Vec::new(),
             }],
             temporary_values: Vec::new(),
+            variables: Vec::new(),
         };
 
         this.parse_scope();
@@ -776,7 +787,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return if this.errors.is_empty() {
             Ok(Ast {
                 scopes: this.scopes.into_boxed_slice(),
-                temporary_values: this.temporary_values.into_boxed_slice()
+                temporary_values: this.temporary_values.into_boxed_slice(),
+                variables: this.variables.into_boxed_slice(),
             })
         } else {
             Err(this.errors)
@@ -1444,7 +1456,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             TokenKind::RawStr(string) => Ok(Expression::RawStr(string.clone())),
             TokenKind::Identifier(name) => match self.resolve_type(name) {
                 None => match self.resolve_variable(name) {
-                    Some((_, _, _, var)) => self.index(var.name, var.value.typ()),
+                    Some((_, var_ref)) => {
+                        let var = &self.variables[var_ref.var_index];
+                        self.index(var.name, var.value.typ())
+                    },
                     None => Err(Error {
                         kind: ErrorKind::VariableNotPreviouslyDefined,
                         col: current_token.col,
@@ -2375,22 +2390,20 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         name: &'src str,
     ) -> Option<(
         Mutability,
-        usize, /* scope index */
-        usize, /* variable index */
-        &Variable<'src>,
+        &VariableRef<'src>,
     )> {
         let mut scope_index = self.scope;
         loop {
             let scope = &self.scopes[scope_index];
-            for (var_index, var) in scope.let_variables.iter().enumerate() {
+            for var in &scope.let_variables {
                 if var.name == name {
-                    return Some((Mutability::Let, scope_index, var_index, var));
+                    return Some((Mutability::Let, var));
                 }
             }
 
-            for (var_index, var) in scope.var_variables.iter().enumerate() {
+            for var in &scope.var_variables {
                 if var.name == name {
-                    return Some((Mutability::Var, scope_index, var_index, var));
+                    return Some((Mutability::Var, var));
                 }
             }
 
@@ -2439,7 +2452,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
         let Some(base_type) = self.resolve_type(type_name) else {
             return match self.resolve_variable(type_name) {
-                Some((_, _, _, var)) => Ok(Some((type_token, var.value.typ()))),
+                Some((_, var_ref)) => {
+                    let var = &self.variables[var_ref.var_index];
+                    Ok(Some((type_token, var.value.typ())))
+                }
                 None => Err(Error {
                     kind: ErrorKind::VariableNotPreviouslyDefined,
                     col: type_token.col,
@@ -2635,25 +2651,21 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     }
                 }
 
-                let variables = match mutability {
+                let scope_variables = match mutability {
                     Mutability::Let => &mut self.scopes[self.scope].let_variables,
                     Mutability::Var => &mut self.scopes[self.scope].var_variables,
                 };
 
-                variables.push(Variable { name, value });
+                let var_index = self.variables.len();
+                scope_variables.push(VariableRef { name, var_index });
+                self.variables.push(Variable { name, value });
+
                 Ok(Node::Definition {
-                    mutability,
-                    scope_index: self.scope,
-                    var_index: variables.len() - 1,
+                    var_index,
                 })
             }
             None => match annotation {
                 Some((_, typ)) => {
-                    let variables = match mutability {
-                        Mutability::Let => &mut self.scopes[self.scope].let_variables,
-                        Mutability::Var => &mut self.scopes[self.scope].var_variables,
-                    };
-
                     let value = match typ {
                         Type::Base(base_type) => base_type.into(),
                         Type::Array { base_type, len } => {
@@ -2661,11 +2673,17 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         }
                     };
 
-                    variables.push(Variable { name, value });
+                    let scope_variables = match mutability {
+                        Mutability::Let => &mut self.scopes[self.scope].let_variables,
+                        Mutability::Var => &mut self.scopes[self.scope].var_variables,
+                    };
+
+                    let var_index = self.variables.len();
+                    scope_variables.push(VariableRef { name, var_index });
+                    self.variables.push(Variable { name, value });
+
                     Ok(Node::Definition {
-                        mutability,
-                        scope_index: self.scope,
-                        var_index: variables.len() - 1,
+                        var_index,
                     })
                 }
                 None => Err(Error {
@@ -2699,7 +2717,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         _ = self.next_token();
         let rhs = self.expression()?;
 
-        let Some((mutability, scope_index, var_index, var)) = self.resolve_variable(name) else {
+        let Some((mutability, var_ref)) = self.resolve_variable(name) else {
             return Err(Error {
                 kind: ErrorKind::VariableNotPreviouslyDefined,
                 col: name_token.col,
@@ -2782,6 +2800,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | Op::LessOrEquals => unreachable!("not an 'equals' operator"),
         };
 
+        let var = &self.variables[var_ref.var_index];
         let var_type = var.value.typ();
         let rhs_type = rhs.typ();
 
@@ -2791,8 +2810,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         */
         return match assignment_op {
             AssignmentOp::Equals if var_type == rhs_type => Ok(Node::Assignment {
-                scope_index,
-                var_index,
+                var_index: var_ref.var_index,
                 op: assignment_op,
                 op_col: op_token.col,
                 new_value: rhs,
@@ -2836,8 +2854,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool),
                     Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool),
                 ) => Ok(Node::Assignment {
-                    scope_index,
-                    var_index,
+                    var_index: var_ref.var_index,
                     op: assignment_op,
                     op_col: op_token.col,
                     new_value: rhs,

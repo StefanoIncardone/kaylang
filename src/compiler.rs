@@ -10,9 +10,9 @@ use crate::{
     src_file::{Position, SrcFile},
     syntax::{
         ast::{
-            self, AssignmentOp, Ast, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression, IfStatement, Node, SizeOf, Type, TypeOf, UnaryOp
+            self, AssignmentOp, Ast, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression, IfStatement, Node, ScopeIndex, SizeOf, Type, TypeOf, UnaryOp
         },
-        tokenizer::{ascii, uint, Mutability, RawStr, Str},
+        tokenizer::{ascii, uint, RawStr, Str},
     },
     CAUSE, ERROR,
 };
@@ -142,14 +142,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 \n mov rdi, EXIT_SUCCESS"
             );
         } else {
-            for scope in this.ast.scopes.iter() {
-                for var in &scope.let_variables {
-                    this.variables.push(Variable { inner: var, offset: 0 /* placeholder */ });
-                }
-
-                for var in &scope.var_variables {
-                    this.variables.push(Variable { inner: var, offset: 0 /* placeholder */ });
-                }
+            for var in this.ast.variables.iter() {
+                this.variables.push(Variable { inner: var, offset: 0 /* placeholder */ });
             }
 
             for var_type in this.ast.temporary_values.iter() {
@@ -534,11 +528,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.condition_reversed(&looop.condition, &loop_tag);
                 _ = self.loop_counters.pop();
             }
-            Node::Definition { mutability, scope_index, var_index } => {
-                let ast_var = match mutability {
-                    Mutability::Let => &self.ast.scopes[*scope_index].let_variables[*var_index],
-                    Mutability::Var => &self.ast.scopes[*scope_index].var_variables[*var_index],
-                };
+            Node::Definition { var_index } => {
+                let ast_var = &self.ast.variables[*var_index];
 
                 let name = ast_var.name;
                 let value = &ast_var.value;
@@ -549,9 +540,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 _ = writeln!(self.asm, " ; {name} = {value}");
                 self.definition(value, Base::Rbp, dst_offset);
             }
-            Node::Assignment { scope_index, var_index, op, op_col, new_value } => {
+            Node::Assignment { var_index, op, op_col, new_value } => {
                 // Note: assignments are only allowed on mutable variables
-                let ast_var = &self.ast.scopes[*scope_index].var_variables[*var_index];
+                let ast_var = &self.ast.variables[*var_index];
                 let name = ast_var.name;
 
                 let var = self.resolve(name);
@@ -767,7 +758,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         }
     }
 
-    fn scope(&mut self, scope_index: usize) {
+    fn scope(&mut self, scope_index: ScopeIndex) {
         let scope = &self.ast.scopes[scope_index];
         for node in &scope.nodes {
             self.node(node);
