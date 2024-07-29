@@ -447,6 +447,7 @@ impl Display for AssignmentOp {
 
 pub(crate) type TokenIndex = usize;
 pub(crate) type VariableIndex = usize;
+pub(crate) type ExpressionIndex = usize;
 pub(crate) type ScopeIndex = usize;
 
 #[derive(Debug, Clone)]
@@ -490,7 +491,7 @@ pub(crate) enum Expression<'src> {
     },
     ArrayIndex {
         base_type: BaseType,
-        var_name: &'src str,
+        value: Box<Expression<'src>>,
         bracket_col: usize,
         index: Box<Expression<'src>>,
     },
@@ -502,8 +503,8 @@ pub(crate) enum Expression<'src> {
     },
     // TODO(stefano): represent as an index into the variables
     Temporary {
-        expression: Box<Expression<'src>>,
-        temporary_value_index: usize,
+        typ: Type,
+        temporary_value_index: ExpressionIndex,
     },
 }
 
@@ -558,8 +559,11 @@ impl Display for Expression<'_> {
             Self::Binary { lhs, op, rhs, .. } => write!(f, "({lhs} {op} {rhs})"),
             Self::BooleanBinary { lhs, op, rhs, .. } => write!(f, "({lhs} {op} {rhs})"),
             Self::Comparison { lhs, op, rhs } => write!(f, "({lhs} {op} {rhs})"),
-            Self::ArrayIndex { var_name, index, .. } => write!(f, "{var_name}[{index}]"),
-            Self::Temporary { expression, .. } => write!(f, "{expression}"),
+            Self::ArrayIndex { value, index, .. } => write!(f, "{value}[{index}]"),
+
+            // TODO(stefano): find a way to print the actual temporary value
+            Self::Temporary { typ, .. } => write!(f, "temp {typ}"),
+
             Self::Identifier { name, .. } => write!(f, "{name}"),
         };
     }
@@ -575,7 +579,7 @@ impl TypeOf for Expression<'_> {
             Self::Array { base_type, items } => {
                 Type::Array { base_type: *base_type, len: items.len() }
             }
-            Self::Temporary { expression, .. } => expression.typ(),
+            Self::Temporary { typ, .. } => *typ,
             Self::Unary { op, .. } => op.typ(),
             Self::BooleanUnary { op, .. } => op.typ(),
             Self::Binary { op, .. } => op.typ(),
@@ -714,7 +718,7 @@ pub(crate) struct Scope<'src> {
 #[derive(Debug)]
 pub struct Ast<'src> {
     pub(crate) scopes: Box<[Scope<'src>]>,
-    pub(crate) temporary_values: Box<[Type]>,
+    pub(crate) temporaries: Box<[Expression<'src>]>,
     pub(crate) variables: Box<[Variable<'src>]>,
 }
 
@@ -732,7 +736,7 @@ pub struct Parser<'src, 'tokens: 'src> {
 
     scope: ScopeIndex,
     scopes: Vec<Scope<'src>>,
-    temporary_values: Vec<Type>,
+    temporary_values: Vec<Expression<'src>>,
     variables: Vec<Variable<'src>>,
 }
 
@@ -744,7 +748,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         if tokens.is_empty() {
             return Ok(Ast {
                 scopes: Vec::new().into_boxed_slice(),
-                temporary_values: Vec::new().into_boxed_slice(),
+                temporaries: Vec::new().into_boxed_slice(),
                 variables: Vec::new().into_boxed_slice(),
             });
         }
@@ -787,7 +791,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return if this.errors.is_empty() {
             Ok(Ast {
                 scopes: this.scopes.into_boxed_slice(),
-                temporary_values: this.temporary_values.into_boxed_slice(),
+                temporaries: this.temporary_values.into_boxed_slice(),
                 variables: this.variables.into_boxed_slice(),
             })
         } else {
@@ -894,9 +898,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let expression = self.expression()?;
                 if let Expression::Array { .. } = expression {
                     let temporary_value_index = self.temporary_values.len();
-                    self.temporary_values.push(expression.typ());
+                    let expression_type = expression.typ();
+                    self.temporary_values.push(expression);
                     return Ok(Some(Node::Expression(Expression::Temporary {
-                        expression: Box::new(expression),
+                        typ: expression_type,
                         temporary_value_index,
                     })));
                 }
@@ -1346,74 +1351,6 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
     }
 
-    fn index(
-        &mut self,
-        var_name: &'src str,
-        var_type: Type,
-    ) -> Result<Expression<'src>, Error<ErrorKind>> {
-        let current_token = &self.tokens[self.token];
-
-        let Some(open_bracket_token) = self.peek_next_token() else {
-            return Ok(Expression::Identifier { typ: var_type, name: var_name });
-        };
-
-        let TokenKind::Bracket(BracketKind::OpenSquare) = open_bracket_token.kind else {
-            return Ok(Expression::Identifier { typ: var_type, name: var_name });
-        };
-
-        let _open_square = self.next_token();
-        let _start_of_index = self.next_token();
-
-        let index = self.expression()?;
-        let Type::Base(BaseType::Int) = index.typ() else {
-            return Err(Error {
-                kind: ErrorKind::ExpectedNumberLiteralInArrayIndex,
-                col: open_bracket_token.col,
-                pointers_count: open_bracket_token.kind.display_len(),
-            });
-        };
-
-        let after_index_token = self.current_token_bounded(Expected::ClosingSquareBracket)?;
-
-        let TokenKind::Bracket(BracketKind::CloseSquare) = after_index_token.kind else {
-            let before_index_token = self.peek_previous_token();
-            return Err(Error {
-                kind: ErrorKind::MissingClosingSquareBracketInIndex,
-                col: before_index_token.col,
-                pointers_count: before_index_token.kind.display_len(),
-            });
-        };
-
-        return match var_type {
-            Type::Base(base_type) => match base_type {
-                BaseType::Int => Ok(Expression::ArrayIndex {
-                    base_type: BaseType::Int,
-                    var_name,
-                    bracket_col: open_bracket_token.col,
-                    index: Box::new(index),
-                }),
-                BaseType::Str => Ok(Expression::ArrayIndex {
-                    base_type: BaseType::Ascii,
-                    var_name,
-                    bracket_col: open_bracket_token.col,
-                    index: Box::new(index),
-                }),
-                BaseType::Ascii | BaseType::Bool => Err(Error {
-                    kind: ErrorKind::CannotIndexNonArrayType(var_type),
-                    col: current_token.col,
-                    pointers_count: current_token.kind.display_len(),
-                }),
-            },
-            Type::Array { base_type, .. } => Ok(Expression::ArrayIndex {
-                base_type,
-                var_name,
-                bracket_col: open_bracket_token.col,
-                index: Box::new(index),
-            }),
-        };
-    }
-
-    // IDEA(stefano): disallow -0
     fn primary_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
         // TODO(stefano): measure speed and optimize if needed
         fn parse_positive_int(literal: &str) -> Option<int> {
@@ -1440,7 +1377,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         }
 
         let current_token = self.current_token_bounded(Expected::Expression)?;
-        let factor = match &current_token.kind {
+        let expression_result = match &current_token.kind {
             TokenKind::False => Ok(Expression::False),
             TokenKind::True => Ok(Expression::True),
             TokenKind::Integer(integer_literal) => match parse_positive_int(integer_literal) {
@@ -1458,7 +1395,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 None => match self.resolve_variable(name) {
                     Some((_, var_ref)) => {
                         let var = &self.variables[var_ref.var_index];
-                        self.index(var.name, var.value.typ())
+                        Ok(Expression::Identifier { typ: var.value.typ(), name: var.name })
                     },
                     None => Err(Error {
                         kind: ErrorKind::VariableNotPreviouslyDefined,
@@ -2026,8 +1963,75 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             }),
         };
 
-        _ = self.next_token();
-        return factor;
+        let mut expression = expression_result?;
+        while let Some(open_bracket_token @ Token { kind: TokenKind::Bracket(BracketKind::OpenSquare), .. }) = self.next_token() {
+            let _start_of_index = self.next_token();
+            let index = self.expression()?;
+            let Type::Base(BaseType::Int) = index.typ() else {
+                return Err(Error {
+                    kind: ErrorKind::ExpectedNumberLiteralInArrayIndex,
+                    col: open_bracket_token.col,
+                    pointers_count: open_bracket_token.kind.display_len(),
+                });
+            };
+
+            let after_index_token = self.current_token_bounded(Expected::ClosingSquareBracket)?;
+
+            let TokenKind::Bracket(BracketKind::CloseSquare) = after_index_token.kind else {
+                let before_index_token = self.peek_previous_token();
+                return Err(Error {
+                    kind: ErrorKind::MissingClosingSquareBracketInIndex,
+                    col: before_index_token.col,
+                    pointers_count: before_index_token.kind.display_len(),
+                });
+            };
+
+            /*
+            TODO(stefano): disallow indexing into literal arrays, it's as if you were to access
+            the actual element.
+            could suggest the user to extract the literal array to a temporary variable first
+            */
+            let expression_type = expression.typ();
+            expression = match expression_type {
+                Type::Base(base_type) => match base_type {
+                    BaseType::Int => Expression::ArrayIndex {
+                        base_type: BaseType::Int,
+                        value: Box::new(expression),
+                        bracket_col: open_bracket_token.col,
+                        index: Box::new(index),
+                    },
+                    BaseType::Str => Expression::ArrayIndex {
+                        base_type: BaseType::Ascii,
+                        value: Box::new(expression),
+                        bracket_col: open_bracket_token.col,
+                        index: Box::new(index),
+                    },
+                    BaseType::Ascii | BaseType::Bool => return Err(Error {
+                        kind: ErrorKind::CannotIndexNonArrayType(expression_type),
+                        col: open_bracket_token.col,
+                        pointers_count: open_bracket_token.kind.display_len(),
+                    }),
+                },
+                Type::Array { base_type, .. } => {
+                    // IDEA(stefano): remove this temporary and treat the array as the temporary
+                    let temporary_value_index = self.temporary_values.len();
+                    self.temporary_values.push(expression);
+                    let temporary_array = Expression::Temporary {
+                        typ: expression_type,
+                        temporary_value_index,
+                    };
+
+                    Expression::ArrayIndex {
+                        base_type,
+                        value: Box::new(temporary_array),
+                        bracket_col: open_bracket_token.col,
+                        index: Box::new(index),
+                    }
+                },
+            };
+        }
+
+        return Ok(expression);
     }
 
     fn exponentiative_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
@@ -2879,9 +2883,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         let argument = self.expression()?;
         if let Expression::Array { .. } = argument {
             let temporary_value_index = self.temporary_values.len();
-            self.temporary_values.push(argument.typ());
+            let argument_type = argument.typ();
+            self.temporary_values.push(argument);
             return Ok(Expression::Temporary {
-                expression: Box::new(argument),
+                typ: argument_type,
                 temporary_value_index,
             });
         };

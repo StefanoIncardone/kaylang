@@ -73,8 +73,8 @@ struct Variable<'src, 'ast: 'src> {
 }
 
 #[derive(Debug)]
-struct TemporaryValue<'ast> {
-    inner: &'ast Type,
+struct TemporaryValue<'src, 'ast: 'src> {
+    inner: &'ast Expression<'src>,
     offset: usize,
 }
 
@@ -88,7 +88,7 @@ pub struct Compiler<'src, 'ast: 'src> {
     asm: String,
 
     variables: Vec<Variable<'src, 'ast>>,
-    temporary_values: Vec<TemporaryValue<'ast>>,
+    temporary_values: Vec<TemporaryValue<'src, 'ast>>,
 
     string_labels: String,
     strings: Vec<&'ast [ascii]>,
@@ -122,8 +122,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             src,
             ast,
             asm: String::new(),
-            variables: Vec::new(),
-            temporary_values: Vec::new(),
+            variables: Vec::with_capacity(ast.variables.len()),
+            temporary_values: Vec::with_capacity(ast.temporaries.len()),
             string_labels: String::new(),
             strings: Vec::new(),
             if_counter: 0,
@@ -146,10 +146,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 this.variables.push(Variable { inner: var, offset: 0 /* placeholder */ });
             }
 
-            for var_type in this.ast.temporary_values.iter() {
-                this.temporary_values.push(TemporaryValue { inner: var_type, offset: 0 });
+            for var in this.ast.temporaries.iter() {
+                this.temporary_values.push(TemporaryValue { inner: var, offset: 0 });
 
-                let var_size = var_type.size();
+                let var_size = var.typ().size();
                 if var_size > temporary_values_bytes {
                     temporary_values_bytes = var_size;
                 }
@@ -778,9 +778,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         unreachable!("should always find a variable");
     }
 
-    fn resolve_temporary(&self, typ: &'ast Type) -> &TemporaryValue<'ast> {
+    fn resolve_temporary(&self, value: &'ast Expression<'src>) -> &TemporaryValue<'src, 'ast> {
         for temporary in &self.temporary_values {
-            if temporary.inner == typ {
+            if std::ptr::eq(temporary.inner, value) {
                 return temporary;
             }
         }
@@ -823,7 +823,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         return index;
     }
 
-    fn lhs_needs_saving(expression: &'ast Expression<'src>) -> bool {
+    fn lhs_needs_saving(&self, expression: &'ast Expression<'src>) -> bool {
         return match expression {
             Expression::Array { .. } => {
                 unreachable!("arrays cannot appear in expressions");
@@ -847,8 +847,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             | Expression::Comparison { .. }
             | Expression::ArrayIndex { .. } => true,
 
-            Expression::Temporary { expression: temporary_expression, .. } => {
-                Self::lhs_needs_saving(temporary_expression)
+            Expression::Temporary { temporary_value_index, .. } => {
+                let temporary = &self.ast.temporaries[*temporary_value_index];
+                self.lhs_needs_saving(temporary)
             },
         }
     }
@@ -862,7 +863,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     ) {
         self.expression(lhs, lhs_dst);
 
-        if !Self::lhs_needs_saving(rhs) {
+        if !self.lhs_needs_saving(rhs) {
             self.expression(rhs, rhs_dst);
             return;
         }
@@ -936,6 +937,268 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 }
                 Dst::Reg(_) => unreachable!(),
             },
+        }
+    }
+
+    fn index(&mut self, base_type: BaseType, value: &'ast Expression<'src>, bracket_col: usize, index: &'ast Expression<'src>) {
+        let Position { line, col, .. } = self.src.position(bracket_col);
+
+        match value {
+            Expression::Int(integer) => {
+                self.expression(index, Dst::Reg(Rdi));
+                _ = writeln!(
+                    self.asm,
+                    " mov rsi, INT_BITS\
+                    \n mov rdx, {line}\
+                    \n mov rcx, {col}\
+                    \n call assert_int_bit_index_in_range\
+                    \n mov rsi, 1\
+                    \n shlx rsi, rsi, rdi\
+                    \n mov rdi, {integer}\
+                    \n and rdi, rsi\n"
+                );
+            },
+            Expression::Str(string) => {
+                self.expression(index, Dst::Reg(Rdi));
+                let str_index = self.str_index(string);
+                _ = writeln!(
+                    self.asm,
+                    " mov rsi, str_{str_index}_len\
+                    \n mov rdx, {line}\
+                    \n mov rcx, {col}\
+                    \n call assert_str_index_in_range\
+                    \n movzx rdi, byte [str_{str_index} + rdi]\n",
+                );
+            },
+            Expression::RawStr(string) => {
+                self.expression(index, Dst::Reg(Rdi));
+                let str_index = self.raw_str_index(string);
+                _ = writeln!(
+                    self.asm,
+                    " mov rsi, str_{str_index}_len\
+                    \n mov rdx, {line}\
+                    \n mov rcx, {col}\
+                    \n call assert_str_index_in_range\
+                    \n movzx rdi, byte [str_{str_index} + rdi]\n",
+                );
+            },
+            Expression::Unary { ..  }
+            | Expression::Binary { .. }
+            | Expression::Comparison { op: ComparisonOp::Compare, .. } => {
+                self.expression(index, Dst::Reg(Rdi));
+                _ = writeln!(
+                    self.asm,
+                    " mov rsi, INT_BITS\
+                    \n mov rdx, {line}\
+                    \n mov rcx, {col}\
+                    \n call assert_int_bit_index_in_range\
+                    \n mov rsi, 1\
+                    \n shlx rsi, rsi, rdi\
+                    \n push rsi\n"
+                );
+
+                self.expression(value, Dst::Reg(Rdi));
+
+                _ = writeln!(
+                    self.asm,
+                    " pop rsi\
+                    \n and rdi, rsi\n"
+                );
+            },
+            Expression::ArrayIndex {
+                base_type: nested_base_type,
+                value: nested_value,
+                bracket_col: nested_bracket_col,
+                index: nested_index
+            } => {
+                self.index(*nested_base_type, nested_value, *nested_bracket_col, nested_index);
+                match nested_base_type {
+                    BaseType::Str => {
+                        _ = writeln!(
+                            self.asm,
+                            " push rsi\
+                            \n push rdi\n"
+                        );
+                    }
+                    BaseType::Int => _ = writeln!(self.asm, " push rdi\n"),
+                    BaseType::Ascii | BaseType::Bool => {
+                        unreachable!(
+                            "only arrays, strings and integers are allowed in index espressions"
+                        )
+                    }
+                }
+
+                self.expression(index, Dst::Reg(Rdi));
+
+                match base_type {
+                    BaseType::Ascii => {
+                        _ = writeln!(
+                            self.asm,
+                            " pop rsi\
+                            \n mov rdx, {line}\
+                            \n mov rcx, {col}\
+                            \n call assert_str_index_in_range\
+                            \n pop rsi\
+                            \n movzx rdi, byte [rsi + rdi]\n",
+                        );
+                    }
+                    BaseType::Int => {
+                        _ = writeln!(
+                            self.asm,
+                            " mov rsi, INT_BITS\
+                            \n mov rdx, {line}\
+                            \n mov rcx, {col}\
+                            \n call assert_int_bit_index_in_range\
+                            \n mov rsi, 1\
+                            \n shlx rsi, rsi, rdi\
+                            \n pop rdi
+                            \n and rdi, rsi\n"
+                        );
+                    }
+                    BaseType::Str | BaseType::Bool => {
+                        unreachable!(
+                            "only integers and ascii are allowed in nested index espressions"
+                        )
+                    }
+                }
+            },
+            Expression::Temporary { typ, temporary_value_index } => {
+                let temporary_expression = &self.ast.temporaries[*temporary_value_index];
+                let temporary = self.resolve_temporary(temporary_expression);
+                let temporary_offset = temporary.offset;
+                self.definition(temporary_expression, Base::Temp, temporary_offset);
+
+                self.expression(index, Dst::Reg(Rdi));
+
+                let Type::Array { len, .. } = typ else {
+                    unreachable!("only arrays should appear in temporaries");
+                };
+
+                _ = writeln!(
+                    self.asm,
+                    " mov rsi, {len}\
+                    \n mov rdx, {line}\
+                    \n mov rcx, {col}\
+                    \n call assert_array_index_in_range"
+                );
+
+                match base_type {
+                    BaseType::Int => {
+                        _ = writeln!(
+                            self.asm,
+                            " mov rdi, [temp + {temporary_offset} + rdi * 8]\n"
+                        );
+                    }
+                    BaseType::Str => {
+                        _ = writeln!(
+                            self.asm,
+                            " imul rdi, {base_type_size}\
+                            \n mov rsi, [temp + {temporary_offset} + {ptr_offset} + rdi]\
+                            \n mov rdi, [temp + {temporary_offset} + rdi]\n",
+                            base_type_size = base_type.size(),
+                            ptr_offset = std::mem::size_of::<uint>()
+                        );
+                    }
+                    BaseType::Ascii | BaseType::Bool => {
+                        unreachable!(
+                            "only arrays, strings and integers are allowed in index espressions"
+                        )
+                    }
+                }
+            },
+            Expression::Identifier { typ, name } => {
+                self.expression(index, Dst::Reg(Rdi));
+
+                let var = self.resolve(name);
+                let var_offset = var.offset;
+
+                match typ {
+                    Type::Base(BaseType::Str) => {
+                        _ = writeln!(
+                            self.asm,
+                            " mov rsi, [rbp + {var_offset}]\
+                            \n mov rdx, {line}\
+                            \n mov rcx, {col}\
+                            \n call assert_str_index_in_range\
+                            \n mov rsi, [rbp + {var_offset} + {ptr_offset}]\
+                            \n movzx rdi, byte [rsi + rdi]\n",
+                            ptr_offset = std::mem::size_of::<uint>()
+                        );
+                    }
+                    Type::Array { len: array_len, .. } => {
+                        _ = writeln!(
+                            self.asm,
+                            " mov rsi, {array_len}\
+                            \n mov rdx, {line}\
+                            \n mov rcx, {col}\
+                            \n call assert_array_index_in_range"
+                        );
+
+                        match base_type {
+                            BaseType::Int => {
+                                _ = writeln!(
+                                    self.asm,
+                                    " mov rdi, [rbp + {var_offset} + rdi * 8]\n"
+                                );
+                            }
+                            BaseType::Ascii | BaseType::Bool => {
+                                _ = writeln!(
+                                    self.asm,
+                                    " movzx rdi, byte [rbp + {var_offset} + rdi]\n"
+                                );
+                            }
+                            BaseType::Str => {
+                                _ = writeln!(
+                                    self.asm,
+                                    " imul rdi, {base_type_size}\
+                                    \n mov rsi, [rbp + {var_offset} + {ptr_offset} + rdi]\
+                                    \n mov rdi, [rbp + {var_offset} + rdi]\n",
+                                    base_type_size = base_type.size(),
+                                    ptr_offset = std::mem::size_of::<uint>()
+                                );
+                            }
+                        }
+                    }
+                    Type::Base(BaseType::Int) => {
+                        _ = writeln!(
+                            self.asm,
+                            " mov rsi, INT_BITS\
+                            \n mov rdx, {line}\
+                            \n mov rcx, {col}\
+                            \n call assert_int_bit_index_in_range\
+                            \n mov rsi, 1\
+                            \n shlx rsi, rsi, rdi\
+                            \n mov rdi, [rbp + {var_offset}]\
+                            \n and rdi, rsi\n"
+                        );
+                    }
+                    Type::Base(BaseType::Ascii | BaseType::Bool) => {
+                        unreachable!(
+                            "only arrays, strings and integers are allowed in index espressions"
+                        )
+                    }
+                }
+            },
+
+            Expression::False
+            | Expression::True
+            | Expression::Ascii(_)
+            | Expression::BooleanUnary { .. }
+            | Expression::BooleanBinary { .. }
+            | Expression::Comparison { op:
+                ComparisonOp::EqualsEquals
+                | ComparisonOp::Greater
+                | ComparisonOp::GreaterOrEquals
+                | ComparisonOp::Less
+                | ComparisonOp::LessOrEquals
+                | ComparisonOp::NotEquals,
+                ..
+            } => {
+                unreachable!(
+                    "only arrays, strings and integers are allowed in index espressions"
+                )
+            },
+            Expression::Array { .. } => unreachable!("only temporary arrays can appear "),
         }
     }
 
@@ -1013,28 +1276,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 }
                             }
                         }
-                        Expression::ArrayIndex { base_type, var_name, bracket_col, index } => {
-                            self.expression(index, Dst::Reg(Rdi));
-
-                            let var = self.resolve(var_name);
-                            let var_offset = var.offset;
-
-                            let Type::Array { len, .. } = var.inner.value.typ() else {
-                                unreachable!("only array of strings can appear here");
-                            };
-
-                            let Position { line, col, .. } = self.src.position(*bracket_col);
-
-                            _ = writeln!(
-                                self.asm,
-                                " mov rsi, {len}\
-                                \n mov rdx, {line}\
-                                \n mov rcx, {col}\
-                                \n call assert_array_index_in_range\
-                                \n imul rdi, {base_type_size}\
-                                \n mov {reg}, [rbp + {var_offset} + rdi]\n",
-                                base_type_size = base_type.size(),
-                            );
+                        Expression::ArrayIndex { base_type, value, bracket_col, index } => {
+                            self.index(*base_type, value, *bracket_col, index);
+                            _ = writeln!(self.asm, "mov {reg}, rdi\n");
                         }
                         Expression::False
                         | Expression::True
@@ -1613,93 +1857,21 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 _ = writeln!(self.asm, "{op_asm}\n");
             }
-            Expression::Temporary { expression, temporary_value_index } => {
-                let temporary_value_type = &self.ast.temporary_values[*temporary_value_index];
-                let temporary_value = self.resolve_temporary(temporary_value_type);
+            Expression::Temporary { temporary_value_index, .. } => {
+                let temporary_value_expression = &self.ast.temporaries[*temporary_value_index];
+                let temporary_value = self.resolve_temporary(temporary_value_expression);
                 let temporary_value_offset = temporary_value.offset;
 
-                self.definition(expression, Base::Temp, temporary_value_offset);
-                self.identifier(expression.typ(), dst, Base::Temp, temporary_value_offset);
+                self.definition(temporary_value_expression, Base::Temp, temporary_value_offset);
+                self.identifier(temporary_value_expression.typ(), dst, Base::Temp, temporary_value_offset);
             },
             Expression::Identifier { typ, name } => {
                 let var = self.resolve(name);
                 let var_offset = var.offset;
                 self.identifier(*typ, dst, Base::Rbp, var_offset);
             }
-            Expression::ArrayIndex { base_type, var_name, bracket_col, index } => {
-                self.expression(index, Dst::Reg(Rdi));
-
-                let Position { line, col, .. } = self.src.position(*bracket_col);
-                let var = self.resolve(var_name);
-                let var_offset = var.offset;
-                let var_type = var.inner.value.typ();
-
-                match var_type {
-                    Type::Base(BaseType::Str) => {
-                        _ = writeln!(
-                            self.asm,
-                            " mov rsi, [rbp + {var_offset}]\
-                            \n mov rdx, {line}\
-                            \n mov rcx, {col}\
-                            \n call assert_str_index_in_range\
-                            \n mov rsi, [rbp + {var_offset} + {ptr_offset}]\
-                            \n movzx rdi, byte [rsi + rdi]\n",
-                            ptr_offset = std::mem::size_of::<uint>()
-                        );
-                    }
-                    Type::Array { len: array_len, .. } => {
-                        _ = writeln!(
-                            self.asm,
-                            " mov rsi, {array_len}\
-                            \n mov rdx, {line}\
-                            \n mov rcx, {col}\
-                            \n call assert_array_index_in_range"
-                        );
-
-                        match base_type {
-                            BaseType::Int => {
-                                _ = writeln!(
-                                    self.asm,
-                                    " mov rdi, [rbp + {var_offset} + rdi * 8]\n"
-                                );
-                            }
-                            BaseType::Ascii | BaseType::Bool => {
-                                _ = writeln!(
-                                    self.asm,
-                                    " movzx rdi, byte [rbp + {var_offset} + rdi]\n"
-                                );
-                            }
-                            BaseType::Str => {
-                                _ = writeln!(
-                                    self.asm,
-                                    " imul rdi, {base_type_size}\
-                                    \n mov rsi, [rbp + {var_offset} + {ptr_offset} + rdi]\
-                                    \n mov rdi, [rbp + {var_offset} + rdi]\n",
-                                    base_type_size = base_type.size(),
-                                    ptr_offset = std::mem::size_of::<uint>()
-                                );
-                            }
-                        }
-                    }
-                    Type::Base(BaseType::Int) => {
-                        _ = writeln!(
-                            self.asm,
-                            " mov rsi, INT_BITS\
-                            \n mov rdx, {line}\
-                            \n mov rcx, {col}\
-                            \n call assert_int_bit_index_in_range\
-                            \n mov rsi, 1\
-                            \n shlx rsi, rsi, rdi\
-                            \n mov rdi, [rbp + {var_offset}]\
-                            \n and rdi, rsi\n"
-                        );
-                    }
-                    Type::Base(BaseType::Ascii | BaseType::Bool) => {
-                        unreachable!(
-                            "only arrays, strings and integers are allowed in index espressions"
-                        )
-                    }
-                }
+            Expression::ArrayIndex { base_type, value, bracket_col, index } => {
+                self.index(*base_type, value, *bracket_col, index);
             }
         }
     }
@@ -2117,29 +2289,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             }
                         }
                     }
-                    Expression::ArrayIndex { base_type, var_name, bracket_col, index } => {
-                        self.expression(index, Dst::Reg(Rdi));
-
-                        let var = self.resolve(var_name);
-                        let var_offset = var.offset;
-
-                        let Type::Array { len, .. } = var.inner.value.typ() else {
-                            unreachable!("only array of strings can appear here");
-                        };
-
-                        let Position { line, col, .. } = self.src.position(*bracket_col);
-
-                        _ = writeln!(
-                            self.asm,
-                            " mov rsi, {len}\
-                            \n mov rdx, {line}\
-                            \n mov rcx, {col}\
-                            \n call assert_array_index_in_range\
-                            \n imul rdi, {typ_size}\
-                            \n mov rdi, [{base} + {var_offset} + rdi]\
-                            \n mov [{base} + {dst_offset}], rdi\n",
-                            typ_size = base_type.size(),
-                        );
+                    Expression::ArrayIndex { base_type, value: base_array_index_value, bracket_col, index } => {
+                        self.index(*base_type, base_array_index_value, *bracket_col, index);
+                        _ = writeln!(self.asm, "mov [{base} + {dst_offset}], rdi\n");
                     }
                     Expression::False
                     | Expression::True

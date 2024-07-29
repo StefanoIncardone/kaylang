@@ -9,7 +9,6 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ## Unreleased
 
-- Temporary values
 - Shortcircuted and/or operators
 - Unsigned integers
 - Casting operator
@@ -54,7 +53,7 @@ Changes to error messages, help message and alike would **not** be considered br
 
 ### Changed
 
-- Printing of temporary arrays is now allowed
+- Temporary arrays and indexing into temporary values are now allowed
 - Improved generated asm code
 - Improved error messages
 - Runtime crashes now print to `stderr`
