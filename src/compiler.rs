@@ -10,9 +10,9 @@ use crate::{
     src_file::{Position, SrcFile},
     syntax::{
         ast::{
-            self, AssignmentOp, Ast, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression, IfStatement, Node, ScopeIndex, SizeOf, Type, TypeOf, UnaryOp
+            self, AssignmentOp, Ast, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression, IfStatement, Node, ScopeIndex, SizeOf, StrKind, Type, TypeOf, UnaryOp
         },
-        tokenizer::{ascii, uint, RawStr, Str},
+        tokenizer::uint,
     },
     CAUSE, ERROR,
 };
@@ -90,9 +90,6 @@ pub struct Compiler<'src, 'ast: 'src> {
     variables: Vec<Variable<'src, 'ast>>,
     temporary_values: Vec<TemporaryValue<'src, 'ast>>,
 
-    string_labels: String,
-    strings: Vec<&'ast [ascii]>,
-
     if_counter: usize,
 
     loop_counter: usize,
@@ -124,8 +121,6 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             asm: String::new(),
             variables: Vec::with_capacity(ast.variables.len()),
             temporary_values: Vec::with_capacity(ast.temporaries.len()),
-            string_labels: String::new(),
-            strings: Vec::new(),
             if_counter: 0,
             loop_counter: 0,
             loop_counters: Vec::new(),
@@ -134,6 +129,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         };
 
         let mut temporary_values_bytes = 0;
+        let mut strings = String::new();
 
         if this.ast.scopes.is_empty() {
             _ = write!(
@@ -142,10 +138,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 \n mov rdi, EXIT_SUCCESS"
             );
         } else {
-            for var in this.ast.variables.iter() {
-                this.variables.push(Variable { inner: var, offset: 0 /* placeholder */ });
-            }
-
+            // temporary values
             for var in this.ast.temporaries.iter() {
                 this.temporary_values.push(TemporaryValue { inner: var, offset: 0 });
 
@@ -153,6 +146,36 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 if var_size > temporary_values_bytes {
                     temporary_values_bytes = var_size;
                 }
+            }
+
+            // strings
+            let mut string_index = 0;
+            let mut raw_string_index = 0;
+            for string_kind in this.ast.string_kinds.iter() {
+                let label = string_index + raw_string_index;
+
+                match string_kind {
+                    StrKind::Str => {
+                        let string = &this.ast.strings[string_index];
+                        string_index += 1;
+
+                        let string_str = unsafe { std::str::from_utf8_unchecked(&string.0) };
+                        let string_chars = string_str.escape_debug();
+                        _ = writeln!(strings, " str str_{label}, `{string_chars}`");
+                    },
+                    StrKind::RawStr => {
+                        let string = &this.ast.raw_strings[raw_string_index];
+                        raw_string_index += 1;
+
+                        let raw_string_str = unsafe { std::str::from_utf8_unchecked(string.0) };
+                        _ = writeln!(strings, " str str_{label}, \"{raw_string_str}\"");
+                    },
+                }
+            }
+
+            // variables
+            for var in this.ast.variables.iter() {
+                this.variables.push(Variable { inner: var, offset: 0 /* placeholder */ });
             }
 
             this.variables.sort_by(|var_1, var_2| {
@@ -383,7 +406,6 @@ section .bss
 "#,
             asm = this.asm,
             src_path = src.path.display(),
-            strings = this.string_labels,
         );
 
         let mut asm_writer = BufWriter::new(asm_file);
@@ -788,41 +810,6 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         unreachable!("should always find a temporary value");
     }
 
-    fn str_index(&mut self, string: &'ast Str) -> usize {
-        let mut index = 0;
-        for string_label in &self.strings {
-            if std::ptr::eq(&*string.0, *string_label) {
-                return index;
-            }
-            index += 1;
-        }
-
-        // registering the string if it was not encountered before
-        self.strings.push(&string.0);
-
-        let string_str = unsafe { std::str::from_utf8_unchecked(&string.0) };
-        let string_chars = string_str.escape_debug();
-        _ = writeln!(self.string_labels, " str str_{index}, `{string_chars}`");
-        return index;
-    }
-
-    fn raw_str_index(&mut self, string: &'ast RawStr<'src>) -> usize {
-        let mut index = 0;
-        for string_label in &self.strings {
-            if std::ptr::eq(string.0, *string_label) {
-                return index;
-            }
-            index += 1;
-        }
-
-        // registering the string if it was not encountered before
-        self.strings.push(string.0);
-
-        let raw_string_str = unsafe { std::str::from_utf8_unchecked(string.0) };
-        _ = writeln!(self.string_labels, " str str_{index}, '{raw_string_str}'");
-        return index;
-    }
-
     fn lhs_needs_saving(&self, expression: &'ast Expression<'src>) -> bool {
         return match expression {
             Expression::Array { .. } => {
@@ -834,8 +821,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             | Expression::True
             | Expression::Int(_)
             | Expression::Ascii(_)
-            | Expression::Str(_)
-            | Expression::RawStr(_)
+            | Expression::Str { .. }
             | Expression::Unary { op: UnaryOp::Not | UnaryOp::WrappingMinus, .. }
             | Expression::BooleanUnary { .. }
             | Expression::Identifier { .. } => false,
@@ -958,28 +944,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n and rdi, rsi\n"
                 );
             },
-            Expression::Str(string) => {
+            Expression::Str { label } => {
                 self.expression(index, Dst::Reg(Rdi));
-                let str_index = self.str_index(string);
                 _ = writeln!(
                     self.asm,
-                    " mov rsi, str_{str_index}_len\
+                    " mov rsi, str_{label}_len\
                     \n mov rdx, {line}\
                     \n mov rcx, {col}\
                     \n call assert_str_index_in_range\
-                    \n movzx rdi, byte [str_{str_index} + rdi]\n",
-                );
-            },
-            Expression::RawStr(string) => {
-                self.expression(index, Dst::Reg(Rdi));
-                let str_index = self.raw_str_index(string);
-                _ = writeln!(
-                    self.asm,
-                    " mov rsi, str_{str_index}_len\
-                    \n mov rdx, {line}\
-                    \n mov rcx, {col}\
-                    \n call assert_str_index_in_range\
-                    \n movzx rdi, byte [str_{str_index} + rdi]\n",
+                    \n movzx rdi, byte [str_{label} + rdi]\n",
                 );
             },
             Expression::Unary { ..  }
@@ -1220,24 +1193,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, false"),
                 Dst::View { .. } => unreachable!(),
             },
-            Expression::Str(string) => match dst {
+            Expression::Str { label } => match dst {
                 Dst::View { len, ptr } => {
-                    let index = self.str_index(string);
                     _ = writeln!(
                         self.asm,
-                        " mov {len}, str_{index}_len\
-                        \n mov {ptr}, str_{index}"
-                    );
-                }
-                Dst::Reg(_) => unreachable!(),
-            },
-            Expression::RawStr(string) => match dst {
-                Dst::View { len, ptr } => {
-                    let index = self.raw_str_index(string);
-                    _ = writeln!(
-                        self.asm,
-                        " mov {len}, str_{index}_len\
-                        \n mov {ptr}, str_{index}"
+                        " mov {len}, str_{label}_len\
+                        \n mov {ptr}, str_{label}"
                     );
                 }
                 Dst::Reg(_) => unreachable!(),
@@ -1250,13 +1211,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 match op {
                     UnaryOp::Len => match &**operand {
-                        Expression::Str(string) => {
-                            let index = self.str_index(string);
-                            _ = writeln!(self.asm, " mov {reg}, str_{index}_len");
-                        }
-                        Expression::RawStr(string) => {
-                            let index = self.raw_str_index(string);
-                            _ = writeln!(self.asm, " mov {reg}, str_{index}_len");
+                        Expression::Str { label } => {
+                            _ = writeln!(self.asm, " mov {reg}, str_{label}_len");
                         }
                         Expression::Array { items, .. } => {
                             _ = writeln!(self.asm, " mov {reg}, {}", items.len());
@@ -1898,8 +1854,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Array { .. }
             | Expression::Int(_)
             | Expression::Ascii(_)
-            | Expression::Str(_)
-            | Expression::RawStr(_) => {
+            | Expression::Str { .. } => {
                 unreachable!("non-boolean expressions not allowed in conditions");
             }
             Expression::Temporary { ..  } => {
@@ -2062,8 +2017,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Array { .. }
             | Expression::Int(_)
             | Expression::Ascii(_)
-            | Expression::Str(_)
-            | Expression::RawStr(_) => {
+            | Expression::Str { .. } => {
                 unreachable!("non-boolean expressions not allowed in conditions");
             }
             Expression::Temporary { ..  } => {
@@ -2222,21 +2176,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::False => {
                 _ = writeln!(self.asm, " mov byte [{base} + {dst_offset}], false\n");
             }
-            Expression::Str(string) => {
-                let index = self.str_index(string);
+            Expression::Str { label } => {
                 _ = writeln!(
                     self.asm,
-                    " mov qword [{base} + {dst_offset}], str_{index}_len\
-                    \n mov qword [{base} + {dst_offset} + {ptr_offset}], str_{index}\n",
-                    ptr_offset = std::mem::size_of::<uint>()
-                );
-            }
-            Expression::RawStr(string) => {
-                let index = self.raw_str_index(string);
-                _ = writeln!(
-                    self.asm,
-                    " mov qword [{base} + {dst_offset}], str_{index}_len\
-                    \n mov qword [{base} + {dst_offset} + {ptr_offset}], str_{index}\n",
+                    " mov qword [{base} + {dst_offset}], str_{label}_len\
+                    \n mov qword [{base} + {dst_offset} + {ptr_offset}], str_{label}\n",
                     ptr_offset = std::mem::size_of::<uint>()
                 );
             }
@@ -2248,18 +2192,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             }
             Expression::Unary { op, op_col, operand } => match op {
                 UnaryOp::Len => match &**operand {
-                    Expression::Str(string) => {
-                        let index = self.str_index(string);
+                    Expression::Str { label } => {
                         _ = writeln!(
                             self.asm,
-                            " mov qword [{base} + {dst_offset}], str_{index}_len\n"
-                        );
-                    }
-                    Expression::RawStr(string) => {
-                        let index = self.raw_str_index(string);
-                        _ = writeln!(
-                            self.asm,
-                            " mov qword [{base} + {dst_offset}], str_{index}_len\n"
+                            " mov qword [{base} + {dst_offset}], str_{label}_len\n"
                         );
                     }
                     Expression::Array { items, .. } => {

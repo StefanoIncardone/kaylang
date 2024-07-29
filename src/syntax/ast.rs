@@ -1,13 +1,10 @@
 use super::{
     tokenizer::{
-        ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, RawStr, Str, Token, TokenKind,
+        ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, RawStr, Str, Token, TokenKind
     },
     Error, ErrorInfo, IntoErrorInfo,
 };
-use crate::{
-    src_file::{Position, SrcFile},
-    syntax::tokenizer::utf8,
-};
+use crate::src_file::{Position, SrcFile};
 use std::fmt::{Debug, Display};
 
 pub(crate) trait TypeOf {
@@ -456,8 +453,7 @@ pub(crate) enum Expression<'src> {
     True,
     Int(int),
     Ascii(ascii),
-    Str(Str),
-    RawStr(RawStr<'src>),
+    Str { label: usize },
     Array {
         base_type: BaseType,
         /// arrays always contain at least 2 items
@@ -508,17 +504,7 @@ pub(crate) enum Expression<'src> {
     },
 }
 
-impl From<BaseType> for Expression<'_> {
-    fn from(typ: BaseType) -> Self {
-        return match typ {
-            BaseType::Int => Self::Int(0),
-            BaseType::Ascii => Self::Ascii(b'0'),
-            BaseType::Bool => Self::False,
-            BaseType::Str => Self::Str(Str(Vec::new().into())),
-        };
-    }
-}
-
+// TODO(stefano): find a way to print values indexing into the ast
 impl Display for Expression<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         return match self {
@@ -526,20 +512,7 @@ impl Display for Expression<'_> {
             Self::True => write!(f, "true"),
             Self::Int(integer) => write!(f, "{integer}"),
             Self::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
-            Self::Str(string) => {
-                write!(f, "\"")?;
-                for ch in &*string.0 {
-                    write!(f, "{}", ch.escape_ascii())?;
-                }
-                write!(f, "\"")
-            }
-            Self::RawStr(string) => {
-                write!(f, "r\"")?;
-                for ch in string.0 {
-                    write!(f, "{}", *ch as utf8)?;
-                }
-                write!(f, "\"")
-            }
+            Self::Str { label, .. } => write!(f, "str_{label}"),
             Self::Array { items, .. } => {
                 write!(f, "[")?;
                 let mut items_iter = items.iter();
@@ -561,9 +534,7 @@ impl Display for Expression<'_> {
             Self::Comparison { lhs, op, rhs } => write!(f, "({lhs} {op} {rhs})"),
             Self::ArrayIndex { value, index, .. } => write!(f, "{value}[{index}]"),
 
-            // TODO(stefano): find a way to print the actual temporary value
             Self::Temporary { typ, .. } => write!(f, "temp {typ}"),
-
             Self::Identifier { name, .. } => write!(f, "{name}"),
         };
     }
@@ -575,7 +546,7 @@ impl TypeOf for Expression<'_> {
             Self::False | Self::True => Type::Base(BaseType::Bool),
             Self::Int(_) => Type::Base(BaseType::Int),
             Self::Ascii(_) => Type::Base(BaseType::Ascii),
-            Self::Str(_) | Self::RawStr(_) => Type::Base(BaseType::Str),
+            Self::Str { .. } => Type::Base(BaseType::Str),
             Self::Array { base_type, items } => {
                 Type::Array { base_type: *base_type, len: items.len() }
             }
@@ -715,11 +686,21 @@ pub(crate) struct Scope<'src> {
     pub(crate) nodes: Vec<Node<'src>>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) enum StrKind {
+    Str,
+    RawStr,
+}
+
 #[derive(Debug)]
 pub struct Ast<'src> {
     pub(crate) scopes: Box<[Scope<'src>]>,
     pub(crate) temporaries: Box<[Expression<'src>]>,
     pub(crate) variables: Box<[Variable<'src>]>,
+
+    pub(crate) strings: Box<[Str]>,
+    pub(crate) raw_strings: Box<[RawStr<'src>]>,
+    pub(crate) string_kinds: Box<[StrKind]>, // TODO(stefano): store a bitset instead of StrKind
 }
 
 // IDEA(stefano): build the AST, and then validate the AST afterwards
@@ -738,6 +719,10 @@ pub struct Parser<'src, 'tokens: 'src> {
     scopes: Vec<Scope<'src>>,
     temporary_values: Vec<Expression<'src>>,
     variables: Vec<Variable<'src>>,
+
+    strings: Vec<Str>,
+    raw_strings: Vec<RawStr<'src>>,
+    string_kinds: Vec<StrKind>,
 }
 
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
@@ -750,6 +735,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 scopes: Vec::new().into_boxed_slice(),
                 temporaries: Vec::new().into_boxed_slice(),
                 variables: Vec::new().into_boxed_slice(),
+                strings: Vec::new().into_boxed_slice(),
+                raw_strings: Vec::new().into_boxed_slice(),
+                string_kinds: Vec::new().into_boxed_slice(),
             });
         }
 
@@ -784,6 +772,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             }],
             temporary_values: Vec::new(),
             variables: Vec::new(),
+            strings: Vec::new(),
+            raw_strings: Vec::new(),
+            string_kinds: Vec::new(),
         };
 
         this.parse_scope();
@@ -793,6 +784,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 scopes: this.scopes.into_boxed_slice(),
                 temporaries: this.temporary_values.into_boxed_slice(),
                 variables: this.variables.into_boxed_slice(),
+                strings: this.strings.into_boxed_slice(),
+                raw_strings: this.raw_strings.into_boxed_slice(),
+                string_kinds: this.string_kinds.into_boxed_slice(),
             })
         } else {
             Err(this.errors)
@@ -1351,6 +1345,22 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
     }
 
+    #[inline(always)]
+    fn new_string(&mut self, string: Str) -> usize {
+        let label = self.string_kinds.len();
+        self.string_kinds.push(StrKind::Str);
+        self.strings.push(string);
+        return label;
+    }
+
+    #[inline(always)]
+    fn new_raw_string(&mut self, string: RawStr<'src>) -> usize {
+        let label = self.string_kinds.len();
+        self.string_kinds.push(StrKind::RawStr);
+        self.raw_strings.push(string);
+        return label;
+    }
+
     fn primary_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
         // TODO(stefano): measure speed and optimize if needed
         fn parse_positive_int(literal: &str) -> Option<int> {
@@ -1389,8 +1399,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }),
             },
             TokenKind::Ascii(ascii_ch) => Ok(Expression::Ascii(*ascii_ch)),
-            TokenKind::Str(string) => Ok(Expression::Str(string.clone())),
-            TokenKind::RawStr(string) => Ok(Expression::RawStr(string.clone())),
+            TokenKind::Str(string) => {
+                Ok(Expression::Str { label: self.new_string(string.clone()) })
+            },
+            TokenKind::RawStr(string) => {
+                Ok(Expression::Str { label: self.new_raw_string(string.clone()) })
+            }
             TokenKind::Identifier(name) => match self.resolve_type(name) {
                 None => match self.resolve_variable(name) {
                     Some((_, var_ref)) => {
@@ -1525,7 +1539,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 _ = self.next_token();
                 let operand = self.primary_expression()?;
                 return match &operand {
-                    Expression::Str(_) | Expression::RawStr(_) => Ok(Expression::Unary {
+                    Expression::Str { .. } => Ok(Expression::Unary {
                         op: UnaryOp::Len,
                         op_col: current_token.col,
                         operand: Box::new(operand),
@@ -2526,6 +2540,18 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(Some((close_square_bracket_token, Type::Array { base_type, len })));
     }
 
+    fn expression_from_base_type(&mut self, typ: BaseType) -> Expression<'src> {
+        return match typ {
+            BaseType::Int => Expression::Int(0),
+            BaseType::Ascii => Expression::Ascii(b'0'),
+            BaseType::Bool => Expression::False,
+            BaseType::Str => {
+                let string = Str(Vec::new().into_boxed_slice());
+                Expression::Str { label: self.new_string(string) }
+            },
+        };
+    }
+
     fn variable_definition(
         &mut self,
         mutability: Mutability,
@@ -2671,9 +2697,13 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             None => match annotation {
                 Some((_, typ)) => {
                     let value = match typ {
-                        Type::Base(base_type) => base_type.into(),
+                        Type::Base(base_type) => self.expression_from_base_type(base_type),
                         Type::Array { base_type, len } => {
-                            Expression::Array { base_type, items: vec![base_type.into(); len] }
+                            let mut items = Vec::with_capacity(len);
+                            for _ in 0..len {
+                                items.push(self.expression_from_base_type(base_type));
+                            }
+                            Expression::Array { base_type, items }
                         }
                     };
 
