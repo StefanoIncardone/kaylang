@@ -1,6 +1,6 @@
 use super::{
     tokenizer::{
-        ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, RawStr, Str, Token, TokenKind
+        ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, RawStr, Str, Token, TokenKind,
     },
     Error, ErrorInfo, IntoErrorInfo,
 };
@@ -453,7 +453,9 @@ pub(crate) enum Expression<'src> {
     True,
     Int(int),
     Ascii(ascii),
-    Str { label: usize },
+    Str {
+        label: usize,
+    },
     Array {
         base_type: BaseType,
         /// arrays always contain at least 2 items
@@ -618,8 +620,6 @@ pub(crate) struct Variable<'src> {
 
 #[derive(Debug, Clone)]
 pub(crate) enum Node<'src> {
-    Semicolon,
-
     Expression(Expression<'src>),
 
     Print(Expression<'src>),
@@ -647,6 +647,10 @@ pub(crate) enum Node<'src> {
     Scope {
         index: ScopeIndex,
     },
+
+    // should never appear in the ast
+    Semicolon,
+    ScopeEnd,
 }
 
 impl Display for Node<'_> {
@@ -670,7 +674,10 @@ impl Display for Node<'_> {
             Self::Break => write!(f, "break"),
             Self::Continue => write!(f, "continue"),
 
-            Self::Definition { .. } | Self::Assignment { .. } | Self::Scope { .. } => {
+            Self::Definition { .. }
+            | Self::Assignment { .. }
+            | Self::Scope { .. }
+            | Self::ScopeEnd => {
                 unreachable!("should never be displayed");
             }
         };
@@ -717,7 +724,7 @@ pub struct Parser<'src, 'tokens: 'src> {
 
     scope: ScopeIndex,
     scopes: Vec<Scope<'src>>,
-    temporary_values: Vec<Expression<'src>>,
+    temporaries: Vec<Expression<'src>>,
     variables: Vec<Variable<'src>>,
 
     strings: Vec<Str>,
@@ -770,7 +777,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 var_variables: Vec::new(),
                 nodes: Vec::new(),
             }],
-            temporary_values: Vec::new(),
+            temporaries: Vec::new(),
             variables: Vec::new(),
             strings: Vec::new(),
             raw_strings: Vec::new(),
@@ -782,7 +789,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return if this.errors.is_empty() {
             Ok(Ast {
                 scopes: this.scopes.into_boxed_slice(),
-                temporaries: this.temporary_values.into_boxed_slice(),
+                temporaries: this.temporaries.into_boxed_slice(),
                 variables: this.variables.into_boxed_slice(),
                 strings: this.strings.into_boxed_slice(),
                 raw_strings: this.raw_strings.into_boxed_slice(),
@@ -811,15 +818,30 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
 // parsing of statements
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+    /*
+    NOTE(stefano): only parsing until the first error until a fault tolerant parser is developed,
+    this is because the first truly relevant error is the first one, which in turn causes a ripple
+    effect that propagates to the rest of the parsing, causing subsequent errors to be wrong
+    */
     fn parse_scope(&mut self) {
         loop {
-            match self.parse_single_any() {
-                Ok(Some(node)) => {
+            let Some(token) = self.tokens.get(self.token) else {
+                break;
+            };
+
+            match self.parse_single_any(token) {
+                Ok(node) => {
                     match node {
                         // skip to the next token after a semicolon
                         Node::Semicolon => continue,
 
+                        Node::ScopeEnd => break,
+
                         // check to see if a terminating semicolon is present
+                        /*
+                        REMOVE(stefano): move this check to the place where the parsing of the node
+                        took place
+                        */
                         Node::Definition { .. }
                         | Node::Assignment { .. }
                         | Node::Expression(_)
@@ -829,12 +851,6 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         | Node::Println(_)
                         | Node::Eprint(_)
                         | Node::Eprintln(_) => {
-                            /*
-                            NOTE(stefano): only parsing until the first error until a fault tolerant
-                            parser is developed, this is because the first truly relevant error is
-                            the first one, which in turn causes a ripple effect that propagates to
-                            the rest of the parsing, causing subsequent errors to be wrong
-                            */
                             if let Err(err) = self.semicolon() {
                                 self.errors.push(err);
 
@@ -850,13 +866,6 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
                     self.scopes[self.scope].nodes.push(node);
                 }
-                Ok(None) => break,
-                /*
-                NOTE(stefano): only parsing until the first error until a fault tolerant parser is
-                developed, this is because the first truly relevant error is the first one, which in
-                turn causes a ripple effect that propagates to the rest of the parsing, causing
-                subsequent errors to be wrong
-                */
                 Err(err) => {
                     self.errors.push(err);
 
@@ -868,10 +877,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         }
     }
 
-    fn parse_single_statement(&mut self) -> Result<Option<Node<'src>>, Error<ErrorKind>> {
-        let Some(current_token) = self.tokens.get(self.token) else { return Ok(None) };
-
-        return match current_token.kind {
+    fn parse_single_statement(&mut self, token: &'tokens Token<'src>) -> Result<Node<'src>, Error<ErrorKind>> {
+        return match token.kind {
             TokenKind::False
             | TokenKind::True
             | TokenKind::Integer(_)
@@ -891,16 +898,16 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             ) => {
                 let expression = self.expression()?;
                 if let Expression::Array { .. } = expression {
-                    let temporary_value_index = self.temporary_values.len();
+                    let temporary_value_index = self.temporaries.len();
                     let expression_type = expression.typ();
-                    self.temporary_values.push(expression);
-                    return Ok(Some(Node::Expression(Expression::Temporary {
+                    self.temporaries.push(expression);
+                    return Ok(Node::Expression(Expression::Temporary {
                         typ: expression_type,
                         temporary_value_index,
-                    })));
+                    }));
                 }
 
-                Ok(Some(Node::Expression(expression)))
+                Ok(Node::Expression(expression))
             }
             TokenKind::Identifier(name) => match self.peek_next_token() {
                 Some(op) => match op.kind {
@@ -933,7 +940,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         | Op::OrEquals
                         | Op::LeftRotateEquals
                         | Op::RightRotateEquals),
-                    ) => Ok(Some(self.variable_reassignment(op_kind, name)?)),
+                    ) => Ok(self.variable_reassignment(op_kind, name)?),
                     TokenKind::Op(_)
                     | TokenKind::Comment(_)
                     | TokenKind::Unexpected(_)
@@ -958,83 +965,82 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     | TokenKind::Else
                     | TokenKind::Loop
                     | TokenKind::Break
-                    | TokenKind::Continue => Ok(Some(Node::Expression(self.expression()?))),
+                    | TokenKind::Continue => Ok(Node::Expression(self.expression()?)),
                 },
-                None => Ok(Some(Node::Expression(self.expression()?))),
+                None => Ok(Node::Expression(self.expression()?)),
             },
-            TokenKind::Definition(mutability) => Ok(Some(self.variable_definition(mutability)?)),
+            TokenKind::Definition(mutability) => Ok(self.variable_definition(mutability)?),
             TokenKind::Print => {
                 let arg = self.print_arg()?;
-                Ok(Some(Node::Print(arg)))
+                Ok(Node::Print(arg))
             }
             TokenKind::PrintLn => {
                 if let Some(&Token { kind: TokenKind::SemiColon, .. }) = self.peek_next_token() {
                     _ = self.next_token();
-                    return Ok(Some(Node::Println(None)));
+                    return Ok(Node::Println(None));
                 }
 
                 let arg = self.print_arg()?;
-                Ok(Some(Node::Println(Some(arg))))
+                Ok(Node::Println(Some(arg)))
             }
             TokenKind::Eprint => {
                 let arg = self.print_arg()?;
-                Ok(Some(Node::Eprint(arg)))
+                Ok(Node::Eprint(arg))
             }
             TokenKind::EprintLn => {
                 if let Some(&Token { kind: TokenKind::SemiColon, .. }) = self.peek_next_token() {
                     _ = self.next_token();
-                    return Ok(Some(Node::Eprintln(None)));
+                    return Ok(Node::Eprintln(None));
                 }
 
                 let arg = self.print_arg()?;
-                Ok(Some(Node::Eprintln(Some(arg))))
+                Ok(Node::Eprintln(Some(arg)))
             }
-            TokenKind::If => Ok(Some(self.iff()?)),
+            TokenKind::If => Ok(self.iff()?),
             TokenKind::Else => {
                 _ = self.next_token();
                 Err(Error {
                     kind: ErrorKind::StrayElseBlock,
-                    col: current_token.col,
-                    pointers_count: current_token.kind.display_len(),
+                    col: token.col,
+                    pointers_count: token.kind.display_len(),
                 })
             }
             TokenKind::Do | TokenKind::Loop => {
                 self.loop_depth += 1;
                 let looop_statement = self.loop_statement();
                 self.loop_depth -= 1;
-                match looop_statement {
-                    Ok(looop) => Ok(Some(looop)),
-                    Err(err) => Err(err),
-                }
+                looop_statement
             }
             TokenKind::Break => {
                 _ = self.next_token();
-                match self.loop_depth {
-                    0 => Err(Error {
+                if self.loop_depth == 0 {
+                    return Err(Error {
                         kind: ErrorKind::StrayBreakStatement,
-                        col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
-                    }),
-                    _ => Ok(Some(Node::Break)),
+                        col: token.col,
+                        pointers_count: token.kind.display_len(),
+                    });
                 }
+
+                Ok(Node::Break)
             }
             TokenKind::Continue => {
                 _ = self.next_token();
-                match self.loop_depth {
-                    0 => Err(Error {
+                if self.loop_depth == 0 {
+                    return Err(Error {
                         kind: ErrorKind::StrayContinueStatement,
-                        col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
-                    }),
-                    _ => Ok(Some(Node::Continue)),
+                        col: token.col,
+                        pointers_count: token.kind.display_len(),
+                    });
                 }
+
+                Ok(Node::Continue)
             }
             TokenKind::SemiColon => {
                 _ = self.next_token();
-                Ok(Some(Node::Semicolon))
+                Ok(Node::Semicolon)
             }
             TokenKind::Bracket(BracketKind::OpenCurly) => {
-                let Position { line, col, .. } = self.src.position(current_token.col);
+                let Position { line, col, .. } = self.src.position(token.col);
                 unreachable!(
                     "blocks not allowed in single statements: {file}:{line}:{col}",
                     file = self.src.path.display(),
@@ -1043,7 +1049,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             TokenKind::Bracket(
                 BracketKind::CloseCurly | BracketKind::CloseSquare | BracketKind::CloseRound,
             ) => {
-                let Position { line, col, .. } = self.src.position(current_token.col);
+                let Position { line, col, .. } = self.src.position(token.col);
                 unreachable!(
                     "should have been cought during tokenization: {file}:{line}:{col}",
                     file = self.src.path.display(),
@@ -1053,24 +1059,24 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 _ = self.next_token();
                 Err(Error {
                     kind: ErrorKind::StrayColon,
-                    col: current_token.col,
-                    pointers_count: current_token.kind.display_len(),
+                    col: token.col,
+                    pointers_count: token.kind.display_len(),
                 })
             }
             TokenKind::Comma => {
                 _ = self.next_token();
                 Err(Error {
                     kind: ErrorKind::StrayComma,
-                    col: current_token.col,
-                    pointers_count: current_token.kind.display_len(),
+                    col: token.col,
+                    pointers_count: token.kind.display_len(),
                 })
             }
             TokenKind::Op(op) => {
                 _ = self.next_token();
                 Err(Error {
                     kind: ErrorKind::StrayOperator(op),
-                    col: current_token.col,
-                    pointers_count: current_token.kind.display_len(),
+                    col: token.col,
+                    pointers_count: token.kind.display_len(),
                 })
             }
             TokenKind::Comment(_) => unreachable!("should be skipped by the token iterator"),
@@ -1078,23 +1084,23 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
     }
 
-    fn parse_do_statement(&mut self) -> Result<Option<Node<'src>>, Error<ErrorKind>> {
-        let current_token = self.next_token_bounded(Expected::StatementAfterDo)?;
-        return match current_token.kind {
+    fn parse_do_statement(&mut self) -> Result<Node<'src>, Error<ErrorKind>> {
+        let token = self.next_token_bounded(Expected::StatementAfterDo)?;
+        return match token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
                 _ = self.next_token();
                 Err(Error {
                     kind: ErrorKind::BlockInDoStatement,
-                    col: current_token.col,
-                    pointers_count: current_token.kind.display_len(),
+                    col: token.col,
+                    pointers_count: token.kind.display_len(),
                 })
             }
             TokenKind::Definition(_) => {
                 _ = self.next_token();
                 Err(Error {
                     kind: ErrorKind::VariableInDoStatement,
-                    col: current_token.col,
-                    pointers_count: current_token.kind.display_len(),
+                    col: token.col,
+                    pointers_count: token.kind.display_len(),
                 })
             }
             TokenKind::Bracket(_)
@@ -1120,14 +1126,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Else
             | TokenKind::Loop
             | TokenKind::Break
-            | TokenKind::Continue => self.parse_single_statement(),
+            | TokenKind::Continue => self.parse_single_statement(token),
         };
     }
 
-    fn parse_single_any(&mut self) -> Result<Option<Node<'src>>, Error<ErrorKind>> {
-        let Some(current_token) = self.tokens.get(self.token) else { return Ok(None) };
-
-        return match current_token.kind {
+    fn parse_single_any(&mut self, token: &'tokens Token<'src>) -> Result<Node<'src>, Error<ErrorKind>> {
+        return match token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
                 let new_scope_index = self.scopes.len();
                 self.scopes.push(Scope {
@@ -1141,12 +1145,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
                 _ = self.next_token();
                 self.parse_scope();
-                Ok(Some(Node::Scope { index: new_scope_index }))
+                Ok(Node::Scope { index: new_scope_index })
             }
             TokenKind::Bracket(BracketKind::CloseCurly) => {
                 self.scope = self.scopes[self.scope].parent;
                 _ = self.next_token();
-                Ok(None)
+                Ok(Node::ScopeEnd)
             }
             TokenKind::Bracket(_)
             | TokenKind::Comment(_)
@@ -1172,7 +1176,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Else
             | TokenKind::Loop
             | TokenKind::Break
-            | TokenKind::Continue => self.parse_single_statement(),
+            | TokenKind::Continue => self.parse_single_statement(token),
         };
     }
 }
@@ -1401,7 +1405,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             TokenKind::Ascii(ascii_ch) => Ok(Expression::Ascii(*ascii_ch)),
             TokenKind::Str(string) => {
                 Ok(Expression::Str { label: self.new_string(string.clone()) })
-            },
+            }
             TokenKind::RawStr(string) => {
                 Ok(Expression::Str { label: self.new_raw_string(string.clone()) })
             }
@@ -1410,7 +1414,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     Some((_, var_ref)) => {
                         let var = &self.variables[var_ref.var_index];
                         Ok(Expression::Identifier { typ: var.value.typ(), name: var.name })
-                    },
+                    }
                     None => Err(Error {
                         kind: ErrorKind::VariableNotPreviouslyDefined,
                         col: current_token.col,
@@ -1617,7 +1621,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     }),
                     Expression::Temporary { .. } => {
                         unreachable!("should be returned from expressions");
-                    },
+                    }
                 };
             }
             TokenKind::Op(Op::Plus) => {
@@ -1978,7 +1982,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
 
         let mut expression = expression_result?;
-        while let Some(open_bracket_token @ Token { kind: TokenKind::Bracket(BracketKind::OpenSquare), .. }) = self.next_token() {
+        while let Some(
+            open_bracket_token @ Token { kind: TokenKind::Bracket(BracketKind::OpenSquare), .. },
+        ) = self.next_token()
+        {
             let _start_of_index = self.next_token();
             let index = self.expression()?;
             let Type::Base(BaseType::Int) = index.typ() else {
@@ -2020,20 +2027,20 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         bracket_col: open_bracket_token.col,
                         index: Box::new(index),
                     },
-                    BaseType::Ascii | BaseType::Bool => return Err(Error {
-                        kind: ErrorKind::CannotIndexNonArrayType(expression_type),
-                        col: open_bracket_token.col,
-                        pointers_count: open_bracket_token.kind.display_len(),
-                    }),
+                    BaseType::Ascii | BaseType::Bool => {
+                        return Err(Error {
+                            kind: ErrorKind::CannotIndexNonArrayType(expression_type),
+                            col: open_bracket_token.col,
+                            pointers_count: open_bracket_token.kind.display_len(),
+                        })
+                    }
                 },
                 Type::Array { base_type, .. } => {
                     // IDEA(stefano): remove this temporary and treat the array as the temporary
-                    let temporary_value_index = self.temporary_values.len();
-                    self.temporary_values.push(expression);
-                    let temporary_array = Expression::Temporary {
-                        typ: expression_type,
-                        temporary_value_index,
-                    };
+                    let temporary_value_index = self.temporaries.len();
+                    self.temporaries.push(expression);
+                    let temporary_array =
+                        Expression::Temporary { typ: expression_type, temporary_value_index };
 
                     Expression::ArrayIndex {
                         base_type,
@@ -2041,7 +2048,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         bracket_col: open_bracket_token.col,
                         index: Box::new(index),
                     }
-                },
+                }
             };
         }
 
@@ -2403,13 +2410,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
 // variables and types
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
-    fn resolve_variable(
-        &self,
-        name: &'src str,
-    ) -> Option<(
-        Mutability,
-        &VariableRef<'src>,
-    )> {
+    fn resolve_variable(&self, name: &'src str) -> Option<(Mutability, &VariableRef<'src>)> {
         let mut scope_index = self.scope;
         loop {
             let scope = &self.scopes[scope_index];
@@ -2548,7 +2549,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             BaseType::Str => {
                 let string = Str(Vec::new().into_boxed_slice());
                 Expression::Str { label: self.new_string(string) }
-            },
+            }
         };
     }
 
@@ -2690,9 +2691,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 scope_variables.push(VariableRef { name, var_index });
                 self.variables.push(Variable { name, value });
 
-                Ok(Node::Definition {
-                    var_index,
-                })
+                Ok(Node::Definition { var_index })
             }
             None => match annotation {
                 Some((_, typ)) => {
@@ -2716,9 +2715,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     scope_variables.push(VariableRef { name, var_index });
                     self.variables.push(Variable { name, value });
 
-                    Ok(Node::Definition {
-                        var_index,
-                    })
+                    Ok(Node::Definition { var_index })
                 }
                 None => Err(Error {
                     kind: ErrorKind::CannotInferTypeOfVariable,
@@ -2912,13 +2909,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         let _start_of_expression_token = self.next_token_bounded(Expected::Expression)?;
         let argument = self.expression()?;
         if let Expression::Array { .. } = argument {
-            let temporary_value_index = self.temporary_values.len();
+            let temporary_value_index = self.temporaries.len();
             let argument_type = argument.typ();
-            self.temporary_values.push(argument);
-            return Ok(Expression::Temporary {
-                typ: argument_type,
-                temporary_value_index,
-            });
+            self.temporaries.push(argument);
+            return Ok(Expression::Temporary { typ: argument_type, temporary_value_index });
         };
 
         return Ok(argument);
@@ -2945,17 +2939,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let after_condition_token = self.current_token_bounded(Expected::DoOrBlock)?;
             let iff = match after_condition_token.kind {
                 TokenKind::Bracket(BracketKind::OpenCurly) => {
-                    let Some(scope) = self.parse_single_any()? else {
-                        unreachable!("this branch ensures there will be a block to be parsed");
-                    };
+                    let scope = self.parse_single_any(after_condition_token)?;
                     IfStatement { condition, statement: scope }
                 }
                 TokenKind::Do => {
-                    let Some(statement) = self.parse_do_statement()? else {
-                        unreachable!(
-                            "this branch ensures there will be a do statement to be parsed"
-                        );
-                    };
+                    let statement = self.parse_do_statement()?;
                     self.semicolon()?;
                     IfStatement { condition, statement }
                 }
@@ -3026,18 +3014,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 // we are now inside an else branch
                 let else_if = match after_else_token.kind {
                     TokenKind::Bracket(BracketKind::OpenCurly) => {
-                        let Some(scope) = self.parse_single_any()? else {
-                            unreachable!("this branch ensures there will be a block to be parsed");
-                        };
+                        let scope = self.parse_single_any(after_else_token)?;
                         if_statement.els = Some(Box::new(scope));
                         break 'iff;
                     }
                     TokenKind::Do => {
-                        let Some(statement) = self.parse_do_statement()? else {
-                            unreachable!(
-                                "this branch ensures there will be a do statement to be parsed"
-                            );
-                        };
+                        let statement = self.parse_do_statement()?;
                         self.semicolon()?;
                         if_statement.els = Some(Box::new(statement));
                         break 'iff;
@@ -3136,15 +3118,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         let after_condition_token = self.current_token_bounded(Expected::DoOrBlock)?;
         let statement_result = match after_condition_token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
-                let Some(scope) = self.parse_single_any()? else {
-                    unreachable!("this branch ensures there will be a block to be parsed");
-                };
+                let scope = self.parse_single_any(after_condition_token)?;
                 Ok(scope)
             }
             TokenKind::Do => {
-                let Some(statement) = self.parse_do_statement()? else {
-                    unreachable!("this branch ensures there will be a do statement to be parsed");
-                };
+                let statement = self.parse_do_statement()?;
                 self.semicolon()?;
                 Ok(statement)
             }

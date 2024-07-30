@@ -10,7 +10,8 @@ use crate::{
     src_file::{Position, SrcFile},
     syntax::{
         ast::{
-            self, AssignmentOp, Ast, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression, IfStatement, Node, ScopeIndex, SizeOf, StrKind, Type, TypeOf, UnaryOp
+            self, AssignmentOp, Ast, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression,
+            IfStatement, Node, ScopeIndex, SizeOf, StrKind, Type, TypeOf, UnaryOp,
         },
         tokenizer::uint,
     },
@@ -34,7 +35,6 @@ use self::reg::Reg64::*;
 use self::reg::Reg8h::*;
 #[allow(unused_imports, clippy::enum_glob_use)]
 use self::reg::Reg8l::*;
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Dst {
@@ -62,7 +62,7 @@ impl Display for Base {
         return match self {
             Self::Rbp => write!(f, "rbp"),
             Self::Temp => write!(f, "temp"),
-        }
+        };
     }
 }
 
@@ -162,14 +162,14 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         let string_str = unsafe { std::str::from_utf8_unchecked(&string.0) };
                         let string_chars = string_str.escape_debug();
                         _ = writeln!(strings, " str str_{label}, `{string_chars}`");
-                    },
+                    }
                     StrKind::RawStr => {
                         let string = &this.ast.raw_strings[raw_string_index];
                         raw_string_index += 1;
 
                         let raw_string_str = unsafe { std::str::from_utf8_unchecked(string.0) };
                         _ = writeln!(strings, " str str_{label}, \"{raw_string_str}\"");
-                    },
+                    }
                 }
             }
 
@@ -776,7 +776,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     self.loop_counters[self.loop_counters.len() - 1]
                 );
             }
-            Node::Semicolon => unreachable!("should not be present in the ast"),
+            Node::Semicolon | Node::ScopeEnd => unreachable!("should not be present in the ast"),
         }
     }
 
@@ -836,8 +836,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Temporary { temporary_value_index, .. } => {
                 let temporary = &self.ast.temporaries[*temporary_value_index];
                 self.lhs_needs_saving(temporary)
-            },
-        }
+            }
+        };
     }
 
     fn binary_expression(
@@ -926,7 +926,13 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         }
     }
 
-    fn index(&mut self, base_type: BaseType, value: &'ast Expression<'src>, bracket_col: usize, index: &'ast Expression<'src>) {
+    fn index(
+        &mut self,
+        base_type: BaseType,
+        value: &'ast Expression<'src>,
+        bracket_col: usize,
+        index: &'ast Expression<'src>,
+    ) {
         let Position { line, col, .. } = self.src.position(bracket_col);
 
         match value {
@@ -943,7 +949,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n mov rdi, {integer}\
                     \n and rdi, rsi\n"
                 );
-            },
+            }
             Expression::Str { label } => {
                 self.expression(index, Dst::Reg(Rdi));
                 _ = writeln!(
@@ -954,8 +960,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n call assert_str_index_in_range\
                     \n movzx rdi, byte [str_{label} + rdi]\n",
                 );
-            },
-            Expression::Unary { ..  }
+            }
+            Expression::Unary { .. }
             | Expression::Binary { .. }
             | Expression::Comparison { op: ComparisonOp::Compare, .. } => {
                 self.expression(index, Dst::Reg(Rdi));
@@ -977,12 +983,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     " pop rsi\
                     \n and rdi, rsi\n"
                 );
-            },
+            }
             Expression::ArrayIndex {
                 base_type: nested_base_type,
                 value: nested_value,
                 bracket_col: nested_bracket_col,
-                index: nested_index
+                index: nested_index,
             } => {
                 self.index(*nested_base_type, nested_value, *nested_bracket_col, nested_index);
                 match nested_base_type {
@@ -1034,7 +1040,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         )
                     }
                 }
-            },
+            }
             Expression::Temporary { typ, temporary_value_index } => {
                 let temporary_expression = &self.ast.temporaries[*temporary_value_index];
                 let temporary = self.resolve_temporary(temporary_expression);
@@ -1057,10 +1063,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 match base_type {
                     BaseType::Int => {
-                        _ = writeln!(
-                            self.asm,
-                            " mov rdi, [temp + {temporary_offset} + rdi * 8]\n"
-                        );
+                        _ = writeln!(self.asm, " mov rdi, [temp + {temporary_offset} + rdi * 8]\n");
                     }
                     BaseType::Str => {
                         _ = writeln!(
@@ -1078,7 +1081,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         )
                     }
                 }
-            },
+            }
             Expression::Identifier { typ, name } => {
                 self.expression(index, Dst::Reg(Rdi));
 
@@ -1151,26 +1154,25 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         )
                     }
                 }
-            },
+            }
 
             Expression::False
             | Expression::True
             | Expression::Ascii(_)
             | Expression::BooleanUnary { .. }
             | Expression::BooleanBinary { .. }
-            | Expression::Comparison { op:
-                ComparisonOp::EqualsEquals
-                | ComparisonOp::Greater
-                | ComparisonOp::GreaterOrEquals
-                | ComparisonOp::Less
-                | ComparisonOp::LessOrEquals
-                | ComparisonOp::NotEquals,
+            | Expression::Comparison {
+                op:
+                    ComparisonOp::EqualsEquals
+                    | ComparisonOp::Greater
+                    | ComparisonOp::GreaterOrEquals
+                    | ComparisonOp::Less
+                    | ComparisonOp::LessOrEquals
+                    | ComparisonOp::NotEquals,
                 ..
             } => {
-                unreachable!(
-                    "only arrays, strings and integers are allowed in index espressions"
-                )
-            },
+                unreachable!("only arrays, strings and integers are allowed in index espressions")
+            }
             Expression::Array { .. } => unreachable!("only temporary arrays can appear "),
         }
     }
@@ -1247,7 +1249,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         | Expression::Comparison { .. } => {
                             unreachable!("cannot take the length of numerical types")
                         }
-                        Expression::Temporary { ..  } => {
+                        Expression::Temporary { .. } => {
                             unreachable!("should not appear in expressions");
                         }
                     },
@@ -1819,8 +1821,13 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 let temporary_value_offset = temporary_value.offset;
 
                 self.definition(temporary_value_expression, Base::Temp, temporary_value_offset);
-                self.identifier(temporary_value_expression.typ(), dst, Base::Temp, temporary_value_offset);
-            },
+                self.identifier(
+                    temporary_value_expression.typ(),
+                    dst,
+                    Base::Temp,
+                    temporary_value_offset,
+                );
+            }
             Expression::Identifier { typ, name } => {
                 let var = self.resolve(name);
                 let var_offset = var.offset;
@@ -1857,9 +1864,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             | Expression::Str { .. } => {
                 unreachable!("non-boolean expressions not allowed in conditions");
             }
-            Expression::Temporary { ..  } => {
+            Expression::Temporary { .. } => {
                 unreachable!("should not appear in conditions");
-            },
+            }
             Expression::BooleanUnary { operand, .. } => {
                 self.expression(operand, Dst::Reg(Rdi));
 
@@ -2020,9 +2027,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             | Expression::Str { .. } => {
                 unreachable!("non-boolean expressions not allowed in conditions");
             }
-            Expression::Temporary { ..  } => {
+            Expression::Temporary { .. } => {
                 unreachable!("should not appear in conditions");
-            },
+            }
             Expression::BooleanUnary { operand, .. } => {
                 self.expression(operand, Dst::Reg(Rdi));
 
@@ -2205,7 +2212,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             items.len()
                         );
                     }
-                    Expression::Temporary { .. } => unreachable!("temporaries cannot appear in variables"),
+                    Expression::Temporary { .. } => {
+                        unreachable!("temporaries cannot appear in variables")
+                    }
                     Expression::Identifier { typ, name } => {
                         let var = self.resolve(name);
                         let var_offset = var.offset;
@@ -2218,14 +2227,22 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 );
                             }
                             Type::Array { len, .. } => {
-                                _ = writeln!(self.asm, " mov qword [{base} + {dst_offset}], {len}\n");
+                                _ = writeln!(
+                                    self.asm,
+                                    " mov qword [{base} + {dst_offset}], {len}\n"
+                                );
                             }
                             Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => {
                                 unreachable!("cannot take the length of numerical types")
                             }
                         }
                     }
-                    Expression::ArrayIndex { base_type, value: base_array_index_value, bracket_col, index } => {
+                    Expression::ArrayIndex {
+                        base_type,
+                        value: base_array_index_value,
+                        bracket_col,
+                        index,
+                    } => {
                         self.index(*base_type, base_array_index_value, *bracket_col, index);
                         _ = writeln!(self.asm, "mov [{base} + {dst_offset}], rdi\n");
                     }
