@@ -1,9 +1,6 @@
 pub(crate) static CRASH_ASM: &str = {
     r"; fn ! = crash(msg: str @rdi:rsi, line: uint @rdx, col: uint @rcx)
 crash:
- push r12
- push r13
-
  mov r8, rdi; msg_len: uint
  mov r9, rsi; msg_ptr: ascii*
  mov r12, rdx; line: uint
@@ -60,9 +57,8 @@ crash:
  call ascii_eprint
 
  mov rdi, EXIT_FAILURE
- pop r13
- pop r12
- jmp exit"
+ mov rax, SYS_exit
+ syscall"
 };
 
 pub(crate) static ASSERT_ARRAY_INDEX_IN_RANGE_ASM: &str = {
@@ -178,13 +174,13 @@ int_to_str:
 };
 
 pub(crate) static INT_SAFE_POW_ASM: &str = {
-    r"; op int @rax | !? = base: int @rdi ** exponent: uint @rsi [line: uint @rdx, col: uint @rcx]
+    r"; op int @rdi | !? = base: int @rdi ** exponent: uint @rsi [line: uint @rdx, col: uint @rcx]
 int_safe_pow:
  cmp rsi, 0
  jl .exponent_negative
  jg .exponent_positive
 
- mov rax, 1
+ mov rdi, 1
  ret
 
 .exponent_negative:
@@ -195,13 +191,11 @@ int_safe_pow:
 .exponent_positive:
  cmp rsi, 1
  jne .exponent_not_one
- mov rax, rdi
  ret
 
 .exponent_not_one:
- mov rax, rdi
  mov r8, rsi
- mov r10, 1
+ mov r9, 1
 
 .next_power:
  cmp r8, 1
@@ -210,46 +204,45 @@ int_safe_pow:
  test r8, 1
  jnz .exponent_odd
 
- mov rdi, rax
- mov rsi, rax
+ ; mov rdi, rdi
+ mov rsi, rdi
  call int_safe_mul_pow
- mov rax, rdi
 
  shr r8, 1
  jmp .next_power
 
 .exponent_odd:
- mov rdi, r10
- mov rsi, rax
- call int_safe_mul_pow
  mov r10, rdi
 
- mov rdi, rax
- mov rsi, rax
+ ; mov rdi, rdi
+ mov rsi, r9
  call int_safe_mul_pow
- mov rax, rdi
+ mov r9, rdi
+
+ mov rdi, r10
+ mov rsi, rdi
+ call int_safe_mul_pow
 
  dec r8
  shr r8, 1
  jmp .next_power
 
 .done:
- mov rdi, rax
- mov rsi, r10
+ ; mov rdi, rdi
+ mov rsi, r9
  call int_safe_mul_pow
- mov rax, rdi
 
  ret"
 };
 
 pub(crate) static INT_WRAPPING_POW_ASM: &str = {
-    r"; op int @rax | !? = base: int @rdi **\ exponent: uint @rsi [line: uint @rdx, col: uint @rcx]
+    r"; op int @rdi | !? = base: int @rdi **\ exponent: uint @rsi [line: uint @rdx, col: uint @rcx]
 int_wrapping_pow:
  cmp rsi, 0
  jl .exponent_negative
  jg .exponent_positive
 
- mov rax, 1
+ mov rdi, 1
  ret
 
 .exponent_negative:
@@ -260,63 +253,11 @@ int_wrapping_pow:
 .exponent_positive:
  cmp rsi, 1
  jne .exponent_not_one
- mov rax, rdi
  ret
 
 .exponent_not_one:
- mov rax, rdi
- mov r8, 1
-
-.next_power:
- cmp rsi, 1
- jle .done
-
- test rsi, 1
- jnz .exponent_odd
-
- imul rax, rax
- shr rsi, 1
- jmp .next_power
-
-.exponent_odd:
- imul r8, rax
- imul rax, rax
-
- dec rsi
- shr rsi, 1
- jmp .next_power
-
-.done:
- imul rax, r8
-
- ret"
-};
-
-pub(crate) static INT_SATURATING_POW_ASM: &str = {
-    r"; op int @rax | !? = base: int @rdi **| exponent: uint @rsi [line: uint @rdx, col: uint @rcx]
-int_saturating_pow:
- cmp rsi, 0
- jl .exponent_negative
- jg .exponent_positive
-
- mov rax, 1
- ret
-
-.exponent_negative:
- mov rdi, attempt_exponent_negative_len
- mov rsi, attempt_exponent_negative
- call crash
-
-.exponent_positive:
- cmp rsi, 1
- jne .exponent_not_one
- mov rax, rdi
- ret
-
-.exponent_not_one:
- mov rax, rdi
  mov r8, rsi
- mov r10, 1
+ mov r9, 1
 
 .next_power:
  cmp r8, 1
@@ -325,34 +266,81 @@ int_saturating_pow:
  test r8, 1
  jnz .exponent_odd
 
- mov rdi, rax
- mov rsi, rax
- call int_saturating_mul
- mov rax, rdi
-
+ imul rdi, rdi
  shr r8, 1
  jmp .next_power
 
 .exponent_odd:
- mov rdi, r10
- mov rsi, rax
- call int_saturating_mul
- mov r10, rdi
-
- mov rdi, rax
- mov rsi, rax
- call int_saturating_mul
- mov rax, rdi
+ imul r9, rdi
+ imul rdi, rdi
 
  dec r8
  shr r8, 1
  jmp .next_power
 
 .done:
- mov rdi, rax
- mov rsi, r10
+ imul rdi, r9
+ ret"
+};
+
+pub(crate) static INT_SATURATING_POW_ASM: &str = {
+    r"; op int @rdi | !? = base: int @rdi **| exponent: uint @rsi [line: uint @rdx, col: uint @rcx]
+int_saturating_pow:
+ cmp rsi, 0
+ jl .exponent_negative
+ jg .exponent_positive
+
+ mov rdi, 1
+ ret
+
+.exponent_negative:
+ mov rdi, attempt_exponent_negative_len
+ mov rsi, attempt_exponent_negative
+ call crash
+
+.exponent_positive:
+ cmp rsi, 1
+ jne .exponent_not_one
+ ret
+
+.exponent_not_one:
+ mov r8, rsi
+ mov r9, 1
+
+.next_power:
+ cmp r8, 1
+ jle .done
+
+ test r8, 1
+ jnz .exponent_odd
+
+ ; mov rdi, rdi
+ mov rsi, rdi
  call int_saturating_mul
- mov rax, rdi
+
+ shr r8, 1
+ jmp .next_power
+
+.exponent_odd:
+ mov r10, rdi
+
+ ; mov rdi, rdi
+ mov rsi, r9
+ call int_saturating_mul
+ mov r9, rdi
+
+ mov rdi, r10
+ mov rsi, rdi
+ call int_saturating_mul
+
+ dec r8
+ shr r8, 1
+ jmp .next_power
+
+.done:
+ ; mov rdi, rdi
+ mov rsi, r9
+ call int_saturating_mul
 
  ret"
 };
@@ -1111,34 +1099,8 @@ bool_array_debug_eprint:
  ret"
 };
 
-pub(crate) static STR_CMP_ASM: &str = {
-    r"; fn cmp: int @rax = str_cmp(self: str @rdi:rsi, other: @rdx:rcx)
-str_cmp:
- mov rax, rdi
- sub rax, rdx
- cmovb rdx, rdi
-
- mov rdi, rcx
- mov rcx, rdx
- repe cmpsb
- je .eq
- mov rax, LESS
- mov rsi, GREATER
- cmovg rax, rsi
- ret
-
-.eq:
- cmp rax, 0
- mov rax, LESS
- mov rsi, EQUAL
- cmove rax, rsi
- mov rsi, GREATER
- cmovg rax, rsi
- ret"
-};
-
 pub(crate) static STR_EQ_ASM: &str = {
-    r"; fn equals: bool @al = str_eq(self: str @rdi:rsi, other: @rdx:rcx)
+    r"; op bool (@dil, @rflags) = lhs: str @rdi:rsi == rhs: @rdx:rcx
 str_eq:
  cmp rdi, rdx
  jne .done
@@ -1148,16 +1110,58 @@ str_eq:
  repe cmpsb
 
 .done:
- mov rax, false
- sete al
+ mov rdi, false
+ sete dil
  ret"
 };
 
-pub(crate) static STR_ARRAY_CMP_ASM: &str = {
-    r"; fn cmp: int @rax = str_array_cmp[N: uint @rdi](self: str[N]* @rdi:rsi, other: str[N]* @_rdx:rcx)
-str_array_cmp:
- mov r8, rsi; self_ptr: str[]*
- mov r9, rcx; other_ptr: str[]*
+pub(crate) static STR_NEQ_ASM: &str = {
+    r"; op bool (@dil, @rflags) = lhs: str @rdi:rsi != other: @rdx:rcx
+str_neq:
+ cmp rdi, rdx
+ jne .done
+
+ mov rdi, rcx
+ mov rcx, rdx
+ repe cmpsb
+
+.done:
+ mov rdi, false
+ setne dil
+ ret"
+};
+
+pub(crate) static STR_CMP_ASM: &str = {
+    r"; op int @rdi = lhs: str @rdi:rsi <=> rhs: @rdx:rcx
+str_cmp:
+ mov rax, rdi
+ sub rax, rdx
+ cmovb rdx, rdi
+
+ mov rdi, rcx
+ mov rcx, rdx
+ repe cmpsb
+ je .eq
+ mov rdi, LESS
+ mov rsi, GREATER
+ cmovg rdi, rsi
+ ret
+
+.eq:
+ cmp rax, 0
+ mov rdi, LESS
+ mov rsi, EQUAL
+ cmove rdi, rsi
+ mov rsi, GREATER
+ cmovg rdi, rsi
+ ret"
+};
+
+pub(crate) static STR_ARRAY_EQ_ASM: &str = {
+    r"; op[N: uint @rdi] bool @dil = lhs: str[N] @rdi:rsi == rhs: str[N] @_rdx:rcx
+str_array_eq:
+ mov r8, rsi; lhs_ptr: str*
+ mov r9, rcx; rhs_ptr: str*
  mov r10, rdi; N: uint
 
 .next:
@@ -1165,7 +1169,7 @@ str_array_cmp:
  mov rsi, [r8 + 8]
  mov rdx, [r9]
  mov rcx, [r9 + 8]
- call str_cmp
+ call str_eq
  je .eq
  ret
 
@@ -1177,11 +1181,11 @@ str_array_cmp:
  ret"
 };
 
-pub(crate) static STR_ARRAY_EQ_ASM: &str = {
-    r"; fn equals: bool @al = str_array_eq[N: uint @rdi](self: str[N]* @rdi:rsi, other: str[N]* @_rdx:rcx)
-str_array_eq:
- mov r8, rsi; self_ptr: str[]*
- mov r9, rcx; other_ptr: str[]*
+pub(crate) static STR_ARRAY_NEQ_ASM: &str = {
+    r"; op[N: uint @rdi] bool @dil = lhs: str[N] @rdi:rsi != rhs: str[N] @_rdx:rcx
+str_array_neq:
+ mov r8, rsi; lhs_ptr: str*
+ mov r9, rcx; rhs_ptr: str*
  mov r10, rdi; N: uint
 
 .next:
@@ -1189,7 +1193,31 @@ str_array_eq:
  mov rsi, [r8 + 8]
  mov rdx, [r9]
  mov rcx, [r9 + 8]
- call str_eq
+ call str_neq
+ je .neq
+ ret
+
+.neq:
+ add r8, 16
+ add r9, 16
+ dec r10
+ jnz .next
+ ret"
+};
+
+pub(crate) static STR_ARRAY_CMP_ASM: &str = {
+    r"; op[N: uint @rdi] int @rdi = lhs: str[N] @rdi:rsi <=> rhs: str[N] @_rdx:rcx)
+str_array_cmp:
+ mov r8, rsi; lhs_ptr: str*
+ mov r9, rcx; rhs_ptr: str*
+ mov r10, rdi; N: uint
+
+.next:
+ mov rdi, [r8]
+ mov rsi, [r8 + 8]
+ mov rdx, [r9]
+ mov rcx, [r9 + 8]
+ call str_cmp
  je .eq
  ret
 
@@ -1222,10 +1250,10 @@ str_eprint:
 };
 
 pub(crate) static STR_ARRAY_DEBUG_PRINT_ASM: &str = {
-    r"; fn str_array_debug_print(self: str[]& @rdi:rsi)
+    r"; fn str_array_debug_print(self: str[] @rdi:rsi)
 str_array_debug_print:
  mov r8, rdi; len: uint
- mov r9, rsi; array_ptr: str[]*
+ mov r9, rsi; string: str*
 
  mov dil, '['
  call ascii_print
@@ -1263,10 +1291,10 @@ str_array_debug_print:
 };
 
 pub(crate) static STR_ARRAY_DEBUG_EPRINT_ASM: &str = {
-    r"; fn str_array_debug_eprint(self: str[]& @rdi:rsi)
+    r"; fn str_array_debug_eprint(self: str[] @rdi:rsi)
 str_array_debug_eprint:
  mov r8, rdi; len: uint
- mov r9, rsi; array_ptr: str[]*
+ mov r9, rsi; string: str*
 
  mov dil, '['
  call ascii_eprint

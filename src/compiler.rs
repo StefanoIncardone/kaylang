@@ -1,5 +1,3 @@
-// IDEA(stefano): have built-in functions return their result in rdi instead of rax
-
 pub mod artifacts;
 mod asm;
 mod reg;
@@ -130,13 +128,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         let mut temporary_values_bytes = 0;
         let mut strings = String::new();
 
-        if this.ast.scopes.is_empty() {
-            _ = write!(
-                this.asm,
-                "exit:\
-                \n mov rdi, EXIT_SUCCESS"
-            );
-        } else {
+        if !this.ast.scopes.is_empty() {
             // temporary values
             for var in this.ast.temporaries.iter() {
                 this.temporary_values.push(TemporaryValue { inner: var, offset: 0 });
@@ -216,13 +208,6 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n pop rbp\n"
                 );
             }
-
-            _ = write!(
-                this.asm,
-                " mov rdi, EXIT_SUCCESS\
-                \n\
-                \nexit:"
-            );
         }
 
         let program = format!(
@@ -231,6 +216,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 section .text
 _start:
 {asm}
+ mov rdi, EXIT_SUCCESS
  mov rax, SYS_exit
  syscall
 
@@ -318,13 +304,17 @@ _start:
 
 {BOOL_ARRAY_DEBUG_EPRINT_ASM}
 
-{STR_CMP_ASM}
-
 {STR_EQ_ASM}
 
-{STR_ARRAY_CMP_ASM}
+{STR_NEQ_ASM}
+
+{STR_CMP_ASM}
 
 {STR_ARRAY_EQ_ASM}
+
+{STR_ARRAY_NEQ_ASM}
+
+{STR_ARRAY_CMP_ASM}
 
 {STR_PRINT_ASM}
 
@@ -589,8 +579,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {col}\
-                                \n call int_safe_pow\
-                                \n mov rdi, rax",
+                                \n call int_safe_pow",
                             );
                         }
                         AssignmentOp::WrappingPow => {
@@ -599,8 +588,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {col}\
-                                \n call int_wrapping_pow\
-                                \n mov rdi, rax",
+                                \n call int_wrapping_pow",
                             );
                         }
                         AssignmentOp::SaturatingPow => {
@@ -609,8 +597,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {col}\
-                                \n call int_saturating_pow\
-                                \n mov rdi, rax",
+                                \n call int_saturating_pow",
                             );
                         }
                         AssignmentOp::Times => {
@@ -1389,8 +1376,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {col}\
-                            \n call int_safe_pow\
-                            \n mov rdi, rax",
+                            \n call int_safe_pow",
                         )
                         .into()
                     }
@@ -1399,8 +1385,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {col}\
-                            \n call int_wrapping_pow\
-                            \n mov rdi, rax",
+                            \n call int_wrapping_pow",
                         )
                         .into()
                     }
@@ -1409,8 +1394,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {col}\
-                            \n call int_saturating_pow\
-                            \n mov rdi, rax",
+                            \n call int_saturating_pow",
                         )
                         .into()
                     }
@@ -1588,36 +1572,29 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             Dst::View { len: Rdi, ptr: Rsi },
                             Dst::View { len: Rdx, ptr: Rcx },
                             match op {
-                                ComparisonOp::EqualsEquals => " call str_eq\
-                                    \n movzx rdi, al"
-                                    .into(),
-                                ComparisonOp::NotEquals => " call str_eq\
-                                    \n xor rax, 1\
-                                    \n movzx rdi, al"
-                                    .into(),
+                                ComparisonOp::EqualsEquals => " call str_eq".into(),
+                                ComparisonOp::NotEquals => " call str_neq".into(),
                                 ComparisonOp::Greater => " call str_cmp\
-                                    \n cmp rax, EQUAL\
+                                    \n cmp rdi, EQUAL\
                                     \n mov rdi, false\
                                     \n setg dil"
                                     .into(),
                                 ComparisonOp::GreaterOrEquals => " call str_cmp\
-                                    \n cmp rax, EQUAL\
+                                    \n cmp rdi, EQUAL\
                                     \n mov rdi, false\
                                     \n setge dil"
                                     .into(),
                                 ComparisonOp::Less => " call str_cmp\
-                                    \n cmp rax, EQUAL\
+                                    \n cmp rdi, EQUAL\
                                     \n mov rdi, false\
                                     \n setl dil"
                                     .into(),
                                 ComparisonOp::LessOrEquals => " call str_cmp\
-                                    \n cmp rax, EQUAL\
+                                    \n cmp rdi, EQUAL\
                                     \n mov rdi, false\
                                     \n setle dil"
                                     .into(),
-                                ComparisonOp::Compare => " call str_cmp\
-                                    \n mov rdi, rax"
-                                    .into(),
+                                ComparisonOp::Compare => " call str_cmp".into(),
                             },
                         ),
                         // Note: we can only compare non-empty arrays of the same type and length, so
@@ -1639,9 +1616,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                         \n mov rdi, false\
                                         \n sete dil"
                                         .into(),
-                                    BaseType::Str => " call str_array_eq\
-                                        \n movzx rdi, al"
-                                        .into(),
+                                    BaseType::Str => " call str_array_eq".into(),
                                 },
                                 ComparisonOp::NotEquals => match base_type {
                                     BaseType::Int => " mov rdi, rcx\
@@ -1656,10 +1631,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                         \n mov rdi, false\
                                         \n setne dil"
                                         .into(),
-                                    BaseType::Str => " cmp str_array_eq\
-                                        \n xor rax, 1\
-                                        \n movzx rdi, al"
-                                        .into(),
+                                    BaseType::Str => " cmp str_array_neq".into(),
                                 },
                                 ComparisonOp::Greater => match base_type {
                                     BaseType::Int => " mov rdi, rcx\
@@ -1675,7 +1647,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                         \n setg dil"
                                         .into(),
                                     BaseType::Str => " call str_array_cmp\
-                                        \n cmp rax, EQUAL\
+                                        \n cmp rdi, EQUAL\
                                         \n mov rdi, false\
                                         \n setg dil"
                                         .into(),
@@ -1694,7 +1666,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                         \n setge dil"
                                         .into(),
                                     BaseType::Str => " call str_array_cmp\
-                                        \n cmp rax, EQUAL\
+                                        \n cmp rdi, EQUAL\
                                         \n mov rdi, false\
                                         \n setge dil"
                                         .into(),
@@ -1713,7 +1685,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                         \n setl dil"
                                         .into(),
                                     BaseType::Str => " call str_array_cmp\
-                                        \n cmp rax, EQUAL\
+                                        \n cmp rdi, EQUAL\
                                         \n mov rdi, false\
                                         \n setl dil"
                                         .into(),
@@ -1732,7 +1704,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                         \n setle dil"
                                         .into(),
                                     BaseType::Str => " call str_array_cmp\
-                                        \n cmp rax, EQUAL\
+                                        \n cmp rdi, EQUAL\
                                         \n mov rdi, false\
                                         \n setle dil"
                                         .into(),
@@ -1756,9 +1728,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                         \n mov rsi, GREATER\
                                         \n cmovg rdi, rsi"
                                         .into(),
-                                    BaseType::Str => " call str_array_cmp\
-                                        \n mov rdi, rax"
-                                        .into(),
+                                    BaseType::Str => " call str_array_cmp".into(),
                                 },
                             },
                         ),
