@@ -1,4 +1,3 @@
-// IDEA(stefano): reserve space for the biggest temporary value and reuse as necessary
 // IDEA(stefano): have built-in functions return their result in rdi instead of rax
 
 pub mod artifacts;
@@ -824,7 +823,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             | Expression::Str { .. }
             | Expression::Unary { op: UnaryOp::Not | UnaryOp::WrappingMinus, .. }
             | Expression::BooleanUnary { .. }
-            | Expression::Identifier { .. } => false,
+            | Expression::Variable { .. } => false,
 
             // these expressions need to save the value of the lhs
             Expression::Unary { .. }
@@ -1082,7 +1081,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
                 }
             }
-            Expression::Identifier { typ, name } => {
+            Expression::Variable { typ, name } => {
                 self.expression(index, Dst::Reg(Rdi));
 
                 let var = self.resolve(name);
@@ -1219,7 +1218,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Expression::Array { items, .. } => {
                             _ = writeln!(self.asm, " mov {reg}, {}", items.len());
                         }
-                        Expression::Identifier { typ, name } => {
+                        Expression::Variable { typ, name } => {
                             let var = self.resolve(name);
                             let var_offset = var.offset;
                             match typ {
@@ -1828,7 +1827,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     temporary_value_offset,
                 );
             }
-            Expression::Identifier { typ, name } => {
+            Expression::Variable { typ, name } => {
                 let var = self.resolve(name);
                 let var_offset = var.offset;
                 self.identifier(*typ, dst, Base::Rbp, var_offset);
@@ -1841,7 +1840,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
     fn condition(&mut self, condition: &'ast Expression<'src>, false_tag: &str) {
         match condition {
-            // IDEA(stefano): remove these checks and do a plain jmp instead
+            // IDEA(stefano): optimize these checks by doing a plain jmp instead
             Expression::True => {
                 _ = writeln!(
                     self.asm,
@@ -1978,7 +1977,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
                 }
             }
-            Expression::Identifier { name, .. } => {
+            Expression::Variable { name, .. } => {
                 let var = self.resolve(name);
                 let var_offset = var.offset;
                 _ = writeln!(
@@ -2004,7 +2003,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
     fn condition_reversed(&mut self, condition: &'ast Expression<'src>, true_tag: &str) {
         match condition {
-            // IDEA(stefano): remove these checks and do a plain jmp instead
+            // IDEA(stefano): optimize these checks by doing a plain jmp instead
             Expression::True => {
                 _ = writeln!(
                     self.asm,
@@ -2141,7 +2140,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
                 }
             }
-            Expression::Identifier { name, .. } => {
+            Expression::Variable { name, .. } => {
                 let var = self.resolve(name);
                 let var_offset = var.offset;
                 _ = writeln!(
@@ -2215,7 +2214,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     Expression::Temporary { .. } => {
                         unreachable!("temporaries cannot appear in variables")
                     }
-                    Expression::Identifier { typ, name } => {
+                    Expression::Variable { typ, name } => {
                         let var = self.resolve(name);
                         let var_offset = var.offset;
                         match typ {
@@ -2458,7 +2457,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 _ = writeln!(self.asm, " mov [{base} + {dst_offset}], dil\n");
             }
             Expression::Temporary { .. } => unreachable!("temporaries cannot appear in variables"),
-            Expression::Identifier { typ: identifier_typ, name } => {
+            Expression::Variable { typ: identifier_typ, name } => {
                 let var = self.resolve(name);
                 let src_offset = var.offset;
                 match identifier_typ {

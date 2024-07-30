@@ -1203,6 +1203,94 @@ fn result: int, remainder: int = divmod(dividend: int, divisor: int) do
 # and done!
 ```
 
+## Operator overloading
+
+operator overloading should follow the function's philosofy of resembling the shape of the usage of
+the function/operator, so as an example, the definition for the `+` operator might look like this:
+
+- for a more "traditional" style:
+
+    ```kay
+    op int = +(lhs: int, rhs: int) {
+        return lhs + rhs;
+    }
+    ```
+
+- for a closer look to it's usage, but still consistent with normal functions declarations:
+
+    ```kay
+    op int = (lhs: int) + (rhs: int) {
+        return lhs + rhs;
+    }
+    ```
+
+- for an even closer look to it's usage:
+
+    ```kay
+    op int = lhs: int + rhs: int {
+        return lhs + rhs;
+    }
+    ```
+
+might also be able to specify that the function should track the caller's line and column for error
+messages:
+
+```kay
+@track_caller
+op int = lhs: int + rhs: int {
+    return lhs + rhs;
+}
+```
+
+
+so going from usage to function would look like this;
+
+```kay
+let lhs = 21;
+let rhs = 42;
+
+# 1
+let i = lhs + rhs;
+
+# 2
+op i = lhs + rhs;
+
+# 3a
+op i: int = lhs + rhs;
+
+# 3b
+op int = lhs + rhs;
+
+# 4
+op int = lhs: int + rhs: int;
+
+# 5
+op int = lhs: int + rhs: int {
+    return lhs + rhs;
+}
+```
+
+and back from function to usage would look like this;
+
+```kay
+# 1
+op int = lhs: int + rhs: int {
+    return lhs + rhs;
+}
+
+# 2
+op int = lhs: int + rhs: int;
+
+# 3
+op int = lhs + rhs;
+
+# 4
+let int = lhs + rhs;
+
+# 5
+let i = lhs + rhs;
+```
+
 ## "unconventional" variable names
 
 ```kay

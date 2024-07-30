@@ -1,5 +1,5 @@
 pub(crate) static CRASH_ASM: &str = {
-    r"; fn crash(msg: str @rdi:rsi, line: uint @rdx, col: uint @rcx)
+    r"; fn ! = crash(msg: str @rdi:rsi, line: uint @rdx, col: uint @rcx)
 crash:
  push r12
  push r13
@@ -66,7 +66,7 @@ crash:
 };
 
 pub(crate) static ASSERT_ARRAY_INDEX_IN_RANGE_ASM: &str = {
-    r"; fn assert_array_index_in_range(index: int @rdi, array_len: uint @rsi, line: uint @rdx, col: uint @rcx)
+    r"; fn !? = assert_array_index_in_range(index: int @rdi, array_len: uint @rsi, line: uint @rdx, col: uint @rcx)
 assert_array_index_in_range:
  cmp rdi, 0
  jl .underflow
@@ -79,16 +79,16 @@ assert_array_index_in_range:
 .underflow:
  mov rdi, attempt_array_index_underflow_len
  mov rsi, attempt_array_index_underflow
- jmp crash
+ call crash
 
 .overflow:
  mov rdi, attempt_array_index_overflow_len
  mov rsi, attempt_array_index_overflow
- jmp crash"
+ call crash"
 };
 
 pub(crate) static ASSERT_INT_BIT_INDEX_IN_RANGE_ASM: &str = {
-    r"; fn assert_int_bit_index_in_range(index: int @rdi, bits: uint @rsi, line: uint @rdx, col: uint @rcx)
+    r"; fn !? = assert_int_bit_index_in_range(index: int @rdi, bits: uint @rsi, line: uint @rdx, col: uint @rcx)
 assert_int_bit_index_in_range:
  cmp rdi, 0
  jl .underflow
@@ -101,16 +101,16 @@ assert_int_bit_index_in_range:
 .underflow:
  mov rdi, attempt_int_bit_index_underflow_len
  mov rsi, attempt_int_bit_index_underflow
- jmp crash
+ call crash
 
 .overflow:
  mov rdi, attempt_int_bit_index_overflow_len
  mov rsi, attempt_int_bit_index_overflow
- jmp crash"
+ call crash"
 };
 
 pub(crate) static ASSERT_STR_INDEX_IN_RANGE_ASM: &str = {
-    r"; fn assert_str_index_in_range(index: int @rdi, str_len: uint @rsi, line: uint @rdx, col: uint @rcx)
+    r"; fn !? = assert_str_index_in_range(index: int @rdi, str_len: uint @rsi, line: uint @rdx, col: uint @rcx)
 assert_str_index_in_range:
  cmp rdi, 0
  jl .underflow
@@ -123,16 +123,16 @@ assert_str_index_in_range:
 .underflow:
  mov rdi, attempt_str_index_underflow_len
  mov rsi, attempt_str_index_underflow
- jmp crash
+ call crash
 
 .overflow:
  mov rdi, attempt_str_index_overflow_len
  mov rsi, attempt_str_index_overflow
- jmp crash"
+ call crash"
 };
 
 pub(crate) static INT_TO_STR_ASM: &str = {
-    r"; fn int_str: str @rax:rdx = int_to_str(self: int @rdi)
+    r"; fn str @rax:rdx = int_to_str(self: int @rdi)
 int_to_str:
  mov rsi, 10
  mov rcx, int_str + INT_BITS - 1
@@ -178,7 +178,7 @@ int_to_str:
 };
 
 pub(crate) static INT_SAFE_POW_ASM: &str = {
-    r"; fn result: int @rax = int_safe_pow(self: int @rdi, exponent: uint @rsi, line: uint @rdx, col: uint @rcx)
+    r"; op int @rax | !? = base: int @rdi ** exponent: uint @rsi [line: uint @rdx, col: uint @rcx]
 int_safe_pow:
  cmp rsi, 0
  jl .exponent_negative
@@ -190,7 +190,7 @@ int_safe_pow:
 .exponent_negative:
  mov rdi, attempt_exponent_negative_len
  mov rsi, attempt_exponent_negative
- jmp crash
+ call crash
 
 .exponent_positive:
  cmp rsi, 1
@@ -243,7 +243,7 @@ int_safe_pow:
 };
 
 pub(crate) static INT_WRAPPING_POW_ASM: &str = {
-    r"; fn result: int @rax = int_wrapping_pow(self: int @rdi, exponent: uint @rsi, line: uint @rdx, col: uint @rcx)
+    r"; op int @rax | !? = base: int @rdi **\ exponent: uint @rsi [line: uint @rdx, col: uint @rcx]
 int_wrapping_pow:
  cmp rsi, 0
  jl .exponent_negative
@@ -255,7 +255,7 @@ int_wrapping_pow:
 .exponent_negative:
  mov rdi, attempt_exponent_negative_len
  mov rsi, attempt_exponent_negative
- jmp crash
+ call crash
 
 .exponent_positive:
  cmp rsi, 1
@@ -293,7 +293,7 @@ int_wrapping_pow:
 };
 
 pub(crate) static INT_SATURATING_POW_ASM: &str = {
-    r"; fn result: int @rax = int_saturating_pow(self: int @rdi, exponent: uint @rsi, line: uint @rdx, col: uint @rcx)
+    r"; op int @rax | !? = base: int @rdi **| exponent: uint @rsi [line: uint @rdx, col: uint @rcx]
 int_saturating_pow:
  cmp rsi, 0
  jl .exponent_negative
@@ -305,7 +305,7 @@ int_saturating_pow:
 .exponent_negative:
  mov rdi, attempt_exponent_negative_len
  mov rsi, attempt_exponent_negative
- jmp crash
+ call crash
 
 .exponent_positive:
  cmp rsi, 1
@@ -358,33 +358,33 @@ int_saturating_pow:
 };
 
 pub(crate) static INT_SAFE_MUL_POW_ASM: &str = {
-    r"; fn int_safe_mul_pow(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+    r"; op int @rdi | !? = lhs: int @rdi * rhs: int @rsi [line: uint @rdx, col: uint @rcx]
 int_safe_mul_pow:
  imul rdi, rsi
  jno .no_overflow
  mov rdi, pow_overflow_len
  mov rsi, pow_overflow
- jmp crash
+ call crash
 
 .no_overflow:
  ret"
 };
 
 pub(crate) static INT_SAFE_MUL_ASM: &str = {
-    r"; fn int_safe_mul(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+    r"; op int @rdi !? = lhs: int @rdi * rhs: int @rsi [line: uint @rdx, col: uint @rcx]
 int_safe_mul:
  imul rdi, rsi
  jno .no_overflow
  mov rdi, mul_overflow_len
  mov rsi, mul_overflow
- jmp crash
+ call crash
 
 .no_overflow:
  ret"
 };
 
 pub(crate) static INT_SATURATING_MUL_ASM: &str = {
-    r"; fn int_saturating_mul(lhs: int @rdi, rhs: int @rsi)
+    r"; op int @rdi = lhs: int @rdi *| rhs: int @rsi
 int_saturating_mul:
  mov rax, rdi
  xor rdi, rsi
@@ -398,14 +398,14 @@ int_saturating_mul:
 };
 
 pub(crate) static INT_SAFE_DIV_ASM: &str = {
-    r"; fn int_safe_div(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+    r"; op int @rdi | !? = lhs: int @rdi / rhs: int @rsi [line: uint @rdx, col: uint @rcx]
 int_safe_div:
  test rsi, rsi
  jnz .check_no_int_min_div_minus_one
 
  mov rdi, attempt_division_by_zero_len
  mov rsi, attempt_division_by_zero
- jmp crash
+ call crash
 
 .check_no_int_min_div_minus_one:
  mov rax, INT_MIN
@@ -416,7 +416,7 @@ int_safe_div:
 
  mov rdi, attempt_int_min_div_by_minus_one_len
  mov rsi, attempt_int_min_div_by_minus_one
- jmp crash
+ call crash
 
 .no_int_min_div_minus_one:
  mov rax, rdi
@@ -427,14 +427,14 @@ int_safe_div:
 };
 
 pub(crate) static INT_WRAPPING_DIV_ASM: &str = {
-    r"; fn int_wrapping_div(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+    r"; op int @rdi | !? = lhs: int @rdi /\ rhs: int @rsi [line: uint @rdx, col: uint @rcx]
 int_wrapping_div:
  test rsi, rsi
  jnz .check_no_int_min_div_minus_one
 
  mov rdi, attempt_division_by_zero_len
  mov rsi, attempt_division_by_zero
- jmp crash
+ call crash
 
 .check_no_int_min_div_minus_one:; INT_MIX @rdi ^ -1 @rsi == INT_MAX @r8
  mov rax, rdi
@@ -454,14 +454,14 @@ int_wrapping_div:
 };
 
 pub(crate) static INT_SATURATING_DIV_ASM: &str = {
-    r"; fn int_saturating_div(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+    r"; op int @rdi | !? = lhs: int @rdi /| rhs: int @rsi [line: uint @rdx, col: uint @rcx]
 int_saturating_div:
  test rsi, rsi
  jnz .check_no_int_min_div_minus_one
 
  mov rdi, attempt_division_by_zero_len
  mov rsi, attempt_division_by_zero
- jmp crash
+ call crash
 
 .check_no_int_min_div_minus_one:; INT_MIX @rdi ^ -1 @rsi == INT_MAX @r8
  mov rax, rdi
@@ -482,14 +482,14 @@ int_saturating_div:
 };
 
 pub(crate) static INT_SAFE_REMAINDER_ASM: &str = {
-    r"; fn int_safe_remainder(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+    r"; op int @rdi | !? = lhs: int @rdi % rhs: int @rsi [line: uint @rdx, col: uint @rcx]
 int_safe_remainder:
  test rsi, rsi
  jnz .check_no_int_min_div_minus_one
 
  mov rdi, attempt_remainder_zero_len
  mov rsi, attempt_remainder_zero
- jmp crash
+ call crash
 
 .check_no_int_min_div_minus_one:; INT_MIX @rdi ^ -1 @rsi == INT_MAX @r8
  mov rax, rdi
@@ -500,7 +500,7 @@ int_safe_remainder:
 
  mov rdi, attempt_remainder_int_min_div_by_minus_one_len
  mov rsi, attempt_remainder_int_min_div_by_minus_one
- jmp crash
+ call crash
 
 .no_int_min_div_minus_one:
  mov rax, rdi
@@ -511,20 +511,20 @@ int_safe_remainder:
 };
 
 pub(crate) static INT_SAFE_ADD_ASM: &str = {
-    r"; fn int_safe_add(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+    r"; op int @rdi | !? = lhs: int @rdi + rhs: int @rsi [line: uint @rdx, col: uint @rcx]
 int_safe_add:
  add rdi, rsi
  jno .no_overflow
  mov rdi, add_overflow_len
  mov rsi, add_overflow
- jmp crash
+ call crash
 
 .no_overflow:
  ret"
 };
 
 pub(crate) static INT_SATURATING_ADD_ASM: &str = {
-    r"; fn int_saturating_add(lhs: int @rdi, rhs: int @rsi)
+    r"; op int @rdi = lhs: int @rdi +| rhs: int @rsi
 int_saturating_add:
  add rdi, rsi
  jno .no_overflow
@@ -537,7 +537,7 @@ int_saturating_add:
 };
 
 pub(crate) static INT_SAFE_ABS_ASM: &str = {
-    r"; fn int_safe_abs(lhs: int @rdi, _dummy: int @rsi, line: uint @rdx, col: uint @rcx)
+    r"; op uint @rdi | !? = + lhs: int @rdi [_dummy: int @rsi, line: uint @rdx, col: uint @rcx]
 int_safe_abs:
  mov rsi, rdi
  sar rsi, INT_BITS - 1
@@ -546,14 +546,14 @@ int_safe_abs:
  jno .no_overflow
  mov rdi, abs_overflow_len
  mov rsi, abs_overflow
- jmp crash
+ call crash
 
 .no_overflow:
  ret"
 };
 
 pub(crate) static INT_WRAPPING_ABS_ASM: &str = {
-    r"; fn int_wrapping_abs(lhs: int @rdi)
+    r"; op uint @rdi = +\ lhs: int @rdi
 int_wrapping_abs:
  mov rsi, rdi
  sar rsi, INT_BITS - 1
@@ -563,7 +563,7 @@ int_wrapping_abs:
 };
 
 pub(crate) static INT_SATURATING_ABS_ASM: &str = {
-    r"; fn int_saturating_abs(lhs: int @rdi)
+    r"; op uint @rdi = +| lhs: int @rdi
 int_saturating_abs:
  mov rsi, rdi
  sar rsi, INT_BITS - 1
@@ -577,20 +577,20 @@ int_saturating_abs:
 };
 
 pub(crate) static INT_SAFE_SUB_ASM: &str = {
-    r"; fn int_safe_sub(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+    r"; op int @rdi | !? = lhs: int @rdi - rhs: int @rsi [line: uint @rdx, col: uint @rcx]
 int_safe_sub:
  sub rdi, rsi
  jno .no_overflow
  mov rdi, sub_overflow_len
  mov rsi, sub_overflow
- jmp crash
+ call crash
 
 .no_overflow:
  ret"
 };
 
 pub(crate) static INT_SATURATING_SUB_ASM: &str = {
-    r"; fn int_saturating_sub(lhs: int @rdi, rhs: int @rsi)
+    r"; op int @rdi = lhs: int @rdi -| rhs: int @rsi
 int_saturating_sub:
  sub rdi, rsi
  jno .no_overflow
@@ -603,20 +603,20 @@ int_saturating_sub:
 };
 
 pub(crate) static INT_SAFE_NEGATE_ASM: &str = {
-    r"; fn int_safe_negate(lhs: int @rdi, _dummy: int @rsi, line: uint @rdx, col: uint @rcx)
+    r"; op int | !? = - lhs: int @rdi [_dummy: int @rsi, line: uint @rdx, col: uint @rcx]
 int_safe_negate:
  neg rdi
  jno .no_overflow
  mov rdi, negate_overflow_len
  mov rsi, negate_overflow
- jmp crash
+ call crash
 
 .no_overflow:
  ret"
 };
 
 pub(crate) static INT_SATURATING_NEGATE_ASM: &str = {
-    r"; fn int_saturating_negate(lhs: int @rdi)
+    r"; op int @rdi = -| lhs: int @rdi
 int_saturating_negate:
  neg rdi
  jno .no_overflow
@@ -627,14 +627,14 @@ int_saturating_negate:
 };
 
 pub(crate) static INT_SAFE_LEFT_SHIFT_ASM: &str = {
-    r"; fn int_safe_left_shift(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+    r"; op int @rdi | !? = lhs: int @rdi << rhs: int @rsi [line: uint @rdx, col: uint @rcx]
 int_safe_left_shift:
  cmp rsi, 0
  jge .no_negative_shift
 
  mov rdi, attempt_left_shift_negative_len
  mov rsi, attempt_left_shift_negative
- jmp crash
+ call crash
 
 .no_negative_shift:
  cmp rsi, (1 << 6) - 1
@@ -642,7 +642,7 @@ int_safe_left_shift:
 
  mov rdi, attempt_left_shift_over_6_bits_len
  mov rsi, attempt_left_shift_over_6_bits
- jmp crash
+ call crash
 
 .no_shift_over_6_bits:
  shlx rax, rdi, rsi
@@ -652,7 +652,7 @@ int_safe_left_shift:
 
  mov rdi, left_shift_overflow_len
  mov rsi, left_shift_overflow
- jmp crash
+ call crash
 
 .no_overflow:
  mov rdi, rax
@@ -660,14 +660,14 @@ int_safe_left_shift:
 };
 
 pub(crate) static INT_WRAPPING_LEFT_SHIFT_ASM: &str = {
-    r"; fn int_wrapping_left_shift(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+    r"; op int @ rdi | !? = lhs: int @rdi <<\ rhs: int @rsi [line: uint @rdx, col: uint @rcx]
 int_wrapping_left_shift:
  cmp rsi, 0
  jge .no_negative_shift
 
  mov rdi, attempt_left_shift_negative_len
  mov rsi, attempt_left_shift_negative
- jmp crash
+ call crash
 
 .no_negative_shift:
  cmp rsi, (1 << 6) - 1
@@ -675,7 +675,7 @@ int_wrapping_left_shift:
 
  mov rdi, attempt_left_shift_over_6_bits_len
  mov rsi, attempt_left_shift_over_6_bits
- jmp crash
+ call crash
 
 .no_shift_over_6_bits:
  shlx rdi, rdi, rsi
@@ -683,14 +683,14 @@ int_wrapping_left_shift:
 };
 
 pub(crate) static INT_SATURATING_LEFT_SHIFT_ASM: &str = {
-    r"; fn int_saturating_left_shift(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+    r"; op int @rdi | !? = lhs: int @rdi <<| rhs: int @rsi [line: uint @rdx, col: uint @rcx]
 int_saturating_left_shift:
  cmp rsi, 0
  jge .no_negative_shift
 
  mov rdi, attempt_left_shift_negative_len
  mov rsi, attempt_left_shift_negative
- jmp crash
+ call crash
 
 .no_negative_shift:
  cmp rsi, (1 << 6) - 1
@@ -698,7 +698,7 @@ int_saturating_left_shift:
 
  mov rdi, attempt_left_shift_over_6_bits_len
  mov rsi, attempt_left_shift_over_6_bits
- jmp crash
+ call crash
 
 .no_shift_over_6_bits:
  cmp rdi, 0
@@ -727,14 +727,14 @@ int_saturating_left_shift:
 };
 
 pub(crate) static INT_SAFE_RIGHT_SHIFT_ASM: &str = {
-    r"; fn int_safe_right_shift(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+    r"; op int @rdi | !? = lhs: int @rdi >> rhs: int @rsi [line: uint @rdx, col: uint @rcx]
 int_safe_right_shift:
  cmp rsi, 0
  jge .no_negative_shift
 
  mov rdi, attempt_right_shift_negative_len
  mov rsi, attempt_right_shift_negative
- jmp crash
+ call crash
 
 .no_negative_shift:
  cmp rsi, (1 << 6) - 1
@@ -742,7 +742,7 @@ int_safe_right_shift:
 
  mov rdi, attempt_right_shift_over_6_bits_len
  mov rsi, attempt_right_shift_over_6_bits
- jmp crash
+ call crash
 
 .no_shift_over_6_bits:
  sarx rdi, rdi, rsi
@@ -750,14 +750,14 @@ int_safe_right_shift:
 };
 
 pub(crate) static INT_SAFE_LEFT_ROTATE_ASM: &str = {
-    r"; fn int_safe_left_rotate(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+    r"; op int @rdi | !? = lhs: int @rdi <<< rhs: int @rsi [line: uint @rdx, col: uint @rcx]
 int_safe_left_rotate:
  cmp rsi, 0
  jge .no_negative_shift
 
  mov rdi, attempt_left_rotate_negative_len
  mov rsi, attempt_left_rotate_negative
- jmp crash
+ call crash
 
 .no_negative_shift:
  cmp rsi, (1 << 6) - 1
@@ -765,7 +765,7 @@ int_safe_left_rotate:
 
  mov rdi, attempt_left_rotate_over_6_bits_len
  mov rsi, attempt_left_rotate_over_6_bits
- jmp crash
+ call crash
 
 .no_shift_over_6_bits:
  mov cl, sil
@@ -774,14 +774,14 @@ int_safe_left_rotate:
 };
 
 pub(crate) static INT_SAFE_RIGHT_ROTATE_ASM: &str = {
-    r"; fn int_safe_right_rotate(lhs: int @rdi, rhs: int @rsi, line: uint @rdx, col: uint @rcx)
+    r"; op int @rdi | ! = lhs: int @rdi >>> rhs: int @rsi [line: uint @rdx, col: uint @rcx]
 int_safe_right_rotate:
  cmp rsi, 0
  jge .no_negative_shift
 
  mov rdi, attempt_right_rotate_negative_len
  mov rsi, attempt_right_rotate_negative
- jmp crash
+ call crash
 
 .no_negative_shift:
  cmp rsi, (1 << 6) - 1
@@ -789,7 +789,7 @@ int_safe_right_rotate:
 
  mov rdi, attempt_right_rotate_over_6_bits_len
  mov rsi, attempt_right_rotate_over_6_bits
- jmp crash
+ call crash
 
 .no_shift_over_6_bits:
  mov cl, sil
