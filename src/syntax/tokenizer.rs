@@ -1,5 +1,3 @@
-// TODO(stefano): change all occurrencies of `number literal` to `integer literal`
-
 use super::{Error, ErrorInfo, IntoErrorInfo};
 use crate::src_file::{Line, SrcFile};
 use std::fmt::Display;

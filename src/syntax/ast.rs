@@ -637,7 +637,7 @@ pub(crate) enum Node<'src> {
     Definition {
         var_index: VariableIndex,
     },
-    Assignment {
+    Reassignment {
         var_index: VariableIndex,
         op: AssignmentOp,
         op_col: usize,
@@ -675,7 +675,7 @@ impl Display for Node<'_> {
             Self::Continue => write!(f, "continue"),
 
             Self::Definition { .. }
-            | Self::Assignment { .. }
+            | Self::Reassignment { .. }
             | Self::Scope { .. }
             | Self::ScopeEnd => {
                 unreachable!("should never be displayed");
@@ -704,7 +704,7 @@ struct AstBuilder<'src> {
 
     strings: Vec<Str>,
     raw_strings: Vec<RawStr<'src>>,
-    string_kinds: Vec<StrKind>, // TODO(stefano): store a bitset instead of StrKind
+    string_kinds: Vec<StrKind>,
 }
 
 #[derive(Debug, Clone)]
@@ -807,54 +807,33 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
 // parsing of statements
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+    fn semicolon(&mut self) -> Result<(), Error<ErrorKind>> {
+        let semicolon_token = self.current_token_bounded(Expected::Semicolon)?;
+        let TokenKind::SemiColon = &semicolon_token.kind else {
+            let previous_token = self.peek_previous_token();
+            return Err(Error {
+                kind: ErrorKind::MissingSemicolon,
+                col: previous_token.col,
+                pointers_count: previous_token.kind.display_len(),
+            });
+        };
+
+        _ = self.next_token();
+        return Ok(());
+    }
+
     /*
     NOTE(stefano): only parsing until the first error until a fault tolerant parser is developed,
     this is because the first truly relevant error is the first one, which in turn causes a ripple
     effect that propagates to the rest of the parsing, causing subsequent errors to be wrong
     */
     fn scope(&mut self) {
-        loop {
-            let Some(token) = self.tokens.get(self.token) else {
-                break;
-            };
-
+        while let Some(token) = self.tokens.get(self.token) {
             match self.statement_any(token) {
-                Ok(node) => {
-                    match node {
-                        // skip to the next token after a semicolon
-                        Node::Semicolon => continue,
-
-                        Node::ScopeEnd => break,
-
-                        // check to see if a terminating semicolon is present
-                        /*
-                        REMOVE(stefano): move this check to the place where the parsing of the node
-                        took place
-                        */
-                        Node::Definition { .. }
-                        | Node::Assignment { .. }
-                        | Node::Expression(_)
-                        | Node::Break
-                        | Node::Continue
-                        | Node::Print(_)
-                        | Node::Println(_)
-                        | Node::Eprint(_)
-                        | Node::Eprintln(_) => {
-                            if let Err(err) = self.semicolon() {
-                                self.errors.push(err);
-
-                                // consuming all remaining tokens until the end of the file
-                                self.token = self.tokens.len();
-                                break;
-                            }
-                        }
-
-                        // no need to check for a terminating semicolon
-                        Node::If(_) | Node::Loop(_) | Node::DoLoop(_) | Node::Scope { .. } => {}
-                    }
-
-                    self.ast.scopes[self.ast.scope].nodes.push(node);
-                }
+                // skip to the next token after a semicolon
+                Ok(Node::Semicolon) => continue,
+                Ok(Node::ScopeEnd) => break,
+                Ok(node) => self.ast.scopes[self.ast.scope].nodes.push(node),
                 Err(err) => {
                     self.errors.push(err);
 
@@ -886,6 +865,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 | Op::SaturatingMinus,
             ) => {
                 let expression = self.expression()?;
+                self.semicolon()?;
+
                 if let Expression::Array { .. } = expression {
                     let temporary_value_index = self.ast.temporaries.len();
                     let expression_type = expression.typ();
@@ -898,69 +879,87 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
                 Ok(Node::Expression(expression))
             }
-            TokenKind::Identifier(name) => match self.peek_next_token() {
-                Some(op) => match op.kind {
-                    TokenKind::Op(
-                        op_kind @ (Op::Equals
-                        | Op::PowEquals
-                        | Op::WrappingPowEquals
-                        | Op::SaturatingPowEquals
-                        | Op::TimesEquals
-                        | Op::WrappingTimesEquals
-                        | Op::SaturatingTimesEquals
-                        | Op::DivideEquals
-                        | Op::WrappingDivideEquals
-                        | Op::SaturatingDivideEquals
-                        | Op::RemainderEquals
-                        | Op::PlusEquals
-                        | Op::WrappingPlusEquals
-                        | Op::SaturatingPlusEquals
-                        | Op::MinusEquals
-                        | Op::WrappingMinusEquals
-                        | Op::SaturatingMinusEquals
-                        | Op::LeftShiftEquals
-                        | Op::WrappingLeftShiftEquals
-                        | Op::SaturatingLeftShiftEquals
-                        | Op::RightShiftEquals
-                        | Op::BitAndEquals
-                        | Op::BitXorEquals
-                        | Op::BitOrEquals
-                        | Op::AndEquals
-                        | Op::OrEquals
-                        | Op::LeftRotateEquals
-                        | Op::RightRotateEquals),
-                    ) => Ok(self.variable_reassignment(op_kind, name)?),
-                    TokenKind::Op(_)
-                    | TokenKind::Comment(_)
-                    | TokenKind::Unexpected(_)
-                    | TokenKind::Bracket(_)
-                    | TokenKind::Colon
-                    | TokenKind::SemiColon
-                    | TokenKind::Comma
-                    | TokenKind::False
-                    | TokenKind::True
-                    | TokenKind::Integer(_)
-                    | TokenKind::Ascii(_)
-                    | TokenKind::Str(_)
-                    | TokenKind::RawStr(_)
-                    | TokenKind::Identifier(_)
-                    | TokenKind::Definition(_)
-                    | TokenKind::Print
-                    | TokenKind::PrintLn
-                    | TokenKind::Eprint
-                    | TokenKind::EprintLn
-                    | TokenKind::Do
-                    | TokenKind::If
-                    | TokenKind::Else
-                    | TokenKind::Loop
-                    | TokenKind::Break
-                    | TokenKind::Continue => Ok(Node::Expression(self.expression()?)),
-                },
-                None => Ok(Node::Expression(self.expression()?)),
+            TokenKind::Identifier(name) => {
+                if let Some(op) = self.peek_next_token() {
+                    match op.kind {
+                        TokenKind::Op(
+                            op_kind @ (Op::Equals
+                            | Op::PowEquals
+                            | Op::WrappingPowEquals
+                            | Op::SaturatingPowEquals
+                            | Op::TimesEquals
+                            | Op::WrappingTimesEquals
+                            | Op::SaturatingTimesEquals
+                            | Op::DivideEquals
+                            | Op::WrappingDivideEquals
+                            | Op::SaturatingDivideEquals
+                            | Op::RemainderEquals
+                            | Op::PlusEquals
+                            | Op::WrappingPlusEquals
+                            | Op::SaturatingPlusEquals
+                            | Op::MinusEquals
+                            | Op::WrappingMinusEquals
+                            | Op::SaturatingMinusEquals
+                            | Op::LeftShiftEquals
+                            | Op::WrappingLeftShiftEquals
+                            | Op::SaturatingLeftShiftEquals
+                            | Op::RightShiftEquals
+                            | Op::BitAndEquals
+                            | Op::BitXorEquals
+                            | Op::BitOrEquals
+                            | Op::AndEquals
+                            | Op::OrEquals
+                            | Op::LeftRotateEquals
+                            | Op::RightRotateEquals),
+                        ) => {
+                            let reassignment = self.variable_reassignment(op_kind, name)?;
+                            self.semicolon()?;
+                            Ok(reassignment)
+                        },
+                        TokenKind::Op(_)
+                        | TokenKind::Comment(_)
+                        | TokenKind::Unexpected(_)
+                        | TokenKind::Bracket(_)
+                        | TokenKind::Colon
+                        | TokenKind::SemiColon
+                        | TokenKind::Comma
+                        | TokenKind::False
+                        | TokenKind::True
+                        | TokenKind::Integer(_)
+                        | TokenKind::Ascii(_)
+                        | TokenKind::Str(_)
+                        | TokenKind::RawStr(_)
+                        | TokenKind::Identifier(_)
+                        | TokenKind::Definition(_)
+                        | TokenKind::Print
+                        | TokenKind::PrintLn
+                        | TokenKind::Eprint
+                        | TokenKind::EprintLn
+                        | TokenKind::Do
+                        | TokenKind::If
+                        | TokenKind::Else
+                        | TokenKind::Loop
+                        | TokenKind::Break
+                        | TokenKind::Continue => {
+                            let expression = self.expression()?;
+                            self.semicolon()?;
+                            Ok(Node::Expression(expression))
+                        },
+                    }
+                } else {
+                    let expression = self.expression()?;
+                    self.semicolon()?;
+                    Ok(Node::Expression(expression))
+                }
             },
-            TokenKind::Definition(mutability) => Ok(self.variable_definition(mutability)?),
+            TokenKind::Definition(mutability) => {
+                let definition = self.variable_definition(mutability)?;
+                self.semicolon()?;
+                Ok(definition)
+            },
             TokenKind::Print => {
                 let arg = self.print_arg()?;
+                self.semicolon()?;
                 Ok(Node::Print(arg))
             }
             TokenKind::PrintLn => {
@@ -970,10 +969,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
 
                 let arg = self.print_arg()?;
+                self.semicolon()?;
                 Ok(Node::Println(Some(arg)))
             }
             TokenKind::Eprint => {
                 let arg = self.print_arg()?;
+                self.semicolon()?;
                 Ok(Node::Eprint(arg))
             }
             TokenKind::EprintLn => {
@@ -983,6 +984,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
 
                 let arg = self.print_arg()?;
+                self.semicolon()?;
                 Ok(Node::Eprintln(Some(arg)))
             }
             TokenKind::If => Ok(self.iff()?),
@@ -1010,6 +1012,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     });
                 }
 
+                self.semicolon()?;
                 Ok(Node::Break)
             }
             TokenKind::Continue => {
@@ -1022,6 +1025,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     });
                 }
 
+                self.semicolon()?;
                 Ok(Node::Continue)
             }
             TokenKind::SemiColon => {
@@ -1167,21 +1171,6 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Break
             | TokenKind::Continue => self.statement(token),
         };
-    }
-
-    fn semicolon(&mut self) -> Result<(), Error<ErrorKind>> {
-        let semicolon_token = self.current_token_bounded(Expected::Semicolon)?;
-        let TokenKind::SemiColon = &semicolon_token.kind else {
-            let previous_token = self.peek_previous_token();
-            return Err(Error {
-                kind: ErrorKind::MissingSemicolon,
-                col: previous_token.col,
-                pointers_count: previous_token.kind.display_len(),
-            });
-        };
-
-        _ = self.next_token();
-        return Ok(());
     }
 }
 
@@ -1518,7 +1507,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         });
                     }
 
-                    if let Type::Array { .. } = item.typ() {
+                    if let Type::Array { .. } = item_type {
                         break 'array Err(Error {
                             kind: ErrorKind::NestedArrayNotSupportedYet,
                             col: current_token.col,
@@ -2012,7 +2001,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             /*
-            TODO(stefano): disallow indexing into literal arrays, it's as if you were to access
+            IDEA(stefano): disallow indexing into literal arrays, it's as if you were to access
             the actual element.
             could suggest the user to extract the literal array to a temporary variable first
             */
@@ -2841,7 +2830,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         the same type as the rhs once implicit conversions are removed
         */
         return match assignment_op {
-            AssignmentOp::Equals if var_type == rhs_type => Ok(Node::Assignment {
+            AssignmentOp::Equals if var_type == rhs_type => Ok(Node::Reassignment {
                 var_index: var_ref.var_index,
                 op: assignment_op,
                 op_col: op_token.col,
@@ -2885,7 +2874,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 (
                     Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool),
                     Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool),
-                ) => Ok(Node::Assignment {
+                ) => Ok(Node::Reassignment {
                     var_index: var_ref.var_index,
                     op: assignment_op,
                     op_col: op_token.col,
@@ -2945,7 +2934,6 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
                 TokenKind::Do => {
                     let statement = self.do_statement()?;
-                    self.semicolon()?;
                     IfStatement { condition, statement }
                 }
                 TokenKind::Bracket(_)
@@ -3021,7 +3009,6 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     }
                     TokenKind::Do => {
                         let statement = self.do_statement()?;
-                        self.semicolon()?;
                         if_statement.els = Some(Box::new(statement));
                         break 'iff;
                     }
@@ -3124,7 +3111,6 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             }
             TokenKind::Do => {
                 let statement = self.do_statement()?;
-                self.semicolon()?;
                 Ok(statement)
             }
             TokenKind::Bracket(_)
@@ -3267,7 +3253,7 @@ pub enum ErrorKind {
 
     StrayColon,
     StrayComma,
-    StrayOperator(Op), // TODO(stefano): split into expression operators and assignment operators
+    StrayOperator(Op),
 
     StrayElseBlock,
     IfMustBeFollowedByBooleanExpression,

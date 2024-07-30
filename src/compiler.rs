@@ -551,7 +551,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 _ = writeln!(self.asm, " ; {name} = {value}");
                 self.definition(value, Base::Rbp, dst_offset);
             }
-            Node::Assignment { var_index, op, op_col, new_value } => {
+            Node::Reassignment { var_index, op, op_col, new_value } => {
                 // Note: assignments are only allowed on mutable variables
                 let ast_var = &self.ast.variables[*var_index];
                 let name = ast_var.name;

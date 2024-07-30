@@ -90,7 +90,7 @@ Changes to error messages, help message and alike would **not** be considered br
     - no longer returns generic `PathBuf`s for assembly, object and executable files
     - now requires an `Artifacts` struct instead of generic `PathBuf`s for source and out directory
         path
-- Updated consistency of compilation steps names and static variables
+- Updated consistency of compilation steps variable names
 - Compilation steps are now managed by the `Logger` struct
 - verbosity options are now mandated to come after a `check`, `compile` or `run` commands as the
     last option
