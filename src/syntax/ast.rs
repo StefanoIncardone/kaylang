@@ -733,7 +733,7 @@ impl<'src> From<AstBuilder<'src>> for Ast<'src> {
             strings: builder.strings.into_boxed_slice(),
             raw_strings: builder.raw_strings.into_boxed_slice(),
             string_kinds: builder.string_kinds.into_boxed_slice(),
-        }
+        };
     }
 }
 
@@ -787,21 +787,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             token += 1;
         }
 
-        let mut this = Self {
-            src,
-            errors: Vec::new(),
-            token,
-            tokens,
-            ast,
-        };
+        let mut this = Self { src, errors: Vec::new(), token, tokens, ast };
 
         this.scope();
 
-        return if this.errors.is_empty() {
-            Ok(this.ast.into())
-        } else {
-            Err(this.errors)
-        };
+        return if this.errors.is_empty() { Ok(this.ast.into()) } else { Err(this.errors) };
     }
 }
 
@@ -915,7 +905,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             let reassignment = self.variable_reassignment(op_kind, name)?;
                             self.semicolon()?;
                             Ok(reassignment)
-                        },
+                        }
                         TokenKind::Op(_)
                         | TokenKind::Comment(_)
                         | TokenKind::Unexpected(_)
@@ -944,19 +934,19 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             let expression = self.expression()?;
                             self.semicolon()?;
                             Ok(Node::Expression(expression))
-                        },
+                        }
                     }
                 } else {
                     let expression = self.expression()?;
                     self.semicolon()?;
                     Ok(Node::Expression(expression))
                 }
-            },
+            }
             TokenKind::Definition(mutability) => {
                 let definition = self.variable_definition(mutability)?;
                 self.semicolon()?;
                 Ok(definition)
-            },
+            }
             TokenKind::Print => {
                 let arg = self.print_arg()?;
                 self.semicolon()?;
@@ -1123,7 +1113,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
     }
 
-    fn statement_any(&mut self, token: &'tokens Token<'src>) -> Result<Node<'src>, Error<ErrorKind>> {
+    fn statement_any(
+        &mut self,
+        token: &'tokens Token<'src>,
+    ) -> Result<Node<'src>, Error<ErrorKind>> {
         return match token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
                 let new_scope_index = self.ast.scopes.len();
