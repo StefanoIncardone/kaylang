@@ -819,7 +819,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     */
     fn scope(&mut self) {
         while let Some(token) = self.tokens.get(self.token) {
-            match self.statement_any(token) {
+            match self.any(token) {
                 // skip to the next token after a semicolon
                 Ok(Node::Semicolon) => continue,
                 Ok(Node::ScopeEnd) => break,
@@ -1113,10 +1113,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
     }
 
-    fn statement_any(
-        &mut self,
-        token: &'tokens Token<'src>,
-    ) -> Result<Node<'src>, Error<ErrorKind>> {
+    fn any(&mut self, token: &'tokens Token<'src>) -> Result<Node<'src>, Error<ErrorKind>> {
         return match token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
                 let new_scope_index = self.ast.scopes.len();
@@ -2922,7 +2919,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let after_condition_token = self.current_token_bounded(Expected::DoOrBlock)?;
             let iff = match after_condition_token.kind {
                 TokenKind::Bracket(BracketKind::OpenCurly) => {
-                    let scope = self.statement_any(after_condition_token)?;
+                    let scope = self.any(after_condition_token)?;
                     IfStatement { condition, statement: scope }
                 }
                 TokenKind::Do => {
@@ -2996,7 +2993,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 // we are now inside an else branch
                 let else_if = match after_else_token.kind {
                     TokenKind::Bracket(BracketKind::OpenCurly) => {
-                        let scope = self.statement_any(after_else_token)?;
+                        let scope = self.any(after_else_token)?;
                         if_statement.els = Some(Box::new(scope));
                         break 'iff;
                     }
@@ -3099,7 +3096,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         let after_condition_token = self.current_token_bounded(Expected::DoOrBlock)?;
         let statement_result = match after_condition_token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
-                let scope = self.statement_any(after_condition_token)?;
+                let scope = self.any(after_condition_token)?;
                 Ok(scope)
             }
             TokenKind::Do => {

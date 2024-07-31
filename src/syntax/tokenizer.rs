@@ -939,6 +939,7 @@ impl<'src> Tokenizer<'src> {
                     Ok(TokenKind::Str(Str(string.into())))
                 }
             }
+            // TODO(stefano): report character literals longer than one character
             b'\'' => {
                 let code = match self.next_in_ascii_char_literal()? {
                     b'\\' => match self.next_in_ascii_char_literal()? {
