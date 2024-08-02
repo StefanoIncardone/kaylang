@@ -462,6 +462,8 @@ pub(crate) enum Expression<'src> {
         items: Vec<Expression<'src>>,
     },
 
+    Parenthesis(Box<Expression<'src>>),
+
     Unary {
         op: UnaryOp,
         op_col: usize,
@@ -528,12 +530,13 @@ impl Display for Expression<'_> {
 
                 write!(f, "{last_item}]")
             }
+            Self::Parenthesis(inner) => write!(f, "({inner})"),
             Self::Unary { op: len @ UnaryOp::Len, operand, .. } => write!(f, "{len} {operand}"),
             Self::Unary { op, operand, .. } => write!(f, "{op}{operand}"),
             Self::BooleanUnary { op, operand } => write!(f, "{op}{operand}"),
-            Self::Binary { lhs, op, rhs, .. } => write!(f, "({lhs} {op} {rhs})"),
-            Self::BooleanBinary { lhs, op, rhs, .. } => write!(f, "({lhs} {op} {rhs})"),
-            Self::Comparison { lhs, op, rhs } => write!(f, "({lhs} {op} {rhs})"),
+            Self::Binary { lhs, op, rhs, .. } => write!(f, "{lhs} {op} {rhs}"),
+            Self::BooleanBinary { lhs, op, rhs, .. } => write!(f, "{lhs} {op} {rhs}"),
+            Self::Comparison { lhs, op, rhs } => write!(f, "{lhs} {op} {rhs}"),
             Self::ArrayIndex { value, index, .. } => write!(f, "{value}[{index}]"),
 
             Self::Temporary { typ, .. } => write!(f, "temp {typ}"),
@@ -552,6 +555,7 @@ impl TypeOf for Expression<'_> {
             Self::Array { base_type, items } => {
                 Type::Array { base_type: *base_type, len: items.len() }
             }
+            Self::Parenthesis(inner) => inner.typ(),
             Self::Temporary { typ, .. } => *typ,
             Self::Unary { op, .. } => op.typ(),
             Self::BooleanUnary { op, .. } => op.typ(),
@@ -627,9 +631,12 @@ pub(crate) enum Node<'src> {
     Eprint(Expression<'src>),
     Eprintln(Option<Expression<'src>>),
 
+    // TODO(stefano): flatten and store the corresponding label
     If(If<'src>),
 
+    // TODO(stefano): flatten and store the corresponding label
     Loop(Loop<'src>),
+    // TODO(stefano): flatten and store the corresponding label
     DoLoop(DoLoop<'src>),
     Break,
     Continue,
@@ -638,7 +645,7 @@ pub(crate) enum Node<'src> {
         var_index: VariableIndex,
     },
     Reassignment {
-        var_index: VariableIndex,
+        target: Expression<'src>,
         op: AssignmentOp,
         op_col: usize,
         new_value: Expression<'src>,
@@ -674,8 +681,8 @@ impl Display for Node<'_> {
             Self::Break => write!(f, "break"),
             Self::Continue => write!(f, "continue"),
 
+            Self::Reassignment { target, op, new_value, .. } => write!(f, "{target} {op} {new_value}"),
             Self::Definition { .. }
-            | Self::Reassignment { .. }
             | Self::Scope { .. }
             | Self::ScopeEnd => {
                 unreachable!("should never be displayed");
@@ -693,6 +700,12 @@ pub(crate) struct Scope<'src> {
     pub(crate) nodes: Vec<Node<'src>>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) enum StrKind {
+    Str,
+    RawStr,
+}
+
 #[derive(Debug)]
 struct AstBuilder<'src> {
     loop_depth: usize,
@@ -705,12 +718,6 @@ struct AstBuilder<'src> {
     strings: Vec<Str>,
     raw_strings: Vec<RawStr<'src>>,
     string_kinds: Vec<StrKind>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum StrKind {
-    Str,
-    RawStr,
 }
 
 #[derive(Debug)]
@@ -798,8 +805,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 // parsing of statements
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn semicolon(&mut self) -> Result<(), Error<ErrorKind>> {
-        let semicolon_token = self.current_token_bounded(Expected::Semicolon)?;
-        let TokenKind::SemiColon = &semicolon_token.kind else {
+        let semicolon_token = self.current_token(Expected::Semicolon)?;
+        let TokenKind::SemiColon = semicolon_token.kind else {
             let previous_token = self.peek_previous_token();
             return Err(Error {
                 kind: ErrorKind::MissingSemicolon,
@@ -843,6 +850,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
+            | TokenKind::Identifier(_)
             | TokenKind::Bracket(BracketKind::OpenRound | BracketKind::OpenSquare)
             | TokenKind::Op(
                 Op::Len
@@ -854,92 +862,213 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 | Op::WrappingMinus
                 | Op::SaturatingMinus,
             ) => {
-                let expression = self.expression()?;
-                self.semicolon()?;
+                let mut expression = self.expression()?;
 
-                if let Expression::Array { .. } = expression {
-                    let temporary_value_index = self.ast.temporaries.len();
-                    let expression_type = expression.typ();
-                    self.ast.temporaries.push(expression);
-                    return Ok(Node::Expression(Expression::Temporary {
-                        typ: expression_type,
-                        temporary_value_index,
-                    }));
-                }
+                // NOTE(stefano): going backwards and then forwards again to skip comments
+                /*
+                FIX(stefano): migrate iteration to using the rust model, such that calling next
+                would return the current item and then advance.
+                */
+                self.token -= 1;
+                let after_expression_token = self.next_token_bounded(Expected::Semicolon)?;
+                match after_expression_token.kind {
+                    TokenKind::SemiColon => {
+                        if let Expression::Array { .. } = expression {
+                            let temporary_value_index = self.ast.temporaries.len();
+                            let expression_type = expression.typ();
+                            self.ast.temporaries.push(expression);
+                            expression = Expression::Temporary {
+                                typ: expression_type,
+                                temporary_value_index,
+                            };
+                        }
 
-                Ok(Node::Expression(expression))
-            }
-            TokenKind::Identifier(name) => {
-                if let Some(op) = self.peek_next_token() {
-                    match op.kind {
-                        TokenKind::Op(
-                            op_kind @ (Op::Equals
-                            | Op::PowEquals
-                            | Op::WrappingPowEquals
-                            | Op::SaturatingPowEquals
-                            | Op::TimesEquals
-                            | Op::WrappingTimesEquals
-                            | Op::SaturatingTimesEquals
-                            | Op::DivideEquals
-                            | Op::WrappingDivideEquals
-                            | Op::SaturatingDivideEquals
-                            | Op::RemainderEquals
-                            | Op::PlusEquals
-                            | Op::WrappingPlusEquals
-                            | Op::SaturatingPlusEquals
-                            | Op::MinusEquals
-                            | Op::WrappingMinusEquals
-                            | Op::SaturatingMinusEquals
-                            | Op::LeftShiftEquals
-                            | Op::WrappingLeftShiftEquals
-                            | Op::SaturatingLeftShiftEquals
-                            | Op::RightShiftEquals
-                            | Op::BitAndEquals
-                            | Op::BitXorEquals
-                            | Op::BitOrEquals
-                            | Op::AndEquals
-                            | Op::OrEquals
-                            | Op::LeftRotateEquals
-                            | Op::RightRotateEquals),
-                        ) => {
-                            let reassignment = self.variable_reassignment(op_kind, name)?;
+                        _ = self.next_token();
+                        Ok(Node::Expression(expression))
+                    }
+                    TokenKind::Op(op) => match op {
+                        Op::Equals
+                        | Op::PowEquals
+                        | Op::WrappingPowEquals
+                        | Op::SaturatingPowEquals
+                        | Op::TimesEquals
+                        | Op::WrappingTimesEquals
+                        | Op::SaturatingTimesEquals
+                        | Op::DivideEquals
+                        | Op::WrappingDivideEquals
+                        | Op::SaturatingDivideEquals
+                        | Op::RemainderEquals
+                        | Op::PlusEquals
+                        | Op::WrappingPlusEquals
+                        | Op::SaturatingPlusEquals
+                        | Op::MinusEquals
+                        | Op::WrappingMinusEquals
+                        | Op::SaturatingMinusEquals
+                        | Op::LeftShiftEquals
+                        | Op::WrappingLeftShiftEquals
+                        | Op::SaturatingLeftShiftEquals
+                        | Op::RightShiftEquals
+                        | Op::LeftRotateEquals
+                        | Op::RightRotateEquals
+                        | Op::BitAndEquals
+                        | Op::BitXorEquals
+                        | Op::BitOrEquals
+                        | Op::AndEquals
+                        | Op::OrEquals => {
+                            let assignment_op = match op {
+                                Op::Equals => AssignmentOp::Equals,
+                                Op::PowEquals => AssignmentOp::Pow,
+                                Op::WrappingPowEquals => AssignmentOp::WrappingPow,
+                                Op::SaturatingPowEquals => AssignmentOp::SaturatingPow,
+                                Op::TimesEquals => AssignmentOp::Times,
+                                Op::WrappingTimesEquals => AssignmentOp::WrappingTimes,
+                                Op::SaturatingTimesEquals => AssignmentOp::SaturatingTimes,
+                                Op::DivideEquals => AssignmentOp::Divide,
+                                Op::WrappingDivideEquals => AssignmentOp::WrappingDivide,
+                                Op::SaturatingDivideEquals => AssignmentOp::SaturatingDivide,
+                                Op::RemainderEquals => AssignmentOp::Remainder,
+                                Op::PlusEquals => AssignmentOp::Plus,
+                                Op::WrappingPlusEquals => AssignmentOp::WrappingPlus,
+                                Op::SaturatingPlusEquals => AssignmentOp::SaturatingPlus,
+                                Op::MinusEquals => AssignmentOp::Minus,
+                                Op::WrappingMinusEquals => AssignmentOp::WrappingMinus,
+                                Op::SaturatingMinusEquals => AssignmentOp::SaturatingMinus,
+                                Op::LeftShiftEquals => AssignmentOp::LeftShift,
+                                Op::WrappingLeftShiftEquals => AssignmentOp::WrappingLeftShift,
+                                Op::SaturatingLeftShiftEquals => AssignmentOp::SaturatingLeftShift,
+                                Op::RightShiftEquals => AssignmentOp::RightShift,
+                                Op::BitAndEquals => AssignmentOp::BitAnd,
+                                Op::BitXorEquals => AssignmentOp::BitXor,
+                                Op::BitOrEquals => AssignmentOp::BitOr,
+                                Op::AndEquals => AssignmentOp::And,
+                                Op::OrEquals => AssignmentOp::Or,
+                                Op::LeftRotateEquals => AssignmentOp::LeftRotate,
+                                Op::RightRotateEquals => AssignmentOp::RightRotate,
+                                Op::Len
+                                | Op::Not
+                                | Op::Pow
+                                | Op::WrappingPow
+                                | Op::SaturatingPow
+                                | Op::Times
+                                | Op::WrappingTimes
+                                | Op::SaturatingTimes
+                                | Op::Divide
+                                | Op::WrappingDivide
+                                | Op::SaturatingDivide
+                                | Op::Remainder
+                                | Op::Plus
+                                | Op::WrappingPlus
+                                | Op::SaturatingPlus
+                                | Op::Minus
+                                | Op::WrappingMinus
+                                | Op::SaturatingMinus
+                                | Op::LeftShift
+                                | Op::WrappingLeftShift
+                                | Op::SaturatingLeftShift
+                                | Op::RightShift
+                                | Op::LeftRotate
+                                | Op::RightRotate
+                                | Op::And
+                                | Op::BitAnd
+                                | Op::BitXor
+                                | Op::Or
+                                | Op::BitOr
+                                | Op::Compare
+                                | Op::EqualsEquals
+                                | Op::NotEquals
+                                | Op::Greater
+                                | Op::GreaterOrEquals
+                                | Op::Less
+                                | Op::LessOrEquals => unreachable!("not an 'equals' operator"),
+                            };
+
+                            let reassignment = self.reassignment(
+                                expression,
+                                token,
+                                assignment_op,
+                                after_expression_token,
+                            )?;
+
                             self.semicolon()?;
                             Ok(reassignment)
                         }
-                        TokenKind::Op(_)
-                        | TokenKind::Comment(_)
-                        | TokenKind::Unexpected(_)
-                        | TokenKind::Bracket(_)
-                        | TokenKind::Colon
-                        | TokenKind::SemiColon
-                        | TokenKind::Comma
-                        | TokenKind::False
-                        | TokenKind::True
-                        | TokenKind::Integer(_)
-                        | TokenKind::Ascii(_)
-                        | TokenKind::Str(_)
-                        | TokenKind::RawStr(_)
-                        | TokenKind::Identifier(_)
-                        | TokenKind::Definition(_)
-                        | TokenKind::Print
-                        | TokenKind::PrintLn
-                        | TokenKind::Eprint
-                        | TokenKind::EprintLn
-                        | TokenKind::Do
-                        | TokenKind::If
-                        | TokenKind::Else
-                        | TokenKind::Loop
-                        | TokenKind::Break
-                        | TokenKind::Continue => {
-                            let expression = self.expression()?;
-                            self.semicolon()?;
-                            Ok(Node::Expression(expression))
-                        }
+
+                        Op::Len
+                        | Op::Not
+                        | Op::Pow
+                        | Op::WrappingPow
+                        | Op::SaturatingPow
+                        | Op::Times
+                        | Op::WrappingTimes
+                        | Op::SaturatingTimes
+                        | Op::Divide
+                        | Op::WrappingDivide
+                        | Op::SaturatingDivide
+                        | Op::Remainder
+                        | Op::Plus
+                        | Op::WrappingPlus
+                        | Op::SaturatingPlus
+                        | Op::Minus
+                        | Op::WrappingMinus
+                        | Op::SaturatingMinus
+                        | Op::LeftShift
+                        | Op::WrappingLeftShift
+                        | Op::SaturatingLeftShift
+                        | Op::RightShift
+                        | Op::LeftRotate
+                        | Op::RightRotate
+                        | Op::BitAnd
+                        | Op::BitXor
+                        | Op::BitOr
+                        | Op::And
+                        | Op::Or
+                        | Op::Compare
+                        | Op::EqualsEquals
+                        | Op::NotEquals
+                        | Op::Greater
+                        | Op::GreaterOrEquals
+                        | Op::Less
+                        | Op::LessOrEquals
+                         => {
+                            let previous_token = self.peek_previous_token();
+                            Err(Error {
+                                kind: ErrorKind::MissingSemicolon,
+                                col: previous_token.col,
+                                pointers_count: previous_token.kind.display_len(),
+                            })
+                        },
+                    },
+
+                    TokenKind::Bracket(_)
+                    | TokenKind::Colon
+                    | TokenKind::Comma
+                    | TokenKind::False
+                    | TokenKind::True
+                    | TokenKind::Integer(_)
+                    | TokenKind::Ascii(_)
+                    | TokenKind::Str(_)
+                    | TokenKind::RawStr(_)
+                    | TokenKind::Identifier(_)
+                    | TokenKind::Print
+                    | TokenKind::PrintLn
+                    | TokenKind::Eprint
+                    | TokenKind::EprintLn
+                    | TokenKind::Definition(_)
+                    | TokenKind::Do
+                    | TokenKind::If
+                    | TokenKind::Else
+                    | TokenKind::Loop
+                    | TokenKind::Break
+                    | TokenKind::Continue => {
+                        let previous_token = self.peek_previous_token();
+                        Err(Error {
+                            kind: ErrorKind::MissingSemicolon,
+                            col: previous_token.col,
+                            pointers_count: previous_token.kind.display_len(),
+                        })
                     }
-                } else {
-                    let expression = self.expression()?;
-                    self.semicolon()?;
-                    Ok(Node::Expression(expression))
+                    TokenKind::Comment(_) => unreachable!("should be skipped by the token iterator"),
+                    TokenKind::Unexpected(_) => unreachable!("only valid tokens should be present"),
                 }
             }
             TokenKind::Definition(mutability) => {
@@ -1166,10 +1295,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
 // iteration over tokens
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
-    fn current_token_bounded(
-        &self,
-        expected: Expected,
-    ) -> Result<&'tokens Token<'src>, Error<ErrorKind>> {
+    fn current_token(&self, expected: Expected) -> Result<&'tokens Token<'src>, Error<ErrorKind>> {
         let Some(token) = self.tokens.get(self.token) else {
             let previous = self.peek_previous_token();
             return Err(Error {
@@ -1319,7 +1445,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         &mut self,
         ops: &[Op],
     ) -> Result<Option<(&'tokens Token<'src>, Op)>, Error<ErrorKind>> {
-        let current_token = self.current_token_bounded(Expected::OperatorOrSemicolon)?;
+        let current_token = self.current_token(Expected::OperatorOrSemicolon)?;
         let TokenKind::Op(op) = current_token.kind else {
             return Ok(None);
         };
@@ -1373,7 +1499,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             return Some(integer);
         }
 
-        let current_token = self.current_token_bounded(Expected::Expression)?;
+        let current_token = self.current_token(Expected::Expression)?;
         let expression_result = match &current_token.kind {
             TokenKind::False => Ok(Expression::False),
             TokenKind::True => Ok(Expression::True),
@@ -1404,11 +1530,103 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         pointers_count: current_token.kind.display_len(),
                     }),
                 },
-                Some(_) => Err(Error {
-                    kind: ErrorKind::TypeInExpression,
-                    col: current_token.col,
-                    pointers_count: current_token.kind.display_len(),
-                }),
+                Some(_) => 'type_in_expression: {
+                    let Some(possible_reassignment_operator) = self.peek_next_token() else {
+                        break 'type_in_expression Err(Error {
+                            kind: ErrorKind::TypeInExpression,
+                            col: current_token.col,
+                            pointers_count: current_token.kind.display_len(),
+                        })
+                    };
+
+                    let TokenKind::Op(op) = possible_reassignment_operator.kind else {
+                        break 'type_in_expression Err(Error {
+                            kind: ErrorKind::TypeInExpression,
+                            col: current_token.col,
+                            pointers_count: current_token.kind.display_len(),
+                        })
+                    };
+
+                    match op {
+                        Op::Equals
+                        | Op::PowEquals
+                        | Op::WrappingPowEquals
+                        | Op::SaturatingPowEquals
+                        | Op::TimesEquals
+                        | Op::WrappingTimesEquals
+                        | Op::SaturatingTimesEquals
+                        | Op::DivideEquals
+                        | Op::WrappingDivideEquals
+                        | Op::SaturatingDivideEquals
+                        | Op::RemainderEquals
+                        | Op::PlusEquals
+                        | Op::WrappingPlusEquals
+                        | Op::SaturatingPlusEquals
+                        | Op::MinusEquals
+                        | Op::WrappingMinusEquals
+                        | Op::SaturatingMinusEquals
+                        | Op::LeftShiftEquals
+                        | Op::WrappingLeftShiftEquals
+                        | Op::SaturatingLeftShiftEquals
+                        | Op::RightShiftEquals
+                        | Op::LeftRotateEquals
+                        | Op::RightRotateEquals
+                        | Op::BitAndEquals
+                        | Op::BitXorEquals
+                        | Op::BitOrEquals
+                        | Op::AndEquals
+                        | Op::OrEquals => {
+                            break 'type_in_expression Err(Error {
+                                kind: ErrorKind::TypeInVariableReassignment,
+                                col: current_token.col,
+                                pointers_count: current_token.kind.display_len(),
+                            });
+                        },
+
+                        Op::Len
+                        | Op::Not
+                        | Op::Pow
+                        | Op::WrappingPow
+                        | Op::SaturatingPow
+                        | Op::Times
+                        | Op::WrappingTimes
+                        | Op::SaturatingTimes
+                        | Op::Divide
+                        | Op::WrappingDivide
+                        | Op::SaturatingDivide
+                        | Op::Remainder
+                        | Op::Plus
+                        | Op::WrappingPlus
+                        | Op::SaturatingPlus
+                        | Op::Minus
+                        | Op::WrappingMinus
+                        | Op::SaturatingMinus
+                        | Op::LeftShift
+                        | Op::WrappingLeftShift
+                        | Op::SaturatingLeftShift
+                        | Op::RightShift
+                        | Op::LeftRotate
+                        | Op::RightRotate
+                        | Op::BitAnd
+                        | Op::BitXor
+                        | Op::BitOr
+                        | Op::And
+                        | Op::Or
+                        | Op::Compare
+                        | Op::EqualsEquals
+                        | Op::NotEquals
+                        | Op::Greater
+                        | Op::GreaterOrEquals
+                        | Op::Less
+                        | Op::LessOrEquals => {
+                            break 'type_in_expression Err(Error {
+                                kind: ErrorKind::TypeInExpression,
+                                col: current_token.col,
+                                pointers_count: current_token.kind.display_len(),
+                            });
+                        }
+                    }
+                }
             },
             TokenKind::Bracket(BracketKind::OpenRound) => 'parenthesis: {
                 let expression_start_token = self.next_token_bounded(Expected::Expression)?;
@@ -1423,7 +1641,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
                 let expression = self.expression()?;
                 let close_bracket_token =
-                    self.current_token_bounded(Expected::ClosingRoundBracket)?;
+                    self.current_token(Expected::ClosingRoundBracket)?;
 
                 let TokenKind::Bracket(BracketKind::CloseRound) = close_bracket_token.kind else {
                     return Err(Error {
@@ -1433,7 +1651,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     });
                 };
 
-                Ok(expression)
+                Ok(Expression::Parenthesis(Box::new(expression)))
             }
             TokenKind::Bracket(BracketKind::OpenSquare) => 'array: {
                 let mut bracket_or_comma_token =
@@ -1450,7 +1668,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let first_item = self.expression()?;
 
                 bracket_or_comma_token =
-                    self.current_token_bounded(Expected::CommaOrClosingSquareBracket)?;
+                    self.current_token(Expected::CommaOrClosingSquareBracket)?;
 
                 if let TokenKind::Comma = bracket_or_comma_token.kind {
                     bracket_or_comma_token =
@@ -1508,7 +1726,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     items.push(item);
 
                     bracket_or_comma_token =
-                        self.current_token_bounded(Expected::CommaOrClosingSquareBracket)?;
+                        self.current_token(Expected::CommaOrClosingSquareBracket)?;
 
                     if let TokenKind::Comma = bracket_or_comma_token.kind {
                         bracket_or_comma_token =
@@ -1577,6 +1795,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             pointers_count: current_token.kind.display_len(),
                         }),
                     },
+                    Expression::Parenthesis(inner) => Err(Error {
+                        kind: ErrorKind::CannotTakeLenOf(inner.typ()),
+                        col: current_token.col,
+                        pointers_count: current_token.kind.display_len(),
+                    }),
                     Expression::Unary { op, .. } => Err(Error {
                         kind: ErrorKind::CannotTakeLenOf(op.typ()),
                         col: current_token.col,
@@ -1979,7 +2202,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 });
             };
 
-            let after_index_token = self.current_token_bounded(Expected::ClosingSquareBracket)?;
+            let after_index_token = self.current_token(Expected::ClosingSquareBracket)?;
 
             let TokenKind::Bracket(BracketKind::CloseSquare) = after_index_token.kind else {
                 let before_index_token = self.peek_previous_token();
@@ -1995,22 +2218,24 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             the actual element.
             could suggest the user to extract the literal array to a temporary variable first
             */
+            if let Expression::Parenthesis(_) = expression {
+                return Err(Error {
+                    kind: ErrorKind::CannotIndexIntoExpression,
+                    col: open_bracket_token.col,
+                    pointers_count: open_bracket_token.kind.display_len(),
+                })
+            }
+
             let expression_type = expression.typ();
             expression = match expression_type {
                 Type::Base(base_type) => match base_type {
-                    BaseType::Int => Expression::ArrayIndex {
-                        base_type: BaseType::Int,
-                        value: Box::new(expression),
-                        bracket_col: open_bracket_token.col,
-                        index: Box::new(index),
-                    },
                     BaseType::Str => Expression::ArrayIndex {
                         base_type: BaseType::Ascii,
                         value: Box::new(expression),
                         bracket_col: open_bracket_token.col,
                         index: Box::new(index),
                     },
-                    BaseType::Ascii | BaseType::Bool => {
+                    BaseType::Int | BaseType::Ascii | BaseType::Bool => {
                         return Err(Error {
                             kind: ErrorKind::CannotIndexNonArrayType(expression_type),
                             col: open_bracket_token.col,
@@ -2019,15 +2244,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     }
                 },
                 Type::Array { base_type, .. } => {
-                    // IDEA(stefano): remove this temporary and treat the array as the temporary
-                    let temporary_value_index = self.ast.temporaries.len();
-                    self.ast.temporaries.push(expression);
-                    let temporary_array =
-                        Expression::Temporary { typ: expression_type, temporary_value_index };
-
                     Expression::ArrayIndex {
                         base_type,
-                        value: Box::new(temporary_array),
+                        value: Box::new(expression),
                         bracket_col: open_bracket_token.col,
                         index: Box::new(index),
                     }
@@ -2512,7 +2731,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
 
         let close_square_bracket_token =
-            self.current_token_bounded(Expected::ClosingSquareBracket)?;
+            self.current_token(Expected::ClosingSquareBracket)?;
         let TokenKind::Bracket(BracketKind::CloseSquare) = close_square_bracket_token.kind else {
             return Err(Error {
                 kind: ErrorKind::MissingClosingSquareBracketInArrayType,
@@ -2706,133 +2925,103 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
     }
 
-    fn variable_reassignment(
+    fn reassignment(
         &mut self,
-        op: Op,
-        name: &'src str,
+        target: Expression<'src>,
+        target_token: &'tokens Token<'src>,
+        op: AssignmentOp,
+        op_token: &'tokens Token<'src>,
     ) -> Result<Node<'src>, Error<ErrorKind>> {
-        let name_token = &self.tokens[self.token];
+        let (error_token, target_type) = match &target {
+            Expression::ArrayIndex { base_type, value, ..  } => {
+                let mut unwrapped_target = value;
+                while let Expression::ArrayIndex { value: inner_target, .. } = &**unwrapped_target {
+                    unwrapped_target = inner_target;
+                }
 
-        if self.resolve_type(name).is_some() {
-            return Err(Error {
-                kind: ErrorKind::TypeInVariableReassignment,
-                col: name_token.col,
-                pointers_count: name_token.kind.display_len(),
-            });
-        }
+                let Expression::Variable { .. } = &**unwrapped_target else {
+                    return Err(Error {
+                        kind: ErrorKind::CannotAssignToExpression,
+                        col: op_token.col,
+                        pointers_count: op_token.kind.display_len()
+                    });
+                };
 
-        let Some(op_token) = self.next_token() else {
-            unreachable!("the presence of an op token should have been checked before the call to this function");
+                let error_token = if let TokenKind::Identifier(name) = target_token.kind {
+                    let Some((mutability, _)) = self.resolve_variable(name) else {
+                        unreachable!("should have been checked during lhs parsing");
+                    };
+
+                    let Mutability::Var = mutability else {
+                        return Err(Error {
+                            kind: ErrorKind::CannotMutateVariable,
+                            col: target_token.col,
+                            pointers_count: target_token.kind.display_len(),
+                        });
+                    };
+
+                    target_token
+                } else {
+                    op_token
+                };
+
+                (error_token, Type::Base(*base_type))
+            }
+            Expression::Variable { typ, name } => {
+                let Some((mutability, _)) = self.resolve_variable(name) else {
+                    unreachable!("should have been checked during lhs parsing");
+                };
+
+                let Mutability::Var = mutability else {
+                    return Err(Error {
+                        kind: ErrorKind::CannotMutateVariable,
+                        col: target_token.col,
+                        pointers_count: target_token.kind.display_len(),
+                    });
+                };
+
+                (target_token, *typ)
+            }
+
+            Expression::False
+            | Expression::True
+            | Expression::Int(_)
+            | Expression::Ascii(_)
+            | Expression::Str { .. }
+            | Expression::Array { .. }
+            | Expression::Parenthesis(_)
+            | Expression::Unary { .. }
+            | Expression::BooleanUnary { .. }
+            | Expression::Binary { .. }
+            | Expression::BooleanBinary { .. }
+            | Expression::Comparison { .. }
+            | Expression::Temporary { .. } => {
+                return Err(Error {
+                    kind: ErrorKind::CannotAssignToExpression,
+                    col: op_token.col,
+                    pointers_count: op_token.kind.display_len()
+                });
+            }
         };
 
         _ = self.next_token();
-        let rhs = self.expression()?;
+        let new_value = self.expression()?;
+        let new_value_type = new_value.typ();
 
-        let Some((mutability, var_ref)) = self.resolve_variable(name) else {
-            return Err(Error {
-                kind: ErrorKind::VariableNotPreviouslyDefined,
-                col: name_token.col,
-                pointers_count: name_token.kind.display_len(),
-            });
-        };
-
-        let Mutability::Var = mutability else {
-            return Err(Error {
-                kind: ErrorKind::CannotMutateVariable,
-                col: name_token.col,
-                pointers_count: name_token.kind.display_len(),
-            });
-        };
-
-        let assignment_op = match op {
-            Op::Equals => AssignmentOp::Equals,
-            Op::PowEquals => AssignmentOp::Pow,
-            Op::WrappingPowEquals => AssignmentOp::WrappingPow,
-            Op::SaturatingPowEquals => AssignmentOp::SaturatingPow,
-            Op::TimesEquals => AssignmentOp::Times,
-            Op::WrappingTimesEquals => AssignmentOp::WrappingTimes,
-            Op::SaturatingTimesEquals => AssignmentOp::SaturatingTimes,
-            Op::DivideEquals => AssignmentOp::Divide,
-            Op::WrappingDivideEquals => AssignmentOp::WrappingDivide,
-            Op::SaturatingDivideEquals => AssignmentOp::SaturatingDivide,
-            Op::RemainderEquals => AssignmentOp::Remainder,
-            Op::PlusEquals => AssignmentOp::Plus,
-            Op::WrappingPlusEquals => AssignmentOp::WrappingPlus,
-            Op::SaturatingPlusEquals => AssignmentOp::SaturatingPlus,
-            Op::MinusEquals => AssignmentOp::Minus,
-            Op::WrappingMinusEquals => AssignmentOp::WrappingMinus,
-            Op::SaturatingMinusEquals => AssignmentOp::SaturatingMinus,
-            Op::LeftShiftEquals => AssignmentOp::LeftShift,
-            Op::WrappingLeftShiftEquals => AssignmentOp::WrappingLeftShift,
-            Op::SaturatingLeftShiftEquals => AssignmentOp::SaturatingLeftShift,
-            Op::RightShiftEquals => AssignmentOp::RightShift,
-            Op::BitAndEquals => AssignmentOp::BitAnd,
-            Op::BitXorEquals => AssignmentOp::BitXor,
-            Op::BitOrEquals => AssignmentOp::BitOr,
-            Op::AndEquals => AssignmentOp::And,
-            Op::OrEquals => AssignmentOp::Or,
-            Op::LeftRotateEquals => AssignmentOp::LeftRotate,
-            Op::RightRotateEquals => AssignmentOp::RightRotate,
-            Op::Len
-            | Op::Not
-            | Op::Pow
-            | Op::WrappingPow
-            | Op::SaturatingPow
-            | Op::Times
-            | Op::WrappingTimes
-            | Op::SaturatingTimes
-            | Op::Divide
-            | Op::WrappingDivide
-            | Op::SaturatingDivide
-            | Op::Remainder
-            | Op::Plus
-            | Op::WrappingPlus
-            | Op::SaturatingPlus
-            | Op::Minus
-            | Op::WrappingMinus
-            | Op::SaturatingMinus
-            | Op::LeftShift
-            | Op::WrappingLeftShift
-            | Op::SaturatingLeftShift
-            | Op::RightShift
-            | Op::LeftRotate
-            | Op::RightRotate
-            | Op::And
-            | Op::BitAnd
-            | Op::BitXor
-            | Op::Or
-            | Op::BitOr
-            | Op::Compare
-            | Op::EqualsEquals
-            | Op::NotEquals
-            | Op::Greater
-            | Op::GreaterOrEquals
-            | Op::Less
-            | Op::LessOrEquals => unreachable!("not an 'equals' operator"),
-        };
-
-        let var = &self.ast.variables[var_ref.var_index];
-        let var_type = var.value.typ();
-        let rhs_type = rhs.typ();
-
-        /*
-        NOTE(stefano): this entire match statement could be collapsed to just check if the lhs is of
-        the same type as the rhs once implicit conversions are removed
-        */
-        return match assignment_op {
-            AssignmentOp::Equals if var_type == rhs_type => Ok(Node::Reassignment {
-                var_index: var_ref.var_index,
-                op: assignment_op,
+        return match op {
+            AssignmentOp::Equals if target_type == new_value_type => Ok(Node::Reassignment {
+                target,
+                op,
                 op_col: op_token.col,
-                new_value: rhs,
+                new_value,
             }),
             AssignmentOp::Equals => Err(Error {
                 kind: ErrorKind::VariableReassignmentTypeMismatch {
-                    expected: var_type,
-                    actual: rhs_type,
+                    expected: target_type,
+                    actual: new_value_type,
                 },
-                col: name_token.col,
-                pointers_count: name_token.kind.display_len(),
+                col: error_token.col,
+                pointers_count: error_token.kind.display_len(),
             }),
             AssignmentOp::Pow
             | AssignmentOp::WrappingPow
@@ -2860,23 +3049,30 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | AssignmentOp::BitAnd
             | AssignmentOp::BitXor
             | AssignmentOp::Or
-            | AssignmentOp::BitOr => match (var_type, rhs_type) {
+            | AssignmentOp::BitOr => match (target_type, new_value_type) {
                 (
-                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool),
+                    Type::Base(BaseType::Int),
                     Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool),
                 ) => Ok(Node::Reassignment {
-                    var_index: var_ref.var_index,
-                    op: assignment_op,
+                    target,
+                    op,
                     op_col: op_token.col,
-                    new_value: rhs,
+                    new_value,
                 }),
+                (Type::Base(BaseType::Ascii | BaseType::Bool), _) => {
+                    Err(Error {
+                        kind: ErrorKind::CannotModifyInplace(target_type),
+                        col: op_token.col,
+                        pointers_count: op_token.kind.display_len(),
+                    })
+                }
                 _ => Err(Error {
                     kind: ErrorKind::VariableReassignmentTypeMismatch {
-                        expected: var_type,
-                        actual: rhs_type,
+                        expected: target_type,
+                        actual: new_value_type,
                     },
-                    col: name_token.col,
-                    pointers_count: name_token.kind.display_len(),
+                    col: error_token.col,
+                    pointers_count: error_token.kind.display_len(),
                 }),
             },
         };
@@ -2916,7 +3112,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 });
             };
 
-            let after_condition_token = self.current_token_bounded(Expected::DoOrBlock)?;
+            let after_condition_token = self.current_token(Expected::DoOrBlock)?;
             let iff = match after_condition_token.kind {
                 TokenKind::Bracket(BracketKind::OpenCurly) => {
                     let scope = self.any(after_condition_token)?;
@@ -3093,7 +3289,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             });
         };
 
-        let after_condition_token = self.current_token_bounded(Expected::DoOrBlock)?;
+        let after_condition_token = self.current_token(Expected::DoOrBlock)?;
         let statement_result = match after_condition_token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
                 let scope = self.any(after_condition_token)?;
@@ -3210,6 +3406,7 @@ pub enum ErrorKind {
     MissingClosingSquareBracketInIndex,
     MissingClosingSquareBracketInArrayType,
     CannotIndexNonArrayType(Type),
+    CannotIndexIntoExpression,
     TypeInExpression,
     EmptyExpression,
     UnclosedBracket(BracketKind),
@@ -3240,6 +3437,8 @@ pub enum ErrorKind {
     VariableReassignmentTypeMismatch { actual: Type, expected: Type },
     CannotInferTypeOfVariable,
     CannotMutateVariable,
+    CannotModifyInplace(Type),
+    CannotAssignToExpression,
 
     StrayColon,
     StrayComma,
@@ -3313,6 +3512,10 @@ impl IntoErrorInfo for ErrorKind {
             Self::CannotIndexNonArrayType(non_indexable_type) => (
                 "invalid expression".into(),
                 format!("cannot index into a value of type '{non_indexable_type}'").into(),
+            ),
+            Self::CannotIndexIntoExpression => (
+                "invalid expression".into(),
+                "cannot index into an expression".into(),
             ),
             Self::VariableNotPreviouslyDefined => (
                 "variable not previously defined".into(),
@@ -3429,6 +3632,14 @@ impl IntoErrorInfo for ErrorKind {
             Self::CannotMutateVariable => (
                 "invalid variable reassignment".into(),
                 "cannot mutate immutable variable".into(),
+            ),
+            Self::CannotModifyInplace(typ) => (
+                "invalid variable reassignment".into(),
+                format!("cannot use inplace assignment operators on `{typ}` values").into(),
+            ),
+            Self::CannotAssignToExpression => (
+                "invalid variable reassignment".into(),
+                "cannot assign to expression".into(),
             ),
 
             Self::StrayColon => (

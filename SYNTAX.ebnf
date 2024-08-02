@@ -5,9 +5,9 @@ line_comment      = "#", [{ASCII_character | UTF-8_character}];
 digit             = "0".."9";
 integer_literal    = {digit};
 boolean_literal   = "true" | "false";
-escape_character  = "\\" | "\'" | '\"' | '"' | "\n" | "\r" | "\t" | "\0";
+escape_character  = "\\" | "\'" | '\"' | "\n" | "\r" | "\t" | "\0";
 character_literal = "'", (escape_character | ASCII_character), "'";
-string_literal    = '"', [{escape_character | ASCII_character}], '"';
+string_literal    = ["r"], '"', [{escape_character | ASCII_character}], '"';
 identifier        = "_" | "A".."Z" | "a".."z", [{"_" | "A".."Z" | "a".."z" | digit}];
 
 operator_len = "len";
@@ -70,9 +70,9 @@ assignment_operator = "=" | "**=" | "*=" | "/=" | "%=" | "+=" | "-=" | "<<=" | "
 
 (* expressions must be of the same type *)
 array       = "[", expression, ",", expression, [{(",", expression)}], [","], "]";
-array_index = identifier, "[", integer_expression, "]";
 array_variable = identifier;
-string_index = identifier, "[", integer_expression, "]";
+array_index = array_variable, "[", integer_expression, "]";
+string_index = identifier | array_index, "[", integer_expression, "]";
 
 (* from highest precedence to lowest *)
 int_factor                = [unary_operator], (integer_literal | character_literal | identifier | ("(", integer_expression, ")") | array_index);
@@ -100,11 +100,12 @@ expression                = boolean_expression | integer_expression | string_lit
 type = identifier | (identifier, "[", integer_literal, "]");
 variable_declaration = ("let" | "var"), identifier, [[":", type], "=", expression], ";";
 
-variable_reassignment = identifier, assignment_operator, expression, ";";
+variable_reassignment = identifier | array_index, assignment_operator, expression, ";";
 
-print = (("print", expression) | ("println", [expression])), ";";
+print = (("print", expression) | ("println", [expression]) | ("eprint", expression) | ("eprintln", [expression])), ";";
 if    = "if", boolean_expression, (("do", statement, ";") | scope), [{"else", (if | ("do", statement, ";") | scope)}];
-loop  = ["do"], "loop", boolean_expression, (("do", statement, ";") | scope);
+loop  = "loop", boolean_expression, (("do", statement, ";") | scope);
+doloop  = ["do"], "loop", boolean_expression, (("do", statement, ";") | scope);
 
-statement = expression | print | variable_declaration | variable_reassignment | if | loop;
+statement = expression | print | variable_declaration | variable_reassignment | if | loop | doloop;
 scope     = "{", [{line_comment | statement | scope}], "}";

@@ -39,9 +39,35 @@ Changes to error messages, help message and alike would **not** be considered br
 
 ### Added
 
-- String and Array comparison operators: `<=>`, `==`, `!=`, `<`, `<=`, `>`, `>=`
-- String and Array `len` operator: `len "hello" # -> 5`
-- Raw string literals: for example `r"hello\nworld"` where `\n` would not get escaped
+- Strings and Arrays indexing assigning:
+
+    ```kay
+    var array_of_strings = ["1234", "5678"];
+
+    # assignment of an entire string
+    array_of_strings[0] = "c";
+
+    # assignment of a single character of a string
+    array_of_strings[1][0] = 'd';
+
+    # copied by reference
+    var string = array_of_strings[1];
+
+    # will also modify array_of_strings[1]
+    string[1] = 'b';
+
+    var array_of_int = [19, 21];
+
+    # assignment of single item
+    array_of_int[0] = 42;
+
+    # inplace modification of a single item
+    array_of_int[1] +\= 1;
+    ```
+
+- String and Arrays comparison operators: `<=>`, `==`, `!=`, `<`, `<=`, `>`, `>=`
+- String and Arrays `len` operator: `len "hello" # -> 5`
+- Raw string literals, i.e.: `r"hello\nworld"` where `\n` would not get escaped
 - `+` as the unary absolute value operator
 - overflowing operators, will wrap in two's complemente: `...\` (e.g.: `*` -> `*\`)
 - saturating operators: `...|` (e.g.: `*` -> `*|`)
@@ -65,6 +91,7 @@ Changes to error messages, help message and alike would **not** be considered br
 - Improved logging in case of failures with `run` and `compile` commands
 - An error is now returned when no executable name is provided when parsing arguments in the form of
     `Vec<String>`
+- Generated assembly file does not get cleared in the case of a compile crash
 
 #### Breaking
 
@@ -99,6 +126,9 @@ Changes to error messages, help message and alike would **not** be considered br
 
 ### Removed
 
+- indexing into `int` values
+- usage of `*op*=` operators on `ascii` and `bool` values
+<!--  -->
 - `Error`, `ColoredString` and `ColoredStr` type aliases, to allow for more explicit type signatures
 - `logging` and `cli` modules inlined inside the root `kaylang` module, thus removed
 - `assembler`, `linker` and `run` modules integrated in the new `compiler::artifacts` module.

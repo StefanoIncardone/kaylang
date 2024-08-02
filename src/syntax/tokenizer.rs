@@ -402,6 +402,7 @@ pub(crate) enum TokenKind<'src> {
     /// temporary way of printing values followed by a newline to stderr
     EprintLn,
 
+    // TODO(stefano): rename to Mutability
     Definition(Mutability),
     Do,
     If,

@@ -1,3 +1,7 @@
+/*
+IDEA(stefano): rename this module to `error` and incorporate all error structs and enums, thus
+removing the syntax module and bringing the ast and tokenizer modules into the root module
+*/
 pub mod ast;
 pub mod tokenizer;
 
@@ -22,6 +26,13 @@ at: file.kay:21:5
    |
 21 | blah . dadasd
    |      ^ unrecognized
+
+would become:
+Error: unrecognized character
+at: file.kay:21:5
+   |
+21 | blah . dadasd
+   |      ^
 */
 #[derive(Debug, Clone)]
 pub struct ErrorInfo {
@@ -29,6 +40,7 @@ pub struct ErrorInfo {
     pub error_cause_message: Cow<'static, str>,
 }
 
+// TODO(stefano): rename to RawError
 #[derive(Debug, Clone)]
 pub struct Error<K: IntoErrorInfo> {
     pub kind: K,
@@ -53,6 +65,7 @@ impl<K: IntoErrorInfo> Error<K> {
     }
 }
 
+// TODO(stefano): rename to Error
 #[derive(Debug, Clone)]
 pub struct ErrorDisplay<'src> {
     pub error_message: Cow<'static, str>,
