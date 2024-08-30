@@ -1155,7 +1155,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 Ok(Node::Semicolon)
             }
             TokenKind::Bracket(BracketKind::OpenCurly) => {
-                let Position { line, col, .. } = self.src.position(token.col);
+                let Position { line, col } = self.src.position(token.col);
                 unreachable!(
                     "blocks not allowed in single statements: {file}:{line}:{col}",
                     file = self.src.path.display(),
@@ -1164,7 +1164,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             TokenKind::Bracket(
                 BracketKind::CloseCurly | BracketKind::CloseSquare | BracketKind::CloseRound,
             ) => {
-                let Position { line, col, .. } = self.src.position(token.col);
+                let Position { line, col } = self.src.position(token.col);
                 unreachable!(
                     "should have been cought during tokenization: {file}:{line}:{col}",
                     file = self.src.path.display(),

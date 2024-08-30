@@ -51,7 +51,10 @@ pub struct Error<K: IntoErrorInfo> {
 
 impl<K: IntoErrorInfo> Error<K> {
     pub fn display<'src>(&self, src: &'src SrcFile) -> ErrorDisplay<'src> {
-        let Position { line, col, line_text } = src.position(self.col);
+        let Position { line, col } = src.position(self.col);
+        let line_span = &src.lines[line - 1];
+        let line_text = &src.code[line_span.start..line_span.end];
+
         let ErrorInfo { error_message, error_cause_message } = self.kind.info();
         return ErrorDisplay {
             error_message,

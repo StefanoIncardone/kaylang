@@ -16,12 +16,10 @@ pub struct Span {
 pub type Line = Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Position<'src> {
+pub struct Position {
     pub line: usize,
     // IDEA(stefano): restrict the max line length to 255/511/1023/2047/4095
     pub col: usize,
-    // REMOVE(stefano): calculate only when actually needed
-    pub line_text: &'src str,
 }
 
 /* IDEA(stefano):
@@ -102,7 +100,7 @@ impl SrcFile {
     }
 
     #[must_use]
-    pub fn position(&self, col: usize) -> Position<'_> {
+    pub fn position(&self, col: usize) -> Position {
         let mut left = 0;
         let mut right = self.lines.len() - 1;
         while left < right {
@@ -127,7 +125,7 @@ impl SrcFile {
             }
         }
 
-        return Position { line: left + 1, col: display_col, line_text };
+        return Position { line: left + 1, col: display_col };
     }
 }
 
