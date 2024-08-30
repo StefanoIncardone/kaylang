@@ -1,6 +1,65 @@
 # Feature Ideas
 
-**IMPORTANT**: no feature is final, modifications can happen at any moment
+>[!WARNING]
+> no feature is final, modifications can happen at any moment
+
+## Quotes in raw strings
+
+```kay
+r"nested "quotes" are not allowed";
+
+# the Rust way, would collide with comments
+r#"nested "quotes" are allowed"#
+
+# with extra quotes, the same amount of opening quotes must be used to close the string
+# you can use the number of opening quotes - 1 inside the string in succession
+r""nested "quotes" are allowed""
+r"""nested ""quotes"" are allowed"""
+
+# or allow for escapes (defeats the purpose of raw strings)
+r"nested \"quotes\" would need escaping"
+```
+
+## Built-in notes
+
+Implement a way to recognize and collect todos, and other tags
+
+```kay
+# at: file.kay
+
+(12) # TODO(stefano): implement this features
+
+(21) # NOTE(stefano):: this is a note
+#                    ^notice the second `:`
+(42) # IDEA(stefano):genious
+#                    ^notice the missing space
+```
+
+running the `kay notes file.kay` command would output something like:
+
+```text
+TODO(stefano): file.kay:12: implement this feature
+NOTE(stefano): file.kay:21:: this is a note
+IDEA(stefano): file.kay:42:this is a note
+```
+
+Could create a config file that specifies what notes to look for, like a notes.toml
+
+## Arbitrary number bases
+
+```kay
+# standard bases
+let decimal = 02_1; # with trailing zeroes and separating underscores allowed
+let binay = 0b0001_0101;
+let octal = 0o25;
+let hexadecimal = 0x15;
+
+# arbitrary bases would make use of the `a` modifier to state that any number between the
+# leading 0 and `a` modifier would be the base of the number and allow to represent numbers up
+# to base 36 using characters from `0123456789abcdefghijklmnopqrstuvwxyz` or
+# `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ`
+let base_21 = 021a1;
+```
 
 ## More output file names flags
 
@@ -421,6 +480,7 @@ consistency with their right shifts counterparts
 - mutable strings (like string builders) are surrounded by `` ` ``: `` `hello world` ``
     - seamlees way to convert from one string type to another
 - multiline strings are prefixed by a `m`, or by multiple quotes like in Java:
+    - multiline strings may follow C-style string concatenation
     - lines will have newline characters appended to them unless they end in a `\`, which can be escaped using a `\\`
     - whitespace will be preserved (except before the closing quote) and leading whitespace is calculated based on the
         position of the closing quote, or by the text furthest to the left.  
@@ -626,23 +686,23 @@ fn mismatch_index: uint? = array_eq[T: type, N: uint](dst: T[N]*, src: T[N]*) {
 structs are just an aggregation of types, basically named heterogeneous arrays:
 
 ```kay
-struct RGB {
+struct Rgb {
     r: u8,          # type specific default inizialization, which for u8 is 0
     g: u8 = 255,    # explicit default initialization
     b: u8 = ?,      # intentionally uninitialized member, may contain garbage
             # optional trailing coma
 }
 
-let rgb = RGB { r = 255, g = 255, b = 255 };
+let rgb = Rgb { r = 255, g = 255, b = 255 };
 
 # will have r initialized to 0 and b initialized to possibly garbage values
-let rgb = RGB { g = 255 };
+let rgb = Rgb { g = 255 };
 
 # or infering the type of the composite type literal from the type annotation
-let rgb: RGB = { r = 255, g = 255, b = 255 };
+let rgb: Rgb = { r = 255, g = 255, b = 255 };
 
 # or specifying the arguments in order
-let rgb = RGB { 255, 255, 255 };
+let rgb = Rgb { 255, 255, 255 };
 ```
 
 ### alternative syntax
@@ -650,20 +710,8 @@ let rgb = RGB { 255, 255, 255 };
 using round brackets instead of curly brackets for ease of use and consistency with function calls
 
 ```kay
-struct RGB (
-    r: u8,
-    g: u8,
-    b: u8,
-)
-
-# maybe this can stay as curly brackets
-struct RGB {
-    r: u8,
-    g: u8,
-    b: u8,
-}
-
-let rgb = RGB(r = 255, g = 255, b = 255);
+# struct definition
+struct Rgb(r: u8, g: u8, b: u8)
 ```
 
 ### method functions
@@ -672,33 +720,66 @@ say we now create a constructor function:
 
 ```kay
 # rust-like
-impl RGB {
+impl Rgb {
     # associated function or java's "static" method
-    fn Self = new(...) { ... }
+    # marked as @constructor to allow modifications to fields that can only be set during construction
+    @constructor fn Self = new(...) { ... }
 }
 
 # new ideas (mainly to avoid having an additional indentation coming from the impl block):
 
-# no impl-block
-# <RGB> means it's a method of RGB
-fn<RGB> Self = new(...) { ... }
+#### impl markers
+impl Rgb; # from this point onwards every function is a function related to Rgb
+
+# Rust-like associated function of Rgb
+fn function_of_Rgb(...) { ... }
+
+# method function of Rgb
+fn method_of_Rgb(self: Self, ...) { ... }
+
+impl; # would reset function defintion to being normal functions
+
+fn regular_function(...) { ... }
+
+impl Foo; # from this point onwards every function is a function related to Foo
+...
+
+impl Rgb; # can reopen implementations
+...
+
+impl Bar; # now related to Bar
+...
+####
+
+#### function markers
+# <Rgb> means it's a method of Rgb
+fn<Rgb> Self = new(...) { ... }
 
 # or
-RGB.fn Self = new(...) { ... }
+Rgb.fn Self = new(...) { ... }
 
 # or
 fn Self = Rgb.new(...) { ... }
 
-# <RGB> means it's a method of RGB
-# first argument is of type Self, meaning this is a method of a variable of type RGB
-fn<RGB> do_stuff(self: Self, ...) { ... }
+# <Rgb> means it's a method of Rgb
+# first argument is of type Self, meaning this is a method of a variable of type Rgb
+fn<Rgb> do_stuff(self: Self, ...) { ... }
 
 # the name of the first parameter could be anything, unlike Rust
-fn<RGB> do_stuff(rgb: Self, ...) { ... }
+fn<Rgb> do_stuff(rgb: Self, ...) { ... }
+####
 
-# no need to convert from curly brackets to round brackets
-let rgb = RGB(r = 0, g = 0, b = 0);
-let rgb = RGB.new(r = 0, g = 0, b = 0);
+# no need to convert from curly brackets to round brackets, but could need to use the `struct`
+# keyword to avoid colliding with a possible function named `Rgb` 
+# "equivalent" constructor function, has no access to fields that can only be set inside the struct constructor
+fn Rgb = Rgb(r: u8, g: u8, b: u8) {
+    return struct Rgb(r, g, b);
+}
+
+let rgb = Rgb(r = 0, g = 0, b = 0);         # this will call a function named `Rgb`
+let rgb = struct Rgb(r = 0, g = 0, b = 0);  # this will call the struct constructor for `Rgb` 
+let rgb = Rgb { r = 0, g = 0, b = 0 };      # traditional way of calling the struct constructor for `Rgb` 
+let rgb = Rgb.new(r = 0, g = 0, b = 0);     # this will call the function `Rgb.new`
 
 rgb.do_stuff();
 ```
@@ -706,13 +787,13 @@ rgb.do_stuff();
 #### comparison to rust
 
 ```rust
-struct RGB {
+struct Rgb {
     r: u8,
     g: u8,
     b: u8,
 }
 
-impl RGB {
+impl Rgb {
     fn new(r: u8, g: u8, b: u8) -> Self {
         Self { r, g, b }
     }
@@ -720,16 +801,94 @@ impl RGB {
 
 // with the struct initialization syntax
 // - can use named 'arguments'
-let rgb = RGB { r: 255, g: 255, b: 255 }
+let rgb = Rgb { r: 255, g: 255, b: 255 }
 
 // with the 'constructor' function
 // - complete syntax change
 // - had to convert curly brackets to round brackets
 // - lost ability to use named arguments
-let rgb = RGB::new(255, 255, 255);
+let rgb = Rgb::new(255, 255, 255);
 ```
 
-### Rust-like tuple structs
+### Asymetric fields visibility and read/write privileges
+
+ability to specify who can read and write a struct field
+
+```kay
+# struct methods and functions always have read access to every kind of field
+# may enforce the usage of `let` and `var`
+struct Foo(
+    # public read: no
+    # public write: no
+    # private read: yes
+    # private write: no
+    #
+    # only set during construction, never able to be modified again
+    private let x0: int,
+    let x0: int, # implies private
+    x0: int, # implies private let
+
+    # public read: no
+    # public write: no
+    # private read: yes
+    # private write: yes
+    #
+    # can be modified inside struct method and functions
+    private var x0: int,
+    var x0: int, # implies private
+
+    # public read: yes
+    # public write: no
+    # private read: yes
+    # private write: no
+    #
+    # only set during construction, never able to be modified again
+    # can be read from outside
+    public let private let x0: int,
+    public let x0: int, # implies private let
+    public x0: int, # implies public let and private let
+
+    # public read: yes
+    # public write: no
+    # private read: yes
+    # private write: yes
+    #
+    # can be modified inside struct method and functions, but only read from outside
+    public let private var x0: int,
+    public let x0: int, # implies private let
+    public x0: int, # implies public let and private let
+
+    # public read: yes
+    # public write: yes
+    # private read: yes
+    # private write: no
+    #
+    # disallowed: public var disagrees with private let, makes no sense being able to be modified
+    # outside of the struct methods and functions and not inside
+    public var private let x0: int,
+
+    # public read: yes
+    # public write: yes
+    # private read: yes
+    # private write: yes
+    #
+    # can be accessed and modified from everywhere
+    public var private var x0: int,
+    public var x0: int, # implies private var
+)
+```
+
+blanket modifiers:
+
+```kay
+# every field follows it's declaration modifiers
+var foo = struct Foo(x0 = 0);
+
+# every field is immutable, read access to fields are not changed
+let foo = struct Foo(x0 = 0);
+```
+
+### Nameless/temporary/Rust-like tuple structs
 
 basically structs whith unnamed fields (referred to by index)
 
@@ -750,7 +909,7 @@ let y = point.1;
 name-less tuples:
 
 ```kay
-let stefano: { string, int } = { "stefano", 23 };
+let stefano: { str, int } = { "stefano", 23 };
 
 # type can be omitted and therefore inferred
 let stefano = { "stefano", 23 };
@@ -759,16 +918,24 @@ let name = stefano.0;
 let age = stefano.1;
 ```
 
+or with explicit struct keyword and named fields:
+
+```kay
+let range: struct { min: int, max: int } = struct(1, 2);
+println range.min;
+println range.max;
+```
+
 ### Inheritance
 
 inheritance is just syntactic sugar, this allows for any extended type to be passed as "base" type only carrying
 the fields defined in the base type:
 
 ```kay
-struct RGBA {
-    rgb: using RGB,
+struct Rgba {
+    rgb: using Rgb,
 
-    # these fields (of the used RGB struct are implicitly added)
+    # these fields (of the used Rgb struct are implicitly added)
     # r: u8,
     # g: u8,
     # b: u8,
@@ -777,9 +944,9 @@ struct RGBA {
 }
 
 # the above type is equivalent to:
-struct RGBA {
+struct Rgba {
     union {
-        rgb: RGB,
+        rgb: Rgb,
         struct {
             r: u8,
             g: u8,
@@ -791,9 +958,9 @@ struct RGBA {
 }
 
 # 'using' the same struct multiple times is not allowed
-struct RGBA {
-    rgb: using RGB,
-    rgb2: using RGB, # not allowed
+struct Rgba {
+    rgb: using Rgb,
+    rgb2: using Rgb, # not allowed
     a: u8
 }
 
@@ -804,17 +971,17 @@ struct Point {
 }
 
 struct Pixel {
-    rgba: using RGBA,
+    rgba: using Rgba,
     position: using Point,
 }
 
 # which is equivalent to 
 struct Pixel {
     union {
-        rgba: RGBA,
+        rgba: Rgba,
         struct {
             union {
-                rgb: RGBA,
+                rgb: Rgba,
                 struct {
                     r: u8,
                     g: u8,
@@ -833,19 +1000,19 @@ struct Pixel {
     },
 }
 
-let rgb = RGB { r = 255, g = 255, b = 255 };
+let rgb = Rgb { r = 255, g = 255, b = 255 };
 
 # this
-let rgba: RGBA = rgb;
+let rgba: Rgba = rgb;
 
 # is equivalent to:
-let rgba = RGBA { r = rgb.r, g = rgb.g, b = rgb.b, a = 0 };
+let rgba = Rgba { r = rgb.r, g = rgb.g, b = rgb.b, a = 0 };
 
 # otherwise to:
-let rgba = RGBA { rgb = rgb, a = 0 };
+let rgba = Rgba { rgb = rgb, a = 0 };
 
 # or to:
-let rgba = RGBA {
+let rgba = Rgba {
     rgb, # field with same name shorthand
     a = 0,
 };
@@ -855,34 +1022,34 @@ if we have a function defined for the "base" struct only the "base" part of the 
 
 ```kay
 # so this
-function_for_RGB(rgba);
+function_for_Rgb(rgba);
 
 # is desugared to
-function_for_RGB(rgba.rgb);
+function_for_Rgb(rgba.rgb);
 
 # and
 function_for_rgb(pixel);
 
 # is desugared to
-function_for_RGB(pixel.rgba.rgb);
+function_for_Rgb(pixel.rgba.rgb);
 ```
 
 if we dont explicity extend inside a struct it's going to result in an error
 
 ```kay
-struct RGB {
+struct Rgb {
     r: u8,
     g: u8,
     a: u8,
 }
 
-struct RGBA {
-    rgb: RGB, # no explicit "using"
+struct Rgba {
+    rgb: Rgb, # no explicit "using"
     a: u8,
 }
 
-function_for_RGB(rgba.rgb); # works
-function_for_RGB(rgba); # doesn't work
+function_for_Rgb(rgba.rgb); # works
+function_for_Rgb(rgba); # doesn't work
 ```
 
 ## Enum
@@ -905,7 +1072,7 @@ enum Colors: u32 { # optional data type
 C-like unions:
 
 ```kay
-union RGBA {
+union Rgba {
     struct {
         r: u8,
         g: u8,
@@ -926,6 +1093,134 @@ enum union Statement: u8 { # optional discriminant type
     Empty,
     Single { Node },
     Multiple { Node[] },
+}
+```
+
+## struct/enum/variable memory layout/info
+
+### Variables
+
+Having a variable such as:
+
+```kay
+# at: file.kay:12:0
+let name: str = "Stefano";
+```
+
+getting the variable layout could be done with the command `kay layout name file.kay:12:0`, which
+could output the following valid kay code result:
+
+```kay
+# size = 16, align = 8
+let name: str = "Stefano";
+```
+
+### Structs
+
+Having a struct such as:
+
+```kay
+struct Foo {
+    x: int,
+    y: ascii,
+    z: str,
+}
+```
+
+getting the struct layout could be done with the command `kay layout Foo`, which could output the
+following valid kay code result:
+
+```kay
+# size = 32, align = 8
+struct Foo {
+    x: int,   # size = 8,  offset = 0,  align = 8 -> 0:  |#|#|#|#|#|#|#|#|
+    y: ascii, # size = 1,  offset = 8,  align = 1 -> 8:  |#| | | | | | | |
+    z: str,   # size = 16, offset = 16, align = 8 -> 16: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
+}
+```
+
+could also emit warnings when wasting space, so a struct such as:
+
+```kay
+# at: file.kay:12:0
+
+# size = 40, align = 8
+struct Foo {
+    a: ascii, # size = 1,  align = 1, offset = 0:  |#| | | | | | | |
+    x: int,   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
+    y: ascii, # size = 1,  align = 1, offset = 16: |#| | | | | | | |
+    z: str,   # size = 16, align = 8, offset = 24: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
+}
+```
+
+would produce the following warnign message
+
+```text
+Warning: struct has unoptimal field layout
+ at: file.kay:12:0
+   |
+11 | # size = 40, align = 8
+12 | struct Foo {
+13 |        a: ascii, # size = 1,  align = 1,offset = 0:  |#| | | | | | | |
+   |        ^ this field occupies only 1 byte
+   |
+14 |        x: int,   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
+15 |        y: ascii, # size = 1,  align = 1, offset = 16: |#| | | | | | | |
+   |        ^ this field also occupies only 1 byte, but is separate from the previous
+   |
+16 |        z: str,   # size = 16, align = 8, offset = 24: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
+17 | }
+   |
+Help: an optimized layout could look like this
+   |
+11 | # size = 32, align = 8
+12 | struct Foo {
+13 |        a: ascii, # size = 1,  align = 1, offset = 0:  |#|_| | | | | | |
+14 |        y: ascii, # size = 1,  align = 1, offset = 1:  |_|#| | | | | | |
+   |        ^ this field is placed next to the previous one, thus not wasting space
+   |
+15 |        x: int,   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
+16 |        z: str,   # size = 16, align = 8, offset = 16: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
+17 | }
+   |
+Note: a packed layout could look like this
+   |
+11 | # size = 26, align = 1
+12 | @packed struct Foo {
+13 |        x: int,   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
+14 |        z: str,   # size = 16, align = 8, offset = 16: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
+15 |        a: ascii, # size = 1,  align = 1, offset = 24: |#|_|
+16 |        y: ascii, # size = 1,  align = 1, offset = 25: |_|#|
+   |        ^ these fields are placed last, thus not wasting space
+17 | }
+   |
+```
+
+a `___` could be a padding member, meaning retaining the usual padding amount:
+
+>[!NOTE]
+> this `___` field is equivalent to a `u8[N]`, basically just empty bytes
+
+```kay
+# size = 26, align = 1
+@packed struct Foo {
+    a: ascii, # size = 1,  align = 1, offset = 0:  |#|_|_|_|_|_|_|_|_|
+    x: int,   # size = 8,  align = 8, offset = 1:  |_|#|#|#|#|#|#|#|#|
+    y: ascii, # size = 1,  align = 1, offset = 9:  |#|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|
+    z: str,   # size = 16, align = 8, offset = 10: |_|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
+}
+```
+
+could be use as:
+
+```kay
+# size = 33, align = 1
+@packed struct Foo {
+    a: ascii, # size = 1,  align = 1, offset = 0:  |#|_|_|_|_|_|_|_|
+    ___,      # size = 7,  align = 1, offset = 1:  |_|#|#|#|#|#|#|#|
+    x: int,   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
+    y: ascii, # size = 1,  align = 1, offset = 16: |#|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|
+    z: str,   # size = 16, align = 8, offset = 17: |_|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
 }
 ```
 
@@ -990,7 +1285,7 @@ ability to define/overload the casting operator for specific types.
 types with explicit conversions can be bit-casted to other types when possible
 
 ```kay
-struct RGBA like u32 {
+struct Rgba like u32 {
     r: u8,
     g: u8,
     b: u8,
@@ -998,7 +1293,7 @@ struct RGBA like u32 {
 }
 
 # or
-struct RGBA as u32 {
+struct Rgba as u32 {
     r: u8,
     g: u8,
     b: u8,
@@ -1006,7 +1301,7 @@ struct RGBA as u32 {
 }
 
 # or
-struct RGBA alias u32 {
+struct Rgba alias u32 {
     r: u8,
     g: u8,
     b: u8,
@@ -1014,7 +1309,7 @@ struct RGBA alias u32 {
 }
 
 # basically equivalent to
-union RGBA {
+union Rgba {
     rgba: u32,
     struct {
         r: u8,
@@ -1025,7 +1320,7 @@ union RGBA {
 }
 
 # this would result in a type size mismatch, or in some other constrait (need to be defined) being broken
-struct RGBA like u8 {
+struct Rgba like u8 {
     r: u8,
     g: u8,
     b: u8,
@@ -1037,20 +1332,20 @@ when bit casts are used inside expressions they incour in no performance penalty
 treat the values are of different types:
 
 ```kay
-let rgba: RGBA;
+let rgba: Rgba;
 let rgba_u32: u32 = rgba as u32; # bit-casting should be a nop, in this case just a plain copy or rgba memory
 
-let red = RGBA { r = 255 };
-let green = RGBA { g = 255 };
+let red = Rgba { r = 255 };
+let green = Rgba { g = 255 };
 
-# the compiler would treat this as RGBA + RGBA
+# the compiler would treat this as Rgba + Rgba
 let red_plus_green = red + green;
 
 # while this would be treated as u32 + u32 and no conversion code would be run
 let red_plus_green = red as u32 + green as u32;
 
 # so it avoids this
-var red_plus_green: RGBA;
+var red_plus_green: Rgba;
 red_plus_green.r = red.r + green.r;
 red_plus_green.g = red.g + green.g;
 red_plus_green.b = red.b + green.b;
@@ -1064,8 +1359,7 @@ red_plus_green.a = red.a + green.b;
 ```kay
 # decide on "compile-time" directives syntax (maybe convert comments to `//` or something else and use `#`)
 const answer = 40 + 2;
-#static let answer = 40 + 2;
-static answer = 40 + 2;
+static let answer = 40 + 2;
 static var answer = 40 + 2;
 let answer :: 40 + 2;
 let answer: int : 40 + 2;
@@ -1078,12 +1372,13 @@ static some_function();
 
 ## pass/none/whatever equivalent to doing nothing (python's pass)
 
+```kay
 let answer = 0;
 if answer == 1 do println "in branch 1";
 else if answer > 1 do pass;
 else if answer > 1 none; # or like this, explicit no do keyword required (to differentiate from none being a value)
 else if answer > 1 do {}; # or like this
-
+```
 
 ## experiment with no dynamic dispatch
 
@@ -1236,8 +1531,7 @@ might also be able to specify that the function should track the caller's line a
 messages:
 
 ```kay
-@track_caller
-op int = lhs: int + rhs: int {
+@track_caller op int = lhs: int + rhs: int {
     return lhs + rhs;
 }
 ```

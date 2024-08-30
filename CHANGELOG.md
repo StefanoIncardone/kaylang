@@ -6,9 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html),
 but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
-
 ## Unreleased
 
+- number constants in base 2, 8, 16 and possibly in arbitrary bases:
 - Shortcircuted and/or operators
 - Unsigned integers
 - Casting operator
@@ -25,46 +25,19 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
     type byte = u8;
     ```
 
-
 ## 0.6.0 -
 
-From version `0.6.0` API breaking changes may appear at any time, meaning that features in `0.6.0`
-could not work or could be totally **removed** in `0.6.1`.
-This is to prevent an explosion in version numbers, since breaking and non-breaking changes will be
-frequent.
-It will also prevent the stagnation of features and will allow possibly **braking bug fixes**.
-Breaking changes outside of the `Removed` section will be made obvious for easy recognition.
-Changes to the ABI would **not** be considered breaking since no stable ABI is defined for now.
-Changes to error messages, help message and alike would **not** be considered breaking.
+>[!WARNING]
+> From version `0.6.0` breaking changes may appear at any time, meaning that features in `0.6.0`
+> could not work or could be totally **removed** in `0.6.1`.
+> This is to prevent an explosion in version numbers and the stagnation of **breaking** feature updates, since breaking and non-breaking changes will be frequent.
+> Breaking changes outside of the `Removed` section will be made obvious for easy recognition.
+> Changes to the ABI would **not** be considered breaking since no stable ABI is defined for now.
+> Changes to error messages, help message and alike would **not** be considered breaking.
 
 ### Added
 
-- Strings and Arrays indexing assigning:
-
-    ```kay
-    var array_of_strings = ["1234", "5678"];
-
-    # assignment of an entire string
-    array_of_strings[0] = "c";
-
-    # assignment of a single character of a string
-    array_of_strings[1][0] = 'd';
-
-    # copied by reference
-    var string = array_of_strings[1];
-
-    # will also modify array_of_strings[1]
-    string[1] = 'b';
-
-    var array_of_int = [19, 21];
-
-    # assignment of single item
-    array_of_int[0] = 42;
-
-    # inplace modification of a single item
-    array_of_int[1] +\= 1;
-    ```
-
+- Arrays indexing assigning
 - String and Arrays comparison operators: `<=>`, `==`, `!=`, `<`, `<=`, `>`, `>=`
 - String and Arrays `len` operator: `len "hello" # -> 5`
 - Raw string literals, i.e.: `r"hello\nworld"` where `\n` would not get escaped
@@ -92,6 +65,8 @@ Changes to error messages, help message and alike would **not** be considered br
 - An error is now returned when no executable name is provided when parsing arguments in the form of
     `Vec<String>`
 - Generated assembly file does not get cleared in the case of a compile crash
+- Improved documentation
+- Renamed `src_file::Line` to `src_file::Span` but kept `src_file::Line` as a type alias
 
 #### Breaking
 
@@ -146,6 +121,7 @@ Changes to error messages, help message and alike would **not** be considered br
 - Bug when using the `run` command without a `-o` option
 - Bug in parsing of negative numbers that would not allow for literal INT_MIN to be represented,
     i.e.: `-9223372036854775808` would not be allowed
+- Bug in character literals tokenization that would not emit intermediate errors
 
 
 ## 0.5.3 - 2024-03-02

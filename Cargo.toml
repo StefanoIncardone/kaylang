@@ -6,8 +6,9 @@ authors = ["Stefano Incardone"]
 categories = ["compilers", "command-line-utilities"]
 keywords = ["language", "compiler"]
 description = "Experimenting with programming languages by creating one"
-readme = "README.md"
 repository = "https://github.com/StefanoIncardone/kaylang"
+readme = "README.md"
+documentation = "https://github.com/StefanoIncardone/kaylang/docs/LANGUAGE_REFERENCE.md"
 license = "MIT"
 
 [profile.dev]

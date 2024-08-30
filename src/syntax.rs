@@ -1,5 +1,5 @@
-/*
-IDEA(stefano): rename this module to `error` and incorporate all error structs and enums, thus
+/* IDEA(stefano):
+rename this module to `error` and incorporate all error structs and enums, thus
 removing the syntax module and bringing the ast and tokenizer modules into the root module
 */
 pub mod ast;
@@ -19,8 +19,8 @@ pub trait IntoErrorInfo: Debug + Clone {
     fn info(&self) -> ErrorInfo;
 }
 
-/*
-IDEA(stefano): refactor to allow for errors without a proper or redundant cause message, i.e.:
+/* IDEA(stefano):
+refactor to allow for errors without a proper or redundant cause message, i.e.:
 Error: unrecognized character
 at: file.kay:21:5
    |
@@ -65,7 +65,6 @@ impl<K: IntoErrorInfo> Error<K> {
     }
 }
 
-// TODO(stefano): rename to Error
 #[derive(Debug, Clone)]
 pub struct ErrorDisplay<'src> {
     pub error_message: Cow<'static, str>,

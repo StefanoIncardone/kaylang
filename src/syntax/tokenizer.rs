@@ -96,8 +96,8 @@ struct Bracket {
     col: usize,
 }
 
-/*
-IDEA(stefano): introduce "unchecked" operators
+/* IDEA(stefano):
+introduce "unchecked" operators
 skip safety checks, maybe using the '?' or the '!' suffix, i.e:
 - <<?, <<<?, >>>?, or <<!, >>!, <<<!, >>>! -> skip the check for a positive 6bit shift amount
 - **? -> skip the check for a neagtive index
@@ -377,8 +377,8 @@ pub(crate) enum TokenKind<'src> {
     /// integer literals are never empty and always contain valid ascii digits
     Integer(&'src str),
     Ascii(ascii),
-    /*
-    IDEA(stefano): make Str into an enum to reduce the amounts of allocations:
+    /* IDEA(stefano):
+    make Str into an enum to reduce the amounts of allocations:
     enum Str<'src> {
         WithEscaped(Box<[ascii]>),
         NoEscaped(&'src [ascii]),
@@ -387,9 +387,22 @@ pub(crate) enum TokenKind<'src> {
     or treat string with no escapes as raw strings.
     or split into EscapedStr(Str) and Str(&'src [ascii]),
     */
+    /* IDEA(stefano):
+    limit string literals to a max amount of logical characters (escapes are considered a single character)
+    e.g. 63/127/255/511/1023/2047/4095
+    */
     Str(Str),
     RawStr(RawStr<'src>),
 
+    // TODO(stefano): limit identifiers to a max amount of characters e.g. 63/127/255
+        /* IDEA(stefano):
+        create:
+        struct ShortStr<'src> {
+            start: u32,
+            _start: PhantomData<&'src ascii>,
+            len: u8, // only using 6/7/8 bits, thus limiting the max len to 63/127/255
+        }
+        */
     Identifier(&'src str),
 
     // Keywords
@@ -680,7 +693,7 @@ impl<'src> Tokenizer<'src> {
         };
     }
 
-    fn peek_next_utf8_char(&mut self) -> Option<utf8> {
+    fn peek_next_utf8_char(&self) -> Option<utf8> {
         let next = self.src.code.as_bytes().get(self.col)?;
         return match next {
             ascii_ch @ 0..=b'\x7F' => Some(*ascii_ch as utf8),
@@ -885,8 +898,8 @@ impl<'src> Tokenizer<'src> {
 
                 Ok(TokenKind::Comment(comment))
             }
-            /*
-            FIX(stefano): add proper multiple error handling, maybe implement an error pool to
+            /* FIX(stefano):
+            add proper multiple error handling, maybe implement an error pool to
             avoid having to allocate a new vector each time
             */
             b'"' => {
@@ -944,14 +957,14 @@ impl<'src> Tokenizer<'src> {
             b'\'' => {
                 let code = match self.next_in_ascii_char_literal()? {
                     b'\\' => match self.next_in_ascii_char_literal()? {
-                        b'\\' => Ok(b'\\'),
-                        b'\'' => Ok(b'\''),
-                        b'"' => Ok(b'"'),
-                        b'n' => Ok(b'\n'),
-                        b'r' => Ok(b'\r'),
-                        b't' => Ok(b'\t'),
-                        b'0' => Ok(b'\0'),
-                        unrecognized => Err(Error {
+                        b'\\' => b'\\',
+                        b'\'' => b'\'',
+                        b'"' => b'"',
+                        b'n' => b'\n',
+                        b'r' => b'\r',
+                        b't' => b'\t',
+                        b'0' => b'\0',
+                        unrecognized => return Err(Error {
                             kind: ErrorKind::UnrecognizedEscapeCharacterInCharacterLiteral(
                                 unrecognized as utf8,
                             ),
@@ -959,17 +972,17 @@ impl<'src> Tokenizer<'src> {
                             pointers_count: 2,
                         }),
                     },
-                    control @ (b'\x00'..=b'\x1F' | b'\x7F') => Err(Error {
+                    control @ (b'\x00'..=b'\x1F' | b'\x7F') => return Err(Error {
                         kind: ErrorKind::ControlCharacterInCharacterLiteral(control as utf8),
                         col: self.col - 1,
                         pointers_count: 1,
                     }),
-                    b'\'' => Err(Error {
+                    b'\'' => return Err(Error {
                         kind: ErrorKind::EmptyCharacterLiteral,
                         col: self.token_start_col,
                         pointers_count: 2,
                     }),
-                    ch => Ok(ch),
+                    ch => ch,
                 };
 
                 let Some(b'\'') = self.peek_next_ascii_char()? else {
@@ -981,7 +994,7 @@ impl<'src> Tokenizer<'src> {
                 };
 
                 self.col += 1;
-                Ok(TokenKind::Ascii(code?))
+                Ok(TokenKind::Ascii(code))
             }
             b'(' => {
                 let kind = BracketKind::OpenRound;

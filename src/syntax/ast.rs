@@ -1,3 +1,5 @@
+// IDEA(stefano): disallow mutations of strings until a sort of "borrow checker" is developed
+
 use super::{
     tokenizer::{
         ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, RawStr, Str, Token, TokenKind,
@@ -56,10 +58,10 @@ impl SizeOf for BaseType {
     #[inline(always)]
     fn size(&self) -> usize {
         return match self {
-            Self::Int => std::mem::size_of::<int>(),
-            Self::Ascii => std::mem::size_of::<ascii>(),
-            Self::Bool => std::mem::size_of::<bool>(),
-            Self::Str => std::mem::size_of::<*const ascii>() + std::mem::size_of::<uint>(),
+            Self::Int => size_of::<int>(),
+            Self::Ascii => size_of::<ascii>(),
+            Self::Bool => size_of::<bool>(),
+            Self::Str => size_of::<uint>() + size_of::<*const ascii>(),
         };
     }
 }
@@ -681,10 +683,10 @@ impl Display for Node<'_> {
             Self::Break => write!(f, "break"),
             Self::Continue => write!(f, "continue"),
 
-            Self::Reassignment { target, op, new_value, .. } => write!(f, "{target} {op} {new_value}"),
-            Self::Definition { .. }
-            | Self::Scope { .. }
-            | Self::ScopeEnd => {
+            Self::Reassignment { target, op, new_value, .. } => {
+                write!(f, "{target} {op} {new_value}")
+            }
+            Self::Definition { .. } | Self::Scope { .. } | Self::ScopeEnd => {
                 unreachable!("should never be displayed");
             }
         };
@@ -819,8 +821,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(());
     }
 
-    /*
-    NOTE(stefano): only parsing until the first error until a fault tolerant parser is developed,
+    /* NOTE(stefano):
+    only parsing until the first error until a fault tolerant parser is developed,
     this is because the first truly relevant error is the first one, which in turn causes a ripple
     effect that propagates to the rest of the parsing, causing subsequent errors to be wrong
     */
@@ -865,8 +867,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let mut expression = self.expression()?;
 
                 // NOTE(stefano): going backwards and then forwards again to skip comments
-                /*
-                FIX(stefano): migrate iteration to using the rust model, such that calling next
+                /* FIX(stefano):
+                migrate iteration to using the rust model, such that calling next
                 would return the current item and then advance.
                 */
                 self.token -= 1;
@@ -1028,15 +1030,14 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         | Op::Greater
                         | Op::GreaterOrEquals
                         | Op::Less
-                        | Op::LessOrEquals
-                         => {
+                        | Op::LessOrEquals => {
                             let previous_token = self.peek_previous_token();
                             Err(Error {
                                 kind: ErrorKind::MissingSemicolon,
                                 col: previous_token.col,
                                 pointers_count: previous_token.kind.display_len(),
                             })
-                        },
+                        }
                     },
 
                     TokenKind::Bracket(_)
@@ -1067,7 +1068,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             pointers_count: previous_token.kind.display_len(),
                         })
                     }
-                    TokenKind::Comment(_) => unreachable!("should be skipped by the token iterator"),
+                    TokenKind::Comment(_) => {
+                        unreachable!("should be skipped by the token iterator")
+                    }
                     TokenKind::Unexpected(_) => unreachable!("only valid tokens should be present"),
                 }
             }
@@ -1536,7 +1539,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             kind: ErrorKind::TypeInExpression,
                             col: current_token.col,
                             pointers_count: current_token.kind.display_len(),
-                        })
+                        });
                     };
 
                     let TokenKind::Op(op) = possible_reassignment_operator.kind else {
@@ -1544,7 +1547,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             kind: ErrorKind::TypeInExpression,
                             col: current_token.col,
                             pointers_count: current_token.kind.display_len(),
-                        })
+                        });
                     };
 
                     match op {
@@ -1581,7 +1584,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                                 col: current_token.col,
                                 pointers_count: current_token.kind.display_len(),
                             });
-                        },
+                        }
 
                         Op::Len
                         | Op::Not
@@ -1640,8 +1643,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
 
                 let expression = self.expression()?;
-                let close_bracket_token =
-                    self.current_token(Expected::ClosingRoundBracket)?;
+                let close_bracket_token = self.current_token(Expected::ClosingRoundBracket)?;
 
                 let TokenKind::Bracket(BracketKind::CloseRound) = close_bracket_token.kind else {
                     return Err(Error {
@@ -1700,9 +1702,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 loop {
                     let item = self.expression()?;
                     let item_type = item.typ();
-                    /*
-                    NOTE(stefano): this wrapping of items_type will be removed once nested arrays
-                    are supported
+                    /* NOTE(stefano):
+                    this wrapping of items_type will be removed once nested arrays are supported
                     */
                     if Type::Base(items_type) != item_type {
                         break 'array Err(Error {
@@ -2213,8 +2214,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 });
             };
 
-            /*
-            IDEA(stefano): disallow indexing into literal arrays, it's as if you were to access
+            /* IDEA(stefano):
+            disallow indexing into literal arrays, it's as if you were to access
             the actual element.
             could suggest the user to extract the literal array to a temporary variable first
             */
@@ -2223,7 +2224,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     kind: ErrorKind::CannotIndexIntoExpression,
                     col: open_bracket_token.col,
                     pointers_count: open_bracket_token.kind.display_len(),
-                })
+                });
             }
 
             let expression_type = expression.typ();
@@ -2243,14 +2244,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         })
                     }
                 },
-                Type::Array { base_type, .. } => {
-                    Expression::ArrayIndex {
-                        base_type,
-                        value: Box::new(expression),
-                        bracket_col: open_bracket_token.col,
-                        index: Box::new(index),
-                    }
-                }
+                Type::Array { base_type, .. } => Expression::ArrayIndex {
+                    base_type,
+                    value: Box::new(expression),
+                    bracket_col: open_bracket_token.col,
+                    index: Box::new(index),
+                },
             };
         }
 
@@ -2366,8 +2365,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(lhs);
     }
 
-    /*
-    IDEA(stefano): when the lhs is a literal integer shifts could be optimized to throw errors
+    /* IDEA(stefano):
+    when the lhs is a literal integer shifts could be optimized to throw errors
     when preconditions such as negative integers and shifts over 6bits are not met
     */
     fn shift_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
@@ -2514,8 +2513,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     Type::Array { base_type: lhs_base_typ, len: lhs_len },
                     Type::Array { base_type: rhs_base_typ, len: rhs_len },
                 ) => {
-                    // comparing empty arrays makes no sense, so it's not going to be allowed
-                    lhs_base_typ == rhs_base_typ && lhs_len > 0 && rhs_len > 0 && lhs_len == rhs_len
+                    lhs_base_typ == rhs_base_typ && lhs_len == rhs_len
                 }
                 _ => false,
             };
@@ -2730,8 +2728,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             _ => literal_len as uint,
         };
 
-        let close_square_bracket_token =
-            self.current_token(Expected::ClosingSquareBracket)?;
+        let close_square_bracket_token = self.current_token(Expected::ClosingSquareBracket)?;
         let TokenKind::Bracket(BracketKind::CloseSquare) = close_square_bracket_token.kind else {
             return Err(Error {
                 kind: ErrorKind::MissingClosingSquareBracketInArrayType,
@@ -2870,8 +2867,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
         return match expression {
             Some(value) => {
+                let value_typ = value.typ();
                 if let Some((token, annotation_typ)) = annotation {
-                    let value_typ = value.typ();
                     if annotation_typ != value_typ {
                         return Err(Error {
                             kind: ErrorKind::VariableDefinitionTypeMismatch {
@@ -2933,17 +2930,17 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         op_token: &'tokens Token<'src>,
     ) -> Result<Node<'src>, Error<ErrorKind>> {
         let (error_token, target_type) = match &target {
-            Expression::ArrayIndex { base_type, value, ..  } => {
+            Expression::ArrayIndex { base_type, value, .. } => {
                 let mut unwrapped_target = value;
                 while let Expression::ArrayIndex { value: inner_target, .. } = &**unwrapped_target {
                     unwrapped_target = inner_target;
                 }
 
-                let Expression::Variable { .. } = &**unwrapped_target else {
+                let Expression::Variable { typ, .. } = &**unwrapped_target else {
                     return Err(Error {
                         kind: ErrorKind::CannotAssignToExpression,
                         col: op_token.col,
-                        pointers_count: op_token.kind.display_len()
+                        pointers_count: op_token.kind.display_len(),
                     });
                 };
 
@@ -2959,6 +2956,16 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             pointers_count: target_token.kind.display_len(),
                         });
                     };
+
+                    if let BaseType::Str = typ.base_typ() {
+                        if let BaseType::Ascii = base_type {
+                            return Err(Error {
+                                kind: ErrorKind::CannotMutateStringCharacters,
+                                col: target_token.col,
+                                pointers_count: target_token.kind.display_len(),
+                            });
+                        }
+                    }
 
                     target_token
                 } else {
@@ -2999,7 +3006,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 return Err(Error {
                     kind: ErrorKind::CannotAssignToExpression,
                     col: op_token.col,
-                    pointers_count: op_token.kind.display_len()
+                    pointers_count: op_token.kind.display_len(),
                 });
             }
         };
@@ -3009,12 +3016,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         let new_value_type = new_value.typ();
 
         return match op {
-            AssignmentOp::Equals if target_type == new_value_type => Ok(Node::Reassignment {
-                target,
-                op,
-                op_col: op_token.col,
-                new_value,
-            }),
+            AssignmentOp::Equals if target_type == new_value_type => {
+                Ok(Node::Reassignment { target, op, op_col: op_token.col, new_value })
+            }
             AssignmentOp::Equals => Err(Error {
                 kind: ErrorKind::VariableReassignmentTypeMismatch {
                     expected: target_type,
@@ -3053,19 +3057,19 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 (
                     Type::Base(BaseType::Int),
                     Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool),
-                ) => Ok(Node::Reassignment {
-                    target,
-                    op,
-                    op_col: op_token.col,
-                    new_value,
+                ) => Ok(Node::Reassignment { target, op, op_col: op_token.col, new_value }),
+                /* IDEA(stefano):
+                allow only certain kinds of *op*=:
+                ```kay
+                var condition = true;
+                condition &&= false; # should instead be allowed
+                ```
+                */
+                (Type::Base(BaseType::Ascii | BaseType::Bool), _) => Err(Error {
+                    kind: ErrorKind::CannotModifyInplace(target_type),
+                    col: op_token.col,
+                    pointers_count: op_token.kind.display_len(),
                 }),
-                (Type::Base(BaseType::Ascii | BaseType::Bool), _) => {
-                    Err(Error {
-                        kind: ErrorKind::CannotModifyInplace(target_type),
-                        col: op_token.col,
-                        pointers_count: op_token.kind.display_len(),
-                    })
-                }
                 _ => Err(Error {
                     kind: ErrorKind::VariableReassignmentTypeMismatch {
                         expected: target_type,
@@ -3406,6 +3410,7 @@ pub enum ErrorKind {
     MissingClosingSquareBracketInIndex,
     MissingClosingSquareBracketInArrayType,
     CannotIndexNonArrayType(Type),
+    CannotMutateStringCharacters,
     CannotIndexIntoExpression,
     TypeInExpression,
     EmptyExpression,
@@ -3508,6 +3513,10 @@ impl IntoErrorInfo for ErrorKind {
             Self::MissingClosingSquareBracketInArrayType => (
                 "invalid type".into(),
                 "must be followed by a closing square bracket".into(),
+            ),
+            Self::CannotMutateStringCharacters => (
+                "invalid variable reassignment".into(),
+                "cannot mutate string characters".into(),
             ),
             Self::CannotIndexNonArrayType(non_indexable_type) => (
                 "invalid expression".into(),

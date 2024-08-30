@@ -132,6 +132,7 @@ fn main() -> ExitCode {
             Ok(output) => {
                 if !output.status.success() {
                     let stderr_out = String::from_utf8_lossy(&output.stderr);
+                    // TODO(stefano): allow users to create errors akin to the compiler's
                     eprintln!("{ASSEMBLING_ERROR}:\n{stderr_out}");
                     return ExitCode::from(output.status.code().unwrap_or(1) as u8);
                 }

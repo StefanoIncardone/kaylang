@@ -5,21 +5,29 @@ use std::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Line {
+pub struct Span {
     /// inclusive
     pub start: usize,
 
-    /// not inclusive, points to the last non-newline character
+    /// not inclusive
     pub end: usize,
 }
+
+pub type Line = Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Position<'src> {
     pub line: usize,
+    // IDEA(stefano): restrict the max line length to 255/511/1023/2047/4095
     pub col: usize,
+    // REMOVE(stefano): calculate only when actually needed
     pub line_text: &'src str,
 }
 
+/* IDEA(stefano):
+restrict the compiler to only accept files of 4Gb max, thus allowing indexes, line and column etc.
+to be represented with u32 instead of usize
+*/
 #[derive(Debug)]
 pub struct SrcFile {
     pub(crate) path: PathBuf,

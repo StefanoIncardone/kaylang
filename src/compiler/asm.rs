@@ -403,8 +403,8 @@ int_safe_div:
  cmp rsi, -1
  jne .no_int_min_div_minus_one
 
- mov rdi, attempt_int_min_div_by_minus_one_len
- mov rsi, attempt_int_min_div_by_minus_one
+ mov rdi, div_overflow_len
+ mov rsi, div_overflow
  call crash
 
 .no_int_min_div_minus_one:
@@ -487,8 +487,8 @@ int_safe_remainder:
  cmp rax, r8
  jne .no_int_min_div_minus_one
 
- mov rdi, attempt_remainder_int_min_div_by_minus_one_len
- mov rsi, attempt_remainder_int_min_div_by_minus_one
+ mov rdi, remainder_overflow_len
+ mov rsi, remainder_overflow
  call crash
 
 .no_int_min_div_minus_one:

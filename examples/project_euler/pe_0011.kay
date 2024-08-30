@@ -27,4 +27,4 @@
 # (up, down, left, right, or diagonally) in the 20 x 20 grid?
 
 print "expected: "; println "";
-print "actual:   "; println "# TODO(stefano): implement multidimensional arrays";
+print "actual:   "; println "# TODO(stefano): multidimensional arrays";
