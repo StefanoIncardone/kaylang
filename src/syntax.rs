@@ -40,7 +40,6 @@ pub struct ErrorInfo {
     pub error_cause_message: Cow<'static, str>,
 }
 
-// TODO(stefano): rename to RawError
 #[derive(Debug, Clone)]
 pub struct Error<K: IntoErrorInfo> {
     pub kind: K,

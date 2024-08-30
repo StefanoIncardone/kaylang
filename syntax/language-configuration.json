@@ -1,5 +1,4 @@
 // NOTE(stefano): could optimize string and characters regex patterns `.*?` with `[^"]*`
-// NOTE(stefano): debate wether to keep errors highlighting for unclosed strings or other like this
 {
     "comments": {
         // symbol used for single line comment. Remove this entry if your language does not support line comments

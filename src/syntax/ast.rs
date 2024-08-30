@@ -69,7 +69,7 @@ impl SizeOf for BaseType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
     Base(BaseType),
-    // TODO(breaking)(stefano): enforce a max length
+    // TODO(stefano): enforce a max length
     Array {
         base_type: BaseType,
         /// always greater than 1, i.e: arrays always contain at least 2 items
@@ -2512,9 +2512,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 (
                     Type::Array { base_type: lhs_base_typ, len: lhs_len },
                     Type::Array { base_type: rhs_base_typ, len: rhs_len },
-                ) => {
-                    lhs_base_typ == rhs_base_typ && lhs_len == rhs_len
-                }
+                ) => lhs_base_typ == rhs_base_typ && lhs_len == rhs_len,
                 _ => false,
             };
 

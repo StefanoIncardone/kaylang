@@ -27,20 +27,17 @@ Implement a way to recognize and collect todos, and other tags
 ```kay
 # at: file.kay
 
-(12) # TODO(stefano): implement this features
-
-(21) # NOTE(stefano):: this is a note
-#                    ^notice the second `:`
-(42) # IDEA(stefano):genious
-#                    ^notice the missing space
+(12) # TODO(stefano) implement this features
+#                   ^^^^^^^^^^^^^^^^^^^^^^^^ everything after the TODO(stefano) is part of the message
+(42) # IDEA(stefano)genious
+#                   ^notice the missing space
 ```
 
 running the `kay notes file.kay` command would output something like:
 
 ```text
 TODO(stefano): file.kay:12: implement this feature
-NOTE(stefano): file.kay:21:: this is a note
-IDEA(stefano): file.kay:42:this is a note
+IDEA(stefano): file.kay:42:genious
 ```
 
 Could create a config file that specifies what notes to look for, like a notes.toml

@@ -395,14 +395,14 @@ pub(crate) enum TokenKind<'src> {
     RawStr(RawStr<'src>),
 
     // TODO(stefano): limit identifiers to a max amount of characters e.g. 63/127/255
-        /* IDEA(stefano):
-        create:
-        struct ShortStr<'src> {
-            start: u32,
-            _start: PhantomData<&'src ascii>,
-            len: u8, // only using 6/7/8 bits, thus limiting the max len to 63/127/255
-        }
-        */
+    /* IDEA(stefano):
+    create:
+    struct ShortStr<'src> {
+        start: u32,
+        _start: PhantomData<&'src ascii>,
+        len: u8, // only using 6/7/8 bits, thus limiting the max len to 63/127/255
+    }
+    */
     Identifier(&'src str),
 
     // Keywords
@@ -964,24 +964,30 @@ impl<'src> Tokenizer<'src> {
                         b'r' => b'\r',
                         b't' => b'\t',
                         b'0' => b'\0',
-                        unrecognized => return Err(Error {
-                            kind: ErrorKind::UnrecognizedEscapeCharacterInCharacterLiteral(
-                                unrecognized as utf8,
-                            ),
-                            col: self.col - 2,
-                            pointers_count: 2,
-                        }),
+                        unrecognized => {
+                            return Err(Error {
+                                kind: ErrorKind::UnrecognizedEscapeCharacterInCharacterLiteral(
+                                    unrecognized as utf8,
+                                ),
+                                col: self.col - 2,
+                                pointers_count: 2,
+                            })
+                        }
                     },
-                    control @ (b'\x00'..=b'\x1F' | b'\x7F') => return Err(Error {
-                        kind: ErrorKind::ControlCharacterInCharacterLiteral(control as utf8),
-                        col: self.col - 1,
-                        pointers_count: 1,
-                    }),
-                    b'\'' => return Err(Error {
-                        kind: ErrorKind::EmptyCharacterLiteral,
-                        col: self.token_start_col,
-                        pointers_count: 2,
-                    }),
+                    control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
+                        return Err(Error {
+                            kind: ErrorKind::ControlCharacterInCharacterLiteral(control as utf8),
+                            col: self.col - 1,
+                            pointers_count: 1,
+                        })
+                    }
+                    b'\'' => {
+                        return Err(Error {
+                            kind: ErrorKind::EmptyCharacterLiteral,
+                            col: self.token_start_col,
+                            pointers_count: 2,
+                        })
+                    }
                     ch => ch,
                 };
 

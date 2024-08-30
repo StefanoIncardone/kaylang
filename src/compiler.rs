@@ -2372,8 +2372,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                                     match op {
                                         AssignmentOp::Pow => {
-                                            let Position { line, col } =
-                                                self.src.position(op_col);
+                                            let Position { line, col } = self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
@@ -2382,8 +2381,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                             );
                                         }
                                         AssignmentOp::WrappingPow => {
-                                            let Position { line, col } =
-                                                self.src.position(op_col);
+                                            let Position { line, col } = self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
@@ -2392,8 +2390,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                             );
                                         }
                                         AssignmentOp::SaturatingPow => {
-                                            let Position { line, col } =
-                                                self.src.position(op_col);
+                                            let Position { line, col } = self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
@@ -2402,8 +2399,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                             );
                                         }
                                         AssignmentOp::Times => {
-                                            let Position { line, col } =
-                                                self.src.position(op_col);
+                                            let Position { line, col } = self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
@@ -2418,8 +2414,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                             _ = writeln!(self.asm, " call int_saturating_mul");
                                         }
                                         AssignmentOp::Divide => {
-                                            let Position { line, col } =
-                                                self.src.position(op_col);
+                                            let Position { line, col } = self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
@@ -2428,8 +2423,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                             );
                                         }
                                         AssignmentOp::WrappingDivide => {
-                                            let Position { line, col } =
-                                                self.src.position(op_col);
+                                            let Position { line, col } = self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
@@ -2438,8 +2432,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                             );
                                         }
                                         AssignmentOp::SaturatingDivide => {
-                                            let Position { line, col } =
-                                                self.src.position(op_col);
+                                            let Position { line, col } = self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
@@ -2448,8 +2441,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                             );
                                         }
                                         AssignmentOp::Remainder => {
-                                            let Position { line, col } =
-                                                self.src.position(op_col);
+                                            let Position { line, col } = self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
@@ -2458,8 +2450,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                             );
                                         }
                                         AssignmentOp::Plus => {
-                                            let Position { line, col } =
-                                                self.src.position(op_col);
+                                            let Position { line, col } = self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
@@ -2474,8 +2465,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                             _ = writeln!(self.asm, " call int_saturating_add");
                                         }
                                         AssignmentOp::Minus => {
-                                            let Position { line, col } =
-                                                self.src.position(op_col);
+                                            let Position { line, col } = self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
@@ -2499,8 +2489,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                             _ = writeln!(self.asm, " xor rdi, rsi");
                                         }
                                         AssignmentOp::LeftShift => {
-                                            let Position { line, col } =
-                                                self.src.position(op_col);
+                                            let Position { line, col } = self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
@@ -2509,8 +2498,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                             );
                                         }
                                         AssignmentOp::WrappingLeftShift => {
-                                            let Position { line, col } =
-                                                self.src.position(op_col);
+                                            let Position { line, col } = self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
@@ -2519,8 +2507,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                             );
                                         }
                                         AssignmentOp::SaturatingLeftShift => {
-                                            let Position { line, col } =
-                                                self.src.position(op_col);
+                                            let Position { line, col } = self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
@@ -2529,8 +2516,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                             );
                                         }
                                         AssignmentOp::RightShift => {
-                                            let Position { line, col } =
-                                                self.src.position(op_col);
+                                            let Position { line, col } = self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
@@ -2539,8 +2525,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                             );
                                         }
                                         AssignmentOp::LeftRotate => {
-                                            let Position { line, col } =
-                                                self.src.position(op_col);
+                                            let Position { line, col } = self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
@@ -2549,8 +2534,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                             );
                                         }
                                         AssignmentOp::RightRotate => {
-                                            let Position { line, col } =
-                                                self.src.position(op_col);
+                                            let Position { line, col } = self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
