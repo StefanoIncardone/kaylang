@@ -25,9 +25,11 @@ machines and combination of components.
 
 ## Getting started
 
-The language is written in [Rust](https://www.rust-lang.org/) version 1.80.0 and uses
-[cargo](https://doc.rust-lang.org/cargo/) as the build system, thus only requiring the following
-steps to get started:
+The language is written in [Rust](https://www.rust-lang.org/) version 1.80.0 using
+[cargo](https://doc.rust-lang.org/cargo/) as the build system.
+It also uses the [nasm](https://www.nasm.us/) assembler version 2.15.05 and the
+[ld](https://ftp.gnu.org/old-gnu/Manuals/ld-2.9.1/html_mono/ld.html) linker verision 2.38, thus only
+requiring the following steps to get started:
 
 1. Checking if Rust and cargo are installed and up to version 1.80.0:
 
@@ -35,17 +37,30 @@ steps to get started:
     cargo --version
     ```
 
-    If error stating that the `cargo` command could not be found occurs, try following the
+    If an error stating that the `cargo` command could not be found occurs, try following the
     [installation guide](https://www.rust-lang.org/tools/install) to install it.
 
-2. Cloning the repo:
+2. Checking if nasm is installed:
+
+    ```shell
+    nasm --version
+    ```
+
+    If an error stating that the `nasm` command could not be found occurs, try installing the nasm
+    assembler:
+
+    ```shell
+    sudo apt install nasm
+    ```
+
+3. Cloning the repo:
 
     ```shell
     git clone https://github.com/StefanoIncardone/kaylang
     cd kaylang
     ```
 
-3. Get to know the features of the compiler by taking a look at the provided help message:
+4. Get to know the features of the compiler by taking a look at the provided help message:
 
     ```shell
     cargo run
