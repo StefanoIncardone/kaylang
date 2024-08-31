@@ -5,7 +5,10 @@ use kaylang::{
     Logger, ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER,
     COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, LINKING_ERROR, RUNNING,
 };
-use std::{path::Path, process::ExitCode};
+use std::{
+    path::{Path, PathBuf},
+    process::{Command, ExitCode},
+};
 
 #[allow(
     clippy::panic,
@@ -15,7 +18,7 @@ use std::{path::Path, process::ExitCode};
     clippy::single_call_fn
 )]
 pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
-    let execution_step = Logger::new();
+    let execution_step = Logger::new(None);
     Logger::info(&CHECKING, src_path);
 
     let src = match SrcFile::load(src_path) {
@@ -94,10 +97,11 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
 
     execution_step.step_done();
 
-    let running_step = Logger::new();
-    Logger::info(&RUNNING, &artifacts.exe_path);
+    let running_step = Logger::new(None);
+    let exe_path = PathBuf::from(".").join(&artifacts.exe_path);
+    Logger::info(&RUNNING, &exe_path);
 
-    let mut run_command = artifacts.runner();
+    let mut run_command = Command::new(exe_path);
     let run_result = match run_command.output() {
         Ok(output) => output,
         Err(err) => {

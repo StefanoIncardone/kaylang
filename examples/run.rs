@@ -19,13 +19,13 @@ fn main() -> ExitCode {
     // so we assume this example is run from the root of the crate
     let src_path = PathBuf::from("examples/fizzbuzz.kay");
 
-    let execution_step = Logger::new();
+    let execution_step = Logger::new(None);
 
     Logger::info(&CHECKING, &src_path);
-    let checking_sub_step = Logger::new();
+    let checking_sub_step = Logger::new(None);
 
     let src = {
-        let loading_source_sub_step = Logger::new();
+        let loading_source_sub_step = Logger::new(None);
         let source_loading_result = SrcFile::load(&src_path);
         loading_source_sub_step.sub_step_done(&LOADING_SOURCE);
         match source_loading_result {
@@ -38,7 +38,7 @@ fn main() -> ExitCode {
     };
 
     let tokens = {
-        let tokenization_sub_step = Logger::new();
+        let tokenization_sub_step = Logger::new(None);
         let tokenizer_result = Tokenizer::tokenize(&src);
         tokenization_sub_step.sub_step_done(&TOKENIZATION);
         match tokenizer_result {
@@ -53,7 +53,7 @@ fn main() -> ExitCode {
     };
 
     let ast = {
-        let building_ast_sub_step = Logger::new();
+        let building_ast_sub_step = Logger::new(None);
         let building_ast_result = Parser::parse(&src, &tokens);
         building_ast_sub_step.sub_step_done(&BUILDING_AST);
         match building_ast_result {
@@ -79,10 +79,10 @@ fn main() -> ExitCode {
     };
 
     Logger::info(&COMPILING, &artifacts.exe_path);
-    let compilation_sub_step = Logger::new();
+    let compilation_sub_step = Logger::new(None);
 
     let _compiler_result: () = {
-        let generating_asm_sub_step = Logger::new();
+        let generating_asm_sub_step = Logger::new(Some(&artifacts.asm_path));
         let compiler_result = Compiler::compile(&src, &ast, &artifacts);
         generating_asm_sub_step.sub_step_done(&GENERATING_ASM);
         match compiler_result {
@@ -95,7 +95,7 @@ fn main() -> ExitCode {
     };
 
     let _assembler_status: () = {
-        let assembling_sub_step = Logger::new();
+        let assembling_sub_step = Logger::new(Some(&artifacts.obj_path));
         let mut assembler_command = artifacts.assembler();
         let assembler_result = assembler_command.output();
         assembling_sub_step.sub_step_done(&ASSEMBLING);
@@ -115,7 +115,7 @@ fn main() -> ExitCode {
     };
 
     let _linker_status: () = {
-        let linking_sub_step = Logger::new();
+        let linking_sub_step = Logger::new(Some(&artifacts.exe_path));
         let mut linker_command = artifacts.linker();
         let linker_result = linker_command.output();
         linking_sub_step.sub_step_done(&LINKING);
@@ -137,9 +137,10 @@ fn main() -> ExitCode {
     compilation_sub_step.sub_step_done(&SUBSTEP_DONE);
     execution_step.step_done();
 
-    Logger::info(&RUNNING, &artifacts.exe_path);
+    let exe_path = PathBuf::from(".").join(&artifacts.exe_path);
+    Logger::info(&RUNNING, &exe_path);
 
-    let mut run_command = Command::new(artifacts.exe_path.as_os_str());
+    let mut run_command = Command::new(exe_path);
     match run_command.status() {
         Ok(status) => {
             if !status.success() {

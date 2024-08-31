@@ -1,5 +1,3 @@
-// IDEA(stefano): disallow mutations of strings until a sort of "borrow checker" is developed
-
 use super::{
     tokenizer::{
         ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, RawStr, Str, Token, TokenKind,
@@ -2920,6 +2918,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
     }
 
+    // NOTE(stefano): mutations of string characters are disallowed until a sort of "borrow checker" is developed
     fn reassignment(
         &mut self,
         target: Expression<'src>,

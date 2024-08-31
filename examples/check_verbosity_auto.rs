@@ -16,13 +16,13 @@ fn main() -> ExitCode {
     // so we assume this example is run from the root of the crate
     let src_path = PathBuf::from("examples/fizzbuzz.kay");
 
-    let execution_step = Logger::new();
+    let execution_step = Logger::new(None);
 
     Logger::info_with_verbosity(&CHECKING, &src_path, verbosity);
-    let checking_sub_step = Logger::new();
+    let checking_sub_step = Logger::new(None);
 
     let src = {
-        let loading_source_sub_step = Logger::new();
+        let loading_source_sub_step = Logger::new(None);
         let source_loading_result = SrcFile::load(&src_path);
         loading_source_sub_step.sub_step_done_with_verbosity(&LOADING_SOURCE, verbosity);
         match source_loading_result {
@@ -35,7 +35,7 @@ fn main() -> ExitCode {
     };
 
     let tokens = {
-        let tokenization_sub_step = Logger::new();
+        let tokenization_sub_step = Logger::new(None);
         let tokenizer_result = Tokenizer::tokenize(&src);
         tokenization_sub_step.sub_step_done_with_verbosity(&TOKENIZATION, verbosity);
         match tokenizer_result {
@@ -50,7 +50,7 @@ fn main() -> ExitCode {
     };
 
     let _ast = {
-        let building_ast_sub_step = Logger::new();
+        let building_ast_sub_step = Logger::new(None);
         let building_ast_result = Parser::parse(&src, &tokens);
         building_ast_sub_step.sub_step_done_with_verbosity(&BUILDING_AST, verbosity);
         match building_ast_result {

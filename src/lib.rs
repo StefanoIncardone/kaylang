@@ -75,22 +75,23 @@ const BAR_FLAGS: Flags = Flag::Bold;
 #[rustfmt::skip] pub static LINKING_ERROR:            Colored<&str> = Colored { text: "Linking Error",            fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 
 #[derive(Debug)]
-pub struct Logger {
+pub struct Logger<'path> {
     pub start: Instant,
+    pub output: Option<&'path Path>,
 }
 
 #[allow(clippy::new_without_default)]
-impl Logger {
+impl<'path> Logger<'path> {
     #[inline(always)]
     #[must_use]
-    pub fn new() -> Self {
-        return Self { start: Instant::now() };
+    pub fn new(output: Option<&'path Path>) -> Self {
+        return Self { start: Instant::now(), output };
     }
 }
 
 // logging without verbosity information, intended for use in specialized cases
 #[allow(clippy::print_stderr)]
-impl Logger {
+impl Logger<'_> {
     pub fn info<Text: AsRef<str>>(step: &Colored<Text>, path: &Path) {
         eprintln!(
             "{spaces:STEP_INDENT$}{step:>STEP_PADDING$}: {path}",
@@ -101,12 +102,16 @@ impl Logger {
 
     fn done<Text: AsRef<str>>(self, step: &Colored<Text>, indent: usize, padding: usize) {
         let elapsed_time = Colored {
-            text: format!("{}s", self.start.elapsed().as_secs_f32()),
+            text: format!("{:.06}s", self.start.elapsed().as_secs_f32()),
             fg: Fg::White,
             ..Default::default()
         };
 
-        eprintln!("{spaces:indent$}{step:>padding$}: in {elapsed_time}", spaces = "");
+        eprint!("{spaces:indent$}{step:>padding$}: in {elapsed_time}", spaces = "");
+        if let Some(out) = self.output {
+            eprint!(" [{}]", out.display());
+        }
+        eprintln!();
     }
 
     pub fn step_done(self) {
@@ -119,7 +124,7 @@ impl Logger {
 }
 
 // logging with verbosity information, intended for use in general cases
-impl Logger {
+impl Logger<'_> {
     pub fn info_with_verbosity<Text: AsRef<str>>(
         step: &Colored<Text>,
         path: &Path,

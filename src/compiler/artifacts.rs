@@ -23,7 +23,7 @@ impl Artifacts {
         return Self {
             asm_path: src_path_stem.with_extension("asm"),
             obj_path: src_path_stem.with_extension("o"),
-            exe_path: PathBuf::from(".").join(src_path_stem),
+            exe_path: src_path_stem,
         };
     }
 
@@ -48,7 +48,7 @@ impl Artifacts {
         return Ok(Self {
             asm_path: out_path.join(&src_path_stem).with_extension("asm"),
             obj_path: out_path.join(&src_path_stem).with_extension("o"),
-            exe_path: PathBuf::from(".").join(out_path).join(src_path_stem),
+            exe_path: out_path.join(src_path_stem),
         });
     }
 
@@ -71,11 +71,6 @@ impl Artifacts {
         let mut linker_command = Command::new("ld");
         _ = linker_command.arg(self.obj_path.as_os_str()).arg("-o").arg(self.exe_path.as_os_str());
         return linker_command;
-    }
-
-    #[must_use]
-    pub fn runner(&self) -> Command {
-        return Command::new(self.exe_path.as_os_str());
     }
 }
 

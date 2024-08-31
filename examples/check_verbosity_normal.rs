@@ -13,7 +13,7 @@ fn main() -> ExitCode {
     // so we assume this example is run from the root of the crate
     let src_path = PathBuf::from("examples/fizzbuzz.kay");
 
-    let execution_step = Logger::new();
+    let execution_step = Logger::new(None);
     Logger::info(&CHECKING, &src_path);
 
     let src = match SrcFile::load(&src_path) {
