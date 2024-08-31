@@ -1,55 +1,33 @@
-#![allow(clippy::print_stdout, clippy::print_stderr)] // it's a cli tool, it's normal to print to stderr and stdout
-
 use kaylang::{
     compiler::{artifacts::Artifacts, Compiler},
     src_file::SrcFile,
     syntax::{ast::Parser, tokenizer::Tokenizer},
-    Args, Command, Help, Logger, Version, ASSEMBLING, ASSEMBLING_ERROR, BUILDING_AST, CHECKING,
-    COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER,
-    GENERATING_ASM, LINKING, LINKING_ERROR, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
+    Color, Logger, ASSEMBLING, ASSEMBLING_ERROR, BUILDING_AST, CHECKING, COMPILING,
+    COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, GENERATING_ASM,
+    LINKING, LINKING_ERROR, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
 };
-use std::{path::PathBuf, process::ExitCode};
+use std::{
+    path::PathBuf,
+    process::{Command, ExitCode},
+};
 
-// Note: this is aslo an example of how it's possible to create cli tools based on this compiler
 fn main() -> ExitCode {
-    let Args { color, command } = match Args::try_from(std::env::args()) {
-        Ok(args) => args,
-        Err(err) => {
-            eprintln!("{err}");
-            return ExitCode::FAILURE;
-        }
-    };
+    // controls how error messages should be colored
+    Color::Auto.set(&std::io::stderr());
 
-    color.set(&std::io::stderr());
-
-    if let Command::Version = command {
-        println!("{}", Version { color });
-        return ExitCode::SUCCESS;
-    }
-
-    if let Command::Help { executable_name } = command {
-        println!("{}", Help { executable_name, color });
-        return ExitCode::SUCCESS;
-    }
-
-    let (Command::Check { src_path, verbosity: verbosity_ref }
-    | Command::Compile { src_path, verbosity: verbosity_ref, .. }
-    | Command::Run { src_path, verbosity: verbosity_ref, .. }) = &command
-    else {
-        unreachable!()
-    };
-
-    let verbosity = *verbosity_ref;
+    // cargo sets the working directory to where the `cargo` command was run.
+    // so we assume this example is run from the root of the crate
+    let src_path = PathBuf::from("examples/fizzbuzz.kay");
 
     let execution_step = Logger::new(None);
 
-    Logger::info_with_verbosity(&CHECKING, src_path, verbosity);
+    Logger::info(&CHECKING, &src_path);
     let checking_sub_step = Logger::new(None);
 
     let src = {
         let loading_source_sub_step = Logger::new(None);
-        let source_loading_result = SrcFile::load(src_path);
-        loading_source_sub_step.sub_step_done_with_verbosity(&LOADING_SOURCE, verbosity);
+        let source_loading_result = SrcFile::load(&src_path);
+        loading_source_sub_step.sub_step_done(&LOADING_SOURCE);
         match source_loading_result {
             Ok(src) => src,
             Err(err) => {
@@ -62,7 +40,7 @@ fn main() -> ExitCode {
     let tokens = {
         let tokenization_sub_step = Logger::new(None);
         let tokenizer_result = Tokenizer::tokenize(&src);
-        tokenization_sub_step.sub_step_done_with_verbosity(&TOKENIZATION, verbosity);
+        tokenization_sub_step.sub_step_done(&TOKENIZATION);
         match tokenizer_result {
             Ok(tokens) => tokens,
             Err(errors) => {
@@ -77,7 +55,7 @@ fn main() -> ExitCode {
     let ast = {
         let building_ast_sub_step = Logger::new(None);
         let building_ast_result = Parser::parse(&src, &tokens);
-        building_ast_sub_step.sub_step_done_with_verbosity(&BUILDING_AST, verbosity);
+        building_ast_sub_step.sub_step_done(&BUILDING_AST);
         match building_ast_result {
             Ok(ast) => ast,
             Err(errors) => {
@@ -89,31 +67,24 @@ fn main() -> ExitCode {
         }
     };
 
-    checking_sub_step.sub_step_done_with_verbosity(&SUBSTEP_DONE, verbosity);
+    checking_sub_step.sub_step_done(&SUBSTEP_DONE);
 
-    let (Command::Compile { out_path, .. } | Command::Run { out_path, .. }) = &command else {
-        execution_step.step_done_with_verbosity(verbosity);
-        return ExitCode::SUCCESS;
+    let out_path = PathBuf::from("out");
+    let artifacts = match Artifacts::new_with_out_path(&src, &out_path) {
+        Ok(artifacts) => artifacts,
+        Err(err) => {
+            eprintln!("{err}");
+            return ExitCode::FAILURE;
+        }
     };
 
-    Logger::info_with_verbosity(&COMPILING, src_path, verbosity);
+    Logger::info(&COMPILING, &artifacts.exe_path);
     let compilation_sub_step = Logger::new(None);
-
-    let artifacts = match out_path {
-        None => Artifacts::new(&src),
-        Some(path) => match Artifacts::new_with_out_path(&src, path) {
-            Ok(artifacts) => artifacts,
-            Err(err) => {
-                eprintln!("{err}");
-                return ExitCode::FAILURE;
-            }
-        },
-    };
 
     let _compiler_result: () = {
         let generating_asm_sub_step = Logger::new(Some(&artifacts.asm_path));
         let compiler_result = Compiler::compile(&src, &ast, &artifacts);
-        generating_asm_sub_step.sub_step_done_with_verbosity(&GENERATING_ASM, verbosity);
+        generating_asm_sub_step.sub_step_done(&GENERATING_ASM);
         match compiler_result {
             Ok(()) => (),
             Err(err) => {
@@ -127,12 +98,11 @@ fn main() -> ExitCode {
         let assembling_sub_step = Logger::new(Some(&artifacts.obj_path));
         let mut assembler_command = artifacts.assembler();
         let assembler_result = assembler_command.output();
-        assembling_sub_step.sub_step_done_with_verbosity(&ASSEMBLING, verbosity);
+        assembling_sub_step.sub_step_done(&ASSEMBLING);
         match assembler_result {
             Ok(output) => {
                 if !output.status.success() {
                     let stderr_out = String::from_utf8_lossy(&output.stderr);
-                    // TODO(stefano): allow users to create errors akin to the compiler's
                     eprintln!("{ASSEMBLING_ERROR}:\n{stderr_out}");
                     return ExitCode::from(output.status.code().unwrap_or(1) as u8);
                 }
@@ -148,7 +118,7 @@ fn main() -> ExitCode {
         let linking_sub_step = Logger::new(Some(&artifacts.exe_path));
         let mut linker_command = artifacts.linker();
         let linker_result = linker_command.output();
-        linking_sub_step.sub_step_done_with_verbosity(&LINKING, verbosity);
+        linking_sub_step.sub_step_done(&LINKING);
         match linker_result {
             Ok(output) => {
                 if !output.status.success() {
@@ -164,17 +134,13 @@ fn main() -> ExitCode {
         }
     };
 
-    compilation_sub_step.sub_step_done_with_verbosity(&SUBSTEP_DONE, verbosity);
-    execution_step.step_done_with_verbosity(verbosity);
-
-    let Command::Run { .. } = command else {
-        return ExitCode::SUCCESS;
-    };
+    compilation_sub_step.sub_step_done(&SUBSTEP_DONE);
+    execution_step.step_done();
 
     let exe_path = PathBuf::from(".").join(&artifacts.exe_path);
-    Logger::info_with_verbosity(&RUNNING, &exe_path, verbosity);
+    Logger::info(&RUNNING, &exe_path);
 
-    let mut run_command = std::process::Command::new(exe_path);
+    let mut run_command = Command::new(exe_path);
     match run_command.status() {
         Ok(status) => {
             if !status.success() {

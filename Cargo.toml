@@ -1,13 +1,14 @@
 [package]
 name = "kaylang"
-version = "0.5.3"
+version = "0.6.0"
 edition = "2021"
 authors = ["Stefano Incardone"]
 categories = ["compilers", "command-line-utilities"]
 keywords = ["language", "compiler"]
 description = "Experimenting with programming languages by creating one"
-readme = "README.md"
 repository = "https://github.com/StefanoIncardone/kaylang"
+readme = "README.md"
+documentation = "https://github.com/StefanoIncardone/kaylang/docs/LANGUAGE_REFERENCE.md"
 license = "MIT"
 
 [profile.dev]
@@ -24,28 +25,14 @@ opt-level = 0
 # incremental = false
 # lto = "fat"
 
-[lints.clippy]
-## to be used once in a while
-# nursery = "warn"
-# pedantic = "warn"
-# restriction = "warn"
-
-cargo = "forbid"
-manual_map = "allow"
-from_over_into = "allow"
-large_stack_arrays = "forbid"
-too-many-arguments = "allow"
-zero_prefixed_literal = "allow"
-manual_let_else = "warn"
-no_effect_undescore_binding = "warn"
-
 [lints.rust]
+keyword_idents = { level = "forbid", priority = -1 }
 deprecated = "warn"
 absolute_paths_not_starting_with_crate = "forbid"
 elided-lifetimes-in-paths = "warn"
-keyword_idents = "forbid"
 non_ascii_idents = "forbid"
-unreachable_pub = "warn"
+unreachable_pub = "forbid"
+unnameable_types = "forbid"
 unstable_features = "forbid"
 unused_crate_dependencies = "warn"
 unused_extern_crates = "warn"
@@ -54,6 +41,89 @@ unused_lifetimes = "warn"
 unused_macro_rules = "warn"
 unused_qualifications = "warn"
 unused_results = "forbid"
-unused_tuple_struct_fields = "warn"
 private_bounds = "forbid"
 private_interfaces = "forbid"
+
+[lints.clippy] # to be used once in a while
+blanket_clippy_restriction_lints = "allow"
+nursery = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+restriction = { level = "warn", priority = -1 }
+cargo = { level = "forbid", priority = -1 }
+
+# still not convinced on the benefits of either approaches
+self_named_module_files = "allow"
+mod_module_files = "warn"
+
+# this is not a no_std crate
+std_instead_of_core = "allow"
+std_instead_of_alloc = "allow"
+
+# it's a cli tool, it's normal to print to stderr and stdout
+print_stdout = "allow"
+print_stderr = "allow"
+
+# improve readability and self documenting code
+implicit_return = "forbid"
+needless_return = "allow"
+unseparated_literal_suffix = "forbid"
+separated_literal_suffix = "allow"
+semicolon_inside_block = "forbid"
+semicolon_outside_block = "allow"
+redundant_pub_crate = "allow"
+multiple_inherent_impl = "allow" # allows "related" functions to be in the same block, useful for code folding
+pub_with_shorthand = "allow"
+absolute_paths = "allow"
+match_same_arms = "allow" # used for a more descriptive formatting of match arms, might get removed
+unnested_or_patterns = "allow"
+
+# factoring into smaller components is not the solution
+too_many_lines = "allow"
+cognitive_complexity = "allow"
+too-many-arguments = "allow"
+
+# i'd prefer my code not to compile when i change the layout of structs and enums
+exhaustive_enums = "allow"
+exhaustive_structs = "allow"
+
+missing_inline_in_public_items = "allow" # not all functions should be inlined
+inline_always = "allow" # do as i say please
+needless_raw_strings = "allow" # raw strings preserve leading spaces while regular strings don't
+min_ident_chars = "allow" # mainly used for formatters parameters in Display implementation from autocomplete
+pattern_type_mismatch = "allow" # mainly used when matching on &self (i.e: "match self" vs "match *self")
+error_impl_error = "allow"
+missing_trait_methods = "allow"
+missing_docs_in_private_items = "allow"
+integer_division_remainder_used = "allow" # would be relevant in cryptographic contexts
+indexing_slicing = "allow" # may consider safer options
+string_slice = "allow" # how else would i take a string slice?
+from_over_into = "allow" # i found that implementing the From trait and hoping for a correct Into implementation to be unreliable
+missing_transmute_annotations = "allow"
+arithmetic_side_effects = "allow" # could be changed to "warn"
+unreachable = "allow" # trust me, might be changed to "warn" to encourage bettere style and soundness
+undocumented_unsafe_blocks = "allow" # trust me
+missing_errors_doc = "allow" # will be changed to "warn" in the future when it comes time to document everything
+as_conversions = "allow" # do as i say please
+cast_possible_truncation = "allow" # do as i say please
+cast_sign_loss = "allow" # do as i say please
+question_mark_used = "allow" # needlessly advocates for a macro instead of a language feature
+
+# doesn't solve the problem, i.e.:
+# ```rust
+# let mut i: i32 = 0; // this explicit annotation is useful and prevents incorrect inference
+#
+# // but this still raises a warning, which it should not in my opinion, since the type of the
+# // literal 1 shoul be already inferred as being an i32
+# i += 1;
+# ```
+default_numeric_fallback = "allow"
+
+# i prefer imperative programming
+option_if_let_else = "allow"
+# manual_map = "allow"
+equatable_if_let = "allow"
+
+large_stack_frames = "warn"
+zero_prefixed_literal = "allow"
+manual_let_else = "warn"
+no_effect_underscore_binding = "warn"

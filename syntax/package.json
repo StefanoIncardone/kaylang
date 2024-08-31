@@ -1,0 +1,41 @@
+{
+    "name": "kay-lang",
+    "displayName": "Kay Lang",
+    "description": "Syntax highlighting for Kay Lang",
+    "version": "0.1.0",
+    "engines": {
+        "vscode": "^1.91.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "contributes": {
+        "languages": [
+            {
+                "id": "kay",
+                "aliases": ["Kay", "kay"],
+                "extensions": [".kay"],
+                "configuration": "./language-configuration.json"
+            },
+            {
+                "id": "kay-markdown-injection"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "kay",
+                "scopeName": "source.kay",
+                "path": "./syntax.tmLanguage.json"
+            },
+            {
+                "language": "kay-markdown-injection",
+                "scopeName": "markdown.kay.codeblock",
+                "path": "./markdown-injection.tmLanguage.json",
+                "injectTo": ["text.html.markdown"],
+                "embeddedLanguages": {
+                    "meta.embedded.block.kay": "kay"
+                }
+            }
+        ]
+    }
+}

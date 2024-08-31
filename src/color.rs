@@ -1,5 +1,9 @@
+use std::{
+    fmt::{Display, Write as _},
+    io::IsTerminal,
+};
+
 use crate::Color;
-use std::{fmt::Display, io::IsTerminal};
 
 #[allow(dead_code)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -62,38 +66,51 @@ impl Flag {
 }
 
 #[allow(non_upper_case_globals)]
-pub(crate) static mut log: fn(&str, Fg, Bg, Flags, &mut std::fmt::Formatter<'_>) -> std::fmt::Result = log_color;
+pub(crate) static mut print: fn(
+    &str,
+    Fg,
+    Bg,
+    Flags,
+    &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result = print_color;
 
 impl Color {
-    pub fn set(self, sink: &impl IsTerminal) {
+    pub fn set<I: IsTerminal>(self, sink: &I) {
         unsafe {
-            log = match self {
-                Self::Auto => {
-                    if sink.is_terminal() {
-                        log_color
-                    } else {
-                        log_no_color
-                    }
-                }
-                Self::Always => log_color,
-                Self::Never => log_no_color,
+            print = match self {
+                Self::Auto if sink.is_terminal() => print_color,
+                Self::Auto => print_no_color,
+                Self::Always => print_color,
+                Self::Never => print_no_color,
             }
         }
     }
 }
 
-fn log_no_color(text: &str, _: Fg, _: Bg, _: Flags, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    text.fmt(f)
+fn print_no_color(
+    text: &str,
+    _: Fg,
+    _: Bg,
+    _: Flags,
+    f: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
+    return text.fmt(f);
 }
 
-fn log_color(text: &str, fg: Fg, bg: Bg, flags: Flags, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    let mut codes = String::with_capacity(15);
+fn print_color(
+    text: &str,
+    fg: Fg,
+    bg: Bg,
+    flags: Flags,
+    f: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
+    let mut codes = String::with_capacity(24);
 
     if fg != Fg::Default {
-        codes += &format!("{fg};", fg = fg as u8);
+        _ = write!(codes, "{};", fg as u8);
     }
     if bg != Bg::Default {
-        codes += &format!("{bg};", bg = bg as u8);
+        _ = write!(codes, "{};", bg as u8);
     }
     if flags & Flag::Bold != 0 {
         codes += "1;";
@@ -111,7 +128,7 @@ fn log_color(text: &str, fg: Fg, bg: Bg, flags: Flags, f: &mut std::fmt::Formatt
         codes += "27;";
     }
 
-    if codes.is_empty() {
+    return if codes.is_empty() {
         text.fmt(f)
     } else {
         let _last_semicolon = codes.pop();
@@ -119,24 +136,19 @@ fn log_color(text: &str, fg: Fg, bg: Bg, flags: Flags, f: &mut std::fmt::Formatt
         write!(f, "\x1b[{codes}m")?;
         text.fmt(f)?;
         write!(f, "\x1b[0m")
-    }
+    };
 }
 
 #[derive(Debug, Default)]
-pub struct Colored<Str: AsRef<str>> {
-    pub text: Str,
+pub struct Colored<Text: AsRef<str>> {
+    pub text: Text,
     pub fg: Fg,
     pub bg: Bg,
     pub flags: Flags,
 }
 
-impl<Str: AsRef<str>> Display for Colored<Str> {
+impl<Text: AsRef<str>> Display for Colored<Text> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        unsafe { log(self.text.as_ref(), self.fg, self.bg, self.flags, f) }
+        return unsafe { print(self.text.as_ref(), self.fg, self.bg, self.flags, f) };
     }
 }
-
-#[deprecated(since = "0.5.3", note = "will be removed to allow for more explicit type signatures")]
-pub type ColoredString = Colored<String>;
-#[deprecated(since = "0.5.3", note = "will be removed to allow for more explicit type signatures")]
-pub type ColoredStr = Colored<&'static str>;

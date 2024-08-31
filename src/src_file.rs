@@ -1,57 +1,31 @@
-use crate::error::{ErrorInfo, SrcFileError, SrcFileErrorInfo, SrcFileErrorKind};
+use crate::{CAUSE, ERROR};
 use std::{
-    fs::File,
-    io::{self, BufRead, BufReader},
+    fmt::Display,
     path::{Path, PathBuf},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Line {
+pub struct Span {
     /// inclusive
-    pub(crate) start: usize,
+    pub start: usize,
 
     /// not inclusive
-    pub(crate) end: usize,
+    pub end: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub type Line = Span;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Position {
     pub line: usize,
+    // IDEA(stefano): restrict the max line length to 255/511/1023/2047/4095
     pub col: usize,
 }
 
-impl<'src> Position {
-    pub(crate) fn new(src: &'src SrcFile, col: usize) -> (Self, &'src str) {
-        let mut left = 0;
-        let mut right = src.lines.len();
-        while left < right {
-            let middle = left + (right - left) / 2;
-            if col < src.lines[middle].end {
-                right = middle;
-            } else {
-                left = middle + 1;
-            }
-        }
-
-        Self::new_with_line_idx(src, left, col)
-    }
-
-    pub(crate) fn new_with_line_idx(src: &'src SrcFile, line_idx: usize, col: usize) -> (Self, &'src str) {
-        let line = &src.lines[line_idx];
-        let line_text = &src.code[line.start..line.end];
-        let target_col = col - line.start;
-        let mut display_col = 0;
-        for (idx, _) in line_text.char_indices() {
-            display_col += 1;
-            if idx == target_col {
-                break;
-            }
-        }
-
-        (Self { line: line_idx + 1, col: display_col }, line_text)
-    }
-}
-
+/* IDEA(stefano):
+restrict the compiler to only accept files of 4Gb max, thus allowing indexes, line and column etc.
+to be represented with u32 instead of usize
+*/
 #[derive(Debug)]
 pub struct SrcFile {
     pub(crate) path: PathBuf,
@@ -60,98 +34,118 @@ pub struct SrcFile {
 }
 
 impl SrcFile {
-    // TODO(stefano): replace indentation tabs with spaces
-    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
-        let path = path.as_ref().to_path_buf();
-
-        let file = match File::open(&path) {
-            Ok(f) => f,
-            Err(err) => return Err(SrcFileError { kind: ErrorKind::CouldNotOpen { err, path } }),
+    pub fn load(path: &Path) -> Result<Self, Error> {
+        let path_buf = path.to_owned();
+        let code = match std::fs::read_to_string(path) {
+            Ok(code) => code,
+            Err(err) => return Err(Error { path: path_buf, cause: err }),
         };
 
-        let file_len = match file.metadata() {
-            Ok(metadata) if metadata.is_file() => metadata.len() as usize,
-            Ok(_) => return Err(SrcFileError { kind: ErrorKind::ExpectedFile { path } }),
-            Err(err) => return Err(SrcFileError { kind: ErrorKind::CouldNotReadMetadata { err, path } }),
-        };
-
-        // plus one to account for a possible phantom newline at the end
-        let mut code = String::with_capacity(file_len + 1);
         let mut lines = Vec::<Line>::new();
         let mut start = 0;
-        let mut src = BufReader::new(file);
+        let mut current_ascii_index = 0;
 
-        loop {
-            let mut chars_read = match src.read_line(&mut code) {
-                Ok(0) => break,
-                Ok(read) => read,
-                Err(err) => return Err(SrcFileError { kind: ErrorKind::CouldNotReadContents { err, path } }),
-            };
-
-            let mut end = code.len() - 1;
-            if end > start {
-                if let cr @ b'\r' = &mut unsafe { code.as_bytes_mut() }[end - 1] {
-                    *cr = b'\n';
-                    unsafe { code.as_mut_vec().set_len(end) };
-                    end -= 1;
-                    chars_read -= 1;
+        let code_bytes = code.as_bytes();
+        while current_ascii_index < code_bytes.len() {
+            match code_bytes[current_ascii_index] {
+                b'\n' => {
+                    // we reached the end of the line on a LF (\n)
+                    lines.push(Line { start, end: current_ascii_index });
+                    start = current_ascii_index + 1;
                 }
+                b'\r' => {
+                    let Some(possible_new_line) = code_bytes.get(current_ascii_index + 1) else {
+                        // we reached the end of the file on a stray \r
+                        lines.push(Line { start, end: current_ascii_index });
+                        break;
+                    };
+
+                    if *possible_new_line == b'\n' {
+                        // we reached the end of the line on a CRLF (\r\n)
+                        lines.push(Line { start, end: current_ascii_index });
+                        current_ascii_index += 1;
+                        start = current_ascii_index + 1;
+                    }
+                }
+                _ => {}
             }
 
-            lines.push(Line { start, end });
-            start += chars_read;
+            current_ascii_index += 1;
         }
 
-        // it will make lexing simpler
-        if !code.is_empty() {
-            let last_char = code.len() - 1;
-            if code.as_bytes()[last_char] != b'\n' {
-                code.push('\n');
-                let last_line = lines.len() - 1;
-                lines[last_line].end += 1;
+        if !code.is_empty() && code_bytes[current_ascii_index - 1] != b'\n' {
+            // we reached the end of the file on a line without a trailing \n
+            lines.push(Line { start, end: current_ascii_index });
+        }
+
+        return Ok(Self { path: path_buf, code, lines });
+    }
+
+    #[must_use]
+    #[inline(always)]
+    pub fn path(&self) -> &Path {
+        return &self.path;
+    }
+
+    #[must_use]
+    #[inline(always)]
+    pub fn code(&self) -> &str {
+        return &self.code;
+    }
+
+    #[must_use]
+    #[inline(always)]
+    pub fn lines(&self) -> &[Line] {
+        return &self.lines;
+    }
+
+    #[must_use]
+    pub fn position(&self, col: usize) -> Position {
+        let mut left = 0;
+        let mut right = self.lines.len() - 1;
+        while left < right {
+            #[allow(clippy::integer_division)] // it's intended to lose precision
+            let middle = left + (right - left) / 2;
+            if col < self.lines[middle].end {
+                right = middle;
+            } else {
+                left = middle + 1;
             }
         }
 
-        Ok(Self { path, code, lines })
+        // converting from column offset to display offset (useful for utf8 characters)
+        let line = &self.lines[left];
+        let line_text = &self.code[line.start..line.end];
+        let target_col = col - line.start;
+        let mut display_col = 0;
+        for (index, _) in line_text.char_indices() {
+            display_col += 1;
+            if index == target_col {
+                break;
+            }
+        }
+
+        return Position { line: left + 1, col: display_col };
     }
 }
 
 #[derive(Debug)]
-pub enum ErrorKind {
-    CouldNotOpen { err: io::Error, path: PathBuf },
-    ExpectedFile { path: PathBuf },
-    CouldNotReadMetadata { err: io::Error, path: PathBuf },
-    CouldNotReadContents { err: io::Error, path: PathBuf },
+pub struct Error {
+    pub path: PathBuf,
+    pub cause: std::io::Error,
 }
 
-impl ErrorInfo for ErrorKind {
-    type Info = SrcFileErrorInfo;
+impl std::error::Error for Error {}
 
-    fn info(&self) -> Self::Info {
-        let (msg, cause) = match self {
-            Self::CouldNotOpen { err, path } => (
-                format!("could not open '{path}'", path = path.display()).into(),
-                format!("{err} ({kind})", kind = err.kind()).into(),
-            ),
-            Self::ExpectedFile { path } => (
-                format!("invalid path '{path}'", path = path.display()).into(),
-                "expected a file but got a directory".into(),
-            ),
-            Self::CouldNotReadMetadata { err, path } => (
-                format!("could not read metadata of '{path}'", path = path.display()).into(),
-                format!("{err} ({kind})", kind = err.kind()).into(),
-            ),
-            Self::CouldNotReadContents { err, path } => (
-                format!("could not read contents of '{path}'", path = path.display()).into(),
-                format!("{err} ({kind})", kind = err.kind()).into(),
-            ),
-        };
-
-        Self::Info { msg, cause }
+impl Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        return write!(
+            f,
+            "{ERROR}: could not read '{file_path}'\
+            \n{CAUSE}: {err} ({io_err})",
+            file_path = self.path.display(),
+            err = self.cause,
+            io_err = self.cause.kind()
+        );
     }
 }
-
-impl SrcFileErrorKind for ErrorKind {}
-
-#[deprecated(since = "0.5.3", note = "will be removed to allow for more explicit function signatures")]
-pub type Error = SrcFileError<ErrorKind>;

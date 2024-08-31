@@ -1,71 +1,474 @@
 # Feature Ideas
 
-**IMPORTANT**: no feature is final, modifications can happen at any moment
+>[!WARNING]
+> no feature is final, modifications can happen at any moment
+
+## Quotes in raw strings
+
+```kay
+r"nested "quotes" are not allowed";
+
+# the Rust way, would collide with comments
+r#"nested "quotes" are allowed"#
+
+# with extra quotes, the same amount of opening quotes must be used to close the string
+# you can use the number of opening quotes - 1 inside the string in succession
+r""nested "quotes" are allowed""
+r"""nested ""quotes"" are allowed"""
+
+# or allow for escapes (defeats the purpose of raw strings)
+r"nested \"quotes\" would need escaping"
+```
+
+## Built-in notes
+
+Implement a way to recognize and collect todos, and other tags
+
+```kay
+# at: file.kay
+
+(12) # TODO(stefano) implement this features
+#                   ^^^^^^^^^^^^^^^^^^^^^^^^ everything after the TODO(stefano) is part of the message
+(42) # IDEA(stefano)genious
+#                   ^notice the missing space
+```
+
+running the `kay notes file.kay` command would output something like:
+
+```text
+TODO(stefano): file.kay:12: implement this feature
+IDEA(stefano): file.kay:42:genious
+```
+
+Could create a config file that specifies what notes to look for, like a notes.toml
+
+## Arbitrary number bases
+
+```kay
+# standard bases
+let decimal = 02_1; # with trailing zeroes and separating underscores allowed
+let binay = 0b0001_0101;
+let octal = 0o25;
+let hexadecimal = 0x15;
+
+# arbitrary bases would make use of the `a` modifier to state that any number between the
+# leading 0 and `a` modifier would be the base of the number and allow to represent numbers up
+# to base 36 using characters from `0123456789abcdefghijklmnopqrstuvwxyz` or
+# `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ`
+let base_21 = 021a1;
+```
+
+## More output file names flags
+
+currently only the output path (`-o`, `--output`) can be specified and the names of the generated artifacts is
+generated from the source file name, i.e:
+
+| source file path | output directory path | assembly file path | object file path | executable file path |
+| :--------------- | :-------------------- | :----------------- | :--------------- | :------------------- |
+| `test.kay`       |                       | `test.asm`         | `test.o`         | `test`               |
+| `test.kay`       | `out`                 | `out/test.asm`     | `out/test.o`     | `out/test`           |
+
+could introduce flags to customize individual file output directories and file names separately:
+
+| file kind   | output directory flag        | output file path flag      |
+| :---------- | :--------------------------- | :------------------------- |
+| general     | `-o`, `--output`             |                            |
+| assembly    | `-oa`, `--output-assembly`   | `-na`, `--name-assembly`   |
+| object file | `-oo`, `--output-object`     | `-no`, `--name-object`     |
+| executable  | `-oe`, `--output-exectuable` | `-ne`, `--name-exectuable` |
+
+or combined:
+
+- assembly output name and directory: `-oa .. -n ..`, `--output-assembly .. --name ..`
+- object output name and directory: `-oo .. -n ..`, `--output-object .. --name ..`
+- executable output name and directory: `-oe .. -n ..`, `--output-exectuable .. --name ..`
+
+so using the `compile` command with these extra arguments would work like:
+
+| command                                                    | assembly file path | object file path | executable file path  |
+| :--------------------------------------------------------- | :----------------- | :--------------- | :-------------------- |
+| `test.kay -oa asm`                                         | `asm/test.asm`     | `test.o`         | `test`                |
+| `test.kay -no test_obj`                                    | `test.asm`         | `test_obj.o`     | `test`                |
+| `test.kay -o out -oa asm`                                  | `out/asm/test.asm` | `out/test.o`     | `out/test`            |
+| `test.kay -o out -oa asm -oo obj -oe exe`                  | `out/asm/test.asm` | `out/obj/test.o` | `out/exe/test`        |
+| `test.kay -oa asm -ne test_executable -oo out/obj -oe exe` | `asm/test.asm`     | `out/obj/test.o` | `exe/test_executable` |
 
 ## Language version embedded in file extension or in the resulting binary executable
 
 From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProjects/bldaps_for/common/bldaps_under_inpext.htm#:~:text=Typical%20Fortran%20source%20files%20have,f.)
 
-## Loops/ifs/switches
+## Amount of crash information
 
-- loops and ifs similar to Odin's [for loops](https://odin-lang.org/docs/overview/#for-statement) and [if statements](https://odin-lang.org/docs/overview/#if-statement)
-- do-loop loops, only for C-style while loops
-    - cannot be used with infinite loops or with C-style for loops
+To reduce binary size we could allow to specify a flag controlling the amount of information printed
+in the case of crashes.
+
+As of right now when crashing due to arithmetic constraints we print the general following message:
+
+```text
+Crash: something specific wrong happened
+at: file.kay:21:12
+```
+
+While this is useful because it cleary shows whan cause the problem and where it happened, it comes
+with the drawback that every function now needs to accept extra information, thus leading to bigger
+binary sizes due to:
+
+- reason of the crash
+- file name, line and column numbers of where the crash happened
+
+Every function is thus bigger and more complex, so we could let a cli flag such as
+`--crashinfo` followed by some crash info degree such as:
+
+- `none`: no reason, file, line and column information:
+
+    ```text
+    Crash: program crashed
+    ```
+
+- `full`: as shown above:
+- `reduced`: only the reason of the crash:
+
+    ```text
+    Crash: something specific wrong happened
+    ```
+
+This could also speedup performance since less information (namely line and column number
+information) would not be passed to functions
+
+## Loops/ifs
+
+- loops similar to Odin's [for loops](https://odin-lang.org/docs/overview/#for-statement)
+- ifs similar to Odin's [if statements](https://odin-lang.org/docs/overview/#if-statement)
 
 ### switch statements
 
+- as little effort required to refactor from a regular if to a switch statement
+- introducing as little new keywords as possible (just the `case` keyword, and possibly `fall`)
+- avoiding added nesting:
+
 ```kay
-let answer = 0;
+# regular if:
+# - 1 level of indentation
+# - two keywords: `if`, `else`
+if answer == 19 {
+    println "lucky";
+} else if answer == 21 {
+    println "you stoopid";
+} else if answer == 42 {
+    println "that's the right answer";
+} else {
+    println "too bad";
+}
 
-# regular if
-if answer == 19      do println "lucky";
-else if answer == 21 do println "you stoopid";
-else if answer == 42 do println "that's the right answer";
-else                 do println "too bad";
-
-# switch statement
+# switch statement:
+# - 1 level of indentation
+# - one keyword plus the two from before: `if`, `else`, `case`
+#   - possibly a `fall` keyword to specify a fallthrough case
+# - same semantics as a regular if statement
+#   - every case is like an `else if` branch
+#   - it's basically just syntactic sugar
+# - actually less code
+# - requires minimal structural changes and refactoring:
+#   - replace the first `==` and the rest of the `else if answer ==` with a `case`
+#   - keep the `else` keyword for the 'default' case
 if answer
-case 19 do println "lucky";
-case 21 do println "you stoopid";
-case 42 do println "that's the right answer";
-else    do println "too bad";
+case 19 {
+    println "lucky";
+} case 21 {
+    println "you stoopid";
+} case 42 {
+    println "that's the right answer";
+} else {
+    println "too bad";
+}
+
+# alternative switch statement:
+# - 1 level of indentation
+# - two keywords plus the two from before: `if`, `else`, `switch`, `case`
+#   - possibly a `fall` keyword to specify a fallthrough case
+# - same semantics as a regular if statement
+#   - every case is like an `else if` branch
+#   - it's basically just syntactic sugar
+# - actually less code
+# - requires minimal structural changes and refactoring:
+#   - replace the first `if` keyword with the `switch` keyword
+#   - replace the first `==` and the rest of the `else if answer ==` with a `case`
+#   - keep the `else` keyword for the 'default' case
+switch answer
+case 19 {
+    println "lucky";
+} case 21 {
+    println "you stoopid";
+} case 42 {
+    println "that's the right answer";
+} else {
+    println "too bad";
+}
+
+# pattern matching:
+# - short and concise
+# - can declare mutability modifiers `let` or `var` on matched values
+if answer == let Ok(ok) do println ok; # ok is available only in the do statement
+
+# more cases:
+if answer == let Ok(ok) do println ok;
+else if answer == let Err(err) do println err;
+
+# refactor to switch:
+# - only requires to change `==` and `else if answer ==` to `case`
+# - values inside pattern matching (i.e.: `ok` and `err`) are only available in the corresponding branch
+# - split into multiple lines if preferred
+if answer
+case var Ok(ok) do println ok;
+case let Err(err) do println err;
+
+# rust-inspired let else syntax:
+# - `ok` will be available from now on
+let Ok(ok) = answer else do println "err";
+
+# oh no! i need to access the error value
+# - literally just add the pattern corresponding to the err case
+# - 'err' will only be available in it's switch branch
+# - `case` required to allow for more consistency when adding multiple cases
+let Ok(ok) = answer else case let Err(err) do println err;
+
+# would allow for acces to other values in other patterns if needed
+# - just add the other patterns
+# - debate wheter the repetition of the `else` kewword should be addressed
+let Ok(ok) = answer else
+case let Err0(err0) do println err0;
+case var Err1(err1) do println err1;
+else do println "err";
+
+# want to refactor to a regular switch?
+# - minimal code change
+# - all of the matched values will only be available in their switch branch
+if answer
+case let Ok(ok) do println ok;
+case var Err0(err0) do println err0;
+case let Err1(err1) do println err1;
+else do println "err";
 ```
 
-## Once keyword
+possibly allow for the operator before the first case to propagate, basically sugar for a regular if
 
-- allow variables to be mutated only `once` or in special places
+```kay
+# this would be treated as pattern matching
+if answer
+case 19 ...;
+case 21 ...;
+case 42 ...;
+else ...;
 
-## Unchecked/Checked
+# this would use the `==` operator to "pattern match" on cases
+if answer ==
+case 19 ...;
+case 21 ...;
+case 42 ...;
+else ...;
 
-- unchecked (+, -, /, ... ): overflow will wrap, division by zero will crash
-- checked (++, --, //, ...):
-    - overflow/underflow may return both the result and the overflow of the addition
-    - division will return either the result or an error value
-- maybe have a compiler flag to use checked/unchecked operators
+# would be sugar for this
+if answer == 19 ...;
+else if answer == 21 ...;
+else if answer == 42 ...;
+else ...;
+
+# this would use the `>` operator to "pattern match" on cases
+if answer >
+case 19 ...;
+case 21 ...;
+case 42 ...;
+else ...;
+
+# would be sugar for this
+if answer > 19 ...;
+else if answer > 21 ...;
+else if answer > 42 ...;
+else ...;
+
+# this would use the `%` operator to "pattern match" on cases
+if answer %
+case 19 == 0 ...; # same as answer % 19 == 0
+case 21 == 3 ...; # same as answer % 21 == 3
+case 42 ...; # same as answer > 42 -> error: other branches evaluated to booleans while this evaluated to int
+else ...;
+
+# would be sugar for this
+if answer % 19 == 0 ...;
+else if answer % 21 == 3 ...;
+else if answer % 42 ...;
+else ...;
+```
+
+#### compared to C
+
+```c
+// regular if:
+// - 1 level of indentation
+// - two keywords: `if`, `else`
+if (answer == 19) {
+    printf("lucky");
+} else if (answer == 21) {
+    printf("you stoopid");
+} else if (answer == 42) {
+    printf("that's the right answer");
+} else {
+    printf("too bad");
+}
+
+// switch:
+// - 2 levels of indentation
+// - two/three keywords plus the two from before: `if`, `else`, `switch`, `case`, `break`
+// - different semantics than a regular if statement
+//  - each case is basically a goto statement
+// - more code
+// - requires lots of structural change and refactoring
+switch answer {
+    case 19: {
+        printf("lucky");
+        break;
+    }
+    case 21: {
+        printf("you stoopid");
+        break;
+    }
+    case 42: {
+        printf("that's the right answer");
+        break;
+    }
+    default: {
+        printf("too bad");
+    }
+}
+
+// switch:
+// - same as above
+// - 1 level of indentation
+// - ugly
+switch answer {
+case 19: {
+    printf("lucky");
+    break;
+}
+case 21: {
+    printf("you stoopid");
+    break;
+}
+case 42: {
+    printf("that's the right answer");
+    break;
+}
+default: {
+    printf("too bad");
+}
+}
+```
+
+#### compared to Rust
+
+```rust
+// regular if:
+// - 1 level of indentation
+// - two keywords: `if`, `else`
+if answer == 19 {
+    print!("lucky");
+} else if answer == 21 {
+    print!("you stoopid");
+} else if answer == 42 {
+    print!("that's the right answer");
+} else {
+    print!("too bad");
+}
+
+// match:
+// - 2 levels of indentation
+// - one keyword plus the two from before: `if`, `else`, `match`
+// - different semantics
+//  - allows for pattern matching
+//  - requires commas in single statements
+// - comparable amount of code, less in many cases
+// - requires a lot of structural change and refactoring
+match answer {
+    19 => {
+        print!("lucky");
+    },
+    21 => {
+        print!("you stoopid");
+    },
+    42 => {
+        print!("that's the right answer");
+    },
+    _ => {
+        print!("too bad");
+    },
+}
+
+// let else:
+// - short and concise
+let Ok(ok) = answer else {
+    // oh no! how do i access the error value? which is exactly what an else case should allow for
+    print!("{???}");
+    return ???;
+};
+
+// i need to completely refactor to this:
+// - repetition of `if let`
+// - complete change to code structure
+//  - need to extract ok to a separate variable
+let ok = if let Ok(ok) = answer {
+    ok
+} else if let Err(err) = answer {
+    print!("{err}");
+    return err;
+};
+
+// or to this:
+// - same as above
+let ok = match answer {
+    Ok(ok) => ok,
+    Err(err) => {
+        print!("{err}");
+        return err;
+    },
+};
+```
 
 ## Operators
 
-have them as built-in operators or just implement them as functions
-
+- checked (`++`, `--`, `//`, ..., or `+?`, `-?`, `/?`, ...):
+    - overflow/underflow may return both the result and the overflow of the addition
+    - division will return either the result or an error value
 - divmod:
 
     ```kay
     let division, remainder = 3 /% 2; # will result in 1, 1
     ```
 
-- absolute value, enclosed by a `|`:
+- boolean flip operator `=!`:  
+    so: boolean = !boolean;
+    would become: boolean =!;
 
-    ```kay
-    |19| == 19
-    |-19| == 19
-    ```
+### Revised remainder/mod operators
 
-    or with the usage of the `+` sign:
+| strategy                    | symbol | math equation                                                          |
+| :-------------------------- | :----: | :--------------------------------------------------------------------- |
+| **with truncation**         |  `%`   | `remainder = dividend - divisor * trunc(dividend / divisor)`           |
+| **with floor**              |  `%-`  | `remainder = dividend - divisor * floor(dividend / divisor)`           |
+| **with ceil**               |  `%+`  | `remainder = dividend - divisor * ceil(dividend / divisor)`            |
+| **with round**              |  `%*`  | `remainder = dividend - divisor * round(dividend / divisor)`           |
+| **with euclidian division** |  `%%`  | `remainder = dividend - abs(divisor) * floor(dividend / abs(divisor))` |
 
-    ```kay
-    let negative = -19;
-    let positive = +negative; # 19
-    ```
+### Revised shift operator
+
+| strategy                     | symbol | x86-64 instruction |
+| :--------------------------- | :----: | :----------------- |
+| **left logical shift**       |  `<<`  | `shl` / `shlx`     |
+| **left arithmetical shift**  |  TBD   | `sal`              |
+| **right logical shift**      |  `>>`  | `shr` / `shrx`     |
+| **right arithmetical shift** |  TBD   | `sar` / `sarx`     |
+
+Note: left logical shift and left arithmetical shift are completely identical, just kept for
+consistency with their right shifts counterparts
 
 
 ## Strings
@@ -73,8 +476,8 @@ have them as built-in operators or just implement them as functions
 - immutable strings are surrounded by `"`: `"hello world"`
 - mutable strings (like string builders) are surrounded by `` ` ``: `` `hello world` ``
     - seamlees way to convert from one string type to another
-- raw strings are prefixed by a `r`: `r"\this wo\n't be escaped"`
 - multiline strings are prefixed by a `m`, or by multiple quotes like in Java:
+    - multiline strings may follow C-style string concatenation
     - lines will have newline characters appended to them unless they end in a `\`, which can be escaped using a `\\`
     - whitespace will be preserved (except before the closing quote) and leading whitespace is calculated based on the
         position of the closing quote, or by the text furthest to the left.  
@@ -82,10 +485,25 @@ have them as built-in operators or just implement them as functions
 - options can appear in any order right before the opening quote, but only once:
     - `frm"`, `fr"`, `rm"` are valid
     - `frrm`, `ff "`, `r "` are not valid
+- ascii/utf strings and chars (need to decide on proper names):
+
+    | type name  | type    | type size (bytes) | example  | notes                                 |
+    | :--------- | :------ | :---------------- | :------- | :------------------------------------ |
+    | ascii char | `ascii` | 1                 | `'h'`    | guaranteed to be valid ascii and utf8 |
+    | utf8 char  | `utf8`  | 4                 | `u8'è'`  | guaranteed to be valid utf8           |
+    | utf16 char | `utf16` | 4                 | `u16'è'` | guaranteed to be valid utf16          |
+    | utf32 char | `utf32` | 4                 | `u32'è'` | guaranteed to be valid utf32          |
+
+    | type name    | type       | pointer type | type size (bytes)              | example      | notes                                 |
+    | :----------- | :--------- | :----------- | :----------------------------- | :----------- | :------------------------------------ |
+    | ascii string | `str`      | ascii\*      | 1 \* len                       | `"hello"`    | guaranteed to be valid ascii and utf8 |
+    | utf8 string  | `utf8str`  | utf8\*       | 1 to 4 \* len (in code points) | `u8"hellò"`  | guaranteed to be valid utf8           |
+    | utf16 string | `utf16str` | utf16\*      | 2 or 4 \* len (in code points) | `u16"hellò"` | guaranteed to be valid utf16          |
+    | utf32 string | `utf32str` | utf32\*      | 4 \* len                       | `u32"hellò"` | guaranteed to be valid utf32          |
 
 ## Arrays
 
-stack-allocated collection of a compile time known fixed amount of elements:
+stack-allocated collection of a compile time known fixed amount of items:
 
 ```kay
 # initial capacity cannot be specified from variables
@@ -100,34 +518,86 @@ let code: int[capacity]; # works
 let codes: int[] = [1, 2, 3]; # will be of length 3
 
 # or (need to decide wether to keep these syntaxes and only allow to specify the type after the colon)
-let codes = int[1, 2 ,3];                   # array of three elements with indexes 0, 1 and 2 initialized to 1, 2, 3
-let codes = int[6: 1, 2, 3];                # array of six elements with indexes 0, 1 and 2 initialized to 1, 2, 3
-let codes = int[6: 1 = 1, 3 = 2, 0 = 3];    # array of six elements with indexes 1, 3 and 0 initialized to 1, 2, 3
+let codes = int[1, 2 ,3];                   # array of three items with indexes 0, 1 and 2 initialized to 1, 2, 3
+let codes = int[6: 1, 2, 3];                # array of six items with indexes 0, 1 and 2 initialized to 1, 2, 3
+let codes = int[6: 1 = 1, 3 = 2, 0 = 3];    # array of six items with indexes 1, 3 and 0 initialized to 1, 2, 3
 
 # or
-let codes = int[6][1 = 1, 3 = 2, 0 = 3];    # array of six elements with indexes 1, 3 and 0 initialized to 1, 2, 3
+let codes = int[6][1 = 1, 3 = 2, 0 = 3];    # array of six items with indexes 1, 3 and 0 initialized to 1, 2, 3
 ```
 
-will borrow useful feature from C like indexed initialization:
+will borrow useful features from C like indexed initialization:
 
 ```kay
 let codes: int[19] = [
     2 = 5, # element at index 2 will contain the value 5
     0 = 9,
-    3..18 = 3, # elements from index 3 to index 18 will contain the value 3
+    3..18 = 3, # items from index 3 to index 18 will contain the value 3
     42 = 7, # error, out of bounds
-    ]
+];
 ```
 
-and expand on them:
+### Arrays of bits
+
+boolean values just need 1 bit to store all possible states (true: 1, false: 0), hence a single
+`bool` (8 bits) wastes 7 bits. A `bool[n]` would waste `7 * n` bits, thus a solution maybe of
+storing arrays of booleans as a `u8[ceil(n / 8)]` and packing the information of 8 booleans into a
+single `u8`, or alternatively with the `bit[n]` type:
+
+- `bit[7]` -> `u8` and only use 7 out 8 bits
+- `bit[8]` -> `u8` and use 8 bits
+- `bit[9]` -> `u8[2]` and use 8 bits of the first element and only 1 out of 8 of the second
+    - `bit[9]` -> `u16` and use only 9 out of 16 bits
+- `bit[18]` -> `u16[2]` and use 16 bits of the first element and only 2 out of 16 of the second
+- `bit[32]` -> `u32` ...
+- `bit[33]` -> `u32[2]` ...
+- `bit[64]` -> `u64` ...
+- `bit[128]` -> `u64[2]` ...
+- `bit[64 * n]` -> `u64[n]`
+- `bit[64 * n + e]` -> `u64[n + ceil(e / 8)]`
+
+or just `bit[m = 8 * n + e]` -> `u8[n + ceil(e + 8)]`, so:
+
+- `m = 3` -> `bit[0 * n + 3]` -> `u8`
+- `m = 21` -> `bit[2 * n + 5]` -> `u8[2 + ceil(5 / 8)]` -> `u8[3]`
+
+### References to bits
+
+reference to items in arrays of bits, i.e. `let bits: bit[3]; let second = &bits[1]` or
+`let i = 3; let second = &i[1]` could be stored as fat pointers, containing the reference to the
+corresponding byte that contains that bit and an bit offset, so fat pointer to bit would be
+equivalent to the following struct:
 
 ```kay
-let codes: int[19] = [.. = 0] # every element will contain the value 0
+struct BitPointer {
+    byte: u8&,
+    bit: u8, # storing the index as a u8 since numbers can only be of 64 bits
+}
+```
+
+and would be accessed like this:
+
+```kay
+let bits: bit[18];
+# equivalent
+let bytes: u8[3];
+
+# so this
+let fourteenth = &bits[13];
+
+# would be equivalent to
+let fourteenth = BitPointer { byte: bytes[2], bit: 13 % mod 8 };
+
+# so this (reading)
+println fourteenth;
+
+# would be equivalent to this
+println fourteenth.byte >> fourteenth.bit;
 ```
 
 ## Dynamic array (Lists)
 
-heap-allocated collections of a possibly unknown amount of elements:
+heap-allocated collections of a possibly unknown amount of items:
 
 ```kay
 # the question mark denotes a dynamic array, or a list
@@ -135,12 +605,12 @@ heap-allocated collections of a possibly unknown amount of elements:
 let codes: int[..];
 
 # an optional initial capacity can be specified
-let codes: int[..19]; # for consistency with initializing some members
-let codes: int[..19: 1 = 0, 3 = 5]; # for consistency with initializing some members in arrays
+let codes: int[19..]; # for consistency with initializing some members
+let codes: int[19..: 1 = 0, 3 = 5]; # for consistency with initializing some members in arrays
 
 # initial capacity can be specified from variables
 let capacity = 19;
-let code: int[..capacity]
+let code: int[capacity..]
 ```
 
 they can be manipulated in different ways (syntax yet to be dicided):
@@ -148,52 +618,309 @@ they can be manipulated in different ways (syntax yet to be dicided):
 maybe have unchecked and checked versions)
 
 ```kay
-codes.append( 3 ); # adding an element to the end
+codes.append(3); # adding an element to the end
 codes.pop();
 
-codes.insert( 2, 4 ) # inserting an element at index 2
+codes.insert(2, 4) # inserting an element at index 2
 
-codes.remove( 3 ); # removing at index 3
+codes.remove(3); # removing at index 3
 ```
 
-## Aliases
+## Type unions
 
-ability to create type aliases, which are just alternative names to existing types
+ability to create a type with a "tag" discriminating which type is currently active
 
 ```kay
-alias byte = u8;
+type int_or_bool = int | bool;
+
+let x: int_or_bool = 1;
+
+if x is int {
+    # x type is now inferred as int
+} else {
+    # x type is now inferred as bool
+}
+
+let y: int | bool = true; # type unions can also be implicit
 ```
 
-## Distinct types
-
-ability to create distinct types, which are considered entirely different types:
+type unions can be used with if-case expressions:
 
 ```kay
-type byte = u8;
+let s0 = "franco";
+let s1 = "giovasanni";
+let s2 = "aldo";
+
+let s3 = "franco";
+let s4 = "giovanni";
+let s5 = "aldo";
+
+let b = ["hello", "from", "kay"];
+let a = ["hello", "from", "stefano"];
+
+if array_eq(a, b) is
+case let mismatch: none do println("equals"); # would not be reached since there was a mismatch
+else let mismatch: uint do println(f"mismatch at index {mismatch}"); # mismatch would have the value of 2
+
+fn mismatch_index: uint? = array_eq[T: type, N: uint](dst: T[N]*, src: T[N]*) {
+    loop var i = N; i > 0; i -= 1 {
+        if dst* != src* {
+            return i;
+        }
+
+        # incrementing the pointer based on the pointer size
+        # so a pointer to an array would get incremented by the size of a single element
+        dst += 1;
+        src += 1;
+    }
+
+    return none;
+}
 ```
 
 ## Structs
 
-structs are just an aggregation of types:
+structs are just an aggregation of types, basically named heterogeneous arrays:
 
 ```kay
-struct RBG {
+struct Rgb {
     r: u8,          # type specific default inizialization, which for u8 is 0
     g: u8 = 255,    # explicit default initialization
     b: u8 = ?,      # intentionally uninitialized member, may contain garbage
             # optional trailing coma
 }
 
-let rgb = RGB { r = 255, g = 255, b = 255 };
+let rgb = Rgb { r = 255, g = 255, b = 255 };
 
 # will have r initialized to 0 and b initialized to possibly garbage values
-let rgb = RGB { g = 255 };
+let rgb = Rgb { g = 255 };
 
 # or infering the type of the composite type literal from the type annotation
-let rgb: RGB = { r = 255, g = 255, b = 255 };
+let rgb: Rgb = { r = 255, g = 255, b = 255 };
 
 # or specifying the arguments in order
-let rgb = RGB { 255, 255, 255 };
+let rgb = Rgb { 255, 255, 255 };
+```
+
+### alternative syntax
+
+using round brackets instead of curly brackets for ease of use and consistency with function calls
+
+```kay
+# struct definition
+struct Rgb(r: u8, g: u8, b: u8)
+```
+
+### method functions
+
+say we now create a constructor function:
+
+```kay
+# rust-like
+impl Rgb {
+    # associated function or java's "static" method
+    # marked as @constructor to allow modifications to fields that can only be set during construction
+    @constructor fn Self = new(...) { ... }
+}
+
+# new ideas (mainly to avoid having an additional indentation coming from the impl block):
+
+#### impl markers
+impl Rgb; # from this point onwards every function is a function related to Rgb
+
+# Rust-like associated function of Rgb
+fn function_of_Rgb(...) { ... }
+
+# method function of Rgb
+fn method_of_Rgb(self: Self, ...) { ... }
+
+impl; # would reset function defintion to being normal functions
+
+fn regular_function(...) { ... }
+
+impl Foo; # from this point onwards every function is a function related to Foo
+...
+
+impl Rgb; # can reopen implementations
+...
+
+impl Bar; # now related to Bar
+...
+####
+
+#### function markers
+# <Rgb> means it's a method of Rgb
+fn<Rgb> Self = new(...) { ... }
+
+# or
+Rgb.fn Self = new(...) { ... }
+
+# or
+fn Self = Rgb.new(...) { ... }
+
+# <Rgb> means it's a method of Rgb
+# first argument is of type Self, meaning this is a method of a variable of type Rgb
+fn<Rgb> do_stuff(self: Self, ...) { ... }
+
+# the name of the first parameter could be anything, unlike Rust
+fn<Rgb> do_stuff(rgb: Self, ...) { ... }
+####
+
+# no need to convert from curly brackets to round brackets, but could need to use the `struct`
+# keyword to avoid colliding with a possible function named `Rgb` 
+# "equivalent" constructor function, has no access to fields that can only be set inside the struct constructor
+fn Rgb = Rgb(r: u8, g: u8, b: u8) {
+    return struct Rgb(r, g, b);
+}
+
+let rgb = Rgb(r = 0, g = 0, b = 0);         # this will call a function named `Rgb`
+let rgb = struct Rgb(r = 0, g = 0, b = 0);  # this will call the struct constructor for `Rgb` 
+let rgb = Rgb { r = 0, g = 0, b = 0 };      # traditional way of calling the struct constructor for `Rgb` 
+let rgb = Rgb.new(r = 0, g = 0, b = 0);     # this will call the function `Rgb.new`
+
+rgb.do_stuff();
+```
+
+#### comparison to rust
+
+```rust
+struct Rgb {
+    r: u8,
+    g: u8,
+    b: u8,
+}
+
+impl Rgb {
+    fn new(r: u8, g: u8, b: u8) -> Self {
+        Self { r, g, b }
+    }
+}
+
+// with the struct initialization syntax
+// - can use named 'arguments'
+let rgb = Rgb { r: 255, g: 255, b: 255 }
+
+// with the 'constructor' function
+// - complete syntax change
+// - had to convert curly brackets to round brackets
+// - lost ability to use named arguments
+let rgb = Rgb::new(255, 255, 255);
+```
+
+### Asymetric fields visibility and read/write privileges
+
+ability to specify who can read and write a struct field
+
+```kay
+# struct methods and functions always have read access to every kind of field
+# may enforce the usage of `let` and `var`
+struct Foo(
+    # public read: no
+    # public write: no
+    # private read: yes
+    # private write: no
+    #
+    # only set during construction, never able to be modified again
+    private let x0: int,
+    let x0: int, # implies private
+    x0: int, # implies private let
+
+    # public read: no
+    # public write: no
+    # private read: yes
+    # private write: yes
+    #
+    # can be modified inside struct method and functions
+    private var x0: int,
+    var x0: int, # implies private
+
+    # public read: yes
+    # public write: no
+    # private read: yes
+    # private write: no
+    #
+    # only set during construction, never able to be modified again
+    # can be read from outside
+    public let private let x0: int,
+    public let x0: int, # implies private let
+    public x0: int, # implies public let and private let
+
+    # public read: yes
+    # public write: no
+    # private read: yes
+    # private write: yes
+    #
+    # can be modified inside struct method and functions, but only read from outside
+    public let private var x0: int,
+    public let x0: int, # implies private let
+    public x0: int, # implies public let and private let
+
+    # public read: yes
+    # public write: yes
+    # private read: yes
+    # private write: no
+    #
+    # disallowed: public var disagrees with private let, makes no sense being able to be modified
+    # outside of the struct methods and functions and not inside
+    public var private let x0: int,
+
+    # public read: yes
+    # public write: yes
+    # private read: yes
+    # private write: yes
+    #
+    # can be accessed and modified from everywhere
+    public var private var x0: int,
+    public var x0: int, # implies private var
+)
+```
+
+blanket modifiers:
+
+```kay
+# every field follows it's declaration modifiers
+var foo = struct Foo(x0 = 0);
+
+# every field is immutable, read access to fields are not changed
+let foo = struct Foo(x0 = 0);
+```
+
+### Nameless/temporary/Rust-like tuple structs
+
+basically structs whith unnamed fields (referred to by index)
+
+named tuples:
+
+```kay
+struct Point { int, int };
+
+let point = Point { 19, 21 };
+
+let x = point.0; # Point { 19, 21 }
+                 #         ^^  ^^
+                 # index:  0   1
+
+let y = point.1;
+```
+
+name-less tuples:
+
+```kay
+let stefano: { str, int } = { "stefano", 23 };
+
+# type can be omitted and therefore inferred
+let stefano = { "stefano", 23 };
+
+let name = stefano.0;
+let age = stefano.1;
+```
+
+or with explicit struct keyword and named fields:
+
+```kay
+let range: struct { min: int, max: int } = struct(1, 2);
+println range.min;
+println range.max;
 ```
 
 ### Inheritance
@@ -202,88 +929,124 @@ inheritance is just syntactic sugar, this allows for any extended type to be pas
 the fields defined in the base type:
 
 ```kay
-struct RGBA_unnamed {
-    using RGB,
-    a: u8
-}
+struct Rgba {
+    rgb: using Rgb,
 
-# the above type is equivalent to
-struct RBGA {
-    r: u8,
-    g: u8,
-    b: u8,
+    # these fields (of the used Rgb struct are implicitly added)
+    # r: u8,
+    # g: u8,
+    # b: u8,
+
     a: u8,
 }
 
-# or we can give a name to the "extension" and acces the RGB fields as rgb.r, rgb.g, rgb.b
-struct RGBA_named {
-    rgb: using RGB,
+# the above type is equivalent to:
+struct Rgba {
+    union {
+        rgb: Rgb,
+        struct {
+            r: u8,
+            g: u8,
+            b: u8,
+        }
+    }
+
+    a: u8,
+}
+
+# 'using' the same struct multiple times is not allowed
+struct Rgba {
+    rgb: using Rgb,
+    rgb2: using Rgb, # not allowed
     a: u8
 }
 
-# Multiple extension are not allowed
-struct RGBA {
-    rgb: using RGB,
-    rgb2: using RGB, # not allowed
-    a: u8
+# but 'using' multiple different struct is
+struct Point {
+    x: int,
+    y: int,
 }
 
-struct RGBA {
-    using RGB,
-    rgb2: using RGB, # not allowed
-    a: u8
+struct Pixel {
+    rgba: using Rgba,
+    position: using Point,
 }
 
-struct RGBA {
-    using RGB,
-    using RGB, # not allowed
-    a: u8
+# which is equivalent to 
+struct Pixel {
+    union {
+        rgba: Rgba,
+        struct {
+            union {
+                rgb: Rgba,
+                struct {
+                    r: u8,
+                    g: u8,
+                    b: u8,
+                },
+            },
+            a: u8,
+        }
+    },
+    union {
+        position: Point,
+        struct {
+            x: int,
+            y: int,
+        },
+    },
 }
 
-let rgba: RGBA_unnamed = rgb;
+let rgb = Rgb { r = 255, g = 255, b = 255 };
 
-# any extra fields will be default initialized;
-let rgba = RGBA_unnamed { r = rgb.r, g = rgb.g, b = rgb.b, a = 0 };
+# this
+let rgba: Rgba = rgb;
 
-# otherwise
-let rgba = RGBA_unnamed { rgb = rgb, a = 255 };
+# is equivalent to:
+let rgba = Rgba { r = rgb.r, g = rgb.g, b = rgb.b, a = 0 };
 
-# for named extensions
-let rgba: RGBA_named = rgb;
+# otherwise to:
+let rgba = Rgba { rgb = rgb, a = 0 };
 
-# any extra fields will be default initialized;
-let rgba = RGBA_named { rgb = rgb, a = 0 };
-
-# otherwise
-let rgba = RGBA_named { rgb, a = 255 };
+# or to:
+let rgba = Rgba {
+    rgb, # field with same name shorthand
+    a = 0,
+};
 ```
 
 if we have a function defined for the "base" struct only the "base" part of the struct will be passed:
 
 ```kay
 # so this
-function_for_RGB( rgba );
+function_for_Rgb(rgba);
 
 # is desugared to
-function_for_RGB( rgba.rgb );
+function_for_Rgb(rgba.rgb);
+
+# and
+function_for_rgb(pixel);
+
+# is desugared to
+function_for_Rgb(pixel.rgba.rgb);
 ```
 
 if we dont explicity extend inside a struct it's going to result in an error
 
 ```kay
-struct RGB {
+struct Rgb {
     r: u8,
     g: u8,
     a: u8,
 }
 
-struct RGBA {
-    rgb: RGB, # no explicit "extend"
+struct Rgba {
+    rgb: Rgb, # no explicit "using"
     a: u8,
 }
 
-function_for_RGB( rgb ); # works
-function_for_RGB( rgba ); # doesn't work
+function_for_Rgb(rgba.rgb); # works
+function_for_Rgb(rgba); # doesn't work
 ```
 
 ## Enum
@@ -292,9 +1055,9 @@ collection of constant values:
 
 ```kay
 enum Colors: u32 { # optional data type
-    # default value for when converting from integers that don't match the actual enum value
+    # default value for when converting from u32s that don't match the actual enum value
     # for example converting from 0x00ff00 will result in GREEN being chosen
-    # when converting from 0x00beef will result in RED being chosen
+    # when converting from 0x00beef will result in RED being chosen or the returning of an error
     default RED = 0xff0000,
     GREEN = 0x00ff00,
     BLUE = 0x0000ff,
@@ -303,28 +1066,160 @@ enum Colors: u32 { # optional data type
 
 ## Unions
 
-Rust-like collection of variants:
+C-like unions:
 
 ```kay
-union Statement {
-    Empty,
-    Single( Node ),
-    Multiple( Node[] ),
+union Rgba {
+    struct {
+        r: u8,
+        g: u8,
+        b: u8,
+        a: u8,
+    }
+
+    rgba: u32,
 }
 ```
 
-## tuples
+## Enum unions
 
-basically name-less structs:
+Rust-like collection of variants:
 
 ```kay
-let red = (255, 0, 0);
-let r = red.0;
-let g = red.1;
-let b = red.2;
+enum union Statement: u8 { # optional discriminant type
+    Empty,
+    Single { Node },
+    Multiple { Node[] },
+}
 ```
 
-## multiple return types that need to be checked
+## struct/enum/variable memory layout/info
+
+### Variables
+
+Having a variable such as:
+
+```kay
+# at: file.kay:12:0
+let name: str = "Stefano";
+```
+
+getting the variable layout could be done with the command `kay layout name file.kay:12:0`, which
+could output the following valid kay code result:
+
+```kay
+# size = 16, align = 8
+let name: str = "Stefano";
+```
+
+### Structs
+
+Having a struct such as:
+
+```kay
+struct Foo {
+    x: int,
+    y: ascii,
+    z: str,
+}
+```
+
+getting the struct layout could be done with the command `kay layout Foo`, which could output the
+following valid kay code result:
+
+```kay
+# size = 32, align = 8
+struct Foo {
+    x: int,   # size = 8,  offset = 0,  align = 8 -> 0:  |#|#|#|#|#|#|#|#|
+    y: ascii, # size = 1,  offset = 8,  align = 1 -> 8:  |#| | | | | | | |
+    z: str,   # size = 16, offset = 16, align = 8 -> 16: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
+}
+```
+
+could also emit warnings when wasting space, so a struct such as:
+
+```kay
+# at: file.kay:12:0
+
+# size = 40, align = 8
+struct Foo {
+    a: ascii, # size = 1,  align = 1, offset = 0:  |#| | | | | | | |
+    x: int,   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
+    y: ascii, # size = 1,  align = 1, offset = 16: |#| | | | | | | |
+    z: str,   # size = 16, align = 8, offset = 24: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
+}
+```
+
+would produce the following warnign message
+
+```text
+Warning: struct has unoptimal field layout
+ at: file.kay:12:0
+   |
+11 | # size = 40, align = 8
+12 | struct Foo {
+13 |        a: ascii, # size = 1,  align = 1,offset = 0:  |#| | | | | | | |
+   |        ^ this field occupies only 1 byte
+   |
+14 |        x: int,   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
+15 |        y: ascii, # size = 1,  align = 1, offset = 16: |#| | | | | | | |
+   |        ^ this field also occupies only 1 byte, but is separate from the previous
+   |
+16 |        z: str,   # size = 16, align = 8, offset = 24: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
+17 | }
+   |
+Help: an optimized layout could look like this
+   |
+11 | # size = 32, align = 8
+12 | struct Foo {
+13 |        a: ascii, # size = 1,  align = 1, offset = 0:  |#|_| | | | | | |
+14 |        y: ascii, # size = 1,  align = 1, offset = 1:  |_|#| | | | | | |
+   |        ^ this field is placed next to the previous one, thus not wasting space
+   |
+15 |        x: int,   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
+16 |        z: str,   # size = 16, align = 8, offset = 16: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
+17 | }
+   |
+Note: a packed layout could look like this
+   |
+11 | # size = 26, align = 1
+12 | @packed struct Foo {
+13 |        x: int,   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
+14 |        z: str,   # size = 16, align = 8, offset = 16: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
+15 |        a: ascii, # size = 1,  align = 1, offset = 24: |#|_|
+16 |        y: ascii, # size = 1,  align = 1, offset = 25: |_|#|
+   |        ^ these fields are placed last, thus not wasting space
+17 | }
+   |
+```
+
+a `___` could be a padding member, meaning retaining the usual padding amount:
+
+>[!NOTE]
+> this `___` field is equivalent to a `u8[N]`, basically just empty bytes
+
+```kay
+# size = 26, align = 1
+@packed struct Foo {
+    a: ascii, # size = 1,  align = 1, offset = 0:  |#|_|_|_|_|_|_|_|_|
+    x: int,   # size = 8,  align = 8, offset = 1:  |_|#|#|#|#|#|#|#|#|
+    y: ascii, # size = 1,  align = 1, offset = 9:  |#|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|
+    z: str,   # size = 16, align = 8, offset = 10: |_|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
+}
+```
+
+could be use as:
+
+```kay
+# size = 33, align = 1
+@packed struct Foo {
+    a: ascii, # size = 1,  align = 1, offset = 0:  |#|_|_|_|_|_|_|_|
+    ___,      # size = 7,  align = 1, offset = 1:  |_|#|#|#|#|#|#|#|
+    x: int,   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
+    y: ascii, # size = 1,  align = 1, offset = 16: |#|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|
+    z: str,   # size = 16, align = 8, offset = 17: |_|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
+}
+```
 
 ## Pointers
 
@@ -381,19 +1276,90 @@ maybe = option^;
 maybe = ^option; # or like this
 ```
 
+## Bit-casts
 
-## no or close to no implicit conversions, or just where it makes sense (i.e. u8 -> u16, int -> float)
+ability to define/overload the casting operator for specific types.
+types with explicit conversions can be bit-casted to other types when possible
+
+```kay
+struct Rgba like u32 {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+}
+
+# or
+struct Rgba as u32 {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+}
+
+# or
+struct Rgba alias u32 {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+}
+
+# basically equivalent to
+union Rgba {
+    rgba: u32,
+    struct {
+        r: u8,
+        g: u8,
+        b: u8,
+        a: u8,
+    }
+}
+
+# this would result in a type size mismatch, or in some other constrait (need to be defined) being broken
+struct Rgba like u8 {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+}
+```
+
+when bit casts are used inside expressions they incour in no performance penalty, as the compiler would just
+treat the values are of different types:
+
+```kay
+let rgba: Rgba;
+let rgba_u32: u32 = rgba as u32; # bit-casting should be a nop, in this case just a plain copy or rgba memory
+
+let red = Rgba { r = 255 };
+let green = Rgba { g = 255 };
+
+# the compiler would treat this as Rgba + Rgba
+let red_plus_green = red + green;
+
+# while this would be treated as u32 + u32 and no conversion code would be run
+let red_plus_green = red as u32 + green as u32;
+
+# so it avoids this
+var red_plus_green: Rgba;
+red_plus_green.r = red.r + green.r;
+red_plus_green.g = red.g + green.g;
+red_plus_green.b = red.b + green.b;
+red_plus_green.a = red.a + green.b;
+```
+
+### **BREAKING**: Bit-casting operator for primitive types and removal of implicit conversions
 
 ## compile time constants and functions excution
 
 ```kay
 # decide on "compile-time" directives syntax (maybe convert comments to `//` or something else and use `#`)
 const answer = 40 + 2;
-#static let answer = 40 + 2;
-static answer = 40 + 2;
+static let answer = 40 + 2;
 static var answer = 40 + 2;
-answer := 40 + 2;
-answer: int := 40 + 2;
+let answer :: 40 + 2;
+let answer: int : 40 + 2;
 
 run some_function();
 @run some_function();
@@ -403,10 +1369,13 @@ static some_function();
 
 ## pass/none/whatever equivalent to doing nothing (python's pass)
 
+```kay
 let answer = 0;
 if answer == 1 do println "in branch 1";
 else if answer > 1 do pass;
 else if answer > 1 none; # or like this, explicit no do keyword required (to differentiate from none being a value)
+else if answer > 1 do {}; # or like this
+```
 
 ## experiment with no dynamic dispatch
 
@@ -419,26 +1388,26 @@ check for the type of the object by itself
 
 maybe optionally enable true dynamic dispatch on demand with v-tables and stuff
 
-## MATLAB-inspired [function](https://www.mathworks.com/help/matlab/ref/function.html) definitions
+## MATLAB-inspired [functions](https://www.mathworks.com/help/matlab/ref/function.html) definitions
 
 ```kay
 # introductory keyword
 fn
 
 # return values
-[result: int, remainder: int]
+result: int, remainder: int
 
 # return values' names are optional
-[int, int]
+int, int
 
-# equals sign to make it ease to copy paste this function definition in code
+# equals sign to make it easey to copy paste this function definition in code
 =
 
 # name of the function
 divmod
 
 # function arguments
-( dividend: int, divisor: int )
+(dividend: int, divisor: int)
 
 # body of the function, can also be in the do single-statement form
 {
@@ -453,50 +1422,42 @@ divmod
 putting it all together:
 
 ```kay
-
-# no return values
-fn [] = answer() do return 42;
-
-# with named return values (NOTE: naked returns are not going to be allowed)
-fn [result: int, remainder: int] = divmod( dividend: int, divisor: int )
-    do return result = dividend / divisor, remainder = dividend % divisor;
-
-# with unnamed return values
-fn [int, int] = divmod( dividend: int, divisor: int ) do return dividend / divisor, remainder = dividend % divisor;
-```
-
-
-```kay
-# or have it like this
-
-# with return values
-fn result: int, remainder: int = divmod( dividend: int, divisor: int ) do return result = dividend / divisor, remainder = dividend % divisor;
-
 # no return values
 fn answer() do return 42;
+
+# with unnamed return values
+fn int, int = divmod(dividend: int, divisor: int) do
+    return dividend / divisor, dividend % divisor;
+
+# with named return values (NOTE: naked returns are not going to be allowed)
+fn result: int, remainder: int = divmod(dividend: int, divisor: int) do
+    return result = dividend / divisor, remainder = dividend % divisor;
 ```
 
 going from function definition to usage would look like this
 
 ```kay
 # function definition
-fn result: int, remainder: int = divmod( dividend: int, divisor: int ) do return result = dividend / divisor, remainder = dividend % divisor;
+fn result: int, remainder: int = divmod(dividend: int, divisor: int) do
+    return result = dividend / divisor, remainder = dividend % divisor;
 
 # from here onwards we are pretending that each line is the progression of steps needed to go from function definition to the usage
 
 # copy paste the definition
-fn result: int, remainder: int = divmod( dividend: int, divisor: int ) do return result = dividend / divisor, remainder = dividend % divisor;
+fn result: int, remainder: int = divmod(dividend: int, divisor: int) do
 
 # change 'fn' to 'let'/'var'
-let result: int, remainder: int = divmod( dividend: int, divisor: int ) do return result = dividend / divisor, remainder = dividend % divisor;
+# - explicit mutability qualifiers needed for each variable
+let result: int, var remainder: int = divmod(dividend: int, divisor: int) do
 
-# remove the function body, keeping the semicolon at the end
-let result: int, remainder: int = divmod( dividend: int, divisor: int );
+# remove everything after the arguments' closing round bracket
+let result: int, var remainder: int = divmod(dividend: int, divisor: int)
 
-# remove the function arguments' type hints 
-let result: int, remainder: int = divmod( dividend, divisor );
+# add a semicolon at the end
+let result: int, var remainder: int = divmod(dividend: int, divisor: int);
 
-# done!
+# remove the function arguments' type hints and you are done!
+let result: int, var remainder: int = divmod(dividend, divisor);
 ```
 
 going from usage to function definition would look like this
@@ -506,26 +1467,119 @@ let dividend = 3;
 let divisor = 2;
 
 # usage
-let result: int, remainder: int = dividend / divisor, dividend % divisor;
+let result: int, var remainder: int = dividend / divisor, dividend % divisor;
 
 # from here onwards we are pretending that each line is the progression of steps needed to go from usage to the function definition
 
 # copy paste the usage
-let result: int, remainder: int = dividend / divisor, dividend % divisor;
+let result: int, var remainder: int = dividend / divisor, dividend % divisor;
 
-# change 'let'/'var' to 'fn'
+# remove 'let'/'var' and add the 'fn' keyword at the start of the line
 fn result: int, remainder: int = dividend / divisor, dividend % divisor;
 
 # add the function name and arguments
-fn result: int, remainder: int = divmod( dividend: int, divisor: int ) dividend / divisor, dividend % divisor;
+fn result: int, remainder: int = divmod(dividend: int, divisor: int) dividend / divisor, dividend % divisor;
 
 # add the function body, with no named returns
-fn result: int, remainder: int = divmod( dividend: int, divisor: int ) do return dividend / divisor, dividend % divisor;
+fn result: int, remainder: int = divmod(dividend: int, divisor: int) do
+    return dividend / divisor, dividend % divisor;
 
-# optionally add named returns
-fn result: int, remainder: int = divmod( dividend: int, divisor: int ) do return result = dividend / divisor, remainder = dividend % divisor;
+# optionally remove named returns
+fn int, int = divmod(dividend: int, divisor: int) do
+    return dividend / divisor, dividend % divisor;
 
-# done
+# or add them back
+fn result: int, remainder: int = divmod(dividend: int, divisor: int) do
+    return result = dividend / divisor, remainder = dividend % divisor;
+
+# and done!
+```
+
+## Operator overloading
+
+operator overloading should follow the function's philosofy of resembling the shape of the usage of
+the function/operator, so as an example, the definition for the `+` operator might look like this:
+
+- for a more "traditional" style:
+
+    ```kay
+    op int = +(lhs: int, rhs: int) {
+        return lhs + rhs;
+    }
+    ```
+
+- for a closer look to it's usage, but still consistent with normal functions declarations:
+
+    ```kay
+    op int = (lhs: int) + (rhs: int) {
+        return lhs + rhs;
+    }
+    ```
+
+- for an even closer look to it's usage:
+
+    ```kay
+    op int = lhs: int + rhs: int {
+        return lhs + rhs;
+    }
+    ```
+
+might also be able to specify that the function should track the caller's line and column for error
+messages:
+
+```kay
+@track_caller op int = lhs: int + rhs: int {
+    return lhs + rhs;
+}
+```
+
+
+so going from usage to function would look like this;
+
+```kay
+let lhs = 21;
+let rhs = 42;
+
+# 1
+let i = lhs + rhs;
+
+# 2
+op i = lhs + rhs;
+
+# 3a
+op i: int = lhs + rhs;
+
+# 3b
+op int = lhs + rhs;
+
+# 4
+op int = lhs: int + rhs: int;
+
+# 5
+op int = lhs: int + rhs: int {
+    return lhs + rhs;
+}
+```
+
+and back from function to usage would look like this;
+
+```kay
+# 1
+op int = lhs: int + rhs: int {
+    return lhs + rhs;
+}
+
+# 2
+op int = lhs: int + rhs: int;
+
+# 3
+op int = lhs + rhs;
+
+# 4
+let int = lhs + rhs;
+
+# 5
+let i = lhs + rhs;
 ```
 
 ## "unconventional" variable names
