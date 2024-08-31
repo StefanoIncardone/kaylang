@@ -49,6 +49,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - `help` and `version` commands
 - usage examples
 - getters for `SrcFile` field: `SrcFile::path()`, `SrcFile::code()` and `SrcFile::lines()`
+- [local vscode syntax highlighting extension](syntax/vscode/)
 
 ### Changed
 

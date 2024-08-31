@@ -68,5 +68,10 @@ requiring the following steps to get started:
 
 ## Syntax specification
 
-see the [full language reference](docs/LANGUAGE_REFERENCE.md) and the the
+See the [full language reference](docs/LANGUAGE_REFERENCE.md) and the the
 [full language syntax specification](docs/SYNTAX.ebnf)
+
+## Syntax highlighting
+
+Currently only supporting Vscode with the provided [extension](syntax/vscode/) which can be
+installed locally using the `Developer: Install Extension from Location...` command
