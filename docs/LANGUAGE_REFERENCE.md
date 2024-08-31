@@ -432,7 +432,7 @@ Executes a block of code based on a condition
     ```kay
     let lucky = 42;
     if lucky == 19 do println "well done!";
-    else if lucky == 12 do { println "nice"; } # Error: block are not allowed in do statements
+    else if lucky == 12 do { println "nice"; } # Error: blocks are not allowed in do statements
     else if lucky == 42 do println "awesome!";
     else do println "too bad!";
     ```
