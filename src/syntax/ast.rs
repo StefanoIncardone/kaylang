@@ -599,18 +599,6 @@ impl Display for Loop<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct DoLoop<'src> {
-    pub(crate) condition: Expression<'src>,
-    pub(crate) statement: Box<Node<'src>>,
-}
-
-impl Display for DoLoop<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return write!(f, "do loop {}", self.condition);
-    }
-}
-
-#[derive(Debug, Clone)]
 pub(crate) struct VariableRef<'src> {
     pub(crate) name: &'src str,
     pub(crate) var_index: VariableIndex,
@@ -637,7 +625,7 @@ pub(crate) enum Node<'src> {
     // TODO(stefano): flatten and store the corresponding label
     Loop(Loop<'src>),
     // TODO(stefano): flatten and store the corresponding label
-    DoLoop(DoLoop<'src>),
+    DoLoop(Loop<'src>),
     Break,
     Continue,
 
@@ -3334,10 +3322,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
 
         let statement = statement_result?;
-        if let TokenKind::Do = do_token.kind {
-            return Ok(Node::DoLoop(DoLoop { condition, statement: Box::new(statement) }));
+        let looop = Loop { condition, statement: Box::new(statement) };
+        return if let TokenKind::Do = do_token.kind {
+            Ok(Node::DoLoop(looop))
+        } else {
+            Ok(Node::Loop(looop))
         }
-        return Ok(Node::Loop(Loop { condition, statement: Box::new(statement) }));
     }
 }
 

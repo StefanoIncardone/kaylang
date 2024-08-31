@@ -522,7 +522,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.loop_counters.push(self.loop_counter);
                 self.loop_counter += 1;
 
-                _ = writeln!(self.asm, "{loop_tag}:; {looop}");
+                _ = writeln!(self.asm, "{loop_tag}:; do {looop}");
                 self.node(&looop.statement);
                 self.condition_reversed(&looop.condition, &loop_tag);
                 _ = self.loop_counters.pop();
