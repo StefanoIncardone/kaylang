@@ -74,9 +74,6 @@ struct TemporaryValue<'src, 'ast: 'src> {
     inner: &'ast Expression<'src>,
     offset: usize,
 }
-
-const STACK_ALIGN: usize = size_of::<usize>();
-
 #[derive(Debug)]
 pub struct Compiler<'src, 'ast: 'src> {
     src: &'src SrcFile,
@@ -173,6 +170,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             }
 
             if stack_size > 0 {
+                const STACK_ALIGN: usize = size_of::<usize>();
+
                 let misalignment = stack_size % STACK_ALIGN;
                 let needs_padding = misalignment != 0;
                 let padding = usize::from(needs_padding) * (STACK_ALIGN - misalignment);

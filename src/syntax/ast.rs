@@ -1464,7 +1464,6 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     }
 
     fn primary_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
-        // TODO(stefano): measure speed and optimize if needed
         fn parse_positive_int(literal: &str) -> Option<int> {
             let mut integer: int = 0;
             for ascii_digit in literal.as_bytes() {
@@ -1476,7 +1475,6 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             return Some(integer);
         }
 
-        // TODO(stefano): measure speed and optimize if needed
         fn parse_negative_int(literal: &str) -> Option<int> {
             let mut integer: int = 0;
             for ascii_digit in literal.as_bytes() {
@@ -3327,7 +3325,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             Ok(Node::DoLoop(looop))
         } else {
             Ok(Node::Loop(looop))
-        }
+        };
     }
 }
 
