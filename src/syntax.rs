@@ -9,11 +9,8 @@ use crate::{
     src_file::{Position, SrcFile},
     Bg, Colored, Fg, Flag, AT, BAR, ERROR,
 };
-use std::{
-    borrow::Cow,
-    fmt::{Debug, Display},
-    path::Path,
-};
+use core::fmt::{Debug, Display};
+use std::{borrow::Cow, path::Path};
 
 pub trait IntoErrorInfo: Debug + Clone {
     fn info(&self) -> ErrorInfo;
@@ -79,7 +76,7 @@ pub struct ErrorDisplay<'src> {
 }
 
 impl Display for ErrorDisplay<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let error_message = Colored {
             text: &self.error_message,
             fg: Fg::White,

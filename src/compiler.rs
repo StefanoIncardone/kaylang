@@ -14,9 +14,9 @@ use crate::{
     },
     CAUSE, ERROR,
 };
+use core::fmt::{Display, Write as _};
 use std::{
     borrow::Cow,
-    fmt::{Display, Write as _},
     fs::File,
     io::{BufWriter, Write},
     path::PathBuf,
@@ -55,7 +55,7 @@ enum Base {
 }
 
 impl Display for Base {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Rbp => write!(f, "rbp"),
             Self::Temp => write!(f, "temp"),
@@ -140,7 +140,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         let string = &this.ast.strings[string_index];
                         string_index += 1;
 
-                        let string_str = unsafe { std::str::from_utf8_unchecked(&string.0) };
+                        let string_str = unsafe { core::str::from_utf8_unchecked(&string.0) };
                         let string_chars = string_str.escape_debug();
                         _ = writeln!(strings, " str str_{label}, `{string_chars}`");
                     }
@@ -148,7 +148,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         let string = &this.ast.raw_strings[raw_string_index];
                         raw_string_index += 1;
 
-                        let raw_string_str = unsafe { std::str::from_utf8_unchecked(string.0) };
+                        let raw_string_str = unsafe { core::str::from_utf8_unchecked(string.0) };
                         _ = writeln!(strings, " str str_{label}, \"{raw_string_str}\"");
                     }
                 }
@@ -587,7 +587,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
     fn resolve_temporary(&self, value: &'ast Expression<'src>) -> &TemporaryValue<'src, 'ast> {
         for temporary in &self.temporary_values {
-            if std::ptr::eq(temporary.inner, value) {
+            if core::ptr::eq(temporary.inner, value) {
                 return temporary;
             }
         }
@@ -1481,7 +1481,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 _ = writeln!(self.asm, "{op_asm}\n");
             }
             Expression::Temporary { temporary_value_index, .. } => {
-                let temporary_value_expression = &self.ast.temporaries[*temporary_value_index as usize];
+                let temporary_value_expression =
+                    &self.ast.temporaries[*temporary_value_index as usize];
                 let temporary_value = self.resolve_temporary(temporary_value_expression);
                 let temporary_value_offset = temporary_value.offset;
 
@@ -2838,7 +2839,7 @@ pub enum Error {
 }
 
 impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut message = String::new();
         let mut cause = String::new();
         match self {

@@ -33,6 +33,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - `src_file::Error` now contains more detailed error kinds
 - `SrcFile::lines` is now const
 - Reduced memory footprint of parsing and of the generated tokens and ast
+- Imported from `core` instead of `std` where possible
 
 ### Fixed
 

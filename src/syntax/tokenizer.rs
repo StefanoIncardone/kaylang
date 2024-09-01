@@ -1,6 +1,6 @@
 use super::{Error, ErrorInfo, IntoErrorInfo};
 use crate::src_file::{offset, Line, SrcFile};
-use std::fmt::Display;
+use core::fmt::Display;
 
 pub(super) trait DisplayLen {
     fn display_len(&self) -> offset;
@@ -36,7 +36,7 @@ pub(crate) enum Mutability {
 }
 
 impl Display for Mutability {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Let => write!(f, "let"),
             Self::Var => write!(f, "var"),
@@ -64,7 +64,7 @@ pub enum BracketKind {
 }
 
 impl Display for BracketKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::OpenRound => write!(f, "("),
             Self::CloseRound => write!(f, ")"),
@@ -187,7 +187,7 @@ pub enum Op {
 
 impl Display for Op {
     #[rustfmt::skip]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Len       => write!(f, "len"),
             Self::Equals    => write!(f, "="),
@@ -426,7 +426,7 @@ pub(crate) enum TokenKind<'src> {
 }
 
 impl Display for TokenKind<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Comment(text) => write!(f, "#{text}"),
             Self::Unexpected(text) => write!(f, "{text}"),
@@ -595,7 +595,9 @@ impl<'src> Tokenizer<'src> {
                 Ok(kind) => kind,
                 Err(err) => {
                     this.errors.push(err);
-                    TokenKind::Unexpected(&this.src.code[this.token_start_col as usize..this.col as usize])
+                    TokenKind::Unexpected(
+                        &this.src.code[this.token_start_col as usize..this.col as usize],
+                    )
                 }
             };
 
@@ -620,7 +622,8 @@ impl<'src> Tokenizer<'src> {
 // iteration of characters
 impl<'src> Tokenizer<'src> {
     fn token_len(&self) -> offset {
-        return self.src.code[self.token_start_col as usize..self.col as usize].chars().count() as offset;
+        return self.src.code[self.token_start_col as usize..self.col as usize].chars().count()
+            as offset;
     }
 
     fn next_ascii_char(&mut self) -> Result<Option<ascii>, Error<ErrorKind>> {
@@ -845,7 +848,8 @@ impl<'src> Tokenizer<'src> {
                     } else {
                         // starting at token_start_col + 2 to skip the r prefix, and ending at
                         // col - 1 to skip the closing quote
-                        let raw_string = &self.src.code[self.token_start_col as usize + 2..self.col as usize - 1];
+                        let raw_string = &self.src.code
+                            [self.token_start_col as usize + 2..self.col as usize - 1];
                         Ok(TokenKind::RawStr(RawStr(raw_string.as_bytes())))
                     }
                 }
@@ -881,7 +885,8 @@ impl<'src> Tokenizer<'src> {
                         pointers_count: self.token_len(),
                     })
                 } else {
-                    let integer_literal = &self.src.code[self.token_start_col as usize..self.col as usize];
+                    let integer_literal =
+                        &self.src.code[self.token_start_col as usize..self.col as usize];
                     Ok(TokenKind::Integer(integer_literal))
                 }
             }

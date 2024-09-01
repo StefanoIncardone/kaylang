@@ -1,6 +1,9 @@
 use crate::{CAUSE, ERROR};
+use core::fmt::Display;
 use std::{
-    fmt::Display, fs::File, io::Read, path::{Path, PathBuf}
+    fs::File,
+    io::Read,
+    path::{Path, PathBuf},
 };
 
 #[allow(non_camel_case_types)]
@@ -47,10 +50,10 @@ impl SrcFile {
 
                 let file_len = metadata.len();
                 if file_len > offset::MAX as u64 {
-                    return Err(Error { path: path_buf, kind: ErrorKind::FileTooBig});
+                    return Err(Error { path: path_buf, kind: ErrorKind::FileTooBig });
                 }
                 file_len as offset
-            },
+            }
             Err(err) => return Err(Error { path: path_buf, kind: ErrorKind::Io(err) }),
         };
 
@@ -62,7 +65,7 @@ impl SrcFile {
             };
 
             if bytes_read != file_len {
-                return Err(Error { path: path_buf, kind: ErrorKind::CouldNotReadEntireFile});
+                return Err(Error { path: path_buf, kind: ErrorKind::CouldNotReadEntireFile });
             }
 
             code
@@ -82,7 +85,8 @@ impl SrcFile {
                     start = current_ascii_index + 1;
                 }
                 b'\r' => {
-                    let Some(possible_new_line) = code_bytes.get(current_ascii_index as usize + 1) else {
+                    let Some(possible_new_line) = code_bytes.get(current_ascii_index as usize + 1)
+                    else {
                         // we reached the end of the file on a stray \r
                         lines.push(Line { start, end: current_ascii_index });
                         break;
@@ -174,11 +178,13 @@ pub struct Error {
 impl std::error::Error for Error {}
 
 impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let cause = match &self.kind {
             ErrorKind::Io(err) => format!("{err} ({})", err.kind()),
             ErrorKind::MustBeAFilePath => "must be a file path".to_owned(),
-            ErrorKind::FileTooBig => format!("file exceeds the size limit of 4GB ({} bytes)", offset::MAX),
+            ErrorKind::FileTooBig => {
+                format!("file exceeds the size limit of 4GB ({} bytes)", offset::MAX)
+            }
             ErrorKind::CouldNotReadEntireFile => "failed to read entire file".to_owned(),
         };
 

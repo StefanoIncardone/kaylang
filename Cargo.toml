@@ -55,13 +55,7 @@ cargo = { level = "forbid", priority = -1 }
 self_named_module_files = "allow"
 mod_module_files = "warn"
 
-# this is not a no_std crate
-std_instead_of_core = "allow"
 std_instead_of_alloc = "allow"
-
-# it's a cli tool, it's normal to print to stderr and stdout
-print_stdout = "allow"
-print_stderr = "allow"
 
 # improve readability and self documenting code
 implicit_return = "forbid"

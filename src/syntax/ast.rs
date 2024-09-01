@@ -5,7 +5,7 @@ use super::{
     Error, ErrorInfo, IntoErrorInfo,
 };
 use crate::src_file::{offset, Position, SrcFile};
-use std::fmt::{Debug, Display};
+use core::fmt::{Debug, Display};
 
 pub(crate) trait TypeOf {
     fn typ(&self) -> Type;
@@ -28,7 +28,7 @@ pub enum BaseType {
 }
 
 impl Display for BaseType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Int => write!(f, "int"),
             Self::Ascii => write!(f, "ascii"),
@@ -76,7 +76,7 @@ pub enum Type {
 }
 
 impl Display for Type {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Base(typ) => write!(f, "{typ}"),
             Self::Array { base_type, len } => write!(f, "{base_type}[{len}]"),
@@ -126,7 +126,7 @@ pub(crate) enum UnaryOp {
 
 impl Display for UnaryOp {
     #[rustfmt::skip]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Len               => write!(f, "len"),
             Self::Not               => write!(f, "!"),
@@ -163,7 +163,7 @@ pub(crate) enum BooleanUnaryOp {
 
 impl Display for BooleanUnaryOp {
     #[rustfmt::skip]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Not => write!(f, "!"),
         };
@@ -224,7 +224,7 @@ pub(crate) enum BinaryOp {
 
 impl Display for BinaryOp {
     #[rustfmt::skip]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Pow           => write!(f,  "**"),
             Self::WrappingPow   => write!(f, r"**\"),
@@ -285,7 +285,7 @@ pub(crate) enum BooleanBinaryOp {
 
 impl Display for BooleanBinaryOp {
     #[rustfmt::skip]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::And   => write!(f, "&&"),
             Self::Or    => write!(f, "||"),
@@ -320,7 +320,7 @@ pub(crate) enum ComparisonOp {
 
 impl Display for ComparisonOp {
     #[rustfmt::skip]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Compare           => write!(f, "<=>"),
             Self::EqualsEquals      => write!(f, "=="),
@@ -399,7 +399,7 @@ pub(crate) enum AssignmentOp {
 
 impl Display for AssignmentOp {
     #[rustfmt::skip]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Equals => write!(f, "="),
 
@@ -512,7 +512,7 @@ pub(crate) enum Expression<'src> {
 // TODO(stefano): find a way to print values indexing into the ast
 // IDEA(stefano): move printing to the compiler module
 impl Display for Expression<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::False => write!(f, "false"),
             Self::True => write!(f, "true"),
@@ -577,7 +577,7 @@ pub(crate) struct IfStatement<'src> {
 }
 
 impl Display for IfStatement<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return write!(f, "if {}", self.condition);
     }
 }
@@ -595,7 +595,7 @@ pub(crate) struct Loop<'src> {
 }
 
 impl Display for Loop<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return write!(f, "loop {}", self.condition);
     }
 }
@@ -639,7 +639,7 @@ pub(crate) enum Node<'src> {
 }
 
 impl Display for Node<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Semicolon => write!(f, ";"),
 
@@ -1723,7 +1723,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     if let TokenKind::Bracket(BracketKind::CloseSquare) =
                         bracket_or_comma_token.kind
                     {
-                        break 'array Ok(Expression::Array { base_type: items_type, items: items.into_boxed_slice() });
+                        break 'array Ok(Expression::Array {
+                            base_type: items_type,
+                            items: items.into_boxed_slice(),
+                        });
                     }
                 }
             }
@@ -2889,8 +2892,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     };
 
                     let scope_variables = match mutability {
-                        Mutability::Let => &mut self.ast.scopes[self.ast.scope as usize].let_variables,
-                        Mutability::Var => &mut self.ast.scopes[self.ast.scope as usize].var_variables,
+                        Mutability::Let => {
+                            &mut self.ast.scopes[self.ast.scope as usize].let_variables
+                        }
+                        Mutability::Var => {
+                            &mut self.ast.scopes[self.ast.scope as usize].var_variables
+                        }
                     };
 
                     let var_index = self.ast.variables.len() as offset;
@@ -3356,7 +3363,7 @@ pub enum Expected {
 }
 
 impl Display for Expected {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::StatementAfterDo => write!(f, "statement after do keyword"),
             Self::Semicolon => write!(f, "semicolon"),

@@ -1,7 +1,5 @@
-use std::{
-    fmt::{Display, Write as _},
-    io::IsTerminal,
-};
+use core::fmt::{Display, Write as _};
+use std::io::IsTerminal;
 
 use crate::Color;
 
@@ -71,8 +69,8 @@ pub(crate) static mut print: fn(
     Fg,
     Bg,
     Flags,
-    &mut std::fmt::Formatter<'_>,
-) -> std::fmt::Result = print_color;
+    &mut core::fmt::Formatter<'_>,
+) -> core::fmt::Result = print_color;
 
 impl Color {
     pub fn set<I: IsTerminal>(self, sink: &I) {
@@ -92,8 +90,8 @@ fn print_no_color(
     _: Fg,
     _: Bg,
     _: Flags,
-    f: &mut std::fmt::Formatter<'_>,
-) -> std::fmt::Result {
+    f: &mut core::fmt::Formatter<'_>,
+) -> core::fmt::Result {
     return text.fmt(f);
 }
 
@@ -102,8 +100,8 @@ fn print_color(
     fg: Fg,
     bg: Bg,
     flags: Flags,
-    f: &mut std::fmt::Formatter<'_>,
-) -> std::fmt::Result {
+    f: &mut core::fmt::Formatter<'_>,
+) -> core::fmt::Result {
     let mut codes = String::with_capacity(24);
 
     if fg != Fg::Default {
@@ -148,7 +146,7 @@ pub struct Colored<Text: AsRef<str>> {
 }
 
 impl<Text: AsRef<str>> Display for Colored<Text> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return unsafe { print(self.text.as_ref(), self.fg, self.bg, self.flags, f) };
     }
 }

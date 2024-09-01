@@ -6,8 +6,8 @@ pub mod src_file;
 pub mod syntax;
 
 use color::{Bg, Colored, Fg, Flag, Flags};
+use core::fmt::{Display, Write as _};
 use std::{
-    fmt::{Display, Write as _},
     path::{Path, PathBuf},
     time::Instant,
 };
@@ -159,7 +159,7 @@ pub enum ColorFlag {
 }
 
 impl Display for ColorFlag {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Short => write!(f, "-c"),
             Self::Long => write!(f, "--color"),
@@ -176,7 +176,7 @@ pub enum Color {
 }
 
 impl Display for Color {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Auto => write!(f, "auto"),
             Self::Always => write!(f, "always"),
@@ -192,7 +192,7 @@ pub struct ColorMode {
 }
 
 impl Display for ColorMode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return write!(f, "{flag} {mode}", flag = self.flag, mode = self.color);
     }
 }
@@ -211,7 +211,7 @@ pub enum CommandFlag {
 }
 
 impl Display for CommandFlag {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Help => write!(f, "help"),
             Self::HelpShort => write!(f, "-h"),
@@ -233,7 +233,7 @@ pub enum OutputFlag {
 }
 
 impl Display for OutputFlag {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Short => write!(f, "-o"),
             Self::Long => write!(f, "--output"),
@@ -250,7 +250,7 @@ pub enum VerbosityFlag {
 }
 
 impl Display for VerbosityFlag {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::QuietShort => write!(f, "-q"),
             Self::QuietLong => write!(f, "--quiet"),
@@ -289,7 +289,7 @@ pub struct Version {
 }
 
 impl Display for Version {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.color.set(&std::io::stdout());
         return write!(f, "Kaylang compiler, version {VERSION}");
     }
@@ -303,7 +303,7 @@ pub struct Help {
 
 impl Display for Help {
     #[rustfmt::skip]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return write!(
             f,
             r"{Version}
@@ -761,7 +761,7 @@ pub enum Error {
 impl std::error::Error for Error {}
 
 impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut args_text = String::new();
         let mut pointers_offset = 0;
         let mut pointers_count = 1;
