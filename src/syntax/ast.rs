@@ -460,7 +460,7 @@ pub(crate) enum Expression<'src> {
     Array {
         base_type: BaseType,
         /// arrays always contain at least 2 items
-        items: Vec<Expression<'src>>,
+        items: Box<[Expression<'src>]>,
     },
 
     Parenthesis(Box<Expression<'src>>),
@@ -510,6 +510,7 @@ pub(crate) enum Expression<'src> {
 }
 
 // TODO(stefano): find a way to print values indexing into the ast
+// IDEA(stefano): move printing to the compiler module
 impl Display for Expression<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         return match self {
@@ -583,7 +584,7 @@ impl Display for IfStatement<'_> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct If<'src> {
-    pub(crate) ifs: Vec<IfStatement<'src>>,
+    pub(crate) ifs: Box<[IfStatement<'src>]>,
     pub(crate) els: Option<Box<Node<'src>>>,
 }
 
@@ -597,18 +598,6 @@ impl Display for Loop<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         return write!(f, "loop {}", self.condition);
     }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct VariableRef<'src> {
-    pub(crate) name: &'src str,
-    pub(crate) var_index: VariableIndex,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct Variable<'src> {
-    pub(crate) name: &'src str,
-    pub(crate) value: Expression<'src>,
 }
 
 #[derive(Debug, Clone)]
@@ -680,13 +669,20 @@ impl Display for Node<'_> {
     }
 }
 
+// IDEA(stefano): return only the nodes, everything else is unused after building the ast
 #[derive(Debug, Clone)]
 pub(crate) struct Scope<'src> {
     pub(crate) parent: ScopeIndex,
     pub(crate) base_types: Vec<BaseType>,
-    pub(crate) let_variables: Vec<VariableRef<'src>>,
-    pub(crate) var_variables: Vec<VariableRef<'src>>,
+    pub(crate) let_variables: Vec<VariableIndex>,
+    pub(crate) var_variables: Vec<VariableIndex>,
     pub(crate) nodes: Vec<Node<'src>>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct Variable<'src> {
+    pub(crate) name: &'src str,
+    pub(crate) value: Expression<'src>,
 }
 
 #[derive(Debug, Clone)]
@@ -709,6 +705,8 @@ struct AstBuilder<'src> {
     string_kinds: Vec<StrKind>,
 }
 
+// NOTE(stefano): this is in reality closer to an intermediate representation than to an AST
+// TODO(stefano): introduce other representation before and after this Ast
 #[derive(Debug)]
 pub struct Ast<'src> {
     pub(crate) scopes: Box<[Scope<'src>]>,
@@ -1511,8 +1509,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             }
             TokenKind::Identifier(name) => match self.resolve_type(name) {
                 None => match self.resolve_variable(name) {
-                    Some((_, var_ref)) => {
-                        let var = &self.ast.variables[var_ref.var_index as usize];
+                    Some((_, var_index)) => {
+                        let var = &self.ast.variables[var_index as usize];
                         Ok(Expression::Variable { typ: var.value.typ(), name: var.name })
                     }
                     None => Err(Error {
@@ -1725,7 +1723,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     if let TokenKind::Bracket(BracketKind::CloseSquare) =
                         bracket_or_comma_token.kind
                     {
-                        break 'array Ok(Expression::Array { base_type: items_type, items });
+                        break 'array Ok(Expression::Array { base_type: items_type, items: items.into_boxed_slice() });
                     }
                 }
             }
@@ -2596,19 +2594,21 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
 // variables and types
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
-    fn resolve_variable(&self, name: &'src str) -> Option<(Mutability, &VariableRef<'src>)> {
+    fn resolve_variable(&self, name: &'src str) -> Option<(Mutability, VariableIndex)> {
         let mut scope_index = self.ast.scope;
         loop {
             let scope = &self.ast.scopes[scope_index as usize];
-            for var in &scope.let_variables {
+            for var_index in &scope.let_variables {
+                let var = &self.ast.variables[*var_index as usize];
                 if var.name == name {
-                    return Some((Mutability::Let, var));
+                    return Some((Mutability::Let, *var_index));
                 }
             }
 
-            for var in &scope.var_variables {
+            for var_index in &scope.var_variables {
+                let var = &self.ast.variables[*var_index as usize];
                 if var.name == name {
-                    return Some((Mutability::Var, var));
+                    return Some((Mutability::Var, *var_index));
                 }
             }
 
@@ -2657,8 +2657,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
         let Some(base_type) = self.resolve_type(type_name) else {
             return match self.resolve_variable(type_name) {
-                Some((_, var_ref)) => {
-                    let var = &self.ast.variables[var_ref.var_index as usize];
+                Some((_, var_index)) => {
+                    let var = &self.ast.variables[var_index as usize];
                     Ok(Some((type_token, var.value.typ())))
                 }
                 None => Err(Error {
@@ -2873,7 +2873,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 };
 
                 let var_index = self.ast.variables.len() as offset;
-                scope_variables.push(VariableRef { name, var_index });
+                scope_variables.push(var_index);
                 self.ast.variables.push(Variable { name, value });
 
                 Ok(Node::Definition { var_index })
@@ -2884,7 +2884,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         Type::Base(base_type) => self.expression_from_base_type(base_type),
                         Type::Array { base_type, len } => {
                             let items = vec![self.expression_from_base_type(base_type); len];
-                            Expression::Array { base_type, items }
+                            Expression::Array { base_type, items: items.into_boxed_slice() }
                         }
                     };
 
@@ -2894,7 +2894,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     };
 
                     let var_index = self.ast.variables.len() as offset;
-                    scope_variables.push(VariableRef { name, var_index });
+                    scope_variables.push(var_index);
                     self.ast.variables.push(Variable { name, value });
 
                     Ok(Node::Definition { var_index })
@@ -3089,7 +3089,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 // if statements
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn iff(&mut self) -> Result<Node<'src>, Error<ErrorKind>> {
-        let mut if_statement = If { ifs: Vec::new(), els: None };
+        let mut ifs = Vec::new();
+        let mut els = None;
 
         'iff: while let Some(if_token) = self.tokens.get(self.token as usize) {
             _ = self.next_token_bounded(Expected::BooleanExpression)?;
@@ -3104,7 +3105,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             let after_condition_token = self.current_token(Expected::DoOrBlock)?;
-            let iff = match after_condition_token.kind {
+            let if_statement = match after_condition_token.kind {
                 TokenKind::Bracket(BracketKind::OpenCurly) => {
                     let scope = self.any(after_condition_token)?;
                     IfStatement { condition, statement: scope }
@@ -3146,7 +3147,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
             };
 
-            if_statement.ifs.push(iff);
+            ifs.push(if_statement);
 
             while let Some(else_token) = self.tokens.get(self.token as usize) {
                 let after_else_token = match else_token.kind {
@@ -3181,12 +3182,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let else_if = match after_else_token.kind {
                     TokenKind::Bracket(BracketKind::OpenCurly) => {
                         let scope = self.any(after_else_token)?;
-                        if_statement.els = Some(Box::new(scope));
+                        els = Some(Box::new(scope));
                         break 'iff;
                     }
                     TokenKind::Do => {
                         let statement = self.do_statement()?;
-                        if_statement.els = Some(Box::new(statement));
+                        els = Some(Box::new(statement));
                         break 'iff;
                     }
                     TokenKind::If => break,
@@ -3223,7 +3224,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             }
         }
 
-        return Ok(Node::If(if_statement));
+        return Ok(Node::If(If { ifs: ifs.into_boxed_slice(), els }));
     }
 }
 
@@ -3517,11 +3518,11 @@ impl IntoErrorInfo for ErrorKind {
             ),
             Self::VariableNotPreviouslyDefined => (
                 "variable not previously defined".into(),
-                "was not previously defined in this scope".into(),
+                "was not previously defined".into(),
             ),
             Self::VariableAlreadyDefined => (
                 "variable already defined".into(),
-                "was already defined in this scope".into(),
+                "was already defined".into(),
             ),
             Self::TypeInExpression => (
                 "invalid expression".into(),

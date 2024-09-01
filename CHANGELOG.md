@@ -37,6 +37,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 ### Fixed
 
 - Added `break` and `continue` statements to the [syntax specification](docs/SYNTAX.ebnf)
+- Corrected error messages related to undefined variables and variables already defined
 
 ## 0.6.0 - 31/08/2024
 
