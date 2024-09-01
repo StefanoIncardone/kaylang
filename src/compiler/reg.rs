@@ -1,6 +1,7 @@
 use core::fmt::Display;
 
 #[allow(dead_code)]
+#[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum Reg64 {
     Rax = 0,
@@ -50,6 +51,7 @@ impl Display for Reg64 {
 }
 
 #[allow(dead_code)]
+#[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum Reg32 {
     Eax = 0,
@@ -99,6 +101,7 @@ impl Display for Reg32 {
 }
 
 #[allow(dead_code)]
+#[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum Reg16 {
     Ax = 0,
@@ -148,6 +151,7 @@ impl Display for Reg16 {
 }
 
 #[allow(dead_code)]
+#[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum Reg8l {
     Al = 0,
@@ -197,6 +201,7 @@ impl Display for Reg8l {
 }
 
 #[allow(dead_code)]
+#[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum Reg8h {
     Ah = 0,
