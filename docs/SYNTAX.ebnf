@@ -106,7 +106,8 @@ if =
     [{"else", ("if", boolean_expression, (("do", statement, ";") | scope))}],
     ["else", (("do", statement, ";") | scope)]
     ;
-loop  = ["do"], "loop", boolean_expression, (("do", statement, ";") | scope);
+loop  = ["do"], "loop", boolean_expression, (("do", statement_in_loop, ";") | scope);
 print = (("print", expression) | ("println", [expression]) | ("eprint", expression) | ("eprintln", [expression])), ";";
 statement = expression | print | variable_declaration | variable_reassignment | if | loop;
+statement_in_loop = expression | print | variable_declaration | variable_reassignment | if | loop | "break" | "continue";
 scope     = "{", [{line_comment | statement | scope}], "}";

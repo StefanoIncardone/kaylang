@@ -25,6 +25,12 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
     type byte = u8;
     ```
 
+## 0.6.1 -
+
+### Fixed
+
+- Added `break` and `continue` statements to the [syntax specification](docs/SYNTAX.ebnf)
+
 ## 0.6.0 - 31/08/2024
 
 >[!WARNING]
