@@ -25,7 +25,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
     type byte = u8;
     ```
 
-## 0.6.0 -
+## 0.6.0 - 31/08/2024
 
 >[!WARNING]
 > From version `0.6.0` breaking changes may appear at any time, meaning that features in `0.6.0`
