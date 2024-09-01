@@ -1,9 +1,9 @@
 use super::{Error, ErrorInfo, IntoErrorInfo};
-use crate::src_file::{Line, SrcFile};
+use crate::src_file::{offset, Line, SrcFile};
 use std::fmt::Display;
 
 pub(super) trait DisplayLen {
-    fn display_len(&self) -> usize;
+    fn display_len(&self) -> offset;
 }
 
 /// kay's equivalent to pointer sized signed integer
@@ -46,7 +46,7 @@ impl Display for Mutability {
 
 impl DisplayLen for Mutability {
     #[inline(always)]
-    fn display_len(&self) -> usize {
+    fn display_len(&self) -> offset {
         return match self {
             Self::Let | Self::Var => 3,
         };
@@ -78,7 +78,7 @@ impl Display for BracketKind {
 
 impl DisplayLen for BracketKind {
     #[inline(always)]
-    fn display_len(&self) -> usize {
+    fn display_len(&self) -> offset {
         return match self {
             Self::OpenRound
             | Self::CloseRound
@@ -93,7 +93,7 @@ impl DisplayLen for BracketKind {
 #[derive(Debug)]
 struct Bracket {
     kind: BracketKind,
-    col: usize,
+    col: offset,
 }
 
 /* IDEA(stefano):
@@ -274,7 +274,7 @@ impl Display for Op {
 
 impl DisplayLen for Op {
     #[inline(always)]
-    fn display_len(&self) -> usize {
+    fn display_len(&self) -> offset {
         return match self {
             Self::Len => 3,
             Self::Equals => 1,
@@ -398,7 +398,7 @@ pub(crate) enum TokenKind<'src> {
     /* IDEA(stefano):
     create:
     struct ShortStr<'src> {
-        start: u32,
+        start: offset,
         _start: PhantomData<&'src ascii>,
         len: u8, // only using 6/7/8 bits, thus limiting the max len to 63/127/255
     }
@@ -476,17 +476,17 @@ impl Display for TokenKind<'_> {
 
 impl DisplayLen for TokenKind<'_> {
     #[inline(always)]
-    fn display_len(&self) -> usize {
+    fn display_len(&self) -> offset {
         #[inline(always)]
-        fn ascii_escaped_len(ascii_char: ascii) -> usize {
+        fn ascii_escaped_len(ascii_char: ascii) -> offset {
             // Note: ascii type guarantees the value to be valid utf8
             let utf8_char = ascii_char as utf8;
-            return utf8_char.escape_debug().len();
+            return utf8_char.escape_debug().len() as offset;
         }
 
         return match self {
-            Self::Comment(text) => text.chars().count(),
-            Self::Unexpected(text) => text.chars().count(),
+            Self::Comment(text) => text.chars().count() as offset,
+            Self::Unexpected(text) => text.chars().count() as offset,
 
             Self::Bracket(bracket) => bracket.display_len(),
             Self::Colon => 1,
@@ -494,7 +494,7 @@ impl DisplayLen for TokenKind<'_> {
             Self::Comma => 1,
             Self::Op(op) => op.display_len(),
 
-            Self::Integer(integer) => integer.len(),
+            Self::Integer(integer) => integer.len() as offset,
             Self::Ascii(ascii_char) => ascii_escaped_len(*ascii_char) + 2, // + 2 to account for the quotes
             Self::True => 4,
             Self::False => 5,
@@ -505,9 +505,9 @@ impl DisplayLen for TokenKind<'_> {
                 }
                 len
             }
-            Self::RawStr(text) => text.0.len() + 3, // + 1 for the `r` prefix, and + 2 for the quotes
+            Self::RawStr(text) => text.0.len() as offset + 3, // + 1 for the `r` prefix, and + 2 for the quotes
 
-            Self::Identifier(name) => name.len(),
+            Self::Identifier(name) => name.len() as offset,
 
             Self::Print => 5,
             Self::PrintLn => 7,
@@ -528,7 +528,7 @@ impl DisplayLen for TokenKind<'_> {
 #[derive(Debug, Clone)]
 pub struct Token<'src> {
     pub(crate) kind: TokenKind<'src>,
-    pub(crate) col: usize,
+    pub(crate) col: offset,
 }
 
 #[derive(Debug)]
@@ -536,10 +536,10 @@ pub struct Tokenizer<'src> {
     src: &'src SrcFile,
     errors: Vec<Error<ErrorKind>>,
 
-    col: usize,
-    token_start_col: usize,
+    col: offset,
+    token_start_col: offset,
 
-    line_index: usize,
+    line_index: offset,
     line: &'src Line,
 
     tokens: Vec<Token<'src>>,
@@ -563,6 +563,7 @@ impl<'src> Tokenizer<'src> {
             brackets: Vec::new(),
         };
 
+        let src_lines_len = this.src.lines.len() as offset;
         'tokenization: loop {
             let token_kind_result = 'skip_whitespace: loop {
                 this.token_start_col = this.col;
@@ -579,12 +580,12 @@ impl<'src> Tokenizer<'src> {
 
                     // next line
                     b'\n' => {
-                        if this.line_index >= this.src.lines.len() - 1 {
+                        if this.line_index >= src_lines_len - 1 {
                             break 'tokenization;
                         }
 
                         this.line_index += 1;
-                        this.line = &this.src.lines[this.line_index];
+                        this.line = &this.src.lines[this.line_index as usize];
                     }
                     ch => break 'skip_whitespace this.next_token(ch),
                 }
@@ -594,7 +595,7 @@ impl<'src> Tokenizer<'src> {
                 Ok(kind) => kind,
                 Err(err) => {
                     this.errors.push(err);
-                    TokenKind::Unexpected(&this.src.code[this.token_start_col..this.col])
+                    TokenKind::Unexpected(&this.src.code[this.token_start_col as usize..this.col as usize])
                 }
             };
 
@@ -618,12 +619,12 @@ impl<'src> Tokenizer<'src> {
 // TODO(stefano): properly handle multi-char utf8 characters (i.e. emojis)
 // iteration of characters
 impl<'src> Tokenizer<'src> {
-    fn token_len(&self) -> usize {
-        return self.src.code[self.token_start_col..self.col].chars().count();
+    fn token_len(&self) -> offset {
+        return self.src.code[self.token_start_col as usize..self.col as usize].chars().count() as offset;
     }
 
     fn next_ascii_char(&mut self) -> Result<Option<ascii>, Error<ErrorKind>> {
-        let Some(next) = self.src.code.as_bytes().get(self.col) else {
+        let Some(next) = self.src.code.as_bytes().get(self.col as usize) else {
             return Ok(None);
         };
 
@@ -633,14 +634,14 @@ impl<'src> Tokenizer<'src> {
                 Ok(Some(*ascii_ch))
             }
             _utf8_ch => {
-                let rest_of_line = &self.src.code[self.col..self.line.end];
+                let rest_of_line = &self.src.code[self.col as usize..self.line.end as usize];
 
                 let Some(utf8_ch) = rest_of_line.chars().next() else {
                     unreachable!("this branch assured we would have a valid utf8 character");
                 };
 
                 let utf8_ch_col = self.col;
-                self.col += utf8_ch.len_utf8();
+                self.col += utf8_ch.len_utf8() as offset;
                 Err(Error {
                     kind: ErrorKind::Utf8Character(utf8_ch),
                     col: utf8_ch_col,
@@ -651,34 +652,34 @@ impl<'src> Tokenizer<'src> {
     }
 
     fn next_utf8_char(&mut self) -> Option<utf8> {
-        let next = self.src.code.as_bytes().get(self.col)?;
+        let next = self.src.code.as_bytes().get(self.col as usize)?;
         return match next {
             ascii_ch @ 0..=b'\x7F' => {
                 self.col += 1;
                 Some(*ascii_ch as utf8)
             }
             _utf8_ch => {
-                let rest_of_line = &self.src.code[self.col..self.line.end];
+                let rest_of_line = &self.src.code[self.col as usize..self.line.end as usize];
 
                 let Some(utf8_ch) = rest_of_line.chars().next() else {
                     unreachable!("this branch assured we would have a valid utf8 character");
                 };
 
-                self.col += utf8_ch.len_utf8();
+                self.col += utf8_ch.len_utf8() as offset;
                 Some(utf8_ch)
             }
         };
     }
 
     fn peek_next_ascii_char(&self) -> Result<Option<&'src ascii>, Error<ErrorKind>> {
-        let Some(next) = self.src.code.as_bytes().get(self.col) else {
+        let Some(next) = self.src.code.as_bytes().get(self.col as usize) else {
             return Ok(None);
         };
 
         return match next {
             ascii_ch @ 0..=b'\x7F' => Ok(Some(ascii_ch)),
             _utf8_ch => {
-                let rest_of_line = &self.src.code[self.col..self.line.end];
+                let rest_of_line = &self.src.code[self.col as usize..self.line.end as usize];
 
                 let Some(utf8_ch) = rest_of_line.chars().next() else {
                     unreachable!("this branch assured we would have a valid utf8 character");
@@ -694,11 +695,11 @@ impl<'src> Tokenizer<'src> {
     }
 
     fn peek_next_utf8_char(&self) -> Option<utf8> {
-        let next = self.src.code.as_bytes().get(self.col)?;
+        let next = self.src.code.as_bytes().get(self.col as usize)?;
         return match next {
             ascii_ch @ 0..=b'\x7F' => Some(*ascii_ch as utf8),
             _utf8_ch => {
-                let rest_of_line = &self.src.code[self.col..self.line.end];
+                let rest_of_line = &self.src.code[self.col as usize..self.line.end as usize];
 
                 let Some(utf8_ch) = rest_of_line.chars().next() else {
                     unreachable!("this branch assured we would have a valid utf8 character");
@@ -710,7 +711,7 @@ impl<'src> Tokenizer<'src> {
     }
 
     fn next_in_ascii_char_literal(&mut self) -> Result<ascii, Error<ErrorKind>> {
-        return match self.src.code.as_bytes().get(self.col) {
+        return match self.src.code.as_bytes().get(self.col as usize) {
             Some(b'\n') | None => Err(Error {
                 kind: ErrorKind::UnclosedCharacterLiteral,
                 col: self.token_start_col,
@@ -721,14 +722,14 @@ impl<'src> Tokenizer<'src> {
                 Ok(*ascii_ch)
             }
             Some(_utf8_ch) => {
-                let rest_of_line = &self.src.code[self.col..self.line.end];
+                let rest_of_line = &self.src.code[self.col as usize..self.line.end as usize];
 
                 let Some(utf8_ch) = rest_of_line.chars().next() else {
                     unreachable!("this branch assured we would have a valid utf8 character");
                 };
 
                 let utf8_ch_col = self.col;
-                self.col += utf8_ch.len_utf8();
+                self.col += utf8_ch.len_utf8() as offset;
                 Err(Error {
                     kind: ErrorKind::Utf8Character(utf8_ch),
                     col: utf8_ch_col,
@@ -739,7 +740,7 @@ impl<'src> Tokenizer<'src> {
     }
 
     fn next_in_ascii_str_literal(&mut self) -> Result<ascii, Error<ErrorKind>> {
-        return match self.src.code.as_bytes().get(self.col) {
+        return match self.src.code.as_bytes().get(self.col as usize) {
             Some(b'\n') | None => Err(Error {
                 kind: ErrorKind::UnclosedStringLiteral,
                 col: self.token_start_col,
@@ -750,14 +751,14 @@ impl<'src> Tokenizer<'src> {
                 Ok(*ascii_ch)
             }
             Some(_utf8_ch) => {
-                let rest_of_line = &self.src.code[self.col..self.line.end];
+                let rest_of_line = &self.src.code[self.col as usize..self.line.end as usize];
 
                 let Some(utf8_ch) = rest_of_line.chars().next() else {
                     unreachable!("this branch assured we would have a valid utf8 character");
                 };
 
                 let utf8_ch_col = self.col;
-                self.col += utf8_ch.len_utf8();
+                self.col += utf8_ch.len_utf8() as offset;
                 Err(Error {
                     kind: ErrorKind::Utf8Character(utf8_ch),
                     col: utf8_ch_col,
@@ -789,7 +790,7 @@ impl<'src> Tokenizer<'src> {
             });
         }
 
-        let identifier = match &self.src.code[self.token_start_col..self.col] {
+        let identifier = match &self.src.code[self.token_start_col as usize..self.col as usize] {
             "let" => TokenKind::Definition(Mutability::Let),
             "var" => TokenKind::Definition(Mutability::Var),
             "print" => TokenKind::Print,
@@ -844,7 +845,7 @@ impl<'src> Tokenizer<'src> {
                     } else {
                         // starting at token_start_col + 2 to skip the r prefix, and ending at
                         // col - 1 to skip the closing quote
-                        let raw_string = &self.src.code[self.token_start_col + 2..self.col - 1];
+                        let raw_string = &self.src.code[self.token_start_col as usize + 2..self.col as usize - 1];
                         Ok(TokenKind::RawStr(RawStr(raw_string.as_bytes())))
                     }
                 }
@@ -880,13 +881,13 @@ impl<'src> Tokenizer<'src> {
                         pointers_count: self.token_len(),
                     })
                 } else {
-                    let integer_literal = &self.src.code[self.token_start_col..self.col];
+                    let integer_literal = &self.src.code[self.token_start_col as usize..self.col as usize];
                     Ok(TokenKind::Integer(integer_literal))
                 }
             }
             b'#' => {
                 // ignoring the hash symbol
-                let comment = &self.src.code[self.col..self.line.end];
+                let comment = &self.src.code[self.col as usize..self.line.end as usize];
 
                 // consuming the rest of the characters in the current line
                 loop {

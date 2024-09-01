@@ -27,6 +27,13 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ## 0.6.1 -
 
+### Changed
+
+- Restricted max source file size to 4GB
+- `src_file::Error` now contains more detailed error kinds
+- `SrcFile::lines` is now const
+- Reduced memory footprint of parsing and of the generated tokens and ast
+
 ### Fixed
 
 - Added `break` and `continue` statements to the [syntax specification](docs/SYNTAX.ebnf)

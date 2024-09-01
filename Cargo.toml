@@ -104,9 +104,11 @@ unreachable = "allow" # trust me, might be changed to "warn" to encourage better
 undocumented_unsafe_blocks = "allow" # trust me
 missing_errors_doc = "allow" # will be changed to "warn" in the future when it comes time to document everything
 as_conversions = "allow" # do as i say please
+cast_lossless = "allow" # do as i say please
 cast_possible_truncation = "allow" # do as i say please
 cast_sign_loss = "allow" # do as i say please
 question_mark_used = "allow" # needlessly advocates for a macro instead of a language feature
+verbose_file_reads = "allow"
 
 # doesn't solve the problem, i.e.:
 # ```rust

@@ -4,7 +4,7 @@ mod reg;
 
 use self::{artifacts::Artifacts, reg::Reg64};
 use crate::{
-    src_file::{Position, SrcFile},
+    src_file::{offset, Position, SrcFile},
     syntax::{
         ast::{
             self, AssignmentOp, Ast, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression,
@@ -84,10 +84,10 @@ pub struct Compiler<'src, 'ast: 'src> {
     variables: Vec<Variable<'src, 'ast>>,
     temporary_values: Vec<TemporaryValue<'src, 'ast>>,
 
-    if_counter: usize,
+    if_counter: offset,
 
-    loop_counter: usize,
-    loop_counters: Vec<usize>,
+    loop_counter: offset,
+    loop_counters: Vec<offset>,
     // and_counter: usize,
     // or_counter: usize,
 }
@@ -527,7 +527,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 _ = self.loop_counters.pop();
             }
             Node::Definition { var_index } => {
-                let ast_var = &self.ast.variables[*var_index];
+                let ast_var = &self.ast.variables[*var_index as usize];
 
                 let name = ast_var.name;
                 let value = &ast_var.value;
@@ -566,7 +566,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     }
 
     fn scope(&mut self, scope_index: ScopeIndex) {
-        let scope = &self.ast.scopes[scope_index];
+        let scope = &self.ast.scopes[scope_index as usize];
         for node in &scope.nodes {
             self.node(node);
         }
@@ -620,7 +620,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
             Expression::Parenthesis(inner) => self.lhs_needs_saving(inner),
             Expression::Temporary { temporary_value_index, .. } => {
-                let temporary = &self.ast.temporaries[*temporary_value_index];
+                let temporary = &self.ast.temporaries[*temporary_value_index as usize];
                 self.lhs_needs_saving(temporary)
             }
         };
@@ -716,7 +716,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         &mut self,
         base_type: BaseType,
         value: &'ast Expression<'src>,
-        bracket_col: usize,
+        bracket_col: offset,
         index: &'ast Expression<'src>,
     ) {
         let Position { line, col } = self.src.position(bracket_col);
@@ -1481,7 +1481,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 _ = writeln!(self.asm, "{op_asm}\n");
             }
             Expression::Temporary { temporary_value_index, .. } => {
-                let temporary_value_expression = &self.ast.temporaries[*temporary_value_index];
+                let temporary_value_expression = &self.ast.temporaries[*temporary_value_index as usize];
                 let temporary_value = self.resolve_temporary(temporary_value_expression);
                 let temporary_value_offset = temporary_value.offset;
 
@@ -2221,7 +2221,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         &mut self,
         target: &'ast Expression<'src>,
         op: AssignmentOp,
-        op_col: usize,
+        op_col: offset,
         new_value: &'ast Expression<'src>,
     ) {
         match target {

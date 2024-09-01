@@ -44,15 +44,15 @@ pub struct ErrorInfo {
 pub struct Error<K: IntoErrorInfo> {
     pub kind: K,
     /// absolute source code byte position
-    pub col: usize,
-    pub pointers_count: usize,
+    pub col: u32,
+    pub pointers_count: u32,
 }
 
 impl<K: IntoErrorInfo> Error<K> {
     pub fn display<'src>(&self, src: &'src SrcFile) -> ErrorDisplay<'src> {
         let Position { line, col } = src.position(self.col);
-        let line_span = &src.lines[line - 1];
-        let line_text = &src.code[line_span.start..line_span.end];
+        let line_span = &src.lines[line as usize - 1];
+        let line_text = &src.code[line_span.start as usize..line_span.end as usize];
 
         let ErrorInfo { error_message, error_cause_message } = self.kind.info();
         return ErrorDisplay {
@@ -71,10 +71,10 @@ impl<K: IntoErrorInfo> Error<K> {
 pub struct ErrorDisplay<'src> {
     pub error_message: Cow<'static, str>,
     pub file: &'src Path,
-    pub line: usize,
-    pub col: usize,
+    pub line: u32,
+    pub col: u32,
     pub line_text: &'src str,
-    pub pointers_count: usize,
+    pub pointers_count: u32,
     pub error_cause_message: Cow<'static, str>,
 }
 
@@ -100,7 +100,7 @@ impl Display for ErrorDisplay<'_> {
             text: format!(
                 "{spaces:^>pointers_count$} {cause}",
                 spaces = "",
-                pointers_count = self.pointers_count,
+                pointers_count = self.pointers_count as usize,
                 cause = self.error_cause_message
             ),
             fg: Fg::LightRed,
@@ -118,7 +118,7 @@ impl Display for ErrorDisplay<'_> {
             at_padding = line_number_padding - 1,
             path = self.file.display(),
             line = self.line,
-            col = self.col,
+            col = self.col as usize,
             line_text = self.line_text,
             spaces = "",
         );
