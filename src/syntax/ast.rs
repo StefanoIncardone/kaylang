@@ -693,7 +693,6 @@ pub(crate) enum Node {
     ScopeEnd,
 }
 
-// IDEA(stefano): return only the nodes, everything else is unused after building the ast
 #[derive(Debug, Clone)]
 pub(crate) struct Scope {
     pub(crate) parent: ScopeIndex,
@@ -718,11 +717,6 @@ pub(crate) enum StrKind {
 // TODO(stefano): introduce other representation before and after this Ast
 #[derive(Debug)]
 pub struct Ast<'src> {
-    // TODO(stefano): move these fields into the Parser struct
-    loop_depth: offset,
-    scope: ScopeIndex,
-    scopes: Vec<Scope>,
-
     pub(crate) nodes: Vec<Vec<Node>>,
 
     pub(crate) ifs: Vec<If>,
@@ -746,6 +740,9 @@ pub struct Parser<'src, 'tokens: 'src> {
     token: TokenIndex,
     tokens: &'tokens [Token<'src>],
 
+    loop_depth: offset,
+    scope: ScopeIndex,
+    scopes: Vec<Scope>,
     ast: Ast<'src>,
 }
 
@@ -755,14 +752,6 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         tokens: &'tokens [Token<'src>],
     ) -> Result<Ast<'src>, Vec<Error<ErrorKind>>> {
         let ast = Ast {
-            loop_depth: 0,
-            scope: 0,
-            scopes: vec![Scope {
-                parent: 0,
-                base_types: vec![BaseType::Int, BaseType::Ascii, BaseType::Bool, BaseType::Str],
-                let_variables: Vec::new(),
-                var_variables: Vec::new(),
-            }],
             nodes: vec![vec![]],
 
             ifs: Vec::new(),
@@ -793,7 +782,21 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             token += 1;
         }
 
-        let mut this = Self { src, errors: Vec::new(), token, tokens, ast };
+        let mut this = Self {
+            src,
+            errors: Vec::new(),
+            token,
+            tokens,
+            loop_depth: 0,
+            scope: 0,
+            scopes: vec![Scope {
+                parent: 0,
+                base_types: vec![BaseType::Int, BaseType::Ascii, BaseType::Bool, BaseType::Str],
+                let_variables: Vec::new(),
+                var_variables: Vec::new(),
+            }],
+            ast
+        };
 
         this.scope();
 
@@ -829,7 +832,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 // skip to the next token after a semicolon
                 Ok(Node::Semicolon) => continue,
                 Ok(Node::ScopeEnd) => break,
-                Ok(node) => self.ast.nodes[self.ast.scope as usize].push(node),
+                Ok(node) => self.ast.nodes[self.scope as usize].push(node),
                 Err(err) => {
                     self.errors.push(err);
 
@@ -1116,14 +1119,14 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 })
             }
             TokenKind::Do | TokenKind::Loop => {
-                self.ast.loop_depth += 1;
+                self.loop_depth += 1;
                 let looop_statement = self.loop_statement();
-                self.ast.loop_depth -= 1;
+                self.loop_depth -= 1;
                 looop_statement
             }
             TokenKind::Break => {
                 _ = self.next_token();
-                if self.ast.loop_depth == 0 {
+                if self.loop_depth == 0 {
                     return Err(Error {
                         kind: ErrorKind::StrayBreakStatement,
                         col: token.col,
@@ -1136,7 +1139,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             }
             TokenKind::Continue => {
                 _ = self.next_token();
-                if self.ast.loop_depth == 0 {
+                if self.loop_depth == 0 {
                     return Err(Error {
                         kind: ErrorKind::StrayContinueStatement,
                         col: token.col,
@@ -1245,22 +1248,22 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn any(&mut self, token: &'tokens Token<'src>) -> Result<Node, Error<ErrorKind>> {
         return match token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
-                let new_scope_index = self.ast.scopes.len() as offset;
-                self.ast.scopes.push(Scope {
-                    parent: self.ast.scope,
+                let new_scope_index = self.scopes.len() as offset;
+                self.scopes.push(Scope {
+                    parent: self.scope,
                     base_types: Vec::new(),
                     let_variables: Vec::new(),
                     var_variables: Vec::new(),
                 });
                 self.ast.nodes.push(Vec::new());
-                self.ast.scope = new_scope_index;
+                self.scope = new_scope_index;
 
                 _ = self.next_token();
                 self.scope();
                 Ok(Node::Scope { index: new_scope_index })
             }
             TokenKind::Bracket(BracketKind::CloseCurly) => {
-                self.ast.scope = self.ast.scopes[self.ast.scope as usize].parent;
+                self.scope = self.scopes[self.scope as usize].parent;
                 _ = self.next_token();
                 Ok(Node::ScopeEnd)
             }
@@ -2615,9 +2618,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 // variables and types
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn resolve_variable(&self, name: &'src str) -> Option<(Mutability, VariableIndex)> {
-        let mut scope_index = self.ast.scope;
+        let mut scope_index = self.scope;
         loop {
-            let scope = &self.ast.scopes[scope_index as usize];
+            let scope = &self.scopes[scope_index as usize];
             for var_index in &scope.let_variables {
                 let var = &self.ast.variables[*var_index as usize];
                 if var.name == name {
@@ -2640,9 +2643,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     }
 
     fn resolve_type(&self, name: &'src str) -> Option<BaseType> {
-        let mut scope_index = self.ast.scope;
+        let mut scope_index = self.scope;
         loop {
-            let scope = &self.ast.scopes[scope_index as usize];
+            let scope = &self.scopes[scope_index as usize];
             for typ in &scope.base_types {
                 if typ.to_string() == name {
                     return Some(*typ);
@@ -2888,8 +2891,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
 
                 let scope_variables = match mutability {
-                    Mutability::Let => &mut self.ast.scopes[self.ast.scope as usize].let_variables,
-                    Mutability::Var => &mut self.ast.scopes[self.ast.scope as usize].var_variables,
+                    Mutability::Let => &mut self.scopes[self.scope as usize].let_variables,
+                    Mutability::Var => &mut self.scopes[self.scope as usize].var_variables,
                 };
 
                 let var_index = self.ast.variables.len() as offset;
@@ -2910,10 +2913,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
                     let scope_variables = match mutability {
                         Mutability::Let => {
-                            &mut self.ast.scopes[self.ast.scope as usize].let_variables
+                            &mut self.scopes[self.scope as usize].let_variables
                         }
                         Mutability::Var => {
-                            &mut self.ast.scopes[self.ast.scope as usize].var_variables
+                            &mut self.scopes[self.scope as usize].var_variables
                         }
                     };
 
