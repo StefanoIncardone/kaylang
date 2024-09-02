@@ -376,7 +376,7 @@ section .data
             src_path = src.path.display(),
         );
 
-        // TODO(stefano): remove this creation and let the user pass in the file instead
+        // IDEA(stefano): remove this creation and let the user pass in the file instead
         let asm_file = match File::create(&artifacts.asm_path) {
             Ok(file) => file,
             Err(err) => {
@@ -384,6 +384,7 @@ section .data
             }
         };
 
+        // IDEA(stefano): remove this writer and return the program to write instead
         let mut asm_writer = BufWriter::new(asm_file);
         if let Err(err) = asm_writer.write_all(program.as_bytes()) {
             return Err(Error::WritingAssemblyFailed { err });

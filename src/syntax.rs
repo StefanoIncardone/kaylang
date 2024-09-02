@@ -1,7 +1,3 @@
-/* IDEA(stefano):
-rename this module to `error` and incorporate all error structs and enums, thus
-removing the syntax module and bringing the ast and tokenizer modules into the root module
-*/
 pub mod ast;
 pub mod tokenizer;
 

@@ -644,17 +644,12 @@ pub(crate) struct IfStatement {
     pub(crate) statement: Node,
 }
 
+pub(crate) type Loop = IfStatement;
+
 #[derive(Debug, Clone)]
 pub(crate) struct If {
     pub(crate) ifs: Vec<IfStatement>,
     pub(crate) els: Option<Node>,
-}
-
-//TODO(stefano: transform into pub(crate) type Loop = IfStatement;
-#[derive(Debug, Clone)]
-pub(crate) struct Loop {
-    pub(crate) condition: Expression,
-    pub(crate) statement: Node,
 }
 
 #[derive(Debug, Clone)]
