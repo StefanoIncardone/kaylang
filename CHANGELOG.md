@@ -32,13 +32,14 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Restricted max source file size to 4GB
 - `src_file::Error` now contains more detailed error kinds
 - `SrcFile::lines` is now const
-- Reduced memory footprint of parsing and of the generated tokens and ast
+- Reduced memory footprint of compilation steps
 - Imported from `core` instead of `std` where possible
 
 ### Fixed
 
 - Added `break` and `continue` statements to the [syntax specification](docs/SYNTAX.ebnf)
 - Corrected error messages related to undefined variables and variables already defined
+- Temporary values are now properly displayed in the generated assembly comments
 
 ## 0.6.0 - 31/08/2024
 

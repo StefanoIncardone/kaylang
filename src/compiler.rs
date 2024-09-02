@@ -70,8 +70,8 @@ struct Variable<'src, 'ast: 'src> {
 }
 
 #[derive(Debug)]
-struct TemporaryValue<'src, 'ast: 'src> {
-    inner: &'ast Expression<'src>,
+struct TemporaryValue<'ast> {
+    inner: &'ast Expression,
     offset: usize,
 }
 #[derive(Debug)]
@@ -82,7 +82,7 @@ pub struct Compiler<'src, 'ast: 'src> {
     asm: String,
 
     variables: Vec<Variable<'src, 'ast>>,
-    temporary_values: Vec<TemporaryValue<'src, 'ast>>,
+    temporary_values: Vec<TemporaryValue<'ast>>,
 
     if_counter: offset,
 
@@ -118,7 +118,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         let mut temporary_values_bytes = 0;
         let mut strings = String::new();
 
-        if !this.ast.scopes.is_empty() {
+        if !this.ast.nodes.is_empty() {
             // temporary values
             for var in &this.ast.temporaries {
                 this.temporary_values.push(TemporaryValue { inner: var, offset: 0 });
@@ -398,17 +398,19 @@ section .data
 }
 
 // nodes
-impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
-    fn node(&mut self, node: &'ast Node<'src>) {
+impl<'ast> Compiler<'_, 'ast> {
+    fn node(&mut self, node: &'ast Node) {
         match node {
             Node::Print(argument) => {
-                _ = writeln!(self.asm, " ; {node}");
+                _ = writeln!(self.asm, " ; print {}", argument.display(self.ast));
                 self.print(argument);
             }
             Node::Println(argument) => {
-                _ = writeln!(self.asm, " ; {node}");
                 if let Some(arg) = argument {
+                    _ = writeln!(self.asm, " ; println {}", arg.display(self.ast));
                     self.print(arg);
+                } else {
+                    _ = writeln!(self.asm, " ; println");
                 }
 
                 _ = writeln!(
@@ -418,13 +420,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 );
             }
             Node::Eprint(argument) => {
-                _ = writeln!(self.asm, " ; {node}");
+                _ = writeln!(self.asm, " ; eprint {}", argument.display(self.ast));
                 self.eprint(argument);
             }
             Node::Eprintln(argument) => {
-                _ = writeln!(self.asm, " ; {node}");
                 if let Some(arg) = argument {
+                    _ = writeln!(self.asm, " ; eprintln {}", arg.display(self.ast));
                     self.eprint(arg);
+                } else {
+                    _ = writeln!(self.asm, " ; eprintln");
                 }
 
                 _ = writeln!(
@@ -503,7 +507,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.loop_counters.push(self.loop_counter);
                 self.loop_counter += 1;
 
-                _ = writeln!(self.asm, "{loop_tag}:; {looop}");
+                _ = writeln!(self.asm, "{loop_tag}:; loop {}", looop.condition.display(self.ast));
                 self.condition(&looop.condition, &loop_end_tag);
                 self.node(&looop.statement);
 
@@ -521,7 +525,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 self.loop_counters.push(self.loop_counter);
                 self.loop_counter += 1;
 
-                _ = writeln!(self.asm, "{loop_tag}:; do {looop}");
+                _ = writeln!(self.asm, "{loop_tag}:; do loop {}", looop.condition.display(self.ast));
                 self.node(&looop.statement);
                 self.condition_reversed(&looop.condition, &loop_tag);
                 _ = self.loop_counters.pop();
@@ -535,7 +539,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 let var = self.resolve(name);
                 let dst_offset = var.offset;
 
-                _ = writeln!(self.asm, " ; {name} = {value}");
+                _ = writeln!(self.asm, " ; {name} = {}", value.display(self.ast));
                 self.definition(value, Base::Rbp, dst_offset);
             }
             Node::Reassignment { target, op, op_col, new_value } => {
@@ -543,7 +547,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             }
             Node::Scope { index } => self.scope(*index),
             Node::Expression(expression) => {
-                _ = writeln!(self.asm, " ; {node}");
+                _ = writeln!(self.asm, " ; {}", expression.display(self.ast));
                 self.expression(expression, Dst::default(&expression.typ()));
                 _ = writeln!(self.asm);
             }
@@ -566,8 +570,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     }
 
     fn scope(&mut self, scope_index: ScopeIndex) {
-        let scope = &self.ast.scopes[scope_index as usize];
-        for node in &scope.nodes {
+        let scope = &self.ast.nodes[scope_index as usize];
+        for node in scope {
             self.node(node);
         }
     }
@@ -585,7 +589,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         unreachable!("should always find a variable");
     }
 
-    fn resolve_temporary(&self, value: &'ast Expression<'src>) -> &TemporaryValue<'src, 'ast> {
+    fn resolve_temporary(&self, value: &'ast Expression) -> &TemporaryValue<'ast> {
         for temporary in &self.temporary_values {
             if core::ptr::eq(temporary.inner, value) {
                 return temporary;
@@ -595,7 +599,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         unreachable!("should always find a temporary value");
     }
 
-    fn lhs_needs_saving(&self, expression: &'ast Expression<'src>) -> bool {
+    fn lhs_needs_saving(&self, expression: &'ast Expression) -> bool {
         return match expression {
             Expression::Array { .. } => {
                 unreachable!("arrays cannot appear in expressions");
@@ -628,8 +632,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
     fn binary_expression(
         &mut self,
-        lhs: &'ast Expression<'src>,
-        rhs: &'ast Expression<'src>,
+        lhs: &'ast Expression,
+        rhs: &'ast Expression,
         lhs_dst: Dst,
         rhs_dst: Dst,
     ) {
@@ -715,9 +719,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
     fn index(
         &mut self,
         base_type: BaseType,
-        value: &'ast Expression<'src>,
+        value: &'ast Expression,
         bracket_col: offset,
-        index: &'ast Expression<'src>,
+        index: &'ast Expression,
     ) {
         let Position { line, col } = self.src.position(bracket_col);
 
@@ -777,10 +781,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
                 }
             }
-            Expression::Variable { typ, name } => {
+            Expression::Variable { typ, variable_index } => {
                 self.expression(index, Dst::Reg(Rdi));
 
-                let var = self.resolve(name);
+                let ast_variable = &self.ast.variables[*variable_index as usize];
+                let var = self.resolve(ast_variable.name);
                 let var_offset = var.offset;
 
                 match typ {
@@ -852,7 +857,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         }
     }
 
-    fn expression(&mut self, factor: &'ast Expression<'src>, dst: Dst) {
+    fn expression(&mut self, factor: &'ast Expression, dst: Dst) {
         match factor {
             Expression::Parenthesis(inner) => self.expression(inner, dst),
             Expression::Int(integer) => match dst {
@@ -901,8 +906,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Expression::Array { items, .. } => {
                             _ = writeln!(self.asm, " mov {reg}, {}", items.len());
                         }
-                        Expression::Variable { typ, name } => {
-                            let var = self.resolve(name);
+                        Expression::Variable { typ, variable_index } => {
+                            let ast_variable = &self.ast.variables[*variable_index as usize];
+                            let var = self.resolve(ast_variable.name);
                             let var_offset = var.offset;
                             match typ {
                                 Type::Base(BaseType::Str) => {
@@ -1494,8 +1500,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     temporary_value_offset,
                 );
             }
-            Expression::Variable { typ, name } => {
-                let var = self.resolve(name);
+            Expression::Variable { typ, variable_index } => {
+                let ast_variable = &self.ast.variables[*variable_index as usize];
+                let var = self.resolve(ast_variable.name);
                 let var_offset = var.offset;
                 self.identifier(*typ, dst, Base::Rbp, var_offset);
             }
@@ -1505,7 +1512,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         }
     }
 
-    fn condition(&mut self, condition: &'ast Expression<'src>, false_tag: &str) {
+    fn condition(&mut self, condition: &'ast Expression, false_tag: &str) {
         match condition {
             Expression::Parenthesis(inner) => self.condition(inner, false_tag),
             // IDEA(stefano): optimize these checks by doing a plain jmp instead
@@ -1645,8 +1652,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
                 }
             }
-            Expression::Variable { name, .. } => {
-                let var = self.resolve(name);
+            Expression::Variable { variable_index, .. } => {
+                let ast_variable = &self.ast.variables[*variable_index as usize];
+                let var = self.resolve(ast_variable.name);
                 let var_offset = var.offset;
                 _ = writeln!(
                     self.asm,
@@ -1669,7 +1677,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         }
     }
 
-    fn condition_reversed(&mut self, condition: &'ast Expression<'src>, true_tag: &str) {
+    fn condition_reversed(&mut self, condition: &'ast Expression, true_tag: &str) {
         match condition {
             Expression::Parenthesis(inner) => self.condition_reversed(inner, true_tag),
             // IDEA(stefano): optimize these checks by doing a plain jmp instead
@@ -1809,8 +1817,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
                 }
             }
-            Expression::Variable { name, .. } => {
-                let var = self.resolve(name);
+            Expression::Variable { variable_index, .. } => {
+                let ast_variable = &self.ast.variables[*variable_index as usize];
+                let var = self.resolve(ast_variable.name);
                 let var_offset = var.offset;
                 _ = writeln!(
                     self.asm,
@@ -1835,8 +1844,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 }
 
 // definitions
-impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
-    fn definition(&mut self, value: &'ast Expression<'src>, base: Base, dst_offset: usize) {
+impl<'ast> Compiler<'_, 'ast> {
+    fn definition(&mut self, value: &'ast Expression, base: Base, dst_offset: usize) {
         match value {
             Expression::Parenthesis(inner) => self.definition(inner, base, dst_offset),
             Expression::Int(integer) => {
@@ -1894,8 +1903,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         Expression::Temporary { .. } => {
                             unreachable!("temporaries cannot appear in variables")
                         }
-                        Expression::Variable { typ, name } => {
-                            let var = self.resolve(name);
+                        Expression::Variable { typ, variable_index } => {
+                            let ast_variable = &self.ast.variables[*variable_index as usize];
+                            let var = self.resolve(ast_variable.name);
                             let var_offset = var.offset;
                             match typ {
                                 Type::Base(BaseType::Str) => {
@@ -2138,8 +2148,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 _ = writeln!(self.asm, " mov [{base} + {dst_offset}], dil\n");
             }
             Expression::Temporary { .. } => unreachable!("temporaries cannot appear in variables"),
-            Expression::Variable { typ: identifier_typ, name } => {
-                let var = self.resolve(name);
+            Expression::Variable { typ: identifier_typ, variable_index } => {
+                let ast_variable = &self.ast.variables[*variable_index as usize];
+                let var = self.resolve(ast_variable.name);
                 let src_offset = var.offset;
                 match identifier_typ {
                     Type::Base(BaseType::Int) => {
@@ -2220,10 +2231,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
     fn reassignment(
         &mut self,
-        target: &'ast Expression<'src>,
+        target: &'ast Expression,
         op: AssignmentOp,
         op_col: offset,
-        new_value: &'ast Expression<'src>,
+        new_value: &'ast Expression,
     ) {
         match target {
             Expression::ArrayIndex { base_type, value, bracket_col, index } => {
@@ -2238,7 +2249,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         index: nested_index,
                     } => {
                         // Note: can only have nested indexes into str[], i.e.: ["a", "b"][0][0] = 'c'
-                        _ = writeln!(self.asm, " ; {target} {op} {new_value}");
+                        _ = writeln!(self.asm, " ; {} {op} {}", target.display(self.ast), new_value.display(self.ast));
                         let Position { line, col } = self.src.position(*bracket_col);
 
                         self.index(
@@ -2285,10 +2296,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             \n mov [rsi + rdx], dil\n"
                         );
                     }
-                    Expression::Variable { typ, name } => {
-                        _ = writeln!(self.asm, " ; {target} {op} {new_value}");
+                    Expression::Variable { typ, variable_index } => {
+                        _ = writeln!(self.asm, " ; {} {op} {}", target.display(self.ast), new_value.display(self.ast));
 
-                        let var = self.resolve(name);
+                        let ast_variable = &self.ast.variables[*variable_index as usize];
+                        let var = self.resolve(ast_variable.name);
                         let var_offset = var.offset;
                         let Position { line: index_line, col: index_col } =
                             self.src.position(*bracket_col);
@@ -2578,11 +2590,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
                 }
             }
-            Expression::Variable { name, .. } => {
-                let var = self.resolve(name);
+            Expression::Variable { variable_index, .. } => {
+                let ast_variable = &self.ast.variables[*variable_index as usize];
+                let var = self.resolve(ast_variable.name);
                 let dst_offset = var.offset;
 
-                _ = writeln!(self.asm, " ; {name} {op} {new_value}");
+                _ = writeln!(self.asm, " ; {} {op} {}", ast_variable.name, new_value.display(self.ast));
                 if let AssignmentOp::Equals = op {
                     self.definition(new_value, Base::Rbp, dst_offset);
                 } else {
@@ -2785,17 +2798,17 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 }
 
 // ifs
-impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
-    fn iff(&mut self, iff: &'ast IfStatement<'src>, tag: &str, false_tag: &str) {
-        _ = writeln!(self.asm, "{tag}:; {}", iff.condition);
+impl<'ast> Compiler<'_, 'ast> {
+    fn iff(&mut self, iff: &'ast IfStatement, tag: &str, false_tag: &str) {
+        _ = writeln!(self.asm, "{tag}:; {}", iff.condition.display(self.ast));
         self.condition(&iff.condition, false_tag);
         self.node(&iff.statement);
     }
 }
 
 // print statements
-impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
-    fn print(&mut self, value: &'ast Expression<'src>) {
+impl<'ast> Compiler<'_, 'ast> {
+    fn print(&mut self, value: &'ast Expression) {
         let value_type = value.typ();
         self.expression(value, Dst::default(&value_type));
 
@@ -2813,7 +2826,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         }
     }
 
-    fn eprint(&mut self, value: &'ast Expression<'src>) {
+    fn eprint(&mut self, value: &'ast Expression) {
         let value_type = value.typ();
         self.expression(value, Dst::default(&value_type));
 

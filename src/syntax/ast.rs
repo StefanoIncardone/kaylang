@@ -449,7 +449,7 @@ type ExpressionIndex = offset;
 pub(crate) type ScopeIndex = offset;
 
 #[derive(Debug, Clone)]
-pub(crate) enum Expression<'src> {
+pub(crate) enum Expression {
     False,
     True,
     Int(int),
@@ -460,47 +460,46 @@ pub(crate) enum Expression<'src> {
     Array {
         base_type: BaseType,
         /// arrays always contain at least 2 items
-        items: Box<[Expression<'src>]>,
+        items: Box<[Expression]>,
     },
 
-    Parenthesis(Box<Expression<'src>>),
+    Parenthesis(Box<Expression>),
 
     Unary {
         op: UnaryOp,
         op_col: offset,
-        operand: Box<Expression<'src>>,
+        operand: Box<Expression>,
     },
     BooleanUnary {
         op: BooleanUnaryOp,
-        operand: Box<Expression<'src>>,
+        operand: Box<Expression>,
     },
     Binary {
-        lhs: Box<Expression<'src>>,
+        lhs: Box<Expression>,
         op: BinaryOp,
         op_col: offset,
-        rhs: Box<Expression<'src>>,
+        rhs: Box<Expression>,
     },
     BooleanBinary {
-        lhs: Box<Expression<'src>>,
+        lhs: Box<Expression>,
         op: BooleanBinaryOp,
-        rhs: Box<Expression<'src>>,
+        rhs: Box<Expression>,
     },
     Comparison {
-        lhs: Box<Expression<'src>>,
+        lhs: Box<Expression>,
         op: ComparisonOp,
-        rhs: Box<Expression<'src>>,
+        rhs: Box<Expression>,
     },
     ArrayIndex {
         base_type: BaseType,
-        value: Box<Expression<'src>>,
+        value: Box<Expression>,
         bracket_col: offset,
-        index: Box<Expression<'src>>,
+        index: Box<Expression>,
     },
 
-    // TODO(stefano): represent as an index into the variables
     Variable {
         typ: Type,
-        name: &'src str,
+        variable_index: VariableIndex,
     },
 
     Temporary {
@@ -509,45 +508,7 @@ pub(crate) enum Expression<'src> {
     },
 }
 
-// TODO(stefano): find a way to print values indexing into the ast
-// IDEA(stefano): move printing to the compiler module
-impl Display for Expression<'_> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        return match self {
-            Self::False => write!(f, "false"),
-            Self::True => write!(f, "true"),
-            Self::Int(integer) => write!(f, "{integer}"),
-            Self::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
-            Self::Str { label, .. } => write!(f, "str_{label}"),
-            Self::Array { items, .. } => {
-                write!(f, "[")?;
-                let mut items_iter = items.iter();
-                let Some(last_item) = items_iter.next_back() else {
-                    unreachable!("arrays should always contain at least 2 items");
-                };
-
-                for item in items_iter {
-                    write!(f, "{item}, ")?;
-                }
-
-                write!(f, "{last_item}]")
-            }
-            Self::Parenthesis(inner) => write!(f, "({inner})"),
-            Self::Unary { op: len @ UnaryOp::Len, operand, .. } => write!(f, "{len} {operand}"),
-            Self::Unary { op, operand, .. } => write!(f, "{op}{operand}"),
-            Self::BooleanUnary { op, operand } => write!(f, "{op}{operand}"),
-            Self::Binary { lhs, op, rhs, .. } => write!(f, "{lhs} {op} {rhs}"),
-            Self::BooleanBinary { lhs, op, rhs, .. } => write!(f, "{lhs} {op} {rhs}"),
-            Self::Comparison { lhs, op, rhs } => write!(f, "{lhs} {op} {rhs}"),
-            Self::ArrayIndex { value, index, .. } => write!(f, "{value}[{index}]"),
-
-            Self::Temporary { typ, .. } => write!(f, "temp {typ}"),
-            Self::Variable { name, .. } => write!(f, "{name}"),
-        };
-    }
-}
-
-impl TypeOf for Expression<'_> {
+impl TypeOf for Expression {
     fn typ(&self) -> Type {
         return match self {
             Self::False | Self::True => Type::Base(BaseType::Bool),
@@ -570,52 +531,130 @@ impl TypeOf for Expression<'_> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct IfStatement<'src> {
-    pub(crate) condition: Expression<'src>,
-    pub(crate) statement: Node<'src>,
+impl<'src, 'ast: 'src> Expression {
+    pub(crate) const fn display(&'ast self, ast: &'ast Ast<'src>) -> ExpressionDisplay<'src, 'ast> {
+        return ExpressionDisplay { ast, expr: self };
+    }
 }
 
-impl Display for IfStatement<'_> {
+pub(crate) struct ExpressionDisplay<'src, 'ast: 'src> {
+    ast: &'ast Ast<'src>,
+    expr: &'ast Expression,
+}
+
+impl<'src, 'ast: 'src> ExpressionDisplay<'src, 'ast> {
+    pub(crate) fn display(&self, f: &mut core::fmt::Formatter<'_>, expr: &'ast Expression) -> core::fmt::Result {
+        return match expr {
+            Expression::False => write!(f, "false"),
+            Expression::True => write!(f, "true"),
+            Expression::Int(integer) => write!(f, "{integer}"),
+            Expression::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
+            Expression::Str { label, .. } => write!(f, "str_{label}"),
+            Expression::Array { items, .. } => {
+                write!(f, "[")?;
+                let mut items_iter = items.iter();
+                let Some(last_item) = items_iter.next_back() else {
+                    unreachable!("arrays should always contain at least 2 items");
+                };
+
+                for item in items_iter {
+                    self.display(f, item)?;
+                    write!(f, ", ")?;
+                }
+
+                self.display(f, last_item)?;
+                write!(f, "]")
+            }
+            Expression::Parenthesis(inner) => {
+                write!(f, "(")?;
+                self.display(f, inner)?;
+                write!(f, ")")
+            }
+            Expression::Unary { op: len @ UnaryOp::Len, operand, .. } => {
+                write!(f, "{len} ")?;
+                self.display(f, operand)
+            }
+            Expression::Unary { op, operand, .. } => {
+                write!(f, "{op}")?;
+                self.display(f, operand)
+            }
+            Expression::BooleanUnary { op, operand } => {
+                write!(f, "{op}")?;
+                self.display(f, operand)
+            }
+            Expression::Binary { lhs, op, rhs, .. } => {
+                self.display(f, lhs)?;
+                write!(f, " {op} ")?;
+                self.display(f, rhs)
+            }
+            Expression::BooleanBinary { lhs, op, rhs } => {
+                self.display(f, lhs)?;
+                write!(f, " {op} ")?;
+                self.display(f, rhs)
+            }
+            Expression::Comparison { lhs, op, rhs } => {
+                self.display(f, lhs)?;
+                write!(f, " {op} ")?;
+                self.display(f, rhs)
+            }
+            Expression::ArrayIndex { value, index, .. } => {
+                self.display(f, value)?;
+                write!(f, "[")?;
+                self.display(f, index)?;
+                write!(f,"]")
+            }
+            Expression::Temporary { temporary_value_index, .. } => {
+                let temp = &self.ast.temporaries[*temporary_value_index as usize];
+                self.display(f, temp)
+            }
+            Expression::Variable { variable_index, .. } => {
+                let variable = &self.ast.variables[*variable_index as usize];
+                write!(f, "{}", variable.name)
+            }
+        };
+    }
+}
+
+impl Display for ExpressionDisplay<'_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        return write!(f, "if {}", self.condition);
+        return self.display(f, self.expr);
     }
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct If<'src> {
-    pub(crate) ifs: Box<[IfStatement<'src>]>,
-    pub(crate) els: Option<Box<Node<'src>>>,
+pub(crate) struct IfStatement {
+    pub(crate) condition: Expression,
+    pub(crate) statement: Node,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Loop<'src> {
-    pub(crate) condition: Expression<'src>,
-    pub(crate) statement: Box<Node<'src>>,
-}
-
-impl Display for Loop<'_> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        return write!(f, "loop {}", self.condition);
-    }
+pub(crate) struct If {
+    pub(crate) ifs: Box<[IfStatement]>,
+    pub(crate) els: Option<Box<Node>>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum Node<'src> {
-    Expression(Expression<'src>),
+pub(crate) struct Loop {
+    pub(crate) condition: Expression,
+    pub(crate) statement: Box<Node>,
+}
 
-    Print(Expression<'src>),
-    Println(Option<Expression<'src>>),
-    Eprint(Expression<'src>),
-    Eprintln(Option<Expression<'src>>),
+#[derive(Debug, Clone)]
+pub(crate) enum Node {
+    Expression(Expression),
+
+    Print(Expression),
+    Println(Option<Expression>),
+    Eprint(Expression),
+    Eprintln(Option<Expression>),
 
     // TODO(stefano): flatten and store the corresponding label
-    If(If<'src>),
+    If(If),
 
     // TODO(stefano): flatten and store the corresponding label
-    Loop(Loop<'src>),
+    Loop(Loop),
     // TODO(stefano): flatten and store the corresponding label
-    DoLoop(Loop<'src>),
+    DoLoop(Loop),
     Break,
     Continue,
 
@@ -623,10 +662,10 @@ pub(crate) enum Node<'src> {
         var_index: VariableIndex,
     },
     Reassignment {
-        target: Expression<'src>,
+        target: Expression,
         op: AssignmentOp,
         op_col: offset,
-        new_value: Expression<'src>,
+        new_value: Expression,
     },
 
     Scope {
@@ -638,51 +677,19 @@ pub(crate) enum Node<'src> {
     ScopeEnd,
 }
 
-impl Display for Node<'_> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        return match self {
-            Self::Semicolon => write!(f, ";"),
-
-            Self::Expression(expression) => write!(f, "{expression}"),
-
-            Self::Print(arg) => write!(f, "print {arg}"),
-            Self::Println(Some(arg)) => write!(f, "println {arg}"),
-            Self::Println(None) => write!(f, "println"),
-            Self::Eprint(arg) => write!(f, "eprint {arg}"),
-            Self::Eprintln(Some(arg)) => write!(f, "eprintln {arg}"),
-            Self::Eprintln(None) => write!(f, "eprintln"),
-
-            Self::If(iff) => write!(f, "{}", iff.ifs[0]),
-
-            Self::Loop(looop) => write!(f, "{looop}"),
-            Self::DoLoop(looop) => write!(f, "{looop}"),
-            Self::Break => write!(f, "break"),
-            Self::Continue => write!(f, "continue"),
-
-            Self::Reassignment { target, op, new_value, .. } => {
-                write!(f, "{target} {op} {new_value}")
-            }
-            Self::Definition { .. } | Self::Scope { .. } | Self::ScopeEnd => {
-                unreachable!("should never be displayed");
-            }
-        };
-    }
-}
-
 // IDEA(stefano): return only the nodes, everything else is unused after building the ast
 #[derive(Debug, Clone)]
-pub(crate) struct Scope<'src> {
+pub(crate) struct Scope {
     pub(crate) parent: ScopeIndex,
     pub(crate) base_types: Vec<BaseType>,
     pub(crate) let_variables: Vec<VariableIndex>,
     pub(crate) var_variables: Vec<VariableIndex>,
-    pub(crate) nodes: Vec<Node<'src>>,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct Variable<'src> {
     pub(crate) name: &'src str,
-    pub(crate) value: Expression<'src>,
+    pub(crate) value: Expression,
 }
 
 #[derive(Debug, Clone)]
@@ -696,8 +703,10 @@ struct AstBuilder<'src> {
     loop_depth: offset,
     scope: ScopeIndex,
 
-    scopes: Vec<Scope<'src>>,
-    temporaries: Vec<Expression<'src>>,
+    scopes: Vec<Scope>,
+    nodes: Vec<Vec<Node>>,
+
+    temporaries: Vec<Expression>,
     variables: Vec<Variable<'src>>,
 
     strings: Vec<Str>,
@@ -709,19 +718,20 @@ struct AstBuilder<'src> {
 // TODO(stefano): introduce other representation before and after this Ast
 #[derive(Debug)]
 pub struct Ast<'src> {
-    pub(crate) scopes: Box<[Scope<'src>]>,
-    pub(crate) temporaries: Box<[Expression<'src>]>,
+    pub(crate) nodes: Box<[Vec<Node>]>,
+
+    pub(crate) temporaries: Box<[Expression]>,
     pub(crate) variables: Box<[Variable<'src>]>,
 
     pub(crate) strings: Box<[Str]>,
     pub(crate) raw_strings: Box<[RawStr<'src>]>,
-    pub(crate) string_kinds: Box<[StrKind]>, // TODO(stefano): store a bitset instead of StrKind
+    pub(crate) string_kinds: Box<[StrKind]>, // IDEA(stefano): store a bitset instead of StrKind
 }
 
 impl<'src> From<AstBuilder<'src>> for Ast<'src> {
     fn from(builder: AstBuilder<'src>) -> Self {
         return Self {
-            scopes: builder.scopes.into_boxed_slice(),
+            nodes: builder.nodes.into_boxed_slice(),
             temporaries: builder.temporaries.into_boxed_slice(),
             variables: builder.variables.into_boxed_slice(),
             strings: builder.strings.into_boxed_slice(),
@@ -757,8 +767,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 base_types: vec![BaseType::Int, BaseType::Ascii, BaseType::Bool, BaseType::Str],
                 let_variables: Vec::new(),
                 var_variables: Vec::new(),
-                nodes: Vec::new(),
             }],
+            nodes: vec![vec![]],
+
             temporaries: Vec::new(),
             variables: Vec::new(),
             strings: Vec::new(),
@@ -818,7 +829,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 // skip to the next token after a semicolon
                 Ok(Node::Semicolon) => continue,
                 Ok(Node::ScopeEnd) => break,
-                Ok(node) => self.ast.scopes[self.ast.scope as usize].nodes.push(node),
+                Ok(node) => self.ast.nodes[self.ast.scope as usize].push(node),
                 Err(err) => {
                     self.errors.push(err);
 
@@ -830,7 +841,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         }
     }
 
-    fn statement(&mut self, token: &'tokens Token<'src>) -> Result<Node<'src>, Error<ErrorKind>> {
+    fn statement(&mut self, token: &'tokens Token<'src>) -> Result<Node, Error<ErrorKind>> {
         return match token.kind {
             TokenKind::False
             | TokenKind::True
@@ -1185,7 +1196,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
     }
 
-    fn do_statement(&mut self) -> Result<Node<'src>, Error<ErrorKind>> {
+    fn do_statement(&mut self) -> Result<Node, Error<ErrorKind>> {
         let token = self.next_token_bounded(Expected::StatementAfterDo)?;
         return match token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
@@ -1231,7 +1242,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
     }
 
-    fn any(&mut self, token: &'tokens Token<'src>) -> Result<Node<'src>, Error<ErrorKind>> {
+    fn any(&mut self, token: &'tokens Token<'src>) -> Result<Node, Error<ErrorKind>> {
         return match token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
                 let new_scope_index = self.ast.scopes.len() as offset;
@@ -1240,8 +1251,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     base_types: Vec::new(),
                     let_variables: Vec::new(),
                     var_variables: Vec::new(),
-                    nodes: Vec::new(),
                 });
+                self.ast.nodes.push(Vec::new());
                 self.ast.scope = new_scope_index;
 
                 _ = self.next_token();
@@ -1370,7 +1381,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn assert_lhs_is_not_string_or_array(
         op_token: &'tokens Token<'src>,
-        lhs: &Expression<'src>,
+        lhs: &Expression,
     ) -> Result<(), Error<ErrorKind>> {
         let lhs_type = lhs.typ();
         if let Type::Base(BaseType::Str) | Type::Array { .. } = lhs_type {
@@ -1386,7 +1397,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
     fn assert_rhs_is_not_string_or_array(
         op_token: &'tokens Token<'src>,
-        rhs: &Expression<'src>,
+        rhs: &Expression,
     ) -> Result<(), Error<ErrorKind>> {
         let rhs_type = rhs.typ();
         if let Type::Base(BaseType::Str) | Type::Array { .. } = rhs_type {
@@ -1402,7 +1413,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
     fn assert_lhs_is_bool(
         op_token: &'tokens Token<'src>,
-        lhs: &Expression<'src>,
+        lhs: &Expression,
     ) -> Result<(), Error<ErrorKind>> {
         let lhs_type = lhs.typ();
         let Type::Base(BaseType::Bool) = lhs_type else {
@@ -1418,7 +1429,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
     fn assert_rhs_is_bool(
         op_token: &'tokens Token<'src>,
-        rhs: &Expression<'src>,
+        rhs: &Expression,
     ) -> Result<(), Error<ErrorKind>> {
         let rhs_type = rhs.typ();
         let Type::Base(BaseType::Bool) = rhs_type else {
@@ -1465,7 +1476,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return label;
     }
 
-    fn primary_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn primary_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         fn parse_positive_int(literal: &str) -> Option<int> {
             let mut integer: int = 0;
             for ascii_digit in literal.as_bytes() {
@@ -1509,9 +1520,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             }
             TokenKind::Identifier(name) => match self.resolve_type(name) {
                 None => match self.resolve_variable(name) {
-                    Some((_, var_index)) => {
-                        let var = &self.ast.variables[var_index as usize];
-                        Ok(Expression::Variable { typ: var.value.typ(), name: var.name })
+                    Some((_, variable_index)) => {
+                        let var = &self.ast.variables[variable_index as usize];
+                        Ok(Expression::Variable { typ: var.value.typ(), variable_index })
                     }
                     None => Err(Error {
                         kind: ErrorKind::VariableNotPreviouslyDefined,
@@ -2245,7 +2256,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(expression);
     }
 
-    fn exponentiative_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn exponentiative_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let mut lhs = self.primary_expression()?;
 
         let ops = [Op::Pow, Op::WrappingPow, Op::SaturatingPow];
@@ -2274,7 +2285,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(lhs);
     }
 
-    fn multiplicative_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn multiplicative_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let mut lhs = self.exponentiative_expression()?;
 
         let ops = [
@@ -2315,7 +2326,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(lhs);
     }
 
-    fn additive_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn additive_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let mut lhs = self.multiplicative_expression()?;
 
         let ops = [
@@ -2358,7 +2369,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     when the lhs is a literal integer shifts could be optimized to throw errors
     when preconditions such as negative integers and shifts over 6bits are not met
     */
-    fn shift_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn shift_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let mut lhs = self.additive_expression()?;
 
         let ops = [
@@ -2397,7 +2408,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(lhs);
     }
 
-    fn bitand_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn bitand_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let mut lhs = self.shift_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitAnd])? {
@@ -2423,7 +2434,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(lhs);
     }
 
-    fn bitxor_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn bitxor_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let mut lhs = self.bitand_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitXor])? {
@@ -2449,7 +2460,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(lhs);
     }
 
-    fn bitor_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn bitor_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let mut lhs = self.bitxor_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitOr])? {
@@ -2475,7 +2486,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(lhs);
     }
 
-    fn comparison_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn comparison_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let mut lhs = self.bitor_expression()?;
 
         let ops = [
@@ -2544,7 +2555,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(lhs);
     }
 
-    fn and_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn and_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let mut lhs = self.comparison_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::And])? {
@@ -2566,7 +2577,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(lhs);
     }
 
-    fn or_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn or_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let mut lhs = self.and_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::Or])? {
@@ -2590,7 +2601,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
     // TODO(stefano): disallow implicit conversions
     // TODO(stefano): introduce casting operators
-    fn expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         return self.or_expression();
     }
 }
@@ -2729,7 +2740,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(Some((close_square_bracket_token, Type::Array { base_type, len })));
     }
 
-    fn expression_from_base_type(&mut self, typ: BaseType) -> Expression<'src> {
+    fn expression_from_base_type(&mut self, typ: BaseType) -> Expression {
         return match typ {
             BaseType::Int => Expression::Int(0),
             BaseType::Ascii => Expression::Ascii(b'0'),
@@ -2744,7 +2755,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn variable_definition(
         &mut self,
         mutability: Mutability,
-    ) -> Result<Node<'src>, Error<ErrorKind>> {
+    ) -> Result<Node, Error<ErrorKind>> {
         let name_token = self.next_token_bounded(Expected::Identifier)?;
         let name = match name_token.kind {
             TokenKind::Identifier(name) => match self.resolve_type(name) {
@@ -2918,11 +2929,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     // NOTE(stefano): mutations of string characters are disallowed until a sort of "borrow checker" is developed
     fn reassignment(
         &mut self,
-        target: Expression<'src>,
+        target: Expression,
         target_token: &'tokens Token<'src>,
         op: AssignmentOp,
         op_token: &'tokens Token<'src>,
-    ) -> Result<Node<'src>, Error<ErrorKind>> {
+    ) -> Result<Node, Error<ErrorKind>> {
         let (error_token, target_type) = match &target {
             Expression::ArrayIndex { base_type, value, .. } => {
                 let mut unwrapped_target = value;
@@ -2968,8 +2979,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
                 (error_token, Type::Base(*base_type))
             }
-            Expression::Variable { typ, name } => {
-                let Some((mutability, _)) = self.resolve_variable(name) else {
+            Expression::Variable { typ, variable_index } => {
+                let var = &self.ast.variables[*variable_index as usize];
+                let Some((mutability, _)) = self.resolve_variable(var.name) else {
                     unreachable!("should have been checked during lhs parsing");
                 };
 
@@ -3079,7 +3091,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
 // print statements
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
-    fn print_arg(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn print_arg(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let _start_of_expression_token = self.next_token_bounded(Expected::Expression)?;
         let argument = self.expression()?;
         if let Expression::Array { .. } = argument {
@@ -3095,7 +3107,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
 // if statements
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
-    fn iff(&mut self) -> Result<Node<'src>, Error<ErrorKind>> {
+    fn iff(&mut self) -> Result<Node, Error<ErrorKind>> {
         let mut ifs = Vec::new();
         let mut els = None;
 
@@ -3237,7 +3249,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
 // loop statements
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
-    fn loop_statement(&mut self) -> Result<Node<'src>, Error<ErrorKind>> {
+    fn loop_statement(&mut self) -> Result<Node, Error<ErrorKind>> {
         let do_token = &self.tokens[self.token as usize];
         let loop_token = match do_token.kind {
             TokenKind::Do => {
