@@ -625,7 +625,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             | Expression::Comparison { .. }
             | Expression::ArrayIndex { .. } => true,
 
-            Expression::Parenthesis(inner) => self.lhs_needs_saving(inner),
+            Expression::Parenthesis { expression_index, .. } => {
+                let inner = &self.ast.expressions[*expression_index as usize];
+                self.lhs_needs_saving(inner)
+            }
             Expression::Temporary { temporary_value_index, .. } => {
                 let temporary = &self.ast.temporaries[*temporary_value_index as usize];
                 self.lhs_needs_saving(temporary)
@@ -729,7 +732,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         let Position { line, col } = self.src.position(bracket_col);
 
         match value {
-            Expression::Parenthesis(_) => {
+            Expression::Parenthesis { .. } => {
                 unreachable!("should have been disallowed during parsing")
             }
             Expression::Str { label } => {
@@ -745,11 +748,13 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             }
             Expression::ArrayIndex {
                 base_type: nested_base_type,
-                value: nested_value,
+                indexable_index: nested_indexable_index,
                 bracket_col: nested_bracket_col,
-                index: nested_index,
+                index_expression_index: nested_index_expression_index,
             } => {
-                self.index(*nested_base_type, nested_value, *nested_bracket_col, nested_index);
+                let nested_indexable = &self.ast.expressions[*nested_indexable_index as usize];
+                let nested_index_expression = &self.ast.expressions[*nested_index_expression_index as usize];
+                self.index(*nested_base_type, nested_indexable, *nested_bracket_col, nested_index_expression);
                 match nested_base_type {
                     BaseType::Str => {
                         _ = writeln!(
@@ -862,7 +867,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
     fn expression(&mut self, factor: &'ast Expression, dst: Dst) {
         match factor {
-            Expression::Parenthesis(inner) => self.expression(inner, dst),
+            Expression::Parenthesis { expression_index, .. } => {
+                let inner = &self.ast.expressions[*expression_index as usize];
+                self.expression(inner, dst);
+            },
             Expression::Int(integer) => match dst {
                 Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, {integer}"),
                 Dst::View { .. } => unreachable!(),
@@ -890,19 +898,21 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 Dst::Reg(_) => unreachable!(),
             },
             Expression::Array { .. } => unreachable!("arrays cannot appear in expressions"),
-            Expression::Unary { op, op_col, operand } => {
+            Expression::Unary { op, op_col, operand_index } => {
+                let operand = &self.ast.expressions[*operand_index as usize];
                 let Dst::Reg(reg) = dst else {
                     unreachable!();
                 };
 
                 let mut unwrapped_operand = operand;
-                while let Expression::Parenthesis(inner) = &**unwrapped_operand {
+                while let Expression::Parenthesis { expression_index, .. } = unwrapped_operand {
+                    let inner = &self.ast.expressions[*expression_index as usize];
                     unwrapped_operand = inner;
                 }
 
                 match op {
-                    UnaryOp::Len => match &**unwrapped_operand {
-                        Expression::Parenthesis(_) => unreachable!("should have been unwrapped"),
+                    UnaryOp::Len => match unwrapped_operand {
+                        Expression::Parenthesis { .. } => unreachable!("should have been unwrapped"),
                         Expression::Str { label } => {
                             _ = writeln!(self.asm, " mov {reg}, str_{label}_len");
                         }
@@ -925,8 +935,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 }
                             }
                         }
-                        Expression::ArrayIndex { base_type, value, bracket_col, index } => {
-                            self.index(*base_type, value, *bracket_col, index);
+                        Expression::ArrayIndex { base_type, indexable_index, bracket_col, index_expression_index } => {
+                            let indexable = &self.ast.expressions[*indexable_index as usize];
+                            let index_expression = &self.ast.expressions[*index_expression_index as usize];
+                            self.index(*base_type, indexable, *bracket_col, index_expression);
                             _ = writeln!(self.asm, "mov {reg}, rdi\n");
                         }
                         Expression::False
@@ -1047,7 +1059,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
                 }
             }
-            Expression::BooleanUnary { operand, .. } => {
+            Expression::BooleanUnary { operand_index, .. } => {
+                let operand = &self.ast.expressions[*operand_index as usize];
                 let Dst::Reg(reg) = dst else {
                     unreachable!();
                 };
@@ -1072,7 +1085,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             - create dedicate operators that implement those strategies
             */
             // Note: strings and arrays cannot appear in expressions
-            Expression::Binary { lhs, op, op_col, rhs } => {
+            Expression::Binary { lhs_index, op, op_col, rhs_index } => {
+                let lhs = &self.ast.expressions[*lhs_index as usize];
+                let rhs = &self.ast.expressions[*rhs_index as usize];
+
                 let lhs_dst = Dst::Reg(Rdi);
                 let rhs_dst = Dst::Reg(Rsi);
                 let op_asm: Cow<'static, str> = match op {
@@ -1236,7 +1252,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 _ = writeln!(self.asm, "{op_asm}\n");
             }
             // Note: strings and arrays cannot appear in expressions
-            Expression::BooleanBinary { lhs, op, rhs } => {
+            Expression::BooleanBinary { lhs_index, op, rhs_index } => {
+                let lhs = &self.ast.expressions[*lhs_index as usize];
+                let rhs = &self.ast.expressions[*rhs_index as usize];
+
                 let lhs_dst = Dst::Reg(Rdi);
                 let rhs_dst = Dst::Reg(Rsi);
                 let op_asm = match op {
@@ -1270,7 +1289,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             dec rdx
             ```
             */
-            Expression::Comparison { lhs, op, rhs } => {
+            Expression::Comparison { lhs_index, op, rhs_index } => {
+                let lhs = &self.ast.expressions[*lhs_index as usize];
+                let rhs = &self.ast.expressions[*rhs_index as usize];
+
                 let (lhs_dst, rhs_dst, op_asm): (Dst, Dst, Cow<'static, str>) =
                     match (lhs.typ(), rhs.typ()) {
                         (Type::Base(BaseType::Str), Type::Base(BaseType::Str)) => (
@@ -1509,15 +1531,21 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 let var_offset = var.offset;
                 self.identifier(*typ, dst, Base::Rbp, var_offset);
             }
-            Expression::ArrayIndex { base_type, value, bracket_col, index } => {
-                self.index(*base_type, value, *bracket_col, index);
+            Expression::ArrayIndex { base_type, indexable_index, bracket_col, index_expression_index } => {
+                let indexable = &self.ast.expressions[*indexable_index as usize];
+                let index_expression = &self.ast.expressions[*index_expression_index as usize];
+
+                self.index(*base_type, indexable, *bracket_col, index_expression);
             }
         }
     }
 
     fn condition(&mut self, condition: &'ast Expression, false_tag: &str) {
         match condition {
-            Expression::Parenthesis(inner) => self.condition(inner, false_tag),
+            Expression::Parenthesis { expression_index, .. } => {
+                let inner = &self.ast.expressions[*expression_index as usize];
+                self.condition(inner, false_tag);
+            },
             // IDEA(stefano): optimize these checks by doing a plain jmp instead
             Expression::True => {
                 _ = writeln!(
@@ -1544,7 +1572,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Temporary { .. } => {
                 unreachable!("should not appear in conditions");
             }
-            Expression::BooleanUnary { operand, .. } => {
+            Expression::BooleanUnary { operand_index, .. } => {
+                let operand = &self.ast.expressions[*operand_index as usize];
                 self.expression(operand, Dst::Reg(Rdi));
 
                 // we can only have boolean expressions at this point, so it's safe to ignore the integer negation case
@@ -1554,7 +1583,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n jz {false_tag}\n"
                 );
             }
-            Expression::BooleanBinary { lhs, op, rhs, .. } => {
+            Expression::BooleanBinary { lhs_index, op, rhs_index, .. } => {
+                let lhs = &self.ast.expressions[*lhs_index as usize];
+                let rhs = &self.ast.expressions[*rhs_index as usize];
+
                 let lhs_dst = match lhs.typ() {
                     Type::Base(BaseType::Bool) => Dst::Reg(Rdi),
                     Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str)
@@ -1590,7 +1622,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
                 }
             }
-            Expression::Comparison { lhs, op, rhs, .. } => {
+            Expression::Comparison { lhs_index, op, rhs_index, .. } => {
+                let lhs = &self.ast.expressions[*lhs_index as usize];
+                let rhs = &self.ast.expressions[*rhs_index as usize];
+
                 let lhs_dst = match lhs.typ() {
                     Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => Dst::Reg(Rdi),
                     Type::Base(BaseType::Str) | Type::Array { .. } => {
@@ -1682,7 +1717,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
     fn condition_reversed(&mut self, condition: &'ast Expression, true_tag: &str) {
         match condition {
-            Expression::Parenthesis(inner) => self.condition_reversed(inner, true_tag),
+            Expression::Parenthesis { expression_index, .. } => {
+                let inner = &self.ast.expressions[*expression_index as usize];
+                self.condition_reversed(inner, true_tag);
+            },
             // IDEA(stefano): optimize these checks by doing a plain jmp instead
             Expression::True => {
                 _ = writeln!(
@@ -1709,7 +1747,8 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Temporary { .. } => {
                 unreachable!("should not appear in conditions");
             }
-            Expression::BooleanUnary { operand, .. } => {
+            Expression::BooleanUnary { operand_index, .. } => {
+                let operand = &self.ast.expressions[*operand_index as usize];
                 self.expression(operand, Dst::Reg(Rdi));
 
                 // we can only have boolean expressions at this point, so it's safe to ignore the integer negation case
@@ -1719,7 +1758,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     \n jnz {true_tag}\n"
                 );
             }
-            Expression::BooleanBinary { lhs, op, rhs, .. } => {
+            Expression::BooleanBinary { lhs_index, op, rhs_index, .. } => {
+                let lhs = &self.ast.expressions[*lhs_index as usize];
+                let rhs = &self.ast.expressions[*rhs_index as usize];
+
                 let lhs_dst = match lhs.typ() {
                     Type::Base(BaseType::Bool) => Dst::Reg(Rdi),
                     Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str)
@@ -1755,7 +1797,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     }
                 }
             }
-            Expression::Comparison { lhs, op, rhs, .. } => {
+            Expression::Comparison { lhs_index, op, rhs_index, .. } => {
+                let lhs = &self.ast.expressions[*lhs_index as usize];
+                let rhs = &self.ast.expressions[*rhs_index as usize];
+
                 let lhs_dst = match lhs.typ() {
                     Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => Dst::Reg(Rdi),
                     Type::Base(BaseType::Str) | Type::Array { .. } => {
@@ -1850,7 +1895,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 impl<'ast> Compiler<'_, 'ast> {
     fn definition(&mut self, value: &'ast Expression, base: Base, dst_offset: usize) {
         match value {
-            Expression::Parenthesis(inner) => self.definition(inner, base, dst_offset),
+            Expression::Parenthesis { expression_index, .. } => {
+                let inner = &self.ast.expressions[*expression_index as usize];
+                self.definition(inner, base, dst_offset);
+            }
             Expression::Int(integer) => {
                 _ = writeln!(
                     self.asm,
@@ -1881,15 +1929,17 @@ impl<'ast> Compiler<'_, 'ast> {
                     self.definition(item, base, dst_offset + index * typ_size);
                 }
             }
-            Expression::Unary { op, op_col, operand } => match op {
+            Expression::Unary { op, op_col, operand_index } => match op {
                 UnaryOp::Len => {
+                    let operand = &self.ast.expressions[*operand_index as usize];
                     let mut unwrapped_operand = operand;
-                    while let Expression::Parenthesis(inner) = &**unwrapped_operand {
+                    while let Expression::Parenthesis { expression_index, .. } = unwrapped_operand {
+                        let inner = &self.ast.expressions[*expression_index as usize];
                         unwrapped_operand = inner;
                     }
 
-                    match &**unwrapped_operand {
-                        Expression::Parenthesis(_) => unreachable!("should have been unwrapped"),
+                    match unwrapped_operand {
+                        Expression::Parenthesis { .. } => unreachable!("should have been unwrapped"),
                         Expression::Str { label } => {
                             _ = writeln!(
                                 self.asm,
@@ -1931,11 +1981,14 @@ impl<'ast> Compiler<'_, 'ast> {
                         }
                         Expression::ArrayIndex {
                             base_type,
-                            value: base_array_index_value,
+                            indexable_index: base_array_indexable_index,
                             bracket_col,
-                            index,
+                            index_expression_index,
                         } => {
-                            self.index(*base_type, base_array_index_value, *bracket_col, index);
+                            let base_array_indexable = &self.ast.expressions[*base_array_indexable_index as usize];
+                            let index_expression = &self.ast.expressions[*index_expression_index as usize];
+
+                            self.index(*base_type, base_array_indexable, *bracket_col, index_expression);
                             _ = writeln!(self.asm, "mov [{base} + {dst_offset}], rdi\n");
                         }
                         Expression::False
@@ -1952,6 +2005,7 @@ impl<'ast> Compiler<'_, 'ast> {
                     }
                 }
                 UnaryOp::Not => {
+                    let operand = &self.ast.expressions[*operand_index as usize];
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
                         Type::Base(BaseType::Int) => {
@@ -1974,6 +2028,7 @@ impl<'ast> Compiler<'_, 'ast> {
                     }
                 }
                 UnaryOp::Plus => {
+                    let operand = &self.ast.expressions[*operand_index as usize];
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
                         Type::Base(BaseType::Int) => {
@@ -1993,6 +2048,7 @@ impl<'ast> Compiler<'_, 'ast> {
                     }
                 }
                 UnaryOp::WrappingPlus => {
+                    let operand = &self.ast.expressions[*operand_index as usize];
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
                         Type::Base(BaseType::Int) => {
@@ -2009,6 +2065,7 @@ impl<'ast> Compiler<'_, 'ast> {
                     }
                 }
                 UnaryOp::SaturatingPlus => {
+                    let operand = &self.ast.expressions[*operand_index as usize];
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
                         Type::Base(BaseType::Int) => {
@@ -2028,6 +2085,7 @@ impl<'ast> Compiler<'_, 'ast> {
                     }
                 }
                 UnaryOp::Minus => {
+                    let operand = &self.ast.expressions[*operand_index as usize];
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
                         Type::Base(BaseType::Int) => {
@@ -2056,6 +2114,7 @@ impl<'ast> Compiler<'_, 'ast> {
                     }
                 }
                 UnaryOp::WrappingMinus => {
+                    let operand = &self.ast.expressions[*operand_index as usize];
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
                         Type::Base(BaseType::Int) => {
@@ -2078,6 +2137,7 @@ impl<'ast> Compiler<'_, 'ast> {
                     }
                 }
                 UnaryOp::SaturatingMinus => {
+                    let operand = &self.ast.expressions[*operand_index as usize];
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
                         Type::Base(BaseType::Int) => {
@@ -2106,7 +2166,8 @@ impl<'ast> Compiler<'_, 'ast> {
                     }
                 }
             },
-            Expression::BooleanUnary { operand, .. } => {
+            Expression::BooleanUnary { operand_index, .. } => {
+                let operand = &self.ast.expressions[*operand_index as usize];
                 self.expression(operand, Dst::Reg(Rdi));
                 _ = writeln!(
                     self.asm,
@@ -2240,26 +2301,32 @@ impl<'ast> Compiler<'_, 'ast> {
         new_value: &'ast Expression,
     ) {
         match target {
-            Expression::ArrayIndex { base_type, value, bracket_col, index } => {
-                match &**value {
-                    Expression::Parenthesis(_) => {
+            Expression::ArrayIndex { base_type, indexable_index, bracket_col, index_expression_index } => {
+                let indexable = &self.ast.expressions[*indexable_index as usize];
+                let index_expression = &self.ast.expressions[*index_expression_index as usize];
+
+                match indexable {
+                    Expression::Parenthesis { .. } => {
                         unreachable!("should have been disallowed during parsing")
                     }
                     Expression::ArrayIndex {
                         base_type: nested_base_type,
-                        value: nested_value,
+                        indexable_index: nested_indexable_index,
                         bracket_col: nested_bracket_col,
-                        index: nested_index,
+                        index_expression_index: nested_index_expression_index,
                     } => {
                         // Note: can only have nested indexes into str[], i.e.: ["a", "b"][0][0] = 'c'
                         _ = writeln!(self.asm, " ; {} {op} {}", target.display(self.ast), new_value.display(self.ast));
                         let Position { line, col } = self.src.position(*bracket_col);
 
+                        let nested_indexable = &self.ast.expressions[*nested_indexable_index as usize];
+                        let nested_index_expression = &self.ast.expressions[*nested_index_expression_index as usize];
+
                         self.index(
                             *nested_base_type,
-                            nested_value,
+                            nested_indexable,
                             *nested_bracket_col,
-                            nested_index,
+                            nested_index_expression,
                         );
                         match nested_base_type {
                             BaseType::Str => {
@@ -2274,7 +2341,7 @@ impl<'ast> Compiler<'_, 'ast> {
                             }
                         }
 
-                        self.expression(index, Dst::Reg(Rdi));
+                        self.expression(index_expression, Dst::Reg(Rdi));
                         match base_type {
                             BaseType::Ascii => {
                                 _ = writeln!(
@@ -2310,7 +2377,7 @@ impl<'ast> Compiler<'_, 'ast> {
 
                         match typ {
                             Type::Base(BaseType::Str) => {
-                                self.expression(index, Dst::Reg(Rdi));
+                                self.expression(index_expression, Dst::Reg(Rdi));
                                 _ = writeln!(
                                     self.asm,
                                     " mov rsi, [rbp + {var_offset}]\
@@ -2331,7 +2398,7 @@ impl<'ast> Compiler<'_, 'ast> {
                                 );
                             }
                             Type::Array { len: array_len, .. } => {
-                                self.expression(index, Dst::Reg(Rdi));
+                                self.expression(index_expression, Dst::Reg(Rdi));
                                 _ = writeln!(
                                     self.asm,
                                     " mov rsi, {array_len}\
@@ -2787,7 +2854,7 @@ impl<'ast> Compiler<'_, 'ast> {
             | Expression::Ascii(_)
             | Expression::Str { .. }
             | Expression::Array { .. }
-            | Expression::Parenthesis(_)
+            | Expression::Parenthesis { .. }
             | Expression::Unary { .. }
             | Expression::BooleanUnary { .. }
             | Expression::Binary { .. }

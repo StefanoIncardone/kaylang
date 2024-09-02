@@ -462,41 +462,44 @@ pub(crate) enum Expression {
     Array {
         base_type: BaseType,
         /// arrays always contain at least 2 items
-        items: Vec<Expression>,
+        items: Vec<Expression>, // TODO(stefano): flatten into a Vec<ExpressionIndex>
     },
 
-    Parenthesis(Box<Expression>),
+    Parenthesis {
+        typ: Type,
+        expression_index: ExpressionIndex
+    },
 
     Unary {
         op: UnaryOp,
         op_col: offset,
-        operand: Box<Expression>,
+        operand_index: ExpressionIndex,
     },
     BooleanUnary {
         op: BooleanUnaryOp,
-        operand: Box<Expression>,
+        operand_index: ExpressionIndex,
     },
     Binary {
-        lhs: Box<Expression>,
+        lhs_index: ExpressionIndex,
         op: BinaryOp,
         op_col: offset,
-        rhs: Box<Expression>,
+        rhs_index: ExpressionIndex,
     },
     BooleanBinary {
-        lhs: Box<Expression>,
+        lhs_index: ExpressionIndex,
         op: BooleanBinaryOp,
-        rhs: Box<Expression>,
+        rhs_index: ExpressionIndex,
     },
     Comparison {
-        lhs: Box<Expression>,
+        lhs_index: ExpressionIndex,
         op: ComparisonOp,
-        rhs: Box<Expression>,
+        rhs_index: ExpressionIndex,
     },
     ArrayIndex {
         base_type: BaseType,
-        value: Box<Expression>,
+        indexable_index: ExpressionIndex,
         bracket_col: offset,
-        index: Box<Expression>,
+        index_expression_index: ExpressionIndex,
     },
 
     Variable {
@@ -520,7 +523,7 @@ impl TypeOf for Expression {
             Self::Array { base_type, items } => {
                 Type::Array { base_type: *base_type, len: items.len() }
             }
-            Self::Parenthesis(inner) => inner.typ(),
+            Self::Parenthesis { typ, .. } => *typ,
             Self::Temporary { typ, .. } => *typ,
             Self::Unary { op, .. } => op.typ(),
             Self::BooleanUnary { op, .. } => op.typ(),
@@ -567,42 +570,54 @@ impl<'src, 'ast: 'src> ExpressionDisplay<'src, 'ast> {
                 self.display(f, last_item)?;
                 write!(f, "]")
             }
-            Expression::Parenthesis(inner) => {
+            Expression::Parenthesis { expression_index, .. } => {
+                let inner = &self.ast.expressions[*expression_index as usize];
                 write!(f, "(")?;
                 self.display(f, inner)?;
                 write!(f, ")")
             }
-            Expression::Unary { op: len @ UnaryOp::Len, operand, .. } => {
+            Expression::Unary { op: len @ UnaryOp::Len, operand_index, .. } => {
+                let operand = &self.ast.expressions[*operand_index as usize];
                 write!(f, "{len} ")?;
                 self.display(f, operand)
             }
-            Expression::Unary { op, operand, .. } => {
+            Expression::Unary { op, operand_index, .. } => {
+                let operand = &self.ast.expressions[*operand_index as usize];
                 write!(f, "{op}")?;
                 self.display(f, operand)
             }
-            Expression::BooleanUnary { op, operand } => {
+            Expression::BooleanUnary { op, operand_index } => {
+                let operand = &self.ast.expressions[*operand_index as usize];
                 write!(f, "{op}")?;
                 self.display(f, operand)
             }
-            Expression::Binary { lhs, op, rhs, .. } => {
+            Expression::Binary { lhs_index, op, rhs_index, .. } => {
+                let lhs = &self.ast.expressions[*lhs_index as usize];
+                let rhs = &self.ast.expressions[*rhs_index as usize];
                 self.display(f, lhs)?;
                 write!(f, " {op} ")?;
                 self.display(f, rhs)
             }
-            Expression::BooleanBinary { lhs, op, rhs } => {
+            Expression::BooleanBinary { lhs_index, op, rhs_index } => {
+                let lhs = &self.ast.expressions[*lhs_index as usize];
+                let rhs = &self.ast.expressions[*rhs_index as usize];
                 self.display(f, lhs)?;
                 write!(f, " {op} ")?;
                 self.display(f, rhs)
             }
-            Expression::Comparison { lhs, op, rhs } => {
+            Expression::Comparison { lhs_index, op, rhs_index } => {
+                let lhs = &self.ast.expressions[*lhs_index as usize];
+                let rhs = &self.ast.expressions[*rhs_index as usize];
                 self.display(f, lhs)?;
                 write!(f, " {op} ")?;
                 self.display(f, rhs)
             }
-            Expression::ArrayIndex { value, index, .. } => {
-                self.display(f, value)?;
+            Expression::ArrayIndex { indexable_index, index_expression_index, .. } => {
+                let indexable = &self.ast.expressions[*indexable_index as usize];
+                let index_expression = &self.ast.expressions[*index_expression_index as usize];
+                self.display(f, indexable)?;
                 write!(f, "[")?;
-                self.display(f, index)?;
+                self.display(f, index_expression)?;
                 write!(f,"]")
             }
             Expression::Temporary { temporary_value_index, .. } => {
@@ -635,6 +650,7 @@ pub(crate) struct If {
     pub(crate) els: Option<Node>,
 }
 
+//TODO(stefano: transform into pub(crate) type Loop = IfStatement;
 #[derive(Debug, Clone)]
 pub(crate) struct Loop {
     pub(crate) condition: Expression,
@@ -661,6 +677,7 @@ pub(crate) enum Node {
         var_index: VariableIndex,
     },
     Reassignment {
+        // target: VariableIndex, // TODO(stefano): transform into this
         target: Expression,
         op: AssignmentOp,
         op_col: offset,
@@ -701,14 +718,17 @@ pub(crate) enum StrKind {
 // TODO(stefano): introduce other representation before and after this Ast
 #[derive(Debug)]
 pub struct Ast<'src> {
+    // TODO(stefano): move these fields into the Parser struct
     loop_depth: offset,
     scope: ScopeIndex,
     scopes: Vec<Scope>,
+
     pub(crate) nodes: Vec<Vec<Node>>,
 
     pub(crate) ifs: Vec<If>,
     pub(crate) loops: Vec<Loop>,
 
+    pub(crate) expressions: Vec<Expression>,
     pub(crate) temporaries: Vec<Expression>,
     pub(crate) variables: Vec<Variable<'src>>,
 
@@ -748,6 +768,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             ifs: Vec::new(),
             loops: Vec::new(),
 
+            expressions: Vec::new(),
             temporaries: Vec::new(),
             variables: Vec::new(),
 
@@ -1358,6 +1379,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
 // expressions
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+    fn new_expression(&mut self, expression: Expression) -> ExpressionIndex {
+        let index = self.ast.expressions.len() as ExpressionIndex;
+        self.ast.expressions.push(expression);
+        return index;
+    }
+
     fn assert_lhs_is_not_string_or_array(
         op_token: &'tokens Token<'src>,
         lhs: &Expression,
@@ -1629,7 +1656,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     });
                 };
 
-                Ok(Expression::Parenthesis(Box::new(expression)))
+                Ok(Expression::Parenthesis { typ: expression.typ(), expression_index: self.new_expression(expression) })
             }
             TokenKind::Bracket(BracketKind::OpenSquare) => 'array: {
                 let mut bracket_or_comma_token =
@@ -1727,7 +1754,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     Expression::Str { .. } => Ok(Expression::Unary {
                         op: UnaryOp::Len,
                         op_col: current_token.col,
-                        operand: Box::new(operand),
+                        operand_index: self.new_expression(operand),
                     }),
                     Expression::Int(_) => Err(Error {
                         kind: ErrorKind::CannotTakeLenOf(Type::Base(BaseType::Int)),
@@ -1747,13 +1774,13 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     Expression::Array { .. } => Ok(Expression::Unary {
                         op: UnaryOp::Len,
                         op_col: current_token.col,
-                        operand: Box::new(operand),
+                        operand_index: self.new_expression(operand),
                     }),
                     Expression::Variable { typ, .. } => match typ {
                         Type::Base(BaseType::Str) | Type::Array { .. } => Ok(Expression::Unary {
                             op: UnaryOp::Len,
                             op_col: current_token.col,
-                            operand: Box::new(operand),
+                            operand_index: self.new_expression(operand),
                         }),
                         Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => {
                             Err(Error {
@@ -1767,7 +1794,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         BaseType::Str => Ok(Expression::Unary {
                             op: UnaryOp::Len,
                             op_col: current_token.col,
-                            operand: Box::new(operand),
+                            operand_index: self.new_expression(operand),
                         }),
                         BaseType::Int | BaseType::Ascii | BaseType::Bool => Err(Error {
                             kind: ErrorKind::CannotTakeLenOf(Type::Base(*base_type)),
@@ -1775,8 +1802,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             pointers_count: current_token.kind.display_len(),
                         }),
                     },
-                    Expression::Parenthesis(inner) => Err(Error {
-                        kind: ErrorKind::CannotTakeLenOf(inner.typ()),
+                    Expression::Parenthesis { typ, .. } => Err(Error {
+                        kind: ErrorKind::CannotTakeLenOf(*typ),
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(),
                     }),
@@ -1828,7 +1855,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             Ok(Expression::Unary {
                                 op: UnaryOp::Plus,
                                 op_col: current_token.col,
-                                operand: Box::new(operand),
+                                operand_index: self.new_expression(operand),
                             })
                         } else {
                             Ok(operand)
@@ -1864,7 +1891,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             Ok(Expression::Unary {
                                 op: UnaryOp::WrappingPlus,
                                 op_col: current_token.col,
-                                operand: Box::new(operand),
+                                operand_index: self.new_expression(operand),
                             })
                         } else {
                             Ok(operand)
@@ -1900,7 +1927,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             Ok(Expression::Unary {
                                 op: UnaryOp::SaturatingPlus,
                                 op_col: current_token.col,
-                                operand: Box::new(operand),
+                                operand_index: self.new_expression(operand),
                             })
                         } else {
                             Ok(operand)
@@ -1934,7 +1961,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                                 Ok(Expression::Unary {
                                     op: UnaryOp::Minus,
                                     op_col: current_token.col,
-                                    operand: Box::new(operand),
+                                    operand_index: self.new_expression(operand),
                                 })
                             } else {
                                 Ok(operand)
@@ -1996,7 +2023,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                                 Ok(Expression::Unary {
                                     op: UnaryOp::WrappingMinus,
                                     op_col: current_token.col,
-                                    operand: Box::new(operand),
+                                    operand_index: self.new_expression(operand),
                                 })
                             } else {
                                 Ok(operand)
@@ -2058,7 +2085,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                                 Ok(Expression::Unary {
                                     op: UnaryOp::SaturatingMinus,
                                     op_col: current_token.col,
-                                    operand: Box::new(operand),
+                                    operand_index: self.new_expression(operand),
                                 })
                             } else {
                                 Ok(operand)
@@ -2116,7 +2143,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             Ok(Expression::Unary {
                                 op: UnaryOp::Not,
                                 op_col: current_token.col,
-                                operand: Box::new(operand),
+                                operand_index: self.new_expression(operand),
                             })
                         } else {
                             Ok(operand)
@@ -2126,7 +2153,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         if should_be_inverted {
                             Ok(Expression::BooleanUnary {
                                 op: BooleanUnaryOp::Not,
-                                operand: Box::new(operand),
+                                operand_index: self.new_expression(operand),
                             })
                         } else {
                             Ok(operand)
@@ -2198,7 +2225,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             the actual element.
             could suggest the user to extract the literal array to a temporary variable first
             */
-            if let Expression::Parenthesis(_) = expression {
+            if let Expression::Parenthesis { .. } = expression {
                 return Err(Error {
                     kind: ErrorKind::CannotIndexIntoExpression,
                     col: open_bracket_token.col,
@@ -2211,9 +2238,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 Type::Base(base_type) => match base_type {
                     BaseType::Str => Expression::ArrayIndex {
                         base_type: BaseType::Ascii,
-                        value: Box::new(expression),
+                        indexable_index: self.new_expression(expression),
                         bracket_col: open_bracket_token.col,
-                        index: Box::new(index),
+                        index_expression_index: self.new_expression(index),
                     },
                     BaseType::Int | BaseType::Ascii | BaseType::Bool => {
                         return Err(Error {
@@ -2225,9 +2252,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 },
                 Type::Array { base_type, .. } => Expression::ArrayIndex {
                     base_type,
-                    value: Box::new(expression),
+                    indexable_index: self.new_expression(expression),
                     bracket_col: open_bracket_token.col,
-                    index: Box::new(index),
+                    index_expression_index: self.new_expression(index),
                 },
             };
         }
@@ -2254,10 +2281,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             lhs = Expression::Binary {
-                lhs: Box::new(lhs),
+                lhs_index: self.new_expression(lhs),
                 op: binary_op,
                 op_col: op_token.col,
-                rhs: Box::new(rhs),
+                rhs_index: self.new_expression(rhs),
             };
         }
 
@@ -2295,10 +2322,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             lhs = Expression::Binary {
-                lhs: Box::new(lhs),
+                lhs_index: self.new_expression(lhs),
                 op: binary_op,
                 op_col: op_token.col,
-                rhs: Box::new(rhs),
+                rhs_index: self.new_expression(rhs),
             };
         }
 
@@ -2334,10 +2361,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             lhs = Expression::Binary {
-                lhs: Box::new(lhs),
+                lhs_index: self.new_expression(lhs),
                 op: binary_op,
                 op_col: op_token.col,
-                rhs: Box::new(rhs),
+                rhs_index: self.new_expression(rhs),
             };
         }
 
@@ -2377,10 +2404,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             lhs = Expression::Binary {
-                lhs: Box::new(lhs),
+                lhs_index: self.new_expression(lhs),
                 op: binary_op,
                 op_col: op_token.col,
-                rhs: Box::new(rhs),
+                rhs_index: self.new_expression(rhs),
             };
         }
 
@@ -2403,10 +2430,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             lhs = Expression::Binary {
-                lhs: Box::new(lhs),
+                lhs_index: self.new_expression(lhs),
                 op: binary_op,
                 op_col: op_token.col,
-                rhs: Box::new(rhs),
+                rhs_index: self.new_expression(rhs),
             };
         }
 
@@ -2429,10 +2456,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             lhs = Expression::Binary {
-                lhs: Box::new(lhs),
+                lhs_index: self.new_expression(lhs),
                 op: binary_op,
                 op_col: op_token.col,
-                rhs: Box::new(rhs),
+                rhs_index: self.new_expression(rhs),
             };
         }
 
@@ -2455,10 +2482,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             lhs = Expression::Binary {
-                lhs: Box::new(lhs),
+                lhs_index: self.new_expression(lhs),
                 op: binary_op,
                 op_col: op_token.col,
-                rhs: Box::new(rhs),
+                rhs_index: self.new_expression(rhs),
             };
         }
 
@@ -2525,9 +2552,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             lhs = Expression::Comparison {
-                lhs: Box::new(lhs),
+                lhs_index: self.new_expression(lhs),
                 op: comparison_op,
-                rhs: Box::new(rhs),
+                rhs_index: self.new_expression(rhs),
             };
         }
 
@@ -2550,7 +2577,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             lhs =
-                Expression::BooleanBinary { lhs: Box::new(lhs), op: binary_op, rhs: Box::new(rhs) };
+                Expression::BooleanBinary { lhs_index: self.new_expression(lhs), op: binary_op, rhs_index: self.new_expression(rhs) };
         }
 
         return Ok(lhs);
@@ -2572,7 +2599,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             lhs =
-                Expression::BooleanBinary { lhs: Box::new(lhs), op: binary_op, rhs: Box::new(rhs) };
+                Expression::BooleanBinary { lhs_index: self.new_expression(lhs), op: binary_op, rhs_index: self.new_expression(rhs) };
         }
 
         return Ok(lhs);
@@ -2914,13 +2941,15 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         op_token: &'tokens Token<'src>,
     ) -> Result<Node, Error<ErrorKind>> {
         let (error_token, target_type) = match &target {
-            Expression::ArrayIndex { base_type, value, .. } => {
-                let mut unwrapped_target = value;
-                while let Expression::ArrayIndex { value: inner_target, .. } = &**unwrapped_target {
-                    unwrapped_target = inner_target;
+            Expression::ArrayIndex { base_type, indexable_index, .. } => {
+                let indexable = &self.ast.expressions[*indexable_index as usize];
+                let mut unwrapped_indexable = indexable;
+                while let Expression::ArrayIndex { indexable_index: inner_indexable_index, .. } = unwrapped_indexable {
+                    let inner_indexable = &self.ast.expressions[*inner_indexable_index as usize];
+                    unwrapped_indexable = inner_indexable;
                 }
 
-                let Expression::Variable { typ, .. } = &**unwrapped_target else {
+                let Expression::Variable { typ, .. } = unwrapped_indexable else {
                     return Err(Error {
                         kind: ErrorKind::CannotAssignToExpression,
                         col: op_token.col,
@@ -2981,7 +3010,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | Expression::Ascii(_)
             | Expression::Str { .. }
             | Expression::Array { .. }
-            | Expression::Parenthesis(_)
+            | Expression::Parenthesis { .. }
             | Expression::Unary { .. }
             | Expression::BooleanUnary { .. }
             | Expression::Binary { .. }
