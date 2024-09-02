@@ -460,7 +460,7 @@ pub(crate) enum Expression {
     Array {
         base_type: BaseType,
         /// arrays always contain at least 2 items
-        items: Box<[Expression]>,
+        items: Vec<Expression>,
     },
 
     Parenthesis(Box<Expression>),
@@ -629,7 +629,7 @@ pub(crate) struct IfStatement {
 
 #[derive(Debug, Clone)]
 pub(crate) struct If {
-    pub(crate) ifs: Box<[IfStatement]>,
+    pub(crate) ifs: Vec<IfStatement>,
     pub(crate) els: Option<Box<Node>>,
 }
 
@@ -698,47 +698,23 @@ pub(crate) enum StrKind {
     RawStr,
 }
 
-#[derive(Debug)]
-struct AstBuilder<'src> {
-    loop_depth: offset,
-    scope: ScopeIndex,
-
-    scopes: Vec<Scope>,
-    nodes: Vec<Vec<Node>>,
-
-    temporaries: Vec<Expression>,
-    variables: Vec<Variable<'src>>,
-
-    strings: Vec<Str>,
-    raw_strings: Vec<RawStr<'src>>,
-    string_kinds: Vec<StrKind>,
-}
-
 // NOTE(stefano): this is in reality closer to an intermediate representation than to an AST
 // TODO(stefano): introduce other representation before and after this Ast
 #[derive(Debug)]
 pub struct Ast<'src> {
-    pub(crate) nodes: Box<[Vec<Node>]>,
+    loop_depth: offset,
+    scope: ScopeIndex,
+    scopes: Vec<Scope>,
+    pub(crate) nodes: Vec<Vec<Node>>,
 
-    pub(crate) temporaries: Box<[Expression]>,
-    pub(crate) variables: Box<[Variable<'src>]>,
+    // pub(crate) ifs: Vec<If>,
 
-    pub(crate) strings: Box<[Str]>,
-    pub(crate) raw_strings: Box<[RawStr<'src>]>,
-    pub(crate) string_kinds: Box<[StrKind]>, // IDEA(stefano): store a bitset instead of StrKind
-}
+    pub(crate) temporaries: Vec<Expression>,
+    pub(crate) variables: Vec<Variable<'src>>,
 
-impl<'src> From<AstBuilder<'src>> for Ast<'src> {
-    fn from(builder: AstBuilder<'src>) -> Self {
-        return Self {
-            nodes: builder.nodes.into_boxed_slice(),
-            temporaries: builder.temporaries.into_boxed_slice(),
-            variables: builder.variables.into_boxed_slice(),
-            strings: builder.strings.into_boxed_slice(),
-            raw_strings: builder.raw_strings.into_boxed_slice(),
-            string_kinds: builder.string_kinds.into_boxed_slice(),
-        };
-    }
+    pub(crate) strings: Vec<Str>,
+    pub(crate) raw_strings: Vec<RawStr<'src>>,
+    pub(crate) string_kinds: Vec<StrKind>,
 }
 
 // IDEA(stefano): build the AST, and then validate the AST afterwards
@@ -750,7 +726,7 @@ pub struct Parser<'src, 'tokens: 'src> {
     token: TokenIndex,
     tokens: &'tokens [Token<'src>],
 
-    ast: AstBuilder<'src>,
+    ast: Ast<'src>,
 }
 
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
@@ -758,10 +734,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         src: &'src SrcFile,
         tokens: &'tokens [Token<'src>],
     ) -> Result<Ast<'src>, Vec<Error<ErrorKind>>> {
-        let ast = AstBuilder {
+        let ast = Ast {
             loop_depth: 0,
             scope: 0,
-
             scopes: vec![Scope {
                 parent: 0,
                 base_types: vec![BaseType::Int, BaseType::Ascii, BaseType::Bool, BaseType::Str],
@@ -770,15 +745,18 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             }],
             nodes: vec![vec![]],
 
+            // ifs: Vec::new(),
+
             temporaries: Vec::new(),
             variables: Vec::new(),
+
             strings: Vec::new(),
             raw_strings: Vec::new(),
             string_kinds: Vec::new(),
         };
 
         if tokens.is_empty() {
-            return Ok(ast.into());
+            return Ok(ast);
         }
 
         // skipping to the first non-comment token
@@ -797,7 +775,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
         this.scope();
 
-        return if this.errors.is_empty() { Ok(this.ast.into()) } else { Err(this.errors) };
+        return if this.errors.is_empty() { Ok(this.ast) } else { Err(this.errors) };
     }
 }
 
@@ -1736,7 +1714,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     {
                         break 'array Ok(Expression::Array {
                             base_type: items_type,
-                            items: items.into_boxed_slice(),
+                            items,
                         });
                     }
                 }
@@ -2898,7 +2876,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         Type::Base(base_type) => self.expression_from_base_type(base_type),
                         Type::Array { base_type, len } => {
                             let items = vec![self.expression_from_base_type(base_type); len];
-                            Expression::Array { base_type, items: items.into_boxed_slice() }
+                            Expression::Array { base_type, items }
                         }
                     };
 
@@ -3243,7 +3221,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             }
         }
 
-        return Ok(Node::If(If { ifs: ifs.into_boxed_slice(), els }));
+        return Ok(Node::If(If { ifs, els }));
     }
 }
 

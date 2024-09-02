@@ -31,7 +31,6 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Restricted max source file size to 4GB
 - `src_file::Error` now contains more detailed error kinds
-- `SrcFile::lines` is now const
 - Reduced memory footprint of compilation steps
 - Imported from `core` instead of `std` where possible
 

@@ -31,7 +31,7 @@ pub struct Position {
 pub struct SrcFile {
     pub(crate) path: PathBuf,
     pub(crate) code: String,
-    pub(crate) lines: Box<[Line]>,
+    pub(crate) lines: Vec<Line>,
 }
 
 impl SrcFile {
@@ -110,7 +110,7 @@ impl SrcFile {
             lines.push(Line { start, end: current_ascii_index });
         }
 
-        return Ok(Self { path: path_buf, code, lines: lines.into_boxed_slice() });
+        return Ok(Self { path: path_buf, code, lines });
     }
 
     #[must_use]
@@ -127,7 +127,7 @@ impl SrcFile {
 
     #[must_use]
     #[inline(always)]
-    pub const fn lines(&self) -> &[Line] {
+    pub fn lines(&self) -> &[Line] {
         return &self.lines;
     }
 
