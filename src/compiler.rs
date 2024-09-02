@@ -437,10 +437,11 @@ impl<'ast> Compiler<'_, 'ast> {
                     \n call ascii_eprint\n"
                 );
             }
-            Node::If(if_statement) => {
+            Node::If(if_index) => {
                 let if_counter = self.if_counter;
                 self.if_counter += 1;
 
+                let if_statement = &self.ast.ifs[*if_index as usize];
                 let mut ifs = if_statement.ifs.iter();
                 let Some(first_if) = ifs.next() else {
                     unreachable!("at least one if block should be present at all times");

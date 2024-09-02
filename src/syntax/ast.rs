@@ -445,6 +445,7 @@ impl Display for AssignmentOp {
 type StringLabel = offset;
 type TokenIndex = offset;
 type VariableIndex = offset;
+type IfIndex = offset;
 type ExpressionIndex = offset;
 pub(crate) type ScopeIndex = offset;
 
@@ -648,8 +649,7 @@ pub(crate) enum Node {
     Eprint(Expression),
     Eprintln(Option<Expression>),
 
-    // TODO(stefano): flatten and store the corresponding label
-    If(If),
+    If(IfIndex),
 
     // TODO(stefano): flatten and store the corresponding label
     Loop(Loop),
@@ -707,7 +707,7 @@ pub struct Ast<'src> {
     scopes: Vec<Scope>,
     pub(crate) nodes: Vec<Vec<Node>>,
 
-    // pub(crate) ifs: Vec<If>,
+    pub(crate) ifs: Vec<If>,
 
     pub(crate) temporaries: Vec<Expression>,
     pub(crate) variables: Vec<Variable<'src>>,
@@ -745,7 +745,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             }],
             nodes: vec![vec![]],
 
-            // ifs: Vec::new(),
+            ifs: Vec::new(),
 
             temporaries: Vec::new(),
             variables: Vec::new(),
@@ -3221,7 +3221,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             }
         }
 
-        return Ok(Node::If(If { ifs, els }));
+        let if_index = self.ast.ifs.len() as IfIndex;
+        self.ast.ifs.push(If { ifs, els });
+        return Ok(Node::If(if_index));
     }
 }
 
