@@ -446,6 +446,7 @@ type StringLabel = offset;
 type TokenIndex = offset;
 type VariableIndex = offset;
 type IfIndex = offset;
+type LoopIndex = offset;
 type ExpressionIndex = offset;
 pub(crate) type ScopeIndex = offset;
 
@@ -631,13 +632,13 @@ pub(crate) struct IfStatement {
 #[derive(Debug, Clone)]
 pub(crate) struct If {
     pub(crate) ifs: Vec<IfStatement>,
-    pub(crate) els: Option<Box<Node>>,
+    pub(crate) els: Option<Node>,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct Loop {
     pub(crate) condition: Expression,
-    pub(crate) statement: Box<Node>,
+    pub(crate) statement: Node,
 }
 
 #[derive(Debug, Clone)]
@@ -651,10 +652,8 @@ pub(crate) enum Node {
 
     If(IfIndex),
 
-    // TODO(stefano): flatten and store the corresponding label
-    Loop(Loop),
-    // TODO(stefano): flatten and store the corresponding label
-    DoLoop(Loop),
+    Loop(LoopIndex),
+    DoLoop(LoopIndex),
     Break,
     Continue,
 
@@ -708,6 +707,7 @@ pub struct Ast<'src> {
     pub(crate) nodes: Vec<Vec<Node>>,
 
     pub(crate) ifs: Vec<If>,
+    pub(crate) loops: Vec<Loop>,
 
     pub(crate) temporaries: Vec<Expression>,
     pub(crate) variables: Vec<Variable<'src>>,
@@ -746,6 +746,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             nodes: vec![vec![]],
 
             ifs: Vec::new(),
+            loops: Vec::new(),
 
             temporaries: Vec::new(),
             variables: Vec::new(),
@@ -3179,12 +3180,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let else_if = match after_else_token.kind {
                     TokenKind::Bracket(BracketKind::OpenCurly) => {
                         let scope = self.any(after_else_token)?;
-                        els = Some(Box::new(scope));
+                        els = Some(scope);
                         break 'iff;
                     }
                     TokenKind::Do => {
                         let statement = self.do_statement()?;
-                        els = Some(Box::new(statement));
+                        els = Some(statement);
                         break 'iff;
                     }
                     TokenKind::If => break,
@@ -3324,11 +3325,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
 
         let statement = statement_result?;
-        let looop = Loop { condition, statement: Box::new(statement) };
+        let loop_index = self.ast.loops.len() as LoopIndex;
+        self.ast.loops.push(Loop { condition, statement });
         return if let TokenKind::Do = do_token.kind {
-            Ok(Node::DoLoop(looop))
+            Ok(Node::DoLoop(loop_index))
         } else {
-            Ok(Node::Loop(looop))
+            Ok(Node::Loop(loop_index))
         };
     }
 }

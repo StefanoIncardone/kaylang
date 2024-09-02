@@ -501,13 +501,14 @@ impl<'ast> Compiler<'_, 'ast> {
 
                 _ = writeln!(self.asm, "if_{if_counter}_end:");
             }
-            Node::Loop(looop) => {
+            Node::Loop(loop_index) => {
                 let loop_tag = format!("loop_{}", self.loop_counter);
                 let loop_end_tag = format!("loop_{}_end", self.loop_counter);
 
                 self.loop_counters.push(self.loop_counter);
                 self.loop_counter += 1;
 
+                let looop = &self.ast.loops[*loop_index as usize];
                 _ = writeln!(self.asm, "{loop_tag}:; loop {}", looop.condition.display(self.ast));
                 self.condition(&looop.condition, &loop_end_tag);
                 self.node(&looop.statement);
@@ -520,15 +521,16 @@ impl<'ast> Compiler<'_, 'ast> {
 
                 _ = self.loop_counters.pop();
             }
-            Node::DoLoop(looop) => {
+            Node::DoLoop(do_loop_index) => {
                 let loop_tag = format!("loop_{}", self.loop_counter);
 
                 self.loop_counters.push(self.loop_counter);
                 self.loop_counter += 1;
 
-                _ = writeln!(self.asm, "{loop_tag}:; do loop {}", looop.condition.display(self.ast));
-                self.node(&looop.statement);
-                self.condition_reversed(&looop.condition, &loop_tag);
+                let do_loop = &self.ast.loops[*do_loop_index as usize];
+                _ = writeln!(self.asm, "{loop_tag}:; do loop {}", do_loop.condition.display(self.ast));
+                self.node(&do_loop.statement);
+                self.condition_reversed(&do_loop.condition, &loop_tag);
                 _ = self.loop_counters.pop();
             }
             Node::Definition { var_index } => {
