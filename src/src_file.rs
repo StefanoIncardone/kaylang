@@ -50,7 +50,7 @@ impl SrcFile {
 
                 let file_len = metadata.len();
                 if file_len > offset::MAX as u64 {
-                    return Err(Error { path: path_buf, kind: ErrorKind::FileTooBig });
+                    return Err(Error { path: path_buf, kind: ErrorKind::FileTooBig { max: offset::MAX } });
                 }
                 file_len as offset
             }
@@ -165,7 +165,7 @@ impl SrcFile {
 pub enum ErrorKind {
     Io(std::io::Error),
     MustBeAFilePath,
-    FileTooBig,
+    FileTooBig { max: offset },
     CouldNotReadEntireFile,
 }
 
@@ -182,8 +182,8 @@ impl Display for Error {
         let cause = match &self.kind {
             ErrorKind::Io(err) => format!("{err} ({})", err.kind()),
             ErrorKind::MustBeAFilePath => "must be a file path".to_owned(),
-            ErrorKind::FileTooBig => {
-                format!("file exceeds the size limit of 4GB ({} bytes)", offset::MAX)
+            ErrorKind::FileTooBig { max } => {
+                format!("file exceeds the size limit of {max} bytes")
             }
             ErrorKind::CouldNotReadEntireFile => "failed to read entire file".to_owned(),
         };

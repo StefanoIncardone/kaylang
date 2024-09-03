@@ -149,7 +149,7 @@ rules:
 1. mutability class:
     - `let`: immutable variable, once set cannot be changed later
     - `var`: mutable variable, can be changed at any moment
-2. variable name that can be made of:
+2. variable name that can be made of (up to a maximum of **63** characters):
     - letters
     - numbers (but not starting with)
     - underscores
@@ -172,6 +172,7 @@ one = 2; # `one` will from now on contain the value 2
 let kay_lets_go = "kay, let's go!"; # can contain underscores
 let two_plus_2 = "two + 2"; # can contain numbers
 let 2plus2 = "2 + 2"; # Error: not a valid name, cannot start with a number
+let longlonglonglonglonglonglonglonglonglonglonglonglonglonglonglong; # Error: over the limit of 63 characters
 
 # 3. optional type annotations
 let inferred = 42; # the type will be inferred as `int` by the expression to the right of the `=` sign

@@ -30,6 +30,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 ### Changed
 
 - Restricted max source file size to 4GB
+- Restricted max identifiers length to 63 characters
 - `src_file::Error` now contains more detailed error kinds
 - Reduced memory footprint of compilation steps
 - Imported from `core` instead of `std` where possible
@@ -40,7 +41,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Corrected error messages related to undefined variables and variables already defined
 - Temporary values are now properly displayed in the generated assembly comments
 
-## 0.6.0 - 31/08/2024
+## 0.6.0 - 2024-08-31
 
 >[!WARNING]
 > From version `0.6.0` breaking changes may appear at any time, meaning that features in `0.6.0`
@@ -280,25 +281,25 @@ going to be provided to lazily construct full syntax errors
 
 - `check` mode to just check for program correctens
 
-## 0.2.3 - 2024-08-28
+## 0.2.3 - 2023-08-28
 
 ### Added
 
 - Unary operators
 
-## 0.2.2 - 2024-08-16
+## 0.2.2 - 2023-08-16
 
 ### Added
 
 - C-style while loops: `for` keyword
 
-## 0.2.1 - 2024-08-01
+## 0.2.1 - 2023-08-01
 
 ### Added
 
 - In-place math assignments (i.e.: `i += 1`)
 
-## 0.2.0 - 2024-08-01
+## 0.2.0 - 2023-08-01
 
 ### Fixed
 

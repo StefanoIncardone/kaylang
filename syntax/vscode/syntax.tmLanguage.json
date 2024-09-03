@@ -3,42 +3,29 @@
     "name": "Kay",
     "fileTypes": [".kay"],
     "patterns": [
-        {
-            "include": "#comments"
-        },
-        {
-            "include": "#keywords"
-        },
-        {
-            "include": "#characters"
-        },
-        {
-            "include": "#strings"
-        },
-        {
-            "include": "#raw_strings"
-        },
-        {
-            "include": "#integers"
-        },
-        {
-            "include": "#variables"
-        },
-        {
-            "include": "#type_annotation"
-        },
-        {
-            "include": "#non_ascii"
-        }
+        { "include": "#comment" },
+        { "include": "#non_ascii" },
+        { "include": "#keyword" },
+        { "include": "#character_literal" },
+        { "include": "#string_literal" },
+        { "include": "#raw_string_literal" },
+        { "include": "#integer_literal" },
+        { "include": "#variable" },
+        { "include": "#type_annotation" }
     ],
     "repository": {
-        "comments": {
+        "comment": {
             "name": "comment.line.number-sign.kay",
             "begin": "#",
             "end": "\n"
         },
 
-        "keywords": {
+        "non_ascii": {
+            "name": "invalid.illegal.kay",
+            "match": "[^\\x20-\\x7E]"
+        },
+
+        "keyword": {
             "patterns": [
                 {
                     "name": "keyword.control.kay",
@@ -75,7 +62,7 @@
                 }
             ]
         },
-        "characters": {
+        "character_literal": {
             "name": "string.quoted.single.kay",
             "patterns": [
                 {
@@ -88,22 +75,14 @@
                     "captures": {
                         "1": {
                             "patterns": [
-                                {
-                                    "include": "#escapes"
-                                },
-                                {
-                                    "include": "#non_ascii"
-                                }
+                                { "include": "#escapes" },
+                                { "include": "#non_ascii" }
                             ]
                         },
                         "2": {
                             "patterns": [
-                                {
-                                    "include": "#escapes"
-                                },
-                                {
-                                    "include": "#non_ascii"
-                                }
+                                { "include": "#escapes" },
+                                { "include": "#non_ascii" }
                             ]
                         }
                     }
@@ -114,16 +93,14 @@
                     "captures": {
                         "1": {
                             "patterns": [
-                                {
-                                    "include": "#non_ascii"
-                                }
+                                { "include": "#non_ascii" }
                             ]
                         }
                     }
                 }
             ]
         },
-        "strings": {
+        "string_literal": {
             "name": "string.quoted.double.kay",
             "patterns": [
                 {
@@ -132,22 +109,14 @@
                     "captures": {
                         "1": {
                             "patterns": [
-                                {
-                                    "include": "#escapes"
-                                },
-                                {
-                                    "include": "#non_ascii"
-                                }
+                                { "include": "#escapes" },
+                                { "include": "#non_ascii" }
                             ]
                         },
                         "2": {
                             "patterns": [
-                                {
-                                    "include": "#escapes"
-                                },
-                                {
-                                    "include": "#non_ascii"
-                                }
+                                { "include": "#escapes" },
+                                { "include": "#non_ascii" }
                             ]
                         }
                     }
@@ -158,16 +127,14 @@
                     "captures": {
                         "1": {
                             "patterns": [
-                                {
-                                    "include": "#non_ascii"
-                                }
+                                { "include": "#non_ascii" }
                             ]
                         }
                     }
                 }
             ]
         },
-        "raw_strings": {
+        "raw_string_literal": {
             "name": "string.quoted.other.kay",
             "patterns": [
                 {
@@ -179,9 +146,7 @@
                         },
                         "2": {
                             "patterns": [
-                                {
-                                    "include": "#non_ascii"
-                                }
+                                { "include": "#non_ascii" }
                             ]
                         }
                     }
@@ -195,9 +160,7 @@
                         },
                         "2": {
                             "patterns": [
-                                {
-                                    "include": "#non_ascii"
-                                }
+                                { "include": "#non_ascii" }
                             ]
                         }
                     }
@@ -205,7 +168,7 @@
             ]
         },
 
-        "integers": {
+        "integer_literal": {
             "name": "constant.numeric.kay",
             "patterns": [
                 {
@@ -214,44 +177,62 @@
                 },
                 {
                     "name": "invalid.illegal.kay",
-                    "match": "\\d+[_A-Za-z\\d]*"
+                    "match": "\\d+[A-Za-z0-9_]*"
                 }
             ]
         },
 
-        "non_ascii": {
+        "long_identifier": {
             "name": "invalid.illegal.kay",
-            "match": "[^\\x20-\\x7E]"
+            "match": "[A-Za-z_][A-Za-z0-9_]{63,}"
+        },
+        "variable_name": {
+            "name": "variable.name.kay",
+            "match": "[A-Za-z_][A-Za-z0-9_]{0,62}",
+            "patterns": [
+                { "include": "#non_ascii" }
+            ]
+        },
+        "type_name": {
+            "name": "support.type.kay",
+            "match": "[A-Za-z_][A-Za-z0-9_]{0,62}",
+            "patterns": [
+                { "include": "#non_ascii" }
+            ]
         },
 
-        "variables": {
+        "variable": {
             "name": "variable.name.kay",
-            "match": "[_A-Za-z][_A-Za-z\\d]*",
             "patterns": [
-                {
-                    "include": "#non_ascii"
-                }
+                { "include": "#long_identifier" },
+                { "include": "#variable_name" }
             ]
         },
         "type_annotation": {
             "name": "meta.type.annotation.kay",
-            "match": ": *?([_A-Za-z][_A-Za-z\\d]*)(?:\\[(\\d+?)\\]|(\\[ *?\\]))?",
+            "match": ": *?([A-Za-z_][A-Za-z0-9_]*)(?:\\[( *?[01] *?)\\]|\\[ *?(\\d+?) *?\\]|(\\[ *\\])|(\\[.*\\]))?",
             "captures": {
                 "1": {
-                    "name": "support.type.kay"
+                    "patterns": [
+                        { "include": "#long_identifier" },
+                        { "include": "#type_name" }
+                    ]
                 },
                 "2": {
-                    "name": "constant.numeric.kay"
+                    "name": "invalid.illegal.kay"
                 },
                 "3": {
+                    "patterns": [
+                        { "include": "#integer_literal" }
+                    ]
+                },
+                "4": {
+                    "name": "invalid.illegal.kay"
+                },
+                "5": {
                     "name": "invalid.illegal.kay"
                 }
-            },
-            "patterns": [
-                {
-                    "include": "#non_ascii"
-                }
-            ]
+            }
         }
     },
     "scopeName": "source.kay"

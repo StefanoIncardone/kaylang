@@ -672,7 +672,6 @@ pub(crate) enum Node {
         var_index: VariableIndex,
     },
     Reassignment {
-        // target: VariableIndex, // TODO(stefano): transform into this
         target: Expression,
         op: AssignmentOp,
         op_col: offset,

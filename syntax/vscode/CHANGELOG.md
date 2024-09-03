@@ -8,12 +8,28 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ## Unreleased
 
+- Highlighting of operators
+
+## Known issues
+
 - Highlighting of illegal overflowing/underflowing integer literals
 - Highlighting of illegal whole identifiers containing non-ascii characters
 - Highlighting of illegal character literals with over two characters
-- Highlighting of operators
 
-## 0.1.0
+## 0.1.1 -
+
+### Added
+
+- Highlighting as errors of identifiers over the limit of 63 characters
+
+### Fixed
+
+- Highlighting of array type annotations
+    - spaces around length are correctly taken into account
+    - length of 0 and 1 are reported as errors
+    - anything except integer literals are correctly highlighted as errors
+
+## 0.1.0 - 2024-08-30
 
 ### Added
 

@@ -359,6 +359,8 @@ impl DisplayLen for Op {
     }
 }
 
+const MAX_IDENTIFIER_LEN: offset = 63;
+
 #[derive(Debug, Clone)]
 pub(crate) enum TokenKind<'src> {
     Comment(&'src str),
@@ -394,7 +396,6 @@ pub(crate) enum TokenKind<'src> {
     Str(Str),
     RawStr(RawStr<'src>),
 
-    // TODO(stefano): limit identifiers to a max amount of characters e.g. 63/127/255
     /* IDEA(stefano):
     create:
     struct ShortStr<'src> {
@@ -809,7 +810,16 @@ impl<'src> Tokenizer<'src> {
             "break" => TokenKind::Break,
             "continue" => TokenKind::Continue,
             "len" => TokenKind::Op(Op::Len),
-            identifier => TokenKind::Identifier(identifier),
+            identifier => {
+                if identifier.len() as offset > MAX_IDENTIFIER_LEN {
+                    return Err(Error {
+                        kind: ErrorKind::IdentifierTooLong { max: MAX_IDENTIFIER_LEN },
+                        col: self.token_start_col,
+                        pointers_count: identifier.len() as offset,
+                    })
+                }
+                TokenKind::Identifier(identifier)
+            }
         };
 
         return Ok(identifier);
@@ -1397,6 +1407,7 @@ pub enum ErrorKind {
     NonDigitInNumberLiteral,
 
     Utf8InIdentifier,
+    IdentifierTooLong { max: offset },
 
     Utf8Character(utf8),
     UnrecognizedCharacter(utf8),
@@ -1462,6 +1473,10 @@ impl IntoErrorInfo for ErrorKind {
             Self::Utf8InIdentifier => (
                 "invalid identifier".into(),
                 "must not contain utf8 characters".into(),
+            ),
+            Self::IdentifierTooLong { max } => (
+                "invalid identifier".into(),
+                format!("exceeds the length limit of {max}").into(),
             ),
 
             Self::Utf8Character(character) => (
