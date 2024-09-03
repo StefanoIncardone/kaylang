@@ -816,7 +816,7 @@ impl<'src> Tokenizer<'src> {
                         kind: ErrorKind::IdentifierTooLong { max: MAX_IDENTIFIER_LEN },
                         col: self.token_start_col,
                         pointers_count: identifier.len() as offset,
-                    })
+                    });
                 }
                 TokenKind::Identifier(identifier)
             }

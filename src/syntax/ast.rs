@@ -467,7 +467,7 @@ pub(crate) enum Expression {
 
     Parenthesis {
         typ: Type,
-        expression_index: ExpressionIndex
+        expression_index: ExpressionIndex,
     },
 
     Unary {
@@ -548,7 +548,11 @@ pub(crate) struct ExpressionDisplay<'src, 'ast: 'src> {
 }
 
 impl<'src, 'ast: 'src> ExpressionDisplay<'src, 'ast> {
-    pub(crate) fn display(&self, f: &mut core::fmt::Formatter<'_>, expr: &'ast Expression) -> core::fmt::Result {
+    pub(crate) fn display(
+        &self,
+        f: &mut core::fmt::Formatter<'_>,
+        expr: &'ast Expression,
+    ) -> core::fmt::Result {
         return match expr {
             Expression::False => write!(f, "false"),
             Expression::True => write!(f, "true"),
@@ -618,7 +622,7 @@ impl<'src, 'ast: 'src> ExpressionDisplay<'src, 'ast> {
                 self.display(f, indexable)?;
                 write!(f, "[")?;
                 self.display(f, index_expression)?;
-                write!(f,"]")
+                write!(f, "]")
             }
             Expression::Temporary { temporary_value_index, .. } => {
                 let temp = &self.ast.temporaries[*temporary_value_index as usize];
@@ -668,19 +672,10 @@ pub(crate) enum Node {
     Break,
     Continue,
 
-    Definition {
-        var_index: VariableIndex,
-    },
-    Reassignment {
-        target: Expression,
-        op: AssignmentOp,
-        op_col: offset,
-        new_value: Expression,
-    },
+    Definition { var_index: VariableIndex },
+    Reassignment { target: Expression, op: AssignmentOp, op_col: offset, new_value: Expression },
 
-    Scope {
-        index: ScopeIndex,
-    },
+    Scope { index: ScopeIndex },
 
     // should never appear in the ast
     Semicolon,
@@ -789,7 +784,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let_variables: Vec::new(),
                 var_variables: Vec::new(),
             }],
-            ast
+            ast,
         };
 
         this.scope();
@@ -1653,7 +1648,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     });
                 };
 
-                Ok(Expression::Parenthesis { typ: expression.typ(), expression_index: self.new_expression(expression) })
+                Ok(Expression::Parenthesis {
+                    typ: expression.typ(),
+                    expression_index: self.new_expression(expression),
+                })
             }
             TokenKind::Bracket(BracketKind::OpenSquare) => 'array: {
                 let mut bracket_or_comma_token =
@@ -1737,10 +1735,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     if let TokenKind::Bracket(BracketKind::CloseSquare) =
                         bracket_or_comma_token.kind
                     {
-                        break 'array Ok(Expression::Array {
-                            base_type: items_type,
-                            items,
-                        });
+                        break 'array Ok(Expression::Array { base_type: items_type, items });
                     }
                 }
             }
@@ -2573,8 +2568,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 _ => unreachable!(),
             };
 
-            lhs =
-                Expression::BooleanBinary { lhs_index: self.new_expression(lhs), op: binary_op, rhs_index: self.new_expression(rhs) };
+            lhs = Expression::BooleanBinary {
+                lhs_index: self.new_expression(lhs),
+                op: binary_op,
+                rhs_index: self.new_expression(rhs),
+            };
         }
 
         return Ok(lhs);
@@ -2595,8 +2593,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 _ => unreachable!(),
             };
 
-            lhs =
-                Expression::BooleanBinary { lhs_index: self.new_expression(lhs), op: binary_op, rhs_index: self.new_expression(rhs) };
+            lhs = Expression::BooleanBinary {
+                lhs_index: self.new_expression(lhs),
+                op: binary_op,
+                rhs_index: self.new_expression(rhs),
+            };
         }
 
         return Ok(lhs);
@@ -2755,10 +2756,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
     }
 
-    fn variable_definition(
-        &mut self,
-        mutability: Mutability,
-    ) -> Result<Node, Error<ErrorKind>> {
+    fn variable_definition(&mut self, mutability: Mutability) -> Result<Node, Error<ErrorKind>> {
         let name_token = self.next_token_bounded(Expected::Identifier)?;
         let name = match name_token.kind {
             TokenKind::Identifier(name) => match self.resolve_type(name) {
@@ -2906,12 +2904,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     };
 
                     let scope_variables = match mutability {
-                        Mutability::Let => {
-                            &mut self.scopes[self.scope as usize].let_variables
-                        }
-                        Mutability::Var => {
-                            &mut self.scopes[self.scope as usize].var_variables
-                        }
+                        Mutability::Let => &mut self.scopes[self.scope as usize].let_variables,
+                        Mutability::Var => &mut self.scopes[self.scope as usize].var_variables,
                     };
 
                     let var_index = self.ast.variables.len() as offset;
@@ -2941,7 +2935,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             Expression::ArrayIndex { base_type, indexable_index, .. } => {
                 let indexable = &self.ast.expressions[*indexable_index as usize];
                 let mut unwrapped_indexable = indexable;
-                while let Expression::ArrayIndex { indexable_index: inner_indexable_index, .. } = unwrapped_indexable {
+                while let Expression::ArrayIndex {
+                    indexable_index: inner_indexable_index, ..
+                } = unwrapped_indexable
+                {
                     let inner_indexable = &self.ast.expressions[*inner_indexable_index as usize];
                     unwrapped_indexable = inner_indexable;
                 }

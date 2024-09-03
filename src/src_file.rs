@@ -50,7 +50,10 @@ impl SrcFile {
 
                 let file_len = metadata.len();
                 if file_len > offset::MAX as u64 {
-                    return Err(Error { path: path_buf, kind: ErrorKind::FileTooBig { max: offset::MAX } });
+                    return Err(Error {
+                        path: path_buf,
+                        kind: ErrorKind::FileTooBig { max: offset::MAX },
+                    });
                 }
                 file_len as offset
             }

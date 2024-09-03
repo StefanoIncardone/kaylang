@@ -529,7 +529,11 @@ impl<'ast> Compiler<'_, 'ast> {
                 self.loop_counter += 1;
 
                 let do_loop = &self.ast.loops[*do_loop_index as usize];
-                _ = writeln!(self.asm, "{loop_tag}:; do loop {}", do_loop.condition.display(self.ast));
+                _ = writeln!(
+                    self.asm,
+                    "{loop_tag}:; do loop {}",
+                    do_loop.condition.display(self.ast)
+                );
                 self.node(&do_loop.statement);
                 self.condition_reversed(&do_loop.condition, &loop_tag);
                 _ = self.loop_counters.pop();
@@ -754,8 +758,14 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 index_expression_index: nested_index_expression_index,
             } => {
                 let nested_indexable = &self.ast.expressions[*nested_indexable_index as usize];
-                let nested_index_expression = &self.ast.expressions[*nested_index_expression_index as usize];
-                self.index(*nested_base_type, nested_indexable, *nested_bracket_col, nested_index_expression);
+                let nested_index_expression =
+                    &self.ast.expressions[*nested_index_expression_index as usize];
+                self.index(
+                    *nested_base_type,
+                    nested_indexable,
+                    *nested_bracket_col,
+                    nested_index_expression,
+                );
                 match nested_base_type {
                     BaseType::Str => {
                         _ = writeln!(
@@ -871,7 +881,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Parenthesis { expression_index, .. } => {
                 let inner = &self.ast.expressions[*expression_index as usize];
                 self.expression(inner, dst);
-            },
+            }
             Expression::Int(integer) => match dst {
                 Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, {integer}"),
                 Dst::View { .. } => unreachable!(),
@@ -913,7 +923,9 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 
                 match op {
                     UnaryOp::Len => match unwrapped_operand {
-                        Expression::Parenthesis { .. } => unreachable!("should have been unwrapped"),
+                        Expression::Parenthesis { .. } => {
+                            unreachable!("should have been unwrapped")
+                        }
                         Expression::Str { label } => {
                             _ = writeln!(self.asm, " mov {reg}, str_{label}_len");
                         }
@@ -936,9 +948,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                 }
                             }
                         }
-                        Expression::ArrayIndex { base_type, indexable_index, bracket_col, index_expression_index } => {
+                        Expression::ArrayIndex {
+                            base_type,
+                            indexable_index,
+                            bracket_col,
+                            index_expression_index,
+                        } => {
                             let indexable = &self.ast.expressions[*indexable_index as usize];
-                            let index_expression = &self.ast.expressions[*index_expression_index as usize];
+                            let index_expression =
+                                &self.ast.expressions[*index_expression_index as usize];
                             self.index(*base_type, indexable, *bracket_col, index_expression);
                             _ = writeln!(self.asm, "mov {reg}, rdi\n");
                         }
@@ -1532,7 +1550,12 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 let var_offset = var.offset;
                 self.identifier(*typ, dst, Base::Rbp, var_offset);
             }
-            Expression::ArrayIndex { base_type, indexable_index, bracket_col, index_expression_index } => {
+            Expression::ArrayIndex {
+                base_type,
+                indexable_index,
+                bracket_col,
+                index_expression_index,
+            } => {
                 let indexable = &self.ast.expressions[*indexable_index as usize];
                 let index_expression = &self.ast.expressions[*index_expression_index as usize];
 
@@ -1546,7 +1569,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Parenthesis { expression_index, .. } => {
                 let inner = &self.ast.expressions[*expression_index as usize];
                 self.condition(inner, false_tag);
-            },
+            }
             // IDEA(stefano): optimize these checks by doing a plain jmp instead
             Expression::True => {
                 _ = writeln!(
@@ -1721,7 +1744,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             Expression::Parenthesis { expression_index, .. } => {
                 let inner = &self.ast.expressions[*expression_index as usize];
                 self.condition_reversed(inner, true_tag);
-            },
+            }
             // IDEA(stefano): optimize these checks by doing a plain jmp instead
             Expression::True => {
                 _ = writeln!(
@@ -1940,7 +1963,9 @@ impl<'ast> Compiler<'_, 'ast> {
                     }
 
                     match unwrapped_operand {
-                        Expression::Parenthesis { .. } => unreachable!("should have been unwrapped"),
+                        Expression::Parenthesis { .. } => {
+                            unreachable!("should have been unwrapped")
+                        }
                         Expression::Str { label } => {
                             _ = writeln!(
                                 self.asm,
@@ -1986,10 +2011,17 @@ impl<'ast> Compiler<'_, 'ast> {
                             bracket_col,
                             index_expression_index,
                         } => {
-                            let base_array_indexable = &self.ast.expressions[*base_array_indexable_index as usize];
-                            let index_expression = &self.ast.expressions[*index_expression_index as usize];
+                            let base_array_indexable =
+                                &self.ast.expressions[*base_array_indexable_index as usize];
+                            let index_expression =
+                                &self.ast.expressions[*index_expression_index as usize];
 
-                            self.index(*base_type, base_array_indexable, *bracket_col, index_expression);
+                            self.index(
+                                *base_type,
+                                base_array_indexable,
+                                *bracket_col,
+                                index_expression,
+                            );
                             _ = writeln!(self.asm, "mov [{base} + {dst_offset}], rdi\n");
                         }
                         Expression::False
@@ -2302,7 +2334,12 @@ impl<'ast> Compiler<'_, 'ast> {
         new_value: &'ast Expression,
     ) {
         match target {
-            Expression::ArrayIndex { base_type, indexable_index, bracket_col, index_expression_index } => {
+            Expression::ArrayIndex {
+                base_type,
+                indexable_index,
+                bracket_col,
+                index_expression_index,
+            } => {
                 let indexable = &self.ast.expressions[*indexable_index as usize];
                 let index_expression = &self.ast.expressions[*index_expression_index as usize];
 
@@ -2317,11 +2354,18 @@ impl<'ast> Compiler<'_, 'ast> {
                         index_expression_index: nested_index_expression_index,
                     } => {
                         // Note: can only have nested indexes into str[], i.e.: ["a", "b"][0][0] = 'c'
-                        _ = writeln!(self.asm, " ; {} {op} {}", target.display(self.ast), new_value.display(self.ast));
+                        _ = writeln!(
+                            self.asm,
+                            " ; {} {op} {}",
+                            target.display(self.ast),
+                            new_value.display(self.ast)
+                        );
                         let Position { line, col } = self.src.position(*bracket_col);
 
-                        let nested_indexable = &self.ast.expressions[*nested_indexable_index as usize];
-                        let nested_index_expression = &self.ast.expressions[*nested_index_expression_index as usize];
+                        let nested_indexable =
+                            &self.ast.expressions[*nested_indexable_index as usize];
+                        let nested_index_expression =
+                            &self.ast.expressions[*nested_index_expression_index as usize];
 
                         self.index(
                             *nested_base_type,
@@ -2368,7 +2412,12 @@ impl<'ast> Compiler<'_, 'ast> {
                         );
                     }
                     Expression::Variable { typ, variable_index } => {
-                        _ = writeln!(self.asm, " ; {} {op} {}", target.display(self.ast), new_value.display(self.ast));
+                        _ = writeln!(
+                            self.asm,
+                            " ; {} {op} {}",
+                            target.display(self.ast),
+                            new_value.display(self.ast)
+                        );
 
                         let ast_variable = &self.ast.variables[*variable_index as usize];
                         let var = self.resolve(ast_variable.name);
@@ -2666,7 +2715,12 @@ impl<'ast> Compiler<'_, 'ast> {
                 let var = self.resolve(ast_variable.name);
                 let dst_offset = var.offset;
 
-                _ = writeln!(self.asm, " ; {} {op} {}", ast_variable.name, new_value.display(self.ast));
+                _ = writeln!(
+                    self.asm,
+                    " ; {} {op} {}",
+                    ast_variable.name,
+                    new_value.display(self.ast)
+                );
                 if let AssignmentOp::Equals = op {
                     self.definition(new_value, Base::Rbp, dst_offset);
                 } else {
