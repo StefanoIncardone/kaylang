@@ -1048,7 +1048,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     | TokenKind::PrintLn
                     | TokenKind::Eprint
                     | TokenKind::EprintLn
-                    | TokenKind::Definition(_)
+                    | TokenKind::Mutability(_)
                     | TokenKind::Do
                     | TokenKind::If
                     | TokenKind::Else
@@ -1068,7 +1068,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     TokenKind::Unexpected(_) => unreachable!("only valid tokens should be present"),
                 }
             }
-            TokenKind::Definition(mutability) => {
+            TokenKind::Mutability(mutability) => {
                 let definition = self.variable_definition(mutability)?;
                 self.semicolon()?;
                 Ok(definition)
@@ -1204,7 +1204,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     pointers_count: token.kind.display_len(),
                 })
             }
-            TokenKind::Definition(_) => {
+            TokenKind::Mutability(_) => {
                 _ = self.next_token();
                 Err(Error {
                     kind: ErrorKind::VariableInDoStatement,
@@ -1275,7 +1275,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
-            | TokenKind::Definition(_)
+            | TokenKind::Mutability(_)
             | TokenKind::Print
             | TokenKind::PrintLn
             | TokenKind::Eprint
@@ -2163,7 +2163,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     }),
                 };
             }
-            TokenKind::Definition(_)
+            TokenKind::Mutability(_)
             | TokenKind::Print
             | TokenKind::PrintLn
             | TokenKind::If
@@ -2790,7 +2790,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     pointers_count: name_token.kind.display_len(),
                 })
             }
-            TokenKind::Definition(_)
+            TokenKind::Mutability(_)
             | TokenKind::Print
             | TokenKind::PrintLn
             | TokenKind::Eprint
@@ -2832,7 +2832,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
-            | TokenKind::Definition(_)
+            | TokenKind::Mutability(_)
             | TokenKind::Print
             | TokenKind::PrintLn
             | TokenKind::Eprint
@@ -3152,7 +3152,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_)
                 | TokenKind::Identifier(_)
-                | TokenKind::Definition(_)
+                | TokenKind::Mutability(_)
                 | TokenKind::Print
                 | TokenKind::PrintLn
                 | TokenKind::Eprint
@@ -3190,7 +3190,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
                     | TokenKind::Identifier(_)
-                    | TokenKind::Definition(_)
+                    | TokenKind::Mutability(_)
                     | TokenKind::Print
                     | TokenKind::PrintLn
                     | TokenKind::Eprint
@@ -3229,7 +3229,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
                     | TokenKind::Identifier(_)
-                    | TokenKind::Definition(_)
+                    | TokenKind::Mutability(_)
                     | TokenKind::Print
                     | TokenKind::PrintLn
                     | TokenKind::Eprint
@@ -3285,7 +3285,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
-            | TokenKind::Definition(_)
+            | TokenKind::Mutability(_)
             | TokenKind::Print
             | TokenKind::PrintLn
             | TokenKind::Eprint
@@ -3331,7 +3331,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
-            | TokenKind::Definition(_)
+            | TokenKind::Mutability(_)
             | TokenKind::Print
             | TokenKind::PrintLn
             | TokenKind::Eprint

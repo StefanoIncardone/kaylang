@@ -417,7 +417,7 @@ pub(crate) enum TokenKind<'src> {
     EprintLn,
 
     // TODO(stefano): rename to Mutability
-    Definition(Mutability),
+    Mutability(Mutability),
     Do,
     If,
     Else,
@@ -464,7 +464,7 @@ impl Display for TokenKind<'_> {
             Self::Eprint => write!(f, "eprint"),
             Self::EprintLn => write!(f, "eprintln"),
 
-            Self::Definition(kind) => write!(f, "{kind}"),
+            Self::Mutability(kind) => write!(f, "{kind}"),
             Self::Do => write!(f, "do"),
             Self::If => write!(f, "if"),
             Self::Else => write!(f, "else"),
@@ -515,7 +515,7 @@ impl DisplayLen for TokenKind<'_> {
             Self::Eprint => 6,
             Self::EprintLn => 8,
 
-            Self::Definition(kind) => kind.display_len(),
+            Self::Mutability(kind) => kind.display_len(),
             Self::Do => 2,
             Self::If => 2,
             Self::Else => 4,
@@ -795,8 +795,8 @@ impl<'src> Tokenizer<'src> {
         }
 
         let identifier = match &self.src.code[self.token_start_col as usize..self.col as usize] {
-            "let" => TokenKind::Definition(Mutability::Let),
-            "var" => TokenKind::Definition(Mutability::Var),
+            "let" => TokenKind::Mutability(Mutability::Let),
+            "var" => TokenKind::Mutability(Mutability::Var),
             "print" => TokenKind::Print,
             "println" => TokenKind::PrintLn,
             "eprint" => TokenKind::Eprint,
