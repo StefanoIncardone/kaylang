@@ -871,8 +871,8 @@ impl<'src> Tokenizer<'src> {
                 let mut contains_utf8 = false;
                 loop {
                     match self.peek_next_ascii_char() {
-                        Ok(Some(b'0'..=b'9')) => {}
-                        Ok(Some(b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {
+                        Ok(Some(b'0'..=b'9' | b'_')) => {}
+                        Ok(Some(b'a'..=b'z' | b'A'..=b'Z')) => {
                             contains_non_digits = true;
                         }
                         Ok(Some(_) | None) => break,

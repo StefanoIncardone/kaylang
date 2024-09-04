@@ -173,34 +173,26 @@
             "patterns": [
                 {
                     "name": "constant.numeric.kay",
-                    "match": "\\b\\d+\\b"
+                    "match": "\\b\\d[\\d_]+\\b"
                 },
                 {
                     "name": "invalid.illegal.kay",
-                    "match": "\\d+[A-Za-z0-9_]*"
+                    "match": "\\d+[A-Za-z\\d]*"
                 }
             ]
         },
 
         "long_identifier": {
             "name": "invalid.illegal.kay",
-            "match": "[A-Za-z_][A-Za-z0-9_]{63,}"
+            "match": "[A-Za-z_][A-Za-z\\d_]{63,}"
         },
         "variable_name": {
             "name": "variable.name.kay",
-            "match": "[A-Za-z_][A-Za-z0-9_]{0,62}",
+            "match": "[A-Za-z_][A-Za-z\\d_]{0,62}",
             "patterns": [
                 { "include": "#non_ascii" }
             ]
         },
-        "type_name": {
-            "name": "support.type.kay",
-            "match": "[A-Za-z_][A-Za-z0-9_]{0,62}",
-            "patterns": [
-                { "include": "#non_ascii" }
-            ]
-        },
-
         "variable": {
             "name": "variable.name.kay",
             "patterns": [
@@ -208,9 +200,16 @@
                 { "include": "#variable_name" }
             ]
         },
+        "type_name": {
+            "name": "support.type.kay",
+            "match": "[A-Za-z_][A-Za-z\\d_]{0,62}",
+            "patterns": [
+                { "include": "#non_ascii" }
+            ]
+        },
         "type_annotation": {
             "name": "meta.type.annotation.kay",
-            "match": ": *?([A-Za-z_][A-Za-z0-9_]*)(?:\\[( *?[01] *?)\\]|\\[ *?(\\d+?) *?\\]|(\\[ *\\])|(\\[.*\\]))?",
+            "match": ": *?([A-Za-z_][A-Za-z\\d_]*)(?:\\[( *?[01] *?)\\]|\\[ *?(\\d+?) *?\\]|(\\[ *\\])|(\\[.*\\]))?",
             "captures": {
                 "1": {
                     "patterns": [

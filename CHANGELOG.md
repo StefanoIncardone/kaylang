@@ -28,6 +28,10 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ## 0.6.1 -
 
+### Added
+
+- `_` as a digit separator, e.g.: `123_456_678` is now a valid number literal
+
 ### Changed
 
 - Restricted max source file size to 4GB

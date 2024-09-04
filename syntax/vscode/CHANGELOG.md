@@ -21,6 +21,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 ### Added
 
 - Highlighting as errors of identifiers over the limit of 63 characters
+- Highlighting of `_` integer literals separator
 
 ### Fixed
 

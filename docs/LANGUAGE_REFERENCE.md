@@ -45,9 +45,10 @@ Integers, of type `int`, are represented in source code as base 10 numbers, and 
 memory as signed 64 bit values:
 
 ```kay
-21;  # valid number
-021; # leading zeroes are allowed
-21a; # Error: integer literals cannot contain non-digit characters
+21;      # valid number
+021;     # leading zeroes are allowed
+1_2_3_4; # separating underscores are allowed
+21a;     # Error: integer literals cannot contain non-digit characters
 ```
 
 ## Booleans

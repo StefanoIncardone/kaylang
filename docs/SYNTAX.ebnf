@@ -4,7 +4,7 @@ UTF-8_character = ? U+0080.. ?;
 line_comment = "#", [{ASCII_character | UTF-8_character}];
 
 digit             = "0".."9";
-integer_literal   = {digit};
+integer_literal   = digit, [{digit | "_"}];
 boolean_literal   = "true" | "false";
 escapes           = "\\" | "\'" | '\"' | "\n" | "\r" | "\t" | "\0";
 character_literal = "'", (ASCII_character | escapes), "'";

@@ -1478,6 +1478,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         fn parse_positive_int(Integer(literal): &Integer<'_>) -> Option<int> {
             let mut integer: int = 0;
             for ascii_digit in *literal {
+                if *ascii_digit == b'_' {
+                    continue;
+                }
+
                 let digit = (*ascii_digit - b'0') as usize;
 
                 integer = integer.checked_mul(10)?;
@@ -1489,6 +1493,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         fn parse_negative_int(Integer(literal): &Integer<'_>) -> Option<int> {
             let mut integer: int = 0;
             for ascii_digit in *literal {
+                if *ascii_digit == b'_' {
+                    continue;
+                }
+
                 let digit = (*ascii_digit - b'0') as usize;
 
                 integer = integer.checked_mul(10)?;

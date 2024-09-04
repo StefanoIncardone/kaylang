@@ -46,7 +46,6 @@ Could create a config file that specifies what notes to look for, like a notes.t
 
 ```kay
 # standard bases
-let decimal = 02_1; # with trailing zeroes and separating underscores allowed
 let binay = 0b0001_0101;
 let octal = 0o25;
 let hexadecimal = 0x15;
@@ -91,7 +90,7 @@ so using the `compile` command with these extra arguments would work like:
 | `test.kay -no test_obj`                                    | `test.asm`         | `test_obj.o`     | `test`                |
 | `test.kay -o out -oa asm`                                  | `out/asm/test.asm` | `out/test.o`     | `out/test`            |
 | `test.kay -o out -oa asm -oo obj -oe exe`                  | `out/asm/test.asm` | `out/obj/test.o` | `out/exe/test`        |
-| `test.kay -oa asm -ne test_executable -oo out/obj -oe exe` | `asm/test.asm`     | `out/obj/test.o` | `exe/test_executable` |
+| `test.kay -oa asm -oe exe -ne test_executable -oo out/obj` | `asm/test.asm`     | `out/obj/test.o` | `exe/test_executable` |
 
 ## Language version embedded in file extension or in the resulting binary executable
 
