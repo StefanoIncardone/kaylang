@@ -22,11 +22,13 @@ pub(crate) type ascii = u8;
 #[allow(non_camel_case_types)]
 pub(crate) type utf8 = char;
 
-/// kay's ascii string
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Integer<'src>(pub(crate) &'src [ascii]);
+
 #[derive(Debug, Clone)]
 pub(crate) struct Str(pub(crate) Box<[ascii]>);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct RawStr<'src>(pub(crate) &'src [ascii]);
 
 #[derive(Debug, Clone, Copy)]
@@ -377,17 +379,12 @@ pub(crate) enum TokenKind<'src> {
     False,
     True,
     /// integer literals are never empty and always contain valid ascii digits
-    Integer(&'src str),
+    Integer(Integer<'src>),
     Ascii(ascii),
     /* IDEA(stefano):
-    make Str into an enum to reduce the amounts of allocations:
-    enum Str<'src> {
-        WithEscaped(Box<[ascii]>),
-        NoEscaped(&'src [ascii]),
-    }
-
-    or treat string with no escapes as raw strings.
-    or split into EscapedStr(Str) and Str(&'src [ascii]),
+    or treat string with no escapes as raw strings
+    or split into EscapedStr(Str) and Str(&'src [ascii])
+    or remove Str(Str) and only escape the characters during compilation
     */
     /* IDEA(stefano):
     limit string literals to a max amount of logical characters (escapes are considered a single character)
@@ -399,9 +396,9 @@ pub(crate) enum TokenKind<'src> {
     /* IDEA(stefano):
     create:
     struct ShortStr<'src> {
-        start: offset,
-        _start: PhantomData<&'src ascii>,
-        len: u8, // only using 6/7/8 bits, thus limiting the max len to 63/127/255
+        len: offset,
+        ptr: offset,
+        _ptr: PhantomData<&'src ascii>,
     }
     */
     Identifier(&'src str),
@@ -440,7 +437,10 @@ impl Display for TokenKind<'_> {
 
             Self::False => write!(f, "false"),
             Self::True => write!(f, "true"),
-            Self::Integer(integer) => write!(f, "{integer}"),
+            Self::Integer(integer) => {
+                let integer_str = unsafe { core::str::from_utf8_unchecked(integer.0) };
+                write!(f, "{integer_str}")
+            },
             Self::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
             Self::Str(string) => {
                 write!(f, "\"")?;
@@ -495,7 +495,7 @@ impl DisplayLen for TokenKind<'_> {
             Self::Comma => 1,
             Self::Op(op) => op.display_len(),
 
-            Self::Integer(integer) => integer.len() as offset,
+            Self::Integer(integer) => integer.0.len() as offset,
             Self::Ascii(ascii_char) => ascii_escaped_len(*ascii_char) + 2, // + 2 to account for the quotes
             Self::True => 4,
             Self::False => 5,
@@ -897,7 +897,7 @@ impl<'src> Tokenizer<'src> {
                 } else {
                     let integer_literal =
                         &self.src.code[self.token_start_col as usize..self.col as usize];
-                    Ok(TokenKind::Integer(integer_literal))
+                    Ok(TokenKind::Integer(Integer(integer_literal.as_bytes())))
                 }
             }
             b'#' => {

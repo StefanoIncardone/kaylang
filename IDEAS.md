@@ -140,7 +140,7 @@ information) would not be passed to functions
 - loops similar to Odin's [for loops](https://odin-lang.org/docs/overview/#for-statement)
 - ifs similar to Odin's [if statements](https://odin-lang.org/docs/overview/#if-statement)
 
-### switch statements
+## Switch statements
 
 - as little effort required to refactor from a regular if to a switch statement
 - introducing as little new keywords as possible (just the `case` keyword, and possibly `fall`)
@@ -300,7 +300,7 @@ else if answer % 42 ...;
 else ...;
 ```
 
-#### compared to C
+### compared to C
 
 ```c
 // regular if:
@@ -364,7 +364,7 @@ default: {
 }
 ```
 
-#### compared to Rust
+### compared to Rust
 
 ```rust
 // regular if:
@@ -1375,6 +1375,8 @@ if answer == 1 do println "in branch 1";
 else if answer > 1 do pass;
 else if answer > 1 none; # or like this, explicit no do keyword required (to differentiate from none being a value)
 else if answer > 1 do {}; # or like this
+else if answer > 1 {}; # or like this
+else if answer > 1; # or like this
 ```
 
 ## experiment with no dynamic dispatch

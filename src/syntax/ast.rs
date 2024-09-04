@@ -4,7 +4,7 @@ use super::{
     },
     Error, ErrorInfo, IntoErrorInfo,
 };
-use crate::src_file::{offset, Position, SrcFile};
+use crate::{src_file::{offset, Position, SrcFile}, syntax::tokenizer::Integer};
 use core::fmt::{Debug, Display};
 
 pub(crate) trait TypeOf {
@@ -1475,9 +1475,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     }
 
     fn primary_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
-        fn parse_positive_int(literal: &str) -> Option<int> {
+        fn parse_positive_int(Integer(literal): &Integer<'_>) -> Option<int> {
             let mut integer: int = 0;
-            for ascii_digit in literal.as_bytes() {
+            for ascii_digit in *literal {
                 let digit = (*ascii_digit - b'0') as usize;
 
                 integer = integer.checked_mul(10)?;
@@ -1486,9 +1486,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             return Some(integer);
         }
 
-        fn parse_negative_int(literal: &str) -> Option<int> {
+        fn parse_negative_int(Integer(literal): &Integer<'_>) -> Option<int> {
             let mut integer: int = 0;
-            for ascii_digit in literal.as_bytes() {
+            for ascii_digit in *literal {
                 let digit = (*ascii_digit - b'0') as usize;
 
                 integer = integer.checked_mul(10)?;
@@ -1514,7 +1514,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 Ok(Expression::Str { label: self.new_string(string.clone()) })
             }
             TokenKind::RawStr(string) => {
-                Ok(Expression::Str { label: self.new_raw_string(string.clone()) })
+                Ok(Expression::Str { label: self.new_raw_string(*string) })
             }
             TokenKind::Identifier(name) => match self.resolve_type(name) {
                 None => match self.resolve_variable(name) {
@@ -1943,7 +1943,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
 
                 let start_of_expression = &self.tokens[self.token as usize];
-                let TokenKind::Integer(literal) = start_of_expression.kind else {
+                let TokenKind::Integer(literal) = &start_of_expression.kind else {
                     let operand = self.primary_expression()?;
 
                     // returning to avoid the call to tokens.next at the end of the function
@@ -2005,7 +2005,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
 
                 let start_of_expression = &self.tokens[self.token as usize];
-                let TokenKind::Integer(literal) = start_of_expression.kind else {
+                let TokenKind::Integer(literal) = &start_of_expression.kind else {
                     let operand = self.primary_expression()?;
 
                     // returning to avoid the call to tokens.next at the end of the function
@@ -2067,7 +2067,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
 
                 let start_of_expression = &self.tokens[self.token as usize];
-                let TokenKind::Integer(literal) = start_of_expression.kind else {
+                let TokenKind::Integer(literal) = &start_of_expression.kind else {
                     let operand = self.primary_expression()?;
 
                     // returning to avoid the call to tokens.next at the end of the function

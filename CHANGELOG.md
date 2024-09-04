@@ -8,7 +8,8 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ## Unreleased
 
-- number constants in base 2, 8, 16 and possibly in arbitrary bases:
+- Ability to reconstruct the source code from the tokens and the ast
+- Number constants in base 2, 8, 16 and possibly in arbitrary bases:
 - Shortcircuted and/or operators
 - Unsigned integers
 - Casting operator
@@ -32,7 +33,6 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Restricted max source file size to 4GB
 - Restricted max identifiers length to 63 characters
 - `src_file::Error` now contains more detailed error kinds
-- Reduced memory footprint of compilation steps
 - Imported from `core` instead of `std` where possible
 
 ### Fixed
