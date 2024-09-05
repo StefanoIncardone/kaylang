@@ -14,6 +14,8 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Highlighting of illegal overflowing/underflowing integer literals
 - Highlighting of illegal whole identifiers containing non-ascii characters
+- Highlighting of emojis as errors
+- High CPU load when inspecting tokens which contain complex unicode graphemes
 
 ## 0.1.1 -
 
@@ -24,13 +26,13 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ### Changed
 
-- Pattern names now have more descriptive names
+- Pattern now have more descriptive names
 
 ### Fixed
 
 - Highlighting of utf8 characters in variable names now does not split variables
-- Highlighting of illegal string and character literals mimicking compiler behaviour (i.e. multiple
-    errors are correctly taken into account)
+- Highlighting of illegal string and character literals, numbers and indeitifiers mimicking compiler
+    behaviour (i.e. multiple errors are correctly taken into account and reported all at once)
 - Highlighting of array type annotations
     - spaces around length are correctly taken into account
     - length of 0 and 1 are reported as errors

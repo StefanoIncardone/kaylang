@@ -22,7 +22,7 @@
 
         "non_printable_ascii": {
             "name": "invalid.illegal.non_printable_ascii.kay",
-            "match": "[^\\x20-\\x7E]"
+            "match": "[^\\x00-\\x7f]{1,4}"
         },
 
         "keyword": {
@@ -141,7 +141,7 @@
                     "match": "(r)\"(.*)\"",
                     "captures": {
                         "1": {
-                            "name": "markup.changed.raw_string.kay"
+                            "name": "markup.changed.prefix.kay"
                         },
                         "2": {
                             "patterns": [
@@ -155,7 +155,7 @@
                     "match": "(r)\"(.*)",
                     "captures": {
                         "1": {
-                            "name": "markup.changed.raw_string.kay"
+                            "name": "markup.changed.prefix.kay"
                         },
                         "2": {
                             "patterns": [
@@ -168,21 +168,24 @@
         },
 
         "integer_literal": {
-            "patterns": [
-                {
-                    "name": "constant.numeric.integer.kay",
-                    "match": "\\b\\d[\\d_]*\\b"
-                },
-                {
-                    "name": "constant.numeric.integer.kay invalid.illegal.letter.kay",
-                    "match": "\\b\\d[A-Za-z\\d_]*\\b"
+            "name": "constant.numeric.integer.kay",
+            "match": "(\\d(?:[A-Za-z\\d_]|[^\\x00-\\x7f]{1,4})*)",
+            "captures": {
+                "1": {
+                    "patterns": [
+                        {
+                            "name": "invalid.illegal.letter.kay",
+                            "match": "[A-Za-z]"
+                        },
+                        { "include": "#non_printable_ascii" }
+                    ]
                 }
-            ]
+            }
         },
 
         "long_identifier": {
             "name": "invalid.illegal.long.kay",
-            "match": "([A-Za-z_](?:[A-Za-z\\d_]|[^A-Za-z\\d_\n]){63,})",
+            "match": "([A-Za-z_](?:[A-Za-z\\d_]|[^\\x00-\\x7f]{1,4}){63,})",
             "captures": {
                 "1": {
                     "patterns": [
@@ -193,7 +196,7 @@
         },
         "variable_name": {
             "name": "variable.name.kay",
-            "match": "([A-Za-z_](?:[A-Za-z\\d_]|[^A-Za-z\\d_\n]){0,62})",
+            "match": "([A-Za-z_](?:[A-Za-z\\d_]|[^\\x00-\\x7f]{1,4}){0,62})",
             "captures": {
                 "1": {
                     "patterns": [
@@ -204,7 +207,7 @@
         },
         "type_name": {
             "name": "support.type.kay",
-            "match": "([A-Za-z_](?:[A-Za-z\\d_]|[^A-Za-z\\d_\n]){0,62})",
+            "match": "([A-Za-z_](?:[A-Za-z\\d_]|[^\\x00-\\x7f]{1,4}){0,62})",
             "captures": {
                 "1": {
                     "patterns": [
@@ -221,7 +224,7 @@
         },
         "type_annotation": {
             "name": "meta.type.annotation.kay",
-            "match": ": *?([A-Za-z_](?:[A-Za-z\\d_]|[^A-Za-z\\d_\n])*)(?:\\[( *?[01] *?)\\]|\\[ *?(\\d+?) *?\\]|(\\[ *\\])|(\\[.*\\]))?",
+            "match": ": *?([A-Za-z_](?:[A-Za-z\\d_]|[^\\x00-\\x7f]{1,4})*)(?:\\[( *?[01] *?)\\]|\\[ *?(\\d+?) *?\\]|(\\[ *\\])|(\\[.*\\]))?",
             "captures": {
                 "1": {
                     "patterns": [
