@@ -103,6 +103,7 @@ cast_possible_truncation = "allow" # do as i say please
 cast_sign_loss = "allow" # do as i say please
 question_mark_used = "allow" # needlessly advocates for a macro instead of a language feature
 verbose_file_reads = "allow"
+single_match_else = "allow" # avoid forgetting to change the consumer when signatures change
 
 # doesn't solve the problem, i.e.:
 # ```rust

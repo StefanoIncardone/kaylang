@@ -567,6 +567,7 @@ pub struct Token<'src> {
 pub struct Tokenizer<'src> {
     src: &'src SrcFile,
     errors: Vec<Error<ErrorKind>>,
+    token_errors: Vec<Error<ErrorKind>>,
 
     col: offset,
     token_start_col: offset,
@@ -587,6 +588,7 @@ impl<'src> Tokenizer<'src> {
         let mut this = Self {
             src,
             errors: Vec::new(),
+            token_errors: Vec::new(),
             col: 0,
             token_start_col: 0,
             line_index: 0,
@@ -603,11 +605,14 @@ impl<'src> Tokenizer<'src> {
                 let next = match this.next_ascii_char() {
                     Ok(Some(ch)) => ch,
                     Ok(None) => break 'tokenization,
-                    Err(err) => break 'skip_whitespace Err(Error {
-                        kind: ErrorKind::Utf8Character(err.character),
-                        col: err.col,
-                        pointers_count: err.len,
-                    }),
+                    Err(err) => {
+                        this.token_errors.push(Error {
+                            kind: ErrorKind::Utf8Character(err.character),
+                            col: err.col,
+                            pointers_count: err.len,
+                        });
+                        break 'skip_whitespace Err(());
+                    }
                 };
 
                 match next {
@@ -629,8 +634,9 @@ impl<'src> Tokenizer<'src> {
 
             let kind = match token_kind_result {
                 Ok(kind) => kind,
-                Err(err) => {
-                    this.errors.push(err);
+                Err(()) => {
+                    this.errors.extend_from_slice(&this.token_errors);
+                    this.token_errors.clear();
                     TokenKind::Unexpected(
                         &this.src.code[this.token_start_col as usize..this.col as usize],
                     )
@@ -754,20 +760,15 @@ impl<'src> Tokenizer<'src> {
     }
 }
 
-/* FIX(stefano):
-add proper multiple error handling
-IDEA(stefano): maybe implement an error pool to avoid having to allocate new errors each time
-*/
 impl<'src> Tokenizer<'src> {
-    fn identifier(&mut self) -> Result<TokenKind<'src>, Vec<Error<ErrorKind>>> {
+    fn identifier(&mut self) -> Result<TokenKind<'src>, ()> {
         const MAX_IDENTIFIER_LEN: offset = 63;
 
-        let mut errors = Vec::<Error<ErrorKind>>::new();
         loop {
             match self.peek_next_ascii_char() {
                 Ok(Some(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {}
                 Ok(Some(_) | None) => break,
-                Err(error) => errors.push(Error {
+                Err(error) => self.token_errors.push(Error {
                     kind: ErrorKind::Utf8InIdentifier(error.character),
                     col: error.col,
                     pointers_count: error.len,
@@ -796,7 +797,7 @@ impl<'src> Tokenizer<'src> {
             identifier => {
                 let identifier_len = self.token_len();
                 if identifier_len as offset > MAX_IDENTIFIER_LEN {
-                    errors.push(Error {
+                    self.token_errors.push(Error {
                         kind: ErrorKind::IdentifierTooLong { max: MAX_IDENTIFIER_LEN },
                         col: self.token_start_col,
                         pointers_count: identifier_len,
@@ -806,10 +807,10 @@ impl<'src> Tokenizer<'src> {
             }
         };
 
-        return if errors.is_empty() { Ok(identifier) } else { Err(errors) };
+        return if self.token_errors.is_empty() { Ok(identifier) } else { Err(()) };
     }
 
-    fn next_token(&mut self, next: ascii) -> Result<TokenKind<'src>, Error<ErrorKind>> {
+    fn next_token(&mut self, next: ascii) -> Result<TokenKind<'src>, ()> {
         return match next {
             b'r' => match self.peek_next_utf8_char() {
                 Some('"') => {
@@ -818,12 +819,10 @@ impl<'src> Tokenizer<'src> {
                     let kind = QuotedLiteralKind::RawStr;
                     let quote = kind.quote();
 
-                    let mut errors = Vec::<Error<ErrorKind>>::new();
-
                     loop {
                         let next_character = match self.next_ascii_char() {
                             Ok(Some(b'\n') | None) => {
-                                errors.push(Error {
+                                self.token_errors.push(Error {
                                     kind: ErrorKind::UnclosedQuotedLiteral(kind),
                                     col: self.token_start_col,
                                     pointers_count: self.token_len(),
@@ -832,7 +831,7 @@ impl<'src> Tokenizer<'src> {
                             }
                             Ok(Some(next_character)) => next_character,
                             Err(error) => {
-                                errors.push(Error {
+                                self.token_errors.push(Error {
                                     kind: ErrorKind::Utf8InIdentifier(error.character),
                                     col: error.col,
                                     pointers_count: error.len,
@@ -843,7 +842,7 @@ impl<'src> Tokenizer<'src> {
 
                         let _character = match next_character {
                             control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                                self.errors.push(Error {
+                                self.token_errors.push(Error {
                                     kind: ErrorKind::ControlCharacterInQuotedLiteral(kind, control as utf8),
                                     col: self.col - 1,
                                     pointers_count: 1,
@@ -855,47 +854,25 @@ impl<'src> Tokenizer<'src> {
                         };
                     }
 
-                    return if let Some(last_error) = errors.pop() {
-                        self.errors.extend(errors);
-                        Err(last_error)
-                    } else {
+                    if self.token_errors.is_empty() {
                         // starting at token_start_col + 2 to skip the r prefix, and ending at
                         // col - 1 to skip the closing quote
                         let raw_string = &self.src.code[self.token_start_col as usize + 2..self.col as usize - 1];
                         Ok(TokenKind::RawStr(RawStr(raw_string.as_bytes())))
-                    };
-                }
-                _ => match self.identifier() {
-                    Ok(identifier) => Ok(identifier),
-                    Err(mut errors) => {
-                        let Some(last_error) = errors.pop() else {
-                            unreachable!("this path assured there would be at least one error");
-                        };
-
-                        self.errors.extend(errors);
-                        Err(last_error)
+                    } else {
+                        Err(())
                     }
-                },
-            },
-            b'a'..=b'z' | b'A'..=b'Z' | b'_' => match self.identifier() {
-                Ok(identifier) => Ok(identifier),
-                Err(mut errors) => {
-                    let Some(last_error) = errors.pop() else {
-                        unreachable!("this path assured there would be at least one error");
-                    };
-
-                    self.errors.extend(errors);
-                    Err(last_error)
                 }
+                _ => self.identifier(),
             },
+            b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.identifier(),
             // TODO(stefano): move parsing of integers to the parsing phase
             b'0'..=b'9' => {
-                let mut errors = Vec::<Error<ErrorKind>>::new();
                 loop {
                     match self.peek_next_ascii_char() {
                         Ok(Some(b'0'..=b'9' | b'_')) => {}
                         Ok(Some(b'a'..=b'z' | b'A'..=b'Z')) => {
-                            errors.push(Error {
+                            self.token_errors.push(Error {
                                 kind: ErrorKind::NonDigitInNumberLiteral,
                                 col: self.col,
                                 pointers_count: 1,
@@ -903,7 +880,7 @@ impl<'src> Tokenizer<'src> {
                         }
                         Ok(Some(_) | None) => break,
                         Err(error) => {
-                            errors.push(Error {
+                            self.token_errors.push(Error {
                                 kind: ErrorKind::Utf8InNumberLiteral(error.character),
                                 col: error.col,
                                 pointers_count: error.len,
@@ -914,26 +891,24 @@ impl<'src> Tokenizer<'src> {
                     _ = self.next_ascii_char();
                 }
 
-                return if let Some(last_error) = errors.pop() {
-                    self.errors.extend(errors);
-                    Err(last_error)
-                } else {
+                if self.token_errors.is_empty() {
                     let integer_literal =
                         &self.src.code[self.token_start_col as usize..self.col as usize];
                     Ok(TokenKind::Integer(Integer(integer_literal.as_bytes())))
+                } else {
+                    Err(())
                 }
             }
             b'"' => {
                 let kind = QuotedLiteralKind::Str;
                 let quote = kind.quote();
 
-                let mut errors = Vec::<Error<ErrorKind>>::new();
                 let mut string = Vec::<ascii>::new();
 
                 loop {
                     let next_character = match self.next_ascii_char() {
                         Ok(Some(b'\n') | None) => {
-                            errors.push(Error {
+                            self.token_errors.push(Error {
                                 kind: ErrorKind::UnclosedQuotedLiteral(kind),
                                 col: self.token_start_col,
                                 pointers_count: self.token_len(),
@@ -942,7 +917,7 @@ impl<'src> Tokenizer<'src> {
                         }
                         Ok(Some(next_character)) => next_character,
                         Err(error) => {
-                            errors.push(Error {
+                            self.token_errors.push(Error {
                                 kind: ErrorKind::Utf8InQuotedLiteral(kind, error.character),
                                 col: error.col,
                                 pointers_count: error.len,
@@ -955,7 +930,7 @@ impl<'src> Tokenizer<'src> {
                         b'\\' => {
                             let escape_character = match self.next_ascii_char() {
                                 Ok(Some(b'\n') | None) => {
-                                    errors.push(Error {
+                                    self.token_errors.push(Error {
                                         kind: ErrorKind::UnclosedQuotedLiteral(kind),
                                         col: self.token_start_col,
                                         pointers_count: self.token_len(),
@@ -964,7 +939,7 @@ impl<'src> Tokenizer<'src> {
                                 }
                                 Ok(Some(escape_character)) => escape_character,
                                 Err(error) => {
-                                    errors.push(Error {
+                                    self.token_errors.push(Error {
                                         kind: ErrorKind::Utf8InQuotedLiteral(kind, error.character),
                                         col: error.col,
                                         pointers_count: error.len,
@@ -982,7 +957,7 @@ impl<'src> Tokenizer<'src> {
                                 b't' => b'\t',
                                 b'0' => b'\0',
                                 unrecognized => {
-                                    self.errors.push(Error {
+                                    self.token_errors.push(Error {
                                         kind: ErrorKind::UnrecognizedEscapeCharacterInQuotedLiteral(
                                             kind,
                                             unrecognized as utf8,
@@ -996,7 +971,7 @@ impl<'src> Tokenizer<'src> {
                             }
                         },
                         control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                            self.errors.push(Error {
+                            self.token_errors.push(Error {
                                 kind: ErrorKind::ControlCharacterInQuotedLiteral(kind, control as utf8),
                                 col: self.col - 1,
                                 pointers_count: 1,
@@ -1010,24 +985,22 @@ impl<'src> Tokenizer<'src> {
                     string.push(character);
                 }
 
-                return if let Some(last_error) = errors.pop() {
-                    self.errors.extend(errors);
-                    Err(last_error)
-                } else {
+                if self.token_errors.is_empty() {
                     Ok(TokenKind::Str(Str(string.into_boxed_slice())))
-                };
+                } else {
+                    Err(())
+                }
             }
             b'\'' => {
                 let kind = QuotedLiteralKind::Ascii;
                 let quote = kind.quote();
 
-                let mut errors = Vec::<Error<ErrorKind>>::new();
                 let mut characters = Vec::<ascii>::new();
 
                 loop {
                     let next_character = match self.next_ascii_char() {
                         Ok(Some(b'\n') | None) => {
-                            errors.push(Error {
+                            self.token_errors.push(Error {
                                 kind: ErrorKind::UnclosedQuotedLiteral(kind),
                                 col: self.token_start_col,
                                 pointers_count: self.token_len(),
@@ -1036,7 +1009,7 @@ impl<'src> Tokenizer<'src> {
                         }
                         Ok(Some(next_character)) => next_character,
                         Err(error) => {
-                            errors.push(Error {
+                            self.token_errors.push(Error {
                                 kind: ErrorKind::Utf8InQuotedLiteral(kind, error.character),
                                 col: error.col,
                                 pointers_count: error.len,
@@ -1049,7 +1022,7 @@ impl<'src> Tokenizer<'src> {
                         b'\\' => {
                             let escape_character = match self.next_ascii_char() {
                                 Ok(Some(b'\n') | None) => {
-                                    errors.push(Error {
+                                    self.token_errors.push(Error {
                                         kind: ErrorKind::UnclosedQuotedLiteral(kind),
                                         col: self.token_start_col,
                                         pointers_count: self.token_len(),
@@ -1058,7 +1031,7 @@ impl<'src> Tokenizer<'src> {
                                 }
                                 Ok(Some(escape_character)) => escape_character,
                                 Err(error) => {
-                                    errors.push(Error {
+                                    self.token_errors.push(Error {
                                         kind: ErrorKind::Utf8InQuotedLiteral(kind, error.character),
                                         col: error.col,
                                         pointers_count: error.len,
@@ -1076,7 +1049,7 @@ impl<'src> Tokenizer<'src> {
                                 b't' => b'\t',
                                 b'0' => b'\0',
                                 unrecognized => {
-                                    self.errors.push(Error {
+                                    self.token_errors.push(Error {
                                         kind: ErrorKind::UnrecognizedEscapeCharacterInQuotedLiteral(
                                             kind,
                                             unrecognized as utf8,
@@ -1090,7 +1063,7 @@ impl<'src> Tokenizer<'src> {
                             }
                         },
                         control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                            self.errors.push(Error {
+                            self.token_errors.push(Error {
                                 kind: ErrorKind::ControlCharacterInQuotedLiteral(kind, control as utf8),
                                 col: self.col - 1,
                                 pointers_count: 1,
@@ -1111,11 +1084,10 @@ impl<'src> Tokenizer<'src> {
                         pointers_count: 2,
                     },
                     [character] => {
-                        return if let Some(last_error) = errors.pop() {
-                            self.errors.extend(errors);
-                            Err(last_error)
-                        } else {
+                        return if self.token_errors.is_empty() {
                             Ok(TokenKind::Ascii(*character))
+                        } else {
+                            Err(())
                         };
                     }
                     [_, ..] => Error {
@@ -1125,8 +1097,8 @@ impl<'src> Tokenizer<'src> {
                     }
                 };
 
-                self.errors.extend(errors);
-                return Err(length_related_error);
+                self.token_errors.push(length_related_error);
+                Err(())
             }
             b'(' => {
                 let kind = BracketKind::OpenRound;
@@ -1139,20 +1111,26 @@ impl<'src> Tokenizer<'src> {
                     | BracketKind::CloseRound
                     | BracketKind::CloseCurly
                     | BracketKind::CloseSquare => Ok(TokenKind::Bracket(BracketKind::CloseRound)),
-                    actual @ (BracketKind::OpenCurly | BracketKind::OpenSquare) => Err(Error {
-                        kind: ErrorKind::MismatchedBracket {
-                            expected: BracketKind::CloseRound,
-                            actual,
-                        },
+                    actual @ (BracketKind::OpenCurly | BracketKind::OpenSquare) => {
+                        self.token_errors.push(Error {
+                            kind: ErrorKind::MismatchedBracket {
+                                expected: BracketKind::CloseRound,
+                                actual,
+                            },
+                            col: self.token_start_col,
+                            pointers_count: 1,
+                        });
+                        Err(())
+                    }
+                },
+                None => {
+                    self.token_errors.push(Error {
+                        kind: ErrorKind::UnopenedBracket(BracketKind::CloseRound),
                         col: self.token_start_col,
                         pointers_count: 1,
-                    }),
-                },
-                None => Err(Error {
-                    kind: ErrorKind::UnopenedBracket(BracketKind::CloseRound),
-                    col: self.token_start_col,
-                    pointers_count: 1,
-                }),
+                    });
+                    Err(())
+                }
             },
             b'[' => {
                 let kind = BracketKind::OpenSquare;
@@ -1165,20 +1143,26 @@ impl<'src> Tokenizer<'src> {
                     | BracketKind::CloseSquare
                     | BracketKind::CloseCurly
                     | BracketKind::CloseRound => Ok(TokenKind::Bracket(BracketKind::CloseSquare)),
-                    actual @ (BracketKind::OpenCurly | BracketKind::OpenRound) => Err(Error {
-                        kind: ErrorKind::MismatchedBracket {
-                            expected: BracketKind::CloseSquare,
-                            actual,
-                        },
+                    actual @ (BracketKind::OpenCurly | BracketKind::OpenRound) => {
+                        self.token_errors.push(Error {
+                            kind: ErrorKind::MismatchedBracket {
+                                expected: BracketKind::CloseSquare,
+                                actual,
+                            },
+                            col: self.token_start_col,
+                            pointers_count: 1,
+                        });
+                        Err(())
+                    }
+                },
+                None => {
+                    self.token_errors.push(Error {
+                        kind: ErrorKind::UnopenedBracket(BracketKind::CloseSquare),
                         col: self.token_start_col,
                         pointers_count: 1,
-                    }),
-                },
-                None => Err(Error {
-                    kind: ErrorKind::UnopenedBracket(BracketKind::CloseSquare),
-                    col: self.token_start_col,
-                    pointers_count: 1,
-                }),
+                    });
+                    Err(())
+                }
             },
             b'{' => {
                 let kind = BracketKind::OpenCurly;
@@ -1191,20 +1175,26 @@ impl<'src> Tokenizer<'src> {
                     | BracketKind::CloseCurly
                     | BracketKind::CloseRound
                     | BracketKind::CloseSquare => Ok(TokenKind::Bracket(BracketKind::CloseCurly)),
-                    actual @ (BracketKind::OpenRound | BracketKind::OpenSquare) => Err(Error {
-                        kind: ErrorKind::MismatchedBracket {
-                            expected: BracketKind::CloseCurly,
-                            actual,
-                        },
+                    actual @ (BracketKind::OpenRound | BracketKind::OpenSquare) => {
+                        self.token_errors.push(Error {
+                            kind: ErrorKind::MismatchedBracket {
+                                expected: BracketKind::CloseCurly,
+                                actual,
+                            },
+                            col: self.token_start_col,
+                            pointers_count: 1,
+                        });
+                        Err(())
+                    }
+                },
+                None => {
+                    self.token_errors.push(Error {
+                        kind: ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
                         col: self.token_start_col,
                         pointers_count: 1,
-                    }),
-                },
-                None => Err(Error {
-                    kind: ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
-                    col: self.token_start_col,
-                    pointers_count: 1,
-                }),
+                    });
+                    Err(())
+                }
             },
             b'#' => {
                 // ignoring the hash symbol
@@ -1503,11 +1493,14 @@ impl<'src> Tokenizer<'src> {
                 }
                 _ => Ok(TokenKind::Op(Op::Less)),
             },
-            unrecognized => Err(Error {
-                kind: ErrorKind::UnrecognizedCharacter(unrecognized as utf8),
-                col: self.token_start_col,
-                pointers_count: 1,
-            }),
+            unrecognized => {
+                self.token_errors.push(Error {
+                    kind: ErrorKind::UnrecognizedCharacter(unrecognized as utf8),
+                    col: self.token_start_col,
+                    pointers_count: 1,
+                });
+                Err(())
+            }
         };
     }
 }
