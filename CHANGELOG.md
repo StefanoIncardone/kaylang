@@ -43,6 +43,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Added `break` and `continue` statements to the [syntax specification](docs/SYNTAX.ebnf)
 - Corrected error messages related to undefined variables and variables already defined
+- Corrected errors related to string and character literals
 - Temporary values are now properly displayed in the generated assembly comments
 
 ## 0.6.0 - 2024-08-31
