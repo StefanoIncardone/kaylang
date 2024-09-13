@@ -3,6 +3,17 @@
 >[!WARNING]
 > no feature is final, modifications can happen at any moment
 
+## Expressions formatting
+
+emit a warning for ambiguos use of unary/binary operators, i.e.:
+
+```kay
+1 + 2 -3
+    # ^ this means `1 minus 2 minus 3` but it might mean `1 minus 2 *missing* negative 3`
+    # Help: to avoid ambiguity consider formatting the code as `1 + 2 - 3`, or if you meant
+    # negative 3 you might be missing an operator between `2` and `-3` -> `1 + 2 *op* -3`
+```
+
 ## Quotes in raw strings
 
 ```kay
@@ -499,6 +510,19 @@ consistency with their right shifts counterparts
     | utf8 string  | `utf8str`  | utf8\*       | 1 to 4 \* len (in code points) | `u8"hellò"`  | guaranteed to be valid utf8           |
     | utf16 string | `utf16str` | utf16\*      | 2 or 4 \* len (in code points) | `u16"hellò"` | guaranteed to be valid utf16          |
     | utf32 string | `utf32str` | utf32\*      | 4 \* len                       | `u32"hellò"` | guaranteed to be valid utf32          |
+
+- utf8str/utf16str indexing, since characters might be more than one byte long, indexing doesn't
+    work, i.e. `string[12]` might land in the middle of a multibyte character, so we could introduce
+    rounding indexing (syntax subject to discussion):
+    - ceil indexing: `string[+:12]` or `string.at_or_next(12)`, would mean that if the index lands on a non starting byte, it
+        would find the next character and return that
+    - floor indexing: `string[-:12]` or `string.at_or_previous(12)`, would mean that if the index lands on a non starting byte, it
+        would find the previous character and return that
+    - checked indexing: `string[?:12]` or `string.at_or_none(12)`, would mean that if the index lands on a non starting byte, it
+        would return a `none` value, else the value of the character
+    - unchecked indexing: `string[!:12]` or `string.at_byte(12)`, would just return the byte at index 12
+    - regular indexing: `string[12]` or `string.at(12)`, would mean that if the index lands on a non starting byte, it
+        would crash
 
 ## Arrays
 

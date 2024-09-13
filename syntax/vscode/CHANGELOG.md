@@ -13,7 +13,6 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 ## Known issues
 
 - Highlighting of illegal overflowing/underflowing integer literals
-- Highlighting of illegal whole identifiers containing non-ascii characters
 - Highlighting of emojis as errors
 - High CPU load when inspecting tokens which contain complex unicode graphemes
 
@@ -23,6 +22,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Highlighting of identifiers over the limit of 63 characters as errors
 - Highlighting of `_` integer literals separator
+- Highlighting of alternative integer literal bases
 
 ### Changed
 

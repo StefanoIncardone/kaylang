@@ -3,13 +3,22 @@ UTF-8_character = ? U+0080.. ?;
 
 line_comment = "#", [{ASCII_character | UTF-8_character}];
 
-digit             = "0".."9";
-integer_literal   = digit, [{digit | "_"}];
+decimal_digit     = "0".."9";
+binary_digit      = "0".."1";
+octal_digit       = "0".."7";
+hexadecimal_digit = "0".."9" | "A".."F" | "a".."f";
+decimal_integer_literal     = decimal_digit, [{decimal_digit | "_"}];
+binary_integer_literal      = "0b", binary_digit, [{binary_digit | "_"}];
+octal_integer_literal       = "0o", octal_digit, [{octal_digit | "_"}];
+hexadecimal_integer_literal = "0x", hexadecimal_digit, [{hexadecimal_digit | "_"}];
+integer_literal = decimal_integer_literal | binary_integer_literal | octal_integer_literal | hexadecimal_integer_literal;
+
 boolean_literal   = "true" | "false";
 escapes           = "\\" | "\'" | '\"' | "\n" | "\r" | "\t" | "\0";
 character_literal = "'", (ASCII_character | escapes), "'";
-string_literal    = ["r"], '"', [{ASCII_character | escapes}], '"';
-identifier        = "_" | "A".."Z" | "a".."z", [{"_" | "A".."Z" | "a".."z" | digit}];
+string_literal    = '"', [{ASCII_character | escapes}], '"';
+raw_string_literal    = 'r"', [{ASCII_character}], '"';
+identifier        = "_" | "A".."Z" | "a".."z", [{"_" | "A".."Z" | "a".."z" | decimal_digit}];
 
 operator_len               = "len";
 operator_equals            = "=";

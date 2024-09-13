@@ -1,10 +1,15 @@
+// IDEA(stefano): fuse tokenization and parsing, making the tokenizer a generator of tokens
+
 use super::{
     tokenizer::{
         ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, RawStr, Str, Token, TokenKind,
     },
     Error, ErrorInfo, IntoErrorInfo,
 };
-use crate::{src_file::{offset, Position, SrcFile}, syntax::tokenizer::Integer};
+use crate::{
+    src_file::{offset, Position, SrcFile},
+    syntax::tokenizer::{Base, Integer},
+};
 use core::fmt::{Debug, Display};
 
 pub(crate) trait TypeOf {
@@ -837,7 +842,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return match token.kind {
             TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_)
+            | TokenKind::Integer(_, _)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
@@ -1034,7 +1039,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     | TokenKind::Comma
                     | TokenKind::False
                     | TokenKind::True
-                    | TokenKind::Integer(_)
+                    | TokenKind::Integer(_, _)
                     | TokenKind::Ascii(_)
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
@@ -1216,7 +1221,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Op(_)
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_)
+            | TokenKind::Integer(_, _)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
@@ -1265,7 +1270,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Op(_)
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_)
+            | TokenKind::Integer(_, _)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
@@ -1367,6 +1372,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParseIntError {
+    Overflow,
+    Underflow,
 }
 
 // expressions
@@ -1475,44 +1486,198 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     }
 
     fn primary_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
-        fn parse_positive_int(Integer(literal): &Integer<'_>) -> Option<int> {
+        fn parse_positive_int(
+            base: Base,
+            Integer(literal): Integer<'_>,
+        ) -> Result<int, ParseIntError> {
             let mut integer: int = 0;
-            for ascii_digit in *literal {
-                if *ascii_digit == b'_' {
-                    continue;
+
+            match base {
+                Base::Decimal => {
+                    for ascii_digit in literal {
+                        if *ascii_digit == b'_' {
+                            continue;
+                        }
+
+                        integer = match integer.checked_mul(base as int) {
+                            Some(shifted_integer) => shifted_integer,
+                            None => return Err(ParseIntError::Overflow),
+                        };
+
+                        let digit = *ascii_digit - b'0';
+                        debug_assert!(digit < base as u8, "invalid decimal digit");
+                        integer = match integer.checked_add(digit as int) {
+                            Some(next_integer) => next_integer,
+                            None => return Err(ParseIntError::Overflow),
+                        };
+                    }
                 }
+                Base::Binary => {
+                    for ascii_digit in literal {
+                        if *ascii_digit == b'_' {
+                            continue;
+                        }
 
-                let digit = (*ascii_digit - b'0') as usize;
+                        integer = match integer.checked_mul(base as int) {
+                            Some(shifted_integer) => shifted_integer,
+                            None => return Err(ParseIntError::Overflow),
+                        };
 
-                integer = integer.checked_mul(10)?;
-                integer = integer.checked_add_unsigned(digit)?;
+                        let digit = *ascii_digit - b'0';
+                        debug_assert!(digit < base as u8, "invalid binary digit");
+                        integer = match integer.checked_add(digit as int) {
+                            Some(next_integer) => next_integer,
+                            None => return Err(ParseIntError::Overflow),
+                        };
+                    }
+                }
+                Base::Octal => {
+                    for ascii_digit in literal {
+                        if *ascii_digit == b'_' {
+                            continue;
+                        }
+
+                        integer = match integer.checked_mul(base as int) {
+                            Some(shifted_integer) => shifted_integer,
+                            None => return Err(ParseIntError::Overflow),
+                        };
+
+                        let digit = *ascii_digit - b'0';
+                        debug_assert!(digit < base as u8, "invalid octal digit");
+                        integer = match integer.checked_add(digit as int) {
+                            Some(next_integer) => next_integer,
+                            None => return Err(ParseIntError::Overflow),
+                        };
+                    }
+                }
+                Base::Hexadecimal => {
+                    for ascii_digit in literal {
+                        if *ascii_digit == b'_' {
+                            continue;
+                        }
+
+                        integer = match integer.checked_mul(base as int) {
+                            Some(shifted_integer) => shifted_integer,
+                            None => return Err(ParseIntError::Overflow),
+                        };
+
+                        let digit = match *ascii_digit {
+                            number @ b'0'..=b'9' => number - b'0',
+                            uppercase_letter @ b'A'..=b'F' => uppercase_letter - b'A' + 10,
+                            lowercase_letter @ b'a'..=b'f' => lowercase_letter - b'a' + 10,
+                            _ => unreachable!("invalid hexadecimal digit"),
+                        };
+                        integer = match integer.checked_add(digit as int) {
+                            Some(next_integer) => next_integer,
+                            None => return Err(ParseIntError::Overflow),
+                        };
+                    }
+                }
             }
-            return Some(integer);
+
+            return Ok(integer);
         }
 
-        fn parse_negative_int(Integer(literal): &Integer<'_>) -> Option<int> {
+        fn parse_negative_int(
+            base: Base,
+            Integer(literal): Integer<'_>,
+        ) -> Result<int, ParseIntError> {
             let mut integer: int = 0;
-            for ascii_digit in *literal {
-                if *ascii_digit == b'_' {
-                    continue;
+
+            match base {
+                Base::Decimal => {
+                    for ascii_digit in literal {
+                        if *ascii_digit == b'_' {
+                            continue;
+                        }
+
+                        integer = match integer.checked_mul(base as int) {
+                            Some(shifted_integer) => shifted_integer,
+                            None => return Err(ParseIntError::Underflow),
+                        };
+
+                        let digit = *ascii_digit - b'0';
+                        debug_assert!(digit < base as u8, "invalid decimal digit");
+                        integer = match integer.checked_sub(digit as int) {
+                            Some(next_integer) => next_integer,
+                            None => return Err(ParseIntError::Underflow),
+                        };
+                    }
                 }
+                Base::Binary => {
+                    for ascii_digit in literal {
+                        if *ascii_digit == b'_' {
+                            continue;
+                        }
 
-                let digit = (*ascii_digit - b'0') as usize;
+                        integer = match integer.checked_mul(base as int) {
+                            Some(shifted_integer) => shifted_integer,
+                            None => return Err(ParseIntError::Underflow),
+                        };
 
-                integer = integer.checked_mul(10)?;
-                integer = integer.checked_sub_unsigned(digit)?;
+                        let digit = *ascii_digit - b'0';
+                        debug_assert!(digit < base as u8, "invalid binary digit");
+                        integer = match integer.checked_sub(digit as int) {
+                            Some(next_integer) => next_integer,
+                            None => return Err(ParseIntError::Underflow),
+                        };
+                    }
+                }
+                Base::Octal => {
+                    for ascii_digit in literal {
+                        if *ascii_digit == b'_' {
+                            continue;
+                        }
+
+                        integer = match integer.checked_mul(base as int) {
+                            Some(shifted_integer) => shifted_integer,
+                            None => return Err(ParseIntError::Underflow),
+                        };
+
+                        let digit = *ascii_digit - b'0';
+                        debug_assert!(digit < base as u8, "invalid octal digit");
+                        integer = match integer.checked_sub(digit as int) {
+                            Some(next_integer) => next_integer,
+                            None => return Err(ParseIntError::Underflow),
+                        };
+                    }
+                }
+                Base::Hexadecimal => {
+                    for ascii_digit in literal {
+                        if *ascii_digit == b'_' {
+                            continue;
+                        }
+
+                        integer = match integer.checked_mul(base as int) {
+                            Some(shifted_integer) => shifted_integer,
+                            None => return Err(ParseIntError::Underflow),
+                        };
+
+                        let digit = match *ascii_digit {
+                            number @ b'0'..=b'9' => number - b'0',
+                            uppercase_letter @ b'A'..=b'F' => uppercase_letter - b'A' + 10,
+                            lowercase_letter @ b'a'..=b'f' => lowercase_letter - b'a' + 10,
+                            _ => unreachable!("invalid hexadecimal digit"),
+                        };
+                        integer = match integer.checked_sub(digit as int) {
+                            Some(next_integer) => next_integer,
+                            None => return Err(ParseIntError::Underflow),
+                        };
+                    }
+                }
             }
-            return Some(integer);
+
+            return Ok(integer);
         }
 
         let current_token = self.current_token(Expected::Expression)?;
         let expression_result = match &current_token.kind {
             TokenKind::False => Ok(Expression::False),
             TokenKind::True => Ok(Expression::True),
-            TokenKind::Integer(integer_literal) => match parse_positive_int(integer_literal) {
-                Some(integer) => Ok(Expression::Int(integer)),
-                None => Err(Error {
-                    kind: ErrorKind::IntOverflow,
+            TokenKind::Integer(base, literal) => match parse_positive_int(*base, *literal) {
+                Ok(integer) => Ok(Expression::Int(integer)),
+                Err(error) => Err(Error {
+                    kind: ErrorKind::InvalidInteger(error, *base),
                     col: current_token.col,
                     pointers_count: current_token.kind.display_len(),
                 }),
@@ -1951,7 +2116,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
 
                 let start_of_expression = &self.tokens[self.token as usize];
-                let TokenKind::Integer(literal) = &start_of_expression.kind else {
+                let TokenKind::Integer(base, literal) = start_of_expression.kind else {
                     let operand = self.primary_expression()?;
 
                     // returning to avoid the call to tokens.next at the end of the function
@@ -1977,26 +2142,26 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 };
 
                 if should_be_negated {
-                    match parse_negative_int(literal) {
-                        Some(0) => Err(Error {
-                            kind: ErrorKind::MinusZeroNumberLiteral,
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                    match parse_negative_int(base, literal) {
+                        Ok(0) => Err(Error {
+                            kind: ErrorKind::MinusZeroInteger,
+                            col: start_of_expression.col,
+                            pointers_count: start_of_expression.kind.display_len(),
                         }),
-                        Some(integer) => Ok(Expression::Int(integer)),
-                        None => Err(Error {
-                            kind: ErrorKind::IntUnderflow,
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                        Ok(integer) => Ok(Expression::Int(integer)),
+                        Err(error) => Err(Error {
+                            kind: ErrorKind::InvalidInteger(error, base),
+                            col: start_of_expression.col,
+                            pointers_count: start_of_expression.kind.display_len(),
                         }),
                     }
                 } else {
-                    match parse_positive_int(literal) {
-                        Some(integer) => Ok(Expression::Int(integer)),
-                        None => Err(Error {
-                            kind: ErrorKind::IntOverflow,
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                    match parse_positive_int(base, literal) {
+                        Ok(integer) => Ok(Expression::Int(integer)),
+                        Err(error) => Err(Error {
+                            kind: ErrorKind::InvalidInteger(error, base),
+                            col: start_of_expression.col,
+                            pointers_count: start_of_expression.kind.display_len(),
                         }),
                     }
                 }
@@ -2013,7 +2178,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
 
                 let start_of_expression = &self.tokens[self.token as usize];
-                let TokenKind::Integer(literal) = &start_of_expression.kind else {
+                let TokenKind::Integer(base, literal) = start_of_expression.kind else {
                     let operand = self.primary_expression()?;
 
                     // returning to avoid the call to tokens.next at the end of the function
@@ -2039,26 +2204,26 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 };
 
                 if should_be_negated {
-                    match parse_negative_int(literal) {
-                        Some(0) => Err(Error {
-                            kind: ErrorKind::MinusZeroNumberLiteral,
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                    match parse_negative_int(base, literal) {
+                        Ok(0) => Err(Error {
+                            kind: ErrorKind::MinusZeroInteger,
+                            col: start_of_expression.col,
+                            pointers_count: start_of_expression.kind.display_len(),
                         }),
-                        Some(integer) => Ok(Expression::Int(integer)),
-                        None => Err(Error {
-                            kind: ErrorKind::IntUnderflow,
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                        Ok(integer) => Ok(Expression::Int(integer)),
+                        Err(error) => Err(Error {
+                            kind: ErrorKind::InvalidInteger(error, base),
+                            col: start_of_expression.col,
+                            pointers_count: start_of_expression.kind.display_len(),
                         }),
                     }
                 } else {
-                    match parse_positive_int(literal) {
-                        Some(integer) => Ok(Expression::Int(integer)),
-                        None => Err(Error {
-                            kind: ErrorKind::IntOverflow,
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                    match parse_positive_int(base, literal) {
+                        Ok(integer) => Ok(Expression::Int(integer)),
+                        Err(error) => Err(Error {
+                            kind: ErrorKind::InvalidInteger(error, base),
+                            col: start_of_expression.col,
+                            pointers_count: start_of_expression.kind.display_len(),
                         }),
                     }
                 }
@@ -2075,7 +2240,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
 
                 let start_of_expression = &self.tokens[self.token as usize];
-                let TokenKind::Integer(literal) = &start_of_expression.kind else {
+                let TokenKind::Integer(base, literal) = start_of_expression.kind else {
                     let operand = self.primary_expression()?;
 
                     // returning to avoid the call to tokens.next at the end of the function
@@ -2101,26 +2266,26 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 };
 
                 if should_be_negated {
-                    match parse_negative_int(literal) {
-                        Some(0) => Err(Error {
-                            kind: ErrorKind::MinusZeroNumberLiteral,
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                    match parse_negative_int(base, literal) {
+                        Ok(0) => Err(Error {
+                            kind: ErrorKind::MinusZeroInteger,
+                            col: start_of_expression.col,
+                            pointers_count: start_of_expression.kind.display_len(),
                         }),
-                        Some(integer) => Ok(Expression::Int(integer)),
-                        None => Err(Error {
-                            kind: ErrorKind::IntUnderflow,
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                        Ok(integer) => Ok(Expression::Int(integer)),
+                        Err(error) => Err(Error {
+                            kind: ErrorKind::InvalidInteger(error, base),
+                            col: start_of_expression.col,
+                            pointers_count: start_of_expression.kind.display_len(),
                         }),
                     }
                 } else {
-                    match parse_positive_int(literal) {
-                        Some(integer) => Ok(Expression::Int(integer)),
-                        None => Err(Error {
-                            kind: ErrorKind::IntOverflow,
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                    match parse_positive_int(base, literal) {
+                        Ok(integer) => Ok(Expression::Int(integer)),
+                        Err(error) => Err(Error {
+                            kind: ErrorKind::InvalidInteger(error, base),
+                            col: start_of_expression.col,
+                            pointers_count: start_of_expression.kind.display_len(),
                         }),
                     }
                 }
@@ -2786,7 +2951,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Op(_)
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_)
+            | TokenKind::Integer(_, _)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_) => {
@@ -2833,7 +2998,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Comma
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_)
+            | TokenKind::Integer(_, _)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
@@ -3152,7 +3317,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 | TokenKind::Op(_)
                 | TokenKind::False
                 | TokenKind::True
-                | TokenKind::Integer(_)
+                | TokenKind::Integer(_, _)
                 | TokenKind::Ascii(_)
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_)
@@ -3190,7 +3355,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     | TokenKind::Op(_)
                     | TokenKind::False
                     | TokenKind::True
-                    | TokenKind::Integer(_)
+                    | TokenKind::Integer(_, _)
                     | TokenKind::Ascii(_)
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
@@ -3229,7 +3394,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     | TokenKind::Op(_)
                     | TokenKind::False
                     | TokenKind::True
-                    | TokenKind::Integer(_)
+                    | TokenKind::Integer(_, _)
                     | TokenKind::Ascii(_)
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
@@ -3285,7 +3450,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Op(_)
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_)
+            | TokenKind::Integer(_, _)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
@@ -3331,7 +3496,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Op(_)
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_)
+            | TokenKind::Integer(_, _)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
@@ -3419,9 +3584,8 @@ impl Display for Expected {
 pub enum ErrorKind {
     PrematureEndOfFile(Expected),
 
-    MinusZeroNumberLiteral,
-    IntOverflow,
-    IntUnderflow,
+    MinusZeroInteger,
+    InvalidInteger(ParseIntError, Base),
 
     MissingSemicolon,
 
@@ -3494,17 +3658,79 @@ impl IntoErrorInfo for ErrorKind {
                 format!("expected {expected} after here").into(),
             ),
 
-            Self::MinusZeroNumberLiteral => (
+            Self::MinusZeroInteger => (
                 "invalid integer literal".into(),
                 "-0 is not a valid two's complement integer".into(),
             ),
-            Self::IntOverflow => (
+            Self::InvalidInteger(ParseIntError::Overflow, Base::Decimal) => (
                 "integer literal overflow".into(),
-                format!("overflows a {bits} bit signed integer (over {max})", bits = int::BITS, max = int::MAX).into(),
+                format!(
+                    "overflows a {bits} bit signed integer, over {max}",
+                    bits = int::BITS,
+                    max = int::MAX
+                ).into(),
             ),
-            Self::IntUnderflow => (
+            Self::InvalidInteger(ParseIntError::Overflow, base @ Base::Binary) => (
+                "integer literal overflow".into(),
+                format!(
+                    "overflows a {bits} bit signed integer, over {prefix}{max:0b} ({max})",
+                    bits = int::BITS,
+                    prefix = base.prefix(),
+                    max = int::MAX
+                ).into(),
+            ),
+            Self::InvalidInteger(ParseIntError::Overflow, base @ Base::Octal) => (
+                "integer literal overflow".into(),
+                format!(
+                    "overflows a {bits} bit signed integer, over {prefix}{max:0o} ({max})",
+                    bits = int::BITS,
+                    prefix = base.prefix(),
+                    max = int::MAX
+                ).into(),
+            ),
+            Self::InvalidInteger(ParseIntError::Overflow, base @ Base::Hexadecimal) => (
+                "integer literal overflow".into(),
+                format!(
+                    "overflows a {bits} bit signed integer, over {prefix}{max:0x} ({max})",
+                    bits = int::BITS,
+                    prefix = base.prefix(),
+                    max = int::MAX
+                ).into(),
+            ),
+            Self::InvalidInteger(ParseIntError::Underflow, Base::Decimal) => (
                 "integer literal underflow".into(),
-                format!("underlows a {bits} bit signed integer (under {min})", bits = int::BITS, min = int::MIN).into(),
+                format!(
+                    "underflows a {bits} bit signed integer, under {min}",
+                    bits = int::BITS,
+                    min = int::MIN
+                ).into(),
+            ),
+            Self::InvalidInteger(ParseIntError::Underflow, base @ Base::Binary) => (
+                "integer literal underflow".into(),
+                format!(
+                    "underflows a {bits} bit signed integer, under {prefix}{min:0b} ({min})",
+                    bits = int::BITS,
+                    prefix = base.prefix(),
+                    min = int::MIN
+                ).into(),
+            ),
+            Self::InvalidInteger(ParseIntError::Underflow, base @ Base::Octal) => (
+                "integer literal underflow".into(),
+                format!(
+                    "underflows a {bits} bit signed integer, under {prefix}{min:0o} ({min})",
+                    bits = int::BITS,
+                    prefix = base.prefix(),
+                    min = int::MIN
+                ).into(),
+            ),
+            Self::InvalidInteger(ParseIntError::Underflow, base @ Base::Hexadecimal) => (
+                "integer literal underflow".into(),
+                format!(
+                    "underflows a {bits} bit signed integer, under {prefix}{min:0x} ({min})",
+                    bits = int::BITS,
+                    prefix = base.prefix(),
+                    min = int::MIN
+                ).into(),
             ),
 
             Self::MissingSemicolon => (

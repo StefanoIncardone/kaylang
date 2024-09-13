@@ -168,19 +168,106 @@
         },
 
         "integer_literal": {
-            "name": "constant.numeric.integer.kay",
-            "match": "(\\d(?:[A-Za-z\\d_]|[^\\x00-\\x7f]{1,4})*)",
-            "captures": {
-                "1": {
-                    "patterns": [
-                        {
-                            "name": "invalid.illegal.letter.kay",
-                            "match": "[A-Za-z]"
+            "patterns": [
+                {
+                    "name": "constant.numeric.integer.binary.kay",
+                    "match": "(0(b))((?:[A-Za-z\\d_]|[^\\x00-\\x7f]{1,4})+)",
+                    "captures": {
+                        "1": {
+                            "name": "constant.numeric.integer.prefix.kay"
                         },
-                        { "include": "#non_printable_ascii" }
-                    ]
+                        "2": {
+                            "name": "markup.changed.base.kay"
+                        },
+                        "3": {
+                            "patterns": [
+                                {
+                                    "name": "invalid.illegal.digit.kay",
+                                    "match": "[2-9]"
+                                },
+                                {
+                                    "name": "invalid.illegal.letter.kay",
+                                    "match": "[A-Za-z]"
+                                },
+                                { "include": "#non_printable_ascii" }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "constant.numeric.integer.octal.kay",
+                    "match": "(0(o))((?:[A-Za-z\\d_]|[^\\x00-\\x7f]{1,4})+)",
+                    "captures": {
+                        "1": {
+                            "name": "constant.numeric.integer.prefix.kay"
+                        },
+                        "2": {
+                            "name": "markup.changed.base.kay"
+                        },
+                        "3": {
+                            "patterns": [
+                                {
+                                    "name": "invalid.illegal.digit.kay",
+                                    "match": "[8-9]"
+                                },
+                                {
+                                    "name": "invalid.illegal.letter.kay",
+                                    "match": "[A-Za-z]"
+                                },
+                                { "include": "#non_printable_ascii" }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "constant.numeric.integer.hexadecimal.kay",
+                    "match": "(0(x))((?:[A-Za-z\\d_]|[^\\x00-\\x7f]{1,4})+)",
+                    "captures": {
+                        "1": {
+                            "name": "constant.numeric.integer.prefix.kay"
+                        },
+                        "2": {
+                            "name": "markup.changed.base.kay"
+                        },
+                        "3": {
+                            "patterns": [
+                                {
+                                    "name": "invalid.illegal.digit.kay",
+                                    "match": "[G-Zg-z]"
+                                },
+                                { "include": "#non_printable_ascii" }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "invalid.illegal.empty_binary.kay",
+                    "match": "(0(b))"
+                },
+                {
+                    "name": "invalid.illegal.empty_octal.kay",
+                    "match": "(0(o))"
+                },
+                {
+                    "name": "invalid.illegal.empty_hexadecimal.kay",
+                    "match": "(0(x))"
+                },
+                {
+                    "name": "constant.numeric.integer.decimal.kay",
+                    "match": "(\\d(?:[A-Za-z\\d_]|[^\\x00-\\x7f]{1,4})*)",
+                    "captures": {
+                        "1": {
+                            "patterns": [
+                                {
+                                    "name": "invalid.illegal.letter.kay",
+                                    "match": "[A-Za-z]"
+                                },
+                                { "include": "#non_printable_ascii" }
+                            ]
+                        }
+                    }
                 }
-            }
+            ]
         },
 
         "long_identifier": {

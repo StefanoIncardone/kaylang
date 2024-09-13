@@ -31,6 +31,10 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 ### Added
 
 - `_` as a digit separator, e.g.: `123_456_678` is now a valid number literal
+- Alternative number literals bases:
+    - `0b`: binary
+    - `0o`: octal
+    - `0x`: hexadecimal
 
 ### Changed
 

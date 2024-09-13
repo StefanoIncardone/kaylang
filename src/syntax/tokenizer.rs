@@ -1,7 +1,6 @@
 use super::{Error, ErrorInfo, IntoErrorInfo};
 use crate::src_file::{offset, Line, SrcFile};
 use core::fmt::Display;
-
 pub(super) trait DisplayLen {
     fn display_len(&self) -> offset;
 }
@@ -22,12 +21,56 @@ pub(crate) type ascii = u8;
 #[allow(non_camel_case_types)]
 pub(crate) type utf8 = char;
 
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Integer<'src>(pub(crate) &'src [ascii]);
 
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Base {
+    #[default]
+    Decimal = 10,
+    Binary = 0b10,
+    Octal = 0o10,
+    Hexadecimal = 0x10,
+}
+
+impl Base {
+    #[must_use]
+    pub const fn prefix(self) -> &'static str {
+        return match self {
+            Self::Decimal => "",
+            Self::Binary => "0b",
+            Self::Octal => "0o",
+            Self::Hexadecimal => "0x",
+        };
+    }
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MissingDigitsBase {
+    Binary = 0b10,
+    Octal = 0o10,
+    Hexadecimal = 0x10,
+}
+
+impl MissingDigitsBase {
+    #[must_use]
+    pub const fn prefix(self) -> &'static str {
+        return match self {
+            Self::Binary => "0b",
+            Self::Octal => "0o",
+            Self::Hexadecimal => "0x",
+        };
+    }
+}
+
+#[repr(transparent)]
 #[derive(Debug, Clone)]
 pub(crate) struct Str(pub(crate) Box<[ascii]>);
 
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RawStr<'src>(pub(crate) &'src [ascii]);
 
@@ -387,11 +430,12 @@ impl Display for QuotedLiteralKind {
 }
 
 impl QuotedLiteralKind {
-    #[must_use] pub const fn quote(self) -> Quote {
+    #[must_use]
+    pub const fn quote(self) -> Quote {
         return match self {
             Self::Ascii => Quote::Single,
             Self::Str | Self::RawStr => Quote::Double,
-        }
+        };
     }
 }
 
@@ -411,7 +455,7 @@ pub(crate) enum TokenKind<'src> {
     False,
     True,
     /// integer literals are never empty and always contain valid ascii digits
-    Integer(Integer<'src>),
+    Integer(Base, Integer<'src>),
     Ascii(ascii),
     /* IDEA(stefano):
     or treat string with no escapes as raw strings
@@ -468,10 +512,10 @@ impl Display for TokenKind<'_> {
 
             Self::False => write!(f, "false"),
             Self::True => write!(f, "true"),
-            Self::Integer(integer) => {
+            Self::Integer(base, integer) => {
                 let integer_str = unsafe { core::str::from_utf8_unchecked(integer.0) };
-                write!(f, "{integer_str}")
-            },
+                write!(f, "{prefix}{integer_str}", prefix = base.prefix())
+            }
             Self::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
             Self::Str(string) => {
                 write!(f, "\"")?;
@@ -526,7 +570,9 @@ impl DisplayLen for TokenKind<'_> {
             Self::Comma => 1,
             Self::Op(op) => op.display_len(),
 
-            Self::Integer(integer) => integer.0.len() as offset,
+            Self::Integer(base, integer) => {
+                base.prefix().len() as offset + integer.0.len() as offset
+            }
             Self::Ascii(ascii_char) => ascii_escaped_len(*ascii_char) + 2, // + 2 to account for the quotes
             Self::True => 4,
             Self::False => 5,
@@ -810,6 +856,184 @@ impl<'src> Tokenizer<'src> {
         return if self.token_errors.is_empty() { Ok(identifier) } else { Err(()) };
     }
 
+    fn integer_decimal(&mut self) -> Result<&'src [ascii], ()> {
+        loop {
+            match self.peek_next_ascii_char() {
+                Ok(Some(b'0'..=b'9' | b'_')) => {}
+                Ok(Some(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
+                    self.token_errors.push(Error {
+                        kind: ErrorKind::LetterInNumberLiteral(Base::Decimal, *letter),
+                        col: self.col,
+                        pointers_count: 1,
+                    });
+                }
+                Ok(Some(_) | None) => break,
+                Err(error) => {
+                    self.token_errors.push(Error {
+                        kind: ErrorKind::Utf8InNumberLiteral(error.character),
+                        col: error.col,
+                        pointers_count: error.len,
+                    });
+                }
+            }
+
+            _ = self.next_ascii_char();
+        }
+
+        return if self.token_errors.is_empty() {
+            let digits = &self.src.code[self.token_start_col as usize..self.col as usize];
+            Ok(digits.as_bytes())
+        } else {
+            Err(())
+        };
+    }
+
+    fn integer_binary(&mut self) -> Result<&'src [ascii], ()> {
+        loop {
+            match self.peek_next_ascii_char() {
+                Ok(Some(b'0'..=b'1' | b'_')) => {}
+                Ok(Some(out_of_range @ b'2'..=b'9')) => {
+                    self.token_errors.push(Error {
+                        kind: ErrorKind::DigitOutOfRangeInNumberLiteral(
+                            Base::Binary,
+                            *out_of_range,
+                        ),
+                        col: self.col,
+                        pointers_count: 1,
+                    });
+                }
+                Ok(Some(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
+                    self.token_errors.push(Error {
+                        kind: ErrorKind::LetterInNumberLiteral(Base::Binary, *letter),
+                        col: self.col,
+                        pointers_count: 1,
+                    });
+                }
+                Ok(Some(_) | None) => break,
+                Err(error) => {
+                    self.token_errors.push(Error {
+                        kind: ErrorKind::Utf8InNumberLiteral(error.character),
+                        col: error.col,
+                        pointers_count: error.len,
+                    });
+                }
+            }
+
+            _ = self.next_ascii_char();
+        }
+
+        return if self.token_errors.is_empty() {
+            // starting at self.token_start_col + 2 to account for the 0b prefix
+            let digits = &self.src.code[self.token_start_col as usize + 2..self.col as usize];
+            if digits.is_empty() {
+                self.token_errors.push(Error {
+                    kind: ErrorKind::MissingDigits(MissingDigitsBase::Binary),
+                    col: self.token_start_col,
+                    pointers_count: self.token_len(),
+                });
+                Err(())
+            } else {
+                Ok(digits.as_bytes())
+            }
+        } else {
+            Err(())
+        };
+    }
+
+    fn integer_octal(&mut self) -> Result<&'src [ascii], ()> {
+        loop {
+            match self.peek_next_ascii_char() {
+                Ok(Some(b'0'..=b'7' | b'_')) => {}
+                Ok(Some(out_of_range @ b'8'..=b'9')) => {
+                    self.token_errors.push(Error {
+                        kind: ErrorKind::DigitOutOfRangeInNumberLiteral(Base::Octal, *out_of_range),
+                        col: self.col,
+                        pointers_count: 1,
+                    });
+                }
+                Ok(Some(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
+                    self.token_errors.push(Error {
+                        kind: ErrorKind::LetterInNumberLiteral(Base::Octal, *letter),
+                        col: self.col,
+                        pointers_count: 1,
+                    });
+                }
+                Ok(Some(_) | None) => break,
+                Err(error) => {
+                    self.token_errors.push(Error {
+                        kind: ErrorKind::Utf8InNumberLiteral(error.character),
+                        col: error.col,
+                        pointers_count: error.len,
+                    });
+                }
+            }
+
+            _ = self.next_ascii_char();
+        }
+
+        return if self.token_errors.is_empty() {
+            // starting at self.token_start_col + 2 to account for the 0o prefix
+            let digits = &self.src.code[self.token_start_col as usize + 2..self.col as usize];
+            if digits.is_empty() {
+                self.token_errors.push(Error {
+                    kind: ErrorKind::MissingDigits(MissingDigitsBase::Octal),
+                    col: self.token_start_col,
+                    pointers_count: self.token_len(),
+                });
+                Err(())
+            } else {
+                Ok(digits.as_bytes())
+            }
+        } else {
+            Err(())
+        };
+    }
+
+    fn integer_hexadecimal(&mut self) -> Result<&'src [ascii], ()> {
+        loop {
+            match self.peek_next_ascii_char() {
+                Ok(Some(b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F' | b'_')) => {}
+                Ok(Some(out_of_range @ (b'g'..=b'z' | b'G'..=b'Z'))) => {
+                    self.token_errors.push(Error {
+                        kind: ErrorKind::DigitOutOfRangeInNumberLiteral(
+                            Base::Hexadecimal,
+                            *out_of_range,
+                        ),
+                        col: self.col,
+                        pointers_count: 1,
+                    });
+                }
+                Ok(Some(_) | None) => break,
+                Err(error) => {
+                    self.token_errors.push(Error {
+                        kind: ErrorKind::Utf8InNumberLiteral(error.character),
+                        col: error.col,
+                        pointers_count: error.len,
+                    });
+                }
+            }
+
+            _ = self.next_ascii_char();
+        }
+
+        return if self.token_errors.is_empty() {
+            // starting at self.token_start_col + 2 to account for the 0x prefix
+            let digits = &self.src.code[self.token_start_col as usize + 2..self.col as usize];
+            if digits.is_empty() {
+                self.token_errors.push(Error {
+                    kind: ErrorKind::MissingDigits(MissingDigitsBase::Hexadecimal),
+                    col: self.token_start_col,
+                    pointers_count: self.token_len(),
+                });
+                Err(())
+            } else {
+                Ok(digits.as_bytes())
+            }
+        } else {
+            Err(())
+        };
+    }
+
     fn next_token(&mut self, next: ascii) -> Result<TokenKind<'src>, ()> {
         return match next {
             b'r' => match self.peek_next_utf8_char() {
@@ -843,7 +1067,10 @@ impl<'src> Tokenizer<'src> {
                         let _character = match next_character {
                             control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                                 self.token_errors.push(Error {
-                                    kind: ErrorKind::ControlCharacterInQuotedLiteral(kind, control as utf8),
+                                    kind: ErrorKind::ControlCharacterInQuotedLiteral(
+                                        kind,
+                                        control as utf8,
+                                    ),
                                     col: self.col - 1,
                                     pointers_count: 1,
                                 });
@@ -857,7 +1084,8 @@ impl<'src> Tokenizer<'src> {
                     if self.token_errors.is_empty() {
                         // starting at token_start_col + 2 to skip the r prefix, and ending at
                         // col - 1 to skip the closing quote
-                        let raw_string = &self.src.code[self.token_start_col as usize + 2..self.col as usize - 1];
+                        let raw_string = &self.src.code
+                            [self.token_start_col as usize + 2..self.col as usize - 1];
                         Ok(TokenKind::RawStr(RawStr(raw_string.as_bytes())))
                     } else {
                         Err(())
@@ -866,39 +1094,34 @@ impl<'src> Tokenizer<'src> {
                 _ => self.identifier(),
             },
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.identifier(),
-            // TODO(stefano): move parsing of integers to the parsing phase
-            b'0'..=b'9' => {
-                loop {
-                    match self.peek_next_ascii_char() {
-                        Ok(Some(b'0'..=b'9' | b'_')) => {}
-                        Ok(Some(b'a'..=b'z' | b'A'..=b'Z')) => {
-                            self.token_errors.push(Error {
-                                kind: ErrorKind::NonDigitInNumberLiteral,
-                                col: self.col,
-                                pointers_count: 1,
-                            });
-                        }
-                        Ok(Some(_) | None) => break,
-                        Err(error) => {
-                            self.token_errors.push(Error {
-                                kind: ErrorKind::Utf8InNumberLiteral(error.character),
-                                col: error.col,
-                                pointers_count: error.len,
-                            });
-                        },
+            // IDEA(stefano): debate wether to allow trailing underscores or to emit a warning
+            // IDEA(stefano): emit warning of inconsistent casing of letters, i.e. 0xFFff_fFfF_ffFF_ffFF
+            b'0' => {
+                let (base, integer) = match self.peek_next_ascii_char() {
+                    Ok(Some(b'b')) => {
+                        _ = self.next_ascii_char();
+                        (Base::Binary, self.integer_binary())
                     }
+                    Ok(Some(b'o')) => {
+                        _ = self.next_ascii_char();
+                        (Base::Octal, self.integer_octal())
+                    }
+                    Ok(Some(b'x')) => {
+                        _ = self.next_ascii_char();
+                        (Base::Hexadecimal, self.integer_hexadecimal())
+                    }
+                    Ok(Some(_) | None) | Err(_) => (Base::Decimal, self.integer_decimal()),
+                };
 
-                    _ = self.next_ascii_char();
-                }
-
-                if self.token_errors.is_empty() {
-                    let integer_literal =
-                        &self.src.code[self.token_start_col as usize..self.col as usize];
-                    Ok(TokenKind::Integer(Integer(integer_literal.as_bytes())))
-                } else {
-                    Err(())
+                match integer {
+                    Ok(literal) => Ok(TokenKind::Integer(base, Integer(literal))),
+                    Err(()) => Err(()),
                 }
             }
+            b'1'..=b'9' => match self.integer_decimal() {
+                Ok(literal) => Ok(TokenKind::Integer(Base::Decimal, Integer(literal))),
+                Err(()) => Err(()),
+            },
             b'"' => {
                 let kind = QuotedLiteralKind::Str;
                 let quote = kind.quote();
@@ -969,10 +1192,13 @@ impl<'src> Tokenizer<'src> {
                                     unrecognized
                                 }
                             }
-                        },
+                        }
                         control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                             self.token_errors.push(Error {
-                                kind: ErrorKind::ControlCharacterInQuotedLiteral(kind, control as utf8),
+                                kind: ErrorKind::ControlCharacterInQuotedLiteral(
+                                    kind,
+                                    control as utf8,
+                                ),
                                 col: self.col - 1,
                                 pointers_count: 1,
                             });
@@ -1061,10 +1287,13 @@ impl<'src> Tokenizer<'src> {
                                     unrecognized
                                 }
                             }
-                        },
+                        }
                         control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                             self.token_errors.push(Error {
-                                kind: ErrorKind::ControlCharacterInQuotedLiteral(kind, control as utf8),
+                                kind: ErrorKind::ControlCharacterInQuotedLiteral(
+                                    kind,
+                                    control as utf8,
+                                ),
                                 col: self.col - 1,
                                 pointers_count: 1,
                             });
@@ -1094,7 +1323,7 @@ impl<'src> Tokenizer<'src> {
                         kind: ErrorKind::MultipleCharactersInCharacterLiteral,
                         col: self.token_start_col,
                         pointers_count: self.token_len(),
-                    }
+                    },
                 };
 
                 self.token_errors.push(length_related_error);
@@ -1519,7 +1748,10 @@ pub enum ErrorKind {
     MultipleCharactersInCharacterLiteral,
 
     Utf8InNumberLiteral(utf8),
-    NonDigitInNumberLiteral,
+    LetterInNumberLiteral(Base, ascii),
+    // IDEA(stefano): display information about the valid digit range
+    DigitOutOfRangeInNumberLiteral(Base, ascii),
+    MissingDigits(MissingDigitsBase),
 
     Utf8InIdentifier(utf8),
     IdentifierTooLong { max: offset },
@@ -1574,9 +1806,17 @@ impl IntoErrorInfo for ErrorKind {
                 format!("invalid integer literal, contains character '{character}' {}", character.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
             ),
-            Self::NonDigitInNumberLiteral => (
+            Self::LetterInNumberLiteral(base, letter) => (
                 "invalid integer literal".into(),
-                "must not contain non-digit characters".into(),
+                format!("letter {} is not allowed in a base {} number", *letter as char, *base as u8).into(),
+            ),
+            Self::DigitOutOfRangeInNumberLiteral(base, digit) => (
+                "invalid integer literal digit".into(),
+                format!("digit {} is out of the valid range for a base {} number", *digit as char, *base as u8).into(),
+            ),
+            Self::MissingDigits(base) => (
+                "invalid integer literal".into(),
+                format!("at leasts one base {} digt must be present", *base as u8).into(),
             ),
 
             Self::Utf8InIdentifier(character) => (
