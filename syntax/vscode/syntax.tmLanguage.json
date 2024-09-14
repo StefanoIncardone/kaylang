@@ -94,7 +94,7 @@
                 },
                 {
                     "name": "string.quoted.single.kay invalid.illegal.unclosed.kay",
-                    "match": "'(.*)",
+                    "match": "'([^']*)",
                     "captures": {
                         "1": {
                             "patterns": [
@@ -122,7 +122,7 @@
                 },
                 {
                     "name": "string.quoted.double.kay invalid.illegal.unclosed.kay",
-                    "match": "\"(.*)",
+                    "match": "\"([^\"]*)",
                     "captures": {
                         "1": {
                             "patterns": [
@@ -138,7 +138,7 @@
             "patterns": [
                 {
                     "name": "string.quoted.double.raw.kay",
-                    "match": "(r)\"(.*)\"",
+                    "match": "(r)\"([^\"]*)\"",
                     "captures": {
                         "1": {
                             "name": "markup.changed.prefix.kay"
@@ -152,7 +152,7 @@
                 },
                 {
                     "name": "string.quoted.double.raw.kay invalid.illegal.unclosed.kay",
-                    "match": "(r)\"(.*)",
+                    "match": "(r)\"([^\"]*)",
                     "captures": {
                         "1": {
                             "name": "markup.changed.prefix.kay"

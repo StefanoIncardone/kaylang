@@ -709,6 +709,7 @@ pub(crate) enum StrKind {
 
 // NOTE(stefano): this is in reality closer to an intermediate representation than to an AST
 // TODO(stefano): introduce other representation before and after this Ast
+// IDEA(stefano): build the AST, and then validate the AST afterwards
 #[derive(Debug)]
 pub struct Ast<'src> {
     pub(crate) nodes: Vec<Vec<Node>>,
@@ -725,7 +726,6 @@ pub struct Ast<'src> {
     pub(crate) string_kinds: Vec<StrKind>,
 }
 
-// IDEA(stefano): build the AST, and then validate the AST afterwards
 #[derive(Debug)]
 pub struct Parser<'src, 'tokens: 'src> {
     src: &'src SrcFile,

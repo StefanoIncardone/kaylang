@@ -1,4 +1,3 @@
-// NOTE(stefano): could optimize string and characters regex patterns `.*?` with `[^"]*`
 {
     "comments": {
         // symbol used for single line comment. Remove this entry if your language does not support line comments

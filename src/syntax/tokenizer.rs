@@ -45,6 +45,16 @@ impl Base {
             Self::Hexadecimal => "0x",
         };
     }
+
+    #[must_use]
+    pub fn range(self) -> Vec<core::ops::RangeInclusive<utf8>> {
+        return match self {
+            Self::Decimal => vec!['0'..='9'],
+            Self::Binary => vec!['0'..='1'],
+            Self::Octal => vec!['0'..='7'],
+            Self::Hexadecimal => vec!['0'..='9', 'A'..='F', 'a'..='f'],
+        };
+    }
 }
 
 #[repr(u8)]
@@ -58,11 +68,12 @@ pub enum MissingDigitsBase {
 impl MissingDigitsBase {
     #[must_use]
     pub const fn prefix(self) -> &'static str {
-        return match self {
-            Self::Binary => "0b",
-            Self::Octal => "0o",
-            Self::Hexadecimal => "0x",
-        };
+        return unsafe { core::mem::transmute::<Self, Base>(self) }.prefix();
+    }
+
+    #[must_use]
+    pub fn range(self) -> Vec<core::ops::RangeInclusive<utf8>> {
+        return unsafe { core::mem::transmute::<Self, Base>(self) }.range();
     }
 }
 
@@ -927,7 +938,7 @@ impl<'src> Tokenizer<'src> {
             let digits = &self.src.code[self.token_start_col as usize + 2..self.col as usize];
             if digits.is_empty() {
                 self.token_errors.push(Error {
-                    kind: ErrorKind::MissingDigits(MissingDigitsBase::Binary),
+                    kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Binary),
                     col: self.token_start_col,
                     pointers_count: self.token_len(),
                 });
@@ -976,7 +987,7 @@ impl<'src> Tokenizer<'src> {
             let digits = &self.src.code[self.token_start_col as usize + 2..self.col as usize];
             if digits.is_empty() {
                 self.token_errors.push(Error {
-                    kind: ErrorKind::MissingDigits(MissingDigitsBase::Octal),
+                    kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Octal),
                     col: self.token_start_col,
                     pointers_count: self.token_len(),
                 });
@@ -1021,7 +1032,7 @@ impl<'src> Tokenizer<'src> {
             let digits = &self.src.code[self.token_start_col as usize + 2..self.col as usize];
             if digits.is_empty() {
                 self.token_errors.push(Error {
-                    kind: ErrorKind::MissingDigits(MissingDigitsBase::Hexadecimal),
+                    kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Hexadecimal),
                     col: self.token_start_col,
                     pointers_count: self.token_len(),
                 });
@@ -1749,9 +1760,8 @@ pub enum ErrorKind {
 
     Utf8InNumberLiteral(utf8),
     LetterInNumberLiteral(Base, ascii),
-    // IDEA(stefano): display information about the valid digit range
     DigitOutOfRangeInNumberLiteral(Base, ascii),
-    MissingDigits(MissingDigitsBase),
+    EmptyNumberLiteral(MissingDigitsBase),
 
     Utf8InIdentifier(utf8),
     IdentifierTooLong { max: offset },
@@ -1778,7 +1788,7 @@ impl IntoErrorInfo for ErrorKind {
             ),
 
             Self::Utf8InQuotedLiteral(kind, character) => (
-                format!("invalid {kind} literal, contains character '{character}' {}", character.escape_unicode()).into(),
+                format!("invalid {kind} literal character '{character}' {}", character.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
             ),
             Self::UnclosedQuotedLiteral(kind) => (
@@ -1786,7 +1796,7 @@ impl IntoErrorInfo for ErrorKind {
                 format!("missing closing {} quote", kind.quote() as u8 as char).into()
             ),
             Self::ControlCharacterInQuotedLiteral(kind, control_character) => (
-                format!("invalid {kind} literal, contains character '{}' {}", control_character.escape_debug(), control_character.escape_unicode()).into(),
+                format!("invalid {kind} literal character '{}' {}", control_character.escape_debug(), control_character.escape_unicode()).into(),
                 "control characters are not allowed".into(),
             ),
             Self::UnrecognizedEscapeCharacterInQuotedLiteral(kind, unrecognized) => (
@@ -1803,24 +1813,24 @@ impl IntoErrorInfo for ErrorKind {
             ),
 
             Self::Utf8InNumberLiteral(character) => (
-                format!("invalid integer literal, contains character '{character}' {}", character.escape_unicode()).into(),
+                format!("invalid integer literal character '{character}' {}", character.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
             ),
             Self::LetterInNumberLiteral(base, letter) => (
-                "invalid integer literal".into(),
-                format!("letter {} is not allowed in a base {} number", *letter as char, *base as u8).into(),
+                format!("invalid integer literal letter '{}'", *letter as utf8).into(),
+                format!("not allowed in a base {} number", *base as u8).into(),
             ),
             Self::DigitOutOfRangeInNumberLiteral(base, digit) => (
-                "invalid integer literal digit".into(),
-                format!("digit {} is out of the valid range for a base {} number", *digit as char, *base as u8).into(),
+                format!("invalid integer literal digit '{}'", *digit as utf8).into(),
+                format!("out of the valid range for a base {} number {:?}", *base as u8, base.range()).into(),
             ),
-            Self::MissingDigits(base) => (
+            Self::EmptyNumberLiteral(base) => (
                 "invalid integer literal".into(),
-                format!("at leasts one base {} digt must be present", *base as u8).into(),
+                format!("at leasts one base {} digt must be present {:?}", *base as u8, base.range()).into(),
             ),
 
             Self::Utf8InIdentifier(character) => (
-                format!("invalid identifier, contains character '{character}' {}", character.escape_unicode()).into(),
+                format!("invalid identifier character '{character}' {}", character.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
             ),
             Self::IdentifierTooLong { max } => (
