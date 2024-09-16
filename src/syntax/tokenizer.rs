@@ -81,10 +81,6 @@ impl MissingDigitsBase {
 #[derive(Debug, Clone)]
 pub(crate) struct Str(pub(crate) Box<[ascii]>);
 
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct RawStr<'src>(pub(crate) &'src [ascii]);
-
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Mutability {
     Let,
@@ -329,7 +325,6 @@ impl Display for Op {
 }
 
 impl DisplayLen for Op {
-    #[inline(always)]
     fn display_len(&self) -> offset {
         return match self {
             Self::Len => 3,
@@ -478,7 +473,7 @@ pub(crate) enum TokenKind<'src> {
     e.g. 63/127/255/511/1023/2047/4095
     */
     Str(Str),
-    RawStr(RawStr<'src>),
+    RawStr(Str),
 
     /* IDEA(stefano):
     create:
@@ -528,17 +523,10 @@ impl Display for TokenKind<'_> {
                 write!(f, "{prefix}{integer_str}", prefix = base.prefix())
             }
             Self::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
-            Self::Str(string) => {
+            Self::Str(string) | Self::RawStr(string) => {
                 write!(f, "\"")?;
                 for ch in &*string.0 {
                     write!(f, "{}", ch.escape_ascii())?;
-                }
-                write!(f, "\"")
-            }
-            Self::RawStr(string) => {
-                write!(f, "r\"")?;
-                for ch in string.0 {
-                    write!(f, "{}", *ch as utf8)?;
                 }
                 write!(f, "\"")
             }
@@ -562,9 +550,8 @@ impl Display for TokenKind<'_> {
 }
 
 impl DisplayLen for TokenKind<'_> {
-    #[inline(always)]
     fn display_len(&self) -> offset {
-        #[inline(always)]
+        #[inline]
         fn ascii_escaped_len(ascii_char: ascii) -> offset {
             // Note: ascii type guarantees the value to be valid utf8
             let utf8_char = ascii_char as utf8;
@@ -1054,9 +1041,19 @@ impl<'src> Tokenizer<'src> {
                     let kind = QuotedLiteralKind::RawStr;
                     let quote = kind.quote();
 
+                    let mut raw_string = Vec::<ascii>::new();
+
                     loop {
                         let next_character = match self.next_ascii_char() {
-                            Ok(Some(b'\n') | None) => {
+                            Ok(Some(b'\n')) => {
+                                self.token_errors.push(Error {
+                                    kind: ErrorKind::UnclosedQuotedLiteral(kind),
+                                    col: self.token_start_col,
+                                    pointers_count: self.token_len() - 1,
+                                });
+                                break;
+                            }
+                            Ok(None) => {
                                 self.token_errors.push(Error {
                                     kind: ErrorKind::UnclosedQuotedLiteral(kind),
                                     col: self.token_start_col,
@@ -1075,7 +1072,44 @@ impl<'src> Tokenizer<'src> {
                             }
                         };
 
-                        let _character = match next_character {
+                        let character = match next_character {
+                            b'\\' => {
+                                let escape_character = match self.peek_next_ascii_char() {
+                                    Ok(Some(b'\n')) => {
+                                        self.token_errors.push(Error {
+                                            kind: ErrorKind::UnclosedQuotedLiteral(kind),
+                                            col: self.token_start_col,
+                                            pointers_count: self.token_len() - 1,
+                                        });
+                                        break;
+                                    }
+                                    Ok(None) => {
+                                        self.token_errors.push(Error {
+                                            kind: ErrorKind::UnclosedQuotedLiteral(kind),
+                                            col: self.token_start_col,
+                                            pointers_count: self.token_len(),
+                                        });
+                                        break;
+                                    }
+                                    Ok(Some(escape_character)) => escape_character,
+                                    Err(error) => {
+                                        self.token_errors.push(Error {
+                                            kind: ErrorKind::Utf8InQuotedLiteral(kind, error.character),
+                                            col: error.col,
+                                            pointers_count: error.len,
+                                        });
+                                        continue;
+                                    }
+                                };
+
+                                match escape_character {
+                                    b'"' => {
+                                        _ = self.next_ascii_char();
+                                        b'"'
+                                    }
+                                    _ => b'\\',
+                                }
+                            }
                             control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                                 self.token_errors.push(Error {
                                     kind: ErrorKind::ControlCharacterInQuotedLiteral(
@@ -1090,14 +1124,12 @@ impl<'src> Tokenizer<'src> {
                             ch if ch == quote as u8 => break,
                             ch => ch,
                         };
+
+                        raw_string.push(character);
                     }
 
                     if self.token_errors.is_empty() {
-                        // starting at token_start_col + 2 to skip the r prefix, and ending at
-                        // col - 1 to skip the closing quote
-                        let raw_string = &self.src.code
-                            [self.token_start_col as usize + 2..self.col as usize - 1];
-                        Ok(TokenKind::RawStr(RawStr(raw_string.as_bytes())))
+                        Ok(TokenKind::RawStr(Str(raw_string.into_boxed_slice())))
                     } else {
                         Err(())
                     }
@@ -1141,7 +1173,15 @@ impl<'src> Tokenizer<'src> {
 
                 loop {
                     let next_character = match self.next_ascii_char() {
-                        Ok(Some(b'\n') | None) => {
+                        Ok(Some(b'\n')) => {
+                            self.token_errors.push(Error {
+                                kind: ErrorKind::UnclosedQuotedLiteral(kind),
+                                col: self.token_start_col,
+                                pointers_count: self.token_len() - 1,
+                            });
+                            break;
+                        }
+                        Ok(None) => {
                             self.token_errors.push(Error {
                                 kind: ErrorKind::UnclosedQuotedLiteral(kind),
                                 col: self.token_start_col,
@@ -1163,7 +1203,15 @@ impl<'src> Tokenizer<'src> {
                     let character = match next_character {
                         b'\\' => {
                             let escape_character = match self.next_ascii_char() {
-                                Ok(Some(b'\n') | None) => {
+                                Ok(Some(b'\n')) => {
+                                    self.token_errors.push(Error {
+                                        kind: ErrorKind::UnclosedQuotedLiteral(kind),
+                                        col: self.token_start_col,
+                                        pointers_count: self.token_len() - 1,
+                                    });
+                                    break;
+                                }
+                                Ok(None) => {
                                     self.token_errors.push(Error {
                                         kind: ErrorKind::UnclosedQuotedLiteral(kind),
                                         col: self.token_start_col,
@@ -1236,7 +1284,15 @@ impl<'src> Tokenizer<'src> {
 
                 loop {
                     let next_character = match self.next_ascii_char() {
-                        Ok(Some(b'\n') | None) => {
+                        Ok(Some(b'\n')) => {
+                            self.token_errors.push(Error {
+                                kind: ErrorKind::UnclosedQuotedLiteral(kind),
+                                col: self.token_start_col,
+                                pointers_count: self.token_len() - 1,
+                            });
+                            break;
+                        }
+                        Ok(None) => {
                             self.token_errors.push(Error {
                                 kind: ErrorKind::UnclosedQuotedLiteral(kind),
                                 col: self.token_start_col,
@@ -1258,7 +1314,15 @@ impl<'src> Tokenizer<'src> {
                     let character = match next_character {
                         b'\\' => {
                             let escape_character = match self.next_ascii_char() {
-                                Ok(Some(b'\n') | None) => {
+                                Ok(Some(b'\n')) => {
+                                    self.token_errors.push(Error {
+                                        kind: ErrorKind::UnclosedQuotedLiteral(kind),
+                                        col: self.token_start_col,
+                                        pointers_count: self.token_len() - 1,
+                                    });
+                                    break;
+                                }
+                                Ok(None) => {
                                     self.token_errors.push(Error {
                                         kind: ErrorKind::UnclosedQuotedLiteral(kind),
                                         col: self.token_start_col,

@@ -82,8 +82,8 @@ pub struct Logger<'path> {
 
 #[allow(clippy::new_without_default)]
 impl<'path> Logger<'path> {
-    #[inline(always)]
     #[must_use]
+    #[inline]
     pub fn new(output: Option<&'path Path>) -> Self {
         return Self { start: Instant::now(), output };
     }
@@ -368,11 +368,13 @@ impl TryFrom<Vec<String>> for Args {
     type Error = Error;
 
     fn try_from(args: Vec<String>) -> Result<Self, Self::Error> {
+        #[inline]
         fn is_verbosity_flag((_verbosity_flag_index, verbosity_flag): &(usize, &String)) -> bool {
             return matches!(verbosity_flag.as_str(), "-q" | "--quiet" | "-V" | "--verbose");
         }
 
         #[allow(clippy::single_call_fn)]
+        #[inline]
         fn is_out_flag((_out_flag_index, out_flag): &(usize, &String)) -> bool {
             return matches!(out_flag.as_str(), "-o" | "--output");
         }

@@ -23,6 +23,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Highlighting of identifiers over the limit of 63 characters as errors
 - Highlighting of `_` integer literals separator
 - Highlighting of alternative integer literal bases
+- Highlighting of escaped double quotes `\"` in raw string literals
 
 ### Changed
 

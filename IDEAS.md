@@ -14,23 +14,6 @@ emit a warning for ambiguos use of unary/binary operators, i.e.:
     # negative 3 you might be missing an operator between `2` and `-3` -> `1 + 2 *op* -3`
 ```
 
-## Quotes in raw strings
-
-```kay
-r"nested "quotes" are not allowed";
-
-# the Rust way, would collide with comments
-r#"nested "quotes" are allowed"#
-
-# with extra quotes, the same amount of opening quotes must be used to close the string
-# you can use the number of opening quotes - 1 inside the string in succession
-r""nested "quotes" are allowed""
-r"""nested ""quotes"" are allowed"""
-
-# or allow for escapes (defeats the purpose of raw strings)
-r"nested \"quotes\" would need escaping"
-```
-
 ## Built-in notes
 
 Implement a way to recognize and collect todos, and other tags
@@ -1299,6 +1282,90 @@ maybe = option^;
 maybe = ^option; # or like this
 ```
 
+### Optionals/Error
+
+maybe this is not useful, could be implemented as a type union to reduce the language complexity:
+
+```kay
+# optionals
+let optional_int: int?;
+let optional_int: int | none;
+
+# or
+type Option<T> = T | none;
+
+# or
+enum Option<T> {
+    Some(T),
+    None,
+}
+
+# thus
+let optional_int_in_rust: Option<int>;
+
+# errors
+let int_or_error: int!SomeError; 
+let int_or_error: int | SomeError;
+let int_or_int_error: int | int; # would need to find a way to express this
+
+# or "force" the user to find better naming (create a distinct int error type or alias)
+type int_error = int;
+alias int_error = int;
+let int_or_int_error: int | int_error;
+
+# or to avoid creating a lot of "new" error types
+enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+
+# thus
+let int_or_int_error: Result<int, int>;
+
+# or create temporary distinct types (syntax subject to discussion)
+# this could introduce inline type aliases
+# so a function could use them like
+fn result: int as ok | int as err = foo(i: int) {
+    if i
+    case 0 do return 1 as err;
+    case 12 do return 21 as err;
+    case 21 do return 42 as ok;
+}
+
+# so to match on it would look like this
+let result = foo(i);
+if result
+case let integer: ok do {
+    # integer is of type `int`
+} case let err_code: err do {
+    # integer is of type `int` as well
+}
+
+# different syntaxes
+let int_or_int_error: int | err ! int;
+let int_or_int_error: int | int ! err;
+let int_or_int_error: int | err: int;
+let int_or_int_error: int | int alias err;
+let int_or_int_error: int | err alias int;
+
+# or a manual implementation, akin to typescript
+type Result<T, E> = {
+    success = true,
+    data: T,
+} | {
+    success: false, # or using a value as a type
+    err: E,
+}
+
+# which would allow for manual optimizations
+type c_like_int_return =
+    None {
+        error := -1, # or with a special `value as type syntax`
+    } | Some {
+        data := 0..,
+    }
+```
+
 ## Bit-casts
 
 ability to define/overload the casting operator for specific types.
@@ -1377,29 +1444,11 @@ red_plus_green.a = red.a + green.b;
 ## compile time constants and functions excution
 
 ```kay
-# decide on "compile-time" directives syntax (maybe convert comments to `//` or something else and use `#`)
-const answer = 40 + 2;
-static let answer = 40 + 2;
-static var answer = 40 + 2;
-let answer :: 40 + 2;
-let answer: int : 40 + 2;
+const answer = 40 + 2; # would just copy paste the value everytime
+let i = answer; # equivalent to `let i = 40 + 2`
 
-run some_function();
-@run some_function();
-const some_function();
-static some_function();
-```
-
-## pass/none/whatever equivalent to doing nothing (python's pass)
-
-```kay
-let answer = 0;
-if answer == 1 do println "in branch 1";
-else if answer > 1 do pass;
-else if answer > 1 none; # or like this, explicit no do keyword required (to differentiate from none being a value)
-else if answer > 1 do {}; # or like this
-else if answer > 1 {}; # or like this
-else if answer > 1; # or like this
+const fn int = answer() do return 42;
+let i = const answer(); # equivalent to `let i = { return 42 }` -> `let i = 42`
 ```
 
 ## experiment with no dynamic dispatch
@@ -1407,9 +1456,9 @@ else if answer > 1; # or like this
 use unions instead, which have to be checked (kinda like what Casey Muratori explained in
 ["Clean" Code, Horrible Performance](https://www.youtube.com/watch?v=tD5NrevFtbU)).
 
-dynamically dispatched objects rely on interfaces/traits/concept (whatever name) stipulating that a type implements a
-specific function, so the compiler can basically inject the tagged union representing the polymorfic object and the
-check for the type of the object by itself
+dynamically dispatched objects rely on interfaces/traits/concept (whatever name) stipulating that a
+type implements a specific function, so the compiler can basically inject the tagged union
+representing the polymorfic object and the check for the type of the object by itself.
 
 maybe optionally enable true dynamic dispatch on demand with v-tables and stuff
 
@@ -1557,7 +1606,6 @@ messages:
     return lhs + rhs;
 }
 ```
-
 
 so going from usage to function would look like this;
 

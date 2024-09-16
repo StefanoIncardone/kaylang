@@ -86,7 +86,7 @@ in source code as being surrounded by `'`:
 
 ### Escape sequences
 
-It is also possible to represent special characters by **escaping** them with back slashes:
+It is also possible to represent special characters by **escaping** them with back slashes.
 These are the available escaped characters:
 
 ```kay
@@ -116,14 +116,20 @@ code as being surrounded by `"` and contain any number of regular or escaped cha
 It is also possible to represent special characters by **escaping** them with back slashes, just
 like with character literals [escape sequences](#escape-sequences).
 
-Strings can also be configured as **raw strings** with the `r` prefix, where escapes sequences would
-not be taken into account:
+Strings can also be configured as **raw strings** with the `r` prefix, where the only valid escape
+sequences would be escaped double quotes `\"` for consistency with regular strings escapes:
 
 ```kay
 "Escaped\nstring";
 
 # taken 'as is' from source code
 r"Raw\nstring";
+
+# taken 'as is' from source code, except for `\"` escapes
+r"Raw\n\"string\"";
+
+# Error: unclosed string
+r"Kay let's go\"
 ```
 
 Strings can also be indexed with zero-based indexing to gain access to individual character:

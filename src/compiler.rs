@@ -8,7 +8,7 @@ use crate::{
     syntax::{
         ast::{
             self, AssignmentOp, Ast, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression,
-            IfStatement, Node, ScopeIndex, SizeOf, StrKind, Type, TypeOf, UnaryOp,
+            IfStatement, Node, ScopeIndex, SizeOf, Type, TypeOf, UnaryOp,
         },
         tokenizer::uint,
     },
@@ -130,28 +130,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
             }
 
             // strings
-            let mut string_index = 0;
-            let mut raw_string_index = 0;
-            for string_kind in &this.ast.string_kinds {
-                let label = string_index + raw_string_index;
-
-                match string_kind {
-                    StrKind::Str => {
-                        let string = &this.ast.strings[string_index];
-                        string_index += 1;
-
-                        let string_str = unsafe { core::str::from_utf8_unchecked(&string.0) };
-                        let string_chars = string_str.escape_debug();
-                        _ = writeln!(strings, " str str_{label}, `{string_chars}`");
-                    }
-                    StrKind::RawStr => {
-                        let string = &this.ast.raw_strings[raw_string_index];
-                        raw_string_index += 1;
-
-                        let raw_string_str = unsafe { core::str::from_utf8_unchecked(string.0) };
-                        _ = writeln!(strings, " str str_{label}, \"{raw_string_str}\"");
-                    }
-                }
+            for (label, string) in this.ast.strings.iter().enumerate() {
+                let string_str = unsafe { core::str::from_utf8_unchecked(&string.0) };
+                let string_chars = string_str.escape_debug();
+                _ = writeln!(strings, " str str_{label}, `{string_chars}`");
             }
 
             // variables

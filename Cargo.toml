@@ -43,6 +43,7 @@ unused_qualifications = "warn"
 unused_results = "forbid"
 private_bounds = "forbid"
 private_interfaces = "forbid"
+unused_must_use = "forbid"
 
 [lints.clippy] # to be used once in a while
 blanket_clippy_restriction_lints = "allow"

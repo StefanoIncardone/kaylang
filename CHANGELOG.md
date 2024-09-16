@@ -9,7 +9,6 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 ## Unreleased
 
 - Ability to reconstruct the source code from the tokens and the ast
-- Number constants in base 2, 8, 16 and possibly in arbitrary bases:
 - Shortcircuted and/or operators
 - Unsigned integers
 - Casting operator
@@ -35,6 +34,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
     - `0b`: binary
     - `0o`: octal
     - `0x`: hexadecimal
+- Escaped quotes in raw string literals: `r"nested \"quotes\" are now allowed by escaping them"`
 
 ### Changed
 
@@ -46,8 +46,9 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 ### Fixed
 
 - Added `break` and `continue` statements to the [syntax specification](docs/SYNTAX.ebnf)
-- Corrected error messages related to undefined variables and variables already defined
-- Corrected errors related to integers, identifiers and string and character literals tokenization
+- Corrected error messages related to:
+    - undefined variables and variables already defined
+    - integers, identifiers and string, raw_string and character literals tokenization
 - Temporary values are now properly displayed in the generated assembly comments
 
 ## 0.6.0 - 2024-08-31
@@ -55,7 +56,8 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 >[!WARNING]
 > From version `0.6.0` breaking changes may appear at any time, meaning that features in `0.6.0`
 > could not work or could be totally **removed** in `0.6.1`.
-> This is to prevent an explosion in version numbers and the stagnation of **breaking** feature updates, since breaking and non-breaking changes will be frequent.
+> This is to prevent an explosion in version numbers and the stagnation of **breaking** feature
+> updates, since breaking and non-breaking changes will be frequent.
 > Breaking changes outside of the `Removed` section will be made obvious for easy recognition.
 > Changes to the ABI would **not** be considered breaking since no stable ABI is defined for now.
 > Changes to error messages, help message and alike would **not** be considered breaking.

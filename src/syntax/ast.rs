@@ -2,7 +2,7 @@
 
 use super::{
     tokenizer::{
-        ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, RawStr, Str, Token, TokenKind,
+        ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, Str, Token, TokenKind,
     },
     Error, ErrorInfo, IntoErrorInfo,
 };
@@ -58,7 +58,7 @@ impl BaseTypeOf for BaseType {
 }
 
 impl SizeOf for BaseType {
-    #[inline(always)]
+    #[inline]
     fn size(&self) -> usize {
         return match self {
             Self::Int => size_of::<int>(),
@@ -90,13 +90,14 @@ impl Display for Type {
 }
 
 impl TypeOf for Type {
+    #[inline(always)]
     fn typ(&self) -> Type {
         return *self;
     }
 }
 
 impl BaseTypeOf for Type {
-    #[inline(always)]
+    #[inline]
     fn base_typ(&self) -> BaseType {
         return match self {
             Self::Base(typ) => *typ,
@@ -106,7 +107,7 @@ impl BaseTypeOf for Type {
 }
 
 impl SizeOf for Type {
-    #[inline(always)]
+    #[inline]
     fn size(&self) -> usize {
         return match self {
             Self::Base(typ) => typ.size(),
@@ -346,7 +347,7 @@ impl TypeOf for ComparisonOp {
 }
 
 impl BaseTypeOf for ComparisonOp {
-    #[inline(always)]
+    #[inline]
     fn base_typ(&self) -> BaseType {
         return match self {
             Self::Compare => BaseType::Int,
@@ -542,6 +543,7 @@ impl TypeOf for Expression {
 }
 
 impl<'src, 'ast: 'src> Expression {
+    #[inline(always)]
     pub(crate) const fn display(&'ast self, ast: &'ast Ast<'src>) -> ExpressionDisplay<'src, 'ast> {
         return ExpressionDisplay { ast, expr: self };
     }
@@ -701,12 +703,6 @@ pub(crate) struct Variable<'src> {
     pub(crate) value: Expression,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) enum StrKind {
-    Str,
-    RawStr,
-}
-
 // NOTE(stefano): this is in reality closer to an intermediate representation than to an AST
 // TODO(stefano): introduce other representation before and after this Ast
 // IDEA(stefano): build the AST, and then validate the AST afterwards
@@ -722,8 +718,6 @@ pub struct Ast<'src> {
     pub(crate) variables: Vec<Variable<'src>>,
 
     pub(crate) strings: Vec<Str>,
-    pub(crate) raw_strings: Vec<RawStr<'src>>,
-    pub(crate) string_kinds: Vec<StrKind>,
 }
 
 #[derive(Debug)]
@@ -756,8 +750,6 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             variables: Vec::new(),
 
             strings: Vec::new(),
-            raw_strings: Vec::new(),
-            string_kinds: Vec::new(),
         };
 
         if tokens.is_empty() {
@@ -1469,19 +1461,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
     }
 
-    #[inline(always)]
     fn new_string(&mut self, string: Str) -> StringLabel {
-        let label = self.ast.string_kinds.len() as StringLabel;
-        self.ast.string_kinds.push(StrKind::Str);
+        let label = self.ast.strings.len() as StringLabel;
         self.ast.strings.push(string);
-        return label;
-    }
-
-    #[inline(always)]
-    fn new_raw_string(&mut self, string: RawStr<'src>) -> StringLabel {
-        let label = self.ast.string_kinds.len() as StringLabel;
-        self.ast.string_kinds.push(StrKind::RawStr);
-        self.ast.raw_strings.push(string);
         return label;
     }
 
@@ -1683,11 +1665,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }),
             },
             TokenKind::Ascii(ascii_ch) => Ok(Expression::Ascii(*ascii_ch)),
-            TokenKind::Str(string) => {
+            TokenKind::Str(string) | TokenKind::RawStr(string) => {
                 Ok(Expression::Str { label: self.new_string(string.clone()) })
-            }
-            TokenKind::RawStr(string) => {
-                Ok(Expression::Str { label: self.new_raw_string(*string) })
             }
             TokenKind::Identifier(name) => match self.resolve_type(name) {
                 None => match self.resolve_variable(name) {
