@@ -1,3 +1,5 @@
+// TODO(stefano): multiline strings
+
 use super::{Error, ErrorInfo, IntoErrorInfo};
 use crate::src_file::{offset, Line, SrcFile};
 use core::fmt::Display;

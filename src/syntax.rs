@@ -2,7 +2,7 @@ pub mod ast;
 pub mod tokenizer;
 
 use crate::{
-    src_file::{Position, SrcFile},
+    src_file::{offset, Position, SrcFile},
     Bg, Colored, Fg, Flag, AT, BAR, ERROR,
 };
 use core::fmt::{Debug, Display};
@@ -37,8 +37,8 @@ pub struct ErrorInfo {
 pub struct Error<K: IntoErrorInfo> {
     pub kind: K,
     /// absolute source code byte position
-    pub col: u32,
-    pub pointers_count: u32,
+    pub col: offset,
+    pub pointers_count: offset,
 }
 
 impl<K: IntoErrorInfo> Error<K> {
@@ -64,10 +64,10 @@ impl<K: IntoErrorInfo> Error<K> {
 pub struct ErrorDisplay<'src> {
     pub error_message: Cow<'static, str>,
     pub file: &'src Path,
-    pub line: u32,
-    pub col: u32,
+    pub line: offset,
+    pub col: offset,
     pub line_text: &'src str,
-    pub pointers_count: u32,
+    pub pointers_count: offset,
     pub error_cause_message: Cow<'static, str>,
 }
 
