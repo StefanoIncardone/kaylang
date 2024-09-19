@@ -1,4 +1,5 @@
 // IDEA(stefano): fuse tokenization and parsing, making the tokenizer a generator of tokens
+// TODO(stefano): multidimensional arrays
 
 use super::{
     tokenizer::{

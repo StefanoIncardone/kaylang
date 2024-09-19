@@ -23,7 +23,6 @@ pub type Line = Span;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Position {
     pub line: offset,
-    // IDEA(stefano): restrict the max line length to 255/511/1023/2047/4095
     pub col: offset,
 }
 

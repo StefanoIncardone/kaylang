@@ -463,11 +463,7 @@ pub(crate) enum TokenKind<'src> {
     /// integer literals are never empty and always contain valid ascii digits
     Integer(Base, Integer<'src>),
     Ascii(ascii),
-    /* IDEA(stefano):
-    or treat string with no escapes as raw strings
-    or split into EscapedStr(Str) and Str(&'src [ascii])
-    or remove Str(Str) and only escape the characters during compilation
-    */
+    // IDEA(stefano): split into EscapedStr(Str) and Str(&'src [ascii]) to save allocations
     /* IDEA(stefano):
     limit string literals to a max amount of logical characters (escapes are considered a single character)
     e.g. 63/127/255/511/1023/2047/4095

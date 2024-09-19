@@ -36,21 +36,6 @@ IDEA(stefano): file.kay:42:genious
 
 Could create a config file that specifies what notes to look for, like a notes.toml
 
-## Arbitrary number bases
-
-```kay
-# standard bases
-let binay = 0b0001_0101;
-let octal = 0o25;
-let hexadecimal = 0x15;
-
-# arbitrary bases would make use of the `a` modifier to state that any number between the
-# leading 0 and `a` modifier would be the base of the number and allow to represent numbers up
-# to base 36 using characters from `0123456789abcdefghijklmnopqrstuvwxyz` or
-# `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ`
-let base_21 = 021a1;
-```
-
 ## More output file names flags
 
 currently only the output path (`-o`, `--output`) can be specified and the names of the generated artifacts is
@@ -112,21 +97,28 @@ binary sizes due to:
 Every function is thus bigger and more complex, so we could let a cli flag such as
 `--crashinfo` followed by some crash info degree such as:
 
+- `full`: as shown above:
 - `none`: no reason, file, line and column information:
 
     ```text
     Crash: program crashed
     ```
 
-- `full`: as shown above:
-- `reduced`: only the reason of the crash:
+- `reason`: only the reason of the crash:
 
     ```text
     Crash: something specific wrong happened
     ```
 
-This could also speedup performance since less information (namely line and column number
-information) would not be passed to functions
+- `location`: only the location of the crash:
+
+    ```text
+    Crash: program crashed
+    at: file.kay:21:12
+    ```
+
+This could also speedup performance since less information would be passed to functions, namely
+reason of the crash, file, line and column number
 
 ## Loops/ifs
 
@@ -199,48 +191,85 @@ case 19 {
 }
 
 # pattern matching:
-# - short and concise
-# - can declare mutability modifiers `let` or `var` on matched values
-if answer == let Ok(ok) do println ok; # ok is available only in the do statement
-
-# more cases:
-if answer == let Ok(ok) do println ok;
-else if answer == let Err(err) do println err;
-
-# refactor to switch:
 # - only requires to change `==` and `else if answer ==` to `case`
 # - values inside pattern matching (i.e.: `ok` and `err`) are only available in the corresponding branch
 # - split into multiple lines if preferred
+# - short and concise
+# - can declare mutability modifiers `let` or `var` on matched values
 if answer
-case var Ok(ok) do println ok;
-case let Err(err) do println err;
+case let Ok(ok) do println ok; # ok is available only in the do statement and is immutable
+case var Err(err) do println err; # err is available only in the do statement and is mutable
+case let Err2(var err1, err2) {
+    println err1; # err1 is available only in this block and is mutable
+    println err2; # err2 is available only in this block and is immutable
+}
+case var Err2(let err1, err2) {
+    println err1; # err1 is available only in this block and is immutable
+    println err2; # err2 is available only in this block and is mutable
+}
+
+# could benefit from rust's mutability modifiers
+# - would get rid of the initial mutabilty modifiers
+if answer
+case Ok(ok) do println ok; # ok is available only in the do statement and is immutable by default
+case Ok_b(let ok) do println ok; # `let` is redundant
+case Err(var err) do println err; # err is available only in the do statement and is mutable
+case Err2(var err1, err2) {
+    println err1; # err1 is available only in this block and is mutable
+    println err2; # err2 is available only in this block and is immutable
+}
 
 # rust-inspired let else syntax:
 # - `ok` will be available from now on
-let Ok(ok) = answer else do println "err";
+let Ok(ok) = answer else {
+    println "err";
+    return; # branch need to diverge
+}
+
+# rust-inspired let else syntax, but more consistent with a regular pattern match:
+# - `ok` will be available from now on
+if Ok(let ok) = answer else {
+    println "err";
+    return; # branch need to diverge
+}
 
 # oh no! i need to access the error value
 # - literally just add the pattern corresponding to the err case
 # - 'err' will only be available in it's switch branch
 # - `case` required to allow for more consistency when adding multiple cases
-let Ok(ok) = answer else case let Err(err) do println err;
+let Ok(ok) = answer else case let Err(err) {
+    println err
+    return;
+}
 
 # would allow for acces to other values in other patterns if needed
 # - just add the other patterns
 # - debate wheter the repetition of the `else` kewword should be addressed
 let Ok(ok) = answer else
-case let Err0(err0) do println err0;
-case var Err1(err1) do println err1;
-else do println "err";
+case let Err0(err0) {
+    println err0;
+    return;
+} case var Err1(err1) {
+    println err1;
+    return;
+} else {
+    println "err";
+    return;
+}
 
-# want to refactor to a regular switch?
-# - minimal code change
-# - all of the matched values will only be available in their switch branch
-if answer
-case let Ok(ok) do println ok;
-case var Err0(err0) do println err0;
-case let Err1(err1) do println err1;
-else do println "err";
+# would just be syntactic sugar for
+let ok = if answer
+case let Ok(ok) do break ok;
+case let Err0(err0) {
+    println err0;
+    return;
+} case var Err1(err1) {
+    println err1;
+    return;
+} else {
+    println "err";
+    return;
+}
 ```
 
 possibly allow for the operator before the first case to propagate, basically sugar for a regular if
@@ -316,7 +345,7 @@ if (answer == 19) {
 //  - each case is basically a goto statement
 // - more code
 // - requires lots of structural change and refactoring
-switch answer {
+switch (answer) {
     case 19: {
         printf("lucky");
         break;
@@ -664,9 +693,15 @@ let s5 = "aldo";
 let b = ["hello", "from", "kay"];
 let a = ["hello", "from", "stefano"];
 
-if array_eq(a, b) is
+if array_eq(a, b)
 case let mismatch: none do println("equals"); # would not be reached since there was a mismatch
 else let mismatch: uint do println(f"mismatch at index {mismatch}"); # mismatch would have the value of 2
+
+if array_eq(a, b)
+case let mismatch: none do println("equals"); # would not be reached since there was a mismatch
+case let mismatch: uint do println(f"mismatch at index {mismatch}"); # mismatch would have the value of 2
+else do ...; # unreachable branch: all variants have been matched
+
 
 fn mismatch_index: uint? = array_eq[T: type, N: uint](dst: T[N]*, src: T[N]*) {
     loop var i = N; i > 0; i -= 1 {
@@ -1366,10 +1401,92 @@ type c_like_int_return =
     }
 ```
 
+or a `type enum`
+
+``` kay
+type enum int_or_bool {
+    integer: int,
+    boolean: bool,
+}
+
+type enum int_or_error_code {
+    integer: int,
+    error_code: int,
+}
+
+type enum Option<T> {
+    Some: T,
+    None, # empty value
+}
+
+type enum Result<T, E> {
+    Ok: T,
+    Err: E,
+}
+
+# so to match on it would look like this
+let result = int_or_error_code.integer(1);
+if result
+case let int_or_error_code.integer(integer) do {
+    # `integer` is of type `int`
+} case let int_or_error_code.err_code(code) do {
+    # `code` is of type `int` as well
+}
+
+let result: Result<int, bool> = Result.Ok(1);
+if result
+case let Result.Ok(integer) do {
+    # `integer` is of type `int`
+} case let Result.Err(err) do {
+    # `err` is of type `bool`
+}
+
+# or
+let result: Result<int, bool> = Result.Ok(1);
+if result
+case let integer: Result.Ok do {
+    # `integer` is of type `int`
+} case let err: Result.Err do {
+    # `err` is of type `bool`
+}
+
+# inline type enum
+let int_or_bool: type enum { file: File, err: ReadFileError };
+# compared to what was discussed above
+let int_or_bool: File | ReadFileError;
+```
+
+or remove type unions altogether and treat enum as type unions
+
+```kay
+# this
+type enum Result<T, E> {
+    Ok: T,
+    Err: E,
+}
+
+# would become
+enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+
+# which would solve type collisions, but would be more verbose
+enum integer_or_error_code {
+    Integer(int),
+    ErrorCode(int),
+}
+
+# would solve this
+let int_or_int_error: int | err: int;
+type int_or_int_error = int | err: int;
+```
+
 ## Bit-casts
 
 ability to define/overload the casting operator for specific types.
 types with explicit conversions can be bit-casted to other types when possible
+basically defining different interpretations of the same data
 
 ```kay
 struct Rgba like u32 {
@@ -1379,7 +1496,7 @@ struct Rgba like u32 {
     a: u8,
 }
 
-# or
+# or (would be more consistent with regular as conversions, e.g.: true as int)
 struct Rgba as u32 {
     r: u8,
     g: u8,
@@ -1395,8 +1512,27 @@ struct Rgba alias u32 {
     a: u8,
 }
 
-# basically equivalent to
+# or (would be more consistent with variable type hints)
+struct Rgba: u32 {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+}
+
+# basically equivalent to, could also be the default to avoid extra language complexity
 union Rgba {
+    rgba: u32,
+    struct {
+        r: u8,
+        g: u8,
+        b: u8,
+        a: u8,
+    }
+}
+
+# or to
+struct union Rgba {
     rgba: u32,
     struct {
         r: u8,
