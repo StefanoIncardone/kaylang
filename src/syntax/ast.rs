@@ -1,10 +1,8 @@
 // IDEA(stefano): fuse tokenization and parsing, making the tokenizer a generator of tokens
-// TODO(stefano): multidimensional arrays
+// TODO(stefano): multidimensional
 
 use super::{
-    tokenizer::{
-        ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, Str, Token, TokenKind,
-    },
+    tokenizer::{ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, Str, Token, TokenKind},
     Error, ErrorInfo, IntoErrorInfo,
 };
 use crate::{
@@ -135,16 +133,16 @@ impl Display for UnaryOp {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
-            Self::Len               => write!(f, "len"),
-            Self::Not               => write!(f, "!"),
+            Self::Len             => write!(f, "len"),
+            Self::Not             => write!(f, "!"),
 
-            Self::Plus              => write!(f,  "+"),
-            Self::WrappingPlus      => write!(f, r"+\"),
-            Self::SaturatingPlus    => write!(f,  "+|"),
+            Self::Plus            => write!(f,  "+"),
+            Self::WrappingPlus    => write!(f, r"+\"),
+            Self::SaturatingPlus  => write!(f,  "+|"),
 
-            Self::Minus             => write!(f,  "-"),
-            Self::WrappingMinus     => write!(f, r"-\"),
-            Self::SaturatingMinus   => write!(f,  "-|"),
+            Self::Minus           => write!(f,  "-"),
+            Self::WrappingMinus   => write!(f, r"-\"),
+            Self::SaturatingMinus => write!(f,  "-|"),
         };
     }
 }
@@ -233,39 +231,39 @@ impl Display for BinaryOp {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
-            Self::Pow           => write!(f,  "**"),
-            Self::WrappingPow   => write!(f, r"**\"),
-            Self::SaturatingPow => write!(f,  "**|"),
+            Self::Pow                 => write!(f,  "**"),
+            Self::WrappingPow         => write!(f, r"**\"),
+            Self::SaturatingPow       => write!(f,  "**|"),
 
-            Self::Times             => write!(f,  "*"),
-            Self::WrappingTimes     => write!(f, r"*\"),
-            Self::SaturatingTimes   => write!(f,  "*|"),
+            Self::Times               => write!(f,  "*"),
+            Self::WrappingTimes       => write!(f, r"*\"),
+            Self::SaturatingTimes     => write!(f,  "*|"),
 
-            Self::Divide            => write!(f,  "/"),
-            Self::WrappingDivide    => write!(f, r"/\"),
-            Self::SaturatingDivide  => write!(f,  "/|"),
+            Self::Divide              => write!(f,  "/"),
+            Self::WrappingDivide      => write!(f, r"/\"),
+            Self::SaturatingDivide    => write!(f,  "/|"),
 
-            Self::Remainder => write!(f, "%"),
+            Self::Remainder           => write!(f, "%"),
 
-            Self::Plus              => write!(f,  "+"),
-            Self::WrappingPlus      => write!(f, r"+\"),
-            Self::SaturatingPlus    => write!(f,  "+|"),
+            Self::Plus                => write!(f,  "+"),
+            Self::WrappingPlus        => write!(f, r"+\"),
+            Self::SaturatingPlus      => write!(f,  "+|"),
 
-            Self::Minus             => write!(f,  "-"),
-            Self::WrappingMinus     => write!(f, r"-\"),
-            Self::SaturatingMinus   => write!(f,  "-|"),
+            Self::Minus               => write!(f,  "-"),
+            Self::WrappingMinus       => write!(f, r"-\"),
+            Self::SaturatingMinus     => write!(f,  "-|"),
 
-            Self::LeftShift             => write!(f,  "<<"),
-            Self::WrappingLeftShift     => write!(f, r"<<\"),
-            Self::SaturatingLeftShift   => write!(f,  "<<|"),
+            Self::LeftShift           => write!(f,  "<<"),
+            Self::WrappingLeftShift   => write!(f, r"<<\"),
+            Self::SaturatingLeftShift => write!(f,  "<<|"),
 
-            Self::RightShift    => write!(f,  ">>"),
-            Self::LeftRotate    => write!(f, "<<<"),
-            Self::RightRotate   => write!(f, ">>>"),
+            Self::RightShift          => write!(f,  ">>"),
+            Self::LeftRotate          => write!(f, "<<<"),
+            Self::RightRotate         => write!(f, ">>>"),
 
-            Self::BitAnd    => write!(f, "&"),
-            Self::BitOr     => write!(f, "|"),
-            Self::BitXor    => write!(f, "^"),
+            Self::BitAnd              => write!(f, "&"),
+            Self::BitOr               => write!(f, "|"),
+            Self::BitXor              => write!(f, "^"),
         };
     }
 }
@@ -294,8 +292,8 @@ impl Display for BooleanBinaryOp {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
-            Self::And   => write!(f, "&&"),
-            Self::Or    => write!(f, "||"),
+            Self::And => write!(f, "&&"),
+            Self::Or  => write!(f, "||"),
         };
     }
 }
@@ -329,13 +327,13 @@ impl Display for ComparisonOp {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
-            Self::Compare           => write!(f, "<=>"),
-            Self::EqualsEquals      => write!(f, "=="),
-            Self::NotEquals         => write!(f, "!="),
-            Self::Greater           => write!(f, ">"),
-            Self::GreaterOrEquals   => write!(f, ">="),
-            Self::Less              => write!(f, "<"),
-            Self::LessOrEquals      => write!(f, "<="),
+            Self::Compare         => write!(f, "<=>"),
+            Self::EqualsEquals    => write!(f, "=="),
+            Self::NotEquals       => write!(f, "!="),
+            Self::Greater         => write!(f, ">"),
+            Self::GreaterOrEquals => write!(f, ">="),
+            Self::Less            => write!(f, "<"),
+            Self::LessOrEquals    => write!(f, "<="),
         }
     }
 }
@@ -408,43 +406,43 @@ impl Display for AssignmentOp {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
-            Self::Equals => write!(f, "="),
+            Self::Equals              => write!(f, "="),
 
-            Self::Pow           => write!(f,  "**="),
-            Self::WrappingPow   => write!(f, r"**\="),
-            Self::SaturatingPow => write!(f,  "**|="),
+            Self::Pow                 => write!(f,  "**="),
+            Self::WrappingPow         => write!(f, r"**\="),
+            Self::SaturatingPow       => write!(f,  "**|="),
 
-            Self::Times             => write!(f,  "*="),
-            Self::WrappingTimes     => write!(f, r"*\="),
-            Self::SaturatingTimes   => write!(f,  "*|="),
+            Self::Times               => write!(f,  "*="),
+            Self::WrappingTimes       => write!(f, r"*\="),
+            Self::SaturatingTimes     => write!(f,  "*|="),
 
-            Self::Divide            => write!(f,  "/="),
-            Self::WrappingDivide    => write!(f, r"/\="),
-            Self::SaturatingDivide  => write!(f,  "/|="),
+            Self::Divide              => write!(f,  "/="),
+            Self::WrappingDivide      => write!(f, r"/\="),
+            Self::SaturatingDivide    => write!(f,  "/|="),
 
-            Self::Remainder => write!(f, "%="),
+            Self::Remainder           => write!(f, "%="),
 
-            Self::Plus              => write!(f,  "+="),
-            Self::WrappingPlus      => write!(f, r"+\="),
-            Self::SaturatingPlus    => write!(f,  "+|="),
+            Self::Plus                => write!(f,  "+="),
+            Self::WrappingPlus        => write!(f, r"+\="),
+            Self::SaturatingPlus      => write!(f,  "+|="),
 
-            Self::Minus             => write!(f,  "-="),
-            Self::WrappingMinus     => write!(f, r"-\="),
-            Self::SaturatingMinus   => write!(f,  "-|="),
+            Self::Minus               => write!(f,  "-="),
+            Self::WrappingMinus       => write!(f, r"-\="),
+            Self::SaturatingMinus     => write!(f,  "-|="),
 
-            Self::And       => write!(f, "&&="),
-            Self::BitAnd    => write!(f, "&="),
-            Self::Or        => write!(f, "||="),
-            Self::BitOr     => write!(f, "|="),
-            Self::BitXor    => write!(f, "^="),
+            Self::And                 => write!(f, "&&="),
+            Self::BitAnd              => write!(f, "&="),
+            Self::Or                  => write!(f, "||="),
+            Self::BitOr               => write!(f, "|="),
+            Self::BitXor              => write!(f, "^="),
 
-            Self::LeftShift             => write!(f,  "<<="),
-            Self::WrappingLeftShift     => write!(f, r"<<\="),
-            Self::SaturatingLeftShift   => write!(f,  "<<|="),
+            Self::LeftShift           => write!(f,  "<<="),
+            Self::WrappingLeftShift   => write!(f, r"<<\="),
+            Self::SaturatingLeftShift => write!(f,  "<<|="),
 
-            Self::RightShift    => write!(f,  ">>="),
-            Self::LeftRotate    => write!(f, "<<<="),
-            Self::RightRotate   => write!(f, ">>>="),
+            Self::RightShift          => write!(f,  ">>="),
+            Self::LeftRotate          => write!(f, "<<<="),
+            Self::RightRotate         => write!(f, ">>>="),
         };
     }
 }

@@ -1,4 +1,4 @@
-use crate::{src_file::SrcFile, CAUSE, ERROR};
+use crate::{error::MsgWithCause, src_file::SrcFile, ERROR};
 use core::fmt::{Display, Write as _};
 use std::{
     path::{Path, PathBuf},
@@ -80,13 +80,10 @@ pub enum Error {
     MustBeADirectoryPath(PathBuf),
 }
 
-impl std::error::Error for Error {}
-
 impl Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut message = String::new();
         let mut cause = String::new();
-
         match self {
             Self::CouldNotCreateOutputDirectory { path, err } => {
                 _ = write!(message, "could not create output directory '{}", path.display());
@@ -98,10 +95,9 @@ impl Display for Error {
             }
         }
 
-        return write!(
-            f,
-            "{ERROR}: {message}\
-            \n{CAUSE}: {cause}",
-        );
+        let error = MsgWithCause { kind: &ERROR, message: &message, cause: &cause };
+        return write!(f, "{error}");
     }
 }
+
+impl std::error::Error for Error {}

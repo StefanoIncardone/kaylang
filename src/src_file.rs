@@ -1,4 +1,4 @@
-use crate::{CAUSE, ERROR};
+use crate::{error::MsgWithCause, ERROR};
 use core::fmt::Display;
 use std::{
     fs::File,
@@ -177,10 +177,9 @@ pub struct Error {
     pub kind: ErrorKind,
 }
 
-impl std::error::Error for Error {}
-
 impl Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let message = format!("could not read '{}'", self.path.display());
         let cause = match &self.kind {
             ErrorKind::Io(err) => format!("{err} ({})", err.kind()),
             ErrorKind::MustBeAFilePath => "must be a file path".to_owned(),
@@ -190,11 +189,9 @@ impl Display for Error {
             ErrorKind::CouldNotReadEntireFile => "failed to read entire file".to_owned(),
         };
 
-        return write!(
-            f,
-            "{ERROR}: could not read '{file_path}'\
-            \n{CAUSE}: {cause}",
-            file_path = self.path.display(),
-        );
+        let error = MsgWithCause { kind: &ERROR, message: &message, cause: &cause };
+        return write!(f, "{error}");
     }
 }
+
+impl std::error::Error for Error {}

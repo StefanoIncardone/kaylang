@@ -2,11 +2,13 @@
 
 pub mod color;
 pub mod compiler;
+pub mod error;
 pub mod src_file;
 pub mod syntax;
 
 use color::{Bg, Colored, Fg, Flag, Flags};
 use core::fmt::{Display, Write as _};
+use error::MsgWithCauseUnderText;
 use std::{
     path::{Path, PathBuf},
     time::Instant,
@@ -760,8 +762,6 @@ pub enum Error {
     FromArgs { kind: ErrorKind, args: Vec<String>, erroneous_arg_index: usize },
 }
 
-impl std::error::Error for Error {}
-
 impl Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut args_text = String::new();
@@ -881,23 +881,16 @@ impl Display for Error {
             }
         };
 
-        let msg =
-            Colored { text: error_message, fg: Fg::White, bg: Bg::Default, flags: Flag::Bold };
-
-        let pointers_and_cause = Colored {
-            text: format!("{spaces:^>pointers_count$} {error_cause_message}", spaces = ""),
-            fg: Fg::LightRed,
-            bg: Bg::Default,
-            flags: Flag::Bold,
+        let error = MsgWithCauseUnderText {
+            kind: &ERROR,
+            message: &error_message,
+            cause: &error_cause_message,
+            line_text: &args_text,
+            pointers_offset,
+            pointers_count,
         };
-
-        return write!(
-            f,
-            "{ERROR}: {msg}\
-            \n{BAR}\
-            \n{BAR} {args_text}\
-            \n{BAR} {spaces:>pointers_offset$}{pointers_and_cause}",
-            spaces = ""
-        );
+        return write!(f, "{error}");
     }
 }
+
+impl std::error::Error for Error {}

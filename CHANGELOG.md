@@ -29,14 +29,22 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ### Added
 
+Language:
+
 - `_` as a digit separator, e.g.: `123_456_678` is now a valid number literal
 - Alternative number literals bases:
     - `0b`: binary
     - `0o`: octal
     - `0x`: hexadecimal
-- Escaped quotes in raw string literals: `r"nested \"quotes\" are now allowed by escaping them"`
+- Escape sequences in raw string literals: `r"nested \"quotes\" are now allowed by escaping them"`
+
+Compiler:
+
+- Created and exposed API for error messages, introduced the `error` module
 
 ### Changed
+
+Compiler:
 
 - Restricted max source file size to 4GB
 - Restricted max identifiers length to 63 characters
@@ -45,7 +53,12 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ### Fixed
 
+Language:
+
 - Added `break` and `continue` statements to the [syntax specification](docs/SYNTAX.ebnf)
+
+Compiler:
+
 - Corrected error messages related to:
     - undefined variables and variables already defined
     - integers, identifiers and string, raw_string and character literals tokenization

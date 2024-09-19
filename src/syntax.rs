@@ -2,8 +2,9 @@ pub mod ast;
 pub mod tokenizer;
 
 use crate::{
+    error::MsgWithCauseUnderTextWithLocation,
     src_file::{offset, Position, SrcFile},
-    Bg, Colored, Fg, Flag, AT, BAR, ERROR,
+    ERROR,
 };
 use core::fmt::{Debug, Display};
 use std::{borrow::Cow, path::Path};
@@ -12,21 +13,6 @@ pub trait IntoErrorInfo: Debug + Clone {
     fn info(&self) -> ErrorInfo;
 }
 
-/* IDEA(stefano):
-refactor to allow for errors without a proper or redundant cause message, i.e.:
-Error: unrecognized character
-at: file.kay:21:5
-   |
-21 | blah . dadasd
-   |      ^ unrecognized
-
-would become:
-Error: unrecognized character
-at: file.kay:21:5
-   |
-21 | blah . dadasd
-   |      ^
-*/
 #[derive(Debug, Clone)]
 pub struct ErrorInfo {
     pub error_message: Cow<'static, str>,
@@ -73,48 +59,17 @@ pub struct ErrorDisplay<'src> {
 
 impl Display for ErrorDisplay<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let error_message = Colored {
-            text: &self.error_message,
-            fg: Fg::White,
-            bg: Bg::Default,
-            flags: Flag::Bold,
+        let error = MsgWithCauseUnderTextWithLocation {
+            kind: &ERROR,
+            message: &self.error_message,
+            cause: &self.error_cause_message,
+            file: self.file,
+            line: self.line,
+            col: self.col,
+            line_text: &self.line_text,
+            pointers_count: self.pointers_count,
         };
-
-        let line_number = Colored {
-            text: self.line.to_string(),
-            fg: Fg::LightBlue,
-            bg: Bg::Default,
-            flags: Flag::Bold,
-        };
-
-        let line_number_padding = line_number.text.len() + 1 + BAR.text.len();
-
-        let pointers_and_cause = Colored {
-            text: format!(
-                "{spaces:^>pointers_count$} {cause}",
-                spaces = "",
-                pointers_count = self.pointers_count as usize,
-                cause = self.error_cause_message
-            ),
-            fg: Fg::LightRed,
-            bg: Bg::Default,
-            flags: Flag::Bold,
-        };
-
-        return write!(
-            f,
-            "{ERROR}: {error_message}\
-            \n{AT:>at_padding$}: {path}:{line}:{col}\
-            \n{BAR:>line_number_padding$}\
-            \n{line_number} {BAR} {line_text}\
-            \n{BAR:>line_number_padding$}{spaces:>col$}{pointers_and_cause}",
-            at_padding = line_number_padding - 1,
-            path = self.file.display(),
-            line = self.line,
-            col = self.col as usize,
-            line_text = self.line_text,
-            spaces = "",
-        );
+        return write!(f, "{error}");
     }
 }
 

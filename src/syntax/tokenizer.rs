@@ -243,23 +243,23 @@ impl Display for Op {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
-            Self::Len       => write!(f, "len"),
-            Self::Equals    => write!(f, "="),
-            Self::Not       => write!(f, "!"),
+            Self::Len                       => write!(f, "len"),
+            Self::Equals                    => write!(f, "="),
+            Self::Not                       => write!(f, "!"),
 
-            Self::Pow                   => write!(f,  "**"),
-            Self::WrappingPow           => write!(f, r"**\"),
-            Self::SaturatingPow         => write!(f,  "**|"),
-            Self::PowEquals             => write!(f,  "**="),
-            Self::WrappingPowEquals     => write!(f, r"**\="),
-            Self::SaturatingPowEquals   => write!(f,  "**|="),
+            Self::Pow                       => write!(f,  "**"),
+            Self::WrappingPow               => write!(f, r"**\"),
+            Self::SaturatingPow             => write!(f,  "**|"),
+            Self::PowEquals                 => write!(f,  "**="),
+            Self::WrappingPowEquals         => write!(f, r"**\="),
+            Self::SaturatingPowEquals       => write!(f,  "**|="),
 
-            Self::Times                 => write!(f,  "*"),
-            Self::WrappingTimes         => write!(f, r"*\"),
-            Self::SaturatingTimes       => write!(f,  "*|"),
-            Self::TimesEquals           => write!(f,  "*="),
-            Self::WrappingTimesEquals   => write!(f, r"*\="),
-            Self::SaturatingTimesEquals => write!(f,  "*|="),
+            Self::Times                     => write!(f,  "*"),
+            Self::WrappingTimes             => write!(f, r"*\"),
+            Self::SaturatingTimes           => write!(f,  "*|"),
+            Self::TimesEquals               => write!(f,  "*="),
+            Self::WrappingTimesEquals       => write!(f, r"*\="),
+            Self::SaturatingTimesEquals     => write!(f,  "*|="),
 
             Self::Divide                    => write!(f,  "/"),
             Self::WrappingDivide            => write!(f, r"/\"),
@@ -268,22 +268,22 @@ impl Display for Op {
             Self::WrappingDivideEquals      => write!(f, r"/\="),
             Self::SaturatingDivideEquals    => write!(f,  "/|="),
 
-            Self::Remainder         => write!(f, "%"),
-            Self::RemainderEquals   => write!(f, "%="),
+            Self::Remainder                 => write!(f, "%"),
+            Self::RemainderEquals           => write!(f, "%="),
 
-            Self::Plus                  => write!(f,  "+"), // also unary safe absolute value
-            Self::WrappingPlus          => write!(f, r"+\"), // also unary wrapping absolute value
-            Self::SaturatingPlus        => write!(f,  "+|"), // also unary saturating absolute value
-            Self::PlusEquals            => write!(f,  "+="),
-            Self::WrappingPlusEquals    => write!(f, r"+\="),
-            Self::SaturatingPlusEquals  => write!(f,  "+|="),
+            Self::Plus                      => write!(f,  "+"), // also unary safe absolute value
+            Self::WrappingPlus              => write!(f, r"+\"), // also unary wrapping absolute value
+            Self::SaturatingPlus            => write!(f,  "+|"), // also unary saturating absolute value
+            Self::PlusEquals                => write!(f,  "+="),
+            Self::WrappingPlusEquals        => write!(f, r"+\="),
+            Self::SaturatingPlusEquals      => write!(f,  "+|="),
 
-            Self::Minus                 => write!(f,  "-"), // also unary integer negation
-            Self::WrappingMinus         => write!(f, r"-\"), // also unary wrapping integer negation
-            Self::SaturatingMinus       => write!(f,  "-|"), // also unary saturating integer negation
-            Self::MinusEquals           => write!(f,  "-="),
-            Self::WrappingMinusEquals   => write!(f, r"-\="),
-            Self::SaturatingMinusEquals => write!(f,  "-|="),
+            Self::Minus                     => write!(f,  "-"), // also unary integer negation
+            Self::WrappingMinus             => write!(f, r"-\"), // also unary wrapping integer negation
+            Self::SaturatingMinus           => write!(f,  "-|"), // also unary saturating integer negation
+            Self::MinusEquals               => write!(f,  "-="),
+            Self::WrappingMinusEquals       => write!(f, r"-\="),
+            Self::SaturatingMinusEquals     => write!(f,  "-|="),
 
             Self::LeftShift                 => write!(f,  "<<"),
             Self::WrappingLeftShift         => write!(f, r"<<\"),
@@ -292,36 +292,36 @@ impl Display for Op {
             Self::WrappingLeftShiftEquals   => write!(f, r"<<\="),
             Self::SaturatingLeftShiftEquals => write!(f,  "<<|="),
 
-            Self::RightShift        => write!(f,  ">>"),
-            Self::RightShiftEquals  => write!(f,  ">>="),
+            Self::RightShift                => write!(f,  ">>"),
+            Self::RightShiftEquals          => write!(f,  ">>="),
 
-            Self::LeftRotate        => write!(f, "<<<"),
-            Self::LeftRotateEquals  => write!(f, "<<<="),
-            Self::RightRotate       => write!(f, ">>>"),
-            Self::RightRotateEquals => write!(f, ">>>="),
+            Self::LeftRotate                => write!(f, "<<<"),
+            Self::LeftRotateEquals          => write!(f, "<<<="),
+            Self::RightRotate               => write!(f, ">>>"),
+            Self::RightRotateEquals         => write!(f, ">>>="),
 
-            Self::BitAnd        => write!(f, "&"),
-            Self::BitAndEquals  => write!(f, "&="),
+            Self::BitAnd                    => write!(f, "&"),
+            Self::BitAndEquals              => write!(f, "&="),
 
-            Self::BitOr         => write!(f, "|"),
-            Self::BitOrEquals   => write!(f, "|="),
+            Self::BitOr                     => write!(f, "|"),
+            Self::BitOrEquals               => write!(f, "|="),
 
-            Self::BitXor        => write!(f, "^"),
-            Self::BitXorEquals  => write!(f, "^="),
+            Self::BitXor                    => write!(f, "^"),
+            Self::BitXorEquals              => write!(f, "^="),
 
-            Self::And       => write!(f, "&&"),
-            Self::AndEquals => write!(f, "&&="),
+            Self::And                       => write!(f, "&&"),
+            Self::AndEquals                 => write!(f, "&&="),
 
-            Self::Or        => write!(f, "||"),
-            Self::OrEquals  => write!(f, "||="),
+            Self::Or                        => write!(f, "||"),
+            Self::OrEquals                  => write!(f, "||="),
 
-            Self::Compare           => write!(f, "<=>"),
-            Self::EqualsEquals      => write!(f, "=="),
-            Self::NotEquals         => write!(f, "!="),
-            Self::Greater           => write!(f, ">"),
-            Self::GreaterOrEquals   => write!(f, ">="),
-            Self::Less              => write!(f, "<"),
-            Self::LessOrEquals      => write!(f, "<="),
+            Self::Compare                   => write!(f, "<=>"),
+            Self::EqualsEquals              => write!(f, "=="),
+            Self::NotEquals                 => write!(f, "!="),
+            Self::Greater                   => write!(f, ">"),
+            Self::GreaterOrEquals           => write!(f, ">="),
+            Self::Less                      => write!(f, "<"),
+            Self::LessOrEquals              => write!(f, "<="),
         };
     }
 }
@@ -1092,7 +1092,10 @@ impl<'src> Tokenizer<'src> {
                                     Ok(Some(escape_character)) => escape_character,
                                     Err(error) => {
                                         self.token_errors.push(Error {
-                                            kind: ErrorKind::Utf8InQuotedLiteral(kind, error.character),
+                                            kind: ErrorKind::Utf8InQuotedLiteral(
+                                                kind,
+                                                error.character,
+                                            ),
                                             col: error.col,
                                             pointers_count: error.len,
                                         });
@@ -1834,7 +1837,6 @@ pub enum ErrorKind {
 
 impl IntoErrorInfo for ErrorKind {
     fn info(&self) -> ErrorInfo {
-        #[rustfmt::skip]
         let (error_message, error_cause_message) = match self {
             Self::UnclosedBracket(bracket) => (
                 format!("unclosed '{bracket}' bracket").into(),

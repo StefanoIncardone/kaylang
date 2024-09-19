@@ -2,6 +2,7 @@
 
 use kaylang::{
     compiler::{artifacts::Artifacts, Compiler},
+    error,
     src_file::SrcFile,
     syntax::{ast::Parser, tokenizer::Tokenizer},
     Args, Command, Help, Logger, Version, ASSEMBLING, ASSEMBLING_ERROR, BUILDING_AST, CHECKING,
@@ -131,14 +132,17 @@ fn main() -> ExitCode {
         match assembler_result {
             Ok(output) => {
                 if !output.status.success() {
-                    let stderr_out = String::from_utf8_lossy(&output.stderr);
-                    // TODO(stefano): allow users to create errors akin to the compiler's
-                    eprintln!("{ASSEMBLING_ERROR}:\n{stderr_out}");
+                    let error = error::Msg {
+                        kind: &ASSEMBLING_ERROR,
+                        message: &String::from_utf8_lossy(&output.stderr),
+                    };
+                    eprintln!("{error}");
                     return ExitCode::from(output.status.code().unwrap_or(1) as u8);
                 }
             }
             Err(err) => {
-                eprintln!("{COULD_NOT_RUN_ASSEMBLER}: {err}");
+                let error = error::Msg { kind: &COULD_NOT_RUN_ASSEMBLER, message: &err };
+                eprintln!("{error}");
                 return ExitCode::FAILURE;
             }
         }
@@ -152,13 +156,17 @@ fn main() -> ExitCode {
         match linker_result {
             Ok(output) => {
                 if !output.status.success() {
-                    let stderr_out = String::from_utf8_lossy(&output.stderr);
-                    eprintln!("{LINKING_ERROR}:\n{stderr_out}");
+                    let error = error::Msg {
+                        kind: &LINKING_ERROR,
+                        message: &String::from_utf8_lossy(&output.stderr),
+                    };
+                    eprintln!("{error}");
                     return ExitCode::from(output.status.code().unwrap_or(1) as u8);
                 }
             }
             Err(err) => {
-                eprintln!("{COULD_NOT_RUN_LINKER}: {err}");
+                let error = error::Msg { kind: &COULD_NOT_RUN_LINKER, message: &err };
+                eprintln!("{error}");
                 return ExitCode::FAILURE;
             }
         }
@@ -182,7 +190,8 @@ fn main() -> ExitCode {
             }
         }
         Err(err) => {
-            eprintln!("{COULD_NOT_RUN_EXECUTABLE}: {err}");
+            let error = error::Msg { kind: &COULD_NOT_RUN_EXECUTABLE, message: &err };
+            eprintln!("{error}");
             return ExitCode::FAILURE;
         }
     }

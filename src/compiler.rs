@@ -4,6 +4,7 @@ mod reg;
 
 use self::{artifacts::Artifacts, reg::Reg64};
 use crate::{
+    error::MsgWithCause,
     src_file::{offset, Position, SrcFile},
     syntax::{
         ast::{
@@ -12,7 +13,7 @@ use crate::{
         },
         tokenizer::uint,
     },
-    CAUSE, ERROR,
+    ERROR,
 };
 use core::fmt::{Display, Write as _};
 use std::{
@@ -2973,11 +2974,8 @@ impl Display for Error {
             }
         };
 
-        return write!(
-            f,
-            "{ERROR}: {message}\
-            \n{CAUSE}: {cause}",
-        );
+        let error = MsgWithCause { kind: &ERROR, message: &message, cause: &cause };
+        return write!(f, "{error}");
     }
 }
 
