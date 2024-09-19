@@ -50,6 +50,7 @@ Compiler:
 - Restricted max identifiers length to 63 characters
 - `src_file::Error` now contains more detailed error kinds
 - Imported from `core` instead of `std` where possible
+- `Logger` methods now accept `&dyn Display`
 
 ### Fixed
 

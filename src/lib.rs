@@ -82,7 +82,6 @@ pub struct Logger<'path> {
     pub output: Option<&'path Path>,
 }
 
-#[allow(clippy::new_without_default)]
 impl<'path> Logger<'path> {
     #[must_use]
     #[inline]
@@ -94,7 +93,7 @@ impl<'path> Logger<'path> {
 // logging without verbosity information, intended for use in specialized cases
 #[allow(clippy::print_stderr)]
 impl Logger<'_> {
-    pub fn info<Text: AsRef<str>>(step: &Colored<Text>, path: &Path) {
+    pub fn info(step: &dyn Display, path: &Path) {
         eprintln!(
             "{spaces:STEP_INDENT$}{step:>STEP_PADDING$}: {path}",
             spaces = "",
@@ -102,36 +101,36 @@ impl Logger<'_> {
         );
     }
 
-    fn done<Text: AsRef<str>>(self, step: &Colored<Text>, indent: usize, padding: usize) {
+    fn done(self, step: &dyn Display, indent: usize, padding: usize) {
         let elapsed_time = Colored {
             text: format!("{:.06}s", self.start.elapsed().as_secs_f32()),
             fg: Fg::White,
             ..Default::default()
         };
 
-        eprint!("{spaces:indent$}{step:>padding$}: in {elapsed_time}", spaces = "");
         if let Some(out) = self.output {
-            eprint!(" [{}]", out.display());
+            eprintln!(
+                "{spaces:indent$}{step:>padding$}: in {elapsed_time} [{out}]",
+                spaces = "",
+                out = out.display()
+            );
+        } else {
+            eprintln!("{spaces:indent$}{step:>padding$}: in {elapsed_time}", spaces = "");
         }
-        eprintln!();
     }
 
     pub fn step_done(self) {
         self.done(&DONE, STEP_INDENT, STEP_PADDING);
     }
 
-    pub fn sub_step_done<Text: AsRef<str>>(self, sub_step: &Colored<Text>) {
+    pub fn sub_step_done(self, sub_step: &dyn Display) {
         self.done(sub_step, SUBSTEP_INDENT, SUBSTEP_PADDING);
     }
 }
 
 // logging with verbosity information, intended for use in general cases
 impl Logger<'_> {
-    pub fn info_with_verbosity<Text: AsRef<str>>(
-        step: &Colored<Text>,
-        path: &Path,
-        verbosity: Verbosity,
-    ) {
+    pub fn info_with_verbosity(step: &dyn Display, path: &Path, verbosity: Verbosity) {
         if let Verbosity::Normal | Verbosity::Verbose = verbosity {
             Self::info(step, path);
         }
@@ -143,11 +142,7 @@ impl Logger<'_> {
         }
     }
 
-    pub fn sub_step_done_with_verbosity<Text: AsRef<str>>(
-        self,
-        sub_step: &Colored<Text>,
-        verbosity: Verbosity,
-    ) {
+    pub fn sub_step_done_with_verbosity(self, sub_step: &dyn Display, verbosity: Verbosity) {
         if let Verbosity::Verbose = verbosity {
             self.done(sub_step, SUBSTEP_INDENT, SUBSTEP_PADDING);
         }
