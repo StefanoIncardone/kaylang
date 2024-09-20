@@ -68,8 +68,8 @@ requiring the following steps to get started:
 
 ## Syntax specification
 
-See the [full language reference](docs/LANGUAGE_REFERENCE.md) and the the
-[full language syntax specification](docs/SYNTAX.ebnf)
+See the [full language reference](LANGUAGE_REFERENCE.md) and the the
+[full language syntax specification](SYNTAX.ebnf)
 
 ## Syntax highlighting
 

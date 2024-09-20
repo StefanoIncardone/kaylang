@@ -57,7 +57,7 @@ Compiler:
 
 Language:
 
-- Added `break` and `continue` statements to the [syntax specification](docs/SYNTAX.ebnf)
+- Added `break` and `continue` statements to the [syntax specification](SYNTAX.ebnf)
 
 Compiler:
 
