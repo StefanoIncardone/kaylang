@@ -15,9 +15,22 @@
     ],
     "repository": {
         "comment": {
-            "name": "comment.line.number-sign.kay",
-            "begin": "#",
-            "end": "\n"
+            "patterns": [
+                {
+                    "name": "invalid.illegal.unopened_multiline_comment.kay",
+                    "match": "#\\}"
+                },
+                {
+                    "name": "comment.block.kay",
+                    "begin": "#\\{",
+                    "end": "#\\}"
+                },
+                {
+                    "name": "comment.line.number-sign.kay",
+                    "begin": "#",
+                    "end": "\\n"
+                }
+            ]
         },
 
         "non_printable_ascii": {
@@ -321,7 +334,7 @@
         },
         "type_annotation": {
             "name": "meta.type.annotation.kay",
-            "match": ": *?([A-Za-z_](?:[A-Za-z\\d_]|[^\\x00-\\x7f]{1,4})*)(?:\\[( *?[01] *?)\\]|\\[ *?(\\d+?) *?\\]|(\\[ *\\])|(\\[.*\\]))?",
+            "match": ": *?([A-Za-z_](?:[A-Za-z\\d_]|[^\\x00-\\x7f]{1,4})*)(\\[.*?\\])?",
             "captures": {
                 "1": {
                     "patterns": [
@@ -330,18 +343,16 @@
                     ]
                 },
                 "2": {
-                    "name": "invalid.illegal.small_array.kay"
-                },
-                "3": {
                     "patterns": [
-                        { "include": "#integer_literal" }
+                        { "include": "#comment" },
+                        { "include": "#non_printable_ascii" },
+                        { "include": "#keyword" },
+                        { "include": "#character_literal" },
+                        { "include": "#string_literal" },
+                        { "include": "#raw_string_literal" },
+                        { "include": "#integer_literal" },
+                        { "include": "#variable" }
                     ]
-                },
-                "4": {
-                    "name": "invalid.illegal.empty_array.kay"
-                },
-                "5": {
-                    "name": "invalid.illegal.non_integer_array_length.kay"
                 }
             }
         }

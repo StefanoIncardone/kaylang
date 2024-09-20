@@ -12,9 +12,9 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ## Known issues
 
-- Highlighting of illegal overflowing/underflowing integer literals
 - Highlighting of emojis as errors
 - High CPU load when inspecting tokens which contain complex unicode graphemes
+- Highlighting of unclosed multiline comments
 
 ## 0.1.1 -
 
@@ -24,6 +24,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Highlighting of `_` integer literals separator
 - Highlighting of alternative integer literal bases
 - Highlighting of escaped double quotes `\"` in raw string literals
+- Highlighting of multiline comments, enclosed by `#{` and `#}`
 
 ### Changed
 
@@ -35,9 +36,6 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Highlighting of illegal string and character literals, numbers and indeitifiers mimicking compiler
     behaviour (i.e. multiple errors are correctly taken into account and reported all at once)
 - Highlighting of array type annotations
-    - spaces around length are correctly taken into account
-    - length of 0 and 1 are reported as errors
-    - anything except integer literals are correctly highlighted as errors
 
 ## 0.1.0 - 2024-08-30
 

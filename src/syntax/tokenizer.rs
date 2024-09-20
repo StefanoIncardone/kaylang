@@ -450,6 +450,8 @@ impl QuotedLiteralKind {
 #[derive(Debug, Clone)]
 pub(crate) enum TokenKind<'src> {
     Comment(&'src str),
+    MultilineComment(&'src str),
+
     Unexpected(&'src str),
 
     // Symbols
@@ -506,6 +508,7 @@ impl Display for TokenKind<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Comment(text) => write!(f, "#{text}"),
+            Self::MultilineComment(text) => write!(f, "#{{{text}#}}"),
             Self::Unexpected(text) => write!(f, "{text}"),
 
             Self::Bracket(bracket) => write!(f, "{bracket}"),
@@ -557,7 +560,8 @@ impl DisplayLen for TokenKind<'_> {
         }
 
         return match self {
-            Self::Comment(text) => text.chars().count() as offset,
+            Self::Comment(text) => text.chars().count() as offset + 1, // + 1 to account for the `#`
+            Self::MultilineComment(text) => text.chars().count() as offset + 4, // + 4 to account for `#{` and `#}`
             Self::Unexpected(text) => text.chars().count() as offset,
 
             Self::Bracket(bracket) => bracket.display_len(),
@@ -744,9 +748,19 @@ impl<'src> Tokenizer<'src> {
         };
     }
 
-    fn next_utf8_char(&mut self) -> Option<utf8> {
+    fn next_utf8_char_multiline(&mut self) -> Option<utf8> {
         let next = self.src.code.as_bytes().get(self.col as usize)?;
         return match next {
+            b'\n' => {
+                if self.line_index >= self.src.lines.len() as offset - 1 {
+                    return None;
+                }
+
+                self.col += 1;
+                self.line_index += 1;
+                self.line = &self.src.lines[self.line_index as usize];
+                Some('\n')
+            }
             ascii_ch @ 0..=b'\x7F' => {
                 self.col += 1;
                 Some(*ascii_ch as utf8)
@@ -1501,19 +1515,57 @@ impl<'src> Tokenizer<'src> {
                     Err(())
                 }
             },
-            b'#' => {
-                // ignoring the hash symbol
-                let comment = &self.src.code[self.col as usize..self.line.end as usize];
-
-                // consuming the rest of the characters in the current line
-                loop {
-                    if let Some('\n') | None = self.peek_next_utf8_char() {
-                        break;
+            b'#' => match self.peek_next_utf8_char() {
+                Some('{') => {
+                    loop {
+                        match self.next_utf8_char_multiline() {
+                            Some('#') => match self.next_utf8_char_multiline() {
+                                Some('}') => break,
+                                Some(_) => {},
+                                None => {
+                                    self.token_errors.push(Error {
+                                        kind: ErrorKind::UnclosedMultilineComment,
+                                        col: self.token_start_col,
+                                        pointers_count: 2,
+                                    });
+                                    return Err(());
+                                }
+                            }
+                            Some(_) => {},
+                            None => {
+                                self.token_errors.push(Error {
+                                    kind: ErrorKind::UnclosedMultilineComment,
+                                    col: self.token_start_col,
+                                    pointers_count: 2,
+                                });
+                                return Err(());
+                            },
+                        }
                     }
-                    _ = self.next_utf8_char();
-                }
 
-                Ok(TokenKind::Comment(comment))
+                    // starting at self.token_start_col + 2 to skip the `#{`
+                    // ending at self.col - 2 to skip the `#}`
+                    let comment = &self.src.code[self.token_start_col as usize + 2..self.col as usize - 2];
+                    Ok(TokenKind::MultilineComment(comment))
+                },
+                Some('}') => {
+                    self.col += 1;
+                    self.token_errors.push(Error {
+                        kind: ErrorKind::UnopenedMultilineComment,
+                        col: self.token_start_col,
+                        pointers_count: 2,
+                    });
+                    return Err(());
+                }
+                Some(_) | None => {
+                    // ignoring the hash symbol
+                    let comment = &self.src.code[self.col as usize..self.line.end as usize];
+
+                    // consuming the rest of the characters in the current line
+                    self.col = self.line.end;
+
+                    Ok(TokenKind::Comment(comment))
+                }
             }
             b':' => Ok(TokenKind::Colon),
             b';' => Ok(TokenKind::SemiColon),
@@ -1812,6 +1864,9 @@ impl<'src> Tokenizer<'src> {
 
 #[derive(Debug, Clone)]
 pub enum ErrorKind {
+    UnclosedMultilineComment,
+    UnopenedMultilineComment,
+
     UnclosedBracket(BracketKind),
     UnopenedBracket(BracketKind),
     MismatchedBracket { actual: BracketKind, expected: BracketKind },
@@ -1838,6 +1893,15 @@ pub enum ErrorKind {
 impl IntoErrorInfo for ErrorKind {
     fn info(&self) -> ErrorInfo {
         let (error_message, error_cause_message) = match self {
+            Self::UnclosedMultilineComment => (
+                "unclosed multiline comment".into(),
+                "missing closing `#}`".into(),
+            ),
+            Self::UnopenedMultilineComment => (
+                "unopened multiline comment".into(),
+                "was not opened before".into(),
+            ),
+
             Self::UnclosedBracket(bracket) => (
                 format!("unclosed '{bracket}' bracket").into(),
                 "was not closed".into(),

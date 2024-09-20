@@ -37,6 +37,7 @@ Language:
     - `0o`: octal
     - `0x`: hexadecimal
 - Escape sequences in raw string literals: `r"nested \"quotes\" are now allowed by escaping them"`
+- Multiline comments, enclosed by `#{` and `#}`
 
 Compiler:
 
@@ -64,6 +65,7 @@ Compiler:
     - undefined variables and variables already defined
     - integers, identifiers and string, raw_string and character literals tokenization
 - Temporary values are now properly displayed in the generated assembly comments
+- Bug that allowed indexing into non-variables
 
 ## 0.6.0 - 2024-08-31
 
