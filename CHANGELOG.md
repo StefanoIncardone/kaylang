@@ -25,7 +25,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
     type byte = u8;
     ```
 
-## 0.6.1 -
+## 0.6.1 - 2024-09-20
 
 ### Added
 
