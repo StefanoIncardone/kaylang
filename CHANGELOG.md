@@ -66,6 +66,7 @@ Compiler:
     - integers, identifiers and string, raw_string and character literals tokenization
 - Temporary values are now properly displayed in the generated assembly comments
 - Bug that allowed indexing into non-variables
+- Moved Vscode extension to own [repo](https://github.com/StefanoIncardone/kaylang_vscode)
 
 ## 0.6.0 - 2024-08-31
 
@@ -92,7 +93,7 @@ Compiler:
 - `help` and `version` commands
 - usage examples
 - getters for `SrcFile` field: `SrcFile::path()`, `SrcFile::code()` and `SrcFile::lines()`
-- [local vscode syntax highlighting extension](syntax/vscode/)
+- [local vscode syntax highlighting extension](https://github.com/StefanoIncardone/kaylang_vscode)
 
 ### Changed
 

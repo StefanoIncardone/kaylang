@@ -73,5 +73,4 @@ See the [full language reference](LANGUAGE_REFERENCE.md) and the the
 
 ## Syntax highlighting
 
-Currently only supporting Vscode with the provided [extension](syntax/vscode/) which can be
-installed locally using the `Developer: Install Extension from Location...` command
+- [Vscode extension](https://github.com/StefanoIncardone/kaylang_vscode)
