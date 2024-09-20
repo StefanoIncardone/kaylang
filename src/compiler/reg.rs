@@ -1,6 +1,7 @@
-use std::fmt::Display;
+use core::fmt::Display;
 
 #[allow(dead_code)]
+#[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum Reg64 {
     Rax = 0,
@@ -25,7 +26,7 @@ pub(crate) enum Reg64 {
 
 #[rustfmt::skip]
 impl Display for Reg64 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Rax => write!(f, "rax"),
             Self::Rbx => write!(f, "rbx"),
@@ -50,6 +51,7 @@ impl Display for Reg64 {
 }
 
 #[allow(dead_code)]
+#[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum Reg32 {
     Eax = 0,
@@ -74,7 +76,7 @@ pub(crate) enum Reg32 {
 
 #[rustfmt::skip]
 impl Display for Reg32 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Eax  => write!(f, "eax"),
             Self::Ebx  => write!(f, "ebx"),
@@ -99,6 +101,7 @@ impl Display for Reg32 {
 }
 
 #[allow(dead_code)]
+#[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum Reg16 {
     Ax = 0,
@@ -123,7 +126,7 @@ pub(crate) enum Reg16 {
 
 #[rustfmt::skip]
 impl Display for Reg16 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Ax   => write!(f, "ax"),
             Self::Bx   => write!(f, "bx"),
@@ -148,6 +151,7 @@ impl Display for Reg16 {
 }
 
 #[allow(dead_code)]
+#[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum Reg8l {
     Al = 0,
@@ -172,7 +176,7 @@ pub(crate) enum Reg8l {
 
 #[rustfmt::skip]
 impl Display for Reg8l {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Al   => write!(f, "al"),
             Self::Bl   => write!(f, "bl"),
@@ -197,6 +201,7 @@ impl Display for Reg8l {
 }
 
 #[allow(dead_code)]
+#[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum Reg8h {
     Ah = 0,
@@ -207,7 +212,7 @@ pub(crate) enum Reg8h {
 
 #[rustfmt::skip]
 impl Display for Reg8h {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Ah => write!(f, "ah"),
             Self::Bh => write!(f, "bh"),
@@ -220,21 +225,21 @@ impl Display for Reg8h {
 impl Into<Reg32> for Reg64 {
     #[inline(always)]
     fn into(self) -> Reg32 {
-        return unsafe { std::mem::transmute(self) };
+        return unsafe { core::mem::transmute(self) };
     }
 }
 
 impl Into<Reg16> for Reg64 {
     #[inline(always)]
     fn into(self) -> Reg16 {
-        return unsafe { std::mem::transmute(self) };
+        return unsafe { core::mem::transmute(self) };
     }
 }
 
 impl Into<Reg8l> for Reg64 {
     #[inline(always)]
     fn into(self) -> Reg8l {
-        return unsafe { std::mem::transmute(self) };
+        return unsafe { core::mem::transmute(self) };
     }
 }
 
@@ -243,7 +248,7 @@ impl Into<Option<Reg8h>> for Reg64 {
     fn into(self) -> Option<Reg8h> {
         return match self {
             Self::Rax | Self::Rbx | Self::Rcx | Self::Rdx => unsafe {
-                Some(std::mem::transmute(self))
+                Some(core::mem::transmute(self))
             },
             Self::Rsi
             | Self::Rdi
@@ -264,21 +269,21 @@ impl Into<Option<Reg8h>> for Reg64 {
 impl Into<Reg64> for Reg32 {
     #[inline(always)]
     fn into(self) -> Reg64 {
-        return unsafe { std::mem::transmute(self) };
+        return unsafe { core::mem::transmute(self) };
     }
 }
 
 impl Into<Reg16> for Reg32 {
     #[inline(always)]
     fn into(self) -> Reg16 {
-        return unsafe { std::mem::transmute(self) };
+        return unsafe { core::mem::transmute(self) };
     }
 }
 
 impl Into<Reg8l> for Reg32 {
     #[inline(always)]
     fn into(self) -> Reg8l {
-        return unsafe { std::mem::transmute(self) };
+        return unsafe { core::mem::transmute(self) };
     }
 }
 
@@ -287,7 +292,7 @@ impl Into<Option<Reg8h>> for Reg32 {
     fn into(self) -> Option<Reg8h> {
         return match self {
             Self::Eax | Self::Ebx | Self::Ecx | Self::Edx => unsafe {
-                Some(std::mem::transmute(self))
+                Some(core::mem::transmute(self))
             },
             Self::Esi
             | Self::Edi
@@ -308,21 +313,21 @@ impl Into<Option<Reg8h>> for Reg32 {
 impl Into<Reg64> for Reg16 {
     #[inline(always)]
     fn into(self) -> Reg64 {
-        return unsafe { std::mem::transmute(self) };
+        return unsafe { core::mem::transmute(self) };
     }
 }
 
 impl Into<Reg32> for Reg16 {
     #[inline(always)]
     fn into(self) -> Reg32 {
-        return unsafe { std::mem::transmute(self) };
+        return unsafe { core::mem::transmute(self) };
     }
 }
 
 impl Into<Reg8l> for Reg16 {
     #[inline(always)]
     fn into(self) -> Reg8l {
-        return unsafe { std::mem::transmute(self) };
+        return unsafe { core::mem::transmute(self) };
     }
 }
 
@@ -330,7 +335,9 @@ impl Into<Option<Reg8h>> for Reg16 {
     #[inline(always)]
     fn into(self) -> Option<Reg8h> {
         return match self {
-            Self::Ax | Self::Bx | Self::Cx | Self::Dx => unsafe { Some(std::mem::transmute(self)) },
+            Self::Ax | Self::Bx | Self::Cx | Self::Dx => unsafe {
+                Some(core::mem::transmute(self))
+            },
             Self::Si
             | Self::Di
             | Self::Bp
@@ -350,21 +357,21 @@ impl Into<Option<Reg8h>> for Reg16 {
 impl Into<Reg64> for Reg8l {
     #[inline(always)]
     fn into(self) -> Reg64 {
-        return unsafe { std::mem::transmute(self) };
+        return unsafe { core::mem::transmute(self) };
     }
 }
 
 impl Into<Reg32> for Reg8l {
     #[inline(always)]
     fn into(self) -> Reg32 {
-        return unsafe { std::mem::transmute(self) };
+        return unsafe { core::mem::transmute(self) };
     }
 }
 
 impl Into<Reg16> for Reg8l {
     #[inline(always)]
     fn into(self) -> Reg16 {
-        return unsafe { std::mem::transmute(self) };
+        return unsafe { core::mem::transmute(self) };
     }
 }
 
@@ -372,7 +379,9 @@ impl Into<Option<Reg8h>> for Reg8l {
     #[inline(always)]
     fn into(self) -> Option<Reg8h> {
         return match self {
-            Self::Al | Self::Bl | Self::Cl | Self::Dl => unsafe { Some(std::mem::transmute(self)) },
+            Self::Al | Self::Bl | Self::Cl | Self::Dl => unsafe {
+                Some(core::mem::transmute(self))
+            },
             Self::Sil
             | Self::Dil
             | Self::Bpl
@@ -392,27 +401,27 @@ impl Into<Option<Reg8h>> for Reg8l {
 impl Into<Reg64> for Reg8h {
     #[inline(always)]
     fn into(self) -> Reg64 {
-        return unsafe { std::mem::transmute(self) };
+        return unsafe { core::mem::transmute(self) };
     }
 }
 
 impl Into<Reg32> for Reg8h {
     #[inline(always)]
     fn into(self) -> Reg32 {
-        return unsafe { std::mem::transmute(self) };
+        return unsafe { core::mem::transmute(self) };
     }
 }
 
 impl Into<Reg16> for Reg8h {
     #[inline(always)]
     fn into(self) -> Reg16 {
-        return unsafe { std::mem::transmute(self) };
+        return unsafe { core::mem::transmute(self) };
     }
 }
 
 impl Into<Reg8l> for Reg8h {
     #[inline(always)]
     fn into(self) -> Reg8l {
-        return unsafe { std::mem::transmute(self) };
+        return unsafe { core::mem::transmute(self) };
     }
 }

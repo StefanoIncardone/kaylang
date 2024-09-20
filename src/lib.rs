@@ -2,12 +2,14 @@
 
 pub mod color;
 pub mod compiler;
+pub mod error;
 pub mod src_file;
 pub mod syntax;
 
 use color::{Bg, Colored, Fg, Flag, Flags};
+use core::fmt::{Display, Write as _};
+use error::MsgWithCauseUnderText;
 use std::{
-    fmt::{Display, Write as _},
     path::{Path, PathBuf},
     time::Instant,
 };
@@ -80,10 +82,9 @@ pub struct Logger<'path> {
     pub output: Option<&'path Path>,
 }
 
-#[allow(clippy::new_without_default)]
 impl<'path> Logger<'path> {
-    #[inline(always)]
     #[must_use]
+    #[inline]
     pub fn new(output: Option<&'path Path>) -> Self {
         return Self { start: Instant::now(), output };
     }
@@ -92,7 +93,7 @@ impl<'path> Logger<'path> {
 // logging without verbosity information, intended for use in specialized cases
 #[allow(clippy::print_stderr)]
 impl Logger<'_> {
-    pub fn info<Text: AsRef<str>>(step: &Colored<Text>, path: &Path) {
+    pub fn info(step: &dyn Display, path: &Path) {
         eprintln!(
             "{spaces:STEP_INDENT$}{step:>STEP_PADDING$}: {path}",
             spaces = "",
@@ -100,36 +101,36 @@ impl Logger<'_> {
         );
     }
 
-    fn done<Text: AsRef<str>>(self, step: &Colored<Text>, indent: usize, padding: usize) {
+    fn done(self, step: &dyn Display, indent: usize, padding: usize) {
         let elapsed_time = Colored {
             text: format!("{:.06}s", self.start.elapsed().as_secs_f32()),
             fg: Fg::White,
             ..Default::default()
         };
 
-        eprint!("{spaces:indent$}{step:>padding$}: in {elapsed_time}", spaces = "");
         if let Some(out) = self.output {
-            eprint!(" [{}]", out.display());
+            eprintln!(
+                "{spaces:indent$}{step:>padding$}: in {elapsed_time} [{out}]",
+                spaces = "",
+                out = out.display()
+            );
+        } else {
+            eprintln!("{spaces:indent$}{step:>padding$}: in {elapsed_time}", spaces = "");
         }
-        eprintln!();
     }
 
     pub fn step_done(self) {
         self.done(&DONE, STEP_INDENT, STEP_PADDING);
     }
 
-    pub fn sub_step_done<Text: AsRef<str>>(self, sub_step: &Colored<Text>) {
+    pub fn sub_step_done(self, sub_step: &dyn Display) {
         self.done(sub_step, SUBSTEP_INDENT, SUBSTEP_PADDING);
     }
 }
 
 // logging with verbosity information, intended for use in general cases
 impl Logger<'_> {
-    pub fn info_with_verbosity<Text: AsRef<str>>(
-        step: &Colored<Text>,
-        path: &Path,
-        verbosity: Verbosity,
-    ) {
+    pub fn info_with_verbosity(step: &dyn Display, path: &Path, verbosity: Verbosity) {
         if let Verbosity::Normal | Verbosity::Verbose = verbosity {
             Self::info(step, path);
         }
@@ -141,11 +142,7 @@ impl Logger<'_> {
         }
     }
 
-    pub fn sub_step_done_with_verbosity<Text: AsRef<str>>(
-        self,
-        sub_step: &Colored<Text>,
-        verbosity: Verbosity,
-    ) {
+    pub fn sub_step_done_with_verbosity(self, sub_step: &dyn Display, verbosity: Verbosity) {
         if let Verbosity::Verbose = verbosity {
             self.done(sub_step, SUBSTEP_INDENT, SUBSTEP_PADDING);
         }
@@ -159,7 +156,7 @@ pub enum ColorFlag {
 }
 
 impl Display for ColorFlag {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Short => write!(f, "-c"),
             Self::Long => write!(f, "--color"),
@@ -176,7 +173,7 @@ pub enum Color {
 }
 
 impl Display for Color {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Auto => write!(f, "auto"),
             Self::Always => write!(f, "always"),
@@ -192,7 +189,7 @@ pub struct ColorMode {
 }
 
 impl Display for ColorMode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return write!(f, "{flag} {mode}", flag = self.flag, mode = self.color);
     }
 }
@@ -211,7 +208,7 @@ pub enum CommandFlag {
 }
 
 impl Display for CommandFlag {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Help => write!(f, "help"),
             Self::HelpShort => write!(f, "-h"),
@@ -233,7 +230,7 @@ pub enum OutputFlag {
 }
 
 impl Display for OutputFlag {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Short => write!(f, "-o"),
             Self::Long => write!(f, "--output"),
@@ -250,7 +247,7 @@ pub enum VerbosityFlag {
 }
 
 impl Display for VerbosityFlag {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::QuietShort => write!(f, "-q"),
             Self::QuietLong => write!(f, "--quiet"),
@@ -289,7 +286,7 @@ pub struct Version {
 }
 
 impl Display for Version {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.color.set(&std::io::stdout());
         return write!(f, "Kaylang compiler, version {VERSION}");
     }
@@ -303,7 +300,7 @@ pub struct Help {
 
 impl Display for Help {
     #[rustfmt::skip]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return write!(
             f,
             r"{Version}
@@ -368,11 +365,13 @@ impl TryFrom<Vec<String>> for Args {
     type Error = Error;
 
     fn try_from(args: Vec<String>) -> Result<Self, Self::Error> {
+        #[inline]
         fn is_verbosity_flag((_verbosity_flag_index, verbosity_flag): &(usize, &String)) -> bool {
             return matches!(verbosity_flag.as_str(), "-q" | "--quiet" | "-V" | "--verbose");
         }
 
         #[allow(clippy::single_call_fn)]
+        #[inline]
         fn is_out_flag((_out_flag_index, out_flag): &(usize, &String)) -> bool {
             return matches!(out_flag.as_str(), "-o" | "--output");
         }
@@ -758,10 +757,8 @@ pub enum Error {
     FromArgs { kind: ErrorKind, args: Vec<String>, erroneous_arg_index: usize },
 }
 
-impl std::error::Error for Error {}
-
 impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut args_text = String::new();
         let mut pointers_offset = 0;
         let mut pointers_count = 1;
@@ -879,23 +876,16 @@ impl Display for Error {
             }
         };
 
-        let msg =
-            Colored { text: error_message, fg: Fg::White, bg: Bg::Default, flags: Flag::Bold };
-
-        let pointers_and_cause = Colored {
-            text: format!("{spaces:^>pointers_count$} {error_cause_message}", spaces = ""),
-            fg: Fg::LightRed,
-            bg: Bg::Default,
-            flags: Flag::Bold,
+        let error = MsgWithCauseUnderText {
+            kind: &ERROR,
+            message: &error_message,
+            cause: &error_cause_message,
+            line_text: &args_text,
+            pointers_offset,
+            pointers_count,
         };
-
-        return write!(
-            f,
-            "{ERROR}: {msg}\
-            \n{BAR}\
-            \n{BAR} {args_text}\
-            \n{BAR} {spaces:>pointers_offset$}{pointers_and_cause}",
-            spaces = ""
-        );
+        return write!(f, "{error}");
     }
 }
+
+impl std::error::Error for Error {}

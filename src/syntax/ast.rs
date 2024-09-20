@@ -1,11 +1,15 @@
+// IDEA(stefano): fuse tokenization and parsing, making the tokenizer a generator of tokens
+// TODO(stefano): multidimensional arrays
+
 use super::{
-    tokenizer::{
-        ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, RawStr, Str, Token, TokenKind,
-    },
+    tokenizer::{ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, Str, Token, TokenKind},
     Error, ErrorInfo, IntoErrorInfo,
 };
-use crate::src_file::{Position, SrcFile};
-use std::fmt::{Debug, Display};
+use crate::{
+    src_file::{offset, Position, SrcFile},
+    syntax::tokenizer::{Base, Integer},
+};
+use core::fmt::{Debug, Display};
 
 pub(crate) trait TypeOf {
     fn typ(&self) -> Type;
@@ -28,7 +32,7 @@ pub enum BaseType {
 }
 
 impl Display for BaseType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Int => write!(f, "int"),
             Self::Ascii => write!(f, "ascii"),
@@ -53,7 +57,7 @@ impl BaseTypeOf for BaseType {
 }
 
 impl SizeOf for BaseType {
-    #[inline(always)]
+    #[inline]
     fn size(&self) -> usize {
         return match self {
             Self::Int => size_of::<int>(),
@@ -76,7 +80,7 @@ pub enum Type {
 }
 
 impl Display for Type {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Base(typ) => write!(f, "{typ}"),
             Self::Array { base_type, len } => write!(f, "{base_type}[{len}]"),
@@ -85,13 +89,14 @@ impl Display for Type {
 }
 
 impl TypeOf for Type {
+    #[inline(always)]
     fn typ(&self) -> Type {
         return *self;
     }
 }
 
 impl BaseTypeOf for Type {
-    #[inline(always)]
+    #[inline]
     fn base_typ(&self) -> BaseType {
         return match self {
             Self::Base(typ) => *typ,
@@ -101,7 +106,7 @@ impl BaseTypeOf for Type {
 }
 
 impl SizeOf for Type {
-    #[inline(always)]
+    #[inline]
     fn size(&self) -> usize {
         return match self {
             Self::Base(typ) => typ.size(),
@@ -126,18 +131,18 @@ pub(crate) enum UnaryOp {
 
 impl Display for UnaryOp {
     #[rustfmt::skip]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
-            Self::Len               => write!(f, "len"),
-            Self::Not               => write!(f, "!"),
+            Self::Len             => write!(f, "len"),
+            Self::Not             => write!(f, "!"),
 
-            Self::Plus              => write!(f,  "+"),
-            Self::WrappingPlus      => write!(f, r"+\"),
-            Self::SaturatingPlus    => write!(f,  "+|"),
+            Self::Plus            => write!(f,  "+"),
+            Self::WrappingPlus    => write!(f, r"+\"),
+            Self::SaturatingPlus  => write!(f,  "+|"),
 
-            Self::Minus             => write!(f,  "-"),
-            Self::WrappingMinus     => write!(f, r"-\"),
-            Self::SaturatingMinus   => write!(f,  "-|"),
+            Self::Minus           => write!(f,  "-"),
+            Self::WrappingMinus   => write!(f, r"-\"),
+            Self::SaturatingMinus => write!(f,  "-|"),
         };
     }
 }
@@ -163,7 +168,7 @@ pub(crate) enum BooleanUnaryOp {
 
 impl Display for BooleanUnaryOp {
     #[rustfmt::skip]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Not => write!(f, "!"),
         };
@@ -224,41 +229,41 @@ pub(crate) enum BinaryOp {
 
 impl Display for BinaryOp {
     #[rustfmt::skip]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
-            Self::Pow           => write!(f,  "**"),
-            Self::WrappingPow   => write!(f, r"**\"),
-            Self::SaturatingPow => write!(f,  "**|"),
+            Self::Pow                 => write!(f,  "**"),
+            Self::WrappingPow         => write!(f, r"**\"),
+            Self::SaturatingPow       => write!(f,  "**|"),
 
-            Self::Times             => write!(f,  "*"),
-            Self::WrappingTimes     => write!(f, r"*\"),
-            Self::SaturatingTimes   => write!(f,  "*|"),
+            Self::Times               => write!(f,  "*"),
+            Self::WrappingTimes       => write!(f, r"*\"),
+            Self::SaturatingTimes     => write!(f,  "*|"),
 
-            Self::Divide            => write!(f,  "/"),
-            Self::WrappingDivide    => write!(f, r"/\"),
-            Self::SaturatingDivide  => write!(f,  "/|"),
+            Self::Divide              => write!(f,  "/"),
+            Self::WrappingDivide      => write!(f, r"/\"),
+            Self::SaturatingDivide    => write!(f,  "/|"),
 
-            Self::Remainder => write!(f, "%"),
+            Self::Remainder           => write!(f, "%"),
 
-            Self::Plus              => write!(f,  "+"),
-            Self::WrappingPlus      => write!(f, r"+\"),
-            Self::SaturatingPlus    => write!(f,  "+|"),
+            Self::Plus                => write!(f,  "+"),
+            Self::WrappingPlus        => write!(f, r"+\"),
+            Self::SaturatingPlus      => write!(f,  "+|"),
 
-            Self::Minus             => write!(f,  "-"),
-            Self::WrappingMinus     => write!(f, r"-\"),
-            Self::SaturatingMinus   => write!(f,  "-|"),
+            Self::Minus               => write!(f,  "-"),
+            Self::WrappingMinus       => write!(f, r"-\"),
+            Self::SaturatingMinus     => write!(f,  "-|"),
 
-            Self::LeftShift             => write!(f,  "<<"),
-            Self::WrappingLeftShift     => write!(f, r"<<\"),
-            Self::SaturatingLeftShift   => write!(f,  "<<|"),
+            Self::LeftShift           => write!(f,  "<<"),
+            Self::WrappingLeftShift   => write!(f, r"<<\"),
+            Self::SaturatingLeftShift => write!(f,  "<<|"),
 
-            Self::RightShift    => write!(f,  ">>"),
-            Self::LeftRotate    => write!(f, "<<<"),
-            Self::RightRotate   => write!(f, ">>>"),
+            Self::RightShift          => write!(f,  ">>"),
+            Self::LeftRotate          => write!(f, "<<<"),
+            Self::RightRotate         => write!(f, ">>>"),
 
-            Self::BitAnd    => write!(f, "&"),
-            Self::BitOr     => write!(f, "|"),
-            Self::BitXor    => write!(f, "^"),
+            Self::BitAnd              => write!(f, "&"),
+            Self::BitOr               => write!(f, "|"),
+            Self::BitXor              => write!(f, "^"),
         };
     }
 }
@@ -285,10 +290,10 @@ pub(crate) enum BooleanBinaryOp {
 
 impl Display for BooleanBinaryOp {
     #[rustfmt::skip]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
-            Self::And   => write!(f, "&&"),
-            Self::Or    => write!(f, "||"),
+            Self::And => write!(f, "&&"),
+            Self::Or  => write!(f, "||"),
         };
     }
 }
@@ -320,15 +325,15 @@ pub(crate) enum ComparisonOp {
 
 impl Display for ComparisonOp {
     #[rustfmt::skip]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
-            Self::Compare           => write!(f, "<=>"),
-            Self::EqualsEquals      => write!(f, "=="),
-            Self::NotEquals         => write!(f, "!="),
-            Self::Greater           => write!(f, ">"),
-            Self::GreaterOrEquals   => write!(f, ">="),
-            Self::Less              => write!(f, "<"),
-            Self::LessOrEquals      => write!(f, "<="),
+            Self::Compare         => write!(f, "<=>"),
+            Self::EqualsEquals    => write!(f, "=="),
+            Self::NotEquals       => write!(f, "!="),
+            Self::Greater         => write!(f, ">"),
+            Self::GreaterOrEquals => write!(f, ">="),
+            Self::Less            => write!(f, "<"),
+            Self::LessOrEquals    => write!(f, "<="),
         }
     }
 }
@@ -341,7 +346,7 @@ impl TypeOf for ComparisonOp {
 }
 
 impl BaseTypeOf for ComparisonOp {
-    #[inline(always)]
+    #[inline]
     fn base_typ(&self) -> BaseType {
         return match self {
             Self::Compare => BaseType::Int,
@@ -399,107 +404,112 @@ pub(crate) enum AssignmentOp {
 
 impl Display for AssignmentOp {
     #[rustfmt::skip]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
-            Self::Equals => write!(f, "="),
+            Self::Equals              => write!(f, "="),
 
-            Self::Pow           => write!(f,  "**="),
-            Self::WrappingPow   => write!(f, r"**\="),
-            Self::SaturatingPow => write!(f,  "**|="),
+            Self::Pow                 => write!(f,  "**="),
+            Self::WrappingPow         => write!(f, r"**\="),
+            Self::SaturatingPow       => write!(f,  "**|="),
 
-            Self::Times             => write!(f,  "*="),
-            Self::WrappingTimes     => write!(f, r"*\="),
-            Self::SaturatingTimes   => write!(f,  "*|="),
+            Self::Times               => write!(f,  "*="),
+            Self::WrappingTimes       => write!(f, r"*\="),
+            Self::SaturatingTimes     => write!(f,  "*|="),
 
-            Self::Divide            => write!(f,  "/="),
-            Self::WrappingDivide    => write!(f, r"/\="),
-            Self::SaturatingDivide  => write!(f,  "/|="),
+            Self::Divide              => write!(f,  "/="),
+            Self::WrappingDivide      => write!(f, r"/\="),
+            Self::SaturatingDivide    => write!(f,  "/|="),
 
-            Self::Remainder => write!(f, "%="),
+            Self::Remainder           => write!(f, "%="),
 
-            Self::Plus              => write!(f,  "+="),
-            Self::WrappingPlus      => write!(f, r"+\="),
-            Self::SaturatingPlus    => write!(f,  "+|="),
+            Self::Plus                => write!(f,  "+="),
+            Self::WrappingPlus        => write!(f, r"+\="),
+            Self::SaturatingPlus      => write!(f,  "+|="),
 
-            Self::Minus             => write!(f,  "-="),
-            Self::WrappingMinus     => write!(f, r"-\="),
-            Self::SaturatingMinus   => write!(f,  "-|="),
+            Self::Minus               => write!(f,  "-="),
+            Self::WrappingMinus       => write!(f, r"-\="),
+            Self::SaturatingMinus     => write!(f,  "-|="),
 
-            Self::And       => write!(f, "&&="),
-            Self::BitAnd    => write!(f, "&="),
-            Self::Or        => write!(f, "||="),
-            Self::BitOr     => write!(f, "|="),
-            Self::BitXor    => write!(f, "^="),
+            Self::And                 => write!(f, "&&="),
+            Self::BitAnd              => write!(f, "&="),
+            Self::Or                  => write!(f, "||="),
+            Self::BitOr               => write!(f, "|="),
+            Self::BitXor              => write!(f, "^="),
 
-            Self::LeftShift             => write!(f,  "<<="),
-            Self::WrappingLeftShift     => write!(f, r"<<\="),
-            Self::SaturatingLeftShift   => write!(f,  "<<|="),
+            Self::LeftShift           => write!(f,  "<<="),
+            Self::WrappingLeftShift   => write!(f, r"<<\="),
+            Self::SaturatingLeftShift => write!(f,  "<<|="),
 
-            Self::RightShift    => write!(f,  ">>="),
-            Self::LeftRotate    => write!(f, "<<<="),
-            Self::RightRotate   => write!(f, ">>>="),
+            Self::RightShift          => write!(f,  ">>="),
+            Self::LeftRotate          => write!(f, "<<<="),
+            Self::RightRotate         => write!(f, ">>>="),
         };
     }
 }
 
-pub(crate) type TokenIndex = usize;
-pub(crate) type VariableIndex = usize;
-pub(crate) type ExpressionIndex = usize;
-pub(crate) type ScopeIndex = usize;
+type StringLabel = offset;
+type TokenIndex = offset;
+type VariableIndex = offset;
+type IfIndex = offset;
+type LoopIndex = offset;
+type ExpressionIndex = offset;
+pub(crate) type ScopeIndex = offset;
 
 #[derive(Debug, Clone)]
-pub(crate) enum Expression<'src> {
+pub(crate) enum Expression {
     False,
     True,
     Int(int),
     Ascii(ascii),
     Str {
-        label: usize,
+        label: StringLabel,
     },
     Array {
         base_type: BaseType,
         /// arrays always contain at least 2 items
-        items: Vec<Expression<'src>>,
+        items: Vec<Expression>, // TODO(stefano): flatten into a Vec<ExpressionIndex>
     },
 
-    Parenthesis(Box<Expression<'src>>),
+    Parenthesis {
+        typ: Type,
+        expression_index: ExpressionIndex,
+    },
 
     Unary {
         op: UnaryOp,
-        op_col: usize,
-        operand: Box<Expression<'src>>,
+        op_col: offset,
+        operand_index: ExpressionIndex,
     },
     BooleanUnary {
         op: BooleanUnaryOp,
-        operand: Box<Expression<'src>>,
+        operand_index: ExpressionIndex,
     },
     Binary {
-        lhs: Box<Expression<'src>>,
+        lhs_index: ExpressionIndex,
         op: BinaryOp,
-        op_col: usize,
-        rhs: Box<Expression<'src>>,
+        op_col: offset,
+        rhs_index: ExpressionIndex,
     },
     BooleanBinary {
-        lhs: Box<Expression<'src>>,
+        lhs_index: ExpressionIndex,
         op: BooleanBinaryOp,
-        rhs: Box<Expression<'src>>,
+        rhs_index: ExpressionIndex,
     },
     Comparison {
-        lhs: Box<Expression<'src>>,
+        lhs_index: ExpressionIndex,
         op: ComparisonOp,
-        rhs: Box<Expression<'src>>,
+        rhs_index: ExpressionIndex,
     },
     ArrayIndex {
         base_type: BaseType,
-        value: Box<Expression<'src>>,
-        bracket_col: usize,
-        index: Box<Expression<'src>>,
+        indexable_index: ExpressionIndex,
+        bracket_col: offset,
+        index_expression_index: ExpressionIndex,
     },
 
-    // TODO(stefano): represent as an index into the variables
     Variable {
         typ: Type,
-        name: &'src str,
+        variable_index: VariableIndex,
     },
 
     Temporary {
@@ -508,44 +518,7 @@ pub(crate) enum Expression<'src> {
     },
 }
 
-// TODO(stefano): find a way to print values indexing into the ast
-impl Display for Expression<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return match self {
-            Self::False => write!(f, "false"),
-            Self::True => write!(f, "true"),
-            Self::Int(integer) => write!(f, "{integer}"),
-            Self::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
-            Self::Str { label, .. } => write!(f, "str_{label}"),
-            Self::Array { items, .. } => {
-                write!(f, "[")?;
-                let mut items_iter = items.iter();
-                let Some(last_item) = items_iter.next_back() else {
-                    unreachable!("arrays should always contain at least 2 items");
-                };
-
-                for item in items_iter {
-                    write!(f, "{item}, ")?;
-                }
-
-                write!(f, "{last_item}]")
-            }
-            Self::Parenthesis(inner) => write!(f, "({inner})"),
-            Self::Unary { op: len @ UnaryOp::Len, operand, .. } => write!(f, "{len} {operand}"),
-            Self::Unary { op, operand, .. } => write!(f, "{op}{operand}"),
-            Self::BooleanUnary { op, operand } => write!(f, "{op}{operand}"),
-            Self::Binary { lhs, op, rhs, .. } => write!(f, "{lhs} {op} {rhs}"),
-            Self::BooleanBinary { lhs, op, rhs, .. } => write!(f, "{lhs} {op} {rhs}"),
-            Self::Comparison { lhs, op, rhs } => write!(f, "{lhs} {op} {rhs}"),
-            Self::ArrayIndex { value, index, .. } => write!(f, "{value}[{index}]"),
-
-            Self::Temporary { typ, .. } => write!(f, "temp {typ}"),
-            Self::Variable { name, .. } => write!(f, "{name}"),
-        };
-    }
-}
-
-impl TypeOf for Expression<'_> {
+impl TypeOf for Expression {
     fn typ(&self) -> Type {
         return match self {
             Self::False | Self::True => Type::Base(BaseType::Bool),
@@ -555,7 +528,7 @@ impl TypeOf for Expression<'_> {
             Self::Array { base_type, items } => {
                 Type::Array { base_type: *base_type, len: items.len() }
             }
-            Self::Parenthesis(inner) => inner.typ(),
+            Self::Parenthesis { typ, .. } => *typ,
             Self::Temporary { typ, .. } => *typ,
             Self::Unary { op, .. } => op.typ(),
             Self::BooleanUnary { op, .. } => op.typ(),
@@ -568,171 +541,184 @@ impl TypeOf for Expression<'_> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct IfStatement<'src> {
-    pub(crate) condition: Expression<'src>,
-    pub(crate) statement: Node<'src>,
+impl<'src, 'ast: 'src> Expression {
+    #[inline(always)]
+    pub(crate) const fn display(&'ast self, ast: &'ast Ast<'src>) -> ExpressionDisplay<'src, 'ast> {
+        return ExpressionDisplay { ast, expr: self };
+    }
 }
 
-impl Display for IfStatement<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return write!(f, "if {}", self.condition);
+pub(crate) struct ExpressionDisplay<'src, 'ast: 'src> {
+    ast: &'ast Ast<'src>,
+    expr: &'ast Expression,
+}
+
+impl<'src, 'ast: 'src> ExpressionDisplay<'src, 'ast> {
+    pub(crate) fn display(
+        &self,
+        f: &mut core::fmt::Formatter<'_>,
+        expr: &'ast Expression,
+    ) -> core::fmt::Result {
+        return match expr {
+            Expression::False => write!(f, "false"),
+            Expression::True => write!(f, "true"),
+            Expression::Int(integer) => write!(f, "{integer}"),
+            Expression::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
+            Expression::Str { label, .. } => write!(f, "str_{label}"),
+            Expression::Array { items, .. } => {
+                write!(f, "[")?;
+                let mut items_iter = items.iter();
+                let Some(last_item) = items_iter.next_back() else {
+                    unreachable!("arrays should always contain at least 2 items");
+                };
+
+                for item in items_iter {
+                    self.display(f, item)?;
+                    write!(f, ", ")?;
+                }
+
+                self.display(f, last_item)?;
+                write!(f, "]")
+            }
+            Expression::Parenthesis { expression_index, .. } => {
+                let inner = &self.ast.expressions[*expression_index as usize];
+                write!(f, "(")?;
+                self.display(f, inner)?;
+                write!(f, ")")
+            }
+            Expression::Unary { op: len @ UnaryOp::Len, operand_index, .. } => {
+                let operand = &self.ast.expressions[*operand_index as usize];
+                write!(f, "{len} ")?;
+                self.display(f, operand)
+            }
+            Expression::Unary { op, operand_index, .. } => {
+                let operand = &self.ast.expressions[*operand_index as usize];
+                write!(f, "{op}")?;
+                self.display(f, operand)
+            }
+            Expression::BooleanUnary { op, operand_index } => {
+                let operand = &self.ast.expressions[*operand_index as usize];
+                write!(f, "{op}")?;
+                self.display(f, operand)
+            }
+            Expression::Binary { lhs_index, op, rhs_index, .. } => {
+                let lhs = &self.ast.expressions[*lhs_index as usize];
+                let rhs = &self.ast.expressions[*rhs_index as usize];
+                self.display(f, lhs)?;
+                write!(f, " {op} ")?;
+                self.display(f, rhs)
+            }
+            Expression::BooleanBinary { lhs_index, op, rhs_index } => {
+                let lhs = &self.ast.expressions[*lhs_index as usize];
+                let rhs = &self.ast.expressions[*rhs_index as usize];
+                self.display(f, lhs)?;
+                write!(f, " {op} ")?;
+                self.display(f, rhs)
+            }
+            Expression::Comparison { lhs_index, op, rhs_index } => {
+                let lhs = &self.ast.expressions[*lhs_index as usize];
+                let rhs = &self.ast.expressions[*rhs_index as usize];
+                self.display(f, lhs)?;
+                write!(f, " {op} ")?;
+                self.display(f, rhs)
+            }
+            Expression::ArrayIndex { indexable_index, index_expression_index, .. } => {
+                let indexable = &self.ast.expressions[*indexable_index as usize];
+                let index_expression = &self.ast.expressions[*index_expression_index as usize];
+                self.display(f, indexable)?;
+                write!(f, "[")?;
+                self.display(f, index_expression)?;
+                write!(f, "]")
+            }
+            Expression::Temporary { temporary_value_index, .. } => {
+                let temp = &self.ast.temporaries[*temporary_value_index as usize];
+                self.display(f, temp)
+            }
+            Expression::Variable { variable_index, .. } => {
+                let variable = &self.ast.variables[*variable_index as usize];
+                write!(f, "{}", variable.name)
+            }
+        };
+    }
+}
+
+impl Display for ExpressionDisplay<'_, '_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        return self.display(f, self.expr);
     }
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct If<'src> {
-    pub(crate) ifs: Vec<IfStatement<'src>>,
-    pub(crate) els: Option<Box<Node<'src>>>,
+pub(crate) struct IfStatement {
+    pub(crate) condition: Expression,
+    pub(crate) statement: Node,
+}
+
+pub(crate) type Loop = IfStatement;
+
+#[derive(Debug, Clone)]
+pub(crate) struct If {
+    pub(crate) ifs: Vec<IfStatement>,
+    pub(crate) els: Option<Node>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Loop<'src> {
-    pub(crate) condition: Expression<'src>,
-    pub(crate) statement: Box<Node<'src>>,
-}
+pub(crate) enum Node {
+    Expression(Expression),
 
-impl Display for Loop<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return write!(f, "loop {}", self.condition);
-    }
-}
+    Print(Expression),
+    Println(Option<Expression>),
+    Eprint(Expression),
+    Eprintln(Option<Expression>),
 
-#[derive(Debug, Clone)]
-pub(crate) struct VariableRef<'src> {
-    pub(crate) name: &'src str,
-    pub(crate) var_index: VariableIndex,
-}
+    If(IfIndex),
 
-#[derive(Debug, Clone)]
-pub(crate) struct Variable<'src> {
-    pub(crate) name: &'src str,
-    pub(crate) value: Expression<'src>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum Node<'src> {
-    Expression(Expression<'src>),
-
-    Print(Expression<'src>),
-    Println(Option<Expression<'src>>),
-    Eprint(Expression<'src>),
-    Eprintln(Option<Expression<'src>>),
-
-    // TODO(stefano): flatten and store the corresponding label
-    If(If<'src>),
-
-    // TODO(stefano): flatten and store the corresponding label
-    Loop(Loop<'src>),
-    // TODO(stefano): flatten and store the corresponding label
-    DoLoop(Loop<'src>),
+    Loop(LoopIndex),
+    DoLoop(LoopIndex),
     Break,
     Continue,
 
-    Definition {
-        var_index: VariableIndex,
-    },
-    Reassignment {
-        target: Expression<'src>,
-        op: AssignmentOp,
-        op_col: usize,
-        new_value: Expression<'src>,
-    },
+    Definition { var_index: VariableIndex },
+    Reassignment { target: Expression, op: AssignmentOp, op_col: offset, new_value: Expression },
 
-    Scope {
-        index: ScopeIndex,
-    },
+    Scope { index: ScopeIndex },
 
     // should never appear in the ast
     Semicolon,
     ScopeEnd,
 }
 
-impl Display for Node<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return match self {
-            Self::Semicolon => write!(f, ";"),
-
-            Self::Expression(expression) => write!(f, "{expression}"),
-
-            Self::Print(arg) => write!(f, "print {arg}"),
-            Self::Println(Some(arg)) => write!(f, "println {arg}"),
-            Self::Println(None) => write!(f, "println"),
-            Self::Eprint(arg) => write!(f, "eprint {arg}"),
-            Self::Eprintln(Some(arg)) => write!(f, "eprintln {arg}"),
-            Self::Eprintln(None) => write!(f, "eprintln"),
-
-            Self::If(iff) => write!(f, "{}", iff.ifs[0]),
-
-            Self::Loop(looop) => write!(f, "{looop}"),
-            Self::DoLoop(looop) => write!(f, "{looop}"),
-            Self::Break => write!(f, "break"),
-            Self::Continue => write!(f, "continue"),
-
-            Self::Reassignment { target, op, new_value, .. } => {
-                write!(f, "{target} {op} {new_value}")
-            }
-            Self::Definition { .. } | Self::Scope { .. } | Self::ScopeEnd => {
-                unreachable!("should never be displayed");
-            }
-        };
-    }
-}
-
 #[derive(Debug, Clone)]
-pub(crate) struct Scope<'src> {
+pub(crate) struct Scope {
     pub(crate) parent: ScopeIndex,
     pub(crate) base_types: Vec<BaseType>,
-    pub(crate) let_variables: Vec<VariableRef<'src>>,
-    pub(crate) var_variables: Vec<VariableRef<'src>>,
-    pub(crate) nodes: Vec<Node<'src>>,
+    pub(crate) let_variables: Vec<VariableIndex>,
+    pub(crate) var_variables: Vec<VariableIndex>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum StrKind {
-    Str,
-    RawStr,
+pub(crate) struct Variable<'src> {
+    pub(crate) name: &'src str,
+    pub(crate) value: Expression,
 }
 
-#[derive(Debug)]
-struct AstBuilder<'src> {
-    loop_depth: usize,
-    scope: ScopeIndex,
-
-    scopes: Vec<Scope<'src>>,
-    temporaries: Vec<Expression<'src>>,
-    variables: Vec<Variable<'src>>,
-
-    strings: Vec<Str>,
-    raw_strings: Vec<RawStr<'src>>,
-    string_kinds: Vec<StrKind>,
-}
-
+// NOTE(stefano): this is in reality closer to an intermediate representation than to an AST
+// TODO(stefano): introduce other representation before and after this Ast
+// IDEA(stefano): build the AST, and then validate the AST afterwards
 #[derive(Debug)]
 pub struct Ast<'src> {
-    pub(crate) scopes: Box<[Scope<'src>]>,
-    pub(crate) temporaries: Box<[Expression<'src>]>,
-    pub(crate) variables: Box<[Variable<'src>]>,
+    pub(crate) nodes: Vec<Vec<Node>>,
 
-    pub(crate) strings: Box<[Str]>,
-    pub(crate) raw_strings: Box<[RawStr<'src>]>,
-    pub(crate) string_kinds: Box<[StrKind]>, // TODO(stefano): store a bitset instead of StrKind
+    pub(crate) ifs: Vec<If>,
+    pub(crate) loops: Vec<Loop>,
+
+    pub(crate) expressions: Vec<Expression>,
+    pub(crate) temporaries: Vec<Expression>,
+    pub(crate) variables: Vec<Variable<'src>>,
+
+    pub(crate) strings: Vec<Str>,
 }
 
-impl<'src> From<AstBuilder<'src>> for Ast<'src> {
-    fn from(builder: AstBuilder<'src>) -> Self {
-        return Self {
-            scopes: builder.scopes.into_boxed_slice(),
-            temporaries: builder.temporaries.into_boxed_slice(),
-            variables: builder.variables.into_boxed_slice(),
-            strings: builder.strings.into_boxed_slice(),
-            raw_strings: builder.raw_strings.into_boxed_slice(),
-            string_kinds: builder.string_kinds.into_boxed_slice(),
-        };
-    }
-}
-
-// IDEA(stefano): build the AST, and then validate the AST afterwards
 #[derive(Debug)]
 pub struct Parser<'src, 'tokens: 'src> {
     src: &'src SrcFile,
@@ -741,7 +727,10 @@ pub struct Parser<'src, 'tokens: 'src> {
     token: TokenIndex,
     tokens: &'tokens [Token<'src>],
 
-    ast: AstBuilder<'src>,
+    loop_depth: offset,
+    scope: ScopeIndex,
+    scopes: Vec<Scope>,
+    ast: Ast<'src>,
 }
 
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
@@ -749,44 +738,54 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         src: &'src SrcFile,
         tokens: &'tokens [Token<'src>],
     ) -> Result<Ast<'src>, Vec<Error<ErrorKind>>> {
-        let ast = AstBuilder {
-            loop_depth: 0,
-            scope: 0,
+        let ast = Ast {
+            nodes: vec![vec![]],
 
-            scopes: vec![Scope {
-                parent: 0,
-                base_types: vec![BaseType::Int, BaseType::Ascii, BaseType::Bool, BaseType::Str],
-                let_variables: Vec::new(),
-                var_variables: Vec::new(),
-                nodes: Vec::new(),
-            }],
+            ifs: Vec::new(),
+            loops: Vec::new(),
+
+            expressions: Vec::new(),
             temporaries: Vec::new(),
             variables: Vec::new(),
+
             strings: Vec::new(),
-            raw_strings: Vec::new(),
-            string_kinds: Vec::new(),
         };
 
         if tokens.is_empty() {
-            return Ok(ast.into());
+            return Ok(ast);
         }
 
         // skipping to the first non-comment token
-        let mut token = 0;
-        while token < tokens.len() {
-            let current = &tokens[token];
-            let TokenKind::Comment(_) = current.kind else {
+        let mut token: offset = 0;
+        let tokens_len = tokens.len() as offset;
+        while token < tokens_len {
+            let current = &tokens[token as usize];
+            let (TokenKind::Comment(_) | TokenKind::MultilineComment(_)) = current.kind else {
                 break;
             };
 
             token += 1;
         }
 
-        let mut this = Self { src, errors: Vec::new(), token, tokens, ast };
+        let mut this = Self {
+            src,
+            errors: Vec::new(),
+            token,
+            tokens,
+            loop_depth: 0,
+            scope: 0,
+            scopes: vec![Scope {
+                parent: 0,
+                base_types: vec![BaseType::Int, BaseType::Ascii, BaseType::Bool, BaseType::Str],
+                let_variables: Vec::new(),
+                var_variables: Vec::new(),
+            }],
+            ast,
+        };
 
         this.scope();
 
-        return if this.errors.is_empty() { Ok(this.ast.into()) } else { Err(this.errors) };
+        return if this.errors.is_empty() { Ok(this.ast) } else { Err(this.errors) };
     }
 }
 
@@ -813,28 +812,28 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     effect that propagates to the rest of the parsing, causing subsequent errors to be wrong
     */
     fn scope(&mut self) {
-        while let Some(token) = self.tokens.get(self.token) {
+        while let Some(token) = self.tokens.get(self.token as usize) {
             match self.any(token) {
                 // skip to the next token after a semicolon
                 Ok(Node::Semicolon) => continue,
                 Ok(Node::ScopeEnd) => break,
-                Ok(node) => self.ast.scopes[self.ast.scope].nodes.push(node),
+                Ok(node) => self.ast.nodes[self.scope as usize].push(node),
                 Err(err) => {
                     self.errors.push(err);
 
                     // consuming all remaining tokens until the end of the file
-                    self.token = self.tokens.len();
+                    self.token = self.tokens.len() as offset;
                     break;
                 }
             }
         }
     }
 
-    fn statement(&mut self, token: &'tokens Token<'src>) -> Result<Node<'src>, Error<ErrorKind>> {
+    fn statement(&mut self, token: &'tokens Token<'src>) -> Result<Node, Error<ErrorKind>> {
         return match token.kind {
             TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_)
+            | TokenKind::Integer(_, _)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
@@ -862,7 +861,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 match after_expression_token.kind {
                     TokenKind::SemiColon => {
                         if let Expression::Array { .. } = expression {
-                            let temporary_value_index = self.ast.temporaries.len();
+                            let temporary_value_index = self.ast.temporaries.len() as offset;
                             let expression_type = expression.typ();
                             self.ast.temporaries.push(expression);
                             expression = Expression::Temporary {
@@ -1031,7 +1030,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     | TokenKind::Comma
                     | TokenKind::False
                     | TokenKind::True
-                    | TokenKind::Integer(_)
+                    | TokenKind::Integer(_, _)
                     | TokenKind::Ascii(_)
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
@@ -1040,7 +1039,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     | TokenKind::PrintLn
                     | TokenKind::Eprint
                     | TokenKind::EprintLn
-                    | TokenKind::Definition(_)
+                    | TokenKind::Mutability(_)
                     | TokenKind::Do
                     | TokenKind::If
                     | TokenKind::Else
@@ -1054,13 +1053,13 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             pointers_count: previous_token.kind.display_len(),
                         })
                     }
-                    TokenKind::Comment(_) => {
+                    TokenKind::Comment(_) | TokenKind::MultilineComment(_) => {
                         unreachable!("should be skipped by the token iterator")
                     }
                     TokenKind::Unexpected(_) => unreachable!("only valid tokens should be present"),
                 }
             }
-            TokenKind::Definition(mutability) => {
+            TokenKind::Mutability(mutability) => {
                 let definition = self.variable_definition(mutability)?;
                 self.semicolon()?;
                 Ok(definition)
@@ -1105,14 +1104,14 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 })
             }
             TokenKind::Do | TokenKind::Loop => {
-                self.ast.loop_depth += 1;
+                self.loop_depth += 1;
                 let looop_statement = self.loop_statement();
-                self.ast.loop_depth -= 1;
+                self.loop_depth -= 1;
                 looop_statement
             }
             TokenKind::Break => {
                 _ = self.next_token();
-                if self.ast.loop_depth == 0 {
+                if self.loop_depth == 0 {
                     return Err(Error {
                         kind: ErrorKind::StrayBreakStatement,
                         col: token.col,
@@ -1125,7 +1124,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             }
             TokenKind::Continue => {
                 _ = self.next_token();
-                if self.ast.loop_depth == 0 {
+                if self.loop_depth == 0 {
                     return Err(Error {
                         kind: ErrorKind::StrayContinueStatement,
                         col: token.col,
@@ -1180,12 +1179,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     pointers_count: token.kind.display_len(),
                 })
             }
-            TokenKind::Comment(_) => unreachable!("should be skipped by the token iterator"),
+            TokenKind::Comment(_) | TokenKind::MultilineComment(_) => unreachable!("should be skipped by the token iterator"),
             TokenKind::Unexpected(_) => unreachable!("only valid tokens should be present"),
         };
     }
 
-    fn do_statement(&mut self) -> Result<Node<'src>, Error<ErrorKind>> {
+    fn do_statement(&mut self) -> Result<Node, Error<ErrorKind>> {
         let token = self.next_token_bounded(Expected::StatementAfterDo)?;
         return match token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
@@ -1196,7 +1195,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     pointers_count: token.kind.display_len(),
                 })
             }
-            TokenKind::Definition(_) => {
+            TokenKind::Mutability(_) => {
                 _ = self.next_token();
                 Err(Error {
                     kind: ErrorKind::VariableInDoStatement,
@@ -1206,6 +1205,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             }
             TokenKind::Bracket(_)
             | TokenKind::Comment(_)
+            | TokenKind::MultilineComment(_)
             | TokenKind::Unexpected(_)
             | TokenKind::Colon
             | TokenKind::SemiColon
@@ -1213,7 +1213,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Op(_)
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_)
+            | TokenKind::Integer(_, _)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
@@ -1231,30 +1231,31 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
     }
 
-    fn any(&mut self, token: &'tokens Token<'src>) -> Result<Node<'src>, Error<ErrorKind>> {
+    fn any(&mut self, token: &'tokens Token<'src>) -> Result<Node, Error<ErrorKind>> {
         return match token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
-                let new_scope_index = self.ast.scopes.len();
-                self.ast.scopes.push(Scope {
-                    parent: self.ast.scope,
+                let new_scope_index = self.scopes.len() as offset;
+                self.scopes.push(Scope {
+                    parent: self.scope,
                     base_types: Vec::new(),
                     let_variables: Vec::new(),
                     var_variables: Vec::new(),
-                    nodes: Vec::new(),
                 });
-                self.ast.scope = new_scope_index;
+                self.ast.nodes.push(Vec::new());
+                self.scope = new_scope_index;
 
                 _ = self.next_token();
                 self.scope();
                 Ok(Node::Scope { index: new_scope_index })
             }
             TokenKind::Bracket(BracketKind::CloseCurly) => {
-                self.ast.scope = self.ast.scopes[self.ast.scope].parent;
+                self.scope = self.scopes[self.scope as usize].parent;
                 _ = self.next_token();
                 Ok(Node::ScopeEnd)
             }
             TokenKind::Bracket(_)
             | TokenKind::Comment(_)
+            | TokenKind::MultilineComment(_)
             | TokenKind::Unexpected(_)
             | TokenKind::Colon
             | TokenKind::SemiColon
@@ -1262,12 +1263,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Op(_)
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_)
+            | TokenKind::Integer(_, _)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
-            | TokenKind::Definition(_)
+            | TokenKind::Mutability(_)
             | TokenKind::Print
             | TokenKind::PrintLn
             | TokenKind::Eprint
@@ -1284,8 +1285,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
 // iteration over tokens
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+    // IDEA(stefano): remove self.current_token method and pass the current token around
     fn current_token(&self, expected: Expected) -> Result<&'tokens Token<'src>, Error<ErrorKind>> {
-        let Some(token) = self.tokens.get(self.token) else {
+        let Some(token) = self.tokens.get(self.token as usize) else {
             let previous = self.peek_previous_token();
             return Err(Error {
                 kind: ErrorKind::PrematureEndOfFile(expected),
@@ -1299,14 +1301,15 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
     fn next_token(&mut self) -> Option<&'tokens Token<'src>> {
         loop {
-            if self.token >= self.tokens.len() - 1 {
-                self.token = self.tokens.len();
+            let tokens_len = self.tokens.len() as offset;
+            if self.token >= tokens_len - 1 {
+                self.token = tokens_len;
                 return None;
             }
 
             self.token += 1;
-            let next = &self.tokens[self.token];
-            let TokenKind::Comment(_) = next.kind else {
+            let next = &self.tokens[self.token as usize];
+            let (TokenKind::Comment(_) | TokenKind::MultilineComment(_)) = next.kind else {
                 return Some(next);
             };
         }
@@ -1317,9 +1320,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         expected: Expected,
     ) -> Result<&'tokens Token<'src>, Error<ErrorKind>> {
         loop {
-            if self.token >= self.tokens.len() - 1 {
-                let previous = &self.tokens[self.token];
-                self.token = self.tokens.len();
+            let tokens_len = self.tokens.len() as offset;
+            if self.token >= tokens_len - 1 {
+                let previous = &self.tokens[self.token as usize];
+                self.token = tokens_len;
                 return Err(Error {
                     kind: ErrorKind::PrematureEndOfFile(expected),
                     col: previous.col,
@@ -1328,8 +1332,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             }
 
             self.token += 1;
-            let next = &self.tokens[self.token];
-            let TokenKind::Comment(_) = next.kind else {
+            let next = &self.tokens[self.token as usize];
+            let (TokenKind::Comment(_) | TokenKind::MultilineComment(_)) = next.kind else {
                 return Ok(next);
             };
         }
@@ -1338,13 +1342,13 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     const fn peek_next_token(&self) -> Option<&'tokens Token<'src>> {
         let mut current_token = self.token;
         loop {
-            if current_token >= self.tokens.len() - 1 {
+            if current_token >= self.tokens.len() as offset - 1 {
                 return None;
             }
 
             current_token += 1;
-            let next = &self.tokens[current_token];
-            let TokenKind::Comment(_) = next.kind else {
+            let next = &self.tokens[current_token as usize];
+            let (TokenKind::Comment(_) | TokenKind::MultilineComment(_)) = next.kind else {
                 return Some(next);
             };
         }
@@ -1356,19 +1360,31 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         let mut current_token = self.token;
         loop {
             current_token -= 1;
-            let previous = &self.tokens[current_token];
-            let TokenKind::Comment(_) = previous.kind else {
+            let previous = &self.tokens[current_token as usize];
+            let (TokenKind::Comment(_) | TokenKind::MultilineComment(_)) = previous.kind else {
                 return previous;
             };
         }
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParseIntError {
+    Overflow,
+    Underflow,
+}
+
 // expressions
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+    fn new_expression(&mut self, expression: Expression) -> ExpressionIndex {
+        let index = self.ast.expressions.len() as ExpressionIndex;
+        self.ast.expressions.push(expression);
+        return index;
+    }
+
     fn assert_lhs_is_not_string_or_array(
         op_token: &'tokens Token<'src>,
-        lhs: &Expression<'src>,
+        lhs: &Expression,
     ) -> Result<(), Error<ErrorKind>> {
         let lhs_type = lhs.typ();
         if let Type::Base(BaseType::Str) | Type::Array { .. } = lhs_type {
@@ -1384,7 +1400,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
     fn assert_rhs_is_not_string_or_array(
         op_token: &'tokens Token<'src>,
-        rhs: &Expression<'src>,
+        rhs: &Expression,
     ) -> Result<(), Error<ErrorKind>> {
         let rhs_type = rhs.typ();
         if let Type::Base(BaseType::Str) | Type::Array { .. } = rhs_type {
@@ -1400,7 +1416,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
     fn assert_lhs_is_bool(
         op_token: &'tokens Token<'src>,
-        lhs: &Expression<'src>,
+        lhs: &Expression,
     ) -> Result<(), Error<ErrorKind>> {
         let lhs_type = lhs.typ();
         let Type::Base(BaseType::Bool) = lhs_type else {
@@ -1416,7 +1432,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
     fn assert_rhs_is_bool(
         op_token: &'tokens Token<'src>,
-        rhs: &Expression<'src>,
+        rhs: &Expression,
     ) -> Result<(), Error<ErrorKind>> {
         let rhs_type = rhs.typ();
         let Type::Base(BaseType::Bool) = rhs_type else {
@@ -1447,69 +1463,218 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
     }
 
-    #[inline(always)]
-    fn new_string(&mut self, string: Str) -> usize {
-        let label = self.ast.string_kinds.len();
-        self.ast.string_kinds.push(StrKind::Str);
+    fn new_string(&mut self, string: Str) -> StringLabel {
+        let label = self.ast.strings.len() as StringLabel;
         self.ast.strings.push(string);
         return label;
     }
 
-    #[inline(always)]
-    fn new_raw_string(&mut self, string: RawStr<'src>) -> usize {
-        let label = self.ast.string_kinds.len();
-        self.ast.string_kinds.push(StrKind::RawStr);
-        self.ast.raw_strings.push(string);
-        return label;
-    }
-
-    fn primary_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
-        fn parse_positive_int(literal: &str) -> Option<int> {
+    fn primary_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
+        fn parse_positive_int(
+            base: Base,
+            Integer(literal): Integer<'_>,
+        ) -> Result<int, ParseIntError> {
             let mut integer: int = 0;
-            for ascii_digit in literal.as_bytes() {
-                let digit = (*ascii_digit - b'0') as usize;
 
-                integer = integer.checked_mul(10)?;
-                integer = integer.checked_add_unsigned(digit)?;
+            match base {
+                Base::Decimal => {
+                    for ascii_digit in literal {
+                        if *ascii_digit == b'_' {
+                            continue;
+                        }
+
+                        integer = match integer.checked_mul(base as int) {
+                            Some(shifted_integer) => shifted_integer,
+                            None => return Err(ParseIntError::Overflow),
+                        };
+
+                        let digit = *ascii_digit - b'0';
+                        debug_assert!(digit < base as u8, "invalid decimal digit");
+                        integer = match integer.checked_add(digit as int) {
+                            Some(next_integer) => next_integer,
+                            None => return Err(ParseIntError::Overflow),
+                        };
+                    }
+                }
+                Base::Binary => {
+                    for ascii_digit in literal {
+                        if *ascii_digit == b'_' {
+                            continue;
+                        }
+
+                        integer = match integer.checked_mul(base as int) {
+                            Some(shifted_integer) => shifted_integer,
+                            None => return Err(ParseIntError::Overflow),
+                        };
+
+                        let digit = *ascii_digit - b'0';
+                        debug_assert!(digit < base as u8, "invalid binary digit");
+                        integer = match integer.checked_add(digit as int) {
+                            Some(next_integer) => next_integer,
+                            None => return Err(ParseIntError::Overflow),
+                        };
+                    }
+                }
+                Base::Octal => {
+                    for ascii_digit in literal {
+                        if *ascii_digit == b'_' {
+                            continue;
+                        }
+
+                        integer = match integer.checked_mul(base as int) {
+                            Some(shifted_integer) => shifted_integer,
+                            None => return Err(ParseIntError::Overflow),
+                        };
+
+                        let digit = *ascii_digit - b'0';
+                        debug_assert!(digit < base as u8, "invalid octal digit");
+                        integer = match integer.checked_add(digit as int) {
+                            Some(next_integer) => next_integer,
+                            None => return Err(ParseIntError::Overflow),
+                        };
+                    }
+                }
+                Base::Hexadecimal => {
+                    for ascii_digit in literal {
+                        if *ascii_digit == b'_' {
+                            continue;
+                        }
+
+                        integer = match integer.checked_mul(base as int) {
+                            Some(shifted_integer) => shifted_integer,
+                            None => return Err(ParseIntError::Overflow),
+                        };
+
+                        let digit = match *ascii_digit {
+                            number @ b'0'..=b'9' => number - b'0',
+                            uppercase_letter @ b'A'..=b'F' => uppercase_letter - b'A' + 10,
+                            lowercase_letter @ b'a'..=b'f' => lowercase_letter - b'a' + 10,
+                            _ => unreachable!("invalid hexadecimal digit"),
+                        };
+                        integer = match integer.checked_add(digit as int) {
+                            Some(next_integer) => next_integer,
+                            None => return Err(ParseIntError::Overflow),
+                        };
+                    }
+                }
             }
-            return Some(integer);
+
+            return Ok(integer);
         }
 
-        fn parse_negative_int(literal: &str) -> Option<int> {
+        fn parse_negative_int(
+            base: Base,
+            Integer(literal): Integer<'_>,
+        ) -> Result<int, ParseIntError> {
             let mut integer: int = 0;
-            for ascii_digit in literal.as_bytes() {
-                let digit = (*ascii_digit - b'0') as usize;
 
-                integer = integer.checked_mul(10)?;
-                integer = integer.checked_sub_unsigned(digit)?;
+            match base {
+                Base::Decimal => {
+                    for ascii_digit in literal {
+                        if *ascii_digit == b'_' {
+                            continue;
+                        }
+
+                        integer = match integer.checked_mul(base as int) {
+                            Some(shifted_integer) => shifted_integer,
+                            None => return Err(ParseIntError::Underflow),
+                        };
+
+                        let digit = *ascii_digit - b'0';
+                        debug_assert!(digit < base as u8, "invalid decimal digit");
+                        integer = match integer.checked_sub(digit as int) {
+                            Some(next_integer) => next_integer,
+                            None => return Err(ParseIntError::Underflow),
+                        };
+                    }
+                }
+                Base::Binary => {
+                    for ascii_digit in literal {
+                        if *ascii_digit == b'_' {
+                            continue;
+                        }
+
+                        integer = match integer.checked_mul(base as int) {
+                            Some(shifted_integer) => shifted_integer,
+                            None => return Err(ParseIntError::Underflow),
+                        };
+
+                        let digit = *ascii_digit - b'0';
+                        debug_assert!(digit < base as u8, "invalid binary digit");
+                        integer = match integer.checked_sub(digit as int) {
+                            Some(next_integer) => next_integer,
+                            None => return Err(ParseIntError::Underflow),
+                        };
+                    }
+                }
+                Base::Octal => {
+                    for ascii_digit in literal {
+                        if *ascii_digit == b'_' {
+                            continue;
+                        }
+
+                        integer = match integer.checked_mul(base as int) {
+                            Some(shifted_integer) => shifted_integer,
+                            None => return Err(ParseIntError::Underflow),
+                        };
+
+                        let digit = *ascii_digit - b'0';
+                        debug_assert!(digit < base as u8, "invalid octal digit");
+                        integer = match integer.checked_sub(digit as int) {
+                            Some(next_integer) => next_integer,
+                            None => return Err(ParseIntError::Underflow),
+                        };
+                    }
+                }
+                Base::Hexadecimal => {
+                    for ascii_digit in literal {
+                        if *ascii_digit == b'_' {
+                            continue;
+                        }
+
+                        integer = match integer.checked_mul(base as int) {
+                            Some(shifted_integer) => shifted_integer,
+                            None => return Err(ParseIntError::Underflow),
+                        };
+
+                        let digit = match *ascii_digit {
+                            number @ b'0'..=b'9' => number - b'0',
+                            uppercase_letter @ b'A'..=b'F' => uppercase_letter - b'A' + 10,
+                            lowercase_letter @ b'a'..=b'f' => lowercase_letter - b'a' + 10,
+                            _ => unreachable!("invalid hexadecimal digit"),
+                        };
+                        integer = match integer.checked_sub(digit as int) {
+                            Some(next_integer) => next_integer,
+                            None => return Err(ParseIntError::Underflow),
+                        };
+                    }
+                }
             }
-            return Some(integer);
+
+            return Ok(integer);
         }
 
         let current_token = self.current_token(Expected::Expression)?;
         let expression_result = match &current_token.kind {
             TokenKind::False => Ok(Expression::False),
             TokenKind::True => Ok(Expression::True),
-            TokenKind::Integer(integer_literal) => match parse_positive_int(integer_literal) {
-                Some(integer) => Ok(Expression::Int(integer)),
-                None => Err(Error {
-                    kind: ErrorKind::IntOverflow,
+            TokenKind::Integer(base, literal) => match parse_positive_int(*base, *literal) {
+                Ok(integer) => Ok(Expression::Int(integer)),
+                Err(error) => Err(Error {
+                    kind: ErrorKind::InvalidInteger(error, *base),
                     col: current_token.col,
                     pointers_count: current_token.kind.display_len(),
                 }),
             },
             TokenKind::Ascii(ascii_ch) => Ok(Expression::Ascii(*ascii_ch)),
-            TokenKind::Str(string) => {
+            TokenKind::Str(string) | TokenKind::RawStr(string) => {
                 Ok(Expression::Str { label: self.new_string(string.clone()) })
-            }
-            TokenKind::RawStr(string) => {
-                Ok(Expression::Str { label: self.new_raw_string(string.clone()) })
             }
             TokenKind::Identifier(name) => match self.resolve_type(name) {
                 None => match self.resolve_variable(name) {
-                    Some((_, var_ref)) => {
-                        let var = &self.ast.variables[var_ref.var_index];
-                        Ok(Expression::Variable { typ: var.value.typ(), name: var.name })
+                    Some((_, variable_index)) => {
+                        let var = &self.ast.variables[variable_index as usize];
+                        Ok(Expression::Variable { typ: var.value.typ(), variable_index })
                     }
                     None => Err(Error {
                         kind: ErrorKind::VariableNotPreviouslyDefined,
@@ -1637,7 +1802,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     });
                 };
 
-                Ok(Expression::Parenthesis(Box::new(expression)))
+                Ok(Expression::Parenthesis {
+                    typ: expression.typ(),
+                    expression_index: self.new_expression(expression),
+                })
             }
             TokenKind::Bracket(BracketKind::OpenSquare) => 'array: {
                 let mut bracket_or_comma_token =
@@ -1732,7 +1900,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     Expression::Str { .. } => Ok(Expression::Unary {
                         op: UnaryOp::Len,
                         op_col: current_token.col,
-                        operand: Box::new(operand),
+                        operand_index: self.new_expression(operand),
                     }),
                     Expression::Int(_) => Err(Error {
                         kind: ErrorKind::CannotTakeLenOf(Type::Base(BaseType::Int)),
@@ -1752,13 +1920,13 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     Expression::Array { .. } => Ok(Expression::Unary {
                         op: UnaryOp::Len,
                         op_col: current_token.col,
-                        operand: Box::new(operand),
+                        operand_index: self.new_expression(operand),
                     }),
                     Expression::Variable { typ, .. } => match typ {
                         Type::Base(BaseType::Str) | Type::Array { .. } => Ok(Expression::Unary {
                             op: UnaryOp::Len,
                             op_col: current_token.col,
-                            operand: Box::new(operand),
+                            operand_index: self.new_expression(operand),
                         }),
                         Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => {
                             Err(Error {
@@ -1772,7 +1940,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         BaseType::Str => Ok(Expression::Unary {
                             op: UnaryOp::Len,
                             op_col: current_token.col,
-                            operand: Box::new(operand),
+                            operand_index: self.new_expression(operand),
                         }),
                         BaseType::Int | BaseType::Ascii | BaseType::Bool => Err(Error {
                             kind: ErrorKind::CannotTakeLenOf(Type::Base(*base_type)),
@@ -1780,8 +1948,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             pointers_count: current_token.kind.display_len(),
                         }),
                     },
-                    Expression::Parenthesis(inner) => Err(Error {
-                        kind: ErrorKind::CannotTakeLenOf(inner.typ()),
+                    Expression::Parenthesis { typ, .. } => Err(Error {
+                        kind: ErrorKind::CannotTakeLenOf(*typ),
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(),
                     }),
@@ -1833,7 +2001,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             Ok(Expression::Unary {
                                 op: UnaryOp::Plus,
                                 op_col: current_token.col,
-                                operand: Box::new(operand),
+                                operand_index: self.new_expression(operand),
                             })
                         } else {
                             Ok(operand)
@@ -1869,7 +2037,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             Ok(Expression::Unary {
                                 op: UnaryOp::WrappingPlus,
                                 op_col: current_token.col,
-                                operand: Box::new(operand),
+                                operand_index: self.new_expression(operand),
                             })
                         } else {
                             Ok(operand)
@@ -1905,7 +2073,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             Ok(Expression::Unary {
                                 op: UnaryOp::SaturatingPlus,
                                 op_col: current_token.col,
-                                operand: Box::new(operand),
+                                operand_index: self.new_expression(operand),
                             })
                         } else {
                             Ok(operand)
@@ -1928,8 +2096,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     should_be_negated = !should_be_negated;
                 }
 
-                let start_of_expression = &self.tokens[self.token];
-                let TokenKind::Integer(literal) = start_of_expression.kind else {
+                let start_of_expression = &self.tokens[self.token as usize];
+                let TokenKind::Integer(base, literal) = start_of_expression.kind else {
                     let operand = self.primary_expression()?;
 
                     // returning to avoid the call to tokens.next at the end of the function
@@ -1939,7 +2107,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                                 Ok(Expression::Unary {
                                     op: UnaryOp::Minus,
                                     op_col: current_token.col,
-                                    operand: Box::new(operand),
+                                    operand_index: self.new_expression(operand),
                                 })
                             } else {
                                 Ok(operand)
@@ -1955,26 +2123,26 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 };
 
                 if should_be_negated {
-                    match parse_negative_int(literal) {
-                        Some(0) => Err(Error {
-                            kind: ErrorKind::MinusZeroNumberLiteral,
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                    match parse_negative_int(base, literal) {
+                        Ok(0) => Err(Error {
+                            kind: ErrorKind::MinusZeroInteger,
+                            col: start_of_expression.col,
+                            pointers_count: start_of_expression.kind.display_len(),
                         }),
-                        Some(integer) => Ok(Expression::Int(integer)),
-                        None => Err(Error {
-                            kind: ErrorKind::IntUnderflow,
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                        Ok(integer) => Ok(Expression::Int(integer)),
+                        Err(error) => Err(Error {
+                            kind: ErrorKind::InvalidInteger(error, base),
+                            col: start_of_expression.col,
+                            pointers_count: start_of_expression.kind.display_len(),
                         }),
                     }
                 } else {
-                    match parse_positive_int(literal) {
-                        Some(integer) => Ok(Expression::Int(integer)),
-                        None => Err(Error {
-                            kind: ErrorKind::IntOverflow,
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                    match parse_positive_int(base, literal) {
+                        Ok(integer) => Ok(Expression::Int(integer)),
+                        Err(error) => Err(Error {
+                            kind: ErrorKind::InvalidInteger(error, base),
+                            col: start_of_expression.col,
+                            pointers_count: start_of_expression.kind.display_len(),
                         }),
                     }
                 }
@@ -1990,8 +2158,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     should_be_negated = !should_be_negated;
                 }
 
-                let start_of_expression = &self.tokens[self.token];
-                let TokenKind::Integer(literal) = start_of_expression.kind else {
+                let start_of_expression = &self.tokens[self.token as usize];
+                let TokenKind::Integer(base, literal) = start_of_expression.kind else {
                     let operand = self.primary_expression()?;
 
                     // returning to avoid the call to tokens.next at the end of the function
@@ -2001,7 +2169,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                                 Ok(Expression::Unary {
                                     op: UnaryOp::WrappingMinus,
                                     op_col: current_token.col,
-                                    operand: Box::new(operand),
+                                    operand_index: self.new_expression(operand),
                                 })
                             } else {
                                 Ok(operand)
@@ -2017,26 +2185,26 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 };
 
                 if should_be_negated {
-                    match parse_negative_int(literal) {
-                        Some(0) => Err(Error {
-                            kind: ErrorKind::MinusZeroNumberLiteral,
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                    match parse_negative_int(base, literal) {
+                        Ok(0) => Err(Error {
+                            kind: ErrorKind::MinusZeroInteger,
+                            col: start_of_expression.col,
+                            pointers_count: start_of_expression.kind.display_len(),
                         }),
-                        Some(integer) => Ok(Expression::Int(integer)),
-                        None => Err(Error {
-                            kind: ErrorKind::IntUnderflow,
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                        Ok(integer) => Ok(Expression::Int(integer)),
+                        Err(error) => Err(Error {
+                            kind: ErrorKind::InvalidInteger(error, base),
+                            col: start_of_expression.col,
+                            pointers_count: start_of_expression.kind.display_len(),
                         }),
                     }
                 } else {
-                    match parse_positive_int(literal) {
-                        Some(integer) => Ok(Expression::Int(integer)),
-                        None => Err(Error {
-                            kind: ErrorKind::IntOverflow,
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                    match parse_positive_int(base, literal) {
+                        Ok(integer) => Ok(Expression::Int(integer)),
+                        Err(error) => Err(Error {
+                            kind: ErrorKind::InvalidInteger(error, base),
+                            col: start_of_expression.col,
+                            pointers_count: start_of_expression.kind.display_len(),
                         }),
                     }
                 }
@@ -2052,8 +2220,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     should_be_negated = !should_be_negated;
                 }
 
-                let start_of_expression = &self.tokens[self.token];
-                let TokenKind::Integer(literal) = start_of_expression.kind else {
+                let start_of_expression = &self.tokens[self.token as usize];
+                let TokenKind::Integer(base, literal) = start_of_expression.kind else {
                     let operand = self.primary_expression()?;
 
                     // returning to avoid the call to tokens.next at the end of the function
@@ -2063,7 +2231,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                                 Ok(Expression::Unary {
                                     op: UnaryOp::SaturatingMinus,
                                     op_col: current_token.col,
-                                    operand: Box::new(operand),
+                                    operand_index: self.new_expression(operand),
                                 })
                             } else {
                                 Ok(operand)
@@ -2079,26 +2247,26 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 };
 
                 if should_be_negated {
-                    match parse_negative_int(literal) {
-                        Some(0) => Err(Error {
-                            kind: ErrorKind::MinusZeroNumberLiteral,
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                    match parse_negative_int(base, literal) {
+                        Ok(0) => Err(Error {
+                            kind: ErrorKind::MinusZeroInteger,
+                            col: start_of_expression.col,
+                            pointers_count: start_of_expression.kind.display_len(),
                         }),
-                        Some(integer) => Ok(Expression::Int(integer)),
-                        None => Err(Error {
-                            kind: ErrorKind::IntUnderflow,
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                        Ok(integer) => Ok(Expression::Int(integer)),
+                        Err(error) => Err(Error {
+                            kind: ErrorKind::InvalidInteger(error, base),
+                            col: start_of_expression.col,
+                            pointers_count: start_of_expression.kind.display_len(),
                         }),
                     }
                 } else {
-                    match parse_positive_int(literal) {
-                        Some(integer) => Ok(Expression::Int(integer)),
-                        None => Err(Error {
-                            kind: ErrorKind::IntOverflow,
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                    match parse_positive_int(base, literal) {
+                        Ok(integer) => Ok(Expression::Int(integer)),
+                        Err(error) => Err(Error {
+                            kind: ErrorKind::InvalidInteger(error, base),
+                            col: start_of_expression.col,
+                            pointers_count: start_of_expression.kind.display_len(),
                         }),
                     }
                 }
@@ -2121,7 +2289,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             Ok(Expression::Unary {
                                 op: UnaryOp::Not,
                                 op_col: current_token.col,
-                                operand: Box::new(operand),
+                                operand_index: self.new_expression(operand),
                             })
                         } else {
                             Ok(operand)
@@ -2131,7 +2299,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         if should_be_inverted {
                             Ok(Expression::BooleanUnary {
                                 op: BooleanUnaryOp::Not,
-                                operand: Box::new(operand),
+                                operand_index: self.new_expression(operand),
                             })
                         } else {
                             Ok(operand)
@@ -2144,7 +2312,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     }),
                 };
             }
-            TokenKind::Definition(_)
+            TokenKind::Mutability(_)
             | TokenKind::Print
             | TokenKind::PrintLn
             | TokenKind::If
@@ -2162,6 +2330,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             TokenKind::Bracket(_)
             | TokenKind::Op(_)
             | TokenKind::Comment(_)
+            | TokenKind::MultilineComment(_)
             | TokenKind::Unexpected(_)
             | TokenKind::Colon
             | TokenKind::SemiColon
@@ -2198,27 +2367,22 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 });
             };
 
-            /* IDEA(stefano):
-            disallow indexing into literal arrays, it's as if you were to access
-            the actual element.
-            could suggest the user to extract the literal array to a temporary variable first
-            */
-            if let Expression::Parenthesis(_) = expression {
+            let Expression::Variable { .. } = expression else {
                 return Err(Error {
                     kind: ErrorKind::CannotIndexIntoExpression,
                     col: open_bracket_token.col,
                     pointers_count: open_bracket_token.kind.display_len(),
                 });
-            }
+            };
 
             let expression_type = expression.typ();
             expression = match expression_type {
                 Type::Base(base_type) => match base_type {
                     BaseType::Str => Expression::ArrayIndex {
                         base_type: BaseType::Ascii,
-                        value: Box::new(expression),
+                        indexable_index: self.new_expression(expression),
                         bracket_col: open_bracket_token.col,
-                        index: Box::new(index),
+                        index_expression_index: self.new_expression(index),
                     },
                     BaseType::Int | BaseType::Ascii | BaseType::Bool => {
                         return Err(Error {
@@ -2230,9 +2394,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 },
                 Type::Array { base_type, .. } => Expression::ArrayIndex {
                     base_type,
-                    value: Box::new(expression),
+                    indexable_index: self.new_expression(expression),
                     bracket_col: open_bracket_token.col,
-                    index: Box::new(index),
+                    index_expression_index: self.new_expression(index),
                 },
             };
         }
@@ -2240,7 +2404,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(expression);
     }
 
-    fn exponentiative_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn exponentiative_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let mut lhs = self.primary_expression()?;
 
         let ops = [Op::Pow, Op::WrappingPow, Op::SaturatingPow];
@@ -2259,17 +2423,17 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             lhs = Expression::Binary {
-                lhs: Box::new(lhs),
+                lhs_index: self.new_expression(lhs),
                 op: binary_op,
                 op_col: op_token.col,
-                rhs: Box::new(rhs),
+                rhs_index: self.new_expression(rhs),
             };
         }
 
         return Ok(lhs);
     }
 
-    fn multiplicative_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn multiplicative_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let mut lhs = self.exponentiative_expression()?;
 
         let ops = [
@@ -2300,17 +2464,17 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             lhs = Expression::Binary {
-                lhs: Box::new(lhs),
+                lhs_index: self.new_expression(lhs),
                 op: binary_op,
                 op_col: op_token.col,
-                rhs: Box::new(rhs),
+                rhs_index: self.new_expression(rhs),
             };
         }
 
         return Ok(lhs);
     }
 
-    fn additive_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn additive_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let mut lhs = self.multiplicative_expression()?;
 
         let ops = [
@@ -2339,10 +2503,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             lhs = Expression::Binary {
-                lhs: Box::new(lhs),
+                lhs_index: self.new_expression(lhs),
                 op: binary_op,
                 op_col: op_token.col,
-                rhs: Box::new(rhs),
+                rhs_index: self.new_expression(rhs),
             };
         }
 
@@ -2353,7 +2517,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     when the lhs is a literal integer shifts could be optimized to throw errors
     when preconditions such as negative integers and shifts over 6bits are not met
     */
-    fn shift_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn shift_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let mut lhs = self.additive_expression()?;
 
         let ops = [
@@ -2382,17 +2546,17 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             lhs = Expression::Binary {
-                lhs: Box::new(lhs),
+                lhs_index: self.new_expression(lhs),
                 op: binary_op,
                 op_col: op_token.col,
-                rhs: Box::new(rhs),
+                rhs_index: self.new_expression(rhs),
             };
         }
 
         return Ok(lhs);
     }
 
-    fn bitand_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn bitand_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let mut lhs = self.shift_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitAnd])? {
@@ -2408,17 +2572,17 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             lhs = Expression::Binary {
-                lhs: Box::new(lhs),
+                lhs_index: self.new_expression(lhs),
                 op: binary_op,
                 op_col: op_token.col,
-                rhs: Box::new(rhs),
+                rhs_index: self.new_expression(rhs),
             };
         }
 
         return Ok(lhs);
     }
 
-    fn bitxor_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn bitxor_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let mut lhs = self.bitand_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitXor])? {
@@ -2434,17 +2598,17 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             lhs = Expression::Binary {
-                lhs: Box::new(lhs),
+                lhs_index: self.new_expression(lhs),
                 op: binary_op,
                 op_col: op_token.col,
-                rhs: Box::new(rhs),
+                rhs_index: self.new_expression(rhs),
             };
         }
 
         return Ok(lhs);
     }
 
-    fn bitor_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn bitor_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let mut lhs = self.bitxor_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitOr])? {
@@ -2460,17 +2624,17 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             lhs = Expression::Binary {
-                lhs: Box::new(lhs),
+                lhs_index: self.new_expression(lhs),
                 op: binary_op,
                 op_col: op_token.col,
-                rhs: Box::new(rhs),
+                rhs_index: self.new_expression(rhs),
             };
         }
 
         return Ok(lhs);
     }
 
-    fn comparison_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn comparison_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let mut lhs = self.bitor_expression()?;
 
         let ops = [
@@ -2530,16 +2694,16 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             lhs = Expression::Comparison {
-                lhs: Box::new(lhs),
+                lhs_index: self.new_expression(lhs),
                 op: comparison_op,
-                rhs: Box::new(rhs),
+                rhs_index: self.new_expression(rhs),
             };
         }
 
         return Ok(lhs);
     }
 
-    fn and_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn and_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let mut lhs = self.comparison_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::And])? {
@@ -2554,14 +2718,17 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 _ => unreachable!(),
             };
 
-            lhs =
-                Expression::BooleanBinary { lhs: Box::new(lhs), op: binary_op, rhs: Box::new(rhs) };
+            lhs = Expression::BooleanBinary {
+                lhs_index: self.new_expression(lhs),
+                op: binary_op,
+                rhs_index: self.new_expression(rhs),
+            };
         }
 
         return Ok(lhs);
     }
 
-    fn or_expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn or_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let mut lhs = self.and_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::Or])? {
@@ -2576,8 +2743,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 _ => unreachable!(),
             };
 
-            lhs =
-                Expression::BooleanBinary { lhs: Box::new(lhs), op: binary_op, rhs: Box::new(rhs) };
+            lhs = Expression::BooleanBinary {
+                lhs_index: self.new_expression(lhs),
+                op: binary_op,
+                rhs_index: self.new_expression(rhs),
+            };
         }
 
         return Ok(lhs);
@@ -2585,26 +2755,28 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
     // TODO(stefano): disallow implicit conversions
     // TODO(stefano): introduce casting operators
-    fn expression(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         return self.or_expression();
     }
 }
 
 // variables and types
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
-    fn resolve_variable(&self, name: &'src str) -> Option<(Mutability, &VariableRef<'src>)> {
-        let mut scope_index = self.ast.scope;
+    fn resolve_variable(&self, name: &'src str) -> Option<(Mutability, VariableIndex)> {
+        let mut scope_index = self.scope;
         loop {
-            let scope = &self.ast.scopes[scope_index];
-            for var in &scope.let_variables {
+            let scope = &self.scopes[scope_index as usize];
+            for var_index in &scope.let_variables {
+                let var = &self.ast.variables[*var_index as usize];
                 if var.name == name {
-                    return Some((Mutability::Let, var));
+                    return Some((Mutability::Let, *var_index));
                 }
             }
 
-            for var in &scope.var_variables {
+            for var_index in &scope.var_variables {
+                let var = &self.ast.variables[*var_index as usize];
                 if var.name == name {
-                    return Some((Mutability::Var, var));
+                    return Some((Mutability::Var, *var_index));
                 }
             }
 
@@ -2616,9 +2788,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     }
 
     fn resolve_type(&self, name: &'src str) -> Option<BaseType> {
-        let mut scope_index = self.ast.scope;
+        let mut scope_index = self.scope;
         loop {
-            let scope = &self.ast.scopes[scope_index];
+            let scope = &self.scopes[scope_index as usize];
             for typ in &scope.base_types {
                 if typ.to_string() == name {
                     return Some(*typ);
@@ -2653,8 +2825,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
         let Some(base_type) = self.resolve_type(type_name) else {
             return match self.resolve_variable(type_name) {
-                Some((_, var_ref)) => {
-                    let var = &self.ast.variables[var_ref.var_index];
+                Some((_, var_index)) => {
+                    let var = &self.ast.variables[var_index as usize];
                     Ok(Some((type_token, var.value.typ())))
                 }
                 None => Err(Error {
@@ -2722,7 +2894,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(Some((close_square_bracket_token, Type::Array { base_type, len })));
     }
 
-    fn expression_from_base_type(&mut self, typ: BaseType) -> Expression<'src> {
+    fn expression_from_base_type(&mut self, typ: BaseType) -> Expression {
         return match typ {
             BaseType::Int => Expression::Int(0),
             BaseType::Ascii => Expression::Ascii(b'0'),
@@ -2734,10 +2906,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
     }
 
-    fn variable_definition(
-        &mut self,
-        mutability: Mutability,
-    ) -> Result<Node<'src>, Error<ErrorKind>> {
+    fn variable_definition(&mut self, mutability: Mutability) -> Result<Node, Error<ErrorKind>> {
         let name_token = self.next_token_bounded(Expected::Identifier)?;
         let name = match name_token.kind {
             TokenKind::Identifier(name) => match self.resolve_type(name) {
@@ -2751,6 +2920,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
             },
             TokenKind::Comment(_)
+            | TokenKind::MultilineComment(_)
             | TokenKind::Unexpected(_)
             | TokenKind::Bracket(_)
             | TokenKind::Colon
@@ -2759,7 +2929,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Op(_)
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_)
+            | TokenKind::Integer(_, _)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_) => {
@@ -2769,7 +2939,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     pointers_count: name_token.kind.display_len(),
                 })
             }
-            TokenKind::Definition(_)
+            TokenKind::Mutability(_)
             | TokenKind::Print
             | TokenKind::PrintLn
             | TokenKind::Eprint
@@ -2800,18 +2970,19 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             TokenKind::SemiColon => None,
             TokenKind::Op(_)
             | TokenKind::Comment(_)
+            | TokenKind::MultilineComment(_)
             | TokenKind::Unexpected(_)
             | TokenKind::Bracket(_)
             | TokenKind::Colon
             | TokenKind::Comma
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_)
+            | TokenKind::Integer(_, _)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
-            | TokenKind::Definition(_)
+            | TokenKind::Mutability(_)
             | TokenKind::Print
             | TokenKind::PrintLn
             | TokenKind::Eprint
@@ -2864,12 +3035,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
 
                 let scope_variables = match mutability {
-                    Mutability::Let => &mut self.ast.scopes[self.ast.scope].let_variables,
-                    Mutability::Var => &mut self.ast.scopes[self.ast.scope].var_variables,
+                    Mutability::Let => &mut self.scopes[self.scope as usize].let_variables,
+                    Mutability::Var => &mut self.scopes[self.scope as usize].var_variables,
                 };
 
-                let var_index = self.ast.variables.len();
-                scope_variables.push(VariableRef { name, var_index });
+                let var_index = self.ast.variables.len() as offset;
+                scope_variables.push(var_index);
                 self.ast.variables.push(Variable { name, value });
 
                 Ok(Node::Definition { var_index })
@@ -2885,12 +3056,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     };
 
                     let scope_variables = match mutability {
-                        Mutability::Let => &mut self.ast.scopes[self.ast.scope].let_variables,
-                        Mutability::Var => &mut self.ast.scopes[self.ast.scope].var_variables,
+                        Mutability::Let => &mut self.scopes[self.scope as usize].let_variables,
+                        Mutability::Var => &mut self.scopes[self.scope as usize].var_variables,
                     };
 
-                    let var_index = self.ast.variables.len();
-                    scope_variables.push(VariableRef { name, var_index });
+                    let var_index = self.ast.variables.len() as offset;
+                    scope_variables.push(var_index);
                     self.ast.variables.push(Variable { name, value });
 
                     Ok(Node::Definition { var_index })
@@ -2907,19 +3078,24 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     // NOTE(stefano): mutations of string characters are disallowed until a sort of "borrow checker" is developed
     fn reassignment(
         &mut self,
-        target: Expression<'src>,
+        target: Expression,
         target_token: &'tokens Token<'src>,
         op: AssignmentOp,
         op_token: &'tokens Token<'src>,
-    ) -> Result<Node<'src>, Error<ErrorKind>> {
+    ) -> Result<Node, Error<ErrorKind>> {
         let (error_token, target_type) = match &target {
-            Expression::ArrayIndex { base_type, value, .. } => {
-                let mut unwrapped_target = value;
-                while let Expression::ArrayIndex { value: inner_target, .. } = &**unwrapped_target {
-                    unwrapped_target = inner_target;
+            Expression::ArrayIndex { base_type, indexable_index, .. } => {
+                let indexable = &self.ast.expressions[*indexable_index as usize];
+                let mut unwrapped_indexable = indexable;
+                while let Expression::ArrayIndex {
+                    indexable_index: inner_indexable_index, ..
+                } = unwrapped_indexable
+                {
+                    let inner_indexable = &self.ast.expressions[*inner_indexable_index as usize];
+                    unwrapped_indexable = inner_indexable;
                 }
 
-                let Expression::Variable { typ, .. } = &**unwrapped_target else {
+                let Expression::Variable { typ, .. } = unwrapped_indexable else {
                     return Err(Error {
                         kind: ErrorKind::CannotAssignToExpression,
                         col: op_token.col,
@@ -2957,8 +3133,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
                 (error_token, Type::Base(*base_type))
             }
-            Expression::Variable { typ, name } => {
-                let Some((mutability, _)) = self.resolve_variable(name) else {
+            Expression::Variable { typ, variable_index } => {
+                let var = &self.ast.variables[*variable_index as usize];
+                let Some((mutability, _)) = self.resolve_variable(var.name) else {
                     unreachable!("should have been checked during lhs parsing");
                 };
 
@@ -2979,7 +3156,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | Expression::Ascii(_)
             | Expression::Str { .. }
             | Expression::Array { .. }
-            | Expression::Parenthesis(_)
+            | Expression::Parenthesis { .. }
             | Expression::Unary { .. }
             | Expression::BooleanUnary { .. }
             | Expression::Binary { .. }
@@ -3068,11 +3245,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
 // print statements
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
-    fn print_arg(&mut self) -> Result<Expression<'src>, Error<ErrorKind>> {
+    fn print_arg(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let _start_of_expression_token = self.next_token_bounded(Expected::Expression)?;
         let argument = self.expression()?;
         if let Expression::Array { .. } = argument {
-            let temporary_value_index = self.ast.temporaries.len();
+            let temporary_value_index = self.ast.temporaries.len() as offset;
             let argument_type = argument.typ();
             self.ast.temporaries.push(argument);
             return Ok(Expression::Temporary { typ: argument_type, temporary_value_index });
@@ -3084,10 +3261,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
 // if statements
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
-    fn iff(&mut self) -> Result<Node<'src>, Error<ErrorKind>> {
-        let mut if_statement = If { ifs: Vec::new(), els: None };
+    fn iff(&mut self) -> Result<Node, Error<ErrorKind>> {
+        let mut ifs = Vec::new();
+        let mut els = None;
 
-        'iff: while let Some(if_token) = self.tokens.get(self.token) {
+        'iff: while let Some(if_token) = self.tokens.get(self.token as usize) {
             _ = self.next_token_bounded(Expected::BooleanExpression)?;
 
             let condition = self.expression()?;
@@ -3100,7 +3278,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             let after_condition_token = self.current_token(Expected::DoOrBlock)?;
-            let iff = match after_condition_token.kind {
+            let if_statement = match after_condition_token.kind {
                 TokenKind::Bracket(BracketKind::OpenCurly) => {
                     let scope = self.any(after_condition_token)?;
                     IfStatement { condition, statement: scope }
@@ -3111,6 +3289,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
                 TokenKind::Bracket(_)
                 | TokenKind::Comment(_)
+                | TokenKind::MultilineComment(_)
                 | TokenKind::Unexpected(_)
                 | TokenKind::Colon
                 | TokenKind::SemiColon
@@ -3118,12 +3297,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 | TokenKind::Op(_)
                 | TokenKind::False
                 | TokenKind::True
-                | TokenKind::Integer(_)
+                | TokenKind::Integer(_, _)
                 | TokenKind::Ascii(_)
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_)
                 | TokenKind::Identifier(_)
-                | TokenKind::Definition(_)
+                | TokenKind::Mutability(_)
                 | TokenKind::Print
                 | TokenKind::PrintLn
                 | TokenKind::Eprint
@@ -3142,12 +3321,13 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
             };
 
-            if_statement.ifs.push(iff);
+            ifs.push(if_statement);
 
-            while let Some(else_token) = self.tokens.get(self.token) {
+            while let Some(else_token) = self.tokens.get(self.token as usize) {
                 let after_else_token = match else_token.kind {
                     TokenKind::Else => self.next_token_bounded(Expected::DoOrBlockOrIfStatement)?,
                     TokenKind::Comment(_)
+                    | TokenKind::MultilineComment(_)
                     | TokenKind::Unexpected(_)
                     | TokenKind::Bracket(_)
                     | TokenKind::Colon
@@ -3156,12 +3336,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     | TokenKind::Op(_)
                     | TokenKind::False
                     | TokenKind::True
-                    | TokenKind::Integer(_)
+                    | TokenKind::Integer(_, _)
                     | TokenKind::Ascii(_)
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
                     | TokenKind::Identifier(_)
-                    | TokenKind::Definition(_)
+                    | TokenKind::Mutability(_)
                     | TokenKind::Print
                     | TokenKind::PrintLn
                     | TokenKind::Eprint
@@ -3177,17 +3357,18 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let else_if = match after_else_token.kind {
                     TokenKind::Bracket(BracketKind::OpenCurly) => {
                         let scope = self.any(after_else_token)?;
-                        if_statement.els = Some(Box::new(scope));
+                        els = Some(scope);
                         break 'iff;
                     }
                     TokenKind::Do => {
                         let statement = self.do_statement()?;
-                        if_statement.els = Some(Box::new(statement));
+                        els = Some(statement);
                         break 'iff;
                     }
                     TokenKind::If => break,
                     TokenKind::Bracket(_)
                     | TokenKind::Comment(_)
+                    | TokenKind::MultilineComment(_)
                     | TokenKind::Unexpected(_)
                     | TokenKind::Colon
                     | TokenKind::SemiColon
@@ -3195,12 +3376,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     | TokenKind::Op(_)
                     | TokenKind::False
                     | TokenKind::True
-                    | TokenKind::Integer(_)
+                    | TokenKind::Integer(_, _)
                     | TokenKind::Ascii(_)
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
                     | TokenKind::Identifier(_)
-                    | TokenKind::Definition(_)
+                    | TokenKind::Mutability(_)
                     | TokenKind::Print
                     | TokenKind::PrintLn
                     | TokenKind::Eprint
@@ -3219,14 +3400,16 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             }
         }
 
-        return Ok(Node::If(if_statement));
+        let if_index = self.ast.ifs.len() as IfIndex;
+        self.ast.ifs.push(If { ifs, els });
+        return Ok(Node::If(if_index));
     }
 }
 
 // loop statements
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
-    fn loop_statement(&mut self) -> Result<Node<'src>, Error<ErrorKind>> {
-        let do_token = &self.tokens[self.token];
+    fn loop_statement(&mut self) -> Result<Node, Error<ErrorKind>> {
+        let do_token = &self.tokens[self.token as usize];
         let loop_token = match do_token.kind {
             TokenKind::Do => {
                 let loop_token = self.next_token_bounded(Expected::LoopStatement)?;
@@ -3241,6 +3424,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 loop_token
             }
             TokenKind::Comment(_)
+            | TokenKind::MultilineComment(_)
             | TokenKind::Unexpected(_)
             | TokenKind::Bracket(_)
             | TokenKind::Colon
@@ -3249,12 +3433,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Op(_)
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_)
+            | TokenKind::Integer(_, _)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
-            | TokenKind::Definition(_)
+            | TokenKind::Mutability(_)
             | TokenKind::Print
             | TokenKind::PrintLn
             | TokenKind::Eprint
@@ -3288,6 +3472,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             }
             TokenKind::Bracket(_)
             | TokenKind::Comment(_)
+            | TokenKind::MultilineComment(_)
             | TokenKind::Unexpected(_)
             | TokenKind::Colon
             | TokenKind::SemiColon
@@ -3295,12 +3480,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Op(_)
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_)
+            | TokenKind::Integer(_, _)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
-            | TokenKind::Definition(_)
+            | TokenKind::Mutability(_)
             | TokenKind::Print
             | TokenKind::PrintLn
             | TokenKind::Eprint
@@ -3320,11 +3505,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
 
         let statement = statement_result?;
-        let looop = Loop { condition, statement: Box::new(statement) };
+        let loop_index = self.ast.loops.len() as LoopIndex;
+        self.ast.loops.push(Loop { condition, statement });
         return if let TokenKind::Do = do_token.kind {
-            Ok(Node::DoLoop(looop))
+            Ok(Node::DoLoop(loop_index))
         } else {
-            Ok(Node::Loop(looop))
+            Ok(Node::Loop(loop_index))
         };
     }
 }
@@ -3351,7 +3537,7 @@ pub enum Expected {
 }
 
 impl Display for Expected {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::StatementAfterDo => write!(f, "statement after do keyword"),
             Self::Semicolon => write!(f, "semicolon"),
@@ -3382,9 +3568,8 @@ impl Display for Expected {
 pub enum ErrorKind {
     PrematureEndOfFile(Expected),
 
-    MinusZeroNumberLiteral,
-    IntOverflow,
-    IntUnderflow,
+    MinusZeroInteger,
+    InvalidInteger(ParseIntError, Base),
 
     MissingSemicolon,
 
@@ -3457,17 +3642,79 @@ impl IntoErrorInfo for ErrorKind {
                 format!("expected {expected} after here").into(),
             ),
 
-            Self::MinusZeroNumberLiteral => (
+            Self::MinusZeroInteger => (
                 "invalid integer literal".into(),
                 "-0 is not a valid two's complement integer".into(),
             ),
-            Self::IntOverflow => (
+            Self::InvalidInteger(ParseIntError::Overflow, Base::Decimal) => (
                 "integer literal overflow".into(),
-                format!("overflows a {bits} bit signed integer (over {max})", bits = int::BITS, max = int::MAX).into(),
+                format!(
+                    "overflows a {bits} bit signed integer, over {max}",
+                    bits = int::BITS,
+                    max = int::MAX
+                ).into(),
             ),
-            Self::IntUnderflow => (
+            Self::InvalidInteger(ParseIntError::Overflow, base @ Base::Binary) => (
+                "integer literal overflow".into(),
+                format!(
+                    "overflows a {bits} bit signed integer, over {prefix}{max:0b} ({max})",
+                    bits = int::BITS,
+                    prefix = base.prefix(),
+                    max = int::MAX
+                ).into(),
+            ),
+            Self::InvalidInteger(ParseIntError::Overflow, base @ Base::Octal) => (
+                "integer literal overflow".into(),
+                format!(
+                    "overflows a {bits} bit signed integer, over {prefix}{max:0o} ({max})",
+                    bits = int::BITS,
+                    prefix = base.prefix(),
+                    max = int::MAX
+                ).into(),
+            ),
+            Self::InvalidInteger(ParseIntError::Overflow, base @ Base::Hexadecimal) => (
+                "integer literal overflow".into(),
+                format!(
+                    "overflows a {bits} bit signed integer, over {prefix}{max:0x} ({max})",
+                    bits = int::BITS,
+                    prefix = base.prefix(),
+                    max = int::MAX
+                ).into(),
+            ),
+            Self::InvalidInteger(ParseIntError::Underflow, Base::Decimal) => (
                 "integer literal underflow".into(),
-                format!("underlows a {bits} bit signed integer (under {min})", bits = int::BITS, min = int::MIN).into(),
+                format!(
+                    "underflows a {bits} bit signed integer, under {min}",
+                    bits = int::BITS,
+                    min = int::MIN
+                ).into(),
+            ),
+            Self::InvalidInteger(ParseIntError::Underflow, base @ Base::Binary) => (
+                "integer literal underflow".into(),
+                format!(
+                    "underflows a {bits} bit signed integer, under {prefix}{min:0b} ({min})",
+                    bits = int::BITS,
+                    prefix = base.prefix(),
+                    min = int::MIN
+                ).into(),
+            ),
+            Self::InvalidInteger(ParseIntError::Underflow, base @ Base::Octal) => (
+                "integer literal underflow".into(),
+                format!(
+                    "underflows a {bits} bit signed integer, under {prefix}{min:0o} ({min})",
+                    bits = int::BITS,
+                    prefix = base.prefix(),
+                    min = int::MIN
+                ).into(),
+            ),
+            Self::InvalidInteger(ParseIntError::Underflow, base @ Base::Hexadecimal) => (
+                "integer literal underflow".into(),
+                format!(
+                    "underflows a {bits} bit signed integer, under {prefix}{min:0x} ({min})",
+                    bits = int::BITS,
+                    prefix = base.prefix(),
+                    min = int::MIN
+                ).into(),
             ),
 
             Self::MissingSemicolon => (
@@ -3513,11 +3760,11 @@ impl IntoErrorInfo for ErrorKind {
             ),
             Self::VariableNotPreviouslyDefined => (
                 "variable not previously defined".into(),
-                "was not previously defined in this scope".into(),
+                "was not previously defined".into(),
             ),
             Self::VariableAlreadyDefined => (
                 "variable already defined".into(),
-                "was already defined in this scope".into(),
+                "was already defined".into(),
             ),
             Self::TypeInExpression => (
                 "invalid expression".into(),

@@ -12,6 +12,23 @@ line comments start with `#` and ignore everything until the end of the line:
 # lines starting with the `#` symbol will be ignored by the compiler
 ```
 
+multiline comments start with `#{` and ignore everthing until the closing `#}`:
+
+```kay
+#{
+these lines
+will be
+ignored
+by
+the compiler
+#}
+
+# blocks inside other statements will be ignored
+println #{ lucky #} 12;
+
+#} # Error: unopened multiline comment
+```
+
 ## Semicolons
 
 Each valid statement must end in a semicolon:
@@ -45,10 +62,26 @@ Integers, of type `int`, are represented in source code as base 10 numbers, and 
 memory as signed 64 bit values:
 
 ```kay
-21;  # valid number
-021; # leading zeroes are allowed
-21a; # Error: integer literals cannot contain non-digit characters
+21;      # valid number
+021;     # leading zeroes are allowed
+1_2_3_4; # separating underscores are allowed
+21a;     # Error: integer literals cannot contain non-digit characters
 ```
+
+### Alternative number literals bases
+
+Number literals can be written in other bases other than the default decimal namely, binay, octal
+and hexadecimal, with the appropriate prefixes:
+
+| number system     | base | valid digits          | prefix | example        |
+| :---------------- | :--- | :-------------------- | :----- | :------------- |
+| decimal (default) | 10   | 0..=9                 |        | `21`           |
+| binary            | 2    | 0..=1                 | `0b`   | `0b1100`       |
+| octal             | 8    | 0..=7                 | `0o`   | `0o14`         |
+| hexadecimal       | 16   | 0..=9, A..=F or a..=f | `0x`   | `0xc` or `0xC` |
+
+>[!NOTE]
+> empty numbers in bases other than decimal are not allowed, i.e. `0b`, `0o` and `0x`
 
 ## Booleans
 
@@ -70,7 +103,7 @@ in source code as being surrounded by `'`:
 
 ### Escape sequences
 
-It is also possible to represent special characters by **escaping** them with back slashes:
+It is also possible to represent special characters by **escaping** them with back slashes.
 These are the available escaped characters:
 
 ```kay
@@ -100,14 +133,20 @@ code as being surrounded by `"` and contain any number of regular or escaped cha
 It is also possible to represent special characters by **escaping** them with back slashes, just
 like with character literals [escape sequences](#escape-sequences).
 
-Strings can also be configured as **raw strings** with the `r` prefix, where escapes sequences would
-not be taken into account:
+Strings can also be configured as **raw strings** with the `r` prefix, where the only valid escape
+sequences would be escaped double quotes `\"` for consistency with regular strings escapes:
 
 ```kay
 "Escaped\nstring";
 
 # taken 'as is' from source code
 r"Raw\nstring";
+
+# taken 'as is' from source code, except for `\"` escapes
+r"Raw\n\"string\"";
+
+# Error: unclosed string
+r"Kay let's go\"
 ```
 
 Strings can also be indexed with zero-based indexing to gain access to individual character:
@@ -149,7 +188,7 @@ rules:
 1. mutability class:
     - `let`: immutable variable, once set cannot be changed later
     - `var`: mutable variable, can be changed at any moment
-2. variable name that can be made of:
+2. variable name that can be made of (up to a maximum of **63** characters):
     - letters
     - numbers (but not starting with)
     - underscores
@@ -172,6 +211,7 @@ one = 2; # `one` will from now on contain the value 2
 let kay_lets_go = "kay, let's go!"; # can contain underscores
 let two_plus_2 = "two + 2"; # can contain numbers
 let 2plus2 = "2 + 2"; # Error: not a valid name, cannot start with a number
+let longlonglonglonglonglonglonglonglonglonglonglonglonglonglonglong; # Error: over the limit of 63 characters
 
 # 3. optional type annotations
 let inferred = 42; # the type will be inferred as `int` by the expression to the right of the `=` sign

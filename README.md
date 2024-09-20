@@ -68,10 +68,9 @@ requiring the following steps to get started:
 
 ## Syntax specification
 
-See the [full language reference](docs/LANGUAGE_REFERENCE.md) and the the
-[full language syntax specification](docs/SYNTAX.ebnf)
+See the [full language reference](LANGUAGE_REFERENCE.md) and the the
+[full language syntax specification](SYNTAX.ebnf)
 
 ## Syntax highlighting
 
-Currently only supporting Vscode with the provided [extension](syntax/vscode/) which can be
-installed locally using the `Developer: Install Extension from Location...` command
+- [Vscode extension](https://github.com/StefanoIncardone/kaylang_vscode)

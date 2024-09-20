@@ -8,7 +8,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ## Unreleased
 
-- number constants in base 2, 8, 16 and possibly in arbitrary bases:
+- Ability to reconstruct the source code from the tokens and the ast
 - Shortcircuted and/or operators
 - Unsigned integers
 - Casting operator
@@ -25,18 +25,56 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
     type byte = u8;
     ```
 
-## 0.6.1 -
+## 0.6.1 - 2024-09-20
+
+### Added
+
+Language:
+
+- `_` as a digit separator, e.g.: `123_456_678` is now a valid number literal
+- Alternative number literals bases:
+    - `0b`: binary
+    - `0o`: octal
+    - `0x`: hexadecimal
+- Escape sequences in raw string literals: `r"nested \"quotes\" are now allowed by escaping them"`
+- Multiline comments, enclosed by `#{` and `#}`
+
+Compiler:
+
+- Created and exposed API for error messages, introduced the `error` module
+
+### Changed
+
+Compiler:
+
+- Restricted max source file size to 4GB
+- Restricted max identifiers length to 63 characters
+- `src_file::Error` now contains more detailed error kinds
+- Imported from `core` instead of `std` where possible
+- `Logger` methods now accept `&dyn Display`
 
 ### Fixed
 
-- Added `break` and `continue` statements to the [syntax specification](docs/SYNTAX.ebnf)
+Language:
 
-## 0.6.0 - 31/08/2024
+- Added `break` and `continue` statements to the [syntax specification](SYNTAX.ebnf)
+
+Compiler:
+
+- Corrected error messages related to:
+    - undefined variables and variables already defined
+    - integers, identifiers and string, raw_string and character literals tokenization
+- Temporary values are now properly displayed in the generated assembly comments
+- Bug that allowed indexing into non-variables
+- Moved Vscode extension to own [repo](https://github.com/StefanoIncardone/kaylang_vscode)
+
+## 0.6.0 - 2024-08-31
 
 >[!WARNING]
 > From version `0.6.0` breaking changes may appear at any time, meaning that features in `0.6.0`
 > could not work or could be totally **removed** in `0.6.1`.
-> This is to prevent an explosion in version numbers and the stagnation of **breaking** feature updates, since breaking and non-breaking changes will be frequent.
+> This is to prevent an explosion in version numbers and the stagnation of **breaking** feature
+> updates, since breaking and non-breaking changes will be frequent.
 > Breaking changes outside of the `Removed` section will be made obvious for easy recognition.
 > Changes to the ABI would **not** be considered breaking since no stable ABI is defined for now.
 > Changes to error messages, help message and alike would **not** be considered breaking.
@@ -55,7 +93,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - `help` and `version` commands
 - usage examples
 - getters for `SrcFile` field: `SrcFile::path()`, `SrcFile::code()` and `SrcFile::lines()`
-- [local vscode syntax highlighting extension](syntax/vscode/)
+- [local vscode syntax highlighting extension](https://github.com/StefanoIncardone/kaylang_vscode)
 
 ### Changed
 
@@ -271,25 +309,25 @@ going to be provided to lazily construct full syntax errors
 
 - `check` mode to just check for program correctens
 
-## 0.2.3 - 2024-08-28
+## 0.2.3 - 2023-08-28
 
 ### Added
 
 - Unary operators
 
-## 0.2.2 - 2024-08-16
+## 0.2.2 - 2023-08-16
 
 ### Added
 
 - C-style while loops: `for` keyword
 
-## 0.2.1 - 2024-08-01
+## 0.2.1 - 2023-08-01
 
 ### Added
 
 - In-place math assignments (i.e.: `i += 1`)
 
-## 0.2.0 - 2024-08-01
+## 0.2.0 - 2023-08-01
 
 ### Fixed
 

@@ -1,6 +1,6 @@
 [package]
 name = "kaylang"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 authors = ["Stefano Incardone"]
 categories = ["compilers", "command-line-utilities"]
@@ -43,6 +43,7 @@ unused_qualifications = "warn"
 unused_results = "forbid"
 private_bounds = "forbid"
 private_interfaces = "forbid"
+unused_must_use = "forbid"
 
 [lints.clippy] # to be used once in a while
 blanket_clippy_restriction_lints = "allow"
@@ -55,13 +56,7 @@ cargo = { level = "forbid", priority = -1 }
 self_named_module_files = "allow"
 mod_module_files = "warn"
 
-# this is not a no_std crate
-std_instead_of_core = "allow"
 std_instead_of_alloc = "allow"
-
-# it's a cli tool, it's normal to print to stderr and stdout
-print_stdout = "allow"
-print_stderr = "allow"
 
 # improve readability and self documenting code
 implicit_return = "forbid"
@@ -104,9 +99,12 @@ unreachable = "allow" # trust me, might be changed to "warn" to encourage better
 undocumented_unsafe_blocks = "allow" # trust me
 missing_errors_doc = "allow" # will be changed to "warn" in the future when it comes time to document everything
 as_conversions = "allow" # do as i say please
+cast_lossless = "allow" # do as i say please
 cast_possible_truncation = "allow" # do as i say please
 cast_sign_loss = "allow" # do as i say please
 question_mark_used = "allow" # needlessly advocates for a macro instead of a language feature
+verbose_file_reads = "allow"
+single_match_else = "allow" # avoid forgetting to change the consumer when signatures change
 
 # doesn't solve the problem, i.e.:
 # ```rust
