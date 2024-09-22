@@ -12,7 +12,7 @@ line comments start with `#` and ignore everything until the end of the line:
 # lines starting with the `#` symbol will be ignored by the compiler
 ```
 
-multiline comments start with `#{` and ignore everthing until the closing `#}`:
+block comments start with `#{` and ignore everthing until the closing `#}`:
 
 ```kay
 #{
@@ -26,7 +26,7 @@ the compiler
 # blocks inside other statements will be ignored
 println #{ lucky #} 12;
 
-#} # Error: unopened multiline comment
+#} # Error: unopened block comment
 ```
 
 ## Semicolons

@@ -2,7 +2,7 @@ ASCII_character = ? ASCII 32..126 ?;
 UTF-8_character = ? U+0080.. ?;
 
 line_comment = "#", [{ASCII_character | UTF-8_character}], "\n";
-multiline_comment = "#{", [{ASCII_character | UTF-8_character | "\n"}], "#}";
+block_comment = "#{", [{ASCII_character | UTF-8_character | "\n"}], "#}";
 
 decimal_digit               = "0".."9";
 binary_digit                = "0".."1";
@@ -121,4 +121,4 @@ loop  = ["do"], "loop", boolean_expression, (("do", statement_in_loop, ";") | sc
 print = (("print", expression) | ("println", [expression]) | ("eprint", expression) | ("eprintln", [expression])), ";";
 statement = expression | print | variable_declaration | variable_reassignment | if | loop;
 statement_in_loop = expression | print | variable_declaration | variable_reassignment | if | loop | "break" | "continue";
-scope     = "{", [{line_comment | statement | scope}], "}";
+scope     = "{", [{line_comment | block_comment | statement | scope}], "}";

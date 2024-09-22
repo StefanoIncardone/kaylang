@@ -760,7 +760,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         let tokens_len = tokens.len() as offset;
         while token < tokens_len {
             let current = &tokens[token as usize];
-            let (TokenKind::Comment(_) | TokenKind::MultilineComment(_)) = current.kind else {
+            let (TokenKind::Comment(_) | TokenKind::BlockComment(_)) = current.kind else {
                 break;
             };
 
@@ -1053,7 +1053,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             pointers_count: previous_token.kind.display_len(),
                         })
                     }
-                    TokenKind::Comment(_) | TokenKind::MultilineComment(_) => {
+                    TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
                         unreachable!("should be skipped by the token iterator")
                     }
                     TokenKind::Unexpected(_) => unreachable!("only valid tokens should be present"),
@@ -1179,7 +1179,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     pointers_count: token.kind.display_len(),
                 })
             }
-            TokenKind::Comment(_) | TokenKind::MultilineComment(_) => {
+            TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
                 unreachable!("should be skipped by the token iterator")
             }
             TokenKind::Unexpected(_) => unreachable!("only valid tokens should be present"),
@@ -1207,7 +1207,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             }
             TokenKind::Bracket(_)
             | TokenKind::Comment(_)
-            | TokenKind::MultilineComment(_)
+            | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
             | TokenKind::Colon
             | TokenKind::SemiColon
@@ -1257,7 +1257,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             }
             TokenKind::Bracket(_)
             | TokenKind::Comment(_)
-            | TokenKind::MultilineComment(_)
+            | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
             | TokenKind::Colon
             | TokenKind::SemiColon
@@ -1311,7 +1311,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
             self.token += 1;
             let next = &self.tokens[self.token as usize];
-            let (TokenKind::Comment(_) | TokenKind::MultilineComment(_)) = next.kind else {
+            let (TokenKind::Comment(_) | TokenKind::BlockComment(_)) = next.kind else {
                 return Some(next);
             };
         }
@@ -1335,7 +1335,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
             self.token += 1;
             let next = &self.tokens[self.token as usize];
-            let (TokenKind::Comment(_) | TokenKind::MultilineComment(_)) = next.kind else {
+            let (TokenKind::Comment(_) | TokenKind::BlockComment(_)) = next.kind else {
                 return Ok(next);
             };
         }
@@ -1350,7 +1350,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
             current_token += 1;
             let next = &self.tokens[current_token as usize];
-            let (TokenKind::Comment(_) | TokenKind::MultilineComment(_)) = next.kind else {
+            let (TokenKind::Comment(_) | TokenKind::BlockComment(_)) = next.kind else {
                 return Some(next);
             };
         }
@@ -1363,7 +1363,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         loop {
             current_token -= 1;
             let previous = &self.tokens[current_token as usize];
-            let (TokenKind::Comment(_) | TokenKind::MultilineComment(_)) = previous.kind else {
+            let (TokenKind::Comment(_) | TokenKind::BlockComment(_)) = previous.kind else {
                 return previous;
             };
         }
@@ -2332,7 +2332,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             TokenKind::Bracket(_)
             | TokenKind::Op(_)
             | TokenKind::Comment(_)
-            | TokenKind::MultilineComment(_)
+            | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
             | TokenKind::Colon
             | TokenKind::SemiColon
@@ -2922,7 +2922,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
             },
             TokenKind::Comment(_)
-            | TokenKind::MultilineComment(_)
+            | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
             | TokenKind::Bracket(_)
             | TokenKind::Colon
@@ -2972,7 +2972,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             TokenKind::SemiColon => None,
             TokenKind::Op(_)
             | TokenKind::Comment(_)
-            | TokenKind::MultilineComment(_)
+            | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
             | TokenKind::Bracket(_)
             | TokenKind::Colon
@@ -3291,7 +3291,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
                 TokenKind::Bracket(_)
                 | TokenKind::Comment(_)
-                | TokenKind::MultilineComment(_)
+                | TokenKind::BlockComment(_)
                 | TokenKind::Unexpected(_)
                 | TokenKind::Colon
                 | TokenKind::SemiColon
@@ -3329,7 +3329,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let after_else_token = match else_token.kind {
                     TokenKind::Else => self.next_token_bounded(Expected::DoOrBlockOrIfStatement)?,
                     TokenKind::Comment(_)
-                    | TokenKind::MultilineComment(_)
+                    | TokenKind::BlockComment(_)
                     | TokenKind::Unexpected(_)
                     | TokenKind::Bracket(_)
                     | TokenKind::Colon
@@ -3370,7 +3370,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     TokenKind::If => break,
                     TokenKind::Bracket(_)
                     | TokenKind::Comment(_)
-                    | TokenKind::MultilineComment(_)
+                    | TokenKind::BlockComment(_)
                     | TokenKind::Unexpected(_)
                     | TokenKind::Colon
                     | TokenKind::SemiColon
@@ -3426,7 +3426,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 loop_token
             }
             TokenKind::Comment(_)
-            | TokenKind::MultilineComment(_)
+            | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
             | TokenKind::Bracket(_)
             | TokenKind::Colon
@@ -3474,7 +3474,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             }
             TokenKind::Bracket(_)
             | TokenKind::Comment(_)
-            | TokenKind::MultilineComment(_)
+            | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
             | TokenKind::Colon
             | TokenKind::SemiColon

@@ -39,7 +39,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
     - `0o`: octal
     - `0x`: hexadecimal
 - Escape sequences in raw string literals: `r"nested \"quotes\" are now allowed by escaping them"`
-- Multiline comments, enclosed by `#{` and `#}`
+- Block comments, enclosed by `#{` and `#}`
 
 #### Compiler
 

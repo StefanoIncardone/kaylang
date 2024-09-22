@@ -23,6 +23,7 @@ pub(crate) type ascii = u8;
 #[allow(non_camel_case_types)]
 pub(crate) type utf8 = char;
 
+/// integer literals are never empty and always contain valid ascii digits
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Integer<'src>(pub(crate) &'src [ascii]);
@@ -450,7 +451,7 @@ impl QuotedLiteralKind {
 #[derive(Debug, Clone)]
 pub(crate) enum TokenKind<'src> {
     Comment(&'src str),
-    MultilineComment(&'src str),
+    BlockComment(&'src str),
 
     Unexpected(&'src str),
 
@@ -464,14 +465,8 @@ pub(crate) enum TokenKind<'src> {
     // Literal values
     False,
     True,
-    /// integer literals are never empty and always contain valid ascii digits
     Integer(Base, Integer<'src>),
     Ascii(ascii),
-    // IDEA(stefano): split into EscapedStr(Str) and Str(&'src [ascii]) to save allocations
-    /* IDEA(stefano):
-    limit string literals to a max amount of logical characters (escapes are considered a single character)
-    e.g. 63/127/255/511/1023/2047/4095
-    */
     Str(Str),
     RawStr(Str),
 
@@ -508,7 +503,7 @@ impl Display for TokenKind<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Comment(text) => write!(f, "#{text}"),
-            Self::MultilineComment(text) => write!(f, "#{{{text}#}}"),
+            Self::BlockComment(text) => write!(f, "#{{{text}#}}"),
             Self::Unexpected(text) => write!(f, "{text}"),
 
             Self::Bracket(bracket) => write!(f, "{bracket}"),
@@ -561,7 +556,7 @@ impl DisplayLen for TokenKind<'_> {
 
         return match self {
             Self::Comment(text) => text.chars().count() as offset + 1, // + 1 to account for the `#`
-            Self::MultilineComment(text) => text.chars().count() as offset + 4, // + 4 to account for `#{` and `#}`
+            Self::BlockComment(text) => text.chars().count() as offset + 4, // + 4 to account for `#{` and `#}`
             Self::Unexpected(text) => text.chars().count() as offset,
 
             Self::Bracket(bracket) => bracket.display_len(),
@@ -746,7 +741,7 @@ impl<'src> Tokenizer<'src> {
                                         Some(_) => {}
                                         None => {
                                             this.errors.push(Error {
-                                                kind: ErrorKind::UnclosedMultilineComment,
+                                                kind: ErrorKind::UnclosedBlockComment,
                                                 col: this.token_start_col,
                                                 pointers_count: 2,
                                             });
@@ -756,7 +751,7 @@ impl<'src> Tokenizer<'src> {
                                     Some(_) => {}
                                     None => {
                                         this.errors.push(Error {
-                                            kind: ErrorKind::UnclosedMultilineComment,
+                                            kind: ErrorKind::UnclosedBlockComment,
                                             col: this.token_start_col,
                                             pointers_count: 2,
                                         });
@@ -769,12 +764,12 @@ impl<'src> Tokenizer<'src> {
                             // ending at this.col - 2 to skip the `#}`
                             let comment = &this.src.code
                                 [this.token_start_col as usize + 2..this.col as usize - 2];
-                            Ok(TokenKind::MultilineComment(comment))
+                            Ok(TokenKind::BlockComment(comment))
                         }
                         Some('}') => {
                             this.col += 1;
                             this.errors.push(Error {
-                                kind: ErrorKind::UnopenedMultilineComment,
+                                kind: ErrorKind::UnopenedBlockComment,
                                 col: this.token_start_col,
                                 pointers_count: 2,
                             });
@@ -1771,8 +1766,8 @@ impl<'src> Tokenizer<'src> {
 
 #[derive(Debug, Clone)]
 pub enum ErrorKind {
-    UnclosedMultilineComment,
-    UnopenedMultilineComment,
+    UnclosedBlockComment,
+    UnopenedBlockComment,
 
     UnclosedBracket(BracketKind),
     UnopenedBracket(BracketKind),
@@ -1800,12 +1795,12 @@ pub enum ErrorKind {
 impl IntoErrorInfo for ErrorKind {
     fn info(&self) -> ErrorInfo {
         let (error_message, error_cause_message) = match self {
-            Self::UnclosedMultilineComment => (
-                "unclosed multiline comment".into(),
+            Self::UnclosedBlockComment => (
+                "unclosed block comment".into(),
                 "missing closing `#}`".into(),
             ),
-            Self::UnopenedMultilineComment => (
-                "unopened multiline comment".into(),
+            Self::UnopenedBlockComment => (
+                "unopened block comment".into(),
                 "was not opened before".into(),
             ),
 
