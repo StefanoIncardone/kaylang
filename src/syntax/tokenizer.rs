@@ -1559,7 +1559,7 @@ impl<'src> Tokenizer<'src> {
         let quote = kind.quote();
         let mut literal = Vec::<ascii>::new();
 
-        'next_character: loop {
+        loop {
             let next_character = match self.next_ascii_char() {
                 Ok(Some(b'\n')) => {
                     self.errors.push(Error {
@@ -1567,7 +1567,7 @@ impl<'src> Tokenizer<'src> {
                         col: self.token_start_col,
                         pointers_count: self.token_len() - 1,
                     });
-                    break 'next_character;
+                    break;
                 }
                 Ok(None) => {
                     self.errors.push(Error {
@@ -1575,7 +1575,7 @@ impl<'src> Tokenizer<'src> {
                         col: self.token_start_col,
                         pointers_count: self.token_len(),
                     });
-                    break 'next_character;
+                    break;
                 }
                 Ok(Some(next_character)) => next_character,
                 Err(error) => {
@@ -1584,7 +1584,7 @@ impl<'src> Tokenizer<'src> {
                         col: error.col,
                         pointers_count: error.len,
                     });
-                    continue 'next_character;
+                    continue;
                 }
             };
 
@@ -1597,7 +1597,7 @@ impl<'src> Tokenizer<'src> {
                                 col: self.token_start_col,
                                 pointers_count: self.token_len() - 1,
                             });
-                            break 'next_character;
+                            break;
                         }
                         Ok(None) => {
                             self.errors.push(Error {
@@ -1605,7 +1605,7 @@ impl<'src> Tokenizer<'src> {
                                 col: self.token_start_col,
                                 pointers_count: self.token_len(),
                             });
-                            break 'next_character;
+                            break;
                         }
                         Ok(Some(escape_character)) => escape_character,
                         Err(error) => {
@@ -1617,7 +1617,7 @@ impl<'src> Tokenizer<'src> {
                                 col: error.col,
                                 pointers_count: error.len,
                             });
-                            continue 'next_character;
+                            continue;
                         }
                     };
 
@@ -1640,7 +1640,7 @@ impl<'src> Tokenizer<'src> {
                     });
                     control
                 }
-                ch if ch == quote as u8 => break 'next_character,
+                ch if ch == quote as u8 => break,
                 ch => ch,
             };
 
@@ -1658,7 +1658,7 @@ impl<'src> Tokenizer<'src> {
         let quote = kind.quote();
         let mut literal = Vec::<ascii>::new();
 
-        'next_character: loop {
+        loop {
             let next_character = match self.next_ascii_char() {
                 Ok(Some(b'\n')) => {
                     self.errors.push(Error {
@@ -1666,7 +1666,7 @@ impl<'src> Tokenizer<'src> {
                         col: self.token_start_col,
                         pointers_count: self.token_len() - 1,
                     });
-                    break 'next_character;
+                    break;
                 }
                 Ok(None) => {
                     self.errors.push(Error {
@@ -1674,7 +1674,7 @@ impl<'src> Tokenizer<'src> {
                         col: self.token_start_col,
                         pointers_count: self.token_len(),
                     });
-                    break 'next_character;
+                    break;
                 }
                 Ok(Some(next_character)) => next_character,
                 Err(error) => {
@@ -1683,7 +1683,7 @@ impl<'src> Tokenizer<'src> {
                         col: error.col,
                         pointers_count: error.len,
                     });
-                    continue 'next_character;
+                    continue;
                 }
             };
 
@@ -1696,7 +1696,7 @@ impl<'src> Tokenizer<'src> {
                                 col: self.token_start_col,
                                 pointers_count: self.token_len() - 1,
                             });
-                            break 'next_character;
+                            break;
                         }
                         Ok(None) => {
                             self.errors.push(Error {
@@ -1704,7 +1704,7 @@ impl<'src> Tokenizer<'src> {
                                 col: self.token_start_col,
                                 pointers_count: self.token_len(),
                             });
-                            break 'next_character;
+                            break;
                         }
                         Ok(Some(escape_character)) => escape_character,
                         Err(error) => {
@@ -1716,7 +1716,7 @@ impl<'src> Tokenizer<'src> {
                                 col: error.col,
                                 pointers_count: error.len,
                             });
-                            continue 'next_character;
+                            continue;
                         }
                     };
 
@@ -1753,7 +1753,7 @@ impl<'src> Tokenizer<'src> {
                     });
                     control
                 }
-                ch if ch == quote as u8 => break 'next_character,
+                ch if ch == quote as u8 => break,
                 ch => ch,
             };
 

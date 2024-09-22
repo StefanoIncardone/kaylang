@@ -34,7 +34,13 @@ TODO(stefano): file.kay:12: implement this feature
 IDEA(stefano): file.kay:42:genious
 ```
 
-Could create a config file that specifies what notes to look for, like a notes.toml
+Could create a config file that specifies what notes to look for, like a notes.toml, or create
+dedicated cli commands and flags:
+
+```shell
+kay notes -n TODO -n IDEA -n NOTE # would recognize TODO, IDEA and NOTE
+kay notes # Error: no specified tags to look for
+```
 
 ## More output file names flags
 
