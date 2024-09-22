@@ -1179,7 +1179,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     pointers_count: token.kind.display_len(),
                 })
             }
-            TokenKind::Comment(_) | TokenKind::MultilineComment(_) => unreachable!("should be skipped by the token iterator"),
+            TokenKind::Comment(_) | TokenKind::MultilineComment(_) => {
+                unreachable!("should be skipped by the token iterator")
+            }
             TokenKind::Unexpected(_) => unreachable!("only valid tokens should be present"),
         };
     }

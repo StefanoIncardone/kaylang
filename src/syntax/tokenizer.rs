@@ -613,16 +613,12 @@ pub struct Token<'src> {
 pub struct Tokenizer<'src> {
     src: &'src SrcFile,
     errors: Vec<Error<ErrorKind>>,
-    token_errors: Vec<Error<ErrorKind>>,
 
     col: offset,
     token_start_col: offset,
 
     line_index: offset,
     line: &'src Line,
-
-    tokens: Vec<Token<'src>>,
-    brackets: Vec<Bracket>,
 }
 
 impl<'src> Tokenizer<'src> {
@@ -634,65 +630,896 @@ impl<'src> Tokenizer<'src> {
         let mut this = Self {
             src,
             errors: Vec::new(),
-            token_errors: Vec::new(),
             col: 0,
             token_start_col: 0,
             line_index: 0,
             line: first_line,
-            tokens: Vec::new(),
-            brackets: Vec::new(),
         };
 
-        let src_lines_len = this.src.lines.len() as offset;
+        let mut tokens = Vec::<Token<'src>>::new();
+        let mut brackets = Vec::<Bracket>::new();
+
         'tokenization: loop {
-            let token_kind_result = 'skip_whitespace: loop {
+            let token_kind_result = 'next_token: loop {
                 this.token_start_col = this.col;
 
                 let next = match this.next_ascii_char() {
                     Ok(Some(ch)) => ch,
                     Ok(None) => break 'tokenization,
                     Err(err) => {
-                        this.token_errors.push(Error {
+                        this.errors.push(Error {
                             kind: ErrorKind::Utf8Character(err.character),
                             col: err.col,
                             pointers_count: err.len,
                         });
-                        break 'skip_whitespace Err(());
+                        break 'next_token Err(());
                     }
                 };
 
-                match next {
+                break 'next_token match next {
                     // ignore whitespace
-                    b' ' | b'\t' | b'\r' | b'\x0C' => {}
+                    b' ' | b'\t' | b'\r' | b'\x0C' => continue 'next_token,
 
                     // next line
                     b'\n' => {
-                        if this.line_index >= src_lines_len - 1 {
+                        if this.line_index >= this.src.lines.len() as offset - 1 {
                             break 'tokenization;
                         }
 
                         this.line_index += 1;
                         this.line = &this.src.lines[this.line_index as usize];
+                        continue 'next_token;
                     }
-                    ch => break 'skip_whitespace this.next_token(ch),
-                }
+
+                    b'r' => match this.peek_next_utf8_char() {
+                        Some('"') => {
+                            let previous_errors_len = this.errors.len();
+
+                            this.col += 1;
+
+                            let kind = QuotedLiteralKind::RawStr;
+                            let quote = kind.quote();
+
+                            let mut raw_string = Vec::<ascii>::new();
+
+                            'next_character: loop {
+                                let next_character = match this.next_ascii_char() {
+                                    Ok(Some(b'\n')) => {
+                                        this.errors.push(Error {
+                                            kind: ErrorKind::UnclosedQuotedLiteral(kind),
+                                            col: this.token_start_col,
+                                            pointers_count: this.token_len() - 1,
+                                        });
+                                        break 'next_character;
+                                    }
+                                    Ok(None) => {
+                                        this.errors.push(Error {
+                                            kind: ErrorKind::UnclosedQuotedLiteral(kind),
+                                            col: this.token_start_col,
+                                            pointers_count: this.token_len(),
+                                        });
+                                        break 'next_character;
+                                    }
+                                    Ok(Some(next_character)) => next_character,
+                                    Err(error) => {
+                                        this.errors.push(Error {
+                                            kind: ErrorKind::Utf8InIdentifier(error.character),
+                                            col: error.col,
+                                            pointers_count: error.len,
+                                        });
+                                        continue 'next_character;
+                                    }
+                                };
+
+                                let character = match next_character {
+                                    b'\\' => {
+                                        let escape_character = match this.peek_next_ascii_char() {
+                                            Ok(Some(b'\n')) => {
+                                                this.errors.push(Error {
+                                                    kind: ErrorKind::UnclosedQuotedLiteral(kind),
+                                                    col: this.token_start_col,
+                                                    pointers_count: this.token_len() - 1,
+                                                });
+                                                break 'next_character;
+                                            }
+                                            Ok(None) => {
+                                                this.errors.push(Error {
+                                                    kind: ErrorKind::UnclosedQuotedLiteral(kind),
+                                                    col: this.token_start_col,
+                                                    pointers_count: this.token_len(),
+                                                });
+                                                break 'next_character;
+                                            }
+                                            Ok(Some(escape_character)) => escape_character,
+                                            Err(error) => {
+                                                this.errors.push(Error {
+                                                    kind: ErrorKind::Utf8InQuotedLiteral(
+                                                        kind,
+                                                        error.character,
+                                                    ),
+                                                    col: error.col,
+                                                    pointers_count: error.len,
+                                                });
+                                                continue 'next_character;
+                                            }
+                                        };
+
+                                        match escape_character {
+                                            b'"' => {
+                                                _ = this.next_ascii_char();
+                                                b'"'
+                                            }
+                                            _ => b'\\',
+                                        }
+                                    }
+                                    control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
+                                        this.errors.push(Error {
+                                            kind: ErrorKind::ControlCharacterInQuotedLiteral(
+                                                kind,
+                                                control as utf8,
+                                            ),
+                                            col: this.col - 1,
+                                            pointers_count: 1,
+                                        });
+                                        control
+                                    }
+                                    ch if ch == quote as u8 => break 'next_character,
+                                    ch => ch,
+                                };
+
+                                raw_string.push(character);
+                            }
+
+                            if previous_errors_len == this.errors.len() {
+                                Ok(TokenKind::RawStr(Str(raw_string.into_boxed_slice())))
+                            } else {
+                                Err(())
+                            }
+                        }
+                        _ => this.identifier(),
+                    },
+                    b'a'..=b'z' | b'A'..=b'Z' | b'_' => this.identifier(),
+                    // IDEA(stefano): debate wether to allow trailing underscores or to emit a warning
+                    // IDEA(stefano): emit warning of inconsistent casing of letters, i.e. 0xFFff_fFfF_ffFF_ffFF
+                    b'0' => {
+                        let (base, integer) = match this.peek_next_ascii_char() {
+                            Ok(Some(b'b')) => {
+                                _ = this.next_ascii_char();
+                                (Base::Binary, this.integer_binary())
+                            }
+                            Ok(Some(b'o')) => {
+                                _ = this.next_ascii_char();
+                                (Base::Octal, this.integer_octal())
+                            }
+                            Ok(Some(b'x')) => {
+                                _ = this.next_ascii_char();
+                                (Base::Hexadecimal, this.integer_hexadecimal())
+                            }
+                            Ok(Some(_) | None) | Err(_) => (Base::Decimal, this.integer_decimal()),
+                        };
+
+                        match integer {
+                            Ok(literal) => Ok(TokenKind::Integer(base, Integer(literal))),
+                            Err(()) => Err(()),
+                        }
+                    }
+                    b'1'..=b'9' => match this.integer_decimal() {
+                        Ok(literal) => Ok(TokenKind::Integer(Base::Decimal, Integer(literal))),
+                        Err(()) => Err(()),
+                    },
+                    // TODO(stefano): factor out quoted literals tokenization (i.e. character literals are just strings of lenght 1)
+                    b'"' => {
+                        let previous_errors_len = this.errors.len();
+
+                        let kind = QuotedLiteralKind::Str;
+                        let quote = kind.quote();
+
+                        let mut literal = Vec::<ascii>::new();
+
+                        'next_character: loop {
+                            let next_character = match this.next_ascii_char() {
+                                Ok(Some(b'\n')) => {
+                                    this.errors.push(Error {
+                                        kind: ErrorKind::UnclosedQuotedLiteral(kind),
+                                        col: this.token_start_col,
+                                        pointers_count: this.token_len() - 1,
+                                    });
+                                    break 'next_character;
+                                }
+                                Ok(None) => {
+                                    this.errors.push(Error {
+                                        kind: ErrorKind::UnclosedQuotedLiteral(kind),
+                                        col: this.token_start_col,
+                                        pointers_count: this.token_len(),
+                                    });
+                                    break 'next_character;
+                                }
+                                Ok(Some(next_character)) => next_character,
+                                Err(error) => {
+                                    this.errors.push(Error {
+                                        kind: ErrorKind::Utf8InQuotedLiteral(kind, error.character),
+                                        col: error.col,
+                                        pointers_count: error.len,
+                                    });
+                                    continue 'next_character;
+                                }
+                            };
+
+                            let character = match next_character {
+                                b'\\' => {
+                                    let escape_character = match this.next_ascii_char() {
+                                        Ok(Some(b'\n')) => {
+                                            this.errors.push(Error {
+                                                kind: ErrorKind::UnclosedQuotedLiteral(kind),
+                                                col: this.token_start_col,
+                                                pointers_count: this.token_len() - 1,
+                                            });
+                                            break 'next_character;
+                                        }
+                                        Ok(None) => {
+                                            this.errors.push(Error {
+                                                kind: ErrorKind::UnclosedQuotedLiteral(kind),
+                                                col: this.token_start_col,
+                                                pointers_count: this.token_len(),
+                                            });
+                                            break 'next_character;
+                                        }
+                                        Ok(Some(escape_character)) => escape_character,
+                                        Err(error) => {
+                                            this.errors.push(Error {
+                                                kind: ErrorKind::Utf8InQuotedLiteral(
+                                                    kind,
+                                                    error.character,
+                                                ),
+                                                col: error.col,
+                                                pointers_count: error.len,
+                                            });
+                                            continue 'next_character;
+                                        }
+                                    };
+
+                                    match escape_character {
+                                        b'\\' => b'\\',
+                                        b'\'' => b'\'',
+                                        b'"' => b'"',
+                                        b'n' => b'\n',
+                                        b'r' => b'\r',
+                                        b't' => b'\t',
+                                        b'0' => b'\0',
+                                        unrecognized => {
+                                            this.errors.push(Error {
+                                                kind: ErrorKind::UnrecognizedEscapeCharacterInQuotedLiteral(
+                                                    kind,
+                                                    unrecognized as utf8,
+                                                ),
+                                                col: this.col - 2,
+                                                pointers_count: 2,
+                                            });
+                                            literal.push(b'\\');
+                                            unrecognized
+                                        }
+                                    }
+                                }
+                                control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
+                                    this.errors.push(Error {
+                                        kind: ErrorKind::ControlCharacterInQuotedLiteral(
+                                            kind,
+                                            control as utf8,
+                                        ),
+                                        col: this.col - 1,
+                                        pointers_count: 1,
+                                    });
+                                    control
+                                }
+                                ch if ch == quote as u8 => break 'next_character,
+                                ch => ch,
+                            };
+
+                            literal.push(character);
+                        }
+
+                        if previous_errors_len == this.errors.len() {
+                            Ok(TokenKind::Str(Str(literal.into_boxed_slice())))
+                        } else {
+                            Err(())
+                        }
+                    }
+                    b'\'' => {
+                        let previous_errors_len = this.errors.len();
+
+                        let kind = QuotedLiteralKind::Ascii;
+                        let quote = kind.quote();
+
+                        let mut literal = Vec::<ascii>::new();
+
+                        'next_character: loop {
+                            let next_character = match this.next_ascii_char() {
+                                Ok(Some(b'\n')) => {
+                                    this.errors.push(Error {
+                                        kind: ErrorKind::UnclosedQuotedLiteral(kind),
+                                        col: this.token_start_col,
+                                        pointers_count: this.token_len() - 1,
+                                    });
+                                    break 'next_character;
+                                }
+                                Ok(None) => {
+                                    this.errors.push(Error {
+                                        kind: ErrorKind::UnclosedQuotedLiteral(kind),
+                                        col: this.token_start_col,
+                                        pointers_count: this.token_len(),
+                                    });
+                                    break 'next_character;
+                                }
+                                Ok(Some(next_character)) => next_character,
+                                Err(error) => {
+                                    this.errors.push(Error {
+                                        kind: ErrorKind::Utf8InQuotedLiteral(kind, error.character),
+                                        col: error.col,
+                                        pointers_count: error.len,
+                                    });
+                                    continue 'next_character;
+                                }
+                            };
+
+                            let character = match next_character {
+                                b'\\' => {
+                                    let escape_character = match this.next_ascii_char() {
+                                        Ok(Some(b'\n')) => {
+                                            this.errors.push(Error {
+                                                kind: ErrorKind::UnclosedQuotedLiteral(kind),
+                                                col: this.token_start_col,
+                                                pointers_count: this.token_len() - 1,
+                                            });
+                                            break 'next_character;
+                                        }
+                                        Ok(None) => {
+                                            this.errors.push(Error {
+                                                kind: ErrorKind::UnclosedQuotedLiteral(kind),
+                                                col: this.token_start_col,
+                                                pointers_count: this.token_len(),
+                                            });
+                                            break 'next_character;
+                                        }
+                                        Ok(Some(escape_character)) => escape_character,
+                                        Err(error) => {
+                                            this.errors.push(Error {
+                                                kind: ErrorKind::Utf8InQuotedLiteral(
+                                                    kind,
+                                                    error.character,
+                                                ),
+                                                col: error.col,
+                                                pointers_count: error.len,
+                                            });
+                                            continue 'next_character;
+                                        }
+                                    };
+
+                                    match escape_character {
+                                        b'\\' => b'\\',
+                                        b'\'' => b'\'',
+                                        b'"' => b'"',
+                                        b'n' => b'\n',
+                                        b'r' => b'\r',
+                                        b't' => b'\t',
+                                        b'0' => b'\0',
+                                        unrecognized => {
+                                            this.errors.push(Error {
+                                                kind: ErrorKind::UnrecognizedEscapeCharacterInQuotedLiteral(
+                                                    kind,
+                                                    unrecognized as utf8,
+                                                ),
+                                                col: this.col - 2,
+                                                pointers_count: 2,
+                                            });
+                                            literal.push(b'\\');
+                                            unrecognized
+                                        }
+                                    }
+                                }
+                                control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
+                                    this.errors.push(Error {
+                                        kind: ErrorKind::ControlCharacterInQuotedLiteral(
+                                            kind,
+                                            control as utf8,
+                                        ),
+                                        col: this.col - 1,
+                                        pointers_count: 1,
+                                    });
+                                    control
+                                }
+                                ch if ch == quote as u8 => break 'next_character,
+                                ch => ch,
+                            };
+
+                            literal.push(character);
+                        }
+
+                        match literal.as_slice() {
+                            [] => {
+                                this.errors.push(Error {
+                                    kind: ErrorKind::EmptyCharacterLiteral,
+                                    col: this.token_start_col,
+                                    pointers_count: 2,
+                                });
+                                Err(())
+                            }
+                            [character] => {
+                                if previous_errors_len == this.errors.len() {
+                                    Ok(TokenKind::Ascii(*character))
+                                } else {
+                                    Err(())
+                                }
+                            }
+                            [_, ..] => {
+                                this.errors.push(Error {
+                                    kind: ErrorKind::MultipleCharactersInCharacterLiteral,
+                                    col: this.token_start_col,
+                                    pointers_count: this.token_len(),
+                                });
+                                Err(())
+                            }
+                        }
+                    }
+                    b'#' => match this.peek_next_utf8_char() {
+                        Some('{') => {
+                            'next_character: loop {
+                                match this.next_utf8_char_multiline() {
+                                    Some('#') => match this.next_utf8_char_multiline() {
+                                        Some('}') => break 'next_character,
+                                        Some(_) => {}
+                                        None => {
+                                            this.errors.push(Error {
+                                                kind: ErrorKind::UnclosedMultilineComment,
+                                                col: this.token_start_col,
+                                                pointers_count: 2,
+                                            });
+                                            break 'next_token Err(());
+                                        }
+                                    },
+                                    Some(_) => {}
+                                    None => {
+                                        this.errors.push(Error {
+                                            kind: ErrorKind::UnclosedMultilineComment,
+                                            col: this.token_start_col,
+                                            pointers_count: 2,
+                                        });
+                                        break 'next_token Err(());
+                                    }
+                                }
+                            }
+
+                            // starting at this.token_start_col + 2 to skip the `#{`
+                            // ending at this.col - 2 to skip the `#}`
+                            let comment = &this.src.code
+                                [this.token_start_col as usize + 2..this.col as usize - 2];
+                            Ok(TokenKind::MultilineComment(comment))
+                        }
+                        Some('}') => {
+                            this.col += 1;
+                            this.errors.push(Error {
+                                kind: ErrorKind::UnopenedMultilineComment,
+                                col: this.token_start_col,
+                                pointers_count: 2,
+                            });
+                            Err(())
+                        }
+                        Some(_) | None => {
+                            // ignoring the hash symbol
+                            let comment = &this.src.code[this.col as usize..this.line.end as usize];
+
+                            // consuming the rest of the characters in the current line
+                            this.col = this.line.end;
+
+                            Ok(TokenKind::Comment(comment))
+                        }
+                    },
+                    b'(' => {
+                        let kind = BracketKind::OpenRound;
+                        brackets.push(Bracket { kind, col: this.token_start_col });
+                        Ok(TokenKind::Bracket(kind))
+                    }
+                    b')' => match brackets.pop() {
+                        Some(bracket) => match bracket.kind {
+                            BracketKind::OpenRound
+                            | BracketKind::CloseRound
+                            | BracketKind::CloseCurly
+                            | BracketKind::CloseSquare => {
+                                Ok(TokenKind::Bracket(BracketKind::CloseRound))
+                            }
+                            actual @ (BracketKind::OpenCurly | BracketKind::OpenSquare) => {
+                                this.errors.push(Error {
+                                    kind: ErrorKind::MismatchedBracket {
+                                        expected: BracketKind::CloseRound,
+                                        actual,
+                                    },
+                                    col: this.token_start_col,
+                                    pointers_count: 1,
+                                });
+                                Err(())
+                            }
+                        },
+                        None => {
+                            this.errors.push(Error {
+                                kind: ErrorKind::UnopenedBracket(BracketKind::CloseRound),
+                                col: this.token_start_col,
+                                pointers_count: 1,
+                            });
+                            Err(())
+                        }
+                    },
+                    b'[' => {
+                        let kind = BracketKind::OpenSquare;
+                        brackets.push(Bracket { kind, col: this.token_start_col });
+                        Ok(TokenKind::Bracket(kind))
+                    }
+                    b']' => match brackets.pop() {
+                        Some(bracket) => match bracket.kind {
+                            BracketKind::OpenSquare
+                            | BracketKind::CloseSquare
+                            | BracketKind::CloseCurly
+                            | BracketKind::CloseRound => {
+                                Ok(TokenKind::Bracket(BracketKind::CloseSquare))
+                            }
+                            actual @ (BracketKind::OpenCurly | BracketKind::OpenRound) => {
+                                this.errors.push(Error {
+                                    kind: ErrorKind::MismatchedBracket {
+                                        expected: BracketKind::CloseSquare,
+                                        actual,
+                                    },
+                                    col: this.token_start_col,
+                                    pointers_count: 1,
+                                });
+                                Err(())
+                            }
+                        },
+                        None => {
+                            this.errors.push(Error {
+                                kind: ErrorKind::UnopenedBracket(BracketKind::CloseSquare),
+                                col: this.token_start_col,
+                                pointers_count: 1,
+                            });
+                            Err(())
+                        }
+                    },
+                    b'{' => {
+                        let kind = BracketKind::OpenCurly;
+                        brackets.push(Bracket { kind, col: this.token_start_col });
+                        Ok(TokenKind::Bracket(kind))
+                    }
+                    b'}' => match brackets.pop() {
+                        Some(bracket) => match bracket.kind {
+                            BracketKind::OpenCurly
+                            | BracketKind::CloseCurly
+                            | BracketKind::CloseRound
+                            | BracketKind::CloseSquare => {
+                                Ok(TokenKind::Bracket(BracketKind::CloseCurly))
+                            }
+                            actual @ (BracketKind::OpenRound | BracketKind::OpenSquare) => {
+                                this.errors.push(Error {
+                                    kind: ErrorKind::MismatchedBracket {
+                                        expected: BracketKind::CloseCurly,
+                                        actual,
+                                    },
+                                    col: this.token_start_col,
+                                    pointers_count: 1,
+                                });
+                                Err(())
+                            }
+                        },
+                        None => {
+                            this.errors.push(Error {
+                                kind: ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
+                                col: this.token_start_col,
+                                pointers_count: 1,
+                            });
+                            Err(())
+                        }
+                    },
+                    b':' => Ok(TokenKind::Colon),
+                    b';' => Ok(TokenKind::SemiColon),
+                    b',' => Ok(TokenKind::Comma),
+                    b'!' => match this.peek_next_utf8_char() {
+                        Some('=') => {
+                            this.col += 1;
+                            Ok(TokenKind::Op(Op::NotEquals))
+                        }
+                        _ => Ok(TokenKind::Op(Op::Not)),
+                    },
+                    b'*' => match this.peek_next_utf8_char() {
+                        Some('*') => {
+                            this.col += 1;
+                            match this.peek_next_utf8_char() {
+                                Some('=') => {
+                                    this.col += 1;
+                                    Ok(TokenKind::Op(Op::PowEquals))
+                                }
+                                Some('\\') => {
+                                    this.col += 1;
+                                    match this.peek_next_utf8_char() {
+                                        Some('=') => {
+                                            this.col += 1;
+                                            Ok(TokenKind::Op(Op::WrappingPowEquals))
+                                        }
+                                        _ => Ok(TokenKind::Op(Op::WrappingPow)),
+                                    }
+                                }
+                                Some('|') => {
+                                    this.col += 1;
+                                    match this.peek_next_utf8_char() {
+                                        Some('=') => {
+                                            this.col += 1;
+                                            Ok(TokenKind::Op(Op::SaturatingPowEquals))
+                                        }
+                                        _ => Ok(TokenKind::Op(Op::SaturatingPow)),
+                                    }
+                                }
+                                _ => Ok(TokenKind::Op(Op::Pow)),
+                            }
+                        }
+                        Some('=') => {
+                            this.col += 1;
+                            Ok(TokenKind::Op(Op::TimesEquals))
+                        }
+                        Some('\\') => {
+                            this.col += 1;
+                            match this.peek_next_utf8_char() {
+                                Some('=') => {
+                                    this.col += 1;
+                                    Ok(TokenKind::Op(Op::WrappingTimesEquals))
+                                }
+                                _ => Ok(TokenKind::Op(Op::WrappingTimes)),
+                            }
+                        }
+                        Some('|') => {
+                            this.col += 1;
+                            match this.peek_next_utf8_char() {
+                                Some('=') => {
+                                    this.col += 1;
+                                    Ok(TokenKind::Op(Op::SaturatingTimesEquals))
+                                }
+                                _ => Ok(TokenKind::Op(Op::SaturatingTimes)),
+                            }
+                        }
+                        _ => Ok(TokenKind::Op(Op::Times)),
+                    },
+                    b'/' => match this.peek_next_utf8_char() {
+                        Some('=') => {
+                            this.col += 1;
+                            Ok(TokenKind::Op(Op::DivideEquals))
+                        }
+                        Some('\\') => {
+                            this.col += 1;
+                            match this.peek_next_utf8_char() {
+                                Some('=') => {
+                                    this.col += 1;
+                                    Ok(TokenKind::Op(Op::WrappingDivideEquals))
+                                }
+                                _ => Ok(TokenKind::Op(Op::WrappingDivide)),
+                            }
+                        }
+                        Some('|') => {
+                            this.col += 1;
+                            match this.peek_next_utf8_char() {
+                                Some('=') => {
+                                    this.col += 1;
+                                    Ok(TokenKind::Op(Op::SaturatingDivideEquals))
+                                }
+                                _ => Ok(TokenKind::Op(Op::SaturatingDivide)),
+                            }
+                        }
+                        _ => Ok(TokenKind::Op(Op::Divide)),
+                    },
+                    b'%' => match this.peek_next_utf8_char() {
+                        Some('=') => {
+                            this.col += 1;
+                            Ok(TokenKind::Op(Op::RemainderEquals))
+                        }
+                        _ => Ok(TokenKind::Op(Op::Remainder)),
+                    },
+                    b'+' => match this.peek_next_utf8_char() {
+                        Some('=') => {
+                            this.col += 1;
+                            Ok(TokenKind::Op(Op::PlusEquals))
+                        }
+                        Some('\\') => {
+                            this.col += 1;
+                            match this.peek_next_utf8_char() {
+                                Some('=') => {
+                                    this.col += 1;
+                                    Ok(TokenKind::Op(Op::WrappingPlusEquals))
+                                }
+                                _ => Ok(TokenKind::Op(Op::WrappingPlus)),
+                            }
+                        }
+                        Some('|') => {
+                            this.col += 1;
+                            match this.peek_next_utf8_char() {
+                                Some('=') => {
+                                    this.col += 1;
+                                    Ok(TokenKind::Op(Op::SaturatingPlusEquals))
+                                }
+                                _ => Ok(TokenKind::Op(Op::SaturatingPlus)),
+                            }
+                        }
+                        _ => Ok(TokenKind::Op(Op::Plus)),
+                    },
+                    b'-' => match this.peek_next_utf8_char() {
+                        Some('=') => {
+                            this.col += 1;
+                            Ok(TokenKind::Op(Op::MinusEquals))
+                        }
+                        Some('\\') => {
+                            this.col += 1;
+                            match this.peek_next_utf8_char() {
+                                Some('=') => {
+                                    this.col += 1;
+                                    Ok(TokenKind::Op(Op::WrappingMinusEquals))
+                                }
+                                _ => Ok(TokenKind::Op(Op::WrappingMinus)),
+                            }
+                        }
+                        Some('|') => {
+                            this.col += 1;
+                            match this.peek_next_utf8_char() {
+                                Some('=') => {
+                                    this.col += 1;
+                                    Ok(TokenKind::Op(Op::SaturatingMinusEquals))
+                                }
+                                _ => Ok(TokenKind::Op(Op::SaturatingMinus)),
+                            }
+                        }
+                        _ => Ok(TokenKind::Op(Op::Minus)),
+                    },
+                    b'&' => match this.peek_next_utf8_char() {
+                        Some('&') => {
+                            this.col += 1;
+                            match this.peek_next_utf8_char() {
+                                Some('=') => {
+                                    this.col += 1;
+                                    Ok(TokenKind::Op(Op::AndEquals))
+                                }
+                                _ => Ok(TokenKind::Op(Op::And)),
+                            }
+                        }
+                        Some('=') => {
+                            this.col += 1;
+                            Ok(TokenKind::Op(Op::BitAndEquals))
+                        }
+                        _ => Ok(TokenKind::Op(Op::BitAnd)),
+                    },
+                    b'^' => match this.peek_next_utf8_char() {
+                        Some('=') => {
+                            this.col += 1;
+                            Ok(TokenKind::Op(Op::BitXorEquals))
+                        }
+                        _ => Ok(TokenKind::Op(Op::BitXor)),
+                    },
+                    b'|' => match this.peek_next_utf8_char() {
+                        Some('|') => {
+                            this.col += 1;
+                            match this.peek_next_utf8_char() {
+                                Some('=') => {
+                                    this.col += 1;
+                                    Ok(TokenKind::Op(Op::OrEquals))
+                                }
+                                _ => Ok(TokenKind::Op(Op::Or)),
+                            }
+                        }
+                        Some('=') => {
+                            this.col += 1;
+                            Ok(TokenKind::Op(Op::BitOrEquals))
+                        }
+                        _ => Ok(TokenKind::Op(Op::BitOr)),
+                    },
+                    b'=' => match this.peek_next_utf8_char() {
+                        Some('=') => {
+                            this.col += 1;
+                            Ok(TokenKind::Op(Op::EqualsEquals))
+                        }
+                        _ => Ok(TokenKind::Op(Op::Equals)),
+                    },
+                    b'>' => match this.peek_next_utf8_char() {
+                        Some('>') => {
+                            this.col += 1;
+                            match this.peek_next_utf8_char() {
+                                Some('>') => {
+                                    this.col += 1;
+                                    match this.peek_next_utf8_char() {
+                                        Some('=') => {
+                                            this.col += 1;
+                                            Ok(TokenKind::Op(Op::RightRotateEquals))
+                                        }
+                                        _ => Ok(TokenKind::Op(Op::RightRotate)),
+                                    }
+                                }
+                                Some('=') => {
+                                    this.col += 1;
+                                    Ok(TokenKind::Op(Op::RightShiftEquals))
+                                }
+                                _ => Ok(TokenKind::Op(Op::RightShift)),
+                            }
+                        }
+                        Some('=') => {
+                            this.col += 1;
+                            Ok(TokenKind::Op(Op::GreaterOrEquals))
+                        }
+                        _ => Ok(TokenKind::Op(Op::Greater)),
+                    },
+                    b'<' => match this.peek_next_utf8_char() {
+                        Some('<') => {
+                            this.col += 1;
+                            match this.peek_next_utf8_char() {
+                                Some('<') => {
+                                    this.col += 1;
+                                    match this.peek_next_utf8_char() {
+                                        Some('=') => {
+                                            this.col += 1;
+                                            Ok(TokenKind::Op(Op::LeftRotateEquals))
+                                        }
+                                        _ => Ok(TokenKind::Op(Op::LeftRotate)),
+                                    }
+                                }
+                                Some('=') => {
+                                    this.col += 1;
+                                    Ok(TokenKind::Op(Op::LeftShiftEquals))
+                                }
+                                Some('\\') => {
+                                    this.col += 1;
+                                    match this.peek_next_utf8_char() {
+                                        Some('=') => {
+                                            this.col += 1;
+                                            Ok(TokenKind::Op(Op::WrappingLeftShiftEquals))
+                                        }
+                                        _ => Ok(TokenKind::Op(Op::WrappingLeftShift)),
+                                    }
+                                }
+                                Some('|') => {
+                                    this.col += 1;
+                                    match this.peek_next_utf8_char() {
+                                        Some('=') => {
+                                            this.col += 1;
+                                            Ok(TokenKind::Op(Op::SaturatingLeftShiftEquals))
+                                        }
+                                        _ => Ok(TokenKind::Op(Op::SaturatingLeftShift)),
+                                    }
+                                }
+                                _ => Ok(TokenKind::Op(Op::LeftShift)),
+                            }
+                        }
+                        Some('=') => {
+                            this.col += 1;
+                            match this.peek_next_utf8_char() {
+                                Some('>') => {
+                                    this.col += 1;
+                                    Ok(TokenKind::Op(Op::Compare))
+                                }
+                                _ => Ok(TokenKind::Op(Op::LessOrEquals)),
+                            }
+                        }
+                        _ => Ok(TokenKind::Op(Op::Less)),
+                    },
+                    unrecognized => {
+                        this.errors.push(Error {
+                            kind: ErrorKind::UnrecognizedCharacter(unrecognized as utf8),
+                            col: this.token_start_col,
+                            pointers_count: 1,
+                        });
+                        Err(())
+                    }
+                };
             };
 
             let kind = match token_kind_result {
                 Ok(kind) => kind,
-                Err(()) => {
-                    this.errors.extend_from_slice(&this.token_errors);
-                    this.token_errors.clear();
-                    TokenKind::Unexpected(
-                        &this.src.code[this.token_start_col as usize..this.col as usize],
-                    )
-                }
+                Err(()) => TokenKind::Unexpected(
+                    &this.src.code[this.token_start_col as usize..this.col as usize],
+                ),
             };
 
-            this.tokens.push(Token { kind, col: this.token_start_col });
+            tokens.push(Token { kind, col: this.token_start_col });
         }
 
-        for bracket in &this.brackets {
+        for bracket in brackets {
             // there can only be open brackets at this point
             this.errors.push(Error {
                 kind: ErrorKind::UnclosedBracket(bracket.kind),
@@ -701,7 +1528,7 @@ impl<'src> Tokenizer<'src> {
             });
         }
 
-        return if this.errors.is_empty() { Ok(this.tokens) } else { Err(this.errors) };
+        return if this.errors.is_empty() { Ok(tokens) } else { Err(this.errors) };
     }
 }
 
@@ -819,12 +1646,13 @@ impl<'src> Tokenizer<'src> {
 impl<'src> Tokenizer<'src> {
     fn identifier(&mut self) -> Result<TokenKind<'src>, ()> {
         const MAX_IDENTIFIER_LEN: offset = 63;
+        let previous_errors_len = self.errors.len();
 
         loop {
             match self.peek_next_ascii_char() {
                 Ok(Some(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {}
                 Ok(Some(_) | None) => break,
-                Err(error) => self.token_errors.push(Error {
+                Err(error) => self.errors.push(Error {
                     kind: ErrorKind::Utf8InIdentifier(error.character),
                     col: error.col,
                     pointers_count: error.len,
@@ -853,7 +1681,7 @@ impl<'src> Tokenizer<'src> {
             identifier => {
                 let identifier_len = self.token_len();
                 if identifier_len as offset > MAX_IDENTIFIER_LEN {
-                    self.token_errors.push(Error {
+                    self.errors.push(Error {
                         kind: ErrorKind::IdentifierTooLong { max: MAX_IDENTIFIER_LEN },
                         col: self.token_start_col,
                         pointers_count: identifier_len,
@@ -863,15 +1691,17 @@ impl<'src> Tokenizer<'src> {
             }
         };
 
-        return if self.token_errors.is_empty() { Ok(identifier) } else { Err(()) };
+        return if previous_errors_len == self.errors.len() { Ok(identifier) } else { Err(()) };
     }
 
     fn integer_decimal(&mut self) -> Result<&'src [ascii], ()> {
+        let previous_errors_len = self.errors.len();
+
         loop {
             match self.peek_next_ascii_char() {
                 Ok(Some(b'0'..=b'9' | b'_')) => {}
                 Ok(Some(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
-                    self.token_errors.push(Error {
+                    self.errors.push(Error {
                         kind: ErrorKind::LetterInNumberLiteral(Base::Decimal, *letter),
                         col: self.col,
                         pointers_count: 1,
@@ -879,7 +1709,7 @@ impl<'src> Tokenizer<'src> {
                 }
                 Ok(Some(_) | None) => break,
                 Err(error) => {
-                    self.token_errors.push(Error {
+                    self.errors.push(Error {
                         kind: ErrorKind::Utf8InNumberLiteral(error.character),
                         col: error.col,
                         pointers_count: error.len,
@@ -890,7 +1720,7 @@ impl<'src> Tokenizer<'src> {
             _ = self.next_ascii_char();
         }
 
-        return if self.token_errors.is_empty() {
+        return if previous_errors_len == self.errors.len() {
             let digits = &self.src.code[self.token_start_col as usize..self.col as usize];
             Ok(digits.as_bytes())
         } else {
@@ -899,11 +1729,13 @@ impl<'src> Tokenizer<'src> {
     }
 
     fn integer_binary(&mut self) -> Result<&'src [ascii], ()> {
+        let previous_errors_len = self.errors.len();
+
         loop {
             match self.peek_next_ascii_char() {
                 Ok(Some(b'0'..=b'1' | b'_')) => {}
                 Ok(Some(out_of_range @ b'2'..=b'9')) => {
-                    self.token_errors.push(Error {
+                    self.errors.push(Error {
                         kind: ErrorKind::DigitOutOfRangeInNumberLiteral(
                             Base::Binary,
                             *out_of_range,
@@ -913,7 +1745,7 @@ impl<'src> Tokenizer<'src> {
                     });
                 }
                 Ok(Some(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
-                    self.token_errors.push(Error {
+                    self.errors.push(Error {
                         kind: ErrorKind::LetterInNumberLiteral(Base::Binary, *letter),
                         col: self.col,
                         pointers_count: 1,
@@ -921,7 +1753,7 @@ impl<'src> Tokenizer<'src> {
                 }
                 Ok(Some(_) | None) => break,
                 Err(error) => {
-                    self.token_errors.push(Error {
+                    self.errors.push(Error {
                         kind: ErrorKind::Utf8InNumberLiteral(error.character),
                         col: error.col,
                         pointers_count: error.len,
@@ -932,11 +1764,11 @@ impl<'src> Tokenizer<'src> {
             _ = self.next_ascii_char();
         }
 
-        return if self.token_errors.is_empty() {
+        return if previous_errors_len == self.errors.len() {
             // starting at self.token_start_col + 2 to account for the 0b prefix
             let digits = &self.src.code[self.token_start_col as usize + 2..self.col as usize];
             if digits.is_empty() {
-                self.token_errors.push(Error {
+                self.errors.push(Error {
                     kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Binary),
                     col: self.token_start_col,
                     pointers_count: self.token_len(),
@@ -951,18 +1783,20 @@ impl<'src> Tokenizer<'src> {
     }
 
     fn integer_octal(&mut self) -> Result<&'src [ascii], ()> {
+        let previous_errors_len = self.errors.len();
+
         loop {
             match self.peek_next_ascii_char() {
                 Ok(Some(b'0'..=b'7' | b'_')) => {}
                 Ok(Some(out_of_range @ b'8'..=b'9')) => {
-                    self.token_errors.push(Error {
+                    self.errors.push(Error {
                         kind: ErrorKind::DigitOutOfRangeInNumberLiteral(Base::Octal, *out_of_range),
                         col: self.col,
                         pointers_count: 1,
                     });
                 }
                 Ok(Some(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
-                    self.token_errors.push(Error {
+                    self.errors.push(Error {
                         kind: ErrorKind::LetterInNumberLiteral(Base::Octal, *letter),
                         col: self.col,
                         pointers_count: 1,
@@ -970,7 +1804,7 @@ impl<'src> Tokenizer<'src> {
                 }
                 Ok(Some(_) | None) => break,
                 Err(error) => {
-                    self.token_errors.push(Error {
+                    self.errors.push(Error {
                         kind: ErrorKind::Utf8InNumberLiteral(error.character),
                         col: error.col,
                         pointers_count: error.len,
@@ -981,11 +1815,11 @@ impl<'src> Tokenizer<'src> {
             _ = self.next_ascii_char();
         }
 
-        return if self.token_errors.is_empty() {
+        return if previous_errors_len == self.errors.len() {
             // starting at self.token_start_col + 2 to account for the 0o prefix
             let digits = &self.src.code[self.token_start_col as usize + 2..self.col as usize];
             if digits.is_empty() {
-                self.token_errors.push(Error {
+                self.errors.push(Error {
                     kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Octal),
                     col: self.token_start_col,
                     pointers_count: self.token_len(),
@@ -1000,11 +1834,13 @@ impl<'src> Tokenizer<'src> {
     }
 
     fn integer_hexadecimal(&mut self) -> Result<&'src [ascii], ()> {
+        let previous_errors_len = self.errors.len();
+
         loop {
             match self.peek_next_ascii_char() {
                 Ok(Some(b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F' | b'_')) => {}
                 Ok(Some(out_of_range @ (b'g'..=b'z' | b'G'..=b'Z'))) => {
-                    self.token_errors.push(Error {
+                    self.errors.push(Error {
                         kind: ErrorKind::DigitOutOfRangeInNumberLiteral(
                             Base::Hexadecimal,
                             *out_of_range,
@@ -1015,7 +1851,7 @@ impl<'src> Tokenizer<'src> {
                 }
                 Ok(Some(_) | None) => break,
                 Err(error) => {
-                    self.token_errors.push(Error {
+                    self.errors.push(Error {
                         kind: ErrorKind::Utf8InNumberLiteral(error.character),
                         col: error.col,
                         pointers_count: error.len,
@@ -1026,11 +1862,11 @@ impl<'src> Tokenizer<'src> {
             _ = self.next_ascii_char();
         }
 
-        return if self.token_errors.is_empty() {
+        return if previous_errors_len == self.errors.len() {
             // starting at self.token_start_col + 2 to account for the 0x prefix
             let digits = &self.src.code[self.token_start_col as usize + 2..self.col as usize];
             if digits.is_empty() {
-                self.token_errors.push(Error {
+                self.errors.push(Error {
                     kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Hexadecimal),
                     col: self.token_start_col,
                     pointers_count: self.token_len(),
@@ -1041,823 +1877,6 @@ impl<'src> Tokenizer<'src> {
             }
         } else {
             Err(())
-        };
-    }
-
-    fn next_token(&mut self, next: ascii) -> Result<TokenKind<'src>, ()> {
-        return match next {
-            b'r' => match self.peek_next_utf8_char() {
-                Some('"') => {
-                    self.col += 1;
-
-                    let kind = QuotedLiteralKind::RawStr;
-                    let quote = kind.quote();
-
-                    let mut raw_string = Vec::<ascii>::new();
-
-                    loop {
-                        let next_character = match self.next_ascii_char() {
-                            Ok(Some(b'\n')) => {
-                                self.token_errors.push(Error {
-                                    kind: ErrorKind::UnclosedQuotedLiteral(kind),
-                                    col: self.token_start_col,
-                                    pointers_count: self.token_len() - 1,
-                                });
-                                break;
-                            }
-                            Ok(None) => {
-                                self.token_errors.push(Error {
-                                    kind: ErrorKind::UnclosedQuotedLiteral(kind),
-                                    col: self.token_start_col,
-                                    pointers_count: self.token_len(),
-                                });
-                                break;
-                            }
-                            Ok(Some(next_character)) => next_character,
-                            Err(error) => {
-                                self.token_errors.push(Error {
-                                    kind: ErrorKind::Utf8InIdentifier(error.character),
-                                    col: error.col,
-                                    pointers_count: error.len,
-                                });
-                                continue;
-                            }
-                        };
-
-                        let character = match next_character {
-                            b'\\' => {
-                                let escape_character = match self.peek_next_ascii_char() {
-                                    Ok(Some(b'\n')) => {
-                                        self.token_errors.push(Error {
-                                            kind: ErrorKind::UnclosedQuotedLiteral(kind),
-                                            col: self.token_start_col,
-                                            pointers_count: self.token_len() - 1,
-                                        });
-                                        break;
-                                    }
-                                    Ok(None) => {
-                                        self.token_errors.push(Error {
-                                            kind: ErrorKind::UnclosedQuotedLiteral(kind),
-                                            col: self.token_start_col,
-                                            pointers_count: self.token_len(),
-                                        });
-                                        break;
-                                    }
-                                    Ok(Some(escape_character)) => escape_character,
-                                    Err(error) => {
-                                        self.token_errors.push(Error {
-                                            kind: ErrorKind::Utf8InQuotedLiteral(
-                                                kind,
-                                                error.character,
-                                            ),
-                                            col: error.col,
-                                            pointers_count: error.len,
-                                        });
-                                        continue;
-                                    }
-                                };
-
-                                match escape_character {
-                                    b'"' => {
-                                        _ = self.next_ascii_char();
-                                        b'"'
-                                    }
-                                    _ => b'\\',
-                                }
-                            }
-                            control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                                self.token_errors.push(Error {
-                                    kind: ErrorKind::ControlCharacterInQuotedLiteral(
-                                        kind,
-                                        control as utf8,
-                                    ),
-                                    col: self.col - 1,
-                                    pointers_count: 1,
-                                });
-                                control
-                            }
-                            ch if ch == quote as u8 => break,
-                            ch => ch,
-                        };
-
-                        raw_string.push(character);
-                    }
-
-                    if self.token_errors.is_empty() {
-                        Ok(TokenKind::RawStr(Str(raw_string.into_boxed_slice())))
-                    } else {
-                        Err(())
-                    }
-                }
-                _ => self.identifier(),
-            },
-            b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.identifier(),
-            // IDEA(stefano): debate wether to allow trailing underscores or to emit a warning
-            // IDEA(stefano): emit warning of inconsistent casing of letters, i.e. 0xFFff_fFfF_ffFF_ffFF
-            b'0' => {
-                let (base, integer) = match self.peek_next_ascii_char() {
-                    Ok(Some(b'b')) => {
-                        _ = self.next_ascii_char();
-                        (Base::Binary, self.integer_binary())
-                    }
-                    Ok(Some(b'o')) => {
-                        _ = self.next_ascii_char();
-                        (Base::Octal, self.integer_octal())
-                    }
-                    Ok(Some(b'x')) => {
-                        _ = self.next_ascii_char();
-                        (Base::Hexadecimal, self.integer_hexadecimal())
-                    }
-                    Ok(Some(_) | None) | Err(_) => (Base::Decimal, self.integer_decimal()),
-                };
-
-                match integer {
-                    Ok(literal) => Ok(TokenKind::Integer(base, Integer(literal))),
-                    Err(()) => Err(()),
-                }
-            }
-            b'1'..=b'9' => match self.integer_decimal() {
-                Ok(literal) => Ok(TokenKind::Integer(Base::Decimal, Integer(literal))),
-                Err(()) => Err(()),
-            },
-            b'"' => {
-                let kind = QuotedLiteralKind::Str;
-                let quote = kind.quote();
-
-                let mut string = Vec::<ascii>::new();
-
-                loop {
-                    let next_character = match self.next_ascii_char() {
-                        Ok(Some(b'\n')) => {
-                            self.token_errors.push(Error {
-                                kind: ErrorKind::UnclosedQuotedLiteral(kind),
-                                col: self.token_start_col,
-                                pointers_count: self.token_len() - 1,
-                            });
-                            break;
-                        }
-                        Ok(None) => {
-                            self.token_errors.push(Error {
-                                kind: ErrorKind::UnclosedQuotedLiteral(kind),
-                                col: self.token_start_col,
-                                pointers_count: self.token_len(),
-                            });
-                            break;
-                        }
-                        Ok(Some(next_character)) => next_character,
-                        Err(error) => {
-                            self.token_errors.push(Error {
-                                kind: ErrorKind::Utf8InQuotedLiteral(kind, error.character),
-                                col: error.col,
-                                pointers_count: error.len,
-                            });
-                            continue;
-                        }
-                    };
-
-                    let character = match next_character {
-                        b'\\' => {
-                            let escape_character = match self.next_ascii_char() {
-                                Ok(Some(b'\n')) => {
-                                    self.token_errors.push(Error {
-                                        kind: ErrorKind::UnclosedQuotedLiteral(kind),
-                                        col: self.token_start_col,
-                                        pointers_count: self.token_len() - 1,
-                                    });
-                                    break;
-                                }
-                                Ok(None) => {
-                                    self.token_errors.push(Error {
-                                        kind: ErrorKind::UnclosedQuotedLiteral(kind),
-                                        col: self.token_start_col,
-                                        pointers_count: self.token_len(),
-                                    });
-                                    break;
-                                }
-                                Ok(Some(escape_character)) => escape_character,
-                                Err(error) => {
-                                    self.token_errors.push(Error {
-                                        kind: ErrorKind::Utf8InQuotedLiteral(kind, error.character),
-                                        col: error.col,
-                                        pointers_count: error.len,
-                                    });
-                                    continue;
-                                }
-                            };
-
-                            match escape_character {
-                                b'\\' => b'\\',
-                                b'\'' => b'\'',
-                                b'"' => b'"',
-                                b'n' => b'\n',
-                                b'r' => b'\r',
-                                b't' => b'\t',
-                                b'0' => b'\0',
-                                unrecognized => {
-                                    self.token_errors.push(Error {
-                                        kind: ErrorKind::UnrecognizedEscapeCharacterInQuotedLiteral(
-                                            kind,
-                                            unrecognized as utf8,
-                                        ),
-                                        col: self.col - 2,
-                                        pointers_count: 2,
-                                    });
-                                    string.push(b'\\');
-                                    unrecognized
-                                }
-                            }
-                        }
-                        control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                            self.token_errors.push(Error {
-                                kind: ErrorKind::ControlCharacterInQuotedLiteral(
-                                    kind,
-                                    control as utf8,
-                                ),
-                                col: self.col - 1,
-                                pointers_count: 1,
-                            });
-                            control
-                        }
-                        ch if ch == quote as u8 => break,
-                        ch => ch,
-                    };
-
-                    string.push(character);
-                }
-
-                if self.token_errors.is_empty() {
-                    Ok(TokenKind::Str(Str(string.into_boxed_slice())))
-                } else {
-                    Err(())
-                }
-            }
-            b'\'' => {
-                let kind = QuotedLiteralKind::Ascii;
-                let quote = kind.quote();
-
-                let mut characters = Vec::<ascii>::new();
-
-                loop {
-                    let next_character = match self.next_ascii_char() {
-                        Ok(Some(b'\n')) => {
-                            self.token_errors.push(Error {
-                                kind: ErrorKind::UnclosedQuotedLiteral(kind),
-                                col: self.token_start_col,
-                                pointers_count: self.token_len() - 1,
-                            });
-                            break;
-                        }
-                        Ok(None) => {
-                            self.token_errors.push(Error {
-                                kind: ErrorKind::UnclosedQuotedLiteral(kind),
-                                col: self.token_start_col,
-                                pointers_count: self.token_len(),
-                            });
-                            break;
-                        }
-                        Ok(Some(next_character)) => next_character,
-                        Err(error) => {
-                            self.token_errors.push(Error {
-                                kind: ErrorKind::Utf8InQuotedLiteral(kind, error.character),
-                                col: error.col,
-                                pointers_count: error.len,
-                            });
-                            continue;
-                        }
-                    };
-
-                    let character = match next_character {
-                        b'\\' => {
-                            let escape_character = match self.next_ascii_char() {
-                                Ok(Some(b'\n')) => {
-                                    self.token_errors.push(Error {
-                                        kind: ErrorKind::UnclosedQuotedLiteral(kind),
-                                        col: self.token_start_col,
-                                        pointers_count: self.token_len() - 1,
-                                    });
-                                    break;
-                                }
-                                Ok(None) => {
-                                    self.token_errors.push(Error {
-                                        kind: ErrorKind::UnclosedQuotedLiteral(kind),
-                                        col: self.token_start_col,
-                                        pointers_count: self.token_len(),
-                                    });
-                                    break;
-                                }
-                                Ok(Some(escape_character)) => escape_character,
-                                Err(error) => {
-                                    self.token_errors.push(Error {
-                                        kind: ErrorKind::Utf8InQuotedLiteral(kind, error.character),
-                                        col: error.col,
-                                        pointers_count: error.len,
-                                    });
-                                    continue;
-                                }
-                            };
-
-                            match escape_character {
-                                b'\\' => b'\\',
-                                b'\'' => b'\'',
-                                b'"' => b'"',
-                                b'n' => b'\n',
-                                b'r' => b'\r',
-                                b't' => b'\t',
-                                b'0' => b'\0',
-                                unrecognized => {
-                                    self.token_errors.push(Error {
-                                        kind: ErrorKind::UnrecognizedEscapeCharacterInQuotedLiteral(
-                                            kind,
-                                            unrecognized as utf8,
-                                        ),
-                                        col: self.col - 2,
-                                        pointers_count: 2,
-                                    });
-                                    characters.push(b'\\');
-                                    unrecognized
-                                }
-                            }
-                        }
-                        control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                            self.token_errors.push(Error {
-                                kind: ErrorKind::ControlCharacterInQuotedLiteral(
-                                    kind,
-                                    control as utf8,
-                                ),
-                                col: self.col - 1,
-                                pointers_count: 1,
-                            });
-                            control
-                        }
-                        ch if ch == quote as u8 => break,
-                        ch => ch,
-                    };
-
-                    characters.push(character);
-                }
-
-                let length_related_error = match characters.as_slice() {
-                    [] => Error {
-                        kind: ErrorKind::EmptyCharacterLiteral,
-                        col: self.token_start_col,
-                        pointers_count: 2,
-                    },
-                    [character] => {
-                        return if self.token_errors.is_empty() {
-                            Ok(TokenKind::Ascii(*character))
-                        } else {
-                            Err(())
-                        };
-                    }
-                    [_, ..] => Error {
-                        kind: ErrorKind::MultipleCharactersInCharacterLiteral,
-                        col: self.token_start_col,
-                        pointers_count: self.token_len(),
-                    },
-                };
-
-                self.token_errors.push(length_related_error);
-                Err(())
-            }
-            b'(' => {
-                let kind = BracketKind::OpenRound;
-                self.brackets.push(Bracket { kind, col: self.token_start_col });
-                Ok(TokenKind::Bracket(kind))
-            }
-            b')' => match self.brackets.pop() {
-                Some(bracket) => match bracket.kind {
-                    BracketKind::OpenRound
-                    | BracketKind::CloseRound
-                    | BracketKind::CloseCurly
-                    | BracketKind::CloseSquare => Ok(TokenKind::Bracket(BracketKind::CloseRound)),
-                    actual @ (BracketKind::OpenCurly | BracketKind::OpenSquare) => {
-                        self.token_errors.push(Error {
-                            kind: ErrorKind::MismatchedBracket {
-                                expected: BracketKind::CloseRound,
-                                actual,
-                            },
-                            col: self.token_start_col,
-                            pointers_count: 1,
-                        });
-                        Err(())
-                    }
-                },
-                None => {
-                    self.token_errors.push(Error {
-                        kind: ErrorKind::UnopenedBracket(BracketKind::CloseRound),
-                        col: self.token_start_col,
-                        pointers_count: 1,
-                    });
-                    Err(())
-                }
-            },
-            b'[' => {
-                let kind = BracketKind::OpenSquare;
-                self.brackets.push(Bracket { kind, col: self.token_start_col });
-                Ok(TokenKind::Bracket(kind))
-            }
-            b']' => match self.brackets.pop() {
-                Some(bracket) => match bracket.kind {
-                    BracketKind::OpenSquare
-                    | BracketKind::CloseSquare
-                    | BracketKind::CloseCurly
-                    | BracketKind::CloseRound => Ok(TokenKind::Bracket(BracketKind::CloseSquare)),
-                    actual @ (BracketKind::OpenCurly | BracketKind::OpenRound) => {
-                        self.token_errors.push(Error {
-                            kind: ErrorKind::MismatchedBracket {
-                                expected: BracketKind::CloseSquare,
-                                actual,
-                            },
-                            col: self.token_start_col,
-                            pointers_count: 1,
-                        });
-                        Err(())
-                    }
-                },
-                None => {
-                    self.token_errors.push(Error {
-                        kind: ErrorKind::UnopenedBracket(BracketKind::CloseSquare),
-                        col: self.token_start_col,
-                        pointers_count: 1,
-                    });
-                    Err(())
-                }
-            },
-            b'{' => {
-                let kind = BracketKind::OpenCurly;
-                self.brackets.push(Bracket { kind, col: self.token_start_col });
-                Ok(TokenKind::Bracket(kind))
-            }
-            b'}' => match self.brackets.pop() {
-                Some(bracket) => match bracket.kind {
-                    BracketKind::OpenCurly
-                    | BracketKind::CloseCurly
-                    | BracketKind::CloseRound
-                    | BracketKind::CloseSquare => Ok(TokenKind::Bracket(BracketKind::CloseCurly)),
-                    actual @ (BracketKind::OpenRound | BracketKind::OpenSquare) => {
-                        self.token_errors.push(Error {
-                            kind: ErrorKind::MismatchedBracket {
-                                expected: BracketKind::CloseCurly,
-                                actual,
-                            },
-                            col: self.token_start_col,
-                            pointers_count: 1,
-                        });
-                        Err(())
-                    }
-                },
-                None => {
-                    self.token_errors.push(Error {
-                        kind: ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
-                        col: self.token_start_col,
-                        pointers_count: 1,
-                    });
-                    Err(())
-                }
-            },
-            b'#' => match self.peek_next_utf8_char() {
-                Some('{') => {
-                    loop {
-                        match self.next_utf8_char_multiline() {
-                            Some('#') => match self.next_utf8_char_multiline() {
-                                Some('}') => break,
-                                Some(_) => {},
-                                None => {
-                                    self.token_errors.push(Error {
-                                        kind: ErrorKind::UnclosedMultilineComment,
-                                        col: self.token_start_col,
-                                        pointers_count: 2,
-                                    });
-                                    return Err(());
-                                }
-                            }
-                            Some(_) => {},
-                            None => {
-                                self.token_errors.push(Error {
-                                    kind: ErrorKind::UnclosedMultilineComment,
-                                    col: self.token_start_col,
-                                    pointers_count: 2,
-                                });
-                                return Err(());
-                            },
-                        }
-                    }
-
-                    // starting at self.token_start_col + 2 to skip the `#{`
-                    // ending at self.col - 2 to skip the `#}`
-                    let comment = &self.src.code[self.token_start_col as usize + 2..self.col as usize - 2];
-                    Ok(TokenKind::MultilineComment(comment))
-                },
-                Some('}') => {
-                    self.col += 1;
-                    self.token_errors.push(Error {
-                        kind: ErrorKind::UnopenedMultilineComment,
-                        col: self.token_start_col,
-                        pointers_count: 2,
-                    });
-                    return Err(());
-                }
-                Some(_) | None => {
-                    // ignoring the hash symbol
-                    let comment = &self.src.code[self.col as usize..self.line.end as usize];
-
-                    // consuming the rest of the characters in the current line
-                    self.col = self.line.end;
-
-                    Ok(TokenKind::Comment(comment))
-                }
-            }
-            b':' => Ok(TokenKind::Colon),
-            b';' => Ok(TokenKind::SemiColon),
-            b',' => Ok(TokenKind::Comma),
-            b'!' => match self.peek_next_utf8_char() {
-                Some('=') => {
-                    self.col += 1;
-                    Ok(TokenKind::Op(Op::NotEquals))
-                }
-                _ => Ok(TokenKind::Op(Op::Not)),
-            },
-            b'*' => match self.peek_next_utf8_char() {
-                Some('*') => {
-                    self.col += 1;
-                    match self.peek_next_utf8_char() {
-                        Some('=') => {
-                            self.col += 1;
-                            Ok(TokenKind::Op(Op::PowEquals))
-                        }
-                        Some('\\') => {
-                            self.col += 1;
-                            match self.peek_next_utf8_char() {
-                                Some('=') => {
-                                    self.col += 1;
-                                    Ok(TokenKind::Op(Op::WrappingPowEquals))
-                                }
-                                _ => Ok(TokenKind::Op(Op::WrappingPow)),
-                            }
-                        }
-                        Some('|') => {
-                            self.col += 1;
-                            match self.peek_next_utf8_char() {
-                                Some('=') => {
-                                    self.col += 1;
-                                    Ok(TokenKind::Op(Op::SaturatingPowEquals))
-                                }
-                                _ => Ok(TokenKind::Op(Op::SaturatingPow)),
-                            }
-                        }
-                        _ => Ok(TokenKind::Op(Op::Pow)),
-                    }
-                }
-                Some('=') => {
-                    self.col += 1;
-                    Ok(TokenKind::Op(Op::TimesEquals))
-                }
-                Some('\\') => {
-                    self.col += 1;
-                    match self.peek_next_utf8_char() {
-                        Some('=') => {
-                            self.col += 1;
-                            Ok(TokenKind::Op(Op::WrappingTimesEquals))
-                        }
-                        _ => Ok(TokenKind::Op(Op::WrappingTimes)),
-                    }
-                }
-                Some('|') => {
-                    self.col += 1;
-                    match self.peek_next_utf8_char() {
-                        Some('=') => {
-                            self.col += 1;
-                            Ok(TokenKind::Op(Op::SaturatingTimesEquals))
-                        }
-                        _ => Ok(TokenKind::Op(Op::SaturatingTimes)),
-                    }
-                }
-                _ => Ok(TokenKind::Op(Op::Times)),
-            },
-            b'/' => match self.peek_next_utf8_char() {
-                Some('=') => {
-                    self.col += 1;
-                    Ok(TokenKind::Op(Op::DivideEquals))
-                }
-                Some('\\') => {
-                    self.col += 1;
-                    match self.peek_next_utf8_char() {
-                        Some('=') => {
-                            self.col += 1;
-                            Ok(TokenKind::Op(Op::WrappingDivideEquals))
-                        }
-                        _ => Ok(TokenKind::Op(Op::WrappingDivide)),
-                    }
-                }
-                Some('|') => {
-                    self.col += 1;
-                    match self.peek_next_utf8_char() {
-                        Some('=') => {
-                            self.col += 1;
-                            Ok(TokenKind::Op(Op::SaturatingDivideEquals))
-                        }
-                        _ => Ok(TokenKind::Op(Op::SaturatingDivide)),
-                    }
-                }
-                _ => Ok(TokenKind::Op(Op::Divide)),
-            },
-            b'%' => match self.peek_next_utf8_char() {
-                Some('=') => {
-                    self.col += 1;
-                    Ok(TokenKind::Op(Op::RemainderEquals))
-                }
-                _ => Ok(TokenKind::Op(Op::Remainder)),
-            },
-            b'+' => match self.peek_next_utf8_char() {
-                Some('=') => {
-                    self.col += 1;
-                    Ok(TokenKind::Op(Op::PlusEquals))
-                }
-                Some('\\') => {
-                    self.col += 1;
-                    match self.peek_next_utf8_char() {
-                        Some('=') => {
-                            self.col += 1;
-                            Ok(TokenKind::Op(Op::WrappingPlusEquals))
-                        }
-                        _ => Ok(TokenKind::Op(Op::WrappingPlus)),
-                    }
-                }
-                Some('|') => {
-                    self.col += 1;
-                    match self.peek_next_utf8_char() {
-                        Some('=') => {
-                            self.col += 1;
-                            Ok(TokenKind::Op(Op::SaturatingPlusEquals))
-                        }
-                        _ => Ok(TokenKind::Op(Op::SaturatingPlus)),
-                    }
-                }
-                _ => Ok(TokenKind::Op(Op::Plus)),
-            },
-            b'-' => match self.peek_next_utf8_char() {
-                Some('=') => {
-                    self.col += 1;
-                    Ok(TokenKind::Op(Op::MinusEquals))
-                }
-                Some('\\') => {
-                    self.col += 1;
-                    match self.peek_next_utf8_char() {
-                        Some('=') => {
-                            self.col += 1;
-                            Ok(TokenKind::Op(Op::WrappingMinusEquals))
-                        }
-                        _ => Ok(TokenKind::Op(Op::WrappingMinus)),
-                    }
-                }
-                Some('|') => {
-                    self.col += 1;
-                    match self.peek_next_utf8_char() {
-                        Some('=') => {
-                            self.col += 1;
-                            Ok(TokenKind::Op(Op::SaturatingMinusEquals))
-                        }
-                        _ => Ok(TokenKind::Op(Op::SaturatingMinus)),
-                    }
-                }
-                _ => Ok(TokenKind::Op(Op::Minus)),
-            },
-            b'&' => match self.peek_next_utf8_char() {
-                Some('&') => {
-                    self.col += 1;
-                    match self.peek_next_utf8_char() {
-                        Some('=') => {
-                            self.col += 1;
-                            Ok(TokenKind::Op(Op::AndEquals))
-                        }
-                        _ => Ok(TokenKind::Op(Op::And)),
-                    }
-                }
-                Some('=') => {
-                    self.col += 1;
-                    Ok(TokenKind::Op(Op::BitAndEquals))
-                }
-                _ => Ok(TokenKind::Op(Op::BitAnd)),
-            },
-            b'^' => match self.peek_next_utf8_char() {
-                Some('=') => {
-                    self.col += 1;
-                    Ok(TokenKind::Op(Op::BitXorEquals))
-                }
-                _ => Ok(TokenKind::Op(Op::BitXor)),
-            },
-            b'|' => match self.peek_next_utf8_char() {
-                Some('|') => {
-                    self.col += 1;
-                    match self.peek_next_utf8_char() {
-                        Some('=') => {
-                            self.col += 1;
-                            Ok(TokenKind::Op(Op::OrEquals))
-                        }
-                        _ => Ok(TokenKind::Op(Op::Or)),
-                    }
-                }
-                Some('=') => {
-                    self.col += 1;
-                    Ok(TokenKind::Op(Op::BitOrEquals))
-                }
-                _ => Ok(TokenKind::Op(Op::BitOr)),
-            },
-            b'=' => match self.peek_next_utf8_char() {
-                Some('=') => {
-                    self.col += 1;
-                    Ok(TokenKind::Op(Op::EqualsEquals))
-                }
-                _ => Ok(TokenKind::Op(Op::Equals)),
-            },
-            b'>' => match self.peek_next_utf8_char() {
-                Some('>') => {
-                    self.col += 1;
-                    match self.peek_next_utf8_char() {
-                        Some('>') => {
-                            self.col += 1;
-                            match self.peek_next_utf8_char() {
-                                Some('=') => {
-                                    self.col += 1;
-                                    Ok(TokenKind::Op(Op::RightRotateEquals))
-                                }
-                                _ => Ok(TokenKind::Op(Op::RightRotate)),
-                            }
-                        }
-                        Some('=') => {
-                            self.col += 1;
-                            Ok(TokenKind::Op(Op::RightShiftEquals))
-                        }
-                        _ => Ok(TokenKind::Op(Op::RightShift)),
-                    }
-                }
-                Some('=') => {
-                    self.col += 1;
-                    Ok(TokenKind::Op(Op::GreaterOrEquals))
-                }
-                _ => Ok(TokenKind::Op(Op::Greater)),
-            },
-            b'<' => match self.peek_next_utf8_char() {
-                Some('<') => {
-                    self.col += 1;
-                    match self.peek_next_utf8_char() {
-                        Some('<') => {
-                            self.col += 1;
-                            match self.peek_next_utf8_char() {
-                                Some('=') => {
-                                    self.col += 1;
-                                    Ok(TokenKind::Op(Op::LeftRotateEquals))
-                                }
-                                _ => Ok(TokenKind::Op(Op::LeftRotate)),
-                            }
-                        }
-                        Some('=') => {
-                            self.col += 1;
-                            Ok(TokenKind::Op(Op::LeftShiftEquals))
-                        }
-                        Some('\\') => {
-                            self.col += 1;
-                            match self.peek_next_utf8_char() {
-                                Some('=') => {
-                                    self.col += 1;
-                                    Ok(TokenKind::Op(Op::WrappingLeftShiftEquals))
-                                }
-                                _ => Ok(TokenKind::Op(Op::WrappingLeftShift)),
-                            }
-                        }
-                        Some('|') => {
-                            self.col += 1;
-                            match self.peek_next_utf8_char() {
-                                Some('=') => {
-                                    self.col += 1;
-                                    Ok(TokenKind::Op(Op::SaturatingLeftShiftEquals))
-                                }
-                                _ => Ok(TokenKind::Op(Op::SaturatingLeftShift)),
-                            }
-                        }
-                        _ => Ok(TokenKind::Op(Op::LeftShift)),
-                    }
-                }
-                Some('=') => {
-                    self.col += 1;
-                    match self.peek_next_utf8_char() {
-                        Some('>') => {
-                            self.col += 1;
-                            Ok(TokenKind::Op(Op::Compare))
-                        }
-                        _ => Ok(TokenKind::Op(Op::LessOrEquals)),
-                    }
-                }
-                _ => Ok(TokenKind::Op(Op::Less)),
-            },
-            unrecognized => {
-                self.token_errors.push(Error {
-                    kind: ErrorKind::UnrecognizedCharacter(unrecognized as utf8),
-                    col: self.token_start_col,
-                    pointers_count: 1,
-                });
-                Err(())
-            }
         };
     }
 }
