@@ -25,11 +25,13 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
     type byte = u8;
     ```
 
+## 0.6.2 -
+
 ## 0.6.1 - 2024-09-20
 
 ### Added
 
-Language:
+#### Language
 
 - `_` as a digit separator, e.g.: `123_456_678` is now a valid number literal
 - Alternative number literals bases:
@@ -39,13 +41,13 @@ Language:
 - Escape sequences in raw string literals: `r"nested \"quotes\" are now allowed by escaping them"`
 - Multiline comments, enclosed by `#{` and `#}`
 
-Compiler:
+#### Compiler
 
 - Created and exposed API for error messages, introduced the `error` module
 
 ### Changed
 
-Compiler:
+#### Compiler
 
 - Restricted max source file size to 4GB
 - Restricted max identifiers length to 63 characters
@@ -55,11 +57,11 @@ Compiler:
 
 ### Fixed
 
-Language:
+#### Language
 
 - Added `break` and `continue` statements to the [syntax specification](SYNTAX.ebnf)
 
-Compiler:
+#### Compiler
 
 - Corrected error messages related to:
     - undefined variables and variables already defined
