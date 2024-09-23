@@ -102,6 +102,7 @@ fn print_color(
     flags: Flags,
     f: &mut core::fmt::Formatter<'_>,
 ) -> core::fmt::Result {
+    // TODO(stefano): fill a preallocated static buffer instead of creating a new one each time
     let mut codes = String::with_capacity(24);
 
     if fg != Fg::Default {

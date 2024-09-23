@@ -681,20 +681,20 @@ impl<'src> Tokenizer<'src> {
                     // IDEA(stefano): debate wether to allow trailing underscores or to emit a warning
                     // IDEA(stefano): emit warning of inconsistent casing of letters, i.e. 0xFFff_fFfF_ffFF_ffFF
                     b'0' => {
-                        let (base, integer) = match this.peek_next_ascii_char() {
-                            Ok(Some(b'b')) => {
-                                _ = this.next_ascii_char();
+                        let (base, integer) = match this.peek_next_utf8_char() {
+                            Some('b') => {
+                                this.col += 1;
                                 (Base::Binary, this.integer_binary())
                             }
-                            Ok(Some(b'o')) => {
-                                _ = this.next_ascii_char();
+                            Some('o') => {
+                                this.col += 1;
                                 (Base::Octal, this.integer_octal())
                             }
-                            Ok(Some(b'x')) => {
-                                _ = this.next_ascii_char();
+                            Some('x') => {
+                                this.col += 1;
                                 (Base::Hexadecimal, this.integer_hexadecimal())
                             }
-                            Ok(Some(_) | None) | Err(_) => (Base::Decimal, this.integer_decimal()),
+                            Some(_) | None => (Base::Decimal, this.integer_decimal()),
                         };
 
                         match integer {
