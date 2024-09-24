@@ -643,9 +643,9 @@ impl<'src> Tokenizer<'src> {
                     Ok(None) => break 'tokenization,
                     Err(err) => {
                         this.errors.push(Error {
-                            kind: ErrorKind::Utf8Character(err.character),
+                            kind: ErrorKind::Utf8Character(err.utf8_ch),
                             col: err.col,
-                            pointers_count: err.len,
+                            pointers_count: err.pointers_count,
                         });
                         break 'next_token Err(());
                     }
@@ -710,7 +710,7 @@ impl<'src> Tokenizer<'src> {
                         Ok(literal) => Ok(TokenKind::Str(Str(literal.into_boxed_slice()))),
                         Err(()) => Err(())
                     },
-                    b'\'' => match this.quoted_literal(QuotedLiteralKind::Str) {
+                    b'\'' => match this.quoted_literal(QuotedLiteralKind::Ascii) {
                         Ok(literal) => match literal.as_slice() {
                             [character] => Ok(TokenKind::Ascii(*character)),
                             [] => {
@@ -776,7 +776,7 @@ impl<'src> Tokenizer<'src> {
                             Err(())
                         }
                         Some(_) | None => {
-                            // ignoring the hash symbol
+                            // starting a this.col to ignore the hash symbol
                             let comment = &this.src.code[this.col as usize..this.line.end as usize];
 
                             // consuming the rest of the characters in the current line
@@ -1206,9 +1206,10 @@ impl<'src> Tokenizer<'src> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Utf8Error {
-    character: utf8,
+    utf8_ch: utf8,
     col: offset,
-    len: offset,
+    byte_len: offset,
+    pointers_count: offset,
 }
 
 // TODO(stefano): own utf8 parsing
@@ -1236,12 +1237,14 @@ impl<'src> Tokenizer<'src> {
                     unreachable!("this branch assured we would have a valid utf8 character");
                 };
 
+                let utf8_byte_len = utf8_ch.len_utf8() as offset;
                 let utf8_ch_col = self.col;
-                self.col += utf8_ch.len_utf8() as offset;
+                self.col += utf8_byte_len;
                 Err(Utf8Error {
-                    character: utf8_ch,
+                    utf8_ch,
                     col: utf8_ch_col,
-                    len: 1, // TODO(stefano): proper utf8 len
+                    byte_len: utf8_byte_len,
+                    pointers_count: 1, // TODO(stefano): proper utf8 len
                 })
             }
         };
@@ -1289,11 +1292,11 @@ impl<'src> Tokenizer<'src> {
                     unreachable!("this branch assured we would have a valid utf8 character");
                 };
 
-                let utf8_ch_col = self.col;
                 Err(Utf8Error {
-                    character: utf8_ch,
-                    col: utf8_ch_col,
-                    len: 1, // TODO(stefano): proper utf8 len
+                    utf8_ch,
+                    col: self.col,
+                    byte_len: utf8_ch.len_utf8() as offset,
+                    pointers_count: 1, // TODO(stefano): proper utf8 len
                 })
             }
         };
@@ -1325,9 +1328,9 @@ impl<'src> Tokenizer<'src> {
                 Ok(Some(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {}
                 Ok(Some(_) | None) => break,
                 Err(error) => self.errors.push(Error {
-                    kind: ErrorKind::Utf8InIdentifier(error.character),
+                    kind: ErrorKind::Utf8InIdentifier(error.utf8_ch),
                     col: error.col,
-                    pointers_count: error.len,
+                    pointers_count: error.pointers_count,
                 }),
             }
 
@@ -1382,9 +1385,9 @@ impl<'src> Tokenizer<'src> {
                 Ok(Some(_) | None) => break,
                 Err(error) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InNumberLiteral(error.character),
+                        kind: ErrorKind::Utf8InNumberLiteral(error.utf8_ch),
                         col: error.col,
-                        pointers_count: error.len,
+                        pointers_count: error.pointers_count,
                     });
                 }
             }
@@ -1426,9 +1429,9 @@ impl<'src> Tokenizer<'src> {
                 Ok(Some(_) | None) => break,
                 Err(error) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InNumberLiteral(error.character),
+                        kind: ErrorKind::Utf8InNumberLiteral(error.utf8_ch),
                         col: error.col,
-                        pointers_count: error.len,
+                        pointers_count: error.pointers_count,
                     });
                 }
             }
@@ -1477,9 +1480,9 @@ impl<'src> Tokenizer<'src> {
                 Ok(Some(_) | None) => break,
                 Err(error) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InNumberLiteral(error.character),
+                        kind: ErrorKind::Utf8InNumberLiteral(error.utf8_ch),
                         col: error.col,
-                        pointers_count: error.len,
+                        pointers_count: error.pointers_count,
                     });
                 }
             }
@@ -1524,9 +1527,9 @@ impl<'src> Tokenizer<'src> {
                 Ok(Some(_) | None) => break,
                 Err(error) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InNumberLiteral(error.character),
+                        kind: ErrorKind::Utf8InNumberLiteral(error.utf8_ch),
                         col: error.col,
-                        pointers_count: error.len,
+                        pointers_count: error.pointers_count,
                     });
                 }
             }
@@ -1560,16 +1563,8 @@ impl<'src> Tokenizer<'src> {
         let mut literal = Vec::<ascii>::new();
 
         loop {
-            let next_character = match self.next_ascii_char() {
-                Ok(Some(b'\n')) => {
-                    self.errors.push(Error {
-                        kind: ErrorKind::UnclosedQuotedLiteral(kind),
-                        col: self.token_start_col,
-                        pointers_count: self.token_len() - 1,
-                    });
-                    break;
-                }
-                Ok(None) => {
+            let next_character = match self.peek_next_ascii_char() {
+                Ok(Some(b'\n') | None) => {
                     self.errors.push(Error {
                         kind: ErrorKind::UnclosedQuotedLiteral(kind),
                         col: self.token_start_col,
@@ -1577,29 +1572,25 @@ impl<'src> Tokenizer<'src> {
                     });
                     break;
                 }
-                Ok(Some(next_character)) => next_character,
+                Ok(Some(next_character)) => {
+                    self.col += 1;
+                    next_character
+                }
                 Err(error) => {
+                    self.col += error.byte_len;
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InIdentifier(error.character),
+                        kind: ErrorKind::Utf8InIdentifier(error.utf8_ch),
                         col: error.col,
-                        pointers_count: error.len,
+                        pointers_count: error.pointers_count,
                     });
                     continue;
                 }
             };
 
-            let character = match next_character {
+            let character = match *next_character {
                 b'\\' => {
                     let escape_character = match self.peek_next_ascii_char() {
-                        Ok(Some(b'\n')) => {
-                            self.errors.push(Error {
-                                kind: ErrorKind::UnclosedQuotedLiteral(kind),
-                                col: self.token_start_col,
-                                pointers_count: self.token_len() - 1,
-                            });
-                            break;
-                        }
-                        Ok(None) => {
+                        Ok(Some(b'\n') | None) => {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnclosedQuotedLiteral(kind),
                                 col: self.token_start_col,
@@ -1609,13 +1600,14 @@ impl<'src> Tokenizer<'src> {
                         }
                         Ok(Some(escape_character)) => escape_character,
                         Err(error) => {
+                            self.col += error.byte_len;
                             self.errors.push(Error {
                                 kind: ErrorKind::Utf8InQuotedLiteral(
                                     kind,
-                                    error.character,
+                                    error.utf8_ch,
                                 ),
                                 col: error.col,
-                                pointers_count: error.len,
+                                pointers_count: error.pointers_count,
                             });
                             continue;
                         }
@@ -1623,7 +1615,7 @@ impl<'src> Tokenizer<'src> {
 
                     match escape_character {
                         b'"' => {
-                            _ = self.next_ascii_char();
+                            self.col += 1;
                             b'"'
                         }
                         _ => b'\\',
@@ -1659,16 +1651,8 @@ impl<'src> Tokenizer<'src> {
         let mut literal = Vec::<ascii>::new();
 
         loop {
-            let next_character = match self.next_ascii_char() {
-                Ok(Some(b'\n')) => {
-                    self.errors.push(Error {
-                        kind: ErrorKind::UnclosedQuotedLiteral(kind),
-                        col: self.token_start_col,
-                        pointers_count: self.token_len() - 1,
-                    });
-                    break;
-                }
-                Ok(None) => {
+            let next_character = match self.peek_next_ascii_char() {
+                Ok(Some(b'\n') | None) => {
                     self.errors.push(Error {
                         kind: ErrorKind::UnclosedQuotedLiteral(kind),
                         col: self.token_start_col,
@@ -1676,29 +1660,25 @@ impl<'src> Tokenizer<'src> {
                     });
                     break;
                 }
-                Ok(Some(next_character)) => next_character,
+                Ok(Some(next_character)) => {
+                    self.col += 1;
+                    next_character
+                }
                 Err(error) => {
+                    self.col += error.byte_len;
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InQuotedLiteral(kind, error.character),
+                        kind: ErrorKind::Utf8InQuotedLiteral(kind, error.utf8_ch),
                         col: error.col,
-                        pointers_count: error.len,
+                        pointers_count: error.pointers_count,
                     });
                     continue;
                 }
             };
 
-            let character = match next_character {
+            let character = match *next_character {
                 b'\\' => {
-                    let escape_character = match self.next_ascii_char() {
-                        Ok(Some(b'\n')) => {
-                            self.errors.push(Error {
-                                kind: ErrorKind::UnclosedQuotedLiteral(kind),
-                                col: self.token_start_col,
-                                pointers_count: self.token_len() - 1,
-                            });
-                            break;
-                        }
-                        Ok(None) => {
+                    let escape_character = match self.peek_next_ascii_char() {
+                        Ok(Some(b'\n') | None) => {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnclosedQuotedLiteral(kind),
                                 col: self.token_start_col,
@@ -1706,21 +1686,25 @@ impl<'src> Tokenizer<'src> {
                             });
                             break;
                         }
-                        Ok(Some(escape_character)) => escape_character,
+                        Ok(Some(escape_character)) => {
+                            self.col += 1;
+                            escape_character
+                        }
                         Err(error) => {
+                            self.col += error.byte_len;
                             self.errors.push(Error {
                                 kind: ErrorKind::Utf8InQuotedLiteral(
                                     kind,
-                                    error.character,
+                                    error.utf8_ch,
                                 ),
                                 col: error.col,
-                                pointers_count: error.len,
+                                pointers_count: error.pointers_count,
                             });
                             continue;
                         }
                     };
 
-                    match escape_character {
+                    match *escape_character {
                         b'\\' => b'\\',
                         b'\'' => b'\'',
                         b'"' => b'"',
