@@ -8,7 +8,6 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ## Unreleased
 
-- Ability to reconstruct the source code from the tokens and the ast
 - Shortcircuted and/or operators
 - Unsigned integers
 - Casting operator

@@ -1,3 +1,9 @@
+/* TODO(stefano):
+fix allocation of arrays of 0 or 1 elements when thet will be allowed by either
+- allow for zero size values
+- place padding between elements (i.e. disallow zero size values by making them at least 1 byte long)
+*/
+
 pub mod artifacts;
 mod asm;
 mod reg;
@@ -697,16 +703,19 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 }
                 Dst::Reg(_) => unreachable!(),
             },
-            Type::Array { len: array_len, .. } => match dst {
-                Dst::View { len, ptr } => {
-                    _ = writeln!(
-                        self.asm,
-                        " mov {len}, {array_len}\
-                        \n lea {ptr}, [{base} + {offset}]"
-                    );
+            Type::Array { len: array_len, .. } => {
+                debug_assert!(array_len >= 2, "arrays of 0 and 1 elements are not allowed");
+                match dst {
+                    Dst::View { len, ptr } => {
+                        _ = writeln!(
+                            self.asm,
+                            " mov {len}, {array_len}\
+                            \n lea {ptr}, [{base} + {offset}]"
+                        );
+                    }
+                    Dst::Reg(_) => unreachable!(),
                 }
-                Dst::Reg(_) => unreachable!(),
-            },
+            }
         }
     }
 
@@ -804,6 +813,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         );
                     }
                     Type::Array { len: array_len, .. } => {
+                        debug_assert!(*array_len >= 2, "arrays of 0 and 1 elements are not allowed");
                         _ = writeln!(
                             self.asm,
                             " mov rsi, {array_len}\
@@ -924,6 +934,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     _ = writeln!(self.asm, " mov {reg}, [rbp + {var_offset}]");
                                 }
                                 Type::Array { len, .. } => {
+                                    debug_assert!(*len >= 2, "arrays of 0 and 1 elements are not allowed");
                                     _ = writeln!(self.asm, " mov {reg}, {len}");
                                 }
                                 Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => {
@@ -1978,6 +1989,7 @@ impl<'ast> Compiler<'_, 'ast> {
                                     );
                                 }
                                 Type::Array { len, .. } => {
+                                    debug_assert!(*len >= 2, "arrays of 0 and 1 elements are not allowed");
                                     _ = writeln!(
                                         self.asm,
                                         " mov qword [{base} + {dst_offset}], {len}\n"
@@ -2257,35 +2269,38 @@ impl<'ast> Compiler<'_, 'ast> {
                             ptr_offset = size_of::<uint>()
                         );
                     }
-                    Type::Array { base_type: array_typ, len } => match *array_typ {
-                        BaseType::Int => {
-                            _ = writeln!(
-                                self.asm,
-                                " lea rdi, [{base} + {dst_offset}]\
-                                \n lea rsi, [{base} + {src_offset}]\
-                                \n mov rcx, {len}\
-                                \n rep movsq\n"
-                            );
+                    Type::Array { base_type: array_typ, len } => {
+                        debug_assert!(*len >= 2, "arrays of 0 and 1 elements are not allowed");
+                        match *array_typ {
+                            BaseType::Int => {
+                                _ = writeln!(
+                                    self.asm,
+                                    " lea rdi, [{base} + {dst_offset}]\
+                                    \n lea rsi, [{base} + {src_offset}]\
+                                    \n mov rcx, {len}\
+                                    \n rep movsq\n"
+                                );
+                            }
+                            BaseType::Ascii | BaseType::Bool => {
+                                _ = writeln!(
+                                    self.asm,
+                                    " lea rdi, [{base} + {dst_offset}]\
+                                    \n lea rsi, [{base} + {src_offset}]\
+                                    \n mov rcx, {len}\
+                                    \n rep movsb\n"
+                                );
+                            }
+                            BaseType::Str => {
+                                _ = writeln!(
+                                    self.asm,
+                                    " lea rdi, [{base} + {dst_offset}]\
+                                    \n lea rsi, [{base} + {src_offset}]\
+                                    \n mov rcx, {len} * 2\
+                                    \n rep movsq\n"
+                                );
+                            }
                         }
-                        BaseType::Ascii | BaseType::Bool => {
-                            _ = writeln!(
-                                self.asm,
-                                " lea rdi, [{base} + {dst_offset}]\
-                                \n lea rsi, [{base} + {src_offset}]\
-                                \n mov rcx, {len}\
-                                \n rep movsb\n"
-                            );
-                        }
-                        BaseType::Str => {
-                            _ = writeln!(
-                                self.asm,
-                                " lea rdi, [{base} + {dst_offset}]\
-                                \n lea rsi, [{base} + {src_offset}]\
-                                \n mov rcx, {len} * 2\
-                                \n rep movsq\n"
-                            );
-                        }
-                    },
+                    }
                 }
             }
             Expression::ArrayIndex { base_type, .. } => {
@@ -2431,6 +2446,7 @@ impl<'ast> Compiler<'_, 'ast> {
                                 );
                             }
                             Type::Array { len: array_len, .. } => {
+                                debug_assert!(*array_len >= 2, "arrays of 0 and 1 elements are not allowed");
                                 self.expression(index_expression, Dst::Reg(Rdi));
                                 _ = writeln!(
                                     self.asm,

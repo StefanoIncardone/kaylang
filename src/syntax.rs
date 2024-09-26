@@ -19,6 +19,10 @@ pub struct ErrorInfo {
     pub error_cause_message: Cow<'static, str>,
 }
 
+/* TODO(stefano):
+allow pointers to start past the end of the line
+IDEA: introduce a pointers_col field
+*/
 #[derive(Debug, Clone)]
 pub struct Error<K: IntoErrorInfo> {
     pub kind: K,
@@ -46,6 +50,10 @@ impl<K: IntoErrorInfo> Error<K> {
     }
 }
 
+/* TODO(stefano):
+allow pointers to start past the end of the line
+IDEA: introduce a pointers_col field
+*/
 #[derive(Debug, Clone)]
 pub struct ErrorDisplay<'src> {
     pub error_message: Cow<'static, str>,
