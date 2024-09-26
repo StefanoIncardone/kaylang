@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod tokenizer;
+pub mod untyped_ast;
 
 use crate::{
     error::MsgWithCauseUnderTextWithLocation,
