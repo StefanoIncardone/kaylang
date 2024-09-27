@@ -26,6 +26,50 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ## 0.6.2 -
 
+### Changed
+
+#### Language
+
+- Block comments delimited by `##` instead of `#{` and `#}`, this also removes the error related
+    to uclosed block comments:
+    - single line block comments look symmetric with `}#`:
+
+        ```text
+        println #{ symmetric }# 21;
+        ```
+
+    - single line block comments look asymmetric with `#}`:
+
+        ```text
+        println #{ asymmetric #} 21;
+        ```
+
+    - multiline block comments looke symmetric with `#}`:
+
+        ```text
+        #{
+        symmetric
+        #}
+        ```
+
+    - multiline block comments looke asymmetric with `}#`:
+
+        ```text
+        #{
+        asymmetric
+        }#
+        ```
+
+    - with `##` both single line and multiline block comments look symmetric:
+
+        ```kay
+        println ## symmetric ## 12;
+
+        ##
+        symmetric
+        ##
+        ```
+
 ## 0.6.1 - 2024-09-20
 
 ### Added

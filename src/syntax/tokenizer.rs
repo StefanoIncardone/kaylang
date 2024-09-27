@@ -503,7 +503,7 @@ impl Display for TokenKind<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Comment(text) => write!(f, "#{text}"),
-            Self::BlockComment(text) => write!(f, "#{{{text}#}}"),
+            Self::BlockComment(text) => write!(f, "##{text}##"),
             Self::Unexpected(text) => write!(f, "{text}"),
 
             Self::Bracket(bracket) => write!(f, "{bracket}"),
@@ -556,7 +556,7 @@ impl DisplayLen for TokenKind<'_> {
 
         return match self {
             Self::Comment(text) => text.chars().count() as offset + 1, // + 1 to account for the `#`
-            Self::BlockComment(text) => text.chars().count() as offset + 4, // + 4 to account for `#{` and `#}`
+            Self::BlockComment(text) => text.chars().count() as offset + 4, // + 4 to account for `##` and `##`
             Self::Unexpected(text) => text.chars().count() as offset,
 
             Self::Bracket(bracket) => bracket.display_len(),
@@ -733,11 +733,11 @@ impl<'src> Tokenizer<'src> {
                         Err(()) => Err(())
                     },
                     b'#' => match this.peek_next_utf8_char() {
-                        Some('{') => {
+                        Some('#') => {
                             'next_character: loop {
                                 match this.next_utf8_char_multiline() {
                                     Some('#') => match this.next_utf8_char_multiline() {
-                                        Some('}') => break 'next_character,
+                                        Some('#') => break 'next_character,
                                         Some(_) => {}
                                         None => {
                                             this.errors.push(Error {
@@ -760,20 +760,11 @@ impl<'src> Tokenizer<'src> {
                                 }
                             }
 
-                            // starting at this.token_start_col + 2 to skip the `#{`
-                            // ending at this.col - 2 to skip the `#}`
+                            // starting at this.token_start_col + 2 to skip the `##`
+                            // ending at this.col - 2 to skip the `##`
                             let comment = &this.src.code
                                 [this.token_start_col as usize + 2..this.col as usize - 2];
                             Ok(TokenKind::BlockComment(comment))
-                        }
-                        Some('}') => {
-                            this.col += 1;
-                            this.errors.push(Error {
-                                kind: ErrorKind::UnopenedBlockComment,
-                                col: this.token_start_col,
-                                pointers_count: 2,
-                            });
-                            Err(())
                         }
                         Some(_) | None => {
                             // starting a this.col to ignore the hash symbol
@@ -1751,7 +1742,6 @@ impl<'src> Tokenizer<'src> {
 #[derive(Debug, Clone)]
 pub enum ErrorKind {
     UnclosedBlockComment,
-    UnopenedBlockComment,
 
     UnclosedBracket(BracketKind),
     UnopenedBracket(BracketKind),
@@ -1781,11 +1771,7 @@ impl IntoErrorInfo for ErrorKind {
         let (error_message, error_cause_message) = match self {
             Self::UnclosedBlockComment => (
                 "unclosed block comment".into(),
-                "missing closing `#}`".into(),
-            ),
-            Self::UnopenedBlockComment => (
-                "unopened block comment".into(),
-                "was not opened before".into(),
+                "missing closing `##`".into(),
             ),
 
             Self::UnclosedBracket(bracket) => (

@@ -2,7 +2,7 @@ ASCII_character = ? ASCII 32..126 ?;
 UTF-8_character = ? U+0080.. ?;
 
 line_comment = "#", [{ASCII_character | UTF-8_character}], "\n";
-block_comment = "#{", [{ASCII_character | UTF-8_character | "\n"}], "#}";
+block_comment = "##", [{ASCII_character | UTF-8_character | "\n"}], "##";
 
 decimal_digit               = "0".."9";
 binary_digit                = "0".."1";
