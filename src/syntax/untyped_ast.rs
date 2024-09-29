@@ -361,16 +361,20 @@ pub struct UntypedAst<'src, 'tokens: 'src> {
 impl<'src, 'tokens: 'src> UntypedAst<'src, 'tokens> {
     #[inline]
     fn new_expression(&mut self, expression: Expression<'src, 'tokens>) -> ExpressionIndex {
-        let index = ExpressionIndex(self.expressions.len() as offset);
         self.expressions.push(expression);
-        return index;
+        return ExpressionIndex((self.expressions.len() - 1) as offset);
     }
 
     #[inline]
     fn new_array(&mut self, array: Array) -> ArrayIndex {
-        let index = ArrayIndex(self.arrays.len() as offset);
         self.arrays.push(array);
-        return index;
+        return ArrayIndex((self.arrays.len() - 1) as offset);
+    }
+
+    #[inline]
+    fn new_variable_definition(&mut self, variable_definition: VariableDefinition<'src, 'tokens>) -> VariableDefinitionIndex {
+        self.variable_definitions.push(variable_definition);
+        return VariableDefinitionIndex((self.variable_definitions.len() - 1) as offset);
     }
 }
 
@@ -612,10 +616,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     effect that propagates to the rest of the parsing, causing subsequent errors to be wrong
     */
     fn parse_tokens(&mut self) {
-        while let Some(token) = self.next_token() {
-            let node = match self.any(token) {
+        while let Some(Peeked { next_token, next_token_index }) = self.peek_next_token() {
+            self.token_index = next_token_index;
+
+            let node = match self.any(next_token) {
                 Ok(Some(node)) => node,
-                Ok(None) => break,
+                Ok(None) => continue,
                 Err(err) => {
                     self.errors.push(err);
 
@@ -630,13 +636,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     }
 
     fn semicolon(&mut self) -> Result<(), Error<ErrorKind>> {
-        let PeekedToken {
-            token: semicolon_token,
-            index: semicolon_token_index
-        } = self.peek_next_expected_token(Expected::Semicolon)?;
-
-        let TokenKind::SemiColon = semicolon_token.kind else {
-            let PeekedToken { token: previous_token, .. } = self.peek_previous_token();
+        let after_end_of_last_parsed_entity_token_index = self.token_index;
+        let after_end_of_last_parsed_entity_token = self.next_expected_token(Expected::Semicolon)?;
+        let TokenKind::SemiColon = after_end_of_last_parsed_entity_token.kind else {
+            self.token_index = after_end_of_last_parsed_entity_token_index;
+            let previous_token = self.peek_previous_token();
             return Err(Error {
                 kind: ErrorKind::MissingSemicolon,
                 col: previous_token.col,
@@ -644,7 +648,6 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             });
         };
 
-        self.token_index = semicolon_token_index;
         return Ok(());
     }
 
@@ -669,7 +672,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 | Op::SaturatingMinus,
             ) => {
                 let expression_index = self.expression(token)?;
-                let PeekedToken { token: end_of_expression_token, .. } = self.peek_previous_token();
+                let end_of_expression_token = self.peek_previous_token();
 
                 let after_expression_token = self.next_expected_token(Expected::Semicolon)?;
                 match after_expression_token.kind {
@@ -835,15 +838,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 Ok(Some(Node::Print { print_column: token.col, argument }))
             }
             TokenKind::PrintLn => {
-                if let Some(PeekedToken {
-                    token: &Token { kind: TokenKind::SemiColon, .. },
-                    index: semicolon_token_index
-                }) = self.peek_next_token() {
-                    self.token_index = semicolon_token_index;
+                let start_of_argument_token = self.next_expected_token(Expected::ExpressionOrSemicolon)?;
+                if let TokenKind::SemiColon = start_of_argument_token.kind {
                     return Ok(Some(Node::Println { println_column: token.col, argument: None }));
                 }
 
-                let start_of_argument_token = self.next_expected_token(Expected::Expression)?;
                 let argument = self.expression(start_of_argument_token)?;
                 self.semicolon()?;
                 Ok(Some(Node::Println { println_column: token.col, argument: Some(argument) }))
@@ -855,15 +854,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 Ok(Some(Node::Eprint { eprint_column: token.col, argument }))
             }
             TokenKind::EprintLn => {
-                if let Some(PeekedToken {
-                    token: &Token { kind: TokenKind::SemiColon, .. },
-                    index: semicolon_token_index
-                }) = self.peek_next_token() {
-                    self.token_index = semicolon_token_index;
+                let start_of_argument_token = self.next_expected_token(Expected::ExpressionOrSemicolon)?;
+                if let TokenKind::SemiColon = start_of_argument_token.kind {
                     return Ok(Some(Node::Eprintln { eprintln_column: token.col, argument: None }));
                 }
 
-                let start_of_argument_token = self.next_expected_token(Expected::Expression)?;
                 let argument = self.expression(start_of_argument_token)?;
                 self.semicolon()?;
                 Ok(Some(Node::Eprintln { eprintln_column: token.col, argument: Some(argument) }))
@@ -871,8 +866,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
             TokenKind::Mutability(mutability) => {
                 let variable_definition = self.variable_definition(token, *mutability)?;
-                let variable_definition_index = VariableDefinitionIndex(self.ast.variable_definitions.len() as offset);
-                self.ast.variable_definitions.push(variable_definition);
+                let variable_definition_index = self.ast.new_variable_definition(variable_definition);
                 Ok(Some(Node::VariableDefinition { variable_definition_index }))
             },
 
@@ -953,38 +947,17 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct PeekedToken<'src, 'tokens: 'src> {
-    token: &'tokens Token<'src>,
-    index: offset,
+struct Peeked<'src, 'tokens: 'src> {
+    next_token: &'tokens Token<'src>,
+    next_token_index: offset,
 }
 
-/* IDEA(stefano):
-remove `peek` methods and instead do:
-- save previous token index
-- advance to next token
-- if there is a need to revert the call `next` just restore the token index to the previously saved one
-*/
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
-    fn next_token(&mut self) -> Option<&'tokens Token<'src>> {
-        let PeekedToken { token: next, index: next_index } = self.peek_next_token()?;
-        self.token_index = next_index;
-        return Some(next);
-    }
+    fn peek_next_token(&self) -> Option<Peeked<'src, 'tokens>> {
+        for next_token_index in self.token_index..self.tokens.len() as offset {
+            let next_token = &self.tokens[next_token_index as usize];
 
-    fn next_expected_token(
-        &mut self,
-        expected: Expected,
-    ) -> Result<&'tokens Token<'src>, Error<ErrorKind>> {
-        let PeekedToken { token: next, index: next_index } = self.peek_next_expected_token(expected)?;
-        self.token_index = next_index;
-        return Ok(next);
-    }
-
-    fn peek_next_token(&self) -> Option<PeekedToken<'src, 'tokens>> {
-        for token_index in self.token_index..self.tokens.len() as offset {
-            let next = &self.tokens[token_index as usize];
-
-            match &next.kind {
+            match &next_token.kind {
                 TokenKind::Bracket(_)
                 | TokenKind::Colon
                 | TokenKind::SemiColon
@@ -1007,19 +980,23 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 | TokenKind::Else
                 | TokenKind::Loop
                 | TokenKind::Break
-                | TokenKind::Continue => return Some(PeekedToken {
-                    token: next,
-                    index: token_index + 1,
+                | TokenKind::Continue => return Some(Peeked {
+                    next_token,
+                    next_token_index: next_token_index + 1,
                 }),
                 TokenKind::Comment(_) | TokenKind::BlockComment(_) => {},
-                TokenKind::Unexpected(_) => self.should_have_been_caught_during_tokenization(next),
+                TokenKind::Unexpected(_) => self.should_have_been_caught_during_tokenization(next_token),
             }
         }
+
         return None;
     }
 
-    fn peek_next_expected_token(&self, expected: Expected) -> Result<PeekedToken<'src, 'tokens>, Error<ErrorKind>> {
-        let Some(peeked) = self.peek_next_token() else {
+    fn next_expected_token(
+        &mut self,
+        expected: Expected,
+    ) -> Result<&'tokens Token<'src>, Error<ErrorKind>> {
+        let Some(Peeked { next_token, next_token_index }) = self.peek_next_token() else {
             /* IDEA(stefano):
             suggest multiple expected places when encountering block comments:
 
@@ -1034,7 +1011,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             ```
             */
 
-            let PeekedToken { token: previous_token, .. } = self.peek_previous_token();
+            let previous_token = self.peek_previous_token();
             return Err(Error {
                 kind: ErrorKind::PrematureEndOfFile(expected),
                 col: previous_token.col,
@@ -1042,15 +1019,16 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             });
         };
 
-        return Ok(peeked);
+        self.token_index = next_token_index;
+        return Ok(next_token);
     }
 
     // Note: this function is always called when underflowing the tokens array is never the case
-    fn peek_previous_token(&self) -> PeekedToken<'src, 'tokens> {
-        for token_index in (0..self.token_index).rev() {
-            let previous = &self.tokens[token_index as usize];
+    fn peek_previous_token(&self) -> &'tokens Token<'src> {
+        for previous_token_index in (0..self.token_index).rev() {
+            let previous_token = &self.tokens[previous_token_index as usize];
 
-            match &previous.kind {
+            match &previous_token.kind {
                 TokenKind::Bracket(_)
                 | TokenKind::Colon
                 | TokenKind::SemiColon
@@ -1073,12 +1051,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 | TokenKind::Else
                 | TokenKind::Loop
                 | TokenKind::Break
-                | TokenKind::Continue => return PeekedToken {
-                    token: previous,
-                    index: token_index
-                },
+                | TokenKind::Continue => return previous_token,
                 TokenKind::Comment(_) | TokenKind::BlockComment(_) => {},
-                TokenKind::Unexpected(_) => self.should_have_been_caught_during_tokenization(previous),
+                TokenKind::Unexpected(_) => self.should_have_been_caught_during_tokenization(previous_token),
             }
         }
 
@@ -1095,17 +1070,18 @@ struct Operator<'src, 'tokens: 'src> {
 // TODO(stefano): make less recursive by only recursing based on operator precedence
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn operator(&mut self, accepted_operators: &[Op]) -> Option<Operator<'src, 'tokens>> {
-        let PeekedToken { token: operator_token, index: operator_index } = self.peek_next_token()?;
-        let TokenKind::Op(operator) = operator_token.kind else {
+        let Peeked { next_token, next_token_index } = self.peek_next_token()?;
+        let TokenKind::Op(operator) = next_token.kind else {
             return None;
         };
 
         for accepted_operator in accepted_operators {
             if *accepted_operator == operator {
-                self.token_index = operator_index;
-                return Some(Operator { token: operator_token, operator });
+                self.token_index = next_token_index;
+                return Some(Operator { token: next_token, operator });
             }
         }
+
         return None;
     }
 
@@ -1334,28 +1310,27 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
 
         loop {
-            let Some(PeekedToken {
-                token: &Token {
+            let Some(Peeked {
+                next_token: &Token {
                     kind: TokenKind::Bracket(BracketKind::OpenSquare),
                     col: opening_square_bracket_column,
                 },
-                index: opening_square_bracket_token_index
+                next_token_index: opening_square_bracket_token_index
             }) = self.peek_next_token() else {
                 break;
             };
-
             self.token_index = opening_square_bracket_token_index;
 
             let start_of_index_expression_token = self.next_expected_token(Expected::Expression)?;
             let index_expression_index = self.expression(start_of_index_expression_token)?;
-            let PeekedToken { token: end_of_expression_token, .. } = self.peek_previous_token();
+            let end_of_index_expression_token = self.peek_previous_token();
 
             let after_expression_token = self.next_expected_token(Expected::ClosingSquareBracket)?;
             let TokenKind::Bracket(BracketKind::CloseSquare) = after_expression_token.kind else {
                 return Err(Error {
                     kind: ErrorKind::MissingClosingSquareBracketInIndex,
-                    col: end_of_expression_token.col,
-                    pointers_count: end_of_expression_token.kind.display_len(),
+                    col: end_of_index_expression_token.col,
+                    pointers_count: end_of_index_expression_token.kind.display_len(),
                 });
             };
 
@@ -1768,16 +1743,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
 
         let type_annotation = 'type_annotation: {
-            let PeekedToken {
-                token: after_variable_name_token,
-                index: after_variable_name_index
-            } = self.peek_next_expected_token(Expected::ColonOrEqualsOrSemicolon)?;
-
+            let after_variable_name_token_index = self.token_index;
+            let after_variable_name_token = self.next_expected_token(Expected::ColonOrEqualsOrSemicolon)?;
             let TokenKind::Colon = after_variable_name_token.kind else {
+                self.token_index = after_variable_name_token_index;
                 break 'type_annotation None;
             };
-
-            self.token_index = after_variable_name_index;
 
             let type_name_token = self.next_expected_token(Expected::TypeName)?;
             let type_name = match &type_name_token.kind {
@@ -1823,12 +1794,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
             let mut array_dimensions = Vec::<ArrayDimension>::new();
             loop {
-                let Some(PeekedToken {
-                    token: &Token {
+                let Some(Peeked {
+                    next_token: &Token {
                         kind: TokenKind::Bracket(BracketKind::OpenSquare),
                         col: opening_square_bracket_column,
                     },
-                    index: opening_square_bracket_index
+                    next_token_index: opening_square_bracket_token_index
                 }) = self.peek_next_token() else {
                     break 'type_annotation Some(TypeAnnotation {
                         colon_column: after_variable_name_token.col,
@@ -1837,18 +1808,17 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         array_dimensions,
                     });
                 };
-
-                self.token_index = opening_square_bracket_index;
+                self.token_index = opening_square_bracket_token_index;
 
                 let dimension_expression_token = self.next_expected_token(Expected::Expression)?;
                 let dimension_expression_index = self.expression(dimension_expression_token)?;
 
-                let Some(PeekedToken {
-                    token: &Token {
+                let Some(Peeked {
+                    next_token: &Token {
                         kind: TokenKind::Bracket(BracketKind::CloseSquare),
                         col: closing_square_bracket_column,
                     },
-                    index: closing_square_bracket_index
+                    next_token_index: closing_square_bracket_token_index,
                 }) = self.peek_next_token() else {
                     return Err(Error {
                         kind: ErrorKind::MissingClosingSquareBracketInArrayType,
@@ -1856,8 +1826,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         pointers_count: dimension_expression_token.kind.display_len(),
                     });
                 };
+                self.token_index = closing_square_bracket_token_index;
 
-                self.token_index = closing_square_bracket_index;
                 array_dimensions.push(ArrayDimension {
                     opening_square_bracket_column,
                     dimension_expression_index,
@@ -1906,14 +1876,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     col: variable_name_token.col,
                     pointers_count: variable_name_token.kind.display_len(),
                 }),
-                Some(_) => {
-                    let PeekedToken { token: previous_token, .. } = self.peek_previous_token();
-                    return Err(Error {
-                        kind: ErrorKind::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
-                        col: previous_token.col,
-                        pointers_count: previous_token.kind.display_len(),
-                    });
-                }
+                Some(_) => return Err(Error {
+                    kind: ErrorKind::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
+                    col: equals_or_semicolon_token.col,
+                    pointers_count: equals_or_semicolon_token.kind.display_len(),
+                }),
             },
             TokenKind::Unexpected(_)
             | TokenKind::Comment(_)
@@ -1938,6 +1905,7 @@ pub enum Expected {
     ClosingRoundBracket,
     ClosingSquareBracket,
     Expression,
+    ExpressionOrSemicolon,
     Comma,
     CommaOrClosingSquareBracket,
     ArrayItemOrClosingSquareBracket,
@@ -1956,6 +1924,7 @@ impl Display for Expected {
             Self::ClosingRoundBracket => write!(f, "')'"),
             Self::ClosingSquareBracket => write!(f, "']'"),
             Self::Expression => write!(f, "expression"),
+            Self::ExpressionOrSemicolon => write!(f, "expression or ';'"),
             Self::Comma => write!(f, "','"),
             Self::CommaOrClosingSquareBracket => write!(f, "',' or ']'"),
             Self::ArrayItemOrClosingSquareBracket => write!(f, "array item or ']'"),
