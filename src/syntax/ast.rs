@@ -1903,7 +1903,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     if let TokenKind::Bracket(BracketKind::CloseSquare) =
                         bracket_or_comma_token.kind
                     {
-                        debug_assert!(items.len() >= 2, "arrays of 0 and 1 elements are not allowed");
+                        debug_assert!(
+                            items.len() >= 2,
+                            "arrays of 0 and 1 elements are not allowed"
+                        );
                         break 'array Ok(Expression::Array { base_type: items_type, items });
                     }
                 }
@@ -3074,7 +3077,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         Type::Array { base_type, len } => {
                             debug_assert!(len >= 2, "arrays of 0 and 1 elements are not allowed");
                             let items = vec![self.expression_from_base_type(base_type); len];
-                            debug_assert!(items.len() >= 2, "arrays of 0 and 1 elements are not allowed");
+                            debug_assert!(
+                                items.len() >= 2,
+                                "arrays of 0 and 1 elements are not allowed"
+                            );
                             Expression::Array { base_type, items }
                         }
                     };

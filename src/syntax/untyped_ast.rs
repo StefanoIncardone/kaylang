@@ -1,10 +1,12 @@
-use crate::{
-    src_file::{offset, Position, SrcFile},
-    syntax::tokenizer::{Base, BracketKind, DisplayLen, Op, Token, Mutability},
+use super::{
+    tokenizer::{
+        ascii, utf8, Base, BracketKind, DisplayLen, Integer, Mutability, Op, Str, Token, TokenKind,
+    },
+    Error, ErrorDisplay, ErrorInfo, IntoErrorInfo,
 };
+use crate::src_file::{offset, Position, SrcFile};
 use core::fmt::Display;
 use std::borrow::Cow;
-use super::{tokenizer::{ascii, utf8, Integer, Str, TokenKind}, Error, ErrorDisplay, ErrorInfo, IntoErrorInfo};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PrefixOp {
@@ -260,13 +262,33 @@ pub(crate) struct ArrayIndex(pub(crate) offset);
 
 #[derive(Debug, Clone)]
 pub(crate) enum Expression<'src, 'tokens: 'src> {
-    False { column: offset },
-    True { column: offset },
-    Integer { base: Base, literal: &'tokens Integer<'src>, column: offset },
-    Ascii { character: ascii, column: offset },
-    Str { literal: &'tokens Str, column: offset },
-    RawStr { literal: &'tokens Str, column: offset },
-    Identifier { identifier: &'tokens &'src str, column: offset },
+    False {
+        column: offset,
+    },
+    True {
+        column: offset,
+    },
+    Integer {
+        base: Base,
+        literal: &'tokens Integer<'src>,
+        column: offset,
+    },
+    Ascii {
+        character: ascii,
+        column: offset,
+    },
+    Str {
+        literal: &'tokens Str,
+        column: offset,
+    },
+    RawStr {
+        literal: &'tokens Str,
+        column: offset,
+    },
+    Identifier {
+        identifier: &'tokens &'src str,
+        column: offset,
+    },
     Array {
         opening_square_bracket_column: offset,
         array_index: ArrayIndex,
@@ -296,7 +318,7 @@ pub(crate) enum Expression<'src, 'tokens: 'src> {
         opening_square_bracket_column: offset,
         index_expression_index: ExpressionIndex,
         closing_square_bracket_column: offset,
-    }
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -339,13 +361,32 @@ pub(crate) struct VariableDefinitionIndex(pub(crate) offset);
 pub(crate) enum Node {
     Expression(ExpressionIndex),
 
-    Print { print_column: offset, argument: ExpressionIndex },
-    Println { println_column: offset, argument: Option<ExpressionIndex> },
-    Eprint { eprint_column: offset, argument: ExpressionIndex },
-    Eprintln { eprintln_column: offset, argument: Option<ExpressionIndex> },
+    Print {
+        print_column: offset,
+        argument: ExpressionIndex,
+    },
+    Println {
+        println_column: offset,
+        argument: Option<ExpressionIndex>,
+    },
+    Eprint {
+        eprint_column: offset,
+        argument: ExpressionIndex,
+    },
+    Eprintln {
+        eprintln_column: offset,
+        argument: Option<ExpressionIndex>,
+    },
 
-    VariableDefinition { variable_definition_index: VariableDefinitionIndex },
-    Assignment { lhs: ExpressionIndex, operator: AssignmentOp, operator_column: offset, rhs: ExpressionIndex },
+    VariableDefinition {
+        variable_definition_index: VariableDefinitionIndex,
+    },
+    Assignment {
+        lhs: ExpressionIndex,
+        operator: AssignmentOp,
+        operator_column: offset,
+        rhs: ExpressionIndex,
+    },
 }
 
 #[derive(Debug)]
@@ -372,7 +413,10 @@ impl<'src, 'tokens: 'src> UntypedAst<'src, 'tokens> {
     }
 
     #[inline]
-    fn new_variable_definition(&mut self, variable_definition: VariableDefinition<'src, 'tokens>) -> VariableDefinitionIndex {
+    fn new_variable_definition(
+        &mut self,
+        variable_definition: VariableDefinition<'src, 'tokens>,
+    ) -> VariableDefinitionIndex {
         self.variable_definitions.push(variable_definition);
         return VariableDefinitionIndex((self.variable_definitions.len() - 1) as offset);
     }
@@ -381,7 +425,13 @@ impl<'src, 'tokens: 'src> UntypedAst<'src, 'tokens> {
 const INDENT_INCREMENT: usize = 2;
 
 impl UntypedAst<'_, '_> {
-    fn info_node(&self, f: &mut core::fmt::Formatter<'_>, node: &Node, indent: usize) -> core::fmt::Result {
+    fn info_node(
+        &self,
+        f: &mut core::fmt::Formatter<'_>,
+        node: &Node,
+        indent: usize,
+    ) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match node {
             Node::Expression(expression_index) => self.info_expression(f, *expression_index, indent),
 
@@ -466,9 +516,16 @@ impl UntypedAst<'_, '_> {
         };
     }
 
-    fn info_expression(&self, f: &mut core::fmt::Formatter<'_>, expression_index: ExpressionIndex, indent: usize) -> core::fmt::Result {
+    fn info_expression(
+        &self,
+        f: &mut core::fmt::Formatter<'_>,
+        expression_index: ExpressionIndex,
+        indent: usize,
+    ) -> core::fmt::Result {
         let expression_indent = indent + INDENT_INCREMENT;
         let expression = &self.expressions[expression_index.0 as usize];
+
+        #[rustfmt::skip]
         return match expression {
             Expression::False { column } => writeln!(f, "{:>indent$}False: {column} = false", ""),
             Expression::True { column } => writeln!(f, "{:>indent$}True: {column} = true", ""),
@@ -581,7 +638,10 @@ pub struct Parser<'src, 'tokens: 'src> {
 }
 
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
-    pub fn parse(src: &'src SrcFile, tokens: &'tokens [Token<'src>]) -> Result<UntypedAst<'src, 'tokens>, Vec<Error<ErrorKind>>> {
+    pub fn parse(
+        src: &'src SrcFile,
+        tokens: &'tokens [Token<'src>],
+    ) -> Result<UntypedAst<'src, 'tokens>, Vec<Error<ErrorKind>>> {
         let ast = UntypedAst {
             nodes: Vec::new(),
 
@@ -595,15 +655,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             return Ok(ast);
         }
 
-        let mut this = Self {
-            src,
-            errors: Vec::new(),
-
-            token_index: 0,
-            tokens,
-
-            ast,
-        };
+        let mut this = Self { src, errors: Vec::new(), token_index: 0, tokens, ast };
 
         this.parse_tokens();
 
@@ -628,27 +680,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     // consuming all remaining tokens until the end of the file
                     self.token_index = self.tokens.len() as offset;
                     break;
-                },
+                }
             };
 
             self.ast.nodes.push(node);
         }
-    }
-
-    fn semicolon(&mut self) -> Result<(), Error<ErrorKind>> {
-        let after_end_of_last_parsed_entity_token_index = self.token_index;
-        let after_end_of_last_parsed_entity_token = self.next_expected_token(Expected::Semicolon)?;
-        let TokenKind::SemiColon = after_end_of_last_parsed_entity_token.kind else {
-            self.token_index = after_end_of_last_parsed_entity_token_index;
-            let previous_token = self.peek_previous_token();
-            return Err(Error {
-                kind: ErrorKind::MissingSemicolon,
-                col: previous_token.col,
-                pointers_count: previous_token.kind.display_len(),
-            });
-        };
-
-        return Ok(());
     }
 
     fn any(&mut self, token: &'tokens Token<'src>) -> Result<Option<Node>, Error<ErrorKind>> {
@@ -740,10 +776,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                                     after_expression_token,
                                     "unexpected operator".into(),
                                     "not an 'equals' operator".into(),
-                                )
+                                ),
                             };
 
-                            let start_of_new_value_token = self.next_expected_token(Expected::Expression)?;
+                            let start_of_new_value_token =
+                                self.next_expected_token(Expected::Expression)?;
                             let new_value = self.expression(start_of_new_value_token)?;
 
                             self.semicolon()?;
@@ -751,7 +788,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                                 lhs: expression_index,
                                 operator: assignment_operator,
                                 operator_column: after_expression_token.col,
-                                rhs: new_value
+                                rhs: new_value,
                             }))
                         }
 
@@ -794,7 +831,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             after_expression_token,
                             "unexpected operator".into(),
                             "should have been part of the lhs".into(),
-                        )
+                        ),
                     },
                     TokenKind::Bracket(_)
                     | TokenKind::Colon
@@ -816,13 +853,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     | TokenKind::Else
                     | TokenKind::Loop
                     | TokenKind::Break
-                    | TokenKind::Continue => {
-                        Err(Error {
-                            kind: ErrorKind::MissingSemicolon,
-                            col: end_of_expression_token.col,
-                            pointers_count: end_of_expression_token.kind.display_len(),
-                        })
-                    }
+                    | TokenKind::Continue => Err(Error {
+                        kind: ErrorKind::MissingSemicolon,
+                        col: end_of_expression_token.col,
+                        pointers_count: end_of_expression_token.kind.display_len(),
+                    }),
                     TokenKind::Unexpected(_)
                     | TokenKind::Comment(_)
                     | TokenKind::BlockComment(_) => self.should_have_been_skipped(token),
@@ -838,7 +873,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 Ok(Some(Node::Print { print_column: token.col, argument }))
             }
             TokenKind::PrintLn => {
-                let start_of_argument_token = self.next_expected_token(Expected::ExpressionOrSemicolon)?;
+                let start_of_argument_token =
+                    self.next_expected_token(Expected::ExpressionOrSemicolon)?;
                 if let TokenKind::SemiColon = start_of_argument_token.kind {
                     return Ok(Some(Node::Println { println_column: token.col, argument: None }));
                 }
@@ -854,7 +890,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 Ok(Some(Node::Eprint { eprint_column: token.col, argument }))
             }
             TokenKind::EprintLn => {
-                let start_of_argument_token = self.next_expected_token(Expected::ExpressionOrSemicolon)?;
+                let start_of_argument_token =
+                    self.next_expected_token(Expected::ExpressionOrSemicolon)?;
                 if let TokenKind::SemiColon = start_of_argument_token.kind {
                     return Ok(Some(Node::Eprintln { eprintln_column: token.col, argument: None }));
                 }
@@ -866,11 +903,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
             TokenKind::Mutability(mutability) => {
                 let variable_definition = self.variable_definition(token, *mutability)?;
-                let variable_definition_index = self.ast.new_variable_definition(variable_definition);
+                let variable_definition_index =
+                    self.ast.new_variable_definition(variable_definition);
                 Ok(Some(Node::VariableDefinition { variable_definition_index }))
-            },
+            }
 
-            TokenKind::Bracket(_) =>  todo!(),
+            TokenKind::Bracket(BracketKind::OpenCurly) => todo!(),
 
             TokenKind::If => todo!(),
             TokenKind::Else => todo!(),
@@ -895,10 +933,32 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 col: token.col,
                 pointers_count: token.kind.display_len(),
             }),
-            TokenKind::Unexpected(_)
-            | TokenKind::Comment(_)
-            | TokenKind::BlockComment(_) => self.should_have_been_skipped(token),
-        }
+            TokenKind::Bracket(
+                BracketKind::CloseRound | BracketKind::CloseSquare | BracketKind::CloseCurly,
+            ) => self.unbalanced_bracket(token),
+            TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+                self.should_have_been_skipped(token)
+            }
+        };
+    }
+}
+
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+    fn semicolon(&mut self) -> Result<(), Error<ErrorKind>> {
+        let after_end_of_last_parsed_entity_token_index = self.token_index;
+        let after_end_of_last_parsed_entity_token =
+            self.next_expected_token(Expected::Semicolon)?;
+        let TokenKind::SemiColon = after_end_of_last_parsed_entity_token.kind else {
+            self.token_index = after_end_of_last_parsed_entity_token_index;
+            let previous_token = self.peek_previous_token();
+            return Err(Error {
+                kind: ErrorKind::MissingSemicolon,
+                col: previous_token.col,
+                pointers_count: previous_token.kind.display_len(),
+            });
+        };
+
+        return Ok(());
     }
 }
 
@@ -937,10 +997,19 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     }
 
     #[track_caller]
-    fn should_have_been_caught_during_tokenization(&self, token: &'tokens Token<'src>) -> ! {
+    fn unexpected(&self, token: &'tokens Token<'src>) -> ! {
         self.invalid_token(
             token,
             "unexpected".into(),
+            "should have been caught during tokenization".into(),
+        );
+    }
+
+    #[track_caller]
+    fn unbalanced_bracket(&self, token: &'tokens Token<'src>) -> ! {
+        self.invalid_token(
+            token,
+            "unbalanced bracket".into(),
             "should have been caught during tokenization".into(),
         );
     }
@@ -980,12 +1049,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 | TokenKind::Else
                 | TokenKind::Loop
                 | TokenKind::Break
-                | TokenKind::Continue => return Some(Peeked {
-                    next_token,
-                    next_token_index: next_token_index + 1,
-                }),
-                TokenKind::Comment(_) | TokenKind::BlockComment(_) => {},
-                TokenKind::Unexpected(_) => self.should_have_been_caught_during_tokenization(next_token),
+                | TokenKind::Continue => {
+                    return Some(Peeked { next_token, next_token_index: next_token_index + 1 })
+                }
+                TokenKind::Comment(_) | TokenKind::BlockComment(_) => {}
+                TokenKind::Unexpected(_) => self.unexpected(next_token),
             }
         }
 
@@ -1052,8 +1120,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 | TokenKind::Loop
                 | TokenKind::Break
                 | TokenKind::Continue => return previous_token,
-                TokenKind::Comment(_) | TokenKind::BlockComment(_) => {},
-                TokenKind::Unexpected(_) => self.should_have_been_caught_during_tokenization(previous_token),
+                TokenKind::Comment(_) | TokenKind::BlockComment(_) => {}
+                TokenKind::Unexpected(_) => self.unexpected(previous_token),
             }
         }
 
@@ -1085,31 +1153,33 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return None;
     }
 
-    fn primary_expression(&mut self, token: &'tokens Token<'src>) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn primary_expression(
+        &mut self,
+        token: &'tokens Token<'src>,
+    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
         let mut expression = match &token.kind {
             TokenKind::False => Expression::False { column: token.col },
             TokenKind::True => Expression::True { column: token.col },
-            TokenKind::Integer(base, literal) => Expression::Integer {
-                base: *base,
-                literal,
-                column: token.col,
-            },
-            TokenKind::Ascii(character) => Expression::Ascii {
-                character: *character,
-                column: token.col,
-            },
+            TokenKind::Integer(base, literal) => {
+                Expression::Integer { base: *base, literal, column: token.col }
+            }
+            TokenKind::Ascii(character) => {
+                Expression::Ascii { character: *character, column: token.col }
+            }
             TokenKind::Str(literal) => Expression::Str { literal, column: token.col },
             TokenKind::RawStr(literal) => Expression::RawStr { literal, column: token.col },
-            TokenKind::Identifier(identifier) => Expression::Identifier {
-                identifier,
-                column: token.col,
-            },
+            TokenKind::Identifier(identifier) => {
+                Expression::Identifier { identifier, column: token.col }
+            }
             TokenKind::Bracket(BracketKind::OpenRound) => {
                 let opening_round_bracket_token = token;
 
-                let start_of_inner_expression_token = self.next_expected_token(Expected::Operand)?;
+                let start_of_inner_expression_token =
+                    self.next_expected_token(Expected::Operand)?;
                 // REMOVE(stefano): maybe move this check to later stages
-                if let TokenKind::Bracket(BracketKind::CloseRound) = start_of_inner_expression_token.kind {
+                if let TokenKind::Bracket(BracketKind::CloseRound) =
+                    start_of_inner_expression_token.kind
+                {
                     return Err(Error {
                         kind: ErrorKind::EmptyParenthesisExpression,
                         col: start_of_inner_expression_token.col,
@@ -1119,8 +1189,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
                 let inner_expression_index = self.expression(start_of_inner_expression_token)?;
 
-                let closing_round_bracket_token = self.next_expected_token(Expected::ClosingRoundBracket)?;
-                let TokenKind::Bracket(BracketKind::CloseRound) = closing_round_bracket_token.kind else {
+                let closing_round_bracket_token =
+                    self.next_expected_token(Expected::ClosingRoundBracket)?;
+                let TokenKind::Bracket(BracketKind::CloseRound) = closing_round_bracket_token.kind
+                else {
                     return Err(Error {
                         kind: ErrorKind::ExpectedBracket(BracketKind::CloseRound),
                         col: closing_round_bracket_token.col,
@@ -1139,7 +1211,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
                 let start_of_first_item_token = self.next_expected_token(Expected::Expression)?;
                 // REMOVE(stefano): allow arrays of 0 elements
-                if let TokenKind::Bracket(BracketKind::CloseSquare) = start_of_first_item_token.kind {
+                if let TokenKind::Bracket(BracketKind::CloseSquare) = start_of_first_item_token.kind
+                {
                     return Err(Error {
                         kind: ErrorKind::ArrayOfZeroItems,
                         col: opening_square_bracket_token.col,
@@ -1160,7 +1233,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
                 let start_of_second_item_token = self.next_expected_token(Expected::Expression)?;
                 // REMOVE(stefano): allow arrays of 1 element
-                if let TokenKind::Bracket(BracketKind::CloseSquare) = start_of_second_item_token.kind {
+                if let TokenKind::Bracket(BracketKind::CloseSquare) =
+                    start_of_second_item_token.kind
+                {
                     return Err(Error {
                         kind: ErrorKind::ArrayOfOneItem,
                         col: opening_square_bracket_token.col,
@@ -1173,9 +1248,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let mut items = Vec::<ArrayItem>::new();
 
                 loop {
-                    let comma_or_closing_square_bracket_token = self.next_expected_token(Expected::CommaOrClosingSquareBracket)?;
+                    let comma_or_closing_square_bracket_token =
+                        self.next_expected_token(Expected::CommaOrClosingSquareBracket)?;
                     match comma_or_closing_square_bracket_token.kind {
-                        TokenKind::Comma => {},
+                        TokenKind::Comma => {}
                         TokenKind::Bracket(BracketKind::CloseSquare) => {
                             let array_index = self.ast.new_array(Array {
                                 first_item,
@@ -1188,7 +1264,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             break 'array Expression::Array {
                                 opening_square_bracket_column: opening_square_bracket_token.col,
                                 array_index,
-                                closing_square_bracket_column: comma_or_closing_square_bracket_token.col,
+                                closing_square_bracket_column:
+                                    comma_or_closing_square_bracket_token.col,
                             };
                         }
                         TokenKind::Colon
@@ -1212,18 +1289,22 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         | TokenKind::Else
                         | TokenKind::Loop
                         | TokenKind::Break
-                        | TokenKind::Continue => return Err(Error {
-                            kind: ErrorKind::ExpectedComma,
-                            col: comma_or_closing_square_bracket_token.col,
-                            pointers_count: comma_or_closing_square_bracket_token.kind.display_len(),
-                        }),
+                        | TokenKind::Continue => {
+                            return Err(Error {
+                                kind: ErrorKind::ExpectedComma,
+                                col: comma_or_closing_square_bracket_token.col,
+                                pointers_count: comma_or_closing_square_bracket_token
+                                    .kind
+                                    .display_len(),
+                            })
+                        }
                         TokenKind::Unexpected(_)
                         | TokenKind::Comment(_)
                         | TokenKind::BlockComment(_) => self.should_have_been_skipped(token),
-
                     }
 
-                    let start_of_item_token = self.next_expected_token(Expected::ArrayItemOrClosingSquareBracket)?;
+                    let start_of_item_token =
+                        self.next_expected_token(Expected::ArrayItemOrClosingSquareBracket)?;
                     if let TokenKind::Bracket(BracketKind::CloseSquare) = start_of_item_token.kind {
                         let array_index = self.ast.new_array(Array {
                             first_item,
@@ -1252,10 +1333,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 | Op::Minus
                 | Op::WrappingMinus
                 | Op::SaturatingMinus
-                | Op::Not)
+                | Op::Not),
             ) => {
                 let start_of_prefix_expression = self.next_expected_token(Expected::Expression)?;
-                let prefix_expression_index = self.primary_expression(start_of_prefix_expression)?;
+                let prefix_expression_index =
+                    self.primary_expression(start_of_prefix_expression)?;
 
                 #[allow(clippy::wildcard_enum_match_arm)]
                 let prefix_operator = match operator {
@@ -1290,33 +1372,39 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Continue
             | TokenKind::Eprint
             | TokenKind::EprintLn
-            | TokenKind::Do => return Err(Error {
-                kind: ErrorKind::KeywordInExpression,
-                col: token.col,
-                pointers_count: token.kind.display_len(),
-            }),
+            | TokenKind::Do => {
+                return Err(Error {
+                    kind: ErrorKind::KeywordInExpression,
+                    col: token.col,
+                    pointers_count: token.kind.display_len(),
+                })
+            }
             TokenKind::Bracket(_)
             | TokenKind::Op(_)
             | TokenKind::Colon
             | TokenKind::SemiColon
-            | TokenKind::Comma => return Err(Error {
-                kind: ErrorKind::ExpectedOperand,
-                col: token.col,
-                pointers_count: token.kind.display_len(),
-            }),
-            TokenKind::Unexpected(_)
-            | TokenKind::Comment(_)
-            | TokenKind::BlockComment(_) => self.should_have_been_skipped(token),
+            | TokenKind::Comma => {
+                return Err(Error {
+                    kind: ErrorKind::ExpectedOperand,
+                    col: token.col,
+                    pointers_count: token.kind.display_len(),
+                })
+            }
+            TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+                self.should_have_been_skipped(token)
+            }
         };
 
         loop {
             let Some(Peeked {
-                next_token: &Token {
-                    kind: TokenKind::Bracket(BracketKind::OpenSquare),
-                    col: opening_square_bracket_column,
-                },
-                next_token_index: opening_square_bracket_token_index
-            }) = self.peek_next_token() else {
+                next_token:
+                    &Token {
+                        kind: TokenKind::Bracket(BracketKind::OpenSquare),
+                        col: opening_square_bracket_column,
+                    },
+                next_token_index: opening_square_bracket_token_index,
+            }) = self.peek_next_token()
+            else {
                 break;
             };
             self.token_index = opening_square_bracket_token_index;
@@ -1325,7 +1413,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let index_expression_index = self.expression(start_of_index_expression_token)?;
             let end_of_index_expression_token = self.peek_previous_token();
 
-            let after_expression_token = self.next_expected_token(Expected::ClosingSquareBracket)?;
+            let after_expression_token =
+                self.next_expected_token(Expected::ClosingSquareBracket)?;
             let TokenKind::Bracket(BracketKind::CloseSquare) = after_expression_token.kind else {
                 return Err(Error {
                     kind: ErrorKind::MissingClosingSquareBracketInIndex,
@@ -1346,7 +1435,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(expression_index);
     }
 
-    fn exponentiative_expression(&mut self, token: &'tokens Token<'src>) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn exponentiative_expression(
+        &mut self,
+        token: &'tokens Token<'src>,
+    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 3] = [Op::Pow, Op::WrappingPow, Op::SaturatingPow];
 
         let mut lhs_index = self.primary_expression(token)?;
@@ -1377,7 +1469,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(lhs_index);
     }
 
-    fn multiplicative_expression(&mut self, token: &'tokens Token<'src>) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn multiplicative_expression(
+        &mut self,
+        token: &'tokens Token<'src>,
+    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 7] = [
             Op::Times,
             Op::WrappingTimes,
@@ -1420,7 +1515,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(lhs_index);
     }
 
-    fn additive_expression(&mut self, token: &'tokens Token<'src>) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn additive_expression(
+        &mut self,
+        token: &'tokens Token<'src>,
+    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 6] = [
             Op::Plus,
             Op::WrappingPlus,
@@ -1461,7 +1559,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(lhs_index);
     }
 
-    fn shift_expression(&mut self, token: &'tokens Token<'src>) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn shift_expression(
+        &mut self,
+        token: &'tokens Token<'src>,
+    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 6] = [
             Op::LeftShift,
             Op::WrappingLeftShift,
@@ -1502,7 +1603,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(lhs_index);
     }
 
-    fn bitand_expression(&mut self, token: &'tokens Token<'src>) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn bitand_expression(
+        &mut self,
+        token: &'tokens Token<'src>,
+    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 1] = [Op::BitAnd];
 
         let mut lhs_index = self.shift_expression(token)?;
@@ -1531,7 +1635,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(lhs_index);
     }
 
-    fn bitxor_expression(&mut self, token: &'tokens Token<'src>) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn bitxor_expression(
+        &mut self,
+        token: &'tokens Token<'src>,
+    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 1] = [Op::BitXor];
 
         let mut lhs_index = self.bitand_expression(token)?;
@@ -1560,7 +1667,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(lhs_index);
     }
 
-    fn bitor_expression(&mut self, token: &'tokens Token<'src>) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn bitor_expression(
+        &mut self,
+        token: &'tokens Token<'src>,
+    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 1] = [Op::BitOr];
 
         let mut lhs_index = self.bitxor_expression(token)?;
@@ -1589,7 +1699,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(lhs_index);
     }
 
-    fn comparison_expression(&mut self, token: &'tokens Token<'src>) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn comparison_expression(
+        &mut self,
+        token: &'tokens Token<'src>,
+    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 7] = [
             Op::Compare,
             Op::EqualsEquals,
@@ -1631,7 +1744,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(lhs_index);
     }
 
-    fn and_expression(&mut self, token: &'tokens Token<'src>) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn and_expression(
+        &mut self,
+        token: &'tokens Token<'src>,
+    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 1] = [Op::And];
 
         let mut lhs_index = self.comparison_expression(token)?;
@@ -1660,7 +1776,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(lhs_index);
     }
 
-    fn or_expression(&mut self, token: &'tokens Token<'src>) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn or_expression(
+        &mut self,
+        token: &'tokens Token<'src>,
+    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 1] = [Op::Or];
 
         let mut lhs_index = self.and_expression(token)?;
@@ -1689,7 +1808,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(lhs_index);
     }
 
-    fn expression(&mut self, token: &'tokens Token<'src>) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn expression(
+        &mut self,
+        token: &'tokens Token<'src>,
+    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
         return self.or_expression(token);
     }
 }
@@ -1737,14 +1859,15 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     pointers_count: mutability_token.kind.display_len(),
                 })
             }
-            TokenKind::Unexpected(_)
-            | TokenKind::Comment(_)
-            | TokenKind::BlockComment(_) => self.should_have_been_skipped(variable_name_token),
+            TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+                self.should_have_been_skipped(variable_name_token)
+            }
         };
 
         let type_annotation = 'type_annotation: {
             let after_variable_name_token_index = self.token_index;
-            let after_variable_name_token = self.next_expected_token(Expected::ColonOrEqualsOrSemicolon)?;
+            let after_variable_name_token =
+                self.next_expected_token(Expected::ColonOrEqualsOrSemicolon)?;
             let TokenKind::Colon = after_variable_name_token.kind else {
                 self.token_index = after_variable_name_token_index;
                 break 'type_annotation None;
@@ -1787,20 +1910,22 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         pointers_count: after_variable_name_token.kind.display_len(),
                     })
                 }
-                TokenKind::Unexpected(_)
-                | TokenKind::Comment(_)
-                | TokenKind::BlockComment(_) => self.should_have_been_skipped(after_variable_name_token),
+                TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+                    self.should_have_been_skipped(after_variable_name_token)
+                }
             };
 
             let mut array_dimensions = Vec::<ArrayDimension>::new();
             loop {
                 let Some(Peeked {
-                    next_token: &Token {
-                        kind: TokenKind::Bracket(BracketKind::OpenSquare),
-                        col: opening_square_bracket_column,
-                    },
-                    next_token_index: opening_square_bracket_token_index
-                }) = self.peek_next_token() else {
+                    next_token:
+                        &Token {
+                            kind: TokenKind::Bracket(BracketKind::OpenSquare),
+                            col: opening_square_bracket_column,
+                        },
+                    next_token_index: opening_square_bracket_token_index,
+                }) = self.peek_next_token()
+                else {
                     break 'type_annotation Some(TypeAnnotation {
                         colon_column: after_variable_name_token.col,
                         type_name,
@@ -1814,12 +1939,14 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let dimension_expression_index = self.expression(dimension_expression_token)?;
 
                 let Some(Peeked {
-                    next_token: &Token {
-                        kind: TokenKind::Bracket(BracketKind::CloseSquare),
-                        col: closing_square_bracket_column,
-                    },
+                    next_token:
+                        &Token {
+                            kind: TokenKind::Bracket(BracketKind::CloseSquare),
+                            col: closing_square_bracket_column,
+                        },
                     next_token_index: closing_square_bracket_token_index,
-                }) = self.peek_next_token() else {
+                }) = self.peek_next_token()
+                else {
                     return Err(Error {
                         kind: ErrorKind::MissingClosingSquareBracketInArrayType,
                         col: dimension_expression_token.col,
@@ -1840,7 +1967,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         let initial_value = match equals_or_semicolon_token.kind {
             TokenKind::SemiColon => None,
             TokenKind::Op(Op::Equals) => {
-                let start_of_initial_value_token = self.next_expected_token(Expected::Expression)?;
+                let start_of_initial_value_token =
+                    self.next_expected_token(Expected::Expression)?;
                 let initial_value_index = self.expression(start_of_initial_value_token)?;
                 self.semicolon()?;
 
@@ -1871,20 +1999,24 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Loop
             | TokenKind::Break
             | TokenKind::Continue => match type_annotation {
-                None => return Err(Error {
-                    kind: ErrorKind::ExpectedEqualsOrSemicolonAfterVariableName,
-                    col: variable_name_token.col,
-                    pointers_count: variable_name_token.kind.display_len(),
-                }),
-                Some(_) => return Err(Error {
-                    kind: ErrorKind::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
-                    col: equals_or_semicolon_token.col,
-                    pointers_count: equals_or_semicolon_token.kind.display_len(),
-                }),
+                None => {
+                    return Err(Error {
+                        kind: ErrorKind::ExpectedEqualsOrSemicolonAfterVariableName,
+                        col: variable_name_token.col,
+                        pointers_count: variable_name_token.kind.display_len(),
+                    })
+                }
+                Some(_) => {
+                    return Err(Error {
+                        kind: ErrorKind::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
+                        col: equals_or_semicolon_token.col,
+                        pointers_count: equals_or_semicolon_token.kind.display_len(),
+                    })
+                }
             },
-            TokenKind::Unexpected(_)
-            | TokenKind::Comment(_)
-            | TokenKind::BlockComment(_) => self.should_have_been_skipped(equals_or_semicolon_token),
+            TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+                self.should_have_been_skipped(equals_or_semicolon_token)
+            }
         };
 
         return Ok(VariableDefinition {
@@ -1913,7 +2045,7 @@ pub enum Expected {
     VariableName,
     TypeName,
     EqualsOrSemicolon,
-    ColonOrEqualsOrSemicolon
+    ColonOrEqualsOrSemicolon,
 }
 
 impl Display for Expected {

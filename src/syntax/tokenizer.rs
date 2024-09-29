@@ -671,8 +671,10 @@ impl<'src> Tokenizer<'src> {
                             this.col += 1; // skip the `r` prefix
 
                             match this.raw_string_literal() {
-                                Ok(literal) => Ok(TokenKind::RawStr(Str(literal.into_boxed_slice()))),
-                                Err(()) => Err(())
+                                Ok(literal) => {
+                                    Ok(TokenKind::RawStr(Str(literal.into_boxed_slice())))
+                                }
+                                Err(()) => Err(()),
                             }
                         }
                         _ => this.identifier(),
@@ -708,7 +710,7 @@ impl<'src> Tokenizer<'src> {
                     },
                     b'"' => match this.quoted_literal(QuotedLiteralKind::Str) {
                         Ok(literal) => Ok(TokenKind::Str(Str(literal.into_boxed_slice()))),
-                        Err(()) => Err(())
+                        Err(()) => Err(()),
                     },
                     b'\'' => match this.quoted_literal(QuotedLiteralKind::Ascii) {
                         Ok(literal) => match literal.as_slice() {
@@ -729,8 +731,8 @@ impl<'src> Tokenizer<'src> {
                                 });
                                 Err(())
                             }
-                        }
-                        Err(()) => Err(())
+                        },
+                        Err(()) => Err(()),
                     },
                     b'#' => match this.peek_next_utf8_char() {
                         Some('#') => {
@@ -1593,10 +1595,7 @@ impl<'src> Tokenizer<'src> {
                         Err(error) => {
                             self.col += error.byte_len;
                             self.errors.push(Error {
-                                kind: ErrorKind::Utf8InQuotedLiteral(
-                                    kind,
-                                    error.utf8_ch,
-                                ),
+                                kind: ErrorKind::Utf8InQuotedLiteral(kind, error.utf8_ch),
                                 col: error.col,
                                 pointers_count: error.pointers_count,
                             });
@@ -1614,10 +1613,7 @@ impl<'src> Tokenizer<'src> {
                 }
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Error {
-                        kind: ErrorKind::ControlCharacterInQuotedLiteral(
-                            kind,
-                            control as utf8,
-                        ),
+                        kind: ErrorKind::ControlCharacterInQuotedLiteral(kind, control as utf8),
                         col: self.col - 1,
                         pointers_count: 1,
                     });
@@ -1684,10 +1680,7 @@ impl<'src> Tokenizer<'src> {
                         Err(error) => {
                             self.col += error.byte_len;
                             self.errors.push(Error {
-                                kind: ErrorKind::Utf8InQuotedLiteral(
-                                    kind,
-                                    error.utf8_ch,
-                                ),
+                                kind: ErrorKind::Utf8InQuotedLiteral(kind, error.utf8_ch),
                                 col: error.col,
                                 pointers_count: error.pointers_count,
                             });
@@ -1719,10 +1712,7 @@ impl<'src> Tokenizer<'src> {
                 }
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Error {
-                        kind: ErrorKind::ControlCharacterInQuotedLiteral(
-                            kind,
-                            control as utf8,
-                        ),
+                        kind: ErrorKind::ControlCharacterInQuotedLiteral(kind, control as utf8),
                         col: self.col - 1,
                         pointers_count: 1,
                     });

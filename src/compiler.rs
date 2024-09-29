@@ -813,7 +813,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         );
                     }
                     Type::Array { len: array_len, .. } => {
-                        debug_assert!(*array_len >= 2, "arrays of 0 and 1 elements are not allowed");
+                        debug_assert!(
+                            *array_len >= 2,
+                            "arrays of 0 and 1 elements are not allowed"
+                        );
                         _ = writeln!(
                             self.asm,
                             " mov rsi, {array_len}\
@@ -934,7 +937,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     _ = writeln!(self.asm, " mov {reg}, [rbp + {var_offset}]");
                                 }
                                 Type::Array { len, .. } => {
-                                    debug_assert!(*len >= 2, "arrays of 0 and 1 elements are not allowed");
+                                    debug_assert!(
+                                        *len >= 2,
+                                        "arrays of 0 and 1 elements are not allowed"
+                                    );
                                     _ = writeln!(self.asm, " mov {reg}, {len}");
                                 }
                                 Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => {
@@ -1989,7 +1995,10 @@ impl<'ast> Compiler<'_, 'ast> {
                                     );
                                 }
                                 Type::Array { len, .. } => {
-                                    debug_assert!(*len >= 2, "arrays of 0 and 1 elements are not allowed");
+                                    debug_assert!(
+                                        *len >= 2,
+                                        "arrays of 0 and 1 elements are not allowed"
+                                    );
                                     _ = writeln!(
                                         self.asm,
                                         " mov qword [{base} + {dst_offset}], {len}\n"
@@ -2446,7 +2455,10 @@ impl<'ast> Compiler<'_, 'ast> {
                                 );
                             }
                             Type::Array { len: array_len, .. } => {
-                                debug_assert!(*array_len >= 2, "arrays of 0 and 1 elements are not allowed");
+                                debug_assert!(
+                                    *array_len >= 2,
+                                    "arrays of 0 and 1 elements are not allowed"
+                                );
                                 self.expression(index_expression, Dst::Reg(Rdi));
                                 _ = writeln!(
                                     self.asm,
