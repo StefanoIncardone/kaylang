@@ -2843,6 +2843,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
 
         let Some(base_type) = self.resolve_type(type_name) else {
+            // REMOVE(stefano): remove possibility of emulating `typeof` using other variables as type annotation
             return match self.resolve_variable(type_name) {
                 Some((_, var_index)) => {
                     let var = &self.ast.variables[var_index as usize];

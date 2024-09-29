@@ -46,15 +46,16 @@ const SUBSTEP_FG: Fg = Fg::LightBlue;
 const SUBSTEP_BG: Bg = Bg::Default;
 const SUBSTEP_FLAGS: Flags = Flag::Bold;
 const SUBSTEP_INDENT: usize = 4;
-const SUBSTEP_PADDING: usize = 14;
+const SUBSTEP_PADDING: usize = 20;
 
-#[rustfmt::skip] pub static LOADING_SOURCE: Colored<&str> = Colored { text: "Loding Source",  fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static TOKENIZATION:   Colored<&str> = Colored { text: "Tokenizing",     fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static BUILDING_AST:   Colored<&str> = Colored { text: "Building Ast",   fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static GENERATING_ASM: Colored<&str> = Colored { text: "Generating asm", fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static ASSEMBLING:     Colored<&str> = Colored { text: "Assembling",     fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static LINKING:        Colored<&str> = Colored { text: "Linking",        fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static SUBSTEP_DONE:   Colored<&str> = Colored { text: "Done",           fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static LOADING_SOURCE:       Colored<&str> = Colored { text: "Loding Source",        fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static TOKENIZATION:         Colored<&str> = Colored { text: "Tokenizing",           fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static BUILDING_UNTYPED_AST: Colored<&str> = Colored { text: "Building Untyped Ast", fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static BUILDING_AST:         Colored<&str> = Colored { text: "Building Ast",         fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static GENERATING_ASM:       Colored<&str> = Colored { text: "Generating asm",       fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static ASSEMBLING:           Colored<&str> = Colored { text: "Assembling",           fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static LINKING:              Colored<&str> = Colored { text: "Linking",              fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static SUBSTEP_DONE:         Colored<&str> = Colored { text: "Done",                 fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
 
 // errors
 const ERR_FG: Fg = Fg::LightRed;
