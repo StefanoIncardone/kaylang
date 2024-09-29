@@ -8,7 +8,7 @@ keywords = ["language", "compiler"]
 description = "Experimenting with programming languages by creating one"
 repository = "https://github.com/StefanoIncardone/kaylang"
 readme = "README.md"
-documentation = "https://github.com/StefanoIncardone/kaylang/docs/LANGUAGE_REFERENCE.md"
+documentation = "https://github.com/StefanoIncardone/kaylang/blob/main/LANGUAGE_REFERENCE.md"
 license = "MIT"
 
 [profile.dev]
