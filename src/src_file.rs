@@ -6,6 +6,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+// TODO(stefano): rename to `col`
+// IDEA(stefano): create `index` type
 #[allow(non_camel_case_types)]
 pub type offset = u32;
 

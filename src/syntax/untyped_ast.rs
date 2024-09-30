@@ -387,6 +387,12 @@ pub(crate) enum Node {
         operator_column: offset,
         rhs: ExpressionIndex,
     },
+
+    Scope {
+        opening_curly_bracket_column: offset,
+        nodes_in_scope_count: offset,
+        closing_curly_bracket_column: offset,
+    }
 }
 
 #[derive(Debug)]
@@ -428,9 +434,12 @@ impl UntypedAst<'_, '_> {
     fn info_node(
         &self,
         f: &mut core::fmt::Formatter<'_>,
-        node: &Node,
+        node_index: &mut offset,
         indent: usize,
     ) -> core::fmt::Result {
+        let node = &self.nodes[*node_index as usize];
+        *node_index += 1;
+
         #[rustfmt::skip]
         return match node {
             Node::Expression(expression_index) => self.info_expression(f, *expression_index, indent),
@@ -466,7 +475,6 @@ impl UntypedAst<'_, '_> {
 
             Node::VariableDefinition { variable_definition_index } => {
                 let definition_indent = indent + INDENT_INCREMENT;
-                writeln!(f, "{:>indent$}VariableDefinition", "")?;
 
                 let VariableDefinition {
                     mutability,
@@ -476,7 +484,7 @@ impl UntypedAst<'_, '_> {
                     type_annotation,
                     initial_value,
                 } = &self.variable_definitions[variable_definition_index.0 as usize];
-                writeln!(f, "{:>definition_indent$}Mutability: {mutability_column} = {mutability}", "")?;
+                writeln!(f, "{:>indent$}VariableDefinition: {mutability_column} = {mutability}", "")?;
                 writeln!(f, "{:>definition_indent$}Name: {name_column} = {name}", "")?;
 
                 if let Some(TypeAnnotation {
@@ -507,11 +515,23 @@ impl UntypedAst<'_, '_> {
                 return Ok(());
             }
             Node::Assignment { lhs, operator, operator_column, rhs } => {
-                let expression_indent = indent + INDENT_INCREMENT;
+                let assignment_indent = indent + INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}Reassignment", "")?;
-                self.info_expression(f, *lhs, expression_indent)?;
-                writeln!(f, "{:>expression_indent$}AssignmentOp: {operator_column} = {operator}", "")?;
-                self.info_expression(f, *rhs, expression_indent)
+                self.info_expression(f, *lhs, assignment_indent)?;
+                writeln!(f, "{:>assignment_indent$}AssignmentOp: {operator_column} = {operator}", "")?;
+                self.info_expression(f, *rhs, assignment_indent)
+            }
+
+            Node::Scope { opening_curly_bracket_column, nodes_in_scope_count, closing_curly_bracket_column } => {
+                let scope_indent = indent + INDENT_INCREMENT;
+                writeln!(f, "{:>indent$}Scope", "")?;
+                writeln!(f, "{:>scope_indent$}OpeningCurlyBracket: {opening_curly_bracket_column} = {{", "")?;
+
+                let after_end_scope_node_index = *node_index + nodes_in_scope_count;
+                while *node_index < after_end_scope_node_index {
+                    self.info_node(f, node_index, scope_indent)?;
+                }
+                writeln!(f, "{:>scope_indent$}ClosingCurlyBracket: {closing_curly_bracket_column} = }}", "")
             }
         };
     }
@@ -616,24 +636,24 @@ impl UntypedAst<'_, '_> {
 
 impl Display for UntypedAst<'_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        for node in &self.nodes {
-            self.info_node(f, node, 0)?;
+        let mut node_index = 0;
+        while node_index < self.nodes.len() as offset {
+            self.info_node(f, &mut node_index, 0)?;
         }
 
         return Ok(());
     }
 }
 
-type TokenIndex = offset;
-
 #[derive(Debug)]
 pub struct Parser<'src, 'tokens: 'src> {
     src: &'src SrcFile,
     errors: Vec<Error<ErrorKind>>,
 
-    token_index: TokenIndex,
+    token_index: offset,
     tokens: &'tokens [Token<'src>],
 
+    scope_start_indices: Vec<offset>,
     ast: UntypedAst<'src, 'tokens>,
 }
 
@@ -655,7 +675,16 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             return Ok(ast);
         }
 
-        let mut this = Self { src, errors: Vec::new(), token_index: 0, tokens, ast };
+        let mut this = Self {
+            src,
+            errors: Vec::new(),
+
+            token_index: 0,
+            tokens,
+
+            scope_start_indices: Vec::new(),
+            ast,
+        };
 
         this.parse_tokens();
 
@@ -908,7 +937,38 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 Ok(Some(Node::VariableDefinition { variable_definition_index }))
             }
 
-            TokenKind::Bracket(BracketKind::OpenCurly) => todo!(),
+            TokenKind::Bracket(BracketKind::OpenCurly) => {
+                self.scope_start_indices.push(self.ast.nodes.len() as offset);
+
+                let placeholder_scope = Node::Scope {
+                    opening_curly_bracket_column: token.col,
+                    nodes_in_scope_count: 0,
+                    closing_curly_bracket_column: 0,
+                };
+                Ok(Some(placeholder_scope))
+            },
+            TokenKind::Bracket(BracketKind::CloseCurly) => {
+                let last_scope_node_index = (self.ast.nodes.len() - 1) as offset;
+                let Some(first_scope_node_index) = self.scope_start_indices.pop() else {
+                    self.unbalanced_bracket(token);
+                };
+
+                let Node::Scope {
+                    nodes_in_scope_count,
+                    closing_curly_bracket_column,
+                    ..
+                } = &mut self.ast.nodes[first_scope_node_index as usize] else {
+                    self.invalid_token(
+                        token,
+                        "invalid node index".into(),
+                        "expected closing curly bracket".into()
+                    );
+                };
+
+                *nodes_in_scope_count = last_scope_node_index - first_scope_node_index;
+                *closing_curly_bracket_column = token.col;
+                Ok(None)
+            },
 
             TokenKind::If => todo!(),
             TokenKind::Else => todo!(),
@@ -934,7 +994,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 pointers_count: token.kind.display_len(),
             }),
             TokenKind::Bracket(
-                BracketKind::CloseRound | BracketKind::CloseSquare | BracketKind::CloseCurly,
+                BracketKind::CloseRound | BracketKind::CloseSquare,
             ) => self.unbalanced_bracket(token),
             TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
                 self.should_have_been_skipped(token)
