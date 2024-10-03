@@ -119,7 +119,7 @@ default_numeric_fallback = "allow"
 # i prefer imperative programming
 option_if_let_else = "allow"
 if_then_some_else_none = "allow"
-# manual_map = "allow"
+manual_map = "allow"
 equatable_if_let = "allow"
 
 large_stack_frames = "warn"

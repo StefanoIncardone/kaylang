@@ -112,10 +112,11 @@ type = identifier | (identifier, "[", integer_literal, "]");
 variable_declaration = ("let" | "var"), identifier, [[":", type], "=", expression], ";";
 variable_reassignment = (identifier | array_index), assignment_operator, expression, ";";
 
+do_statement = "do", (expression | print | variable_reassignment | loop), ";";
 if =
-    "if", boolean_expression, (("do", statement, ";") | scope),
-    [{"else", ("if", boolean_expression, (("do", statement, ";") | scope))}],
-    ["else", (("do", statement, ";") | scope)]
+    "if", boolean_expression, (do_statement | scope),
+    [{"else", ("if", boolean_expression, (do_statement | scope))}],
+    ["else", (do_statement | scope)]
     ;
 loop  = ["do"], "loop", boolean_expression, (("do", statement_in_loop, ";") | scope);
 print = (("print", expression) | ("println", [expression]) | ("eprint", expression) | ("eprintln", [expression])), ";";

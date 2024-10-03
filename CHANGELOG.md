@@ -70,6 +70,33 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
         ##
         ```
 
+#### Compiler
+
+- Refactored compilation stages <!-- TODO: document changes about untyped ast -->
+
+### Fixed
+
+#### Compiler
+
+- Fixed parsing of if statements inside do-statements in an if branch:
+
+    ```kay
+    # wrong: we would expect that the else-if branches would be part of the first if block, but
+    # the are incorrectly part of the if inside the first do-statement, so this:
+    if a do if b do println "12";
+    else if c do println "21";
+    else if d println "19";
+    else do println "42";
+
+    # is in reality this, which will now be disallowed:
+    if a do
+        if b do println "12";
+      # ^^ error: if statement in do-statement inside if branch
+        else if c do println "21";
+        else if d println "19";
+        else do println "42";
+    ```
+
 ## 0.6.1 - 2024-09-20
 
 ### Added

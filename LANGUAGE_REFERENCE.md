@@ -471,6 +471,11 @@ Executes a block of code based on a condition
     let lucky = 42;
     if lucky == 19 do println "well done!";
     else if lucky == 12 do { println "nice"; } # Error: blocks are not allowed in do statements
+    ## Error: if statements are not allowed in do statements,
+    since all of the following branches belong to this if-statement instead of the actual
+    if-statement tha contains this branch
+    ##
+    else if lucky == 12 do if true { println "nice"; }
     else if lucky == 42 do println "awesome!";
     else do println "too bad!";
     ```

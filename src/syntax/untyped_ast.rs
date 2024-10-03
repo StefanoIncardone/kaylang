@@ -1,3 +1,5 @@
+// IDEA(stefano): remove do-statements to reduce syntax complexity and possible footguns
+
 use super::{
     tokenizer::{
         ascii, utf8, Base, BracketKind, DisplayLen, Integer, Mutability, Op, Str, Token, TokenKind,
@@ -5,7 +7,7 @@ use super::{
     Error, ErrorDisplay, ErrorInfo, IntoErrorInfo,
 };
 use crate::src_file::{offset, Position, SrcFile};
-use core::fmt::Display;
+use core::{fmt::Display, num::NonZero};
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -357,6 +359,39 @@ pub(crate) struct VariableDefinition<'src, 'tokens: 'src> {
 #[non_exhaustive]
 pub(crate) struct VariableDefinitionIndex(pub(crate) offset);
 
+/// A valid else-branch can never be at the start of the file, hence a column value of 0 is invalid
+pub(crate) type ElseColumn = NonZero<offset>;
+
+/// A valid do statement can never be at the start of the file, hence a column value of 0 is invalid
+pub(crate) type DoColumn = NonZero<offset>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
+#[repr(transparent)]
+#[non_exhaustive]
+pub(crate) struct DoColumnsIndex(pub(crate) offset);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
+#[repr(transparent)]
+#[non_exhaustive]
+pub(crate) struct IfIndex(pub(crate) offset);
+
+#[derive(Debug, Clone)]
+pub(crate) struct If {
+    pub(crate) if_column: offset,
+    pub(crate) condition_expression_index: ExpressionIndex,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct Else {
+    pub(crate) else_column: ElseColumn,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ElseIf {
+    pub(crate) else_: Else,
+    pub(crate) iff: If,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum Node {
     Expression(ExpressionIndex),
@@ -390,9 +425,21 @@ pub(crate) enum Node {
 
     Scope {
         opening_curly_bracket_column: offset,
-        nodes_in_scope_count: offset,
+        raw_nodes_in_scope_count: offset,
         closing_curly_bracket_column: offset,
-    }
+    },
+
+    If {
+        if_index: IfIndex,
+    },
+}
+
+#[derive(Debug, Clone)]
+enum ParsedNode {
+    Node(Node),
+    SemiColon,
+    ScopeEnd,
+    IfEnd,
 }
 
 #[derive(Debug)]
@@ -403,6 +450,11 @@ pub struct UntypedAst<'src, 'tokens: 'src> {
     arrays: Vec<Array>,
 
     variable_definitions: Vec<VariableDefinition<'src, 'tokens>>,
+
+    ifs: Vec<If>,
+    else_ifs: Vec<Vec<ElseIf>>,
+    elses: Vec<Option<Else>>,
+    do_columns: Vec<Vec<DoColumn>>,
 }
 
 impl<'src, 'tokens: 'src> UntypedAst<'src, 'tokens> {
@@ -425,6 +477,14 @@ impl<'src, 'tokens: 'src> UntypedAst<'src, 'tokens> {
     ) -> VariableDefinitionIndex {
         self.variable_definitions.push(variable_definition);
         return VariableDefinitionIndex((self.variable_definitions.len() - 1) as offset);
+    }
+
+    #[inline]
+    fn new_do_column(&mut self, do_columns_index: DoColumnsIndex, column: offset) {
+        let Some(do_column) = DoColumn::new(column) else {
+            unreachable!("valid `do` should have non-zero column");
+        };
+        self.do_columns[do_columns_index.0 as usize].push(do_column);
     }
 }
 
@@ -522,16 +582,69 @@ impl UntypedAst<'_, '_> {
                 self.info_expression(f, *rhs, assignment_indent)
             }
 
-            Node::Scope { opening_curly_bracket_column, nodes_in_scope_count, closing_curly_bracket_column } => {
+            Node::Scope { opening_curly_bracket_column, raw_nodes_in_scope_count, closing_curly_bracket_column } => {
                 let scope_indent = indent + INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}Scope", "")?;
                 writeln!(f, "{:>scope_indent$}OpeningCurlyBracket: {opening_curly_bracket_column} = {{", "")?;
 
-                let after_end_scope_node_index = *node_index + nodes_in_scope_count;
+                let after_end_scope_node_index = *node_index + raw_nodes_in_scope_count;
                 while *node_index < after_end_scope_node_index {
                     self.info_node(f, node_index, scope_indent)?;
                 }
                 writeln!(f, "{:>scope_indent$}ClosingCurlyBracket: {closing_curly_bracket_column} = }}", "")
+            }
+
+            Node::If { if_index } => {
+                let if_indent = indent + INDENT_INCREMENT;
+
+                let If { if_column, condition_expression_index } = &self.ifs[if_index.0 as usize];
+                let else_ifs = &self.else_ifs[if_index.0 as usize];
+                let else_ = &self.elses[if_index.0 as usize];
+                let do_columns = &self.do_columns[if_index.0 as usize];
+
+                let mut do_columns_iter = do_columns.iter();
+
+                writeln!(f, "{:>indent$}If: {if_column} = if", "")?;
+                self.info_expression(f, *condition_expression_index, if_indent)?;
+                if let Node::Scope { .. } = &self.nodes[*node_index as usize] {} else {
+                    let Some(do_column) = do_columns_iter.next() else {
+                        unreachable!("malformatted do statement");
+                    };
+                    writeln!(f, "{:>if_indent$}Do: {col} = do", "", col = do_column.get())?;
+                }
+                self.info_node(f, node_index, if_indent)?;
+
+                for ElseIf {
+                    else_: Else { else_column },
+                    iff: If {
+                        if_column: else_if_column,
+                        condition_expression_index: else_if_condition_expression_index
+                    },
+                } in else_ifs {
+                    writeln!(f, "{:>indent$}Else: {else_column} = else", "")?;
+                    writeln!(f, "{:>indent$}If: {else_if_column} = if", "")?;
+                    self.info_expression(f, *else_if_condition_expression_index, if_indent)?;
+                    if let Node::Scope { .. } = &self.nodes[*node_index as usize] {} else {
+                        let Some(do_column) = do_columns_iter.next() else {
+                            unreachable!("malformatted do statement");
+                        };
+                        writeln!(f, "{:>if_indent$}Do: {col} = do", "", col = do_column.get())?;
+                    }
+                    self.info_node(f, node_index, if_indent)?;
+                }
+
+                if let Some(Else { else_column }) = else_ {
+                    writeln!(f, "{:>indent$}Else: {else_column} = else", "")?;
+                    if let Node::Scope { .. } = &self.nodes[*node_index as usize] {} else {
+                        let Some(do_column) = do_columns_iter.next() else {
+                            unreachable!("malformatted do statement");
+                        };
+                        writeln!(f, "{:>if_indent$}Do: {col} = do", "", col = do_column.get())?;
+                    }
+                    self.info_node(f, node_index, if_indent)?;
+                }
+
+                return Ok(());
             }
         };
     }
@@ -653,10 +766,16 @@ pub struct Parser<'src, 'tokens: 'src> {
     token_index: offset,
     tokens: &'tokens [Token<'src>],
 
-    scope_start_indices: Vec<offset>,
+    // IDEA(stefano): flatten placeholder indices into a single array and interpret each index as needed
+    placeholder_scopes_indices: Vec<offset>,
     ast: UntypedAst<'src, 'tokens>,
 }
 
+/* NOTE(stefano):
+only parsing until the first error until a fault tolerant parser is developed,
+this is because the first truly relevant error is the first one, which in turn causes a ripple
+effect that propagates to the rest of the parsing, causing subsequent errors to be wrong
+*/
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     pub fn parse(
         src: &'src SrcFile,
@@ -669,6 +788,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             arrays: Vec::new(),
 
             variable_definitions: Vec::new(),
+
+            ifs: Vec::new(),
+            else_ifs: Vec::new(),
+            elses: Vec::new(),
+            do_columns: Vec::new(),
         };
 
         if tokens.is_empty() {
@@ -682,27 +806,29 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             token_index: 0,
             tokens,
 
-            scope_start_indices: Vec::new(),
+            placeholder_scopes_indices: Vec::new(),
             ast,
         };
 
         this.parse_tokens();
 
-        return if this.errors.is_empty() { Ok(this.ast) } else { Err(this.errors) };
+        return if this.errors.is_empty() {
+            debug_assert!(this.placeholder_scopes_indices.is_empty(), "malformatted scopes");
+            Ok(this.ast)
+        } else {
+            Err(this.errors)
+        };
     }
 
-    /* NOTE(stefano):
-    only parsing until the first error until a fault tolerant parser is developed,
-    this is because the first truly relevant error is the first one, which in turn causes a ripple
-    effect that propagates to the rest of the parsing, causing subsequent errors to be wrong
-    */
     fn parse_tokens(&mut self) {
         while let Some(Peeked { next_token, next_token_index }) = self.peek_next_token() {
             self.token_index = next_token_index;
 
             let node = match self.any(next_token) {
-                Ok(Some(node)) => node,
-                Ok(None) => continue,
+                Ok(ParsedNode::Node(node)) => node,
+                Ok(ParsedNode::SemiColon) => continue,
+                Ok(ParsedNode::ScopeEnd) => continue,
+                Ok(ParsedNode::IfEnd) => continue,
                 Err(err) => {
                     self.errors.push(err);
 
@@ -716,7 +842,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         }
     }
 
-    fn any(&mut self, token: &'tokens Token<'src>) -> Result<Option<Node>, Error<ErrorKind>> {
+    fn any(&mut self, token: &'tokens Token<'src>) -> Result<ParsedNode, Error<ErrorKind>> {
         return match &token.kind {
             TokenKind::True
             | TokenKind::False
@@ -741,7 +867,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
                 let after_expression_token = self.next_expected_token(Expected::Semicolon)?;
                 match after_expression_token.kind {
-                    TokenKind::SemiColon => Ok(Some(Node::Expression(expression_index))),
+                    TokenKind::SemiColon => {
+                        Ok(ParsedNode::Node(Node::Expression(expression_index)))
+                    }
                     TokenKind::Op(operator) => match operator {
                         Op::Equals
                         | Op::PowEquals
@@ -813,7 +941,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             let new_value = self.expression(start_of_new_value_token)?;
 
                             self.semicolon()?;
-                            Ok(Some(Node::Assignment {
+                            Ok(ParsedNode::Node(Node::Assignment {
                                 lhs: expression_index,
                                 operator: assignment_operator,
                                 operator_column: after_expression_token.col,
@@ -893,91 +1021,108 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
             }
 
-            TokenKind::SemiColon => Ok(None),
+            TokenKind::SemiColon => Ok(ParsedNode::SemiColon),
 
             TokenKind::Print => {
                 let start_of_argument_token = self.next_expected_token(Expected::Expression)?;
                 let argument = self.expression(start_of_argument_token)?;
                 self.semicolon()?;
-                Ok(Some(Node::Print { print_column: token.col, argument }))
+                Ok(ParsedNode::Node(Node::Print { print_column: token.col, argument }))
             }
             TokenKind::PrintLn => {
                 let start_of_argument_token =
                     self.next_expected_token(Expected::ExpressionOrSemicolon)?;
                 if let TokenKind::SemiColon = start_of_argument_token.kind {
-                    return Ok(Some(Node::Println { println_column: token.col, argument: None }));
+                    return Ok(ParsedNode::Node(Node::Println {
+                        println_column: token.col,
+                        argument: None,
+                    }));
                 }
 
                 let argument = self.expression(start_of_argument_token)?;
                 self.semicolon()?;
-                Ok(Some(Node::Println { println_column: token.col, argument: Some(argument) }))
+                Ok(ParsedNode::Node(Node::Println {
+                    println_column: token.col,
+                    argument: Some(argument),
+                }))
             }
             TokenKind::Eprint => {
                 let start_of_argument_token = self.next_expected_token(Expected::Expression)?;
                 let argument = self.expression(start_of_argument_token)?;
                 self.semicolon()?;
-                Ok(Some(Node::Eprint { eprint_column: token.col, argument }))
+                Ok(ParsedNode::Node(Node::Eprint { eprint_column: token.col, argument }))
             }
             TokenKind::EprintLn => {
                 let start_of_argument_token =
                     self.next_expected_token(Expected::ExpressionOrSemicolon)?;
                 if let TokenKind::SemiColon = start_of_argument_token.kind {
-                    return Ok(Some(Node::Eprintln { eprintln_column: token.col, argument: None }));
+                    return Ok(ParsedNode::Node(Node::Eprintln {
+                        eprintln_column: token.col,
+                        argument: None,
+                    }));
                 }
 
                 let argument = self.expression(start_of_argument_token)?;
                 self.semicolon()?;
-                Ok(Some(Node::Eprintln { eprintln_column: token.col, argument: Some(argument) }))
+                Ok(ParsedNode::Node(Node::Eprintln {
+                    eprintln_column: token.col,
+                    argument: Some(argument),
+                }))
             }
 
             TokenKind::Mutability(mutability) => {
                 let variable_definition = self.variable_definition(token, *mutability)?;
                 let variable_definition_index =
                     self.ast.new_variable_definition(variable_definition);
-                Ok(Some(Node::VariableDefinition { variable_definition_index }))
+                Ok(ParsedNode::Node(Node::VariableDefinition { variable_definition_index }))
             }
 
             TokenKind::Bracket(BracketKind::OpenCurly) => {
-                self.scope_start_indices.push(self.ast.nodes.len() as offset);
+                self.placeholder_scopes_indices.push(self.ast.nodes.len() as offset);
 
                 let placeholder_scope = Node::Scope {
                     opening_curly_bracket_column: token.col,
-                    nodes_in_scope_count: 0,
+                    raw_nodes_in_scope_count: 0,
                     closing_curly_bracket_column: 0,
                 };
-                Ok(Some(placeholder_scope))
-            },
+                Ok(ParsedNode::Node(placeholder_scope))
+            }
             TokenKind::Bracket(BracketKind::CloseCurly) => {
                 let last_scope_node_index = (self.ast.nodes.len() - 1) as offset;
-                let Some(first_scope_node_index) = self.scope_start_indices.pop() else {
+                let Some(first_scope_node_index) = self.placeholder_scopes_indices.pop() else {
                     self.unbalanced_bracket(token);
                 };
 
-                let Node::Scope {
-                    nodes_in_scope_count,
-                    closing_curly_bracket_column,
-                    ..
-                } = &mut self.ast.nodes[first_scope_node_index as usize] else {
+                let Node::Scope { raw_nodes_in_scope_count, closing_curly_bracket_column, .. } =
+                    &mut self.ast.nodes[first_scope_node_index as usize]
+                else {
                     self.invalid_token(
                         token,
                         "invalid node index".into(),
-                        "expected closing curly bracket".into()
+                        "expected open curly bracket".into(),
                     );
                 };
 
-                *nodes_in_scope_count = last_scope_node_index - first_scope_node_index;
+                *raw_nodes_in_scope_count = last_scope_node_index - first_scope_node_index;
                 *closing_curly_bracket_column = token.col;
-                Ok(None)
-            },
+                Ok(ParsedNode::ScopeEnd)
+            }
 
-            TokenKind::If => todo!(),
-            TokenKind::Else => todo!(),
+            TokenKind::If => {
+                self.if_block(token.col)?;
+                Ok(ParsedNode::IfEnd)
+            }
 
             TokenKind::Do => todo!(),
             TokenKind::Loop => todo!(),
             TokenKind::Break => todo!(),
             TokenKind::Continue => todo!(),
 
+            TokenKind::Else => Err(Error {
+                kind: ErrorKind::StrayElse,
+                col: token.col,
+                pointers_count: token.kind.display_len(),
+            }),
             TokenKind::Colon => Err(Error {
                 kind: ErrorKind::StrayColon,
                 col: token.col,
@@ -993,11 +1138,140 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 col: token.col,
                 pointers_count: token.kind.display_len(),
             }),
-            TokenKind::Bracket(
-                BracketKind::CloseRound | BracketKind::CloseSquare,
-            ) => self.unbalanced_bracket(token),
+            TokenKind::Bracket(BracketKind::CloseRound | BracketKind::CloseSquare) => {
+                self.unbalanced_bracket(token)
+            }
             TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
                 self.should_have_been_skipped(token)
+            }
+        };
+    }
+
+    fn parse_single_do_statement_in_if_statement(&mut self) -> Result<(), Error<ErrorKind>> {
+        let Peeked { next_token, next_token_index } =
+            self.peek_next_expected_token(Expected::Statement)?;
+
+        if let TokenKind::Bracket(BracketKind::OpenCurly) = next_token.kind {
+            while let Some(Peeked {
+                next_token: after_open_curly_bracket_token,
+                next_token_index: after_open_curly_bracket_token_index,
+            }) = self.peek_next_token()
+            {
+                self.token_index = after_open_curly_bracket_token_index;
+
+                let node = match self.any(after_open_curly_bracket_token)? {
+                    ParsedNode::Node(node) => node,
+                    ParsedNode::SemiColon => continue,
+                    ParsedNode::ScopeEnd => {
+                        return Err(Error {
+                            kind: ErrorKind::BlockInDoStatement,
+                            col: next_token.col,
+                            pointers_count: next_token.kind.display_len(),
+                        });
+                    }
+                    ParsedNode::IfEnd => continue,
+                };
+
+                self.ast.nodes.push(node);
+            }
+            self.unbalanced_bracket(next_token);
+        };
+
+        self.token_index = next_token_index;
+
+        let node = match self.any(next_token)? {
+            ParsedNode::Node(Node::VariableDefinition { .. }) => {
+                return Err(Error {
+                    kind: ErrorKind::VariableInDoStatement,
+                    col: next_token.col,
+                    pointers_count: next_token.kind.display_len(),
+                });
+            }
+            ParsedNode::Node(node) => node,
+            ParsedNode::SemiColon => {
+                return Err(Error {
+                    kind: ErrorKind::EmptyDoStatement,
+                    col: next_token.col,
+                    pointers_count: next_token.kind.display_len(),
+                });
+            }
+            ParsedNode::ScopeEnd => self.unbalanced_bracket(next_token),
+            ParsedNode::IfEnd => {
+                return Err(Error {
+                    kind: ErrorKind::IfStatementInDoStatementInIfBranch,
+                    col: next_token.col,
+                    pointers_count: next_token.kind.display_len(),
+                });
+            }
+        };
+        self.ast.nodes.push(node);
+
+        return Ok(());
+    }
+
+    fn parse_single_scope(&mut self) -> Result<(), Error<ErrorKind>> {
+        while let Some(Peeked { next_token, next_token_index }) = self.peek_next_token() {
+            self.token_index = next_token_index;
+
+            let node = match self.any(next_token)? {
+                ParsedNode::Node(node) => node,
+                ParsedNode::SemiColon => continue,
+                ParsedNode::ScopeEnd => break,
+                ParsedNode::IfEnd => continue,
+            };
+
+            self.ast.nodes.push(node);
+        }
+
+        return Ok(());
+    }
+
+    fn parse_do_or_block_in_if_statement(
+        &mut self,
+        do_columns_index: DoColumnsIndex,
+    ) -> Result<(), Error<ErrorKind>> {
+        let Peeked { next_token, next_token_index } =
+            self.peek_next_expected_token(Expected::DoOrOpenCurlyBracket)?;
+
+        return match next_token.kind {
+            TokenKind::Do => {
+                self.token_index = next_token_index;
+
+                self.ast.new_do_column(do_columns_index, next_token.col);
+                self.parse_single_do_statement_in_if_statement()
+            }
+            TokenKind::Bracket(BracketKind::OpenCurly) => self.parse_single_scope(),
+            TokenKind::Colon
+            | TokenKind::SemiColon
+            | TokenKind::Comma
+            | TokenKind::Op(_)
+            | TokenKind::Bracket(_)
+            | TokenKind::False
+            | TokenKind::True
+            | TokenKind::Integer(_, _)
+            | TokenKind::Ascii(_)
+            | TokenKind::Str(_)
+            | TokenKind::RawStr(_)
+            | TokenKind::Identifier(_)
+            | TokenKind::Print
+            | TokenKind::PrintLn
+            | TokenKind::Eprint
+            | TokenKind::EprintLn
+            | TokenKind::Mutability(_)
+            | TokenKind::If
+            | TokenKind::Else
+            | TokenKind::Loop
+            | TokenKind::Break
+            | TokenKind::Continue => {
+                let before_curly_bracket_token = self.peek_previous_token();
+                Err(Error {
+                    kind: ErrorKind::IfMustBeFollowedByDoOrBlock,
+                    col: before_curly_bracket_token.col,
+                    pointers_count: before_curly_bracket_token.kind.display_len(),
+                })
+            }
+            TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+                self.should_have_been_skipped(next_token)
             }
         };
     }
@@ -1120,11 +1394,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return None;
     }
 
-    fn next_expected_token(
-        &mut self,
+    fn peek_next_expected_token(
+        &self,
         expected: Expected,
-    ) -> Result<&'tokens Token<'src>, Error<ErrorKind>> {
-        let Some(Peeked { next_token, next_token_index }) = self.peek_next_token() else {
+    ) -> Result<Peeked<'src, 'tokens>, Error<ErrorKind>> {
+        let Some(peeked) = self.peek_next_token() else {
             /* IDEA(stefano):
             suggest multiple expected places when encountering block comments:
 
@@ -1147,11 +1421,19 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             });
         };
 
+        return Ok(peeked);
+    }
+
+    fn next_expected_token(
+        &mut self,
+        expected: Expected,
+    ) -> Result<&'tokens Token<'src>, Error<ErrorKind>> {
+        let Peeked { next_token, next_token_index } = self.peek_next_expected_token(expected)?;
         self.token_index = next_token_index;
         return Ok(next_token);
     }
 
-    // Note: this function is always called when underflowing the tokens array is never the case
+    /// Warning: should always be called with at least a previus token
     fn peek_previous_token(&self) -> &'tokens Token<'src> {
         for previous_token_index in (0..self.token_index).rev() {
             let previous_token = &self.tokens[previous_token_index as usize];
@@ -2090,8 +2372,126 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     }
 }
 
+// if statements
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+    fn if_block(&mut self, if_column: offset) -> Result<(), Error<ErrorKind>> {
+        let start_of_condition_expression_token = self.next_expected_token(Expected::Expression)?;
+        let condition_expression_index = self.expression(start_of_condition_expression_token)?;
+
+        self.ast.ifs.push(If { if_column, condition_expression_index });
+        self.ast.else_ifs.push(Vec::new());
+        self.ast.elses.push(None);
+        self.ast.do_columns.push(Vec::new());
+        let if_index = (self.ast.ifs.len() - 1) as offset;
+        let do_columns_index = DoColumnsIndex((self.ast.do_columns.len() - 1) as offset);
+
+        self.ast.nodes.push(Node::If { if_index: IfIndex(if_index) });
+
+        self.parse_do_or_block_in_if_statement(do_columns_index)?;
+
+        while let Some(Peeked {
+            next_token: &Token { kind: TokenKind::Else, col: else_column },
+            next_token_index,
+        }) = self.peek_next_token()
+        {
+            self.token_index = next_token_index;
+
+            let Peeked { next_token: after_else_token, next_token_index: after_else_token_index } =
+                self.peek_next_expected_token(Expected::DoOrOpenCurlyBracketOrIf)?;
+
+            match after_else_token.kind {
+                TokenKind::Do => {
+                    self.token_index = after_else_token_index;
+                    self.ast.new_do_column(do_columns_index, after_else_token.col);
+                    self.parse_single_do_statement_in_if_statement()?;
+
+                    let else_ = match ElseColumn::new(else_column) {
+                        Some(column) => Else { else_column: column },
+                        None => unreachable!("valid `else` should have non-zero column"),
+                    };
+
+                    self.ast.elses[if_index as usize] = Some(else_);
+                    break;
+                }
+                TokenKind::Bracket(BracketKind::OpenCurly) => {
+                    self.parse_single_scope()?;
+
+                    let else_ = match ElseColumn::new(else_column) {
+                        Some(column) => Else { else_column: column },
+                        None => unreachable!("valid `else` should have non-zero column"),
+                    };
+
+                    self.ast.elses[if_index as usize] = Some(else_);
+                    break;
+                }
+                TokenKind::If => {
+                    self.token_index = after_else_token_index;
+
+                    let start_of_else_if_condition_expression_token = self.next_expected_token(Expected::Expression)?;
+                    let else_if_condition_expression_index = self.expression(start_of_else_if_condition_expression_token)?;
+
+                    let else_ = match ElseColumn::new(else_column) {
+                        Some(column) => Else { else_column: column },
+                        None => unreachable!("valid `else` should have non-zero column"),
+                    };
+
+                    let else_if = ElseIf {
+                        else_,
+                        iff: If { if_column: after_else_token.col, condition_expression_index: else_if_condition_expression_index },
+                    };
+                    self.ast.else_ifs[if_index as usize].push(else_if);
+
+                    self.parse_do_or_block_in_if_statement(do_columns_index)?;
+                }
+                TokenKind::Colon
+                /* NOTE(stefano):
+                warn on semicolons after if statements followed by else branches
+                ```if true { if true do println "1"; }; # < here
+                else if true { if true do println "2"; }
+                else if true do println 3;
+                else do println "ciao";
+                ```
+                */
+                | TokenKind::SemiColon
+                | TokenKind::Comma
+                | TokenKind::Op(_)
+                | TokenKind::Bracket(_)
+                | TokenKind::False
+                | TokenKind::True
+                | TokenKind::Integer(_, _)
+                | TokenKind::Ascii(_)
+                | TokenKind::Str(_)
+                | TokenKind::RawStr(_)
+                | TokenKind::Identifier(_)
+                | TokenKind::Print
+                | TokenKind::PrintLn
+                | TokenKind::Eprint
+                | TokenKind::EprintLn
+                | TokenKind::Mutability(_)
+                | TokenKind::Else
+                | TokenKind::Loop
+                | TokenKind::Break
+                | TokenKind::Continue => {
+                    let before_curly_bracket_token = self.peek_previous_token();
+                    return Err(Error {
+                        kind: ErrorKind::IfMustBeFollowedByDoOrBlock,
+                        col: before_curly_bracket_token.col,
+                        pointers_count: before_curly_bracket_token.kind.display_len(),
+                    });
+                }
+                TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+                    self.should_have_been_skipped(after_else_token)
+                }
+            }
+        }
+
+        return Ok(());
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Expected {
+    Statement,
     OperatorOrSemicolon,
     Operand,
     ClosingRoundBracket,
@@ -2106,11 +2506,14 @@ pub enum Expected {
     TypeName,
     EqualsOrSemicolon,
     ColonOrEqualsOrSemicolon,
+    DoOrOpenCurlyBracket,
+    DoOrOpenCurlyBracketOrIf,
 }
 
 impl Display for Expected {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
+            Self::Statement => write!(f, "statement"),
             Self::OperatorOrSemicolon => write!(f, "operator or ';'"),
             Self::Operand => write!(f, "operand"),
             Self::ClosingRoundBracket => write!(f, "')'"),
@@ -2125,6 +2528,8 @@ impl Display for Expected {
             Self::TypeName => write!(f, "type name"),
             Self::EqualsOrSemicolon => write!(f, "'=' or ';'"),
             Self::ColonOrEqualsOrSemicolon => write!(f, "':', '=' or ';'"),
+            Self::DoOrOpenCurlyBracket => write!(f, "'do' or '{{'"),
+            Self::DoOrOpenCurlyBracketOrIf => write!(f, "'do', '{{' or 'if'"),
         };
     }
 }
@@ -2133,6 +2538,7 @@ impl Display for Expected {
 pub enum ErrorKind {
     PrematureEndOfFile(Expected),
     MissingSemicolon,
+    StrayElse,
     StrayColon,
     StrayComma,
     StrayOperator(Op),
@@ -2156,6 +2562,15 @@ pub enum ErrorKind {
     MissingClosingSquareBracketInArrayType,
     ExpectedEqualsOrSemicolonAfterVariableName,
     ExpectedEqualsOrSemicolonAfterTypeAnnotation,
+
+    // if statements
+    IfMustBeFollowedByDoOrBlock,
+
+    // do statements
+    EmptyDoStatement,
+    BlockInDoStatement,
+    VariableInDoStatement, // IDEA(stefano): allow variables and emit an unused variable warning instead
+    IfStatementInDoStatementInIfBranch,
 }
 
 impl IntoErrorInfo for ErrorKind {
@@ -2168,6 +2583,10 @@ impl IntoErrorInfo for ErrorKind {
             Self::MissingSemicolon => (
                 "invalid statement".into(),
                 "expected ';' after here".into(),
+            ),
+            Self::StrayElse => (
+                "stray 'else'".into(),
+                "stray 'else'".into(),
             ),
             Self::StrayColon => (
                 "stray ':'".into(),
@@ -2246,6 +2665,28 @@ impl IntoErrorInfo for ErrorKind {
             Self::ExpectedEqualsOrSemicolonAfterTypeAnnotation => (
                 "invalid variable definition".into(),
                 "expected '=' or ';' after type annotation".into(),
+            ),
+
+            Self::IfMustBeFollowedByDoOrBlock => (
+                "invalid if statement".into(),
+                "must be followed by `do` or '{'".into(),
+            ),
+
+            Self::IfStatementInDoStatementInIfBranch => (
+                "invalid do statement".into(),
+                "an if statement cannot be in a do statement that is itself in an if branch".into(),
+            ),
+            Self::EmptyDoStatement => (
+                "invalid do statement".into(),
+                "empty do statements are not allowed".into(),
+            ),
+            Self::BlockInDoStatement => (
+                "invalid do statement".into(),
+                "blocks are not allowed in do statements".into(),
+            ),
+            Self::VariableInDoStatement => (
+                "invalid do statement".into(),
+                "variable definitions are not allowed in do statements".into(),
             ),
         };
 

@@ -6,10 +6,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
-// TODO(stefano): rename to `col`
-// IDEA(stefano): create `index` type
 #[allow(non_camel_case_types)]
 pub type offset = u32;
+// #[allow(non_camel_case_types)]
+// pub type col = u32;
+// #[allow(non_camel_case_types)]
+// pub type index = u32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span {
