@@ -1,5 +1,3 @@
-// IDEA(stefano): remove do-statements to reduce syntax complexity and possible footguns
-
 use super::{
     tokenizer::{
         ascii, utf8, Base, BracketKind, DisplayLen, Integer, Mutability, Op, Str, Token, TokenKind,
@@ -325,16 +323,17 @@ pub(crate) struct TypeAnnotation<'src, 'tokens: 'src> {
     array_dimensions: Vec<ArrayDimension>,
 }
 
+/// A valid '=' assignment can never be at the start of the file, hence a column value of 0 is invalid
+pub(crate) type EqualsColumn = NonZero<offset>;
+
 #[derive(Debug, Clone)]
 pub(crate) struct InitialValue {
-    equals_column: offset,
+    equals_column: EqualsColumn,
     initial_value_index: ExpressionIndex,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct VariableDefinition<'src, 'tokens: 'src> {
-    mutability: Mutability,
-    mutability_column: offset,
     name: &'tokens &'src str,
     name_column: offset,
     type_annotation: Option<TypeAnnotation<'src, 'tokens>>,
@@ -369,13 +368,8 @@ pub(crate) struct If {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Else {
-    pub(crate) else_column: ElseColumn,
-}
-
-#[derive(Debug, Clone)]
 pub(crate) struct ElseIf {
-    pub(crate) else_: Else,
+    pub(crate) else_column: ElseColumn,
     pub(crate) iff: If,
 }
 
@@ -389,7 +383,10 @@ pub(crate) enum Node {
     },
     Println {
         println_column: offset,
-        argument: Option<ExpressionIndex>,
+        argument: ExpressionIndex,
+    },
+    PrintlnNoArg {
+        println_column: offset,
     },
     Eprint {
         eprint_column: offset,
@@ -397,12 +394,21 @@ pub(crate) enum Node {
     },
     Eprintln {
         eprintln_column: offset,
-        argument: Option<ExpressionIndex>,
+        argument: ExpressionIndex,
+    },
+    EprintlnNoArg {
+        eprintln_column: offset,
     },
 
-    VariableDefinition {
+    LetVariableDefinition {
+        mutability_column: offset,
         variable_definition_index: VariableDefinitionIndex,
     },
+    VarVariableDefinition {
+        mutability_column: offset,
+        variable_definition_index: VariableDefinitionIndex,
+    },
+    // IDEA(stefano): maybe move into expressions enum
     Assignment {
         lhs: ExpressionIndex,
         operator: AssignmentOp,
@@ -418,6 +424,10 @@ pub(crate) enum Node {
 
     If {
         if_index: IfIndex,
+    },
+    IfElse {
+        if_index: IfIndex,
+        else_column: ElseColumn,
     },
 }
 
@@ -441,7 +451,6 @@ pub struct UntypedAst<'src, 'tokens: 'src> {
 
     ifs: Vec<If>,
     else_ifs: Vec<Vec<ElseIf>>,
-    elses: Vec<Option<Else>>,
     do_columns: Vec<Vec<DoColumn>>,
 }
 
@@ -450,15 +459,6 @@ impl<'src, 'tokens: 'src> UntypedAst<'src, 'tokens> {
     fn new_expression(&mut self, expression: Expression<'src, 'tokens>) -> ExpressionIndex {
         self.expressions.push(expression);
         return ExpressionIndex((self.expressions.len() - 1) as offset);
-    }
-
-    #[inline]
-    fn new_variable_definition(
-        &mut self,
-        variable_definition: VariableDefinition<'src, 'tokens>,
-    ) -> VariableDefinitionIndex {
-        self.variable_definitions.push(variable_definition);
-        return VariableDefinitionIndex((self.variable_definitions.len() - 1) as offset);
     }
 
     #[inline]
@@ -487,86 +487,53 @@ impl UntypedAst<'_, '_> {
             Node::Expression(expression_index) => self.info_expression(f, *expression_index, indent),
 
             Node::Print { print_column, argument } => {
-                let argument_indent = indent + INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}Print: {print_column} = print", "")?;
+                let argument_indent = indent + INDENT_INCREMENT;
                 self.info_expression(f, *argument, argument_indent)
             }
             Node::Println { println_column, argument } => {
-                let argument_indent = indent + INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}Println: {println_column} = println", "")?;
-                if let Some(arg) = argument {
-                    self.info_expression(f, *arg, argument_indent)
-                } else {
-                    Ok(())
-                }
+                let argument_indent = indent + INDENT_INCREMENT;
+                self.info_expression(f, *argument, argument_indent)
+            }
+            Node::PrintlnNoArg { println_column } => {
+                writeln!(f, "{:>indent$}Println: {println_column} = println", "")
             }
             Node::Eprint { eprint_column, argument } => {
-                let argument_indent = indent + INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}Eprint: {eprint_column} = eprint", "")?;
+                let argument_indent = indent + INDENT_INCREMENT;
                 self.info_expression(f, *argument, argument_indent)
             }
             Node::Eprintln { eprintln_column, argument } => {
-                let argument_indent = indent + INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}Eprintln: {eprintln_column} = eprintln", "")?;
-                if let Some(arg) = argument {
-                    self.info_expression(f, *arg, argument_indent)
-                } else {
-                    Ok(())
-                }
+                let argument_indent = indent + INDENT_INCREMENT;
+                self.info_expression(f, *argument, argument_indent)
+            }
+            Node::EprintlnNoArg { eprintln_column } => {
+                writeln!(f, "{:>indent$}Eprintln: {eprintln_column} = eprintln", "")
             }
 
-            Node::VariableDefinition { variable_definition_index } => {
+            Node::LetVariableDefinition { mutability_column, variable_definition_index } => {
+                writeln!(f, "{:>indent$}VariableDefinition: {mutability_column} = let", "")?;
                 let definition_indent = indent + INDENT_INCREMENT;
-
-                let VariableDefinition {
-                    mutability,
-                    mutability_column,
-                    name,
-                    name_column,
-                    type_annotation,
-                    initial_value,
-                } = &self.variable_definitions[variable_definition_index.0 as usize];
-                writeln!(f, "{:>indent$}VariableDefinition: {mutability_column} = {mutability}", "")?;
-                writeln!(f, "{:>definition_indent$}Name: {name_column} = {name}", "")?;
-
-                if let Some(TypeAnnotation {
-                    colon_column,
-                    type_name,
-                    type_name_column,
-                    array_dimensions,
-                }) = type_annotation {
-                    writeln!(f, "{:>definition_indent$}Colon: {colon_column} = :", "")?;
-                    writeln!(f, "{:>definition_indent$}TypeName: {type_name_column} = {type_name}", "")?;
-
-                    for ArrayDimension {
-                        opening_square_bracket_column,
-                        dimension_expression_index,
-                        closing_square_bracket_column,
-                    } in array_dimensions {
-                        writeln!(f, "{:>definition_indent$}OpeningBracket: {opening_square_bracket_column} = [", "")?;
-                        self.info_expression(f, *dimension_expression_index, definition_indent)?;
-                        writeln!(f, "{:>definition_indent$}ClosingBracket: {closing_square_bracket_column} = ]", "")?;
-                    }
-                }
-
-                if let Some(InitialValue { equals_column, initial_value_index }) = initial_value {
-                    writeln!(f, "{:>definition_indent$}Equals: {equals_column} = =", "")?;
-                    self.info_expression(f, *initial_value_index, definition_indent)?;
-                }
-
-                return Ok(());
+                self.info_variable_definition(f, *variable_definition_index, definition_indent)
+            }
+            Node::VarVariableDefinition { mutability_column, variable_definition_index } => {
+                writeln!(f, "{:>indent$}VariableDefinition: {mutability_column} = var", "")?;
+                let definition_indent = indent + INDENT_INCREMENT;
+                self.info_variable_definition(f, *variable_definition_index, definition_indent)
             }
             Node::Assignment { lhs, operator, operator_column, rhs } => {
-                let assignment_indent = indent + INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}Reassignment", "")?;
+                let assignment_indent = indent + INDENT_INCREMENT;
                 self.info_expression(f, *lhs, assignment_indent)?;
                 writeln!(f, "{:>assignment_indent$}AssignmentOp: {operator_column} = {operator}", "")?;
                 self.info_expression(f, *rhs, assignment_indent)
             }
 
             Node::Scope { opening_curly_bracket_column, raw_nodes_in_scope_count, closing_curly_bracket_column } => {
-                let scope_indent = indent + INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}Scope", "")?;
+                let scope_indent = indent + INDENT_INCREMENT;
                 writeln!(f, "{:>scope_indent$}OpeningCurlyBracket: {opening_curly_bracket_column} = {{", "")?;
 
                 let after_end_scope_node_index = *node_index + raw_nodes_in_scope_count;
@@ -581,7 +548,6 @@ impl UntypedAst<'_, '_> {
 
                 let If { if_column, condition_expression_index } = &self.ifs[if_index.0 as usize];
                 let else_ifs = &self.else_ifs[if_index.0 as usize];
-                let else_ = &self.elses[if_index.0 as usize];
                 let do_columns = &self.do_columns[if_index.0 as usize];
 
                 let mut do_columns_iter = do_columns.iter();
@@ -597,7 +563,7 @@ impl UntypedAst<'_, '_> {
                 self.info_node(f, node_index, if_indent)?;
 
                 for ElseIf {
-                    else_: Else { else_column },
+                    else_column,
                     iff: If {
                         if_column: else_if_column,
                         condition_expression_index: else_if_condition_expression_index
@@ -615,8 +581,37 @@ impl UntypedAst<'_, '_> {
                     self.info_node(f, node_index, if_indent)?;
                 }
 
-                if let Some(Else { else_column }) = else_ {
-                    writeln!(f, "{:>indent$}Else: {else_column} = else", "")?;
+                return Ok(());
+            }
+            Node::IfElse { if_index, else_column } => {
+                let if_indent = indent + INDENT_INCREMENT;
+
+                let If { if_column, condition_expression_index } = &self.ifs[if_index.0 as usize];
+                let else_ifs = &self.else_ifs[if_index.0 as usize];
+                let do_columns = &self.do_columns[if_index.0 as usize];
+
+                let mut do_columns_iter = do_columns.iter();
+
+                writeln!(f, "{:>indent$}If: {if_column} = if", "")?;
+                self.info_expression(f, *condition_expression_index, if_indent)?;
+                if let Node::Scope { .. } = &self.nodes[*node_index as usize] {} else {
+                    let Some(do_column) = do_columns_iter.next() else {
+                        unreachable!("malformatted do statement");
+                    };
+                    writeln!(f, "{:>if_indent$}Do: {col} = do", "", col = do_column.get())?;
+                }
+                self.info_node(f, node_index, if_indent)?;
+
+                for ElseIf {
+                    else_column: else_in_else_if_column,
+                    iff: If {
+                        if_column: else_if_column,
+                        condition_expression_index: else_if_condition_expression_index
+                    },
+                } in else_ifs {
+                    writeln!(f, "{:>indent$}Else: {else_in_else_if_column} = else", "")?;
+                    writeln!(f, "{:>indent$}If: {else_if_column} = if", "")?;
+                    self.info_expression(f, *else_if_condition_expression_index, if_indent)?;
                     if let Node::Scope { .. } = &self.nodes[*node_index as usize] {} else {
                         let Some(do_column) = do_columns_iter.next() else {
                             unreachable!("malformatted do statement");
@@ -626,7 +621,14 @@ impl UntypedAst<'_, '_> {
                     self.info_node(f, node_index, if_indent)?;
                 }
 
-                return Ok(());
+                writeln!(f, "{:>indent$}Else: {else_column} = else", "")?;
+                if let Node::Scope { .. } = &self.nodes[*node_index as usize] {} else {
+                    let Some(do_column) = do_columns_iter.next() else {
+                        unreachable!("malformatted do statement");
+                    };
+                    writeln!(f, "{:>if_indent$}Do: {col} = do", "", col = do_column.get())?;
+                }
+                self.info_node(f, node_index, if_indent)
             }
         };
     }
@@ -648,11 +650,9 @@ impl UntypedAst<'_, '_> {
                 let literal_str = unsafe { core::str::from_utf8_unchecked(literal.0) };
                 writeln!(f, "{:>indent$}Integer: {column} = {prefix}{literal_str}", "", prefix = base.prefix())
             }
-            Expression::Ascii { character, column } => writeln!(f,
-                "{:>indent$}Ascii: {column} = {character}",
-                "",
-                character = *character as utf8,
-            ),
+            Expression::Ascii { character, column } => {
+                writeln!(f, "{:>indent$}Ascii: {column} = {character}", "", character = *character as utf8)
+            }
             Expression::Str { literal, column } => {
                 let literal_str = unsafe { core::str::from_utf8_unchecked(&literal.0) };
                 writeln!(f, "{:>indent$}Str: {column} = {literal_str}", "")
@@ -731,6 +731,46 @@ impl UntypedAst<'_, '_> {
             },
         };
     }
+
+    fn info_variable_definition(
+        &self,
+        f: &mut core::fmt::Formatter<'_>,
+        variable_definition_index: VariableDefinitionIndex,
+        indent: usize,
+    ) -> core::fmt::Result {
+        let VariableDefinition { name, name_column, type_annotation, initial_value } =
+            &self.variable_definitions[variable_definition_index.0 as usize];
+        writeln!(f, "{:>indent$}Name: {name_column} = {name}", "")?;
+
+        if let Some(TypeAnnotation {
+            colon_column,
+            type_name,
+            type_name_column,
+            array_dimensions,
+        }) = type_annotation
+        {
+            writeln!(f, "{:>indent$}Colon: {colon_column} = :", "")?;
+            writeln!(f, "{:>indent$}TypeName: {type_name_column} = {type_name}", "")?;
+
+            for ArrayDimension {
+                opening_square_bracket_column,
+                dimension_expression_index,
+                closing_square_bracket_column,
+            } in array_dimensions
+            {
+                writeln!(f, "{:>indent$}OpeningBracket: {opening_square_bracket_column} = [", "")?;
+                self.info_expression(f, *dimension_expression_index, indent)?;
+                writeln!(f, "{:>indent$}ClosingBracket: {closing_square_bracket_column} = ]", "")?;
+            }
+        }
+
+        if let Some(InitialValue { equals_column, initial_value_index }) = initial_value {
+            writeln!(f, "{:>indent$}Equals: {equals_column} = =", "")?;
+            self.info_expression(f, *initial_value_index, indent)?;
+        }
+
+        return Ok(());
+    }
 }
 
 impl Display for UntypedAst<'_, '_> {
@@ -752,7 +792,6 @@ pub struct Parser<'src, 'tokens: 'src> {
     token_index: offset,
     tokens: &'tokens [Token<'src>],
 
-    // IDEA(stefano): flatten placeholder indices into a single array and interpret each index as needed
     placeholder_scopes_indices: Vec<offset>,
     ast: UntypedAst<'src, 'tokens>,
 }
@@ -778,7 +817,6 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
             ifs: Vec::new(),
             else_ifs: Vec::new(),
-            elses: Vec::new(),
             do_columns: Vec::new(),
         };
 
@@ -1020,18 +1058,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let start_of_argument_token =
                     self.next_expected_token(Expected::ExpressionOrSemicolon)?;
                 if let TokenKind::SemiColon = start_of_argument_token.kind {
-                    return Ok(ParsedNode::Node(Node::Println {
-                        println_column: token.col,
-                        argument: None,
-                    }));
+                    return Ok(ParsedNode::Node(Node::PrintlnNoArg { println_column: token.col }));
                 }
 
                 let argument = self.expression(start_of_argument_token)?;
                 self.semicolon()?;
-                Ok(ParsedNode::Node(Node::Println {
-                    println_column: token.col,
-                    argument: Some(argument),
-                }))
+                Ok(ParsedNode::Node(Node::Println { println_column: token.col, argument }))
             }
             TokenKind::Eprint => {
                 let start_of_argument_token = self.next_expected_token(Expected::Expression)?;
@@ -1043,25 +1075,35 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let start_of_argument_token =
                     self.next_expected_token(Expected::ExpressionOrSemicolon)?;
                 if let TokenKind::SemiColon = start_of_argument_token.kind {
-                    return Ok(ParsedNode::Node(Node::Eprintln {
+                    return Ok(ParsedNode::Node(Node::EprintlnNoArg {
                         eprintln_column: token.col,
-                        argument: None,
                     }));
                 }
 
                 let argument = self.expression(start_of_argument_token)?;
                 self.semicolon()?;
-                Ok(ParsedNode::Node(Node::Eprintln {
-                    eprintln_column: token.col,
-                    argument: Some(argument),
-                }))
+                Ok(ParsedNode::Node(Node::Eprintln { eprintln_column: token.col, argument }))
             }
 
-            TokenKind::Mutability(mutability) => {
-                let variable_definition = self.variable_definition(token, *mutability)?;
+            TokenKind::Mutability(Mutability::Let) => {
+                let variable_definition = self.variable_definition(token)?;
+                self.ast.variable_definitions.push(variable_definition);
                 let variable_definition_index =
-                    self.ast.new_variable_definition(variable_definition);
-                Ok(ParsedNode::Node(Node::VariableDefinition { variable_definition_index }))
+                    VariableDefinitionIndex((self.ast.variable_definitions.len() - 1) as offset);
+                Ok(ParsedNode::Node(Node::LetVariableDefinition {
+                    mutability_column: token.col,
+                    variable_definition_index,
+                }))
+            }
+            TokenKind::Mutability(Mutability::Var) => {
+                let variable_definition = self.variable_definition(token)?;
+                self.ast.variable_definitions.push(variable_definition);
+                let variable_definition_index =
+                    VariableDefinitionIndex((self.ast.variable_definitions.len() - 1) as offset);
+                Ok(ParsedNode::Node(Node::VarVariableDefinition {
+                    mutability_column: token.col,
+                    variable_definition_index,
+                }))
             }
 
             TokenKind::Bracket(BracketKind::OpenCurly) => {
@@ -1167,7 +1209,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         self.token_index = next_token_index;
 
         let node = match self.any(next_token)? {
-            ParsedNode::Node(Node::VariableDefinition { .. }) => {
+            ParsedNode::Node(
+                Node::LetVariableDefinition { .. } | Node::VarVariableDefinition { .. },
+            ) => {
                 return Err(Error {
                     kind: ErrorKind::VariableInDoStatement,
                     col: next_token.col,
@@ -1555,12 +1599,16 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         self.next_expected_token(Expected::CommaOrClosingSquareBracket)?;
                     match comma_or_closing_square_bracket_token.kind {
                         TokenKind::Comma => {
-                            let Some(comma_column) = ArrayCommaColumn::new(comma_or_closing_square_bracket_token.col) else {
+                            let Some(comma_column) =
+                                ArrayCommaColumn::new(comma_or_closing_square_bracket_token.col)
+                            else {
                                 unreachable!("valid `,` should have non-zero column");
                             };
                             commas_columns.push(comma_column);
                         }
-                        TokenKind::Bracket(BracketKind::CloseSquare) => break 'items comma_or_closing_square_bracket_token.col,
+                        TokenKind::Bracket(BracketKind::CloseSquare) => {
+                            break 'items comma_or_closing_square_bracket_token.col
+                        }
                         TokenKind::Colon
                         | TokenKind::SemiColon
                         | TokenKind::Op(_)
@@ -2101,7 +2149,6 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn variable_definition(
         &mut self,
         mutability_token: &'tokens Token<'src>,
-        mutability: Mutability,
     ) -> Result<VariableDefinition<'src, 'tokens>, Error<ErrorKind>> {
         let variable_name_token = self.next_expected_token(Expected::VariableName)?;
         let variable_name = match &variable_name_token.kind {
@@ -2253,10 +2300,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let initial_value_index = self.expression(start_of_initial_value_token)?;
                 self.semicolon()?;
 
-                Some(InitialValue {
-                    equals_column: equals_or_semicolon_token.col,
-                    initial_value_index,
-                })
+                let Some(equals_column) = DoColumn::new(equals_or_semicolon_token.col) else {
+                    unreachable!("valid `do` should have non-zero column");
+                };
+
+                Some(InitialValue { equals_column, initial_value_index })
             }
             TokenKind::Bracket(_)
             | TokenKind::Colon
@@ -2301,8 +2349,6 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
 
         return Ok(VariableDefinition {
-            mutability,
-            mutability_column: mutability_token.col,
             name: variable_name,
             name_column: variable_name_token.col,
             type_annotation,
@@ -2319,17 +2365,17 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
         self.ast.ifs.push(If { if_column, condition_expression_index });
         self.ast.else_ifs.push(Vec::new());
-        self.ast.elses.push(None);
         self.ast.do_columns.push(Vec::new());
-        let if_index = (self.ast.ifs.len() - 1) as offset;
+        let if_index = IfIndex((self.ast.ifs.len() - 1) as offset);
         let do_columns_index = DoColumnsIndex((self.ast.do_columns.len() - 1) as offset);
 
-        self.ast.nodes.push(Node::If { if_index: IfIndex(if_index) });
+        self.ast.nodes.push(Node::If { if_index });
+        let placeholder_if_index = self.ast.nodes.len() - 1;
 
         self.parse_do_or_block_in_if_statement(do_columns_index)?;
 
         while let Some(Peeked {
-            next_token: &Token { kind: TokenKind::Else, col: else_column },
+            next_token: &Token { kind: TokenKind::Else, col: else_token_column },
             next_token_index,
         }) = self.peek_next_token()
         {
@@ -2344,23 +2390,21 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     self.ast.new_do_column(do_columns_index, after_else_token.col);
                     self.parse_single_do_statement_in_if_statement()?;
 
-                    let else_ = match ElseColumn::new(else_column) {
-                        Some(column) => Else { else_column: column },
-                        None => unreachable!("valid `else` should have non-zero column"),
+                    let Some(else_column) = ElseColumn::new(else_token_column) else {
+                        unreachable!("valid `else` should have non-zero column");
                     };
 
-                    self.ast.elses[if_index as usize] = Some(else_);
+                    self.ast.nodes[placeholder_if_index] = Node::IfElse { if_index, else_column };
                     break;
                 }
                 TokenKind::Bracket(BracketKind::OpenCurly) => {
                     self.parse_single_scope()?;
 
-                    let else_ = match ElseColumn::new(else_column) {
-                        Some(column) => Else { else_column: column },
-                        None => unreachable!("valid `else` should have non-zero column"),
+                    let Some(else_column) = ElseColumn::new(else_token_column) else {
+                        unreachable!("valid `else` should have non-zero column");
                     };
 
-                    self.ast.elses[if_index as usize] = Some(else_);
+                    self.ast.nodes[placeholder_if_index] = Node::IfElse { if_index, else_column };
                     break;
                 }
                 TokenKind::If => {
@@ -2369,16 +2413,18 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     let start_of_else_if_condition_expression_token = self.next_expected_token(Expected::Expression)?;
                     let else_if_condition_expression_index = self.expression(start_of_else_if_condition_expression_token)?;
 
-                    let else_ = match ElseColumn::new(else_column) {
-                        Some(column) => Else { else_column: column },
-                        None => unreachable!("valid `else` should have non-zero column"),
+                    let Some(else_column) = ElseColumn::new(else_token_column) else {
+                        unreachable!("valid `else` should have non-zero column");
                     };
 
                     let else_if = ElseIf {
-                        else_,
-                        iff: If { if_column: after_else_token.col, condition_expression_index: else_if_condition_expression_index },
+                        else_column,
+                        iff: If {
+                            if_column: after_else_token.col,
+                            condition_expression_index: else_if_condition_expression_index
+                        },
                     };
-                    self.ast.else_ifs[if_index as usize].push(else_if);
+                    self.ast.else_ifs[if_index.0 as usize].push(else_if);
 
                     self.parse_do_or_block_in_if_statement(do_columns_index)?;
                 }
@@ -2512,6 +2558,7 @@ pub enum ErrorKind {
 
 impl IntoErrorInfo for ErrorKind {
     fn info(&self) -> ErrorInfo {
+        #[rustfmt::skip]
         let (error_message, error_cause_message) = match self {
             Self::PrematureEndOfFile(expected) => (
                 "premature end of file".into(),
