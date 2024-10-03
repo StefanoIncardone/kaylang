@@ -236,31 +236,18 @@ impl Display for AssignmentOp {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ArrayItem {
-    comma_col: offset,
-    item: ExpressionIndex,
-}
-
-// TODO(stefano): allow for arrays of 0 and 1 items
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Array {
-    first_item: ExpressionIndex,
-    first_comma_column: offset,
-    second_item: ExpressionIndex,
-    items: Vec<ArrayItem>,
-    trailing_comma_column: Option<offset>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
-#[repr(transparent)]
-#[non_exhaustive]
-pub(crate) struct ExpressionIndex(pub(crate) offset);
+/// A valid array item separator comma can never be at the start of the file, hence a column value of 0 is invalid
+pub(crate) type ArrayCommaColumn = NonZero<offset>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 #[repr(transparent)]
 #[non_exhaustive]
 pub(crate) struct ArrayIndex(pub(crate) offset);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
+#[repr(transparent)]
+#[non_exhaustive]
+pub(crate) struct ExpressionIndex(pub(crate) offset);
 
 #[derive(Debug, Clone)]
 pub(crate) enum Expression<'src, 'tokens: 'src> {
@@ -447,7 +434,8 @@ pub struct UntypedAst<'src, 'tokens: 'src> {
     nodes: Vec<Node>,
 
     expressions: Vec<Expression<'src, 'tokens>>,
-    arrays: Vec<Array>,
+    array_items: Vec<Vec<ExpressionIndex>>,
+    array_commas_columns: Vec<Vec<ArrayCommaColumn>>,
 
     variable_definitions: Vec<VariableDefinition<'src, 'tokens>>,
 
@@ -462,12 +450,6 @@ impl<'src, 'tokens: 'src> UntypedAst<'src, 'tokens> {
     fn new_expression(&mut self, expression: Expression<'src, 'tokens>) -> ExpressionIndex {
         self.expressions.push(expression);
         return ExpressionIndex((self.expressions.len() - 1) as offset);
-    }
-
-    #[inline]
-    fn new_array(&mut self, array: Array) -> ArrayIndex {
-        self.arrays.push(array);
-        return ArrayIndex((self.arrays.len() - 1) as offset);
     }
 
     #[inline]
@@ -684,25 +666,29 @@ impl UntypedAst<'_, '_> {
             },
             Expression::Array {
                 opening_square_bracket_column,
-                array_index: array_expression_index,
+                array_index,
                 closing_square_bracket_column
             } => {
-                let array_expression = &self.arrays[array_expression_index.0 as usize];
                 writeln!(f, "{:>indent$}Array", "")?;
                 writeln!(f, "{:>expression_indent$}OpeningBracket: {opening_square_bracket_column} = [", "")?;
 
-                self.info_expression(f, array_expression.first_item, expression_indent)?;
-                writeln!(f, "{:>expression_indent$}Comma: {first_comma_col} = ,", "", first_comma_col = array_expression.first_comma_column)?;
+                let items = &self.array_items[array_index.0 as usize];
+                let commas = &self.array_commas_columns[array_index.0 as usize];
 
-                self.info_expression(f, array_expression.second_item, expression_indent)?;
+                let mut item_index = 0;
 
-                for item in &array_expression.items {
-                    writeln!(f, "{:>expression_indent$}Comma: {comma_col} = ,", "", comma_col = item.comma_col)?;
-                    self.info_expression(f, item.item, expression_indent)?;
+                while item_index < commas.len() {
+                    let item_expression_index = items[item_index];
+                    let comma_column = commas[item_index].get();
+                    item_index += 1;
+
+                    self.info_expression(f, item_expression_index, expression_indent)?;
+                    writeln!(f, "{:>expression_indent$}Comma: {comma_column} = ,", "")?;
                 }
 
-                if let Some(trailing_comma_col) = array_expression.trailing_comma_column {
-                    writeln!(f, "{:>expression_indent$}Comma: {trailing_comma_col} = ,", "")?;
+                if items.len() > commas.len() {
+                    let item_expression_index = items[item_index];
+                    self.info_expression(f, item_expression_index, expression_indent)?;
                 }
 
                 writeln!(f, "{:>expression_indent$}ClosingBracket: {closing_square_bracket_column} = [", "")
@@ -785,7 +771,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             nodes: Vec::new(),
 
             expressions: Vec::new(),
-            arrays: Vec::new(),
+            array_items: Vec::new(),
+            array_commas_columns: Vec::new(),
 
             variable_definitions: Vec::new(),
 
@@ -1548,68 +1535,32 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     closing_round_bracket_column: closing_round_bracket_token.col,
                 }
             }
-            TokenKind::Bracket(BracketKind::OpenSquare) => 'array: {
+            TokenKind::Bracket(BracketKind::OpenSquare) => {
                 let opening_square_bracket_token = token;
 
-                let start_of_first_item_token = self.next_expected_token(Expected::Expression)?;
-                // REMOVE(stefano): allow arrays of 0 elements
-                if let TokenKind::Bracket(BracketKind::CloseSquare) = start_of_first_item_token.kind
-                {
-                    return Err(Error {
-                        kind: ErrorKind::ArrayOfZeroItems,
-                        col: opening_square_bracket_token.col,
-                        pointers_count: opening_square_bracket_token.kind.display_len(),
-                    });
-                }
+                let mut items = Vec::<ExpressionIndex>::new();
+                let mut commas_columns = Vec::<ArrayCommaColumn>::new();
 
-                let first_item = self.expression(start_of_first_item_token)?;
+                let closing_square_bracket_column = 'items: loop {
+                    let start_of_item_token =
+                        self.next_expected_token(Expected::ArrayItemOrClosingSquareBracket)?;
+                    if let TokenKind::Bracket(BracketKind::CloseSquare) = start_of_item_token.kind {
+                        break 'items start_of_item_token.col;
+                    }
 
-                let first_comma_token = self.next_expected_token(Expected::Comma)?;
-                let TokenKind::Comma = first_comma_token.kind else {
-                    return Err(Error {
-                        kind: ErrorKind::ExpectedComma,
-                        col: first_comma_token.col,
-                        pointers_count: first_comma_token.kind.display_len(),
-                    });
-                };
+                    let item = self.expression(start_of_item_token)?;
+                    items.push(item);
 
-                let start_of_second_item_token = self.next_expected_token(Expected::Expression)?;
-                // REMOVE(stefano): allow arrays of 1 element
-                if let TokenKind::Bracket(BracketKind::CloseSquare) =
-                    start_of_second_item_token.kind
-                {
-                    return Err(Error {
-                        kind: ErrorKind::ArrayOfOneItem,
-                        col: opening_square_bracket_token.col,
-                        pointers_count: opening_square_bracket_token.kind.display_len(),
-                    });
-                }
-
-                let second_item = self.expression(start_of_second_item_token)?;
-
-                let mut items = Vec::<ArrayItem>::new();
-
-                loop {
                     let comma_or_closing_square_bracket_token =
                         self.next_expected_token(Expected::CommaOrClosingSquareBracket)?;
                     match comma_or_closing_square_bracket_token.kind {
-                        TokenKind::Comma => {}
-                        TokenKind::Bracket(BracketKind::CloseSquare) => {
-                            let array_index = self.ast.new_array(Array {
-                                first_item,
-                                first_comma_column: first_comma_token.col,
-                                second_item,
-                                items,
-                                trailing_comma_column: None,
-                            });
-
-                            break 'array Expression::Array {
-                                opening_square_bracket_column: opening_square_bracket_token.col,
-                                array_index,
-                                closing_square_bracket_column:
-                                    comma_or_closing_square_bracket_token.col,
+                        TokenKind::Comma => {
+                            let Some(comma_column) = ArrayCommaColumn::new(comma_or_closing_square_bracket_token.col) else {
+                                unreachable!("valid `,` should have non-zero column");
                             };
+                            commas_columns.push(comma_column);
                         }
+                        TokenKind::Bracket(BracketKind::CloseSquare) => break 'items comma_or_closing_square_bracket_token.col,
                         TokenKind::Colon
                         | TokenKind::SemiColon
                         | TokenKind::Op(_)
@@ -1638,33 +1589,21 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                                 pointers_count: comma_or_closing_square_bracket_token
                                     .kind
                                     .display_len(),
-                            })
+                            });
                         }
                         TokenKind::Unexpected(_)
                         | TokenKind::Comment(_)
                         | TokenKind::BlockComment(_) => self.should_have_been_skipped(token),
                     }
+                };
 
-                    let start_of_item_token =
-                        self.next_expected_token(Expected::ArrayItemOrClosingSquareBracket)?;
-                    if let TokenKind::Bracket(BracketKind::CloseSquare) = start_of_item_token.kind {
-                        let array_index = self.ast.new_array(Array {
-                            first_item,
-                            first_comma_column: first_comma_token.col,
-                            second_item,
-                            items,
-                            trailing_comma_column: Some(comma_or_closing_square_bracket_token.col),
-                        });
+                self.ast.array_items.push(items);
+                self.ast.array_commas_columns.push(commas_columns);
 
-                        break 'array Expression::Array {
-                            opening_square_bracket_column: opening_square_bracket_token.col,
-                            array_index,
-                            closing_square_bracket_column: start_of_item_token.col,
-                        };
-                    }
-
-                    let item = self.expression(start_of_item_token)?;
-                    items.push(ArrayItem { comma_col: start_of_item_token.col, item });
+                Expression::Array {
+                    opening_square_bracket_column: opening_square_bracket_token.col,
+                    array_index: ArrayIndex((self.ast.array_items.len() - 1) as offset),
+                    closing_square_bracket_column,
                 }
             }
             TokenKind::Op(
@@ -2549,8 +2488,6 @@ pub enum ErrorKind {
     ExpectedOperand,
     EmptyParenthesisExpression,
     ExpectedBracket(BracketKind),
-    ArrayOfZeroItems,
-    ArrayOfOneItem,
     ExpectedComma,
     MissingClosingSquareBracketInIndex,
 
@@ -2620,14 +2557,6 @@ impl IntoErrorInfo for ErrorKind {
             Self::ExpectedBracket(bracket) => (
                 "invalid expression".into(),
                 format!("expected '{bracket}' bracket before this token").into(),
-            ),
-            Self::ArrayOfZeroItems => (
-                "invalid array".into(),
-                "arrays of zero items are not allowed, as they are practically phantom values".into(),
-            ),
-            Self::ArrayOfOneItem => (
-                "invalid array".into(),
-                "arrays of one item are not allowed, as they are practically the same as the item itself".into(),
             ),
             Self::ExpectedComma => (
                 "invalid array".into(),
