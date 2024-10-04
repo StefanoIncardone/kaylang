@@ -1,3 +1,5 @@
+// IDEA(stefano): make operators variants values equals so that conversions can just be mem transmutes
+
 use super::{
     tokenizer::{
         ascii, utf8, Base, BracketKind, DisplayLen, Integer, Mutability, Op, Str, Token, TokenKind,
@@ -9,7 +11,7 @@ use core::{fmt::Display, num::NonZero};
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PrefixOp {
+pub(crate) enum PrefixOperator {
     Len,
     Not,
 
@@ -22,7 +24,7 @@ pub(crate) enum PrefixOp {
     SaturatingMinus,
 }
 
-impl Display for PrefixOp {
+impl Display for PrefixOperator {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
@@ -41,7 +43,7 @@ impl Display for PrefixOp {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BinaryOp {
+pub(crate) enum BinaryOperator {
     // binary operators
     Pow,
     WrappingPow,
@@ -94,7 +96,7 @@ pub(crate) enum BinaryOp {
     LessOrEquals,
 }
 
-impl Display for BinaryOp {
+impl Display for BinaryOperator {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
@@ -148,7 +150,7 @@ impl Display for BinaryOp {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AssignmentOp {
+pub(crate) enum AssignmentOperator {
     Equals,
 
     Pow,
@@ -189,7 +191,7 @@ pub(crate) enum AssignmentOp {
     BitOr,
 }
 
-impl Display for AssignmentOp {
+impl Display for AssignmentOperator {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
@@ -277,42 +279,42 @@ pub(crate) enum Expression<'src, 'tokens: 'src> {
         column: offset,
     },
     Array {
-        opening_square_bracket_column: offset,
-        array_index: ArrayIndex,
-        closing_square_bracket_column: offset,
+        open_square_bracket_column: offset,
+        array: ArrayIndex,
+        close_square_bracket_column: offset,
     },
 
     Prefix {
-        operator: PrefixOp,
+        operator: PrefixOperator,
         operator_column: offset,
-        prefix_expression_index: ExpressionIndex,
+        right_operand: ExpressionIndex,
     },
     Binary {
-        lhs_index: ExpressionIndex,
-        operator: BinaryOp,
+        left_operand: ExpressionIndex,
+        operator: BinaryOperator,
         operator_column: offset,
-        rhs_index: ExpressionIndex,
+        right_operand: ExpressionIndex,
     },
 
     Parenthesis {
-        opening_round_bracket_column: offset,
-        inner_expression_index: ExpressionIndex,
-        closing_round_bracket_column: offset,
+        open_round_bracket_column: offset,
+        inner_expression: ExpressionIndex,
+        close_round_bracket_column: offset,
     },
 
     Index {
-        indexed_expression_index: ExpressionIndex,
-        opening_square_bracket_column: offset,
-        index_expression_index: ExpressionIndex,
-        closing_square_bracket_column: offset,
+        indexed_expression: ExpressionIndex,
+        open_square_bracket_column: offset,
+        index_expression: ExpressionIndex,
+        close_square_bracket_column: offset,
     },
 }
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ArrayDimension {
-    opening_square_bracket_column: offset,
-    dimension_expression_index: ExpressionIndex,
-    closing_square_bracket_column: offset,
+    open_square_bracket_column: offset,
+    dimension_expression: ExpressionIndex,
+    close_square_bracket_column: offset,
 }
 
 #[derive(Debug, Clone)]
@@ -329,7 +331,7 @@ pub(crate) type EqualsColumn = NonZero<offset>;
 #[derive(Debug, Clone)]
 pub(crate) struct InitialValue {
     equals_column: EqualsColumn,
-    initial_value_index: ExpressionIndex,
+    expression: ExpressionIndex,
 }
 
 #[derive(Debug, Clone)]
@@ -354,17 +356,12 @@ pub(crate) type DoColumn = NonZero<offset>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 #[repr(transparent)]
 #[non_exhaustive]
-pub(crate) struct DoColumnsIndex(pub(crate) offset);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
-#[repr(transparent)]
-#[non_exhaustive]
 pub(crate) struct IfIndex(pub(crate) offset);
 
 #[derive(Debug, Clone)]
 pub(crate) struct If {
     pub(crate) if_column: offset,
-    pub(crate) condition_expression_index: ExpressionIndex,
+    pub(crate) condition_expression: ExpressionIndex,
 }
 
 #[derive(Debug, Clone)]
@@ -401,25 +398,25 @@ pub(crate) enum Node {
     },
 
     LetVariableDefinition {
-        mutability_column: offset,
-        variable_definition_index: VariableDefinitionIndex,
+        let_column: offset,
+        variable_definition: VariableDefinitionIndex,
     },
     VarVariableDefinition {
-        mutability_column: offset,
-        variable_definition_index: VariableDefinitionIndex,
+        var_column: offset,
+        variable_definition: VariableDefinitionIndex,
     },
     // IDEA(stefano): maybe move into expressions enum
     Assignment {
-        lhs: ExpressionIndex,
-        operator: AssignmentOp,
+        target: ExpressionIndex,
+        operator: AssignmentOperator,
         operator_column: offset,
-        rhs: ExpressionIndex,
+        new_value: ExpressionIndex,
     },
 
     Scope {
-        opening_curly_bracket_column: offset,
+        open_curly_bracket_column: offset,
         raw_nodes_in_scope_count: offset,
-        closing_curly_bracket_column: offset,
+        close_curly_bracket_column: offset,
     },
 
     If {
@@ -462,11 +459,11 @@ impl<'src, 'tokens: 'src> UntypedAst<'src, 'tokens> {
     }
 
     #[inline]
-    fn new_do_column(&mut self, do_columns_index: DoColumnsIndex, column: offset) {
+    fn new_do_column(&mut self, if_index: IfIndex, column: offset) {
         let Some(do_column) = DoColumn::new(column) else {
             unreachable!("valid `do` should have non-zero column");
         };
-        self.do_columns[do_columns_index.0 as usize].push(do_column);
+        self.do_columns[if_index.0 as usize].push(do_column);
     }
 }
 
@@ -513,47 +510,47 @@ impl UntypedAst<'_, '_> {
                 writeln!(f, "{:>indent$}Eprintln: {eprintln_column} = eprintln", "")
             }
 
-            Node::LetVariableDefinition { mutability_column, variable_definition_index } => {
-                writeln!(f, "{:>indent$}VariableDefinition: {mutability_column} = let", "")?;
+            Node::LetVariableDefinition { let_column, variable_definition } => {
+                writeln!(f, "{:>indent$}VariableDefinition: {let_column} = let", "")?;
                 let definition_indent = indent + INDENT_INCREMENT;
-                self.info_variable_definition(f, *variable_definition_index, definition_indent)
+                self.info_variable_definition(f, *variable_definition, definition_indent)
             }
-            Node::VarVariableDefinition { mutability_column, variable_definition_index } => {
-                writeln!(f, "{:>indent$}VariableDefinition: {mutability_column} = var", "")?;
+            Node::VarVariableDefinition { var_column, variable_definition } => {
+                writeln!(f, "{:>indent$}VariableDefinition: {var_column} = var", "")?;
                 let definition_indent = indent + INDENT_INCREMENT;
-                self.info_variable_definition(f, *variable_definition_index, definition_indent)
+                self.info_variable_definition(f, *variable_definition, definition_indent)
             }
-            Node::Assignment { lhs, operator, operator_column, rhs } => {
-                writeln!(f, "{:>indent$}Reassignment", "")?;
+            Node::Assignment { target, operator, operator_column, new_value } => {
+                writeln!(f, "{:>indent$}Assignment", "")?;
                 let assignment_indent = indent + INDENT_INCREMENT;
-                self.info_expression(f, *lhs, assignment_indent)?;
+                self.info_expression(f, *target, assignment_indent)?;
                 writeln!(f, "{:>assignment_indent$}AssignmentOp: {operator_column} = {operator}", "")?;
-                self.info_expression(f, *rhs, assignment_indent)
+                self.info_expression(f, *new_value, assignment_indent)
             }
 
-            Node::Scope { opening_curly_bracket_column, raw_nodes_in_scope_count, closing_curly_bracket_column } => {
+            Node::Scope { open_curly_bracket_column, raw_nodes_in_scope_count, close_curly_bracket_column } => {
                 writeln!(f, "{:>indent$}Scope", "")?;
                 let scope_indent = indent + INDENT_INCREMENT;
-                writeln!(f, "{:>scope_indent$}OpeningCurlyBracket: {opening_curly_bracket_column} = {{", "")?;
+                writeln!(f, "{:>scope_indent$}OpenCurlyBracket: {open_curly_bracket_column} = {{", "")?;
 
                 let after_end_scope_node_index = *node_index + raw_nodes_in_scope_count;
                 while *node_index < after_end_scope_node_index {
                     self.info_node(f, node_index, scope_indent)?;
                 }
-                writeln!(f, "{:>scope_indent$}ClosingCurlyBracket: {closing_curly_bracket_column} = }}", "")
+                writeln!(f, "{:>scope_indent$}CloseCurlyBracket: {close_curly_bracket_column} = }}", "")
             }
 
             Node::If { if_index } => {
                 let if_indent = indent + INDENT_INCREMENT;
 
-                let If { if_column, condition_expression_index } = &self.ifs[if_index.0 as usize];
+                let If { if_column, condition_expression } = &self.ifs[if_index.0 as usize];
                 let else_ifs = &self.else_ifs[if_index.0 as usize];
                 let do_columns = &self.do_columns[if_index.0 as usize];
 
                 let mut do_columns_iter = do_columns.iter();
 
                 writeln!(f, "{:>indent$}If: {if_column} = if", "")?;
-                self.info_expression(f, *condition_expression_index, if_indent)?;
+                self.info_expression(f, *condition_expression, if_indent)?;
                 if let Node::Scope { .. } = &self.nodes[*node_index as usize] {} else {
                     let Some(do_column) = do_columns_iter.next() else {
                         unreachable!("malformatted do statement");
@@ -566,12 +563,12 @@ impl UntypedAst<'_, '_> {
                     else_column,
                     iff: If {
                         if_column: else_if_column,
-                        condition_expression_index: else_if_condition_expression_index
+                        condition_expression: else_if_condition_expression
                     },
                 } in else_ifs {
                     writeln!(f, "{:>indent$}Else: {else_column} = else", "")?;
                     writeln!(f, "{:>indent$}If: {else_if_column} = if", "")?;
-                    self.info_expression(f, *else_if_condition_expression_index, if_indent)?;
+                    self.info_expression(f, *else_if_condition_expression, if_indent)?;
                     if let Node::Scope { .. } = &self.nodes[*node_index as usize] {} else {
                         let Some(do_column) = do_columns_iter.next() else {
                             unreachable!("malformatted do statement");
@@ -586,14 +583,14 @@ impl UntypedAst<'_, '_> {
             Node::IfElse { if_index, else_column } => {
                 let if_indent = indent + INDENT_INCREMENT;
 
-                let If { if_column, condition_expression_index } = &self.ifs[if_index.0 as usize];
+                let If { if_column, condition_expression } = &self.ifs[if_index.0 as usize];
                 let else_ifs = &self.else_ifs[if_index.0 as usize];
                 let do_columns = &self.do_columns[if_index.0 as usize];
 
                 let mut do_columns_iter = do_columns.iter();
 
                 writeln!(f, "{:>indent$}If: {if_column} = if", "")?;
-                self.info_expression(f, *condition_expression_index, if_indent)?;
+                self.info_expression(f, *condition_expression, if_indent)?;
                 if let Node::Scope { .. } = &self.nodes[*node_index as usize] {} else {
                     let Some(do_column) = do_columns_iter.next() else {
                         unreachable!("malformatted do statement");
@@ -606,12 +603,12 @@ impl UntypedAst<'_, '_> {
                     else_column: else_in_else_if_column,
                     iff: If {
                         if_column: else_if_column,
-                        condition_expression_index: else_if_condition_expression_index
+                        condition_expression: else_if_condition_expression
                     },
                 } in else_ifs {
                     writeln!(f, "{:>indent$}Else: {else_in_else_if_column} = else", "")?;
                     writeln!(f, "{:>indent$}If: {else_if_column} = if", "")?;
-                    self.info_expression(f, *else_if_condition_expression_index, if_indent)?;
+                    self.info_expression(f, *else_if_condition_expression, if_indent)?;
                     if let Node::Scope { .. } = &self.nodes[*node_index as usize] {} else {
                         let Some(do_column) = do_columns_iter.next() else {
                             unreachable!("malformatted do statement");
@@ -665,69 +662,69 @@ impl UntypedAst<'_, '_> {
                 writeln!(f, "{:>indent$}Identifier: {column} = {identifier}", "")
             },
             Expression::Array {
-                opening_square_bracket_column,
-                array_index,
-                closing_square_bracket_column
+                open_square_bracket_column,
+                array,
+                close_square_bracket_column
             } => {
                 writeln!(f, "{:>indent$}Array", "")?;
-                writeln!(f, "{:>expression_indent$}OpeningBracket: {opening_square_bracket_column} = [", "")?;
+                writeln!(f, "{:>expression_indent$}OpenBracket: {open_square_bracket_column} = [", "")?;
 
-                let items = &self.array_items[array_index.0 as usize];
-                let commas = &self.array_commas_columns[array_index.0 as usize];
+                let items = &self.array_items[array.0 as usize];
+                let commas = &self.array_commas_columns[array.0 as usize];
 
                 let mut item_index = 0;
 
                 while item_index < commas.len() {
-                    let item_expression_index = items[item_index];
+                    let item_expression = items[item_index];
                     let comma_column = commas[item_index].get();
                     item_index += 1;
 
-                    self.info_expression(f, item_expression_index, expression_indent)?;
+                    self.info_expression(f, item_expression, expression_indent)?;
                     writeln!(f, "{:>expression_indent$}Comma: {comma_column} = ,", "")?;
                 }
 
                 if items.len() > commas.len() {
-                    let item_expression_index = items[item_index];
-                    self.info_expression(f, item_expression_index, expression_indent)?;
+                    let item_expression = items[item_index];
+                    self.info_expression(f, item_expression, expression_indent)?;
                 }
 
-                writeln!(f, "{:>expression_indent$}ClosingBracket: {closing_square_bracket_column} = [", "")
+                writeln!(f, "{:>expression_indent$}CloseBracket: {close_square_bracket_column} = [", "")
             },
 
-            Expression::Prefix { operator, operator_column, prefix_expression_index } => {
+            Expression::Prefix { operator, operator_column, right_operand } => {
                 writeln!(f, "{:>indent$}PrefixExpression", "")?;
-                writeln!(f, "{:>expression_indent$}PrefixOp: {operator_column} = {operator}", "")?;
-                self.info_expression(f, *prefix_expression_index, expression_indent)
+                writeln!(f, "{:>expression_indent$}PrefixOperator: {operator_column} = {operator}", "")?;
+                self.info_expression(f, *right_operand, expression_indent)
             }
-            Expression::Binary { lhs_index, operator, operator_column, rhs_index } => {
+            Expression::Binary { left_operand, operator, operator_column, right_operand } => {
                 writeln!(f, "{:>indent$}BinaryExpression", "")?;
-                self.info_expression(f, *lhs_index, expression_indent)?;
-                writeln!(f, "{:>expression_indent$}BinaryOp: {operator_column} = {operator}", "")?;
-                self.info_expression(f, *rhs_index, expression_indent)
+                self.info_expression(f, *left_operand, expression_indent)?;
+                writeln!(f, "{:>expression_indent$}BinaryOperator: {operator_column} = {operator}", "")?;
+                self.info_expression(f, *right_operand, expression_indent)
             },
 
             Expression::Parenthesis {
-                opening_round_bracket_column,
-                inner_expression_index,
-                closing_round_bracket_column
+                open_round_bracket_column,
+                inner_expression,
+                close_round_bracket_column
             } => {
                 writeln!(f, "{:indent$}ParenthesisExpression", "")?;
-                writeln!(f, "{:>expression_indent$}OpeningParenthesis: {opening_round_bracket_column} = (", "")?;
-                self.info_expression(f, *inner_expression_index, expression_indent)?;
-                writeln!(f, "{:>expression_indent$}ClosingParenthesis: {closing_round_bracket_column} = )", "")
+                writeln!(f, "{:>expression_indent$}OpenRoundBracket: {open_round_bracket_column} = (", "")?;
+                self.info_expression(f, *inner_expression, expression_indent)?;
+                writeln!(f, "{:>expression_indent$}CloseRoundBracket: {close_round_bracket_column} = )", "")
             },
 
             Expression::Index {
-                indexed_expression_index,
-                opening_square_bracket_column,
-                index_expression_index,
-                closing_square_bracket_column
+                indexed_expression,
+                open_square_bracket_column,
+                index_expression,
+                close_square_bracket_column
             } => {
-                writeln!(f, "{:indent$}ArrayIndex", "")?;
-                self.info_expression(f, *indexed_expression_index, expression_indent)?;
-                writeln!(f, "{:>expression_indent$}OpeningBracket: {opening_square_bracket_column} = [", "")?;
-                self.info_expression(f, *index_expression_index, expression_indent)?;
-                writeln!(f, "{:>expression_indent$}ClosingBracket: {closing_square_bracket_column} = ]", "")
+                writeln!(f, "{:indent$}IndexExpression", "")?;
+                self.info_expression(f, *indexed_expression, expression_indent)?;
+                writeln!(f, "{:>expression_indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
+                self.info_expression(f, *index_expression, expression_indent)?;
+                writeln!(f, "{:>expression_indent$}CloseSquareBracket: {close_square_bracket_column} = ]", "")
             },
         };
     }
@@ -753,20 +750,24 @@ impl UntypedAst<'_, '_> {
             writeln!(f, "{:>indent$}TypeName: {type_name_column} = {type_name}", "")?;
 
             for ArrayDimension {
-                opening_square_bracket_column,
-                dimension_expression_index,
-                closing_square_bracket_column,
+                open_square_bracket_column,
+                dimension_expression,
+                close_square_bracket_column,
             } in array_dimensions
             {
-                writeln!(f, "{:>indent$}OpeningBracket: {opening_square_bracket_column} = [", "")?;
-                self.info_expression(f, *dimension_expression_index, indent)?;
-                writeln!(f, "{:>indent$}ClosingBracket: {closing_square_bracket_column} = ]", "")?;
+                writeln!(f, "{:>indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
+                self.info_expression(f, *dimension_expression, indent)?;
+                writeln!(
+                    f,
+                    "{:>indent$}CloseSquareBracket: {close_square_bracket_column} = ]",
+                    ""
+                )?;
             }
         }
 
-        if let Some(InitialValue { equals_column, initial_value_index }) = initial_value {
+        if let Some(InitialValue { equals_column, expression }) = initial_value {
             writeln!(f, "{:>indent$}Equals: {equals_column} = =", "")?;
-            self.info_expression(f, *initial_value_index, indent)?;
+            self.info_expression(f, *expression, indent)?;
         }
 
         return Ok(());
@@ -926,34 +927,38 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         | Op::OrEquals => {
                             #[allow(clippy::wildcard_enum_match_arm)]
                             let assignment_operator = match operator {
-                                Op::Equals => AssignmentOp::Equals,
-                                Op::PowEquals => AssignmentOp::Pow,
-                                Op::WrappingPowEquals => AssignmentOp::WrappingPow,
-                                Op::SaturatingPowEquals => AssignmentOp::SaturatingPow,
-                                Op::TimesEquals => AssignmentOp::Times,
-                                Op::WrappingTimesEquals => AssignmentOp::WrappingTimes,
-                                Op::SaturatingTimesEquals => AssignmentOp::SaturatingTimes,
-                                Op::DivideEquals => AssignmentOp::Divide,
-                                Op::WrappingDivideEquals => AssignmentOp::WrappingDivide,
-                                Op::SaturatingDivideEquals => AssignmentOp::SaturatingDivide,
-                                Op::RemainderEquals => AssignmentOp::Remainder,
-                                Op::PlusEquals => AssignmentOp::Plus,
-                                Op::WrappingPlusEquals => AssignmentOp::WrappingPlus,
-                                Op::SaturatingPlusEquals => AssignmentOp::SaturatingPlus,
-                                Op::MinusEquals => AssignmentOp::Minus,
-                                Op::WrappingMinusEquals => AssignmentOp::WrappingMinus,
-                                Op::SaturatingMinusEquals => AssignmentOp::SaturatingMinus,
-                                Op::LeftShiftEquals => AssignmentOp::LeftShift,
-                                Op::WrappingLeftShiftEquals => AssignmentOp::WrappingLeftShift,
-                                Op::SaturatingLeftShiftEquals => AssignmentOp::SaturatingLeftShift,
-                                Op::RightShiftEquals => AssignmentOp::RightShift,
-                                Op::LeftRotateEquals => AssignmentOp::LeftRotate,
-                                Op::RightRotateEquals => AssignmentOp::RightRotate,
-                                Op::BitAndEquals => AssignmentOp::BitAnd,
-                                Op::BitXorEquals => AssignmentOp::BitXor,
-                                Op::BitOrEquals => AssignmentOp::BitOr,
-                                Op::AndEquals => AssignmentOp::And,
-                                Op::OrEquals => AssignmentOp::Or,
+                                Op::Equals => AssignmentOperator::Equals,
+                                Op::PowEquals => AssignmentOperator::Pow,
+                                Op::WrappingPowEquals => AssignmentOperator::WrappingPow,
+                                Op::SaturatingPowEquals => AssignmentOperator::SaturatingPow,
+                                Op::TimesEquals => AssignmentOperator::Times,
+                                Op::WrappingTimesEquals => AssignmentOperator::WrappingTimes,
+                                Op::SaturatingTimesEquals => AssignmentOperator::SaturatingTimes,
+                                Op::DivideEquals => AssignmentOperator::Divide,
+                                Op::WrappingDivideEquals => AssignmentOperator::WrappingDivide,
+                                Op::SaturatingDivideEquals => AssignmentOperator::SaturatingDivide,
+                                Op::RemainderEquals => AssignmentOperator::Remainder,
+                                Op::PlusEquals => AssignmentOperator::Plus,
+                                Op::WrappingPlusEquals => AssignmentOperator::WrappingPlus,
+                                Op::SaturatingPlusEquals => AssignmentOperator::SaturatingPlus,
+                                Op::MinusEquals => AssignmentOperator::Minus,
+                                Op::WrappingMinusEquals => AssignmentOperator::WrappingMinus,
+                                Op::SaturatingMinusEquals => AssignmentOperator::SaturatingMinus,
+                                Op::LeftShiftEquals => AssignmentOperator::LeftShift,
+                                Op::WrappingLeftShiftEquals => {
+                                    AssignmentOperator::WrappingLeftShift
+                                }
+                                Op::SaturatingLeftShiftEquals => {
+                                    AssignmentOperator::SaturatingLeftShift
+                                }
+                                Op::RightShiftEquals => AssignmentOperator::RightShift,
+                                Op::LeftRotateEquals => AssignmentOperator::LeftRotate,
+                                Op::RightRotateEquals => AssignmentOperator::RightRotate,
+                                Op::BitAndEquals => AssignmentOperator::BitAnd,
+                                Op::BitXorEquals => AssignmentOperator::BitXor,
+                                Op::BitOrEquals => AssignmentOperator::BitOr,
+                                Op::AndEquals => AssignmentOperator::And,
+                                Op::OrEquals => AssignmentOperator::Or,
                                 _ => self.invalid_token(
                                     after_expression_token,
                                     "unexpected operator".into(),
@@ -967,10 +972,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
                             self.semicolon()?;
                             Ok(ParsedNode::Node(Node::Assignment {
-                                lhs: expression_index,
+                                target: expression_index,
                                 operator: assignment_operator,
                                 operator_column: after_expression_token.col,
-                                rhs: new_value,
+                                new_value,
                             }))
                         }
 
@@ -1012,7 +1017,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         | Op::LessOrEquals => self.invalid_token(
                             after_expression_token,
                             "unexpected operator".into(),
-                            "should have been part of the lhs".into(),
+                            "should have been part of the left operand".into(),
                         ),
                     },
                     TokenKind::Bracket(_)
@@ -1088,21 +1093,21 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             TokenKind::Mutability(Mutability::Let) => {
                 let variable_definition = self.variable_definition(token)?;
                 self.ast.variable_definitions.push(variable_definition);
-                let variable_definition_index =
-                    VariableDefinitionIndex((self.ast.variable_definitions.len() - 1) as offset);
                 Ok(ParsedNode::Node(Node::LetVariableDefinition {
-                    mutability_column: token.col,
-                    variable_definition_index,
+                    let_column: token.col,
+                    variable_definition: VariableDefinitionIndex(
+                        (self.ast.variable_definitions.len() - 1) as offset,
+                    ),
                 }))
             }
             TokenKind::Mutability(Mutability::Var) => {
                 let variable_definition = self.variable_definition(token)?;
                 self.ast.variable_definitions.push(variable_definition);
-                let variable_definition_index =
-                    VariableDefinitionIndex((self.ast.variable_definitions.len() - 1) as offset);
                 Ok(ParsedNode::Node(Node::VarVariableDefinition {
-                    mutability_column: token.col,
-                    variable_definition_index,
+                    var_column: token.col,
+                    variable_definition: VariableDefinitionIndex(
+                        (self.ast.variable_definitions.len() - 1) as offset,
+                    ),
                 }))
             }
 
@@ -1110,9 +1115,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 self.placeholder_scopes_indices.push(self.ast.nodes.len() as offset);
 
                 let placeholder_scope = Node::Scope {
-                    opening_curly_bracket_column: token.col,
+                    open_curly_bracket_column: token.col,
                     raw_nodes_in_scope_count: 0,
-                    closing_curly_bracket_column: 0,
+                    close_curly_bracket_column: 0,
                 };
                 Ok(ParsedNode::Node(placeholder_scope))
             }
@@ -1122,7 +1127,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     self.unbalanced_bracket(token);
                 };
 
-                let Node::Scope { raw_nodes_in_scope_count, closing_curly_bracket_column, .. } =
+                let Node::Scope { raw_nodes_in_scope_count, close_curly_bracket_column, .. } =
                     &mut self.ast.nodes[first_scope_node_index as usize]
                 else {
                     self.invalid_token(
@@ -1133,7 +1138,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 };
 
                 *raw_nodes_in_scope_count = last_scope_node_index - first_scope_node_index;
-                *closing_curly_bracket_column = token.col;
+                *close_curly_bracket_column = token.col;
                 Ok(ParsedNode::ScopeEnd)
             }
 
@@ -1259,7 +1264,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
     fn parse_do_or_block_in_if_statement(
         &mut self,
-        do_columns_index: DoColumnsIndex,
+        if_index: IfIndex,
     ) -> Result<(), Error<ErrorKind>> {
         let Peeked { next_token, next_token_index } =
             self.peek_next_expected_token(Expected::DoOrOpenCurlyBracket)?;
@@ -1268,7 +1273,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             TokenKind::Do => {
                 self.token_index = next_token_index;
 
-                self.ast.new_do_column(do_columns_index, next_token.col);
+                self.ast.new_do_column(if_index, next_token.col);
                 self.parse_single_do_statement_in_if_statement()
             }
             TokenKind::Bracket(BracketKind::OpenCurly) => self.parse_single_scope(),
@@ -1545,7 +1550,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 Expression::Identifier { identifier, column: token.col }
             }
             TokenKind::Bracket(BracketKind::OpenRound) => {
-                let opening_round_bracket_token = token;
+                let open_round_bracket_token = token;
 
                 let start_of_inner_expression_token =
                     self.next_expected_token(Expected::Operand)?;
@@ -1560,34 +1565,34 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     });
                 }
 
-                let inner_expression_index = self.expression(start_of_inner_expression_token)?;
+                let expression = self.expression(start_of_inner_expression_token)?;
 
-                let closing_round_bracket_token =
-                    self.next_expected_token(Expected::ClosingRoundBracket)?;
-                let TokenKind::Bracket(BracketKind::CloseRound) = closing_round_bracket_token.kind
+                let close_round_bracket_token =
+                    self.next_expected_token(Expected::CloseRoundBracket)?;
+                let TokenKind::Bracket(BracketKind::CloseRound) = close_round_bracket_token.kind
                 else {
                     return Err(Error {
                         kind: ErrorKind::ExpectedBracket(BracketKind::CloseRound),
-                        col: closing_round_bracket_token.col,
-                        pointers_count: closing_round_bracket_token.kind.display_len(),
+                        col: close_round_bracket_token.col,
+                        pointers_count: close_round_bracket_token.kind.display_len(),
                     });
                 };
 
                 Expression::Parenthesis {
-                    opening_round_bracket_column: opening_round_bracket_token.col,
-                    inner_expression_index,
-                    closing_round_bracket_column: closing_round_bracket_token.col,
+                    open_round_bracket_column: open_round_bracket_token.col,
+                    inner_expression: expression,
+                    close_round_bracket_column: close_round_bracket_token.col,
                 }
             }
             TokenKind::Bracket(BracketKind::OpenSquare) => {
-                let opening_square_bracket_token = token;
+                let open_square_bracket_token = token;
 
                 let mut items = Vec::<ExpressionIndex>::new();
                 let mut commas_columns = Vec::<ArrayCommaColumn>::new();
 
-                let closing_square_bracket_column = 'items: loop {
+                let close_square_bracket_column = 'items: loop {
                     let start_of_item_token =
-                        self.next_expected_token(Expected::ArrayItemOrClosingSquareBracket)?;
+                        self.next_expected_token(Expected::ArrayItemOrCloseSquareBracket)?;
                     if let TokenKind::Bracket(BracketKind::CloseSquare) = start_of_item_token.kind {
                         break 'items start_of_item_token.col;
                     }
@@ -1595,19 +1600,19 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     let item = self.expression(start_of_item_token)?;
                     items.push(item);
 
-                    let comma_or_closing_square_bracket_token =
-                        self.next_expected_token(Expected::CommaOrClosingSquareBracket)?;
-                    match comma_or_closing_square_bracket_token.kind {
+                    let comma_or_close_square_bracket_token =
+                        self.next_expected_token(Expected::CommaOrCloseSquareBracket)?;
+                    match comma_or_close_square_bracket_token.kind {
                         TokenKind::Comma => {
                             let Some(comma_column) =
-                                ArrayCommaColumn::new(comma_or_closing_square_bracket_token.col)
+                                ArrayCommaColumn::new(comma_or_close_square_bracket_token.col)
                             else {
                                 unreachable!("valid `,` should have non-zero column");
                             };
                             commas_columns.push(comma_column);
                         }
                         TokenKind::Bracket(BracketKind::CloseSquare) => {
-                            break 'items comma_or_closing_square_bracket_token.col
+                            break 'items comma_or_close_square_bracket_token.col
                         }
                         TokenKind::Colon
                         | TokenKind::SemiColon
@@ -1633,8 +1638,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         | TokenKind::Continue => {
                             return Err(Error {
                                 kind: ErrorKind::ExpectedComma,
-                                col: comma_or_closing_square_bracket_token.col,
-                                pointers_count: comma_or_closing_square_bracket_token
+                                col: comma_or_close_square_bracket_token.col,
+                                pointers_count: comma_or_close_square_bracket_token
                                     .kind
                                     .display_len(),
                             });
@@ -1649,9 +1654,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 self.ast.array_commas_columns.push(commas_columns);
 
                 Expression::Array {
-                    opening_square_bracket_column: opening_square_bracket_token.col,
-                    array_index: ArrayIndex((self.ast.array_items.len() - 1) as offset),
-                    closing_square_bracket_column,
+                    open_square_bracket_column: open_square_bracket_token.col,
+                    array: ArrayIndex((self.ast.array_items.len() - 1) as offset),
+                    close_square_bracket_column,
                 }
             }
             TokenKind::Op(
@@ -1665,19 +1670,18 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 | Op::Not),
             ) => {
                 let start_of_prefix_expression = self.next_expected_token(Expected::Expression)?;
-                let prefix_expression_index =
-                    self.primary_expression(start_of_prefix_expression)?;
+                let right_operand = self.primary_expression(start_of_prefix_expression)?;
 
                 #[allow(clippy::wildcard_enum_match_arm)]
                 let prefix_operator = match operator {
-                    Op::Len => PrefixOp::Len,
-                    Op::Plus => PrefixOp::Plus,
-                    Op::WrappingPlus => PrefixOp::WrappingPlus,
-                    Op::SaturatingPlus => PrefixOp::SaturatingPlus,
-                    Op::Minus => PrefixOp::Minus,
-                    Op::WrappingMinus => PrefixOp::WrappingMinus,
-                    Op::SaturatingMinus => PrefixOp::SaturatingMinus,
-                    Op::Not => PrefixOp::Not,
+                    Op::Len => PrefixOperator::Len,
+                    Op::Plus => PrefixOperator::Plus,
+                    Op::WrappingPlus => PrefixOperator::WrappingPlus,
+                    Op::SaturatingPlus => PrefixOperator::SaturatingPlus,
+                    Op::Minus => PrefixOperator::Minus,
+                    Op::WrappingMinus => PrefixOperator::WrappingMinus,
+                    Op::SaturatingMinus => PrefixOperator::SaturatingMinus,
+                    Op::Not => PrefixOperator::Not,
                     _ => self.invalid_token(
                         token,
                         "unexpected operator".into(),
@@ -1688,7 +1692,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 Expression::Prefix {
                     operator: prefix_operator,
                     operator_column: token.col,
-                    prefix_expression_index,
+                    right_operand,
                 }
             }
             TokenKind::Mutability(_)
@@ -1729,34 +1733,33 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 next_token:
                     &Token {
                         kind: TokenKind::Bracket(BracketKind::OpenSquare),
-                        col: opening_square_bracket_column,
+                        col: open_square_bracket_column,
                     },
-                next_token_index: opening_square_bracket_token_index,
+                next_token_index: open_square_bracket_token_index,
             }) = self.peek_next_token()
             else {
                 break;
             };
-            self.token_index = opening_square_bracket_token_index;
+            self.token_index = open_square_bracket_token_index;
 
             let start_of_index_expression_token = self.next_expected_token(Expected::Expression)?;
-            let index_expression_index = self.expression(start_of_index_expression_token)?;
+            let index_expression = self.expression(start_of_index_expression_token)?;
             let end_of_index_expression_token = self.peek_previous_token();
 
-            let after_expression_token =
-                self.next_expected_token(Expected::ClosingSquareBracket)?;
+            let after_expression_token = self.next_expected_token(Expected::CloseSquareBracket)?;
             let TokenKind::Bracket(BracketKind::CloseSquare) = after_expression_token.kind else {
                 return Err(Error {
-                    kind: ErrorKind::MissingClosingSquareBracketInIndex,
+                    kind: ErrorKind::MissingCloseSquareBracketInIndex,
                     col: end_of_index_expression_token.col,
                     pointers_count: end_of_index_expression_token.kind.display_len(),
                 });
             };
 
             expression = Expression::Index {
-                indexed_expression_index: self.ast.new_expression(expression),
-                opening_square_bracket_column,
-                index_expression_index,
-                closing_square_bracket_column: after_expression_token.col,
+                indexed_expression: self.ast.new_expression(expression),
+                open_square_bracket_column,
+                index_expression,
+                close_square_bracket_column: after_expression_token.col,
             };
         }
 
@@ -1770,16 +1773,16 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     ) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 3] = [Op::Pow, Op::WrappingPow, Op::SaturatingPow];
 
-        let mut lhs_index = self.primary_expression(token)?;
+        let mut left_operand = self.primary_expression(token)?;
         while let Some(Operator { token: operator_token, operator }) = self.operator(&OPS) {
-            let start_of_rhs_token = self.next_expected_token(Expected::Operand)?;
-            let rhs_index = self.primary_expression(start_of_rhs_token)?;
+            let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
+            let right_operand = self.primary_expression(start_of_right_operand_token)?;
 
             #[allow(clippy::wildcard_enum_match_arm)]
             let binary_operator = match operator {
-                Op::Pow => BinaryOp::Pow,
-                Op::WrappingPow => BinaryOp::WrappingPow,
-                Op::SaturatingPow => BinaryOp::SaturatingPow,
+                Op::Pow => BinaryOperator::Pow,
+                Op::WrappingPow => BinaryOperator::WrappingPow,
+                Op::SaturatingPow => BinaryOperator::SaturatingPow,
                 _ => self.invalid_token(
                     operator_token,
                     "unexpected operator".into(),
@@ -1787,15 +1790,15 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 ),
             };
 
-            lhs_index = self.ast.new_expression(Expression::Binary {
-                lhs_index,
+            left_operand = self.ast.new_expression(Expression::Binary {
+                left_operand,
                 operator: binary_operator,
                 operator_column: operator_token.col,
-                rhs_index,
+                right_operand,
             });
         }
 
-        return Ok(lhs_index);
+        return Ok(left_operand);
     }
 
     fn multiplicative_expression(
@@ -1812,20 +1815,20 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             Op::Remainder,
         ];
 
-        let mut lhs_index = self.exponentiative_expression(token)?;
+        let mut left_operand = self.exponentiative_expression(token)?;
         while let Some(Operator { token: operator_token, operator }) = self.operator(&OPS) {
-            let start_of_rhs_token = self.next_expected_token(Expected::Operand)?;
-            let rhs_index = self.exponentiative_expression(start_of_rhs_token)?;
+            let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
+            let right_operand = self.exponentiative_expression(start_of_right_operand_token)?;
 
             #[allow(clippy::wildcard_enum_match_arm)]
             let binary_operator = match operator {
-                Op::Times => BinaryOp::Times,
-                Op::WrappingTimes => BinaryOp::WrappingTimes,
-                Op::SaturatingTimes => BinaryOp::SaturatingTimes,
-                Op::Divide => BinaryOp::Divide,
-                Op::WrappingDivide => BinaryOp::WrappingDivide,
-                Op::SaturatingDivide => BinaryOp::SaturatingDivide,
-                Op::Remainder => BinaryOp::Remainder,
+                Op::Times => BinaryOperator::Times,
+                Op::WrappingTimes => BinaryOperator::WrappingTimes,
+                Op::SaturatingTimes => BinaryOperator::SaturatingTimes,
+                Op::Divide => BinaryOperator::Divide,
+                Op::WrappingDivide => BinaryOperator::WrappingDivide,
+                Op::SaturatingDivide => BinaryOperator::SaturatingDivide,
+                Op::Remainder => BinaryOperator::Remainder,
                 _ => self.invalid_token(
                     operator_token,
                     "unexpected operator".into(),
@@ -1833,15 +1836,15 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 ),
             };
 
-            lhs_index = self.ast.new_expression(Expression::Binary {
-                lhs_index,
+            left_operand = self.ast.new_expression(Expression::Binary {
+                left_operand,
                 operator: binary_operator,
                 operator_column: operator_token.col,
-                rhs_index,
+                right_operand,
             });
         }
 
-        return Ok(lhs_index);
+        return Ok(left_operand);
     }
 
     fn additive_expression(
@@ -1857,19 +1860,19 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             Op::SaturatingMinus,
         ];
 
-        let mut lhs_index = self.multiplicative_expression(token)?;
+        let mut left_operand = self.multiplicative_expression(token)?;
         while let Some(Operator { token: operator_token, operator }) = self.operator(&OPS) {
-            let start_of_rhs_token = self.next_expected_token(Expected::Operand)?;
-            let rhs_index = self.multiplicative_expression(start_of_rhs_token)?;
+            let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
+            let right_operand = self.multiplicative_expression(start_of_right_operand_token)?;
 
             #[allow(clippy::wildcard_enum_match_arm)]
             let binary_operator = match operator {
-                Op::Plus => BinaryOp::Plus,
-                Op::WrappingPlus => BinaryOp::WrappingPlus,
-                Op::SaturatingPlus => BinaryOp::SaturatingPlus,
-                Op::Minus => BinaryOp::Minus,
-                Op::WrappingMinus => BinaryOp::WrappingMinus,
-                Op::SaturatingMinus => BinaryOp::SaturatingMinus,
+                Op::Plus => BinaryOperator::Plus,
+                Op::WrappingPlus => BinaryOperator::WrappingPlus,
+                Op::SaturatingPlus => BinaryOperator::SaturatingPlus,
+                Op::Minus => BinaryOperator::Minus,
+                Op::WrappingMinus => BinaryOperator::WrappingMinus,
+                Op::SaturatingMinus => BinaryOperator::SaturatingMinus,
                 _ => self.invalid_token(
                     operator_token,
                     "unexpected operator".into(),
@@ -1877,15 +1880,15 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 ),
             };
 
-            lhs_index = self.ast.new_expression(Expression::Binary {
-                lhs_index,
+            left_operand = self.ast.new_expression(Expression::Binary {
+                left_operand,
                 operator: binary_operator,
                 operator_column: operator_token.col,
-                rhs_index,
+                right_operand,
             });
         }
 
-        return Ok(lhs_index);
+        return Ok(left_operand);
     }
 
     fn shift_expression(
@@ -1901,19 +1904,19 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             Op::RightRotate,
         ];
 
-        let mut lhs_index = self.additive_expression(token)?;
+        let mut left_operand = self.additive_expression(token)?;
         while let Some(Operator { token: operator_token, operator }) = self.operator(&OPS) {
-            let start_of_rhs_token = self.next_expected_token(Expected::Operand)?;
-            let rhs_index = self.additive_expression(start_of_rhs_token)?;
+            let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
+            let right_operand = self.additive_expression(start_of_right_operand_token)?;
 
             #[allow(clippy::wildcard_enum_match_arm)]
             let binary_operator = match operator {
-                Op::LeftShift => BinaryOp::LeftShift,
-                Op::WrappingLeftShift => BinaryOp::WrappingLeftShift,
-                Op::SaturatingLeftShift => BinaryOp::SaturatingLeftShift,
-                Op::RightShift => BinaryOp::RightShift,
-                Op::LeftRotate => BinaryOp::LeftRotate,
-                Op::RightRotate => BinaryOp::RightRotate,
+                Op::LeftShift => BinaryOperator::LeftShift,
+                Op::WrappingLeftShift => BinaryOperator::WrappingLeftShift,
+                Op::SaturatingLeftShift => BinaryOperator::SaturatingLeftShift,
+                Op::RightShift => BinaryOperator::RightShift,
+                Op::LeftRotate => BinaryOperator::LeftRotate,
+                Op::RightRotate => BinaryOperator::RightRotate,
                 _ => self.invalid_token(
                     operator_token,
                     "unexpected operator".into(),
@@ -1921,15 +1924,15 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 ),
             };
 
-            lhs_index = self.ast.new_expression(Expression::Binary {
-                lhs_index,
+            left_operand = self.ast.new_expression(Expression::Binary {
+                left_operand,
                 operator: binary_operator,
                 operator_column: operator_token.col,
-                rhs_index,
+                right_operand,
             });
         }
 
-        return Ok(lhs_index);
+        return Ok(left_operand);
     }
 
     fn bitand_expression(
@@ -1938,14 +1941,14 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     ) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 1] = [Op::BitAnd];
 
-        let mut lhs_index = self.shift_expression(token)?;
+        let mut left_operand = self.shift_expression(token)?;
         while let Some(Operator { token: operator_token, operator }) = self.operator(&OPS) {
-            let start_of_rhs_token = self.next_expected_token(Expected::Operand)?;
-            let rhs_index = self.shift_expression(start_of_rhs_token)?;
+            let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
+            let right_operand = self.shift_expression(start_of_right_operand_token)?;
 
             #[allow(clippy::wildcard_enum_match_arm)]
             let binary_operator = match operator {
-                Op::BitAnd => BinaryOp::BitAnd,
+                Op::BitAnd => BinaryOperator::BitAnd,
                 _ => self.invalid_token(
                     operator_token,
                     "unexpected operator".into(),
@@ -1953,15 +1956,15 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 ),
             };
 
-            lhs_index = self.ast.new_expression(Expression::Binary {
-                lhs_index,
+            left_operand = self.ast.new_expression(Expression::Binary {
+                left_operand,
                 operator: binary_operator,
                 operator_column: operator_token.col,
-                rhs_index,
+                right_operand,
             });
         }
 
-        return Ok(lhs_index);
+        return Ok(left_operand);
     }
 
     fn bitxor_expression(
@@ -1970,14 +1973,14 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     ) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 1] = [Op::BitXor];
 
-        let mut lhs_index = self.bitand_expression(token)?;
+        let mut left_operand = self.bitand_expression(token)?;
         while let Some(Operator { token: operator_token, operator }) = self.operator(&OPS) {
-            let start_of_rhs_token = self.next_expected_token(Expected::Operand)?;
-            let rhs_index = self.bitand_expression(start_of_rhs_token)?;
+            let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
+            let right_operand = self.bitand_expression(start_of_right_operand_token)?;
 
             #[allow(clippy::wildcard_enum_match_arm)]
             let binary_operator = match operator {
-                Op::BitXor => BinaryOp::BitXor,
+                Op::BitXor => BinaryOperator::BitXor,
                 _ => self.invalid_token(
                     operator_token,
                     "unexpected operator".into(),
@@ -1985,15 +1988,15 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 ),
             };
 
-            lhs_index = self.ast.new_expression(Expression::Binary {
-                lhs_index,
+            left_operand = self.ast.new_expression(Expression::Binary {
+                left_operand,
                 operator: binary_operator,
                 operator_column: operator_token.col,
-                rhs_index,
+                right_operand,
             });
         }
 
-        return Ok(lhs_index);
+        return Ok(left_operand);
     }
 
     fn bitor_expression(
@@ -2002,14 +2005,14 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     ) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 1] = [Op::BitOr];
 
-        let mut lhs_index = self.bitxor_expression(token)?;
+        let mut left_operand = self.bitxor_expression(token)?;
         while let Some(Operator { token: operator_token, operator }) = self.operator(&OPS) {
-            let start_of_rhs_token = self.next_expected_token(Expected::Operand)?;
-            let rhs_index = self.bitxor_expression(start_of_rhs_token)?;
+            let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
+            let right_operand = self.bitxor_expression(start_of_right_operand_token)?;
 
             #[allow(clippy::wildcard_enum_match_arm)]
             let binary_operator = match operator {
-                Op::BitOr => BinaryOp::BitOr,
+                Op::BitOr => BinaryOperator::BitOr,
                 _ => self.invalid_token(
                     operator_token,
                     "unexpected operator".into(),
@@ -2017,15 +2020,15 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 ),
             };
 
-            lhs_index = self.ast.new_expression(Expression::Binary {
-                lhs_index,
+            left_operand = self.ast.new_expression(Expression::Binary {
+                left_operand,
                 operator: binary_operator,
                 operator_column: operator_token.col,
-                rhs_index,
+                right_operand,
             });
         }
 
-        return Ok(lhs_index);
+        return Ok(left_operand);
     }
 
     fn comparison_expression(
@@ -2042,35 +2045,35 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             Op::LessOrEquals,
         ];
 
-        let mut lhs_index = self.bitor_expression(token)?;
+        let mut left_operand = self.bitor_expression(token)?;
         while let Some(Operator { token: operator_token, operator }) = self.operator(&OPS) {
-            let start_of_rhs_token = self.next_expected_token(Expected::Operand)?;
-            let rhs_index = self.bitor_expression(start_of_rhs_token)?;
+            let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
+            let right_operand = self.bitor_expression(start_of_right_operand_token)?;
 
             #[allow(clippy::wildcard_enum_match_arm)]
             let comparison_operator = match operator {
-                Op::Compare => BinaryOp::Compare,
-                Op::EqualsEquals => BinaryOp::EqualsEquals,
-                Op::NotEquals => BinaryOp::NotEquals,
-                Op::Greater => BinaryOp::Greater,
-                Op::GreaterOrEquals => BinaryOp::GreaterOrEquals,
-                Op::Less => BinaryOp::Less,
-                Op::LessOrEquals => BinaryOp::LessOrEquals,
+                Op::Compare => BinaryOperator::Compare,
+                Op::EqualsEquals => BinaryOperator::EqualsEquals,
+                Op::NotEquals => BinaryOperator::NotEquals,
+                Op::Greater => BinaryOperator::Greater,
+                Op::GreaterOrEquals => BinaryOperator::GreaterOrEquals,
+                Op::Less => BinaryOperator::Less,
+                Op::LessOrEquals => BinaryOperator::LessOrEquals,
                 _ => self.invalid_token(
                     operator_token,
                     "unexpected operator".into(),
                     "not a comparison operator".into(),
                 ),
             };
-            lhs_index = self.ast.new_expression(Expression::Binary {
-                lhs_index,
+            left_operand = self.ast.new_expression(Expression::Binary {
+                left_operand,
                 operator: comparison_operator,
                 operator_column: operator_token.col,
-                rhs_index,
+                right_operand,
             });
         }
 
-        return Ok(lhs_index);
+        return Ok(left_operand);
     }
 
     fn and_expression(
@@ -2079,14 +2082,14 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     ) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 1] = [Op::And];
 
-        let mut lhs_index = self.comparison_expression(token)?;
+        let mut left_operand = self.comparison_expression(token)?;
         while let Some(Operator { token: operator_token, operator }) = self.operator(&OPS) {
-            let start_of_rhs_token = self.next_expected_token(Expected::Operand)?;
-            let rhs_index = self.comparison_expression(start_of_rhs_token)?;
+            let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
+            let right_operand = self.comparison_expression(start_of_right_operand_token)?;
 
             #[allow(clippy::wildcard_enum_match_arm)]
             let binary_operator = match operator {
-                Op::And => BinaryOp::And,
+                Op::And => BinaryOperator::And,
                 _ => self.invalid_token(
                     operator_token,
                     "unexpected operator".into(),
@@ -2094,15 +2097,15 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 ),
             };
 
-            lhs_index = self.ast.new_expression(Expression::Binary {
-                lhs_index,
+            left_operand = self.ast.new_expression(Expression::Binary {
+                left_operand,
                 operator: binary_operator,
                 operator_column: operator_token.col,
-                rhs_index,
+                right_operand,
             });
         }
 
-        return Ok(lhs_index);
+        return Ok(left_operand);
     }
 
     fn or_expression(
@@ -2111,14 +2114,14 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     ) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 1] = [Op::Or];
 
-        let mut lhs_index = self.and_expression(token)?;
+        let mut left_operand = self.and_expression(token)?;
         while let Some(Operator { token: operator_token, operator }) = self.operator(&OPS) {
-            let start_of_rhs_token = self.next_expected_token(Expected::Operand)?;
-            let rhs_index = self.and_expression(start_of_rhs_token)?;
+            let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
+            let right_operand = self.and_expression(start_of_right_operand_token)?;
 
             #[allow(clippy::wildcard_enum_match_arm)]
             let binary_operator = match operator {
-                Op::Or => BinaryOp::Or,
+                Op::Or => BinaryOperator::Or,
                 _ => self.invalid_token(
                     operator_token,
                     "unexpected operator".into(),
@@ -2126,15 +2129,15 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 ),
             };
 
-            lhs_index = self.ast.new_expression(Expression::Binary {
-                lhs_index,
+            left_operand = self.ast.new_expression(Expression::Binary {
+                left_operand,
                 operator: binary_operator,
                 operator_column: operator_token.col,
-                rhs_index,
+                right_operand,
             });
         }
 
-        return Ok(lhs_index);
+        return Ok(left_operand);
     }
 
     fn expression(
@@ -2249,9 +2252,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     next_token:
                         &Token {
                             kind: TokenKind::Bracket(BracketKind::OpenSquare),
-                            col: opening_square_bracket_column,
+                            col: open_square_bracket_column,
                         },
-                    next_token_index: opening_square_bracket_token_index,
+                    next_token_index: open_square_bracket_token_index,
                 }) = self.peek_next_token()
                 else {
                     break 'type_annotation Some(TypeAnnotation {
@@ -2261,32 +2264,32 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         array_dimensions,
                     });
                 };
-                self.token_index = opening_square_bracket_token_index;
+                self.token_index = open_square_bracket_token_index;
 
                 let dimension_expression_token = self.next_expected_token(Expected::Expression)?;
-                let dimension_expression_index = self.expression(dimension_expression_token)?;
+                let dimension_expression = self.expression(dimension_expression_token)?;
 
                 let Some(Peeked {
                     next_token:
                         &Token {
                             kind: TokenKind::Bracket(BracketKind::CloseSquare),
-                            col: closing_square_bracket_column,
+                            col: close_square_bracket_column,
                         },
-                    next_token_index: closing_square_bracket_token_index,
+                    next_token_index: close_square_bracket_token_index,
                 }) = self.peek_next_token()
                 else {
                     return Err(Error {
-                        kind: ErrorKind::MissingClosingSquareBracketInArrayType,
+                        kind: ErrorKind::MissingCloseSquareBracketInArrayType,
                         col: dimension_expression_token.col,
                         pointers_count: dimension_expression_token.kind.display_len(),
                     });
                 };
-                self.token_index = closing_square_bracket_token_index;
+                self.token_index = close_square_bracket_token_index;
 
                 array_dimensions.push(ArrayDimension {
-                    opening_square_bracket_column,
-                    dimension_expression_index,
-                    closing_square_bracket_column,
+                    open_square_bracket_column,
+                    dimension_expression,
+                    close_square_bracket_column,
                 });
             }
         };
@@ -2297,14 +2300,14 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             TokenKind::Op(Op::Equals) => {
                 let start_of_initial_value_token =
                     self.next_expected_token(Expected::Expression)?;
-                let initial_value_index = self.expression(start_of_initial_value_token)?;
+                let expression = self.expression(start_of_initial_value_token)?;
                 self.semicolon()?;
 
                 let Some(equals_column) = DoColumn::new(equals_or_semicolon_token.col) else {
                     unreachable!("valid `do` should have non-zero column");
                 };
 
-                Some(InitialValue { equals_column, initial_value_index })
+                Some(InitialValue { equals_column, expression })
             }
             TokenKind::Bracket(_)
             | TokenKind::Colon
@@ -2361,18 +2364,17 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn if_block(&mut self, if_column: offset) -> Result<(), Error<ErrorKind>> {
         let start_of_condition_expression_token = self.next_expected_token(Expected::Expression)?;
-        let condition_expression_index = self.expression(start_of_condition_expression_token)?;
+        let condition_expression = self.expression(start_of_condition_expression_token)?;
 
-        self.ast.ifs.push(If { if_column, condition_expression_index });
+        self.ast.ifs.push(If { if_column, condition_expression });
         self.ast.else_ifs.push(Vec::new());
         self.ast.do_columns.push(Vec::new());
         let if_index = IfIndex((self.ast.ifs.len() - 1) as offset);
-        let do_columns_index = DoColumnsIndex((self.ast.do_columns.len() - 1) as offset);
 
         self.ast.nodes.push(Node::If { if_index });
         let placeholder_if_index = self.ast.nodes.len() - 1;
 
-        self.parse_do_or_block_in_if_statement(do_columns_index)?;
+        self.parse_do_or_block_in_if_statement(if_index)?;
 
         while let Some(Peeked {
             next_token: &Token { kind: TokenKind::Else, col: else_token_column },
@@ -2387,7 +2389,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             match after_else_token.kind {
                 TokenKind::Do => {
                     self.token_index = after_else_token_index;
-                    self.ast.new_do_column(do_columns_index, after_else_token.col);
+                    self.ast.new_do_column(if_index, after_else_token.col);
                     self.parse_single_do_statement_in_if_statement()?;
 
                     let Some(else_column) = ElseColumn::new(else_token_column) else {
@@ -2411,7 +2413,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     self.token_index = after_else_token_index;
 
                     let start_of_else_if_condition_expression_token = self.next_expected_token(Expected::Expression)?;
-                    let else_if_condition_expression_index = self.expression(start_of_else_if_condition_expression_token)?;
+                    let else_if_condition_expression = self.expression(start_of_else_if_condition_expression_token)?;
 
                     let Some(else_column) = ElseColumn::new(else_token_column) else {
                         unreachable!("valid `else` should have non-zero column");
@@ -2421,12 +2423,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         else_column,
                         iff: If {
                             if_column: after_else_token.col,
-                            condition_expression_index: else_if_condition_expression_index
+                            condition_expression: else_if_condition_expression
                         },
                     };
                     self.ast.else_ifs[if_index.0 as usize].push(else_if);
 
-                    self.parse_do_or_block_in_if_statement(do_columns_index)?;
+                    self.parse_do_or_block_in_if_statement(if_index)?;
                 }
                 TokenKind::Colon
                 /* NOTE(stefano):
@@ -2479,13 +2481,13 @@ pub enum Expected {
     Statement,
     OperatorOrSemicolon,
     Operand,
-    ClosingRoundBracket,
-    ClosingSquareBracket,
+    CloseRoundBracket,
+    CloseSquareBracket,
     Expression,
     ExpressionOrSemicolon,
     Comma,
-    CommaOrClosingSquareBracket,
-    ArrayItemOrClosingSquareBracket,
+    CommaOrCloseSquareBracket,
+    ArrayItemOrCloseSquareBracket,
     Semicolon,
     VariableName,
     TypeName,
@@ -2501,13 +2503,13 @@ impl Display for Expected {
             Self::Statement => write!(f, "statement"),
             Self::OperatorOrSemicolon => write!(f, "operator or ';'"),
             Self::Operand => write!(f, "operand"),
-            Self::ClosingRoundBracket => write!(f, "')'"),
-            Self::ClosingSquareBracket => write!(f, "']'"),
+            Self::CloseRoundBracket => write!(f, "')'"),
+            Self::CloseSquareBracket => write!(f, "']'"),
             Self::Expression => write!(f, "expression"),
             Self::ExpressionOrSemicolon => write!(f, "expression or ';'"),
             Self::Comma => write!(f, "','"),
-            Self::CommaOrClosingSquareBracket => write!(f, "',' or ']'"),
-            Self::ArrayItemOrClosingSquareBracket => write!(f, "array item or ']'"),
+            Self::CommaOrCloseSquareBracket => write!(f, "',' or ']'"),
+            Self::ArrayItemOrCloseSquareBracket => write!(f, "array item or ']'"),
             Self::Semicolon => write!(f, "';'"),
             Self::VariableName => write!(f, "variable name"),
             Self::TypeName => write!(f, "type name"),
@@ -2535,14 +2537,14 @@ pub enum ErrorKind {
     EmptyParenthesisExpression,
     ExpectedBracket(BracketKind),
     ExpectedComma,
-    MissingClosingSquareBracketInIndex,
+    MissingCloseSquareBracketInIndex,
 
     // variables
     ExpectedVariableName,
     KeywordInVariableName,
     ExpectedTypeName,
     KeywordInTypeName,
-    MissingClosingSquareBracketInArrayType,
+    MissingCloseSquareBracketInArrayType,
     ExpectedEqualsOrSemicolonAfterVariableName,
     ExpectedEqualsOrSemicolonAfterTypeAnnotation,
 
@@ -2609,7 +2611,7 @@ impl IntoErrorInfo for ErrorKind {
                 "invalid array".into(),
                 "expected ',' before this token".into(),
             ),
-            Self::MissingClosingSquareBracketInIndex => (
+            Self::MissingCloseSquareBracketInIndex => (
                 "invalid array index".into(),
                 "must be followed by a ']'".into(),
             ),
@@ -2630,7 +2632,7 @@ impl IntoErrorInfo for ErrorKind {
                 "invalid type name".into(),
                 "cannot be a keyword".into(),
             ),
-            Self::MissingClosingSquareBracketInArrayType => (
+            Self::MissingCloseSquareBracketInArrayType => (
                 "invalid type".into(),
                 "must be followed by a ']'".into(),
             ),
