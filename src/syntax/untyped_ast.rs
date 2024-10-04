@@ -656,18 +656,19 @@ impl UntypedAst<'_, '_> {
 
                 let mut item_index = 0;
 
+                let items_indent = expression_indent + INDENT_INCREMENT;
                 while item_index < commas.len() {
                     let item_expression = items[item_index];
                     let comma_column = commas[item_index].get();
                     item_index += 1;
 
-                    self.info_expression(f, item_expression, expression_indent)?;
-                    writeln!(f, "{:>expression_indent$}Comma: {comma_column} = ,", "")?;
+                    self.info_expression(f, item_expression, items_indent)?;
+                    writeln!(f, "{:>items_indent$}Comma: {comma_column} = ,", "")?;
                 }
 
                 if items.len() > commas.len() {
                     let item_expression = items[item_index];
-                    self.info_expression(f, item_expression, expression_indent)?;
+                    self.info_expression(f, item_expression, items_indent)?;
                 }
 
                 writeln!(f, "{:>expression_indent$}CloseBracket: {close_square_bracket_column} = [", "")
@@ -731,6 +732,7 @@ impl UntypedAst<'_, '_> {
             writeln!(f, "{:>indent$}Colon: {colon_column} = :", "")?;
             writeln!(f, "{:>indent$}TypeName: {type_name_column} = {type_name}", "")?;
 
+            let dimension_indent = indent + INDENT_INCREMENT;
             for ArrayDimension {
                 open_square_bracket_column,
                 dimension_expression,
@@ -738,7 +740,7 @@ impl UntypedAst<'_, '_> {
             } in array_dimensions
             {
                 writeln!(f, "{:>indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
-                self.info_expression(f, *dimension_expression, indent)?;
+                self.info_expression(f, *dimension_expression, dimension_indent)?;
                 writeln!(
                     f,
                     "{:>indent$}CloseSquareBracket: {close_square_bracket_column} = ]",
