@@ -1,5 +1,3 @@
-// IDEA(stefano): make operators variants values equals so that conversions can just be mem transmutes
-
 use super::{
     tokenizer::{
         ascii, utf8, Base, BracketKind, DisplayLen, Integer, Mutability, Op, Str, Token, TokenKind,
@@ -11,228 +9,212 @@ use core::{fmt::Display, num::NonZero};
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+#[allow(dead_code)]
+#[rustfmt::skip]
 pub(crate) enum PrefixOperator {
-    Len,
-    Not,
+    Len = Op::Len as u8,
+    Not = Op::Not as u8,
 
-    Plus,
-    WrappingPlus,
-    SaturatingPlus,
+    Plus           = Op::Plus as u8,
+    WrappingPlus   = Op::WrappingPlus as u8,
+    SaturatingPlus = Op::SaturatingPlus as u8,
 
-    Minus,
-    WrappingMinus,
-    SaturatingMinus,
+    Minus           = Op::Minus as u8,
+    WrappingMinus   = Op::WrappingMinus as u8,
+    SaturatingMinus = Op::SaturatingMinus as u8,
+}
+
+impl Into<PrefixOperator> for Op {
+    #[inline(always)]
+    fn into(self) -> PrefixOperator {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<Op> for PrefixOperator {
+    #[inline(always)]
+    fn into(self) -> Op {
+        return unsafe { core::mem::transmute(self) };
+    }
 }
 
 impl Display for PrefixOperator {
-    #[rustfmt::skip]
+    #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        return match self {
-            Self::Len             => write!(f, "len"),
-            Self::Not             => write!(f, "!"),
+        let op: Op = (*self).into();
+        return write!(f, "{op}");
+    }
+}
 
-            Self::Plus            => write!(f,  "+"),
-            Self::WrappingPlus    => write!(f, r"+\"),
-            Self::SaturatingPlus  => write!(f,  "+|"),
-
-            Self::Minus           => write!(f,  "-"),
-            Self::WrappingMinus   => write!(f, r"-\"),
-            Self::SaturatingMinus => write!(f,  "-|"),
-        };
+impl DisplayLen for PrefixOperator {
+    #[inline(always)]
+    fn display_len(&self) -> offset {
+        let op: Op = (*self).into();
+        return op.display_len();
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+#[allow(dead_code)]
+#[rustfmt::skip]
 pub(crate) enum BinaryOperator {
     // binary operators
-    Pow,
-    WrappingPow,
-    SaturatingPow,
+    Pow           = Op::Pow as u8,
+    WrappingPow   = Op::WrappingPow as u8,
+    SaturatingPow = Op::SaturatingPow as u8,
 
-    Times,
-    WrappingTimes,
-    SaturatingTimes,
+    Times           = Op::Times as u8,
+    WrappingTimes   = Op::WrappingTimes as u8,
+    SaturatingTimes = Op::SaturatingTimes as u8,
 
-    Divide,
-    WrappingDivide,
-    SaturatingDivide,
+    Divide           = Op::Divide as u8,
+    WrappingDivide   = Op::WrappingDivide as u8,
+    SaturatingDivide = Op::SaturatingDivide as u8,
 
-    Remainder,
+    Remainder = Op::Remainder as u8,
 
-    Plus,
-    WrappingPlus,
-    SaturatingPlus,
+    Plus           = Op::Plus as u8,
+    WrappingPlus   = Op::WrappingPlus as u8,
+    SaturatingPlus = Op::SaturatingPlus as u8,
 
-    Minus,
-    WrappingMinus,
-    SaturatingMinus,
+    Minus           = Op::Minus as u8,
+    WrappingMinus   = Op::WrappingMinus as u8,
+    SaturatingMinus = Op::SaturatingMinus as u8,
 
-    LeftShift,
-    WrappingLeftShift,
-    SaturatingLeftShift,
+    LeftShift           = Op::LeftShift as u8,
+    WrappingLeftShift   = Op::WrappingLeftShift as u8,
+    SaturatingLeftShift = Op::SaturatingLeftShift as u8,
 
-    RightShift,
+    RightShift = Op::RightShift as u8,
 
-    LeftRotate,
-    RightRotate,
+    LeftRotate  = Op::LeftRotate as u8,
+    RightRotate = Op::RightRotate as u8,
 
-    BitAnd,
-    BitXor,
-    BitOr,
+    BitAnd = Op::BitAnd as u8,
+    BitXor = Op::BitXor as u8,
+    BitOr  = Op::BitOr as u8,
 
     // boolean binary operators
-    And,
-    Or,
+    And = Op::And as u8,
+    Or  = Op::Or as u8,
 
     // comparison operators
-    Compare,
+    Compare = Op::Compare as u8,
 
     // boolean comparison operators
-    EqualsEquals,
-    NotEquals,
-    Greater,
-    GreaterOrEquals,
-    Less,
-    LessOrEquals,
+    EqualsEquals    = Op::EqualsEquals as u8,
+    NotEquals       = Op::NotEquals as u8,
+    Greater         = Op::Greater as u8,
+    GreaterOrEquals = Op::GreaterOrEquals as u8,
+    Less            = Op::Less as u8,
+    LessOrEquals    = Op::LessOrEquals as u8,
+}
+
+impl Into<BinaryOperator> for Op {
+    #[inline(always)]
+    fn into(self) -> BinaryOperator {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<Op> for BinaryOperator {
+    #[inline(always)]
+    fn into(self) -> Op {
+        return unsafe { core::mem::transmute(self) };
+    }
 }
 
 impl Display for BinaryOperator {
-    #[rustfmt::skip]
+    #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        return match self {
-            Self::Pow                 => write!(f,  "**"),
-            Self::WrappingPow         => write!(f, r"**\"),
-            Self::SaturatingPow       => write!(f,  "**|"),
+        let op: Op = (*self).into();
+        return write!(f, "{op}");
+    }
+}
 
-            Self::Times               => write!(f,  "*"),
-            Self::WrappingTimes       => write!(f, r"*\"),
-            Self::SaturatingTimes     => write!(f,  "*|"),
-
-            Self::Divide              => write!(f,  "/"),
-            Self::WrappingDivide      => write!(f, r"/\"),
-            Self::SaturatingDivide    => write!(f,  "/|"),
-
-            Self::Remainder           => write!(f, "%"),
-
-            Self::Plus                => write!(f,  "+"),
-            Self::WrappingPlus        => write!(f, r"+\"),
-            Self::SaturatingPlus      => write!(f,  "+|"),
-
-            Self::Minus               => write!(f,  "-"),
-            Self::WrappingMinus       => write!(f, r"-\"),
-            Self::SaturatingMinus     => write!(f,  "-|"),
-
-            Self::LeftShift           => write!(f,  "<<"),
-            Self::WrappingLeftShift   => write!(f, r"<<\"),
-            Self::SaturatingLeftShift => write!(f,  "<<|"),
-
-            Self::RightShift          => write!(f,  ">>"),
-            Self::LeftRotate          => write!(f, "<<<"),
-            Self::RightRotate         => write!(f, ">>>"),
-
-            Self::BitAnd              => write!(f, "&"),
-            Self::BitOr               => write!(f, "|"),
-            Self::BitXor              => write!(f, "^"),
-
-            Self::And => write!(f, "&&"),
-            Self::Or  => write!(f, "||"),
-
-            Self::Compare => write!(f, "<=>"),
-
-            Self::EqualsEquals    => write!(f, "=="),
-            Self::NotEquals       => write!(f, "!="),
-            Self::Greater         => write!(f, ">"),
-            Self::GreaterOrEquals => write!(f, ">="),
-            Self::Less            => write!(f, "<"),
-            Self::LessOrEquals    => write!(f, "<="),
-        };
+impl DisplayLen for BinaryOperator {
+    #[inline(always)]
+    fn display_len(&self) -> offset {
+        let op: Op = (*self).into();
+        return op.display_len();
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+#[allow(dead_code)]
+#[rustfmt::skip]
 pub(crate) enum AssignmentOperator {
-    Equals,
+    Equals = Op::Equals as u8,
 
-    Pow,
-    WrappingPow,
-    SaturatingPow,
+    Pow           = Op::PowEquals as u8,
+    WrappingPow   = Op::WrappingPowEquals as u8,
+    SaturatingPow = Op::SaturatingPowEquals as u8,
 
-    Times,
-    WrappingTimes,
-    SaturatingTimes,
+    Times           = Op::TimesEquals as u8,
+    WrappingTimes   = Op::WrappingTimesEquals as u8,
+    SaturatingTimes = Op::SaturatingTimesEquals as u8,
 
-    Divide,
-    WrappingDivide,
-    SaturatingDivide,
+    Divide           = Op::DivideEquals as u8,
+    WrappingDivide   = Op::WrappingDivideEquals as u8,
+    SaturatingDivide = Op::SaturatingDivideEquals as u8,
 
-    Remainder,
+    Remainder = Op::RemainderEquals as u8,
 
-    Plus,
-    WrappingPlus,
-    SaturatingPlus,
+    Plus           = Op::PlusEquals as u8,
+    WrappingPlus   = Op::WrappingPlusEquals as u8,
+    SaturatingPlus = Op::SaturatingPlusEquals as u8,
 
-    Minus,
-    WrappingMinus,
-    SaturatingMinus,
+    Minus           = Op::MinusEquals as u8,
+    WrappingMinus   = Op::WrappingMinusEquals as u8,
+    SaturatingMinus = Op::SaturatingMinusEquals as u8,
 
-    LeftShift,
-    WrappingLeftShift,
-    SaturatingLeftShift,
+    LeftShift           = Op::LeftShiftEquals as u8,
+    WrappingLeftShift   = Op::WrappingLeftShiftEquals as u8,
+    SaturatingLeftShift = Op::SaturatingLeftShiftEquals as u8,
 
-    RightShift,
+    RightShift = Op::RightShiftEquals as u8,
 
-    LeftRotate,
-    RightRotate,
+    LeftRotate  = Op::LeftRotateEquals as u8,
+    RightRotate = Op::RightRotateEquals as u8,
 
-    And,
-    BitAnd,
-    BitXor,
-    Or,
-    BitOr,
+    BitAnd = Op::BitAndEquals as u8,
+    BitXor = Op::BitXorEquals as u8,
+    BitOr  = Op::BitOrEquals as u8,
+
+    And    = Op::AndEquals as u8,
+    Or     = Op::OrEquals as u8,
+}
+
+impl Into<AssignmentOperator> for Op {
+    #[inline(always)]
+    fn into(self) -> AssignmentOperator {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<Op> for AssignmentOperator {
+    #[inline(always)]
+    fn into(self) -> Op {
+        return unsafe { core::mem::transmute(self) };
+    }
 }
 
 impl Display for AssignmentOperator {
-    #[rustfmt::skip]
+    #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        return match self {
-            Self::Equals              => write!(f, "="),
+        let op: Op = (*self).into();
+        return write!(f, "{op}");
+    }
+}
 
-            Self::Pow                 => write!(f,  "**="),
-            Self::WrappingPow         => write!(f, r"**\="),
-            Self::SaturatingPow       => write!(f,  "**|="),
-
-            Self::Times               => write!(f,  "*="),
-            Self::WrappingTimes       => write!(f, r"*\="),
-            Self::SaturatingTimes     => write!(f,  "*|="),
-
-            Self::Divide              => write!(f,  "/="),
-            Self::WrappingDivide      => write!(f, r"/\="),
-            Self::SaturatingDivide    => write!(f,  "/|="),
-
-            Self::Remainder           => write!(f, "%="),
-
-            Self::Plus                => write!(f,  "+="),
-            Self::WrappingPlus        => write!(f, r"+\="),
-            Self::SaturatingPlus      => write!(f,  "+|="),
-
-            Self::Minus               => write!(f,  "-="),
-            Self::WrappingMinus       => write!(f, r"-\="),
-            Self::SaturatingMinus     => write!(f,  "-|="),
-
-            Self::And                 => write!(f, "&&="),
-            Self::BitAnd              => write!(f, "&="),
-            Self::Or                  => write!(f, "||="),
-            Self::BitOr               => write!(f, "|="),
-            Self::BitXor              => write!(f, "^="),
-
-            Self::LeftShift           => write!(f,  "<<="),
-            Self::WrappingLeftShift   => write!(f, r"<<\="),
-            Self::SaturatingLeftShift => write!(f,  "<<|="),
-
-            Self::RightShift          => write!(f,  ">>="),
-            Self::LeftRotate          => write!(f, "<<<="),
-            Self::RightRotate         => write!(f, ">>>="),
-        };
+impl DisplayLen for AssignmentOperator {
+    #[inline(always)]
+    fn display_len(&self) -> offset {
+        let op: Op = (*self).into();
+        return op.display_len();
     }
 }
 
@@ -896,8 +878,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     TokenKind::SemiColon => {
                         Ok(ParsedNode::Node(Node::Expression(expression_index)))
                     }
-                    TokenKind::Op(operator) => match operator {
-                        Op::Equals
+                    TokenKind::Op(
+                        operator @ (Op::Equals
                         | Op::PowEquals
                         | Op::WrappingPowEquals
                         | Op::SaturatingPowEquals
@@ -924,61 +906,21 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         | Op::BitXorEquals
                         | Op::BitOrEquals
                         | Op::AndEquals
-                        | Op::OrEquals => {
-                            #[allow(clippy::wildcard_enum_match_arm)]
-                            let assignment_operator = match operator {
-                                Op::Equals => AssignmentOperator::Equals,
-                                Op::PowEquals => AssignmentOperator::Pow,
-                                Op::WrappingPowEquals => AssignmentOperator::WrappingPow,
-                                Op::SaturatingPowEquals => AssignmentOperator::SaturatingPow,
-                                Op::TimesEquals => AssignmentOperator::Times,
-                                Op::WrappingTimesEquals => AssignmentOperator::WrappingTimes,
-                                Op::SaturatingTimesEquals => AssignmentOperator::SaturatingTimes,
-                                Op::DivideEquals => AssignmentOperator::Divide,
-                                Op::WrappingDivideEquals => AssignmentOperator::WrappingDivide,
-                                Op::SaturatingDivideEquals => AssignmentOperator::SaturatingDivide,
-                                Op::RemainderEquals => AssignmentOperator::Remainder,
-                                Op::PlusEquals => AssignmentOperator::Plus,
-                                Op::WrappingPlusEquals => AssignmentOperator::WrappingPlus,
-                                Op::SaturatingPlusEquals => AssignmentOperator::SaturatingPlus,
-                                Op::MinusEquals => AssignmentOperator::Minus,
-                                Op::WrappingMinusEquals => AssignmentOperator::WrappingMinus,
-                                Op::SaturatingMinusEquals => AssignmentOperator::SaturatingMinus,
-                                Op::LeftShiftEquals => AssignmentOperator::LeftShift,
-                                Op::WrappingLeftShiftEquals => {
-                                    AssignmentOperator::WrappingLeftShift
-                                }
-                                Op::SaturatingLeftShiftEquals => {
-                                    AssignmentOperator::SaturatingLeftShift
-                                }
-                                Op::RightShiftEquals => AssignmentOperator::RightShift,
-                                Op::LeftRotateEquals => AssignmentOperator::LeftRotate,
-                                Op::RightRotateEquals => AssignmentOperator::RightRotate,
-                                Op::BitAndEquals => AssignmentOperator::BitAnd,
-                                Op::BitXorEquals => AssignmentOperator::BitXor,
-                                Op::BitOrEquals => AssignmentOperator::BitOr,
-                                Op::AndEquals => AssignmentOperator::And,
-                                Op::OrEquals => AssignmentOperator::Or,
-                                _ => self.invalid_token(
-                                    after_expression_token,
-                                    "unexpected operator".into(),
-                                    "not an 'equals' operator".into(),
-                                ),
-                            };
+                        | Op::OrEquals),
+                    ) => {
+                        let start_of_new_value_token =
+                            self.next_expected_token(Expected::Expression)?;
+                        let new_value = self.expression(start_of_new_value_token)?;
+                        self.semicolon()?;
 
-                            let start_of_new_value_token =
-                                self.next_expected_token(Expected::Expression)?;
-                            let new_value = self.expression(start_of_new_value_token)?;
-
-                            self.semicolon()?;
-                            Ok(ParsedNode::Node(Node::Assignment {
-                                target: expression_index,
-                                operator: assignment_operator,
-                                operator_column: after_expression_token.col,
-                                new_value,
-                            }))
-                        }
-
+                        Ok(ParsedNode::Node(Node::Assignment {
+                            target: expression_index,
+                            operator: operator.into(),
+                            operator_column: after_expression_token.col,
+                            new_value,
+                        }))
+                    }
+                    TokenKind::Op(
                         Op::Len
                         | Op::Not
                         | Op::Pow
@@ -1014,12 +956,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         | Op::Greater
                         | Op::GreaterOrEquals
                         | Op::Less
-                        | Op::LessOrEquals => self.invalid_token(
-                            after_expression_token,
-                            "unexpected operator".into(),
-                            "should have been part of the left operand".into(),
-                        ),
-                    },
+                        | Op::LessOrEquals,
+                    ) => self.invalid_token(
+                        after_expression_token,
+                        "unexpected operator".into(),
+                        "should have been part of the left operand".into(),
+                    ),
                     TokenKind::Bracket(_)
                     | TokenKind::Colon
                     | TokenKind::Comma
@@ -1672,25 +1614,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let start_of_prefix_expression = self.next_expected_token(Expected::Expression)?;
                 let right_operand = self.primary_expression(start_of_prefix_expression)?;
 
-                #[allow(clippy::wildcard_enum_match_arm)]
-                let prefix_operator = match operator {
-                    Op::Len => PrefixOperator::Len,
-                    Op::Plus => PrefixOperator::Plus,
-                    Op::WrappingPlus => PrefixOperator::WrappingPlus,
-                    Op::SaturatingPlus => PrefixOperator::SaturatingPlus,
-                    Op::Minus => PrefixOperator::Minus,
-                    Op::WrappingMinus => PrefixOperator::WrappingMinus,
-                    Op::SaturatingMinus => PrefixOperator::SaturatingMinus,
-                    Op::Not => PrefixOperator::Not,
-                    _ => self.invalid_token(
-                        token,
-                        "unexpected operator".into(),
-                        "not a prefix operator".into(),
-                    ),
-                };
-
                 Expression::Prefix {
-                    operator: prefix_operator,
+                    operator: (*operator).into(),
                     operator_column: token.col,
                     right_operand,
                 }
@@ -1778,21 +1703,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.primary_expression(start_of_right_operand_token)?;
 
-            #[allow(clippy::wildcard_enum_match_arm)]
-            let binary_operator = match operator {
-                Op::Pow => BinaryOperator::Pow,
-                Op::WrappingPow => BinaryOperator::WrappingPow,
-                Op::SaturatingPow => BinaryOperator::SaturatingPow,
-                _ => self.invalid_token(
-                    operator_token,
-                    "unexpected operator".into(),
-                    "not an exponentiative operator".into(),
-                ),
-            };
-
             left_operand = self.ast.new_expression(Expression::Binary {
                 left_operand,
-                operator: binary_operator,
+                operator: operator.into(),
                 operator_column: operator_token.col,
                 right_operand,
             });
@@ -1820,25 +1733,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.exponentiative_expression(start_of_right_operand_token)?;
 
-            #[allow(clippy::wildcard_enum_match_arm)]
-            let binary_operator = match operator {
-                Op::Times => BinaryOperator::Times,
-                Op::WrappingTimes => BinaryOperator::WrappingTimes,
-                Op::SaturatingTimes => BinaryOperator::SaturatingTimes,
-                Op::Divide => BinaryOperator::Divide,
-                Op::WrappingDivide => BinaryOperator::WrappingDivide,
-                Op::SaturatingDivide => BinaryOperator::SaturatingDivide,
-                Op::Remainder => BinaryOperator::Remainder,
-                _ => self.invalid_token(
-                    operator_token,
-                    "unexpected operator".into(),
-                    "not a multiplicative operator".into(),
-                ),
-            };
-
             left_operand = self.ast.new_expression(Expression::Binary {
                 left_operand,
-                operator: binary_operator,
+                operator: operator.into(),
                 operator_column: operator_token.col,
                 right_operand,
             });
@@ -1865,24 +1762,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.multiplicative_expression(start_of_right_operand_token)?;
 
-            #[allow(clippy::wildcard_enum_match_arm)]
-            let binary_operator = match operator {
-                Op::Plus => BinaryOperator::Plus,
-                Op::WrappingPlus => BinaryOperator::WrappingPlus,
-                Op::SaturatingPlus => BinaryOperator::SaturatingPlus,
-                Op::Minus => BinaryOperator::Minus,
-                Op::WrappingMinus => BinaryOperator::WrappingMinus,
-                Op::SaturatingMinus => BinaryOperator::SaturatingMinus,
-                _ => self.invalid_token(
-                    operator_token,
-                    "unexpected operator".into(),
-                    "not an additive operator".into(),
-                ),
-            };
-
             left_operand = self.ast.new_expression(Expression::Binary {
                 left_operand,
-                operator: binary_operator,
+                operator: operator.into(),
                 operator_column: operator_token.col,
                 right_operand,
             });
@@ -1909,24 +1791,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.additive_expression(start_of_right_operand_token)?;
 
-            #[allow(clippy::wildcard_enum_match_arm)]
-            let binary_operator = match operator {
-                Op::LeftShift => BinaryOperator::LeftShift,
-                Op::WrappingLeftShift => BinaryOperator::WrappingLeftShift,
-                Op::SaturatingLeftShift => BinaryOperator::SaturatingLeftShift,
-                Op::RightShift => BinaryOperator::RightShift,
-                Op::LeftRotate => BinaryOperator::LeftRotate,
-                Op::RightRotate => BinaryOperator::RightRotate,
-                _ => self.invalid_token(
-                    operator_token,
-                    "unexpected operator".into(),
-                    "not a shift operator".into(),
-                ),
-            };
-
             left_operand = self.ast.new_expression(Expression::Binary {
                 left_operand,
-                operator: binary_operator,
+                operator: operator.into(),
                 operator_column: operator_token.col,
                 right_operand,
             });
@@ -1946,19 +1813,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.shift_expression(start_of_right_operand_token)?;
 
-            #[allow(clippy::wildcard_enum_match_arm)]
-            let binary_operator = match operator {
-                Op::BitAnd => BinaryOperator::BitAnd,
-                _ => self.invalid_token(
-                    operator_token,
-                    "unexpected operator".into(),
-                    "not a bitand operator".into(),
-                ),
-            };
-
             left_operand = self.ast.new_expression(Expression::Binary {
                 left_operand,
-                operator: binary_operator,
+                operator: operator.into(),
                 operator_column: operator_token.col,
                 right_operand,
             });
@@ -1978,19 +1835,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.bitand_expression(start_of_right_operand_token)?;
 
-            #[allow(clippy::wildcard_enum_match_arm)]
-            let binary_operator = match operator {
-                Op::BitXor => BinaryOperator::BitXor,
-                _ => self.invalid_token(
-                    operator_token,
-                    "unexpected operator".into(),
-                    "not a bitxor operator".into(),
-                ),
-            };
-
             left_operand = self.ast.new_expression(Expression::Binary {
                 left_operand,
-                operator: binary_operator,
+                operator: operator.into(),
                 operator_column: operator_token.col,
                 right_operand,
             });
@@ -2010,19 +1857,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.bitxor_expression(start_of_right_operand_token)?;
 
-            #[allow(clippy::wildcard_enum_match_arm)]
-            let binary_operator = match operator {
-                Op::BitOr => BinaryOperator::BitOr,
-                _ => self.invalid_token(
-                    operator_token,
-                    "unexpected operator".into(),
-                    "not a bitor operator".into(),
-                ),
-            };
-
             left_operand = self.ast.new_expression(Expression::Binary {
                 left_operand,
-                operator: binary_operator,
+                operator: operator.into(),
                 operator_column: operator_token.col,
                 right_operand,
             });
@@ -2050,24 +1887,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.bitor_expression(start_of_right_operand_token)?;
 
-            #[allow(clippy::wildcard_enum_match_arm)]
-            let comparison_operator = match operator {
-                Op::Compare => BinaryOperator::Compare,
-                Op::EqualsEquals => BinaryOperator::EqualsEquals,
-                Op::NotEquals => BinaryOperator::NotEquals,
-                Op::Greater => BinaryOperator::Greater,
-                Op::GreaterOrEquals => BinaryOperator::GreaterOrEquals,
-                Op::Less => BinaryOperator::Less,
-                Op::LessOrEquals => BinaryOperator::LessOrEquals,
-                _ => self.invalid_token(
-                    operator_token,
-                    "unexpected operator".into(),
-                    "not a comparison operator".into(),
-                ),
-            };
             left_operand = self.ast.new_expression(Expression::Binary {
                 left_operand,
-                operator: comparison_operator,
+                operator: operator.into(),
                 operator_column: operator_token.col,
                 right_operand,
             });
@@ -2087,19 +1909,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.comparison_expression(start_of_right_operand_token)?;
 
-            #[allow(clippy::wildcard_enum_match_arm)]
-            let binary_operator = match operator {
-                Op::And => BinaryOperator::And,
-                _ => self.invalid_token(
-                    operator_token,
-                    "unexpected operator".into(),
-                    "not an and operator".into(),
-                ),
-            };
-
             left_operand = self.ast.new_expression(Expression::Binary {
                 left_operand,
-                operator: binary_operator,
+                operator: operator.into(),
                 operator_column: operator_token.col,
                 right_operand,
             });
@@ -2119,19 +1931,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.and_expression(start_of_right_operand_token)?;
 
-            #[allow(clippy::wildcard_enum_match_arm)]
-            let binary_operator = match operator {
-                Op::Or => BinaryOperator::Or,
-                _ => self.invalid_token(
-                    operator_token,
-                    "unexpected operator".into(),
-                    "not an or operator".into(),
-                ),
-            };
-
             left_operand = self.ast.new_expression(Expression::Binary {
                 left_operand,
-                operator: binary_operator,
+                operator: operator.into(),
                 operator_column: operator_token.col,
                 right_operand,
             });

@@ -158,9 +158,12 @@ skip safety checks, maybe using the '?' or the '!' suffix, i.e:
 - **? -> skip the check for a neagtive index
 */
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum Op {
-    Len, // temporary way of getting the length of strings and arrays
     Equals,
+
+    /// temporary way of getting the length of strings and arrays
+    Len,
     Not,
 
     Pow,
@@ -187,15 +190,21 @@ pub enum Op {
     Remainder,
     RemainderEquals,
 
+    /// also unary safe absolute value
     Plus,
+    /// also unary wrapping absolute value
     WrappingPlus,
+    /// also unary saturating absolute value
     SaturatingPlus,
     PlusEquals,
     WrappingPlusEquals,
     SaturatingPlusEquals,
 
+    /// also unary integer negation
     Minus,
+    /// also unary wrapping integer negation
     WrappingMinus,
+    /// also unary saturating integer negation
     SaturatingMinus,
     MinusEquals,
     WrappingMinusEquals,
@@ -272,16 +281,16 @@ impl Display for Op {
             Self::Remainder                 => write!(f, "%"),
             Self::RemainderEquals           => write!(f, "%="),
 
-            Self::Plus                      => write!(f,  "+"), // also unary safe absolute value
-            Self::WrappingPlus              => write!(f, r"+\"), // also unary wrapping absolute value
-            Self::SaturatingPlus            => write!(f,  "+|"), // also unary saturating absolute value
+            Self::Plus                      => write!(f,  "+"),
+            Self::WrappingPlus              => write!(f, r"+\"),
+            Self::SaturatingPlus            => write!(f,  "+|"),
             Self::PlusEquals                => write!(f,  "+="),
             Self::WrappingPlusEquals        => write!(f, r"+\="),
             Self::SaturatingPlusEquals      => write!(f,  "+|="),
 
-            Self::Minus                     => write!(f,  "-"), // also unary integer negation
-            Self::WrappingMinus             => write!(f, r"-\"), // also unary wrapping integer negation
-            Self::SaturatingMinus           => write!(f,  "-|"), // also unary saturating integer negation
+            Self::Minus                     => write!(f,  "-"),
+            Self::WrappingMinus             => write!(f, r"-\"),
+            Self::SaturatingMinus           => write!(f,  "-|"),
             Self::MinusEquals               => write!(f,  "-="),
             Self::WrappingMinusEquals       => write!(f, r"-\="),
             Self::SaturatingMinusEquals     => write!(f,  "-|="),
