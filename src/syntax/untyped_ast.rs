@@ -1274,6 +1274,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             file: &self.src.path,
             line,
             col,
+            source_code_col: token.col,
             line_text,
             pointers_count: token.kind.display_len(),
             error_cause_message,

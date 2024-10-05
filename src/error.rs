@@ -91,6 +91,7 @@ pub struct MsgWithCauseUnderTextWithLocation<'kind, 'message, 'cause, 'src> {
     pub file: &'src Path,
     pub line: offset,
     pub col: offset,
+    pub source_code_col: offset,
     pub line_text: &'src dyn Display,
     pub pointers_count: offset,
 }
@@ -128,7 +129,7 @@ impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_> {
         return write!(
             f,
             "{kind}: {error_message}\
-            \n{AT:>at_padding$}: {path}:{line}:{col}\
+            \n{AT:>at_padding$}: {path}:{line}:{col} ({source_code_col})\
             \n{BAR:>line_number_padding$}\
             \n{line_number} {BAR} {line_text}\
             \n{BAR:>line_number_padding$}{spaces:>col$}{pointers_and_cause}",
@@ -137,6 +138,7 @@ impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_> {
             path = self.file.display(),
             line = self.line,
             col = self.col as usize,
+            source_code_col = self.source_code_col as usize,
             line_text = self.line_text,
             spaces = "",
         );

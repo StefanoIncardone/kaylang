@@ -26,6 +26,12 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ## 0.6.2 -
 
+### Added
+
+#### Compiler
+
+- Information about error's absolute source code column
+
 ### Changed
 
 #### Language

@@ -44,6 +44,7 @@ impl<K: IntoErrorInfo> Error<K> {
             file: &src.path,
             line,
             col,
+            source_code_col: self.col,
             line_text,
             pointers_count: self.pointers_count,
             error_cause_message,
@@ -61,6 +62,7 @@ pub struct ErrorDisplay<'src> {
     pub file: &'src Path,
     pub line: offset,
     pub col: offset,
+    pub source_code_col: offset,
     pub line_text: &'src str,
     pub pointers_count: offset,
     pub error_cause_message: Cow<'static, str>,
@@ -75,6 +77,7 @@ impl Display for ErrorDisplay<'_> {
             file: self.file,
             line: self.line,
             col: self.col,
+            source_code_col: self.source_code_col,
             line_text: &self.line_text,
             pointers_count: self.pointers_count,
         };
