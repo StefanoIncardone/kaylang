@@ -1,3 +1,5 @@
+// IDEA(stefano): make every offset that can never be zero into NonZero<offset>
+
 use super::{
     tokenizer::{
         ascii, utf8, Base, BracketKind, DisplayLen, Integer, Mutability, Op, Str, Token, TokenKind,
@@ -218,9 +220,6 @@ impl DisplayLen for AssignmentOperator {
     }
 }
 
-/// A valid array item separator comma can never be at the start of the file, hence a column value of 0 is invalid
-pub(crate) type ArrayCommaColumn = NonZero<offset>;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 #[repr(transparent)]
 #[non_exhaustive]
@@ -307,12 +306,9 @@ pub(crate) struct TypeAnnotation<'src, 'tokens: 'src> {
     array_dimensions: Vec<ArrayDimension>,
 }
 
-/// A valid '=' assignment can never be at the start of the file, hence a column value of 0 is invalid
-pub(crate) type EqualsColumn = NonZero<offset>;
-
 #[derive(Debug, Clone)]
 pub(crate) struct InitialValue {
-    equals_column: EqualsColumn,
+    equals_column: NonZero<offset>,
     expression: ExpressionIndex,
 }
 
@@ -329,17 +325,11 @@ pub(crate) struct VariableDefinition<'src, 'tokens: 'src> {
 #[non_exhaustive]
 pub(crate) struct VariableDefinitionIndex(pub(crate) offset);
 
-/// A valid else-branch can never be at the start of the file, hence a column value of 0 is invalid
-pub(crate) type ElseColumn = NonZero<offset>;
-
-/// A valid do statement can never be at the start of the file, hence a column value of 0 is invalid
-pub(crate) type DoColumn = NonZero<offset>;
-
 #[derive(Debug, Clone)]
 pub(crate) struct Loop {
     pub(crate) loop_column: offset,
     pub(crate) condition: ExpressionIndex,
-    pub(crate) do_column: Option<DoColumn>,
+    pub(crate) do_column: Option<NonZero<offset>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
@@ -360,7 +350,7 @@ pub(crate) struct IfIndex(pub(crate) offset);
 
 #[derive(Debug, Clone)]
 pub(crate) struct ElseIf {
-    pub(crate) else_column: ElseColumn,
+    pub(crate) else_column: NonZero<offset>,
     pub(crate) iff: If,
 }
 
@@ -418,7 +408,7 @@ pub(crate) enum Node {
     },
     IfElse {
         if_index: IfIndex,
-        else_column: ElseColumn,
+        else_column: NonZero<offset>,
     },
 
     Loop {
@@ -452,13 +442,13 @@ pub struct UntypedAst<'src, 'tokens: 'src> {
 
     expressions: Vec<Expression<'src, 'tokens>>,
     array_items: Vec<Vec<ExpressionIndex>>,
-    array_commas_columns: Vec<Vec<ArrayCommaColumn>>,
+    array_commas_columns: Vec<Vec<NonZero<offset>>>,
 
     variable_definitions: Vec<VariableDefinition<'src, 'tokens>>,
 
     ifs: Vec<If>,
     else_ifs: Vec<Vec<ElseIf>>,
-    do_columns: Vec<Vec<DoColumn>>,
+    do_columns: Vec<Vec<NonZero<offset>>>,
 
     loops: Vec<Loop>,
 }
@@ -1230,10 +1220,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 pointers_count: token.kind.display_len(),
             }),
             TokenKind::Bracket(
-                BracketKind::CloseRound | BracketKind::CloseSquare | BracketKind::CloseCurly
-            ) => {
-                self.unbalanced_bracket(token)
-            }
+                BracketKind::CloseRound | BracketKind::CloseSquare | BracketKind::CloseCurly,
+            ) => self.unbalanced_bracket(token),
             TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
                 self.should_have_been_skipped(token)
             }
@@ -1513,7 +1501,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let open_square_bracket_token = token;
 
                 let mut items = Vec::<ExpressionIndex>::new();
-                let mut commas_columns = Vec::<ArrayCommaColumn>::new();
+                let mut commas_columns = Vec::<NonZero<offset>>::new();
 
                 let close_square_bracket_column = 'items: loop {
                     let start_of_item_token =
@@ -1530,7 +1518,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     match comma_or_close_square_bracket_token.kind {
                         TokenKind::Comma => {
                             let Some(comma_column) =
-                                ArrayCommaColumn::new(comma_or_close_square_bracket_token.col)
+                                NonZero::new(comma_or_close_square_bracket_token.col)
                             else {
                                 unreachable!("valid `,` should have non-zero column");
                             };
@@ -2093,7 +2081,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let expression = self.expression(start_of_initial_value_token)?;
                 self.semicolon()?;
 
-                let Some(equals_column) = DoColumn::new(equals_or_semicolon_token.col) else {
+                let Some(equals_column) = NonZero::new(equals_or_semicolon_token.col) else {
                     unreachable!("valid `do` should have non-zero column");
                 };
 
@@ -2161,7 +2149,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         let after_if_condition_token = self.next_expected_token(Expected::DoOrOpenCurlyBracket)?;
         match after_if_condition_token.kind {
             TokenKind::Do => {
-                let Some(do_column) = DoColumn::new(after_if_condition_token.col) else {
+                let Some(do_column) = NonZero::new(after_if_condition_token.col) else {
                     unreachable!("valid `do` should have non-zero column");
                 };
                 self.ast.do_columns[if_index.0 as usize].push(do_column);
@@ -2217,14 +2205,14 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let after_else_token = self.next_expected_token(Expected::DoOrOpenCurlyBracketOrIf)?;
             match after_else_token.kind {
                 TokenKind::Do => {
-                    let Some(do_column) = DoColumn::new(after_else_token.col) else {
+                    let Some(do_column) = NonZero::new(after_else_token.col) else {
                         unreachable!("valid `do` should have non-zero column");
                     };
                     self.ast.do_columns[if_index.0 as usize].push(do_column);
 
                     self.do_statement_in_if_statement()?;
 
-                    let Some(else_column) = ElseColumn::new(else_token_column) else {
+                    let Some(else_column) = NonZero::new(else_token_column) else {
                         unreachable!("valid `else` should have non-zero column");
                     };
 
@@ -2236,7 +2224,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         unreachable!();
                     };
 
-                    let Some(else_column) = ElseColumn::new(else_token_column) else {
+                    let Some(else_column) = NonZero::new(else_token_column) else {
                         unreachable!("valid `else` should have non-zero column");
                     };
 
@@ -2247,7 +2235,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     let start_of_else_if_condition_expression_token = self.next_expected_token(Expected::Expression)?;
                     let else_if_condition = self.expression(start_of_else_if_condition_expression_token)?;
 
-                    let Some(else_column) = ElseColumn::new(else_token_column) else {
+                    let Some(else_column) = NonZero::new(else_token_column) else {
                         unreachable!("valid `else` should have non-zero column");
                     };
 
@@ -2260,7 +2248,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     let after_else_if_condition_token = self.next_expected_token(Expected::DoOrOpenCurlyBracket)?;
                     match after_else_if_condition_token.kind {
                         TokenKind::Do => {
-                            let Some(do_column) = DoColumn::new(after_else_if_condition_token.col) else {
+                            let Some(do_column) = NonZero::new(after_else_if_condition_token.col) else {
                                 unreachable!("valid `do` should have non-zero column");
                             };
                             self.ast.do_columns[if_index.0 as usize].push(do_column);
@@ -2404,7 +2392,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         let after_condition_token = self.next_expected_token(Expected::DoOrOpenCurlyBracket)?;
         return match after_condition_token.kind {
             TokenKind::Do => {
-                let Some(column) = DoColumn::new(after_condition_token.col) else {
+                let Some(column) = NonZero::new(after_condition_token.col) else {
                     unreachable!("valid `do` should have non-zero column");
                 };
                 let Loop { do_column: do_statement_do_column, .. } =
