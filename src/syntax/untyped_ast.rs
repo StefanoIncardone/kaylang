@@ -220,15 +220,8 @@ impl DisplayLen for AssignmentOperator {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
-#[repr(transparent)]
-#[non_exhaustive]
-pub(crate) struct ArrayIndex(pub(crate) index32);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
-#[repr(transparent)]
-#[non_exhaustive]
-pub(crate) struct ExpressionIndex(pub(crate) index32);
+pub(crate) type ArrayIndex = index32;
+pub(crate) type ExpressionIndex = index32;
 
 #[derive(Debug, Clone)]
 pub(crate) enum Expression<'src, 'tokens: 'src> {
@@ -320,10 +313,7 @@ pub(crate) struct VariableDefinition<'src, 'tokens: 'src> {
     initial_value: Option<InitialValue>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
-#[repr(transparent)]
-#[non_exhaustive]
-pub(crate) struct VariableDefinitionIndex(pub(crate) column32);
+pub(crate) type VariableDefinitionIndex = index32;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Loop {
@@ -332,10 +322,7 @@ pub(crate) struct Loop {
     pub(crate) do_column: Option<NonZero<column32>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
-#[repr(transparent)]
-#[non_exhaustive]
-pub(crate) struct LoopIndex(pub(crate) index32);
+pub(crate) type LoopIndex = index32;
 
 #[derive(Debug, Clone)]
 pub(crate) struct If {
@@ -343,10 +330,7 @@ pub(crate) struct If {
     pub(crate) condition: ExpressionIndex,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
-#[repr(transparent)]
-#[non_exhaustive]
-pub(crate) struct IfIndex(pub(crate) index32);
+pub(crate) type IfIndex = index32;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ElseIf {
@@ -457,7 +441,7 @@ impl<'src, 'tokens: 'src> UntypedAst<'src, 'tokens> {
     #[inline]
     fn new_expression(&mut self, expression: Expression<'src, 'tokens>) -> ExpressionIndex {
         self.expressions.push(expression);
-        return ExpressionIndex(self.expressions.len() as index32 - 1);
+        return self.expressions.len() as index32 - 1;
     }
 }
 
@@ -537,9 +521,9 @@ impl UntypedAst<'_, '_> {
             Node::If { if_index } => {
                 let if_indent = indent + INDENT_INCREMENT;
 
-                let If { if_column, condition } = &self.ifs[if_index.0 as usize];
-                let else_ifs = &self.else_ifs[if_index.0 as usize];
-                let do_columns = &self.do_columns[if_index.0 as usize];
+                let If { if_column, condition } = &self.ifs[*if_index as usize];
+                let else_ifs = &self.else_ifs[*if_index as usize];
+                let do_columns = &self.do_columns[*if_index as usize];
 
                 let mut do_columns_iter = do_columns.iter();
 
@@ -574,9 +558,9 @@ impl UntypedAst<'_, '_> {
             Node::IfElse { if_index, else_column } => {
                 let if_indent = indent + INDENT_INCREMENT;
 
-                let If { if_column, condition } = &self.ifs[if_index.0 as usize];
-                let else_ifs = &self.else_ifs[if_index.0 as usize];
-                let do_columns = &self.do_columns[if_index.0 as usize];
+                let If { if_column, condition } = &self.ifs[*if_index as usize];
+                let else_ifs = &self.else_ifs[*if_index as usize];
+                let do_columns = &self.do_columns[*if_index as usize];
 
                 let mut do_columns_iter = do_columns.iter();
 
@@ -617,7 +601,7 @@ impl UntypedAst<'_, '_> {
             }
 
             Node::Loop { loop_index } => {
-                let Loop { loop_column, condition, do_column } = &self.loops[loop_index.0 as usize];
+                let Loop { loop_column, condition, do_column } = &self.loops[*loop_index as usize];
                 writeln!(f, "{:>indent$}Loop: {loop_column} = loop", "")?;
                 let loop_indent = indent + INDENT_INCREMENT;
                 self.info_expression(f, *condition, loop_indent)?;
@@ -635,7 +619,7 @@ impl UntypedAst<'_, '_> {
                     loop_column,
                     condition,
                     do_column: do_statement_do_column
-                } = &self.loops[loop_index.0 as usize];
+                } = &self.loops[*loop_index as usize];
                 writeln!(f, "{:>indent$}Loop: {loop_column} = loop", "")?;
                 let loop_indent = indent + INDENT_INCREMENT;
                 self.info_expression(f, *condition, loop_indent)?;
@@ -663,7 +647,7 @@ impl UntypedAst<'_, '_> {
         indent: usize,
     ) -> core::fmt::Result {
         let expression_indent = indent + INDENT_INCREMENT;
-        let expression = &self.expressions[expression_index.0 as usize];
+        let expression = &self.expressions[expression_index as usize];
 
         #[rustfmt::skip]
         return match expression {
@@ -695,8 +679,8 @@ impl UntypedAst<'_, '_> {
                 writeln!(f, "{:>indent$}Array", "")?;
                 writeln!(f, "{:>expression_indent$}OpenBracket: {open_square_bracket_column} = [", "")?;
 
-                let items = &self.array_items[array.0 as usize];
-                let commas = &self.array_commas_columns[array.0 as usize];
+                let items = &self.array_items[*array as usize];
+                let commas = &self.array_commas_columns[*array as usize];
 
                 let mut item_index = 0;
 
@@ -763,7 +747,7 @@ impl UntypedAst<'_, '_> {
         indent: usize,
     ) -> core::fmt::Result {
         let VariableDefinition { name, name_column, type_annotation, initial_value } =
-            &self.variable_definitions[variable_definition_index.0 as usize];
+            &self.variable_definitions[variable_definition_index as usize];
         writeln!(f, "{:>indent$}Name: {name_column} = {name}", "")?;
 
         if let Some(TypeAnnotation {
@@ -1068,9 +1052,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 self.ast.variable_definitions.push(variable_definition);
                 Ok(ParsedNode::Node(Node::LetVariableDefinition {
                     let_column: token.col,
-                    variable_definition: VariableDefinitionIndex(
-                        self.ast.variable_definitions.len() as index32 - 1,
-                    ),
+                    variable_definition: self.ast.variable_definitions.len() as index32 - 1,
                 }))
             }
             TokenKind::Mutability(Mutability::Var) => {
@@ -1078,9 +1060,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 self.ast.variable_definitions.push(variable_definition);
                 Ok(ParsedNode::Node(Node::VarVariableDefinition {
                     var_column: token.col,
-                    variable_definition: VariableDefinitionIndex(
-                        self.ast.variable_definitions.len() as index32 - 1,
-                    ),
+                    variable_definition: self.ast.variable_definitions.len() as index32 - 1,
                 }))
             }
 
@@ -1568,7 +1548,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
                 Expression::Array {
                     open_square_bracket_column: open_square_bracket_token.col,
-                    array: ArrayIndex(self.ast.array_items.len() as index32 - 1),
+                    array: self.ast.array_items.len() as index32 - 1,
                     close_square_bracket_column,
                 }
             }
@@ -2141,7 +2121,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         self.ast.ifs.push(If { if_column, condition });
         self.ast.else_ifs.push(Vec::new());
         self.ast.do_columns.push(Vec::new());
-        let if_index = IfIndex(self.ast.ifs.len() as index32 - 1);
+        let if_index = self.ast.ifs.len() as index32 - 1;
 
         self.ast.nodes.push(Node::If { if_index });
         let placeholder_if_index = self.ast.nodes.len() - 1;
@@ -2152,7 +2132,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let Some(do_column) = NonZero::new(after_if_condition_token.col) else {
                     unreachable!("valid `do` should have non-zero column");
                 };
-                self.ast.do_columns[if_index.0 as usize].push(do_column);
+                self.ast.do_columns[if_index as usize].push(do_column);
 
                 self.do_statement_in_if_statement()?;
             }
@@ -2208,7 +2188,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     let Some(do_column) = NonZero::new(after_else_token.col) else {
                         unreachable!("valid `do` should have non-zero column");
                     };
-                    self.ast.do_columns[if_index.0 as usize].push(do_column);
+                    self.ast.do_columns[if_index as usize].push(do_column);
 
                     self.do_statement_in_if_statement()?;
 
@@ -2243,7 +2223,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         else_column,
                         iff: If { if_column: after_else_token.col, condition: else_if_condition }
                     };
-                    self.ast.else_ifs[if_index.0 as usize].push(else_if);
+                    self.ast.else_ifs[if_index as usize].push(else_if);
 
                     let after_else_if_condition_token = self.next_expected_token(Expected::DoOrOpenCurlyBracket)?;
                     match after_else_if_condition_token.kind {
@@ -2251,7 +2231,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             let Some(do_column) = NonZero::new(after_else_if_condition_token.col) else {
                                 unreachable!("valid `do` should have non-zero column");
                             };
-                            self.ast.do_columns[if_index.0 as usize].push(do_column);
+                            self.ast.do_columns[if_index as usize].push(do_column);
 
                             self.do_statement_in_if_statement()?;
                         }
@@ -2381,7 +2361,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         let condition = self.expression(start_of_condition_expression_token)?;
 
         self.ast.loops.push(Loop { loop_column: loop_token.col, condition, do_column: None });
-        let loop_index = LoopIndex(self.ast.loops.len() as index32 - 1);
+        let loop_index = self.ast.loops.len() as index32 - 1;
 
         let loop_node = match do_column {
             Some(column) => Node::DoLoop { loop_index, do_column: column },
@@ -2396,7 +2376,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     unreachable!("valid `do` should have non-zero column");
                 };
                 let Loop { do_column: do_statement_do_column, .. } =
-                    &mut self.ast.loops[loop_index.0 as usize];
+                    &mut self.ast.loops[loop_index as usize];
                 *do_statement_do_column = Some(column);
 
                 self.do_statement_in_loop_statement()
