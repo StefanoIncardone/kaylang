@@ -11,7 +11,7 @@ mod reg;
 use self::{artifacts::Artifacts, reg::Reg64};
 use crate::{
     error::MsgWithCause,
-    src_file::{offset, Position, SrcFile},
+    src_file::{column32, Position, SrcFile},
     syntax::{
         ast::{
             self, AssignmentOp, Ast, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression,
@@ -91,10 +91,10 @@ pub struct Compiler<'src, 'ast: 'src> {
     variables: Vec<Variable<'src, 'ast>>,
     temporary_values: Vec<TemporaryValue<'ast>>,
 
-    if_counter: offset,
+    if_counter: u32,
 
-    loop_counter: offset,
-    loop_counters: Vec<offset>,
+    loop_counter: u32,
+    loop_counters: Vec<u32>,
     // and_counter: usize,
     // or_counter: usize,
 }
@@ -723,7 +723,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         &mut self,
         base_type: BaseType,
         value: &'ast Expression,
-        bracket_col: offset,
+        bracket_col: column32,
         index: &'ast Expression,
     ) {
         let Position { line, col } = self.src.position(bracket_col);
@@ -2337,7 +2337,7 @@ impl<'ast> Compiler<'_, 'ast> {
         &mut self,
         target: &'ast Expression,
         op: AssignmentOp,
-        op_col: offset,
+        op_col: column32,
         new_value: &'ast Expression,
     ) {
         match target {

@@ -1,10 +1,10 @@
 // TODO(stefano): multiline strings
 
 use super::{Error, ErrorInfo, IntoErrorInfo};
-use crate::src_file::{offset, Line, SrcFile};
+use crate::src_file::{column32, index32, Line, SrcFile};
 use core::fmt::Display;
 pub(super) trait DisplayLen {
-    fn display_len(&self) -> offset;
+    fn display_len(&self) -> column32;
 }
 
 /// kay's equivalent to pointer sized signed integer
@@ -101,7 +101,7 @@ impl Display for Mutability {
 
 impl DisplayLen for Mutability {
     #[inline(always)]
-    fn display_len(&self) -> offset {
+    fn display_len(&self) -> column32 {
         return match self {
             Self::Let | Self::Var => 3,
         };
@@ -133,7 +133,7 @@ impl Display for BracketKind {
 
 impl DisplayLen for BracketKind {
     #[inline(always)]
-    fn display_len(&self) -> offset {
+    fn display_len(&self) -> column32 {
         return match self {
             Self::OpenRound
             | Self::CloseRound
@@ -148,7 +148,7 @@ impl DisplayLen for BracketKind {
 #[derive(Debug)]
 struct Bracket {
     kind: BracketKind,
-    col: offset,
+    col: column32,
 }
 
 /* IDEA(stefano):
@@ -337,7 +337,7 @@ impl Display for Op {
 }
 
 impl DisplayLen for Op {
-    fn display_len(&self) -> offset {
+    fn display_len(&self) -> column32 {
         return match self {
             Self::Len => 3,
             Self::Equals => 1,
@@ -555,18 +555,18 @@ impl Display for TokenKind<'_> {
 }
 
 impl DisplayLen for TokenKind<'_> {
-    fn display_len(&self) -> offset {
+    fn display_len(&self) -> column32 {
         #[inline]
-        fn ascii_escaped_len(ascii_char: ascii) -> offset {
+        fn ascii_escaped_len(ascii_char: ascii) -> column32 {
             // Note: ascii type guarantees the value to be valid utf8
             let utf8_char = ascii_char as utf8;
-            return utf8_char.escape_debug().len() as offset;
+            return utf8_char.escape_debug().len() as column32;
         }
 
         return match self {
-            Self::Comment(text) => text.chars().count() as offset + 1, // + 1 to account for the `#`
-            Self::BlockComment(text) => text.chars().count() as offset + 4, // + 4 to account for `##` and `##`
-            Self::Unexpected(text) => text.chars().count() as offset,
+            Self::Comment(text) => text.chars().count() as column32 + 1, // + 1 to account for the `#`
+            Self::BlockComment(text) => text.chars().count() as column32 + 4, // + 4 to account for `##` and `##`
+            Self::Unexpected(text) => text.chars().count() as column32,
 
             Self::Bracket(bracket) => bracket.display_len(),
             Self::Colon => 1,
@@ -575,7 +575,7 @@ impl DisplayLen for TokenKind<'_> {
             Self::Op(op) => op.display_len(),
 
             Self::Integer(base, integer) => {
-                base.prefix().len() as offset + integer.0.len() as offset
+                base.prefix().len() as column32 + integer.0.len() as column32
             }
             Self::Ascii(ascii_char) => ascii_escaped_len(*ascii_char) + 2, // + 2 to account for the quotes
             Self::True => 4,
@@ -587,9 +587,9 @@ impl DisplayLen for TokenKind<'_> {
                 }
                 len
             }
-            Self::RawStr(text) => text.0.len() as offset + 3, // + 1 for the `r` prefix, and + 2 for the quotes
+            Self::RawStr(text) => text.0.len() as column32 + 3, // + 1 for the `r` prefix, and + 2 for the quotes
 
-            Self::Identifier(name) => name.len() as offset,
+            Self::Identifier(name) => name.len() as column32,
 
             Self::Print => 5,
             Self::PrintLn => 7,
@@ -610,7 +610,7 @@ impl DisplayLen for TokenKind<'_> {
 #[derive(Debug, Clone)]
 pub struct Token<'src> {
     pub(crate) kind: TokenKind<'src>,
-    pub(crate) col: offset,
+    pub(crate) col: column32,
 }
 
 #[derive(Debug)]
@@ -618,10 +618,10 @@ pub struct Tokenizer<'src> {
     src: &'src SrcFile,
     errors: Vec<Error<ErrorKind>>,
 
-    col: offset,
-    token_start_col: offset,
+    col: column32,
+    token_start_col: column32,
 
-    line_index: offset,
+    line_index: index32,
     line: &'src Line,
 }
 
@@ -666,7 +666,7 @@ impl<'src> Tokenizer<'src> {
 
                     // next line
                     b'\n' => {
-                        if this.line_index >= this.src.lines.len() as offset - 1 {
+                        if this.line_index >= this.src.lines.len() as index32 - 1 {
                             break 'tokenization;
                         }
 
@@ -1209,18 +1209,18 @@ impl<'src> Tokenizer<'src> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Utf8Error {
     utf8_ch: utf8,
-    col: offset,
-    byte_len: offset,
-    pointers_count: offset,
+    col: column32,
+    byte_len: column32,
+    pointers_count: column32,
 }
 
 // TODO(stefano): own utf8 parsing
 // TODO(stefano): properly handle multi-char utf8 characters (i.e. emojis)
 // iteration of characters
 impl<'src> Tokenizer<'src> {
-    fn token_len(&self) -> offset {
+    fn token_len(&self) -> column32 {
         return self.src.code[self.token_start_col as usize..self.col as usize].chars().count()
-            as offset;
+            as column32;
     }
 
     fn next_ascii_char(&mut self) -> Result<Option<ascii>, Utf8Error> {
@@ -1239,7 +1239,7 @@ impl<'src> Tokenizer<'src> {
                     unreachable!("this branch assured we would have a valid utf8 character");
                 };
 
-                let utf8_byte_len = utf8_ch.len_utf8() as offset;
+                let utf8_byte_len = utf8_ch.len_utf8() as column32;
                 let utf8_ch_col = self.col;
                 self.col += utf8_byte_len;
                 Err(Utf8Error {
@@ -1256,7 +1256,7 @@ impl<'src> Tokenizer<'src> {
         let next = self.src.code.as_bytes().get(self.col as usize)?;
         return match next {
             b'\n' => {
-                if self.line_index >= self.src.lines.len() as offset - 1 {
+                if self.line_index >= self.src.lines.len() as index32 - 1 {
                     return None;
                 }
 
@@ -1275,7 +1275,7 @@ impl<'src> Tokenizer<'src> {
                     unreachable!("this branch assured we would have a valid utf8 character");
                 };
 
-                self.col += utf8_ch.len_utf8() as offset;
+                self.col += utf8_ch.len_utf8() as column32;
                 Some(utf8_ch)
             }
         };
@@ -1297,7 +1297,7 @@ impl<'src> Tokenizer<'src> {
                 Err(Utf8Error {
                     utf8_ch,
                     col: self.col,
-                    byte_len: utf8_ch.len_utf8() as offset,
+                    byte_len: utf8_ch.len_utf8() as column32,
                     pointers_count: 1, // TODO(stefano): proper utf8 len
                 })
             }
@@ -1322,7 +1322,7 @@ impl<'src> Tokenizer<'src> {
 
 impl<'src> Tokenizer<'src> {
     fn identifier(&mut self) -> Result<TokenKind<'src>, ()> {
-        const MAX_IDENTIFIER_LEN: offset = 63;
+        const MAX_IDENTIFIER_LEN: column32 = 63;
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1357,7 +1357,7 @@ impl<'src> Tokenizer<'src> {
             "len" => TokenKind::Op(Op::Len),
             identifier => {
                 let identifier_len = self.token_len();
-                if identifier_len as offset > MAX_IDENTIFIER_LEN {
+                if identifier_len as column32 > MAX_IDENTIFIER_LEN {
                     self.errors.push(Error {
                         kind: ErrorKind::IdentifierTooLong { max: MAX_IDENTIFIER_LEN },
                         col: self.token_start_col,
@@ -1759,7 +1759,7 @@ pub enum ErrorKind {
     EmptyNumberLiteral(MissingDigitsBase),
 
     Utf8InIdentifier(utf8),
-    IdentifierTooLong { max: offset },
+    IdentifierTooLong { max: column32 },
 
     Utf8Character(utf8),
     UnrecognizedCharacter(utf8),

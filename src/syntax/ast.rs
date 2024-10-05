@@ -6,7 +6,7 @@ use super::{
     Error, ErrorInfo, IntoErrorInfo,
 };
 use crate::{
-    src_file::{offset, Position, SrcFile},
+    src_file::{column32, index32, Position, SrcFile},
     syntax::tokenizer::{Base, Integer},
 };
 use core::fmt::{Debug, Display};
@@ -453,13 +453,13 @@ impl Display for AssignmentOp {
     }
 }
 
-type StringLabel = offset;
-type TokenIndex = offset;
-type VariableIndex = offset;
-type IfIndex = offset;
-type LoopIndex = offset;
-type ExpressionIndex = offset;
-pub(crate) type ScopeIndex = offset;
+type StringLabel = index32;
+type TokenIndex = index32;
+type VariableIndex = index32;
+type IfIndex = index32;
+type LoopIndex = index32;
+type ExpressionIndex = index32;
+pub(crate) type ScopeIndex = index32;
 
 #[derive(Debug, Clone)]
 pub(crate) enum Expression {
@@ -483,7 +483,7 @@ pub(crate) enum Expression {
 
     Unary {
         op: UnaryOp,
-        op_col: offset,
+        op_col: column32,
         operand_index: ExpressionIndex,
     },
     BooleanUnary {
@@ -493,7 +493,7 @@ pub(crate) enum Expression {
     Binary {
         lhs_index: ExpressionIndex,
         op: BinaryOp,
-        op_col: offset,
+        op_col: column32,
         rhs_index: ExpressionIndex,
     },
     BooleanBinary {
@@ -509,7 +509,7 @@ pub(crate) enum Expression {
     ArrayIndex {
         base_type: BaseType,
         indexable_index: ExpressionIndex,
-        bracket_col: offset,
+        bracket_col: column32,
         index_expression_index: ExpressionIndex,
     },
 
@@ -688,7 +688,7 @@ pub(crate) enum Node {
     Continue,
 
     Definition { var_index: VariableIndex },
-    Reassignment { target: Expression, op: AssignmentOp, op_col: offset, new_value: Expression },
+    Reassignment { target: Expression, op: AssignmentOp, op_col: column32, new_value: Expression },
 
     Scope { index: ScopeIndex },
 
@@ -737,7 +737,7 @@ pub struct Parser<'src, 'tokens: 'src> {
     token: TokenIndex,
     tokens: &'tokens [Token<'src>],
 
-    loop_depth: offset,
+    loop_depth: u32,
     scope: ScopeIndex,
     scopes: Vec<Scope>,
     ast: Ast<'src>,
@@ -766,8 +766,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         }
 
         // skipping to the first non-comment token
-        let mut token: offset = 0;
-        let tokens_len = tokens.len() as offset;
+        let mut token: index32 = 0;
+        let tokens_len = tokens.len() as index32;
         while token < tokens_len {
             let current = &tokens[token as usize];
             let (TokenKind::Comment(_) | TokenKind::BlockComment(_)) = current.kind else {
@@ -832,7 +832,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     self.errors.push(err);
 
                     // consuming all remaining tokens until the end of the file
-                    self.token = self.tokens.len() as offset;
+                    self.token = self.tokens.len() as index32;
                     break;
                 }
             }
@@ -871,7 +871,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 match after_expression_token.kind {
                     TokenKind::SemiColon => {
                         if let Expression::Array { .. } = expression {
-                            let temporary_value_index = self.ast.temporaries.len() as offset;
+                            let temporary_value_index = self.ast.temporaries.len() as index32;
                             let expression_type = expression.typ();
                             self.ast.temporaries.push(expression);
                             expression = Expression::Temporary {
@@ -1246,7 +1246,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn any(&mut self, token: &'tokens Token<'src>) -> Result<Node, Error<ErrorKind>> {
         return match token.kind {
             TokenKind::Bracket(BracketKind::OpenCurly) => {
-                let new_scope_index = self.scopes.len() as offset;
+                let new_scope_index = self.scopes.len() as index32;
                 self.scopes.push(Scope {
                     parent: self.scope,
                     base_types: Vec::new(),
@@ -1313,7 +1313,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
     fn next_token(&mut self) -> Option<&'tokens Token<'src>> {
         loop {
-            let tokens_len = self.tokens.len() as offset;
+            let tokens_len = self.tokens.len() as index32;
             if self.token >= tokens_len - 1 {
                 self.token = tokens_len;
                 return None;
@@ -1332,7 +1332,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         expected: Expected,
     ) -> Result<&'tokens Token<'src>, Error<ErrorKind>> {
         loop {
-            let tokens_len = self.tokens.len() as offset;
+            let tokens_len = self.tokens.len() as index32;
             if self.token >= tokens_len - 1 {
                 let previous = &self.tokens[self.token as usize];
                 self.token = tokens_len;
@@ -1354,7 +1354,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     const fn peek_next_token(&self) -> Option<&'tokens Token<'src>> {
         let mut current_token = self.token;
         loop {
-            if current_token >= self.tokens.len() as offset - 1 {
+            if current_token >= self.tokens.len() as index32 - 1 {
                 return None;
             }
 
@@ -3064,7 +3064,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     Mutability::Var => &mut self.scopes[self.scope as usize].var_variables,
                 };
 
-                let var_index = self.ast.variables.len() as offset;
+                let var_index = self.ast.variables.len() as index32;
                 scope_variables.push(var_index);
                 self.ast.variables.push(Variable { name, value });
 
@@ -3090,7 +3090,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         Mutability::Var => &mut self.scopes[self.scope as usize].var_variables,
                     };
 
-                    let var_index = self.ast.variables.len() as offset;
+                    let var_index = self.ast.variables.len() as index32;
                     scope_variables.push(var_index);
                     self.ast.variables.push(Variable { name, value });
 
@@ -3279,7 +3279,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         let _start_of_expression_token = self.next_token_bounded(Expected::Expression)?;
         let argument = self.expression()?;
         if let Expression::Array { .. } = argument {
-            let temporary_value_index = self.ast.temporaries.len() as offset;
+            let temporary_value_index = self.ast.temporaries.len() as index32;
             let argument_type = argument.typ();
             self.ast.temporaries.push(argument);
             return Ok(Expression::Temporary { typ: argument_type, temporary_value_index });

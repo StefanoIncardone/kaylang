@@ -1,7 +1,5 @@
 use crate::{
-    color::{Bg, Colored, Fg, Flag},
-    src_file::offset,
-    AT, BAR, CAUSE,
+    color::{Bg, Colored, Fg, Flag}, src_file::{column32, line32}, AT, BAR, CAUSE
 };
 use core::fmt::Display;
 use std::path::Path;
@@ -89,11 +87,11 @@ pub struct MsgWithCauseUnderTextWithLocation<'kind, 'message, 'cause, 'src> {
     pub message: &'message dyn Display,
     pub cause: &'cause dyn Display,
     pub file: &'src Path,
-    pub line: offset,
-    pub col: offset,
-    pub source_code_col: offset,
+    pub line: line32,
+    pub col: column32,
+    pub source_code_col: column32,
     pub line_text: &'src dyn Display,
-    pub pointers_count: offset,
+    pub pointers_count: u32,
 }
 
 impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_> {

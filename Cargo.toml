@@ -11,6 +11,9 @@ readme = "README.md"
 documentation = "https://github.com/StefanoIncardone/kaylang/blob/main/LANGUAGE_REFERENCE.md"
 license = "MIT"
 
+[features]
+# IDEA(stefano): add configuration for max source code length
+
 [profile.dev]
 debug = "full"
 opt-level = 0

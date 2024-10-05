@@ -4,7 +4,7 @@ pub mod untyped_ast;
 
 use crate::{
     error::MsgWithCauseUnderTextWithLocation,
-    src_file::{offset, Position, SrcFile},
+    src_file::{column32, line32, Position, SrcFile},
     ERROR,
 };
 use core::fmt::{Debug, Display};
@@ -28,8 +28,8 @@ IDEA: introduce a pointers_col field
 pub struct Error<K: IntoErrorInfo> {
     pub kind: K,
     /// absolute source code byte position
-    pub col: offset,
-    pub pointers_count: offset,
+    pub col: column32,
+    pub pointers_count: u32,
 }
 
 impl<K: IntoErrorInfo> Error<K> {
@@ -60,11 +60,11 @@ IDEA: introduce a pointers_col field
 pub struct ErrorDisplay<'src> {
     pub error_message: Cow<'static, str>,
     pub file: &'src Path,
-    pub line: offset,
-    pub col: offset,
-    pub source_code_col: offset,
+    pub line: line32,
+    pub col: column32,
+    pub source_code_col: column32,
     pub line_text: &'src str,
-    pub pointers_count: offset,
+    pub pointers_count: u32,
     pub error_cause_message: Cow<'static, str>,
 }
 

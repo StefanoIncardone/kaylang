@@ -6,7 +6,7 @@ use super::{
     },
     Error, ErrorDisplay, ErrorInfo, IntoErrorInfo,
 };
-use crate::src_file::{offset, Position, SrcFile};
+use crate::src_file::{column32, index32, Position, SrcFile};
 use core::{fmt::Display, num::NonZero};
 use std::borrow::Cow;
 
@@ -51,7 +51,7 @@ impl Display for PrefixOperator {
 
 impl DisplayLen for PrefixOperator {
     #[inline(always)]
-    fn display_len(&self) -> offset {
+    fn display_len(&self) -> column32 {
         let op: Op = (*self).into();
         return op.display_len();
     }
@@ -138,7 +138,7 @@ impl Display for BinaryOperator {
 
 impl DisplayLen for BinaryOperator {
     #[inline(always)]
-    fn display_len(&self) -> offset {
+    fn display_len(&self) -> column32 {
         let op: Op = (*self).into();
         return op.display_len();
     }
@@ -214,7 +214,7 @@ impl Display for AssignmentOperator {
 
 impl DisplayLen for AssignmentOperator {
     #[inline(always)]
-    fn display_len(&self) -> offset {
+    fn display_len(&self) -> column32 {
         let op: Op = (*self).into();
         return op.display_len();
     }
@@ -223,99 +223,99 @@ impl DisplayLen for AssignmentOperator {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 #[repr(transparent)]
 #[non_exhaustive]
-pub(crate) struct ArrayIndex(pub(crate) offset);
+pub(crate) struct ArrayIndex(pub(crate) index32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 #[repr(transparent)]
 #[non_exhaustive]
-pub(crate) struct ExpressionIndex(pub(crate) offset);
+pub(crate) struct ExpressionIndex(pub(crate) index32);
 
 #[derive(Debug, Clone)]
 pub(crate) enum Expression<'src, 'tokens: 'src> {
     False {
-        column: offset,
+        column: column32,
     },
     True {
-        column: offset,
+        column: column32,
     },
     Integer {
         base: Base,
         literal: &'tokens Integer<'src>,
-        column: offset,
+        column: column32,
     },
     Ascii {
         character: ascii,
-        column: offset,
+        column: column32,
     },
     Str {
         literal: &'tokens Str,
-        column: offset,
+        column: column32,
     },
     RawStr {
         literal: &'tokens Str,
-        column: offset,
+        column: column32,
     },
     Identifier {
         identifier: &'tokens &'src str,
-        column: offset,
+        column: column32,
     },
     Array {
-        open_square_bracket_column: offset,
+        open_square_bracket_column: column32,
         array: ArrayIndex,
-        close_square_bracket_column: offset,
+        close_square_bracket_column: column32,
     },
 
     Prefix {
         operator: PrefixOperator,
-        operator_column: offset,
+        operator_column: column32,
         right_operand: ExpressionIndex,
     },
     Binary {
         left_operand: ExpressionIndex,
         operator: BinaryOperator,
-        operator_column: offset,
+        operator_column: column32,
         right_operand: ExpressionIndex,
     },
 
     Parenthesis {
-        open_round_bracket_column: offset,
+        open_round_bracket_column: column32,
         inner_expression: ExpressionIndex,
-        close_round_bracket_column: offset,
+        close_round_bracket_column: column32,
     },
 
     Index {
         indexed_expression: ExpressionIndex,
-        open_square_bracket_column: offset,
+        open_square_bracket_column: column32,
         index_expression: ExpressionIndex,
-        close_square_bracket_column: offset,
+        close_square_bracket_column: column32,
     },
 }
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ArrayDimension {
-    open_square_bracket_column: offset,
+    open_square_bracket_column: column32,
     dimension_expression: ExpressionIndex,
-    close_square_bracket_column: offset,
+    close_square_bracket_column: column32,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct TypeAnnotation<'src, 'tokens: 'src> {
-    colon_column: offset,
+    colon_column: column32,
     type_name: &'tokens &'src str,
-    type_name_column: offset,
+    type_name_column: column32,
     array_dimensions: Vec<ArrayDimension>,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct InitialValue {
-    equals_column: NonZero<offset>,
+    equals_column: NonZero<column32>,
     expression: ExpressionIndex,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct VariableDefinition<'src, 'tokens: 'src> {
     name: &'tokens &'src str,
-    name_column: offset,
+    name_column: column32,
     type_annotation: Option<TypeAnnotation<'src, 'tokens>>,
     initial_value: Option<InitialValue>,
 }
@@ -323,34 +323,34 @@ pub(crate) struct VariableDefinition<'src, 'tokens: 'src> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 #[repr(transparent)]
 #[non_exhaustive]
-pub(crate) struct VariableDefinitionIndex(pub(crate) offset);
+pub(crate) struct VariableDefinitionIndex(pub(crate) column32);
 
 #[derive(Debug, Clone)]
 pub(crate) struct Loop {
-    pub(crate) loop_column: offset,
+    pub(crate) loop_column: column32,
     pub(crate) condition: ExpressionIndex,
-    pub(crate) do_column: Option<NonZero<offset>>,
+    pub(crate) do_column: Option<NonZero<column32>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 #[repr(transparent)]
 #[non_exhaustive]
-pub(crate) struct LoopIndex(pub(crate) offset);
+pub(crate) struct LoopIndex(pub(crate) index32);
 
 #[derive(Debug, Clone)]
 pub(crate) struct If {
-    pub(crate) if_column: offset,
+    pub(crate) if_column: column32,
     pub(crate) condition: ExpressionIndex,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 #[repr(transparent)]
 #[non_exhaustive]
-pub(crate) struct IfIndex(pub(crate) offset);
+pub(crate) struct IfIndex(pub(crate) index32);
 
 #[derive(Debug, Clone)]
 pub(crate) struct ElseIf {
-    pub(crate) else_column: NonZero<offset>,
+    pub(crate) else_column: NonZero<column32>,
     pub(crate) iff: If,
 }
 
@@ -359,48 +359,48 @@ pub(crate) enum Node {
     Expression(ExpressionIndex),
 
     Print {
-        print_column: offset,
+        print_column: column32,
         argument: ExpressionIndex,
     },
     Println {
-        println_column: offset,
+        println_column: column32,
         argument: ExpressionIndex,
     },
     PrintlnNoArg {
-        println_column: offset,
+        println_column: column32,
     },
     Eprint {
-        eprint_column: offset,
+        eprint_column: column32,
         argument: ExpressionIndex,
     },
     Eprintln {
-        eprintln_column: offset,
+        eprintln_column: column32,
         argument: ExpressionIndex,
     },
     EprintlnNoArg {
-        eprintln_column: offset,
+        eprintln_column: column32,
     },
 
     LetVariableDefinition {
-        let_column: offset,
+        let_column: column32,
         variable_definition: VariableDefinitionIndex,
     },
     VarVariableDefinition {
-        var_column: offset,
+        var_column: column32,
         variable_definition: VariableDefinitionIndex,
     },
     // IDEA(stefano): maybe move into expressions enum
     Assignment {
         target: ExpressionIndex,
         operator: AssignmentOperator,
-        operator_column: offset,
+        operator_column: column32,
         new_value: ExpressionIndex,
     },
 
     Scope {
-        open_curly_bracket_column: offset,
-        raw_nodes_in_scope_count: offset,
-        close_curly_bracket_column: offset,
+        open_curly_bracket_column: column32,
+        raw_nodes_in_scope_count: u32,
+        close_curly_bracket_column: column32,
     },
 
     If {
@@ -408,21 +408,21 @@ pub(crate) enum Node {
     },
     IfElse {
         if_index: IfIndex,
-        else_column: NonZero<offset>,
+        else_column: NonZero<column32>,
     },
 
     Loop {
         loop_index: LoopIndex,
     },
     DoLoop {
-        do_column: offset,
+        do_column: column32,
         loop_index: LoopIndex,
     },
     Break {
-        break_column: NonZero<offset>,
+        break_column: NonZero<column32>,
     },
     Continue {
-        continue_column: NonZero<offset>,
+        continue_column: NonZero<column32>,
     },
 }
 
@@ -442,13 +442,13 @@ pub struct UntypedAst<'src, 'tokens: 'src> {
 
     expressions: Vec<Expression<'src, 'tokens>>,
     array_items: Vec<Vec<ExpressionIndex>>,
-    array_commas_columns: Vec<Vec<NonZero<offset>>>,
+    array_commas_columns: Vec<Vec<NonZero<column32>>>,
 
     variable_definitions: Vec<VariableDefinition<'src, 'tokens>>,
 
     ifs: Vec<If>,
     else_ifs: Vec<Vec<ElseIf>>,
-    do_columns: Vec<Vec<NonZero<offset>>>,
+    do_columns: Vec<Vec<NonZero<column32>>>,
 
     loops: Vec<Loop>,
 }
@@ -457,7 +457,7 @@ impl<'src, 'tokens: 'src> UntypedAst<'src, 'tokens> {
     #[inline]
     fn new_expression(&mut self, expression: Expression<'src, 'tokens>) -> ExpressionIndex {
         self.expressions.push(expression);
-        return ExpressionIndex((self.expressions.len() - 1) as offset);
+        return ExpressionIndex(self.expressions.len() as index32 - 1);
     }
 }
 
@@ -467,7 +467,7 @@ impl UntypedAst<'_, '_> {
     fn info_node(
         &self,
         f: &mut core::fmt::Formatter<'_>,
-        node_index: &mut offset,
+        node_index: &mut index32,
         indent: usize,
     ) -> core::fmt::Result {
         let node = &self.nodes[*node_index as usize];
@@ -805,7 +805,7 @@ impl UntypedAst<'_, '_> {
 impl Display for UntypedAst<'_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut node_index = 0;
-        while node_index < self.nodes.len() as offset {
+        while node_index < self.nodes.len() as index32 {
             self.info_node(f, &mut node_index, 0)?;
         }
 
@@ -818,10 +818,10 @@ pub struct Parser<'src, 'tokens: 'src> {
     src: &'src SrcFile,
     errors: Vec<Error<ErrorKind>>,
 
-    token_index: offset,
+    token_index: index32,
     tokens: &'tokens [Token<'src>],
 
-    loop_depth: offset,
+    loop_depth: u32,
     ast: UntypedAst<'src, 'tokens>,
 }
 
@@ -870,7 +870,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     this.errors.push(err);
 
                     // consuming all remaining tokens until the end of the file
-                    this.token_index = this.tokens.len() as offset;
+                    this.token_index = this.tokens.len() as index32;
                     break;
                 }
             };
@@ -1069,7 +1069,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 Ok(ParsedNode::Node(Node::LetVariableDefinition {
                     let_column: token.col,
                     variable_definition: VariableDefinitionIndex(
-                        (self.ast.variable_definitions.len() - 1) as offset,
+                        self.ast.variable_definitions.len() as index32 - 1,
                     ),
                 }))
             }
@@ -1079,7 +1079,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 Ok(ParsedNode::Node(Node::VarVariableDefinition {
                     var_column: token.col,
                     variable_definition: VariableDefinitionIndex(
-                        (self.ast.variable_definitions.len() - 1) as offset,
+                        self.ast.variable_definitions.len() as index32 - 1,
                     ),
                 }))
             }
@@ -1091,13 +1091,13 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     close_curly_bracket_column: 0,
                 };
                 self.ast.nodes.push(placeholder_scope);
-                let placeholder_scope_node_index = (self.ast.nodes.len() - 1) as offset;
+                let placeholder_scope_node_index = self.ast.nodes.len() as index32 - 1;
 
                 while let Some(peeked) = self.peek_next_token() {
                     self.token_index = peeked.index;
 
                     if let TokenKind::Bracket(BracketKind::CloseCurly) = peeked.token.kind {
-                        let last_scope_node_index = (self.ast.nodes.len() - 1) as offset;
+                        let last_scope_node_index = self.ast.nodes.len() as index32 - 1;
                         let Node::Scope {
                             raw_nodes_in_scope_count,
                             close_curly_bracket_column,
@@ -1301,12 +1301,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 #[derive(Debug, Clone, Copy)]
 struct Peeked<'src, 'tokens: 'src> {
     token: &'tokens Token<'src>,
-    index: offset,
+    index: index32,
 }
 
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn peek_next_token(&self) -> Option<Peeked<'src, 'tokens>> {
-        for next_token_index in self.token_index..self.tokens.len() as offset {
+        for next_token_index in self.token_index..self.tokens.len() as index32 {
             let next_token = &self.tokens[next_token_index as usize];
 
             match &next_token.kind {
@@ -1501,7 +1501,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let open_square_bracket_token = token;
 
                 let mut items = Vec::<ExpressionIndex>::new();
-                let mut commas_columns = Vec::<NonZero<offset>>::new();
+                let mut commas_columns = Vec::<NonZero<column32>>::new();
 
                 let close_square_bracket_column = 'items: loop {
                     let start_of_item_token =
@@ -1568,7 +1568,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
                 Expression::Array {
                     open_square_bracket_column: open_square_bracket_token.col,
-                    array: ArrayIndex((self.ast.array_items.len() - 1) as offset),
+                    array: ArrayIndex(self.ast.array_items.len() as index32 - 1),
                     close_square_bracket_column,
                 }
             }
@@ -2134,14 +2134,14 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
 // control flow statements
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
-    fn if_statement(&mut self, if_column: offset) -> Result<(), Error<ErrorKind>> {
+    fn if_statement(&mut self, if_column: column32) -> Result<(), Error<ErrorKind>> {
         let start_of_condition_expression_token = self.next_expected_token(Expected::Expression)?;
         let condition = self.expression(start_of_condition_expression_token)?;
 
         self.ast.ifs.push(If { if_column, condition });
         self.ast.else_ifs.push(Vec::new());
         self.ast.do_columns.push(Vec::new());
-        let if_index = IfIndex((self.ast.ifs.len() - 1) as offset);
+        let if_index = IfIndex(self.ast.ifs.len() as index32 - 1);
 
         self.ast.nodes.push(Node::If { if_index });
         let placeholder_if_index = self.ast.nodes.len() - 1;
@@ -2374,14 +2374,14 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
     fn loop_statement(
         &mut self,
-        do_column: Option<offset>,
+        do_column: Option<column32>,
         loop_token: &'tokens Token<'src>,
     ) -> Result<(), Error<ErrorKind>> {
         let start_of_condition_expression_token = self.next_expected_token(Expected::Expression)?;
         let condition = self.expression(start_of_condition_expression_token)?;
 
         self.ast.loops.push(Loop { loop_column: loop_token.col, condition, do_column: None });
-        let loop_index = LoopIndex((self.ast.loops.len() - 1) as offset);
+        let loop_index = LoopIndex(self.ast.loops.len() as index32 - 1);
 
         let loop_node = match do_column {
             Some(column) => Node::DoLoop { loop_index, do_column: column },
