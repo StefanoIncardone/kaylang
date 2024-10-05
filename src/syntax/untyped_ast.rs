@@ -436,14 +436,14 @@ pub(crate) enum Node {
     },
 }
 
+// IDEA(stefano): remove *End cases and check the next parsed node instead
 #[derive(Debug, Clone)]
 enum ParsedNode {
     Node(Node),
     SemiColon,
-    ScopeEnd, // IDEA(stefano): add information about the closing bracket
-    // IDEA(stefano): add Scope { scope_node_index: offset }
-    IfEnd,
-    LoopEnd,
+    Scope,
+    IfStatement,
+    LoopStatement,
 }
 
 #[derive(Debug)]
@@ -468,14 +468,6 @@ impl<'src, 'tokens: 'src> UntypedAst<'src, 'tokens> {
     fn new_expression(&mut self, expression: Expression<'src, 'tokens>) -> ExpressionIndex {
         self.expressions.push(expression);
         return ExpressionIndex((self.expressions.len() - 1) as offset);
-    }
-
-    #[inline]
-    fn new_do_column(&mut self, if_index: IfIndex, column: offset) {
-        let Some(do_column) = DoColumn::new(column) else {
-            unreachable!("valid `do` should have non-zero column");
-        };
-        self.do_columns[if_index.0 as usize].push(do_column);
     }
 }
 
@@ -587,7 +579,7 @@ impl UntypedAst<'_, '_> {
                     self.info_node(f, node_index, if_indent)?;
                 }
 
-                return Ok(());
+                Ok(())
             }
             Node::IfElse { if_index, else_column } => {
                 let if_indent = indent + INDENT_INCREMENT;
@@ -839,7 +831,6 @@ pub struct Parser<'src, 'tokens: 'src> {
     token_index: offset,
     tokens: &'tokens [Token<'src>],
 
-    placeholder_scopes_indices: Vec<offset>,
     loop_depth: offset,
     ast: UntypedAst<'src, 'tokens>,
 }
@@ -874,27 +865,17 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             return Ok(ast);
         }
 
-        let mut this = Self {
-            src,
-            errors: Vec::new(),
+        let mut this = Self { src, errors: Vec::new(), token_index: 0, tokens, loop_depth: 0, ast };
 
-            token_index: 0,
-            tokens,
+        while let Some(peeked) = this.peek_next_token() {
+            this.token_index = peeked.index;
 
-            placeholder_scopes_indices: Vec::new(),
-            loop_depth: 0,
-            ast,
-        };
-
-        while let Some(Peeked { next_token, next_token_index }) = this.peek_next_token() {
-            this.token_index = next_token_index;
-
-            let node = match this.any(next_token) {
+            let node = match this.any(peeked.token) {
                 Ok(ParsedNode::Node(node)) => node,
                 Ok(ParsedNode::SemiColon) => continue,
-                Ok(ParsedNode::ScopeEnd) => continue,
-                Ok(ParsedNode::IfEnd) => continue,
-                Ok(ParsedNode::LoopEnd) => continue,
+                Ok(ParsedNode::Scope) => continue,
+                Ok(ParsedNode::IfStatement) => continue,
+                Ok(ParsedNode::LoopStatement) => continue,
                 Err(err) => {
                     this.errors.push(err);
 
@@ -907,12 +888,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             this.ast.nodes.push(node);
         }
 
-        return if this.errors.is_empty() {
-            debug_assert!(this.placeholder_scopes_indices.is_empty(), "malformatted scopes");
-            Ok(this.ast)
-        } else {
-            Err(this.errors)
-        };
+        return if this.errors.is_empty() { Ok(this.ast) } else { Err(this.errors) };
     }
 
     fn any(&mut self, token: &'tokens Token<'src>) -> Result<ParsedNode, Error<ErrorKind>> {
@@ -1118,40 +1094,50 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }))
             }
 
-            // IDEA(stefano): try using self.single_scope in here
             TokenKind::Bracket(BracketKind::OpenCurly) => {
-                self.placeholder_scopes_indices.push(self.ast.nodes.len() as offset);
-
                 let placeholder_scope = Node::Scope {
                     open_curly_bracket_column: token.col,
                     raw_nodes_in_scope_count: 0,
                     close_curly_bracket_column: 0,
                 };
-                Ok(ParsedNode::Node(placeholder_scope))
+                self.ast.nodes.push(placeholder_scope);
+                let placeholder_scope_node_index = (self.ast.nodes.len() - 1) as offset;
+
+                while let Some(peeked) = self.peek_next_token() {
+                    self.token_index = peeked.index;
+
+                    if let TokenKind::Bracket(BracketKind::CloseCurly) = peeked.token.kind {
+                        let last_scope_node_index = (self.ast.nodes.len() - 1) as offset;
+                        let Node::Scope {
+                            raw_nodes_in_scope_count,
+                            close_curly_bracket_column,
+                            ..
+                        } = &mut self.ast.nodes[placeholder_scope_node_index as usize]
+                        else {
+                            self.unbalanced_bracket(token);
+                        };
+
+                        *raw_nodes_in_scope_count =
+                            last_scope_node_index - placeholder_scope_node_index;
+                        *close_curly_bracket_column = peeked.token.col;
+                        break;
+                    }
+
+                    let node = match self.any(peeked.token)? {
+                        ParsedNode::Node(node) => node,
+                        ParsedNode::SemiColon => continue,
+                        ParsedNode::Scope => continue,
+                        ParsedNode::IfStatement => continue,
+                        ParsedNode::LoopStatement => continue,
+                    };
+
+                    self.ast.nodes.push(node);
+                }
+
+                Ok(ParsedNode::Scope)
             }
-            TokenKind::Bracket(BracketKind::CloseCurly) => {
-                let last_scope_node_index = (self.ast.nodes.len() - 1) as offset;
-                let Some(first_scope_node_index) = self.placeholder_scopes_indices.pop() else {
-                    self.unbalanced_bracket(token);
-                };
-
-                let Node::Scope { raw_nodes_in_scope_count, close_curly_bracket_column, .. } =
-                    &mut self.ast.nodes[first_scope_node_index as usize]
-                else {
-                    self.invalid_token(
-                        token,
-                        "invalid node index".into(),
-                        "expected open curly bracket".into(),
-                    );
-                };
-
-                *raw_nodes_in_scope_count = last_scope_node_index - first_scope_node_index;
-                *close_curly_bracket_column = token.col;
-                Ok(ParsedNode::ScopeEnd)
-            }
-
             TokenKind::If => match self.if_statement(token.col) {
-                Ok(()) => Ok(ParsedNode::IfEnd),
+                Ok(()) => Ok(ParsedNode::IfStatement),
                 Err(err) => Err(err),
             },
 
@@ -1171,7 +1157,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 self.loop_depth -= 1;
 
                 match loop_result {
-                    Ok(()) => Ok(ParsedNode::LoopEnd),
+                    Ok(()) => Ok(ParsedNode::LoopStatement),
                     Err(err) => Err(err),
                 }
             }
@@ -1184,7 +1170,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 self.loop_depth -= 1;
 
                 match loop_result {
-                    Ok(()) => Ok(ParsedNode::LoopEnd),
+                    Ok(()) => Ok(ParsedNode::LoopStatement),
                     Err(err) => Err(err),
                 }
             }
@@ -1192,36 +1178,36 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 self.semicolon()?;
 
                 if self.loop_depth == 0 {
-                    Err(Error {
+                    return Err(Error {
                         kind: ErrorKind::BreakOutsideOfLoop,
                         col: token.col,
                         pointers_count: token.kind.display_len(),
-                    })
-                } else {
-                    let Some(break_column) = NonZero::new(token.col) else {
-                        unreachable!("valid `break` should have non-zero column");
-                    };
-
-                    Ok(ParsedNode::Node(Node::Break { break_column }))
+                    });
                 }
-            },
+
+                let Some(break_column) = NonZero::new(token.col) else {
+                    unreachable!("valid `break` should have non-zero column");
+                };
+
+                Ok(ParsedNode::Node(Node::Break { break_column }))
+            }
             TokenKind::Continue => {
                 self.semicolon()?;
 
                 if self.loop_depth == 0 {
-                    Err(Error {
+                    return Err(Error {
                         kind: ErrorKind::ContinueOutsideOfLoop,
                         col: token.col,
                         pointers_count: token.kind.display_len(),
-                    })
-                } else {
-                    let Some(continue_column) = NonZero::new(token.col) else {
-                        unreachable!("valid `continue` should have non-zero column");
-                    };
-
-                    Ok(ParsedNode::Node(Node::Continue { continue_column }))
+                    });
                 }
-            },
+
+                let Some(continue_column) = NonZero::new(token.col) else {
+                    unreachable!("valid `continue` should have non-zero column");
+                };
+
+                Ok(ParsedNode::Node(Node::Continue { continue_column }))
+            }
 
             TokenKind::Else => Err(Error {
                 kind: ErrorKind::StrayElse,
@@ -1243,7 +1229,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 col: token.col,
                 pointers_count: token.kind.display_len(),
             }),
-            TokenKind::Bracket(BracketKind::CloseRound | BracketKind::CloseSquare) => {
+            TokenKind::Bracket(
+                BracketKind::CloseRound | BracketKind::CloseSquare | BracketKind::CloseCurly
+            ) => {
                 self.unbalanced_bracket(token)
             }
             TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
@@ -1253,10 +1241,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     }
 
     fn semicolon(&mut self) -> Result<(), Error<ErrorKind>> {
-        let Peeked {
-            next_token: &Token { kind: TokenKind::SemiColon, .. },
-            next_token_index
-        } = self.peek_next_expected_token(Expected::Semicolon)? else {
+        let peeked = self.peek_next_expected_token(Expected::Semicolon)?;
+        let TokenKind::SemiColon = peeked.token.kind else {
             let previous_token = self.peek_previous_token();
             return Err(Error {
                 kind: ErrorKind::MissingSemicolon,
@@ -1265,7 +1251,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             });
         };
 
-        self.token_index = next_token_index;
+        self.token_index = peeked.index;
         return Ok(());
     }
 }
@@ -1325,8 +1311,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
 #[derive(Debug, Clone, Copy)]
 struct Peeked<'src, 'tokens: 'src> {
-    next_token: &'tokens Token<'src>,
-    next_token_index: offset,
+    token: &'tokens Token<'src>,
+    index: offset,
 }
 
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
@@ -1358,7 +1344,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 | TokenKind::Loop
                 | TokenKind::Break
                 | TokenKind::Continue => {
-                    return Some(Peeked { next_token, next_token_index: next_token_index + 1 })
+                    return Some(Peeked { token: next_token, index: next_token_index + 1 })
                 }
                 TokenKind::Comment(_) | TokenKind::BlockComment(_) => {}
                 TokenKind::Unexpected(_) => self.unexpected(next_token),
@@ -1402,9 +1388,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         &mut self,
         expected: Expected,
     ) -> Result<&'tokens Token<'src>, Error<ErrorKind>> {
-        let Peeked { next_token, next_token_index } = self.peek_next_expected_token(expected)?;
-        self.token_index = next_token_index;
-        return Ok(next_token);
+        let peeked = self.peek_next_expected_token(expected)?;
+        self.token_index = peeked.index;
+        return Ok(peeked.token);
     }
 
     /// Warning: should always be called with at least a previus token
@@ -1454,15 +1440,15 @@ struct Operator<'src, 'tokens: 'src> {
 // TODO(stefano): make less recursive by only recursing based on operator precedence
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn operator(&mut self, accepted_operators: &[Op]) -> Option<Operator<'src, 'tokens>> {
-        let Peeked { next_token, next_token_index } = self.peek_next_token()?;
-        let TokenKind::Op(operator) = next_token.kind else {
+        let peeked = self.peek_next_token()?;
+        let TokenKind::Op(operator) = peeked.token.kind else {
             return None;
         };
 
         for accepted_operator in accepted_operators {
             if *accepted_operator == operator {
-                self.token_index = next_token_index;
-                return Some(Operator { token: next_token, operator });
+                self.token_index = peeked.index;
+                return Some(Operator { token: peeked.token, operator });
             }
         }
 
@@ -1651,12 +1637,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
         loop {
             let Some(Peeked {
-                next_token:
+                token:
                     &Token {
                         kind: TokenKind::Bracket(BracketKind::OpenSquare),
                         col: open_square_bracket_column,
                     },
-                next_token_index: open_square_bracket_token_index,
+                index: open_square_bracket_token_index,
             }) = self.peek_next_token()
             else {
                 break;
@@ -2047,12 +2033,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let mut array_dimensions = Vec::<ArrayDimension>::new();
             loop {
                 let Some(Peeked {
-                    next_token:
+                    token:
                         &Token {
                             kind: TokenKind::Bracket(BracketKind::OpenSquare),
                             col: open_square_bracket_column,
                         },
-                    next_token_index: open_square_bracket_token_index,
+                    index: open_square_bracket_token_index,
                 }) = self.peek_next_token()
                 else {
                     break 'type_annotation Some(TypeAnnotation {
@@ -2068,12 +2054,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let dimension_expression = self.expression(dimension_expression_token)?;
 
                 let Some(Peeked {
-                    next_token:
+                    token:
                         &Token {
                             kind: TokenKind::Bracket(BracketKind::CloseSquare),
                             col: close_square_bracket_column,
                         },
-                    next_token_index: close_square_bracket_token_index,
+                    index: close_square_bracket_token_index,
                 }) = self.peek_next_token()
                 else {
                     return Err(Error {
@@ -2093,8 +2079,13 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
 
         let equals_or_semicolon_token = self.next_expected_token(Expected::EqualsOrSemicolon)?;
-        let initial_value = match equals_or_semicolon_token.kind {
-            TokenKind::SemiColon => None,
+        return match equals_or_semicolon_token.kind {
+            TokenKind::SemiColon => Ok(VariableDefinition {
+                name: variable_name,
+                name_column: variable_name_token.col,
+                type_annotation,
+                initial_value: None,
+            }),
             TokenKind::Op(Op::Equals) => {
                 let start_of_initial_value_token =
                     self.next_expected_token(Expected::Expression)?;
@@ -2105,7 +2096,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     unreachable!("valid `do` should have non-zero column");
                 };
 
-                Some(InitialValue { equals_column, expression })
+                Ok(VariableDefinition {
+                    name: variable_name,
+                    name_column: variable_name_token.col,
+                    type_annotation,
+                    initial_value: Some(InitialValue { equals_column, expression }),
+                })
             }
             TokenKind::Bracket(_)
             | TokenKind::Colon
@@ -2129,32 +2125,21 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Loop
             | TokenKind::Break
             | TokenKind::Continue => match type_annotation {
-                None => {
-                    return Err(Error {
-                        kind: ErrorKind::ExpectedEqualsOrSemicolonAfterVariableName,
-                        col: variable_name_token.col,
-                        pointers_count: variable_name_token.kind.display_len(),
-                    })
-                }
-                Some(_) => {
-                    return Err(Error {
-                        kind: ErrorKind::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
-                        col: equals_or_semicolon_token.col,
-                        pointers_count: equals_or_semicolon_token.kind.display_len(),
-                    })
-                }
+                None => Err(Error {
+                    kind: ErrorKind::ExpectedEqualsOrSemicolonAfterVariableName,
+                    col: variable_name_token.col,
+                    pointers_count: variable_name_token.kind.display_len(),
+                }),
+                Some(_) => Err(Error {
+                    kind: ErrorKind::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
+                    col: equals_or_semicolon_token.col,
+                    pointers_count: equals_or_semicolon_token.kind.display_len(),
+                }),
             },
             TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
                 self.should_have_been_skipped(equals_or_semicolon_token)
             }
         };
-
-        return Ok(VariableDefinition {
-            name: variable_name,
-            name_column: variable_name_token.col,
-            type_annotation,
-            initial_value,
-        });
     }
 }
 
@@ -2172,22 +2157,70 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         self.ast.nodes.push(Node::If { if_index });
         let placeholder_if_index = self.ast.nodes.len() - 1;
 
-        self.do_statement_or_scope_in_if_statement(if_index)?;
+        let after_if_condition_token = self.next_expected_token(Expected::DoOrOpenCurlyBracket)?;
+        match after_if_condition_token.kind {
+            TokenKind::Do => {
+                let Some(do_column) = DoColumn::new(after_if_condition_token.col) else {
+                    unreachable!("valid `do` should have non-zero column");
+                };
+                self.ast.do_columns[if_index.0 as usize].push(do_column);
+
+                self.do_statement_in_if_statement()?;
+            }
+            TokenKind::Bracket(BracketKind::OpenCurly) => {
+                let ParsedNode::Scope = self.any(after_if_condition_token)? else {
+                    unreachable!();
+                };
+            }
+            TokenKind::Colon
+            | TokenKind::SemiColon
+            | TokenKind::Comma
+            | TokenKind::Op(_)
+            | TokenKind::Bracket(_)
+            | TokenKind::False
+            | TokenKind::True
+            | TokenKind::Integer(_, _)
+            | TokenKind::Ascii(_)
+            | TokenKind::Str(_)
+            | TokenKind::RawStr(_)
+            | TokenKind::Identifier(_)
+            | TokenKind::Print
+            | TokenKind::PrintLn
+            | TokenKind::Eprint
+            | TokenKind::EprintLn
+            | TokenKind::Mutability(_)
+            | TokenKind::If
+            | TokenKind::Else
+            | TokenKind::Loop
+            | TokenKind::Break
+            | TokenKind::Continue => {
+                let end_of_condition_token = self.peek_previous_token();
+                return Err(Error {
+                    kind: ErrorKind::ElseMustBeFollowedByDoOrBlockOrIf,
+                    col: end_of_condition_token.col,
+                    pointers_count: end_of_condition_token.kind.display_len(),
+                });
+            }
+            TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+                self.should_have_been_skipped(after_if_condition_token);
+            }
+        }
 
         while let Some(Peeked {
-            next_token: else_token @ &Token { kind: TokenKind::Else, col: else_token_column },
-            next_token_index,
+            token: else_token @ &Token { kind: TokenKind::Else, col: else_token_column },
+            index: else_token_index,
         }) = self.peek_next_token()
         {
-            self.token_index = next_token_index;
+            self.token_index = else_token_index;
 
-            let Peeked { next_token: after_else_token, next_token_index: after_else_token_index } =
-                self.peek_next_expected_token(Expected::DoOrOpenCurlyBracketOrIf)?;
-
+            let after_else_token = self.next_expected_token(Expected::DoOrOpenCurlyBracketOrIf)?;
             match after_else_token.kind {
                 TokenKind::Do => {
-                    self.token_index = after_else_token_index;
-                    self.ast.new_do_column(if_index, after_else_token.col);
+                    let Some(do_column) = DoColumn::new(after_else_token.col) else {
+                        unreachable!("valid `do` should have non-zero column");
+                    };
+                    self.ast.do_columns[if_index.0 as usize].push(do_column);
+
                     self.do_statement_in_if_statement()?;
 
                     let Some(else_column) = ElseColumn::new(else_token_column) else {
@@ -2198,7 +2231,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     break;
                 }
                 TokenKind::Bracket(BracketKind::OpenCurly) => {
-                    self.single_scope()?;
+                    let ParsedNode::Scope = self.any(after_else_token)? else {
+                        unreachable!();
+                    };
 
                     let Some(else_column) = ElseColumn::new(else_token_column) else {
                         unreachable!("valid `else` should have non-zero column");
@@ -2208,8 +2243,6 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     break;
                 }
                 TokenKind::If => {
-                    self.token_index = after_else_token_index;
-
                     let start_of_else_if_condition_expression_token = self.next_expected_token(Expected::Expression)?;
                     let else_if_condition = self.expression(start_of_else_if_condition_expression_token)?;
 
@@ -2223,7 +2256,54 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     };
                     self.ast.else_ifs[if_index.0 as usize].push(else_if);
 
-                    self.do_statement_or_scope_in_if_statement(if_index)?;
+                    let after_else_if_condition_token = self.next_expected_token(Expected::DoOrOpenCurlyBracket)?;
+                    match after_else_if_condition_token.kind {
+                        TokenKind::Do => {
+                            let Some(do_column) = DoColumn::new(after_else_if_condition_token.col) else {
+                                unreachable!("valid `do` should have non-zero column");
+                            };
+                            self.ast.do_columns[if_index.0 as usize].push(do_column);
+
+                            self.do_statement_in_if_statement()?;
+                        }
+                        TokenKind::Bracket(BracketKind::OpenCurly) => {
+                            let ParsedNode::Scope = self.any(after_else_if_condition_token)? else {
+                                unreachable!();
+                            };
+                        }
+                        TokenKind::Colon
+                        | TokenKind::SemiColon
+                        | TokenKind::Comma
+                        | TokenKind::Op(_)
+                        | TokenKind::Bracket(_)
+                        | TokenKind::False
+                        | TokenKind::True
+                        | TokenKind::Integer(_, _)
+                        | TokenKind::Ascii(_)
+                        | TokenKind::Str(_)
+                        | TokenKind::RawStr(_)
+                        | TokenKind::Identifier(_)
+                        | TokenKind::Print
+                        | TokenKind::PrintLn
+                        | TokenKind::Eprint
+                        | TokenKind::EprintLn
+                        | TokenKind::Mutability(_)
+                        | TokenKind::If
+                        | TokenKind::Else
+                        | TokenKind::Loop
+                        | TokenKind::Break
+                        | TokenKind::Continue => {
+                            let end_of_condition_token = self.peek_previous_token();
+                            return Err(Error {
+                                kind: ErrorKind::ElseMustBeFollowedByDoOrBlockOrIf,
+                                col: end_of_condition_token.col,
+                                pointers_count: end_of_condition_token.kind.display_len(),
+                            })
+                        }
+                        TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+                            self.should_have_been_skipped(after_else_if_condition_token);
+                        }
+                    }
                 }
                 TokenKind::Colon
                 /* NOTE(stefano):
@@ -2271,121 +2351,35 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     }
 
     fn do_statement_in_if_statement(&mut self) -> Result<(), Error<ErrorKind>> {
-        let Peeked {
-            next_token: after_do_token,
-            next_token_index: after_do_token_index,
-        } = self.peek_next_expected_token(Expected::Statement)?;
-
-        if let TokenKind::Bracket(BracketKind::OpenCurly) = after_do_token.kind {
-            while let Some(Peeked { next_token, next_token_index }) = self.peek_next_token() {
-                self.token_index = next_token_index;
-
-                let node = match self.any(next_token)? {
-                    ParsedNode::Node(node) => node,
-                    ParsedNode::SemiColon => continue,
-                    ParsedNode::ScopeEnd => {
-                        return Err(Error {
-                            kind: ErrorKind::BlockInDoStatement,
-                            col: after_do_token.col,
-                            pointers_count: after_do_token.kind.display_len(),
-                        });
-                    }
-                    ParsedNode::IfEnd => continue,
-                    ParsedNode::LoopEnd => continue,
-                };
-
+        let next_token = self.next_expected_token(Expected::Statement)?;
+        return match self.any(next_token)? {
+            ParsedNode::Node(
+                Node::LetVariableDefinition { .. } | Node::VarVariableDefinition { .. },
+            ) => Err(Error {
+                kind: ErrorKind::VariableInDoStatement,
+                col: next_token.col,
+                pointers_count: next_token.kind.display_len(),
+            }),
+            ParsedNode::Node(node) => {
                 self.ast.nodes.push(node);
+                Ok(())
             }
-            self.unbalanced_bracket(after_do_token);
-        };
-
-        self.token_index = after_do_token_index;
-
-        while let Some(Peeked { next_token, next_token_index }) = self.peek_next_token() {
-            self.token_index = next_token_index;
-
-            let node = match self.any(next_token)? {
-                ParsedNode::Node(
-                    Node::LetVariableDefinition { .. } | Node::VarVariableDefinition { .. },
-                ) => {
-                    return Err(Error {
-                        kind: ErrorKind::VariableInDoStatement,
-                        col: next_token.col,
-                        pointers_count: next_token.kind.display_len(),
-                    });
-                }
-                ParsedNode::Node(node) => node,
-                ParsedNode::SemiColon => {
-                    return Err(Error {
-                        kind: ErrorKind::EmptyDoStatement,
-                        col: next_token.col,
-                        pointers_count: next_token.kind.display_len(),
-                    });
-                }
-                ParsedNode::ScopeEnd => self.unbalanced_bracket(next_token),
-                ParsedNode::IfEnd => {
-                    return Err(Error {
-                        kind: ErrorKind::IfStatementInDoStatementInIfBranch,
-                        col: next_token.col,
-                        pointers_count: next_token.kind.display_len(),
-                    });
-                }
-                ParsedNode::LoopEnd => break,
-            };
-
-            self.ast.nodes.push(node);
-        }
-
-        return Ok(());
-    }
-
-    fn do_statement_or_scope_in_if_statement(
-        &mut self,
-        if_index: IfIndex,
-    ) -> Result<(), Error<ErrorKind>> {
-        let Peeked { next_token, next_token_index } =
-            self.peek_next_expected_token(Expected::DoOrOpenCurlyBracket)?;
-
-        return match next_token.kind {
-            TokenKind::Do => {
-                self.token_index = next_token_index;
-
-                self.ast.new_do_column(if_index, next_token.col);
-                self.do_statement_in_if_statement()
-            }
-            TokenKind::Bracket(BracketKind::OpenCurly) => self.single_scope(),
-            TokenKind::Colon
-            | TokenKind::SemiColon
-            | TokenKind::Comma
-            | TokenKind::Op(_)
-            | TokenKind::Bracket(_)
-            | TokenKind::False
-            | TokenKind::True
-            | TokenKind::Integer(_, _)
-            | TokenKind::Ascii(_)
-            | TokenKind::Str(_)
-            | TokenKind::RawStr(_)
-            | TokenKind::Identifier(_)
-            | TokenKind::Print
-            | TokenKind::PrintLn
-            | TokenKind::Eprint
-            | TokenKind::EprintLn
-            | TokenKind::Mutability(_)
-            | TokenKind::If
-            | TokenKind::Else
-            | TokenKind::Loop
-            | TokenKind::Break
-            | TokenKind::Continue => {
-                let end_of_condition_token = self.peek_previous_token();
-                Err(Error {
-                    kind: ErrorKind::ElseMustBeFollowedByDoOrBlockOrIf,
-                    col: end_of_condition_token.col,
-                    pointers_count: end_of_condition_token.kind.display_len(),
-                })
-            }
-            TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
-                self.should_have_been_skipped(next_token)
-            }
+            ParsedNode::SemiColon => Err(Error {
+                kind: ErrorKind::EmptyDoStatement,
+                col: next_token.col,
+                pointers_count: next_token.kind.display_len(),
+            }),
+            ParsedNode::Scope => Err(Error {
+                kind: ErrorKind::BlockInDoStatement,
+                col: next_token.col,
+                pointers_count: next_token.kind.display_len(),
+            }),
+            ParsedNode::IfStatement => Err(Error {
+                kind: ErrorKind::IfStatementInDoStatementInIfBranch,
+                col: next_token.col,
+                pointers_count: next_token.kind.display_len(),
+            }),
+            ParsedNode::LoopStatement => Ok(()),
         };
     }
 
@@ -2406,35 +2400,23 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
         self.ast.nodes.push(loop_node);
 
-        let Peeked {
-            next_token: after_condition_token,
-            next_token_index: after_condition_token_index,
-        } = self.peek_next_expected_token(Expected::DoOrOpenCurlyBracket)?;
-        match after_condition_token.kind {
+        let after_condition_token = self.next_expected_token(Expected::DoOrOpenCurlyBracket)?;
+        return match after_condition_token.kind {
             TokenKind::Do => {
-                self.token_index = after_condition_token_index;
-                self.do_statement_in_loop_statement()?;
-
-                let Loop { do_column: do_statement_do_column, .. } =
-                    &mut self.ast.loops[loop_index.0 as usize];
-
-                let column = DoColumn::new(after_condition_token.col);
-                if let None = column {
+                let Some(column) = DoColumn::new(after_condition_token.col) else {
                     unreachable!("valid `do` should have non-zero column");
                 };
-                *do_statement_do_column = column;
+                let Loop { do_column: do_statement_do_column, .. } =
+                    &mut self.ast.loops[loop_index.0 as usize];
+                *do_statement_do_column = Some(column);
+
+                self.do_statement_in_loop_statement()
             }
             TokenKind::Bracket(BracketKind::OpenCurly) => {
-                self.single_scope()?;
-
-                let Loop { do_column: do_statement_do_column, .. } =
-                    &mut self.ast.loops[loop_index.0 as usize];
-
-                let column = DoColumn::new(after_condition_token.col);
-                if let None = column {
-                    unreachable!("valid `do` should have non-zero column");
+                let ParsedNode::Scope = self.any(after_condition_token)? else {
+                    unreachable!();
                 };
-                *do_statement_do_column = column;
+                Ok(())
             }
             TokenKind::Colon
             | TokenKind::SemiColon
@@ -2459,99 +2441,45 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Continue
             | TokenKind::If => {
                 let end_of_condition_token = self.peek_previous_token();
-                return Err(Error {
+                Err(Error {
                     kind: ErrorKind::LoopMustBeFollowedByDoOrBlock,
                     col: end_of_condition_token.col,
                     pointers_count: end_of_condition_token.kind.display_len(),
-                });
+                })
             }
             TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
                 self.should_have_been_skipped(after_condition_token)
             }
-        }
-
-        return Ok(());
+        };
     }
 
     fn do_statement_in_loop_statement(&mut self) -> Result<(), Error<ErrorKind>> {
-        let Peeked {
-            next_token: after_do_token,
-            next_token_index: after_do_token_index,
-        } = self.peek_next_expected_token(Expected::Statement)?;
-
-        if let TokenKind::Bracket(BracketKind::OpenCurly) = after_do_token.kind {
-            while let Some(Peeked { next_token, next_token_index }) = self.peek_next_token() {
-                self.token_index = next_token_index;
-
-                let node = match self.any(next_token)? {
-                    ParsedNode::Node(node) => node,
-                    ParsedNode::SemiColon => continue,
-                    ParsedNode::ScopeEnd => {
-                        return Err(Error {
-                            kind: ErrorKind::BlockInDoStatement,
-                            col: after_do_token.col,
-                            pointers_count: after_do_token.kind.display_len(),
-                        });
-                    }
-                    ParsedNode::IfEnd => continue,
-                    ParsedNode::LoopEnd => continue,
-                };
-
+        let next_token = self.next_expected_token(Expected::Statement)?;
+        return match self.any(next_token)? {
+            ParsedNode::Node(
+                Node::LetVariableDefinition { .. } | Node::VarVariableDefinition { .. },
+            ) => Err(Error {
+                kind: ErrorKind::VariableInDoStatement,
+                col: next_token.col,
+                pointers_count: next_token.kind.display_len(),
+            }),
+            ParsedNode::Node(node) => {
                 self.ast.nodes.push(node);
+                Ok(())
             }
-            self.unbalanced_bracket(after_do_token);
+            ParsedNode::SemiColon => Err(Error {
+                kind: ErrorKind::EmptyDoStatement,
+                col: next_token.col,
+                pointers_count: next_token.kind.display_len(),
+            }),
+            ParsedNode::Scope => Err(Error {
+                kind: ErrorKind::BlockInDoStatement,
+                col: next_token.col,
+                pointers_count: next_token.kind.display_len(),
+            }),
+            ParsedNode::IfStatement => Ok(()),
+            ParsedNode::LoopStatement => Ok(()),
         };
-
-        self.token_index = after_do_token_index;
-
-        while let Some(Peeked { next_token, next_token_index }) = self.peek_next_token() {
-            self.token_index = next_token_index;
-
-            let node = match self.any(next_token)? {
-                ParsedNode::Node(
-                    Node::LetVariableDefinition { .. } | Node::VarVariableDefinition { .. },
-                ) => {
-                    return Err(Error {
-                        kind: ErrorKind::VariableInDoStatement,
-                        col: next_token.col,
-                        pointers_count: next_token.kind.display_len(),
-                    });
-                }
-                ParsedNode::Node(node) => node,
-                ParsedNode::SemiColon => {
-                    return Err(Error {
-                        kind: ErrorKind::EmptyDoStatement,
-                        col: next_token.col,
-                        pointers_count: next_token.kind.display_len(),
-                    });
-                }
-                ParsedNode::ScopeEnd => self.unbalanced_bracket(next_token),
-                ParsedNode::IfEnd => break,
-                ParsedNode::LoopEnd => break,
-            };
-
-            self.ast.nodes.push(node);
-        }
-
-        return Ok(());
-    }
-
-    fn single_scope(&mut self) -> Result<(), Error<ErrorKind>> {
-        while let Some(Peeked { next_token, next_token_index }) = self.peek_next_token() {
-            self.token_index = next_token_index;
-
-            let node = match self.any(next_token)? {
-                ParsedNode::Node(node) => node,
-                ParsedNode::SemiColon => continue,
-                ParsedNode::ScopeEnd => break,
-                ParsedNode::IfEnd => continue,
-                ParsedNode::LoopEnd => continue,
-            };
-
-            self.ast.nodes.push(node);
-        }
-
-        return Ok(());
     }
 }
 
