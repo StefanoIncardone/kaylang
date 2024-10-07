@@ -648,14 +648,18 @@ impl<'src> Tokenizer<'src> {
             let token_kind_result = 'next_token: loop {
                 this.token_start_col = this.col;
 
-                let next = match this.next_ascii_char() {
-                    Ok(Some(ch)) => ch,
+                let next = match this.peek_next_ascii_char() {
+                    Ok(Some(ch)) => {
+                        this.col += 1;
+                        ch
+                    },
                     Ok(None) => break 'tokenization,
-                    Err(err) => {
+                    Err(error) => {
+                        this.col += error.byte_len;
                         this.errors.push(Error {
-                            kind: ErrorKind::Utf8Character(err.utf8_ch),
-                            col: err.col,
-                            pointers_count: err.pointers_count,
+                            kind: ErrorKind::Utf8Character(error.utf8_ch),
+                            col: error.col,
+                            pointers_count: error.pointers_count,
                         });
                         break 'next_token Err(());
                     }
@@ -1224,37 +1228,12 @@ impl<'src> Tokenizer<'src> {
             as column32;
     }
 
-    fn next_ascii_char(&mut self) -> Result<Option<ascii>, Utf8Error> {
-        let Some(next) = self.src.code.as_bytes().get(self.col as usize) else {
-            return Ok(None);
-        };
-
-        return match next {
-            ascii_ch @ 0..=b'\x7F' => {
-                self.col += 1;
-                Ok(Some(*ascii_ch))
-            }
-            _utf8_ch => {
-                let rest_of_line = &self.src.code[self.col as usize..self.line.end as usize];
-                let Some(utf8_ch) = rest_of_line.chars().next() else {
-                    unreachable!("this branch assured we would have a valid utf8 character");
-                };
-
-                let utf8_byte_len = utf8_ch.len_utf8() as column32;
-                let utf8_ch_col = self.col;
-                self.col += utf8_byte_len;
-                Err(Utf8Error {
-                    utf8_ch,
-                    col: utf8_ch_col,
-                    byte_len: utf8_byte_len,
-                    pointers_count: 1, // TODO(stefano): proper utf8 len
-                })
-            }
-        };
-    }
-
     fn next_utf8_char_multiline(&mut self) -> Option<utf8> {
-        let next = self.src.code.as_bytes().get(self.col as usize)?;
+        if self.col as usize >= self.src.code.len() {
+            return None;
+        }
+
+        let next = self.src.code.as_bytes()[self.col as usize];
         return match next {
             b'\n' => {
                 if self.line_index >= self.src.lines.len() as index32 - 1 {
@@ -1268,7 +1247,7 @@ impl<'src> Tokenizer<'src> {
             }
             ascii_ch @ 0..=b'\x7F' => {
                 self.col += 1;
-                Some(*ascii_ch as utf8)
+                Some(ascii_ch as utf8)
             }
             _utf8_ch => {
                 let rest_of_line = &self.src.code[self.col as usize..self.line.end as usize];
@@ -1282,11 +1261,12 @@ impl<'src> Tokenizer<'src> {
         };
     }
 
-    fn peek_next_ascii_char(&self) -> Result<Option<&'src ascii>, Utf8Error> {
-        let Some(next) = self.src.code.as_bytes().get(self.col as usize) else {
+    fn peek_next_ascii_char(&self) -> Result<Option<ascii>, Utf8Error> {
+        if self.col as usize >= self.src.code.len() {
             return Ok(None);
-        };
+        }
 
+        let next = self.src.code.as_bytes()[self.col as usize];
         return match next {
             ascii_ch @ 0..=b'\x7F' => Ok(Some(ascii_ch)),
             _utf8_ch => {
@@ -1306,9 +1286,13 @@ impl<'src> Tokenizer<'src> {
     }
 
     fn peek_next_utf8_char(&self) -> Option<utf8> {
-        let next = self.src.code.as_bytes().get(self.col as usize)?;
+        if self.col as usize >= self.src.code.len() {
+            return None;
+        }
+
+        let next = self.src.code.as_bytes()[self.col as usize];
         return match next {
-            ascii_ch @ 0..=b'\x7F' => Some(*ascii_ch as utf8),
+            ascii_ch @ 0..=b'\x7F' => Some(ascii_ch as utf8),
             _utf8_ch => {
                 let rest_of_line = &self.src.code[self.col as usize..self.line.end as usize];
                 let Some(utf8_ch) = rest_of_line.chars().next() else {
@@ -1328,16 +1312,19 @@ impl<'src> Tokenizer<'src> {
 
         loop {
             match self.peek_next_ascii_char() {
-                Ok(Some(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {}
+                Ok(Some(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {
+                    self.col += 1;
+                }
                 Ok(Some(_) | None) => break,
-                Err(error) => self.errors.push(Error {
-                    kind: ErrorKind::Utf8InIdentifier(error.utf8_ch),
-                    col: error.col,
-                    pointers_count: error.pointers_count,
-                }),
+                Err(error) => {
+                    self.col += error.byte_len;
+                    self.errors.push(Error {
+                        kind: ErrorKind::Utf8InIdentifier(error.utf8_ch),
+                        col: error.col,
+                        pointers_count: error.pointers_count,
+                    });
+                }
             }
-
-            _ = self.next_ascii_char();
         }
 
         let identifier = match &self.src.code[self.token_start_col as usize..self.col as usize] {
@@ -1377,16 +1364,20 @@ impl<'src> Tokenizer<'src> {
 
         loop {
             match self.peek_next_ascii_char() {
-                Ok(Some(b'0'..=b'9' | b'_')) => {}
+                Ok(Some(b'0'..=b'9' | b'_')) => {
+                    self.col += 1;
+                }
                 Ok(Some(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
+                    self.col += 1;
                     self.errors.push(Error {
-                        kind: ErrorKind::LetterInNumberLiteral(Base::Decimal, *letter),
+                        kind: ErrorKind::LetterInNumberLiteral(Base::Decimal, letter),
                         col: self.col,
                         pointers_count: 1,
                     });
                 }
                 Ok(Some(_) | None) => break,
                 Err(error) => {
+                    self.col += error.byte_len;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InNumberLiteral(error.utf8_ch),
                         col: error.col,
@@ -1394,8 +1385,6 @@ impl<'src> Tokenizer<'src> {
                     });
                 }
             }
-
-            _ = self.next_ascii_char();
         }
 
         return if previous_errors_len == self.errors.len() {
@@ -1411,26 +1400,31 @@ impl<'src> Tokenizer<'src> {
 
         loop {
             match self.peek_next_ascii_char() {
-                Ok(Some(b'0'..=b'1' | b'_')) => {}
+                Ok(Some(b'0'..=b'1' | b'_')) => {
+                    self.col += 1;
+                }
                 Ok(Some(out_of_range @ b'2'..=b'9')) => {
+                    self.col += 1;
                     self.errors.push(Error {
                         kind: ErrorKind::DigitOutOfRangeInNumberLiteral(
                             Base::Binary,
-                            *out_of_range,
+                            out_of_range,
                         ),
                         col: self.col,
                         pointers_count: 1,
                     });
                 }
                 Ok(Some(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
+                    self.col += 1;
                     self.errors.push(Error {
-                        kind: ErrorKind::LetterInNumberLiteral(Base::Binary, *letter),
+                        kind: ErrorKind::LetterInNumberLiteral(Base::Binary, letter),
                         col: self.col,
                         pointers_count: 1,
                     });
                 }
                 Ok(Some(_) | None) => break,
                 Err(error) => {
+                    self.col += error.byte_len;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InNumberLiteral(error.utf8_ch),
                         col: error.col,
@@ -1438,8 +1432,6 @@ impl<'src> Tokenizer<'src> {
                     });
                 }
             }
-
-            _ = self.next_ascii_char();
         }
 
         return if previous_errors_len == self.errors.len() {
@@ -1465,23 +1457,28 @@ impl<'src> Tokenizer<'src> {
 
         loop {
             match self.peek_next_ascii_char() {
-                Ok(Some(b'0'..=b'7' | b'_')) => {}
+                Ok(Some(b'0'..=b'7' | b'_')) => {
+                    self.col += 1;
+                }
                 Ok(Some(out_of_range @ b'8'..=b'9')) => {
+                    self.col += 1;
                     self.errors.push(Error {
-                        kind: ErrorKind::DigitOutOfRangeInNumberLiteral(Base::Octal, *out_of_range),
+                        kind: ErrorKind::DigitOutOfRangeInNumberLiteral(Base::Octal, out_of_range),
                         col: self.col,
                         pointers_count: 1,
                     });
                 }
                 Ok(Some(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
+                    self.col += 1;
                     self.errors.push(Error {
-                        kind: ErrorKind::LetterInNumberLiteral(Base::Octal, *letter),
+                        kind: ErrorKind::LetterInNumberLiteral(Base::Octal, letter),
                         col: self.col,
                         pointers_count: 1,
                     });
                 }
                 Ok(Some(_) | None) => break,
                 Err(error) => {
+                    self.col += error.byte_len;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InNumberLiteral(error.utf8_ch),
                         col: error.col,
@@ -1489,8 +1486,6 @@ impl<'src> Tokenizer<'src> {
                     });
                 }
             }
-
-            _ = self.next_ascii_char();
         }
 
         return if previous_errors_len == self.errors.len() {
@@ -1516,12 +1511,15 @@ impl<'src> Tokenizer<'src> {
 
         loop {
             match self.peek_next_ascii_char() {
-                Ok(Some(b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F' | b'_')) => {}
+                Ok(Some(b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F' | b'_')) => {
+                    self.col += 1;
+                }
                 Ok(Some(out_of_range @ (b'g'..=b'z' | b'G'..=b'Z'))) => {
+                    self.col += 1;
                     self.errors.push(Error {
                         kind: ErrorKind::DigitOutOfRangeInNumberLiteral(
                             Base::Hexadecimal,
-                            *out_of_range,
+                            out_of_range,
                         ),
                         col: self.col,
                         pointers_count: 1,
@@ -1529,6 +1527,7 @@ impl<'src> Tokenizer<'src> {
                 }
                 Ok(Some(_) | None) => break,
                 Err(error) => {
+                    self.col += error.byte_len;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InNumberLiteral(error.utf8_ch),
                         col: error.col,
@@ -1536,8 +1535,6 @@ impl<'src> Tokenizer<'src> {
                     });
                 }
             }
-
-            _ = self.next_ascii_char();
         }
 
         return if previous_errors_len == self.errors.len() {
@@ -1590,7 +1587,7 @@ impl<'src> Tokenizer<'src> {
                 }
             };
 
-            let character = match *next_character {
+            let character = match next_character {
                 b'\\' => {
                     let escape_character = match self.peek_next_ascii_char() {
                         Ok(Some(b'\n') | None) => {
@@ -1672,7 +1669,7 @@ impl<'src> Tokenizer<'src> {
                 }
             };
 
-            let character = match *next_character {
+            let character = match next_character {
                 b'\\' => {
                     let escape_character = match self.peek_next_ascii_char() {
                         Ok(Some(b'\n') | None) => {
@@ -1698,7 +1695,7 @@ impl<'src> Tokenizer<'src> {
                         }
                     };
 
-                    match *escape_character {
+                    match escape_character {
                         b'\\' => b'\\',
                         b'\'' => b'\'',
                         b'"' => b'"',
