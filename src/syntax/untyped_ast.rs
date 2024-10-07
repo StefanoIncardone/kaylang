@@ -2518,7 +2518,6 @@ pub enum ErrorKind {
     StrayOperator(Op),
 
     // expressions
-    CannotChainComparisons,
     KeywordInExpression,
     ExpectedOperand,
     ExpectedBracket(BracketKind),
@@ -2579,10 +2578,6 @@ impl IntoErrorInfo for ErrorKind {
                 format!("stray operator '{operator}'").into(),
             ),
 
-            Self::CannotChainComparisons => (
-                "invalid expression".into(),
-                "comparison operators cannot be chained".into(),
-            ),
             Self::KeywordInExpression => (
                 "invalid expression".into(),
                 "cannot be a keyword".into(),
