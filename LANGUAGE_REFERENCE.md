@@ -465,21 +465,6 @@ Executes a block of code based on a condition
     }
     ```
 
-- single statement version:
-
-    ```kay
-    let lucky = 42;
-    if lucky == 19 do println "well done!";
-    else if lucky == 12 do { println "nice"; } # Error: blocks are not allowed in do statements
-    ## Error: if statements are not allowed in do statements,
-    since all of the following branches belong to this if-statement instead of the actual
-    if-statement tha contains this branch
-    ##
-    else if lucky == 12 do if true { println "nice"; }
-    else if lucky == 42 do println "awesome!";
-    else do println "too bad!";
-    ```
-
 ## Loops
 
 Executes a block until a condition is not satisfied
@@ -492,25 +477,21 @@ loop i < 10 {
 }
 ```
 
-can also make use of the do statement syntax:
-
-```kay
-var i = 0;
-loop i < 10 do i += 1;
-println i;
-```
-
 ### C-style do-while loops
 
 C-style do-while loop can be used to let the body/statement of the loop run at least once:
 
 ```kay
 var i = 0;
-loop false do i += 1;
+loop false {
+    i += 1;
+}
 println i; # will print 0 since the increment inside the loop was never executed
 
 var j = 0;
-do loop false do j += 1;
+do loop false {
+    j += 1;
+}
 println j; # will print 1 since the increment inside the loop was executed at least once
 ```
 
@@ -522,7 +503,9 @@ They can be used to alter the normal flow of the loop:
 var i = 0;
 loop i < 10 {
     # Warning: this will never reach the increment statement, thus creating an infinite loop
-    if i == 3 do continue;
+    if i == 3 {
+        continue;
+    }
 
     # Correct way of skipping an iteration
     if i == 4 {
@@ -531,7 +514,9 @@ loop i < 10 {
     }
 
     # numbers 7, 8, 9 will not be printed
-    if i == 6 do break;
+    if i == 6 {
+        break;
+    }
 
     println i;
     i += 1;

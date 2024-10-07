@@ -1,5 +1,7 @@
 use crate::{
-    color::{Bg, Colored, Fg, Flag}, src_file::{column32, line32}, AT, BAR, CAUSE
+    color::{Bg, Colored, Fg, Flag},
+    src_file::{column32, line32},
+    AT, BAR, CAUSE,
 };
 use core::fmt::Display;
 use std::path::Path;

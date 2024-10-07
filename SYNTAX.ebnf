@@ -108,18 +108,19 @@ string_expression         = string_literal, comparison_operator, string_literal;
 array_expression          = array_variable, comparison_operator, array_variable;
 expression                = boolean_expression | integer_expression | string_literal | string_expression | array  | array_expression;
 
-type = identifier | (identifier, "[", integer_literal, "]");
+type = identifier, ["[", integer_literal, "]"];
 variable_declaration = ("let" | "var"), identifier, [[":", type], "=", expression], ";";
 variable_reassignment = (identifier | array_index), assignment_operator, expression, ";";
 
-do_statement = "do", (expression | print | variable_reassignment | loop), ";";
-if =
-    "if", boolean_expression, (do_statement | scope),
-    [{"else", ("if", boolean_expression, (do_statement | scope))}],
-    ["else", (do_statement | scope)]
-    ;
-loop  = ["do"], "loop", boolean_expression, (("do", statement_in_loop, ";") | scope);
-print = (("print", expression) | ("println", [expression]) | ("eprint", expression) | ("eprintln", [expression])), ";";
 statement = expression | print | variable_declaration | variable_reassignment | if | loop;
 statement_in_loop = expression | print | variable_declaration | variable_reassignment | if | loop | "break" | "continue";
 scope     = "{", [{line_comment | block_comment | statement | scope}], "}";
+scope_in_loop     = "{", [{line_comment | block_comment | statement_in_loop | scope_in_loop}], "}";
+
+if =
+    "if", boolean_expression, scope,
+    [{"else", "if", boolean_expression, scope}],
+    ["else", scope]
+    ;
+loop  = ["do"], "loop", boolean_expression, scope_in_loop;
+print = ((("print" | "eprint"), expression) | (("println" | "eprintln"), [expression])), ";";

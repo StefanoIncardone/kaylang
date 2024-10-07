@@ -1,4 +1,5 @@
 // TODO(stefano): multiline strings
+// TODO(stefano): more escape characters
 
 use super::{Error, ErrorInfo, IntoErrorInfo};
 use crate::src_file::{column32, index32, Line, SrcFile};

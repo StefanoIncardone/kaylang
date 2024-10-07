@@ -3,26 +3,6 @@
 >[!WARNING]
 > no feature is final, modifications can happen at any moment
 
-## Remove do statements
-
-- they are just syntactic sugar for a block with a single statement
-- they could cause ambiguities and inconsistencies with their "desugared" form:
-
-    ```kay
-    # what would this mean? error? warning?
-    if condition do fn foo() do println "foo";
-
-    # would be a shorthand for this
-    if condition {
-        fn foo() {
-            println "foo";
-        }
-    }
-    
-    # and would be a 'cleanear' version of this
-    if condition { fn foo() { println "foo"; } }
-    ```
-
 ## Expressions formatting
 
 emit a warning for ambiguos use of unary/binary operators, i.e.:

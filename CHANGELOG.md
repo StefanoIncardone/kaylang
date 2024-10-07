@@ -105,9 +105,9 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ## 0.6.1 - 2024-09-20
 
-### Added
+### Language
 
-#### Language
+#### Added
 
 - `_` as a digit separator, e.g.: `123_456_678` is now a valid number literal
 - Alternative number literals bases:
@@ -117,13 +117,21 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Escape sequences in raw string literals: `r"nested \"quotes\" are now allowed by escaping them"`
 - Block comments, enclosed by `#{` and `#}`
 
-#### Compiler
+#### Removed
+
+- do-statements in if and loop statements, thus reduced language complexity and inconsistencies
+
+#### Fixed
+
+- Added missing `break` and `continue` statements to the [syntax specification](SYNTAX.ebnf)
+
+### Compiler
+
+#### Added
 
 - Created and exposed API for error messages, introduced the `error` module
 
-### Changed
-
-#### Compiler
+#### Changed
 
 - Restricted max source file size to 4GB
 - Restricted max identifiers length to 63 characters
@@ -131,13 +139,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Imported from `core` instead of `std` where possible
 - `Logger` methods now accept `&dyn Display`
 
-### Fixed
-
-#### Language
-
-- Added `break` and `continue` statements to the [syntax specification](SYNTAX.ebnf)
-
-#### Compiler
+#### Fixed
 
 - Corrected error messages related to:
     - undefined variables and variables already defined
