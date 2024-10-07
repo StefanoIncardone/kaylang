@@ -300,8 +300,8 @@ pub struct Help {
 }
 
 impl Display for Help {
-    #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return write!(
             f,
             r"{Version}

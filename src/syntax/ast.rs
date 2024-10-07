@@ -136,8 +136,8 @@ pub(crate) enum UnaryOp {
 }
 
 impl Display for UnaryOp {
-    #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
             Self::Len             => write!(f, "len"),
             Self::Not             => write!(f, "!"),
@@ -173,8 +173,8 @@ pub(crate) enum BooleanUnaryOp {
 }
 
 impl Display for BooleanUnaryOp {
-    #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
             Self::Not => write!(f, "!"),
         };
@@ -234,8 +234,8 @@ pub(crate) enum BinaryOp {
 }
 
 impl Display for BinaryOp {
-    #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
             Self::Pow                 => write!(f,  "**"),
             Self::WrappingPow         => write!(f, r"**\"),
@@ -295,8 +295,8 @@ pub(crate) enum BooleanBinaryOp {
 }
 
 impl Display for BooleanBinaryOp {
-    #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
             Self::And => write!(f, "&&"),
             Self::Or  => write!(f, "||"),
@@ -330,8 +330,8 @@ pub(crate) enum ComparisonOp {
 }
 
 impl Display for ComparisonOp {
-    #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
             Self::Compare         => write!(f, "<=>"),
             Self::EqualsEquals    => write!(f, "=="),
@@ -340,7 +340,7 @@ impl Display for ComparisonOp {
             Self::GreaterOrEquals => write!(f, ">="),
             Self::Less            => write!(f, "<"),
             Self::LessOrEquals    => write!(f, "<="),
-        }
+        };
     }
 }
 
@@ -409,8 +409,8 @@ pub(crate) enum AssignmentOp {
 }
 
 impl Display for AssignmentOp {
-    #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
             Self::Equals              => write!(f, "="),
 

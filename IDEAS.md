@@ -463,6 +463,10 @@ let ok = match answer {
 
 ## Operators
 
+- non-shortcircuting boolean operators:
+    - `and` -> `&&`
+    - `or` -> `||`
+    - `xor` -> NA
 - checked (`++`, `--`, `//`, ..., or `+?`, `-?`, `/?`, ...):
     - overflow/underflow may return both the result and the overflow of the addition
     - division will return either the result or an error value

@@ -24,9 +24,9 @@ pub(crate) enum Reg64 {
     R15 = 15,
 }
 
-#[rustfmt::skip]
 impl Display for Reg64 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
             Self::Rax => write!(f, "rax"),
             Self::Rbx => write!(f, "rbx"),
@@ -74,9 +74,9 @@ pub(crate) enum Reg32 {
     R15d = 15,
 }
 
-#[rustfmt::skip]
 impl Display for Reg32 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
             Self::Eax  => write!(f, "eax"),
             Self::Ebx  => write!(f, "ebx"),
@@ -124,9 +124,9 @@ pub(crate) enum Reg16 {
     R15w = 15,
 }
 
-#[rustfmt::skip]
 impl Display for Reg16 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
             Self::Ax   => write!(f, "ax"),
             Self::Bx   => write!(f, "bx"),
@@ -174,9 +174,9 @@ pub(crate) enum Reg8l {
     R15b = 15,
 }
 
-#[rustfmt::skip]
 impl Display for Reg8l {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
             Self::Al   => write!(f, "al"),
             Self::Bl   => write!(f, "bl"),
@@ -210,9 +210,9 @@ pub(crate) enum Reg8h {
     Dh = 3,
 }
 
-#[rustfmt::skip]
 impl Display for Reg8h {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
             Self::Ah => write!(f, "ah"),
             Self::Bh => write!(f, "bh"),

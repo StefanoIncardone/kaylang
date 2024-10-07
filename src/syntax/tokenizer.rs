@@ -250,8 +250,8 @@ pub enum Op {
 }
 
 impl Display for Op {
-    #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
             Self::Len                       => write!(f, "len"),
             Self::Equals                    => write!(f, "="),
