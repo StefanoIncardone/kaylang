@@ -2331,13 +2331,6 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn do_statement_in_if_statement(&mut self) -> Result<(), Error<ErrorKind>> {
         let next_token = self.next_expected_token(Expected::Statement)?;
         return match self.any(next_token)? {
-            ParsedNode::Node(
-                Node::LetVariableDefinition { .. } | Node::VarVariableDefinition { .. },
-            ) => Err(Error {
-                kind: ErrorKind::VariableInDoStatement,
-                col: next_token.col,
-                pointers_count: next_token.kind.display_len(),
-            }),
             ParsedNode::Node(node) => {
                 self.ast.nodes.push(node);
                 Ok(())
@@ -2434,13 +2427,6 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn do_statement_in_loop_statement(&mut self) -> Result<(), Error<ErrorKind>> {
         let next_token = self.next_expected_token(Expected::Statement)?;
         return match self.any(next_token)? {
-            ParsedNode::Node(
-                Node::LetVariableDefinition { .. } | Node::VarVariableDefinition { .. },
-            ) => Err(Error {
-                kind: ErrorKind::VariableInDoStatement,
-                col: next_token.col,
-                pointers_count: next_token.kind.display_len(),
-            }),
             ParsedNode::Node(node) => {
                 self.ast.nodes.push(node);
                 Ok(())
@@ -2539,7 +2525,6 @@ pub enum ErrorKind {
     // do statements
     EmptyDoStatement,
     BlockInDoStatement,
-    VariableInDoStatement, // IDEA(stefano): allow variables and emit an unused variable warning instead
     IfStatementInDoStatementInIfBranch,
 
     // loop statements
@@ -2644,10 +2629,6 @@ impl IntoErrorInfo for ErrorKind {
             Self::BlockInDoStatement => (
                 "invalid do statement".into(),
                 "blocks are not allowed in do statements".into(),
-            ),
-            Self::VariableInDoStatement => (
-                "invalid do statement".into(),
-                "variable definitions are not allowed in do statements".into(),
             ),
 
             Self::DoMustBeFollowedByLoop => (

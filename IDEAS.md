@@ -3,6 +3,26 @@
 >[!WARNING]
 > no feature is final, modifications can happen at any moment
 
+## Remove do statements
+
+- they are just syntactic sugar for a block with a single statement
+- they could cause ambiguities and inconsistencies with their "desugared" form:
+
+    ```kay
+    # what would this mean? error? warning?
+    if condition do fn foo() do println "foo";
+
+    # would be a shorthand for this
+    if condition {
+        fn foo() {
+            println "foo";
+        }
+    }
+    
+    # and would be a 'cleanear' version of this
+    if condition { fn foo() { println "foo"; } }
+    ```
+
 ## Expressions formatting
 
 emit a warning for ambiguos use of unary/binary operators, i.e.:
@@ -463,10 +483,12 @@ let ok = match answer {
 
 ## Operators
 
-- non-shortcircuting boolean operators:
-    - `and` -> `&&`
-    - `or` -> `||`
-    - `xor` -> NA
+- boolean operators:
+    | operator | shortcircuting | non-shortcircuiting | bitwise |
+    | :------- | :------------: | :-----------------: | :-----: |
+    | and      |      `&&`      |        `&&&`        |   `&`   |
+    | or       |     `\|\|`     |      `\|\|\|`       |  `\|`   |
+    | xor      |       NA       |        `^^^`        |   `^`   |
 - checked (`++`, `--`, `//`, ..., or `+?`, `-?`, `/?`, ...):
     - overflow/underflow may return both the result and the overflow of the addition
     - division will return either the result or an error value
@@ -476,9 +498,8 @@ let ok = match answer {
     let division, remainder = 3 /% 2; # will result in 1, 1
     ```
 
-- boolean flip operator `=!`:  
-    so: boolean = !boolean;
-    would become: boolean =!;
+- boolean flip operator `=!`:
+    `boolean = !boolean;` -> `boolean =!;`
 
 ### Revised remainder/mod operators
 
@@ -495,12 +516,9 @@ let ok = match answer {
 | strategy                     | symbol | x86-64 instruction |
 | :--------------------------- | :----: | :----------------- |
 | **left logical shift**       |  `<<`  | `shl` / `shlx`     |
-| **left arithmetical shift**  |  TBD   | `sal`              |
+| **left arithmetical shift**  |  `<<`  | `sal`              |
 | **right logical shift**      |  `>>`  | `shr` / `shrx`     |
-| **right arithmetical shift** |  TBD   | `sar` / `sarx`     |
-
-Note: left logical shift and left arithmetical shift are completely identical, just kept for
-consistency with their right shifts counterparts
+| **right arithmetical shift** | `>>-`  | `sar` / `sarx`     |
 
 
 ## Strings

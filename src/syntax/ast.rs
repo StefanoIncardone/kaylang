@@ -3661,7 +3661,7 @@ pub enum ErrorKind {
     StrayContinueStatement,
 
     BlockInDoStatement,
-    VariableInDoStatement,
+    VariableInDoStatement, // IDEA(stefano): allow variables and emit an unused variable warning instead
 }
 
 impl IntoErrorInfo for ErrorKind {
