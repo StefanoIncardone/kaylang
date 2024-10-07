@@ -275,6 +275,10 @@ pub(crate) enum Expression<'src, 'tokens: 'src> {
         inner_expression: ExpressionIndex,
         close_round_bracket_column: column32,
     },
+    EmptyParenthesis {
+        open_round_bracket_column: column32,
+        close_round_bracket_column: column32,
+    },
 
     Index {
         indexed_expression: ExpressionIndex,
@@ -410,7 +414,6 @@ pub(crate) enum Node {
     },
 }
 
-// IDEA(stefano): remove *End cases and check the next parsed node instead
 #[derive(Debug, Clone)]
 enum ParsedNode {
     Node(Node),
@@ -722,6 +725,14 @@ impl UntypedAst<'_, '_> {
                 writeln!(f, "{:indent$}ParenthesisExpression", "")?;
                 writeln!(f, "{:>expression_indent$}OpenRoundBracket: {open_round_bracket_column} = (", "")?;
                 self.info_expression(f, *inner_expression, expression_indent)?;
+                writeln!(f, "{:>expression_indent$}CloseRoundBracket: {close_round_bracket_column} = )", "")
+            },
+            Expression::EmptyParenthesis {
+                open_round_bracket_column,
+                close_round_bracket_column
+            } => {
+                writeln!(f, "{:indent$}ParenthesisExpression", "")?;
+                writeln!(f, "{:>expression_indent$}OpenRoundBracket: {open_round_bracket_column} = (", "")?;
                 writeln!(f, "{:>expression_indent$}CloseRoundBracket: {close_round_bracket_column} = )", "")
             },
 
@@ -1442,20 +1453,18 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             TokenKind::Identifier(identifier) => {
                 Expression::Identifier { identifier, column: token.col }
             }
-            TokenKind::Bracket(BracketKind::OpenRound) => {
+            TokenKind::Bracket(BracketKind::OpenRound) => 'bracket: {
                 let open_round_bracket_token = token;
 
                 let start_of_inner_expression_token =
                     self.next_expected_token(Expected::Operand)?;
-                // REMOVE(stefano): maybe move this check to later stages
                 if let TokenKind::Bracket(BracketKind::CloseRound) =
                     start_of_inner_expression_token.kind
                 {
-                    return Err(Error {
-                        kind: ErrorKind::EmptyParenthesisExpression,
-                        col: start_of_inner_expression_token.col,
-                        pointers_count: start_of_inner_expression_token.kind.display_len(),
-                    });
+                    break 'bracket Expression::EmptyParenthesis {
+                        open_round_bracket_column: open_round_bracket_token.col,
+                        close_round_bracket_column: start_of_inner_expression_token.col,
+                    };
                 }
 
                 let expression = self.expression(start_of_inner_expression_token)?;
@@ -2512,7 +2521,6 @@ pub enum ErrorKind {
     CannotChainComparisons,
     KeywordInExpression,
     ExpectedOperand,
-    EmptyParenthesisExpression,
     ExpectedBracket(BracketKind),
     ExpectedComma,
     MissingCloseSquareBracketInIndex,
@@ -2582,10 +2590,6 @@ impl IntoErrorInfo for ErrorKind {
             Self::ExpectedOperand => (
                 "invalid expression".into(),
                 "expected operand before this token".into(),
-            ),
-            Self::EmptyParenthesisExpression => (
-                "invalid expression".into(),
-                "empty parenthesis expressions are not allowed".into(),
             ),
             Self::ExpectedBracket(bracket) => (
                 "invalid expression".into(),
