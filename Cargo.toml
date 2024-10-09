@@ -121,7 +121,7 @@ redundant_pattern_matching = "allow" # i hate inconsistencies in ifs and matches
 # let mut i: i32 = 0; // this explicit annotation is useful and prevents incorrect inference
 #
 # // but this still raises a warning, which it should not in my opinion, since the type of the
-# // literal 1 shoul be already inferred as being an i32
+# // literal 1 should be already inferred as being an i32
 # i += 1;
 # ```
 default_numeric_fallback = "allow"

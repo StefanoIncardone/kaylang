@@ -113,7 +113,7 @@ impl DisplayLen for Mutability {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum BracketKind {
+pub enum Bracket {
     OpenRound,
     CloseRound,
     OpenSquare,
@@ -122,7 +122,7 @@ pub enum BracketKind {
     CloseCurly,
 }
 
-impl Display for BracketKind {
+impl Display for Bracket {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::OpenRound => write!(f, "("),
@@ -135,7 +135,7 @@ impl Display for BracketKind {
     }
 }
 
-impl DisplayLen for BracketKind {
+impl DisplayLen for Bracket {
     #[inline(always)]
     fn display_len(&self) -> offset32 {
         return match self {
@@ -147,13 +147,6 @@ impl DisplayLen for BracketKind {
             | Self::CloseCurly => 1,
         };
     }
-}
-
-// REMOVE(stefano): replace with a token index
-#[derive(Debug)]
-struct Bracket {
-    kind: BracketKind,
-    col: offset32,
 }
 
 /* IDEA(stefano):
@@ -471,7 +464,7 @@ pub(crate) enum TokenKind<'src> {
 
     // Symbols
     // IDEA(stefano): expand into the different brackets
-    Bracket(BracketKind),
+    Bracket(Bracket),
     Colon,
     SemiColon,
     Comma,
@@ -665,7 +658,7 @@ impl<'src> Tokenizer<'src> {
         };
 
         let mut tokens = Vec::<Token<'src>>::new();
-        let mut brackets = Vec::<Bracket>::new();
+        let mut brackets_indicies = Vec::<index32>::new();
 
         'tokenization: loop {
             let token_kind_result = 'next_token: loop {
@@ -816,33 +809,38 @@ impl<'src> Tokenizer<'src> {
                         }
                     },
                     b'(' => {
-                        let kind = BracketKind::OpenRound;
-                        brackets.push(Bracket { kind, col: this.token_start_col });
-                        Ok(TokenKind::Bracket(kind))
+                        brackets_indicies.push(tokens.len() as index32);
+                        Ok(TokenKind::Bracket(Bracket::OpenRound))
                     }
-                    b')' => match brackets.pop() {
-                        Some(bracket) => match bracket.kind {
-                            BracketKind::OpenRound
-                            | BracketKind::CloseRound
-                            | BracketKind::CloseCurly
-                            | BracketKind::CloseSquare => {
-                                Ok(TokenKind::Bracket(BracketKind::CloseRound))
+                    b')' => match brackets_indicies.pop() {
+                        Some(bracket_index) => {
+                            let TokenKind::Bracket(bracket) = &tokens[bracket_index as usize].kind else {
+                                unreachable!("incorrect bracket index");
+                            };
+
+                            match *bracket {
+                                Bracket::OpenRound
+                                | Bracket::CloseRound
+                                | Bracket::CloseCurly
+                                | Bracket::CloseSquare => {
+                                    Ok(TokenKind::Bracket(Bracket::CloseRound))
+                                }
+                                actual @ (Bracket::OpenCurly | Bracket::OpenSquare) => {
+                                    this.errors.push(Error {
+                                        kind: ErrorKind::MismatchedBracket {
+                                            expected: Bracket::CloseRound,
+                                            actual,
+                                        },
+                                        col: this.token_start_col,
+                                        pointers_count: 1,
+                                    });
+                                    Err(())
+                                }
                             }
-                            actual @ (BracketKind::OpenCurly | BracketKind::OpenSquare) => {
-                                this.errors.push(Error {
-                                    kind: ErrorKind::MismatchedBracket {
-                                        expected: BracketKind::CloseRound,
-                                        actual,
-                                    },
-                                    col: this.token_start_col,
-                                    pointers_count: 1,
-                                });
-                                Err(())
-                            }
-                        },
+                        }
                         None => {
                             this.errors.push(Error {
-                                kind: ErrorKind::UnopenedBracket(BracketKind::CloseRound),
+                                kind: ErrorKind::UnopenedBracket(Bracket::CloseRound),
                                 col: this.token_start_col,
                                 pointers_count: 1,
                             });
@@ -850,33 +848,38 @@ impl<'src> Tokenizer<'src> {
                         }
                     },
                     b'[' => {
-                        let kind = BracketKind::OpenSquare;
-                        brackets.push(Bracket { kind, col: this.token_start_col });
-                        Ok(TokenKind::Bracket(kind))
+                        brackets_indicies.push(tokens.len() as index32);
+                        Ok(TokenKind::Bracket(Bracket::OpenSquare))
                     }
-                    b']' => match brackets.pop() {
-                        Some(bracket) => match bracket.kind {
-                            BracketKind::OpenSquare
-                            | BracketKind::CloseSquare
-                            | BracketKind::CloseCurly
-                            | BracketKind::CloseRound => {
-                                Ok(TokenKind::Bracket(BracketKind::CloseSquare))
+                    b']' => match brackets_indicies.pop() {
+                        Some(bracket_index) => {
+                            let TokenKind::Bracket(bracket) = &tokens[bracket_index as usize].kind else {
+                                unreachable!("incorrect bracket index");
+                            };
+
+                            match *bracket {
+                                Bracket::OpenSquare
+                                | Bracket::CloseSquare
+                                | Bracket::CloseCurly
+                                | Bracket::CloseRound => {
+                                    Ok(TokenKind::Bracket(Bracket::CloseSquare))
+                                }
+                                actual @ (Bracket::OpenCurly | Bracket::OpenRound) => {
+                                    this.errors.push(Error {
+                                        kind: ErrorKind::MismatchedBracket {
+                                            expected: Bracket::CloseSquare,
+                                            actual,
+                                        },
+                                        col: this.token_start_col,
+                                        pointers_count: 1,
+                                    });
+                                    Err(())
+                                }
                             }
-                            actual @ (BracketKind::OpenCurly | BracketKind::OpenRound) => {
-                                this.errors.push(Error {
-                                    kind: ErrorKind::MismatchedBracket {
-                                        expected: BracketKind::CloseSquare,
-                                        actual,
-                                    },
-                                    col: this.token_start_col,
-                                    pointers_count: 1,
-                                });
-                                Err(())
-                            }
-                        },
+                        }
                         None => {
                             this.errors.push(Error {
-                                kind: ErrorKind::UnopenedBracket(BracketKind::CloseSquare),
+                                kind: ErrorKind::UnopenedBracket(Bracket::CloseSquare),
                                 col: this.token_start_col,
                                 pointers_count: 1,
                             });
@@ -884,33 +887,38 @@ impl<'src> Tokenizer<'src> {
                         }
                     },
                     b'{' => {
-                        let kind = BracketKind::OpenCurly;
-                        brackets.push(Bracket { kind, col: this.token_start_col });
-                        Ok(TokenKind::Bracket(kind))
+                        brackets_indicies.push(tokens.len() as index32);
+                        Ok(TokenKind::Bracket(Bracket::OpenCurly))
                     }
-                    b'}' => match brackets.pop() {
-                        Some(bracket) => match bracket.kind {
-                            BracketKind::OpenCurly
-                            | BracketKind::CloseCurly
-                            | BracketKind::CloseRound
-                            | BracketKind::CloseSquare => {
-                                Ok(TokenKind::Bracket(BracketKind::CloseCurly))
+                    b'}' => match brackets_indicies.pop() {
+                        Some(bracket_index) => {
+                            let TokenKind::Bracket(bracket) = &tokens[bracket_index as usize].kind else {
+                                unreachable!("incorrect bracket index");
+                            };
+
+                            match *bracket {
+                                Bracket::OpenCurly
+                                | Bracket::CloseCurly
+                                | Bracket::CloseRound
+                                | Bracket::CloseSquare => {
+                                    Ok(TokenKind::Bracket(Bracket::CloseCurly))
+                                }
+                                actual @ (Bracket::OpenRound | Bracket::OpenSquare) => {
+                                    this.errors.push(Error {
+                                        kind: ErrorKind::MismatchedBracket {
+                                            expected: Bracket::CloseCurly,
+                                            actual,
+                                        },
+                                        col: this.token_start_col,
+                                        pointers_count: 1,
+                                    });
+                                    Err(())
+                                }
                             }
-                            actual @ (BracketKind::OpenRound | BracketKind::OpenSquare) => {
-                                this.errors.push(Error {
-                                    kind: ErrorKind::MismatchedBracket {
-                                        expected: BracketKind::CloseCurly,
-                                        actual,
-                                    },
-                                    col: this.token_start_col,
-                                    pointers_count: 1,
-                                });
-                                Err(())
-                            }
-                        },
+                        }
                         None => {
                             this.errors.push(Error {
-                                kind: ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
+                                kind: ErrorKind::UnopenedBracket(Bracket::CloseCurly),
                                 col: this.token_start_col,
                                 pointers_count: 1,
                             });
@@ -1221,11 +1229,16 @@ impl<'src> Tokenizer<'src> {
             tokens.push(Token { kind, col: this.token_start_col });
         }
 
-        for bracket in brackets {
+        for bracket_index in brackets_indicies {
             // there can only be open brackets at this point
+            let bracket_token = &tokens[bracket_index as usize];
+            let TokenKind::Bracket(bracket) = bracket_token.kind else {
+                unreachable!("incorrect bracket index");
+            };
+
             this.errors.push(Error {
-                kind: ErrorKind::UnclosedBracket(bracket.kind),
-                col: bracket.col,
+                kind: ErrorKind::UnclosedBracket(bracket),
+                col: bracket_token.col,
                 pointers_count: 1,
             });
         }
@@ -1785,9 +1798,9 @@ impl<'src> Tokenizer<'src> {
 pub enum ErrorKind<'src> {
     UnclosedBlockComment,
 
-    UnclosedBracket(BracketKind),
-    UnopenedBracket(BracketKind),
-    MismatchedBracket { actual: BracketKind, expected: BracketKind },
+    UnclosedBracket(Bracket),
+    UnopenedBracket(Bracket),
+    MismatchedBracket { actual: Bracket, expected: Bracket },
 
     Utf8InQuotedLiteral { grapheme: &'src str, quoted_literal_kind: QuotedLiteralKind },
     UnclosedQuotedLiteral(QuotedLiteralKind),

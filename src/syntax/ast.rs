@@ -2,7 +2,7 @@
 // TODO(stefano): multidimensional arrays
 
 use super::{
-    tokenizer::{ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, Str, Token, TokenKind},
+    tokenizer::{ascii, int, uint, Bracket, DisplayLen, Mutability, Op, Str, Token, TokenKind},
     Error, ErrorInfo, IntoErrorInfo,
 };
 use crate::{
@@ -848,7 +848,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
-            | TokenKind::Bracket(BracketKind::OpenRound | BracketKind::OpenSquare)
+            | TokenKind::Bracket(Bracket::OpenRound | Bracket::OpenSquare)
             | TokenKind::Op(
                 Op::Len
                 | Op::Not
@@ -1149,7 +1149,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 _ = self.next_token();
                 Ok(Node::Semicolon)
             }
-            TokenKind::Bracket(BracketKind::OpenCurly) => {
+            TokenKind::Bracket(Bracket::OpenCurly) => {
                 let Position { line, column } = self.src.position(token.col);
                 unreachable!(
                     "blocks not allowed in single statements: {file}:{line}:{column}",
@@ -1157,7 +1157,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 );
             }
             TokenKind::Bracket(
-                BracketKind::CloseCurly | BracketKind::CloseSquare | BracketKind::CloseRound,
+                Bracket::CloseCurly | Bracket::CloseSquare | Bracket::CloseRound,
             ) => {
                 let Position { line, column } = self.src.position(token.col);
                 unreachable!(
@@ -1199,7 +1199,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn do_statement(&mut self) -> Result<Node, Error<ErrorKind>> {
         let token = self.next_token_bounded(Expected::StatementAfterDo)?;
         return match token.kind {
-            TokenKind::Bracket(BracketKind::OpenCurly) => {
+            TokenKind::Bracket(Bracket::OpenCurly) => {
                 _ = self.next_token();
                 Err(Error {
                     kind: ErrorKind::BlockInDoStatement,
@@ -1245,7 +1245,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
     fn any(&mut self, token: &'tokens Token<'src>) -> Result<Node, Error<ErrorKind>> {
         return match token.kind {
-            TokenKind::Bracket(BracketKind::OpenCurly) => {
+            TokenKind::Bracket(Bracket::OpenCurly) => {
                 let new_scope_index = self.scopes.len() as index32;
                 self.scopes.push(Scope {
                     parent: self.scope,
@@ -1260,7 +1260,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 self.scope();
                 Ok(Node::Scope { index: new_scope_index })
             }
-            TokenKind::Bracket(BracketKind::CloseCurly) => {
+            TokenKind::Bracket(Bracket::CloseCurly) => {
                 self.scope = self.scopes[self.scope as usize].parent;
                 _ = self.next_token();
                 Ok(Node::ScopeEnd)
@@ -1792,10 +1792,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     }
                 }
             },
-            TokenKind::Bracket(BracketKind::OpenRound) => 'parenthesis: {
+            TokenKind::Bracket(Bracket::OpenRound) => 'parenthesis: {
                 let expression_start_token = self.next_token_bounded(Expected::Expression)?;
 
-                if let TokenKind::Bracket(BracketKind::CloseRound) = expression_start_token.kind {
+                if let TokenKind::Bracket(Bracket::CloseRound) = expression_start_token.kind {
                     break 'parenthesis Err(Error {
                         kind: ErrorKind::EmptyExpression,
                         col: expression_start_token.col,
@@ -1806,9 +1806,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let expression = self.expression()?;
                 let close_bracket_token = self.current_token(Expected::ClosingRoundBracket)?;
 
-                let TokenKind::Bracket(BracketKind::CloseRound) = close_bracket_token.kind else {
+                let TokenKind::Bracket(Bracket::CloseRound) = close_bracket_token.kind else {
                     return Err(Error {
-                        kind: ErrorKind::UnclosedBracket(BracketKind::OpenRound),
+                        kind: ErrorKind::UnclosedBracket(Bracket::OpenRound),
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(),
                     });
@@ -1819,12 +1819,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     expression_index: self.new_expression(expression),
                 })
             }
-            TokenKind::Bracket(BracketKind::OpenSquare) => 'array: {
+            TokenKind::Bracket(Bracket::OpenSquare) => 'array: {
                 let mut bracket_or_comma_token =
                     self.next_token_bounded(Expected::ArrayElementOrClosingSquareBracket)?;
 
                 // REMOVE(stefano): allow arrays of 0 elements
-                if let TokenKind::Bracket(BracketKind::CloseSquare) = bracket_or_comma_token.kind {
+                if let TokenKind::Bracket(Bracket::CloseSquare) = bracket_or_comma_token.kind {
                     break 'array Err(Error {
                         kind: ErrorKind::ArrayOfZeroElements,
                         col: current_token.col,
@@ -1843,7 +1843,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
 
                 // REMOVE(stefano): allow arrays of 0 elements
-                if let TokenKind::Bracket(BracketKind::CloseSquare) = bracket_or_comma_token.kind {
+                if let TokenKind::Bracket(Bracket::CloseSquare) = bracket_or_comma_token.kind {
                     break 'array Err(Error {
                         kind: ErrorKind::ArrayOfOneElement,
                         col: current_token.col,
@@ -1900,7 +1900,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             self.next_token_bounded(Expected::ArrayElementOrClosingSquareBracket)?;
                     }
 
-                    if let TokenKind::Bracket(BracketKind::CloseSquare) =
+                    if let TokenKind::Bracket(Bracket::CloseSquare) =
                         bracket_or_comma_token.kind
                     {
                         debug_assert!(
@@ -2361,7 +2361,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
         let mut expression = expression_result?;
         while let Some(
-            open_bracket_token @ Token { kind: TokenKind::Bracket(BracketKind::OpenSquare), .. },
+            open_bracket_token @ Token { kind: TokenKind::Bracket(Bracket::OpenSquare), .. },
         ) = self.next_token()
         {
             let _start_of_index = self.next_token();
@@ -2376,7 +2376,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
             let after_index_token = self.current_token(Expected::ClosingSquareBracket)?;
 
-            let TokenKind::Bracket(BracketKind::CloseSquare) = after_index_token.kind else {
+            let TokenKind::Bracket(Bracket::CloseSquare) = after_index_token.kind else {
                 let before_index_token = self.peek_previous_token();
                 return Err(Error {
                     kind: ErrorKind::MissingClosingSquareBracketInIndex,
@@ -2864,7 +2864,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             return Ok(Some((type_token, Type::Base(base_type))));
         };
 
-        let TokenKind::Bracket(BracketKind::OpenSquare) = open_square_bracket_token.kind else {
+        let TokenKind::Bracket(Bracket::OpenSquare) = open_square_bracket_token.kind else {
             return Ok(Some((type_token, Type::Base(base_type))));
         };
 
@@ -2908,7 +2908,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
 
         let close_square_bracket_token = self.current_token(Expected::ClosingSquareBracket)?;
-        let TokenKind::Bracket(BracketKind::CloseSquare) = close_square_bracket_token.kind else {
+        let TokenKind::Bracket(Bracket::CloseSquare) = close_square_bracket_token.kind else {
             return Err(Error {
                 kind: ErrorKind::MissingClosingSquareBracketInArrayType,
                 col: open_square_bracket_token.col,
@@ -3309,7 +3309,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
             let after_condition_token = self.current_token(Expected::DoOrBlock)?;
             let if_statement = match after_condition_token.kind {
-                TokenKind::Bracket(BracketKind::OpenCurly) => {
+                TokenKind::Bracket(Bracket::OpenCurly) => {
                     let scope = self.any(after_condition_token)?;
                     IfStatement { condition, statement: scope }
                 }
@@ -3385,7 +3385,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
                 // we are now inside an else branch
                 let else_if = match after_else_token.kind {
-                    TokenKind::Bracket(BracketKind::OpenCurly) => {
+                    TokenKind::Bracket(Bracket::OpenCurly) => {
                         let scope = self.any(after_else_token)?;
                         els = Some(scope);
                         break 'iff;
@@ -3492,7 +3492,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
         let after_condition_token = self.current_token(Expected::DoOrBlock)?;
         let statement_result = match after_condition_token.kind {
-            TokenKind::Bracket(BracketKind::OpenCurly) => {
+            TokenKind::Bracket(Bracket::OpenCurly) => {
                 let scope = self.any(after_condition_token)?;
                 Ok(scope)
             }
@@ -3614,7 +3614,7 @@ pub enum ErrorKind {
     CannotIndexIntoExpression,
     TypeInExpression,
     EmptyExpression,
-    UnclosedBracket(BracketKind),
+    UnclosedBracket(Bracket),
     ArrayOfNegativeLength,
     ArrayOfZeroElements,
     ArrayOfOneElement,

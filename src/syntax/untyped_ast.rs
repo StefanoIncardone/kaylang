@@ -2,7 +2,7 @@
 
 use super::{
     tokenizer::{
-        ascii, utf8, Base, BracketKind, DisplayLen, Integer, Mutability, Op, Str, Token, TokenKind,
+        ascii, utf8, Base, Bracket, DisplayLen, Integer, Mutability, Op, Str, Token, TokenKind,
     },
     Error, ErrorDisplay, ErrorInfo, IntoErrorInfo,
 };
@@ -818,7 +818,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
-            | TokenKind::Bracket(BracketKind::OpenRound | BracketKind::OpenSquare)
+            | TokenKind::Bracket(Bracket::OpenRound | Bracket::OpenSquare)
             | TokenKind::Op(
                 Op::Len
                 | Op::Not
@@ -1006,7 +1006,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }))
             }
 
-            TokenKind::Bracket(BracketKind::OpenCurly) => {
+            TokenKind::Bracket(Bracket::OpenCurly) => {
                 let placeholder_scope = Node::Scope {
                     open_curly_bracket_column: token.col,
                     raw_nodes_in_scope_count: 0,
@@ -1018,7 +1018,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 while let Some(peeked) = self.peek_next_token() {
                     self.token_index = peeked.index;
 
-                    if let TokenKind::Bracket(BracketKind::CloseCurly) = peeked.token.kind {
+                    if let TokenKind::Bracket(Bracket::CloseCurly) = peeked.token.kind {
                         let last_scope_node_index = self.ast.nodes.len() as index32 - 1;
                         let Node::Scope {
                             raw_nodes_in_scope_count,
@@ -1142,7 +1142,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 pointers_count: token.kind.display_len(),
             }),
             TokenKind::Bracket(
-                BracketKind::CloseRound | BracketKind::CloseSquare | BracketKind::CloseCurly,
+                Bracket::CloseRound | Bracket::CloseSquare | Bracket::CloseCurly,
             ) => self.unbalanced_bracket(token),
             TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
                 self.should_have_been_skipped(token)
@@ -1385,12 +1385,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             TokenKind::Identifier(identifier) => {
                 Expression::Identifier { identifier, column: token.col }
             }
-            TokenKind::Bracket(BracketKind::OpenRound) => 'bracket: {
+            TokenKind::Bracket(Bracket::OpenRound) => 'bracket: {
                 let open_round_bracket_token = token;
 
                 let start_of_inner_expression_token =
                     self.next_expected_token(Expected::Operand)?;
-                if let TokenKind::Bracket(BracketKind::CloseRound) =
+                if let TokenKind::Bracket(Bracket::CloseRound) =
                     start_of_inner_expression_token.kind
                 {
                     break 'bracket Expression::EmptyParenthesis {
@@ -1403,10 +1403,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
                 let close_round_bracket_token =
                     self.next_expected_token(Expected::CloseRoundBracket)?;
-                let TokenKind::Bracket(BracketKind::CloseRound) = close_round_bracket_token.kind
+                let TokenKind::Bracket(Bracket::CloseRound) = close_round_bracket_token.kind
                 else {
                     return Err(Error {
-                        kind: ErrorKind::ExpectedBracket(BracketKind::CloseRound),
+                        kind: ErrorKind::ExpectedBracket(Bracket::CloseRound),
                         col: close_round_bracket_token.col,
                         pointers_count: close_round_bracket_token.kind.display_len(),
                     });
@@ -1418,7 +1418,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     close_round_bracket_column: close_round_bracket_token.col,
                 }
             }
-            TokenKind::Bracket(BracketKind::OpenSquare) => {
+            TokenKind::Bracket(Bracket::OpenSquare) => {
                 let open_square_bracket_token = token;
 
                 let mut items = Vec::<ExpressionIndex>::new();
@@ -1427,7 +1427,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let close_square_bracket_column = 'items: loop {
                     let start_of_item_token =
                         self.next_expected_token(Expected::ArrayItemOrCloseSquareBracket)?;
-                    if let TokenKind::Bracket(BracketKind::CloseSquare) = start_of_item_token.kind {
+                    if let TokenKind::Bracket(Bracket::CloseSquare) = start_of_item_token.kind {
                         break 'items start_of_item_token.col;
                     }
 
@@ -1445,7 +1445,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             };
                             commas_columns.push(comma_column);
                         }
-                        TokenKind::Bracket(BracketKind::CloseSquare) => {
+                        TokenKind::Bracket(Bracket::CloseSquare) => {
                             break 'items comma_or_close_square_bracket_token.col
                         }
                         TokenKind::Colon
@@ -1549,7 +1549,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let Some(Peeked {
                 token:
                     &Token {
-                        kind: TokenKind::Bracket(BracketKind::OpenSquare),
+                        kind: TokenKind::Bracket(Bracket::OpenSquare),
                         col: open_square_bracket_column,
                     },
                 index: open_square_bracket_token_index,
@@ -1564,7 +1564,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let end_of_index_expression_token = self.peek_previous_token();
 
             let after_expression_token = self.next_expected_token(Expected::CloseSquareBracket)?;
-            let TokenKind::Bracket(BracketKind::CloseSquare) = after_expression_token.kind else {
+            let TokenKind::Bracket(Bracket::CloseSquare) = after_expression_token.kind else {
                 return Err(Error {
                     kind: ErrorKind::MissingCloseSquareBracketInIndex,
                     col: end_of_index_expression_token.col,
@@ -1944,7 +1944,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let Some(Peeked {
                     token:
                         &Token {
-                            kind: TokenKind::Bracket(BracketKind::OpenSquare),
+                            kind: TokenKind::Bracket(Bracket::OpenSquare),
                             col: open_square_bracket_column,
                         },
                     index: open_square_bracket_token_index,
@@ -1965,7 +1965,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let Some(Peeked {
                     token:
                         &Token {
-                            kind: TokenKind::Bracket(BracketKind::CloseSquare),
+                            kind: TokenKind::Bracket(Bracket::CloseSquare),
                             col: close_square_bracket_column,
                         },
                     index: close_square_bracket_token_index,
@@ -2060,7 +2060,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         let end_of_condition_token = self.peek_previous_token();
 
         let after_if_condition_token = self.next_expected_token(Expected::OpenCurlyBracket)?;
-        let TokenKind::Bracket(BracketKind::OpenCurly) = after_if_condition_token.kind else {
+        let TokenKind::Bracket(Bracket::OpenCurly) = after_if_condition_token.kind else {
             return Err(Error {
                 kind: ErrorKind::IfMustBeFollowedByBlock,
                 col: end_of_condition_token.col,
@@ -2088,7 +2088,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
             let after_else_token = self.next_expected_token(Expected::OpenCurlyBracketOrIf)?;
             match after_else_token.kind {
-                TokenKind::Bracket(BracketKind::OpenCurly) => {
+                TokenKind::Bracket(Bracket::OpenCurly) => {
                     let ParsedNode::Scope = self.any(after_else_token)? else {
                         unreachable!();
                     };
@@ -2106,7 +2106,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     let end_of_else_if_condition_token = self.peek_previous_token();
 
                     let after_else_if_condition_token = self.next_expected_token(Expected::OpenCurlyBracket)?;
-                    let TokenKind::Bracket(BracketKind::OpenCurly) = after_else_if_condition_token.kind else {
+                    let TokenKind::Bracket(Bracket::OpenCurly) = after_else_if_condition_token.kind else {
                         return Err(Error {
                             kind: ErrorKind::IfMustBeFollowedByBlock,
                             col: end_of_else_if_condition_token.col,
@@ -2184,7 +2184,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         let end_of_condition_token = self.peek_previous_token();
 
         let after_condition_token = self.next_expected_token(Expected::OpenCurlyBracket)?;
-        let TokenKind::Bracket(BracketKind::OpenCurly) = after_condition_token.kind else {
+        let TokenKind::Bracket(Bracket::OpenCurly) = after_condition_token.kind else {
             return Err(Error {
                 kind: ErrorKind::LoopMustBeFollowedByBlock,
                 col: end_of_condition_token.col,
@@ -2264,7 +2264,7 @@ pub enum ErrorKind {
     // expressions
     KeywordInExpression,
     ExpectedOperand,
-    ExpectedBracket(BracketKind),
+    ExpectedBracket(Bracket),
     ExpectedComma,
     MissingCloseSquareBracketInIndex,
 
