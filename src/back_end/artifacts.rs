@@ -1,4 +1,4 @@
-use crate::{error::MsgWithCause, src_file::SrcFile, ERROR};
+use crate::{error::MsgWithCause, front_end::src_file::SrcFile, ERROR};
 use core::fmt::{Display, Write as _};
 use std::{
     path::{Path, PathBuf},

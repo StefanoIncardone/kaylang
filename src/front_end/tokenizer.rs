@@ -1,8 +1,10 @@
 // TODO(stefano): multiline strings
 // TODO(stefano): more escape characters
 
-use super::{Error, ErrorInfo, IntoErrorInfo};
-use crate::src_file::{index32, offset32, Line, SrcFile};
+use super::{
+    src_file::{index32, offset32, Line, SrcFile},
+    Error, ErrorInfo, IntoErrorInfo,
+};
 use core::fmt::Display;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthChar;
@@ -463,12 +465,10 @@ pub(crate) enum TokenKind<'src> {
     Unexpected(&'src str),
 
     // Symbols
-    // IDEA(stefano): expand into the different brackets
     Bracket(Bracket),
     Colon,
     SemiColon,
     Comma,
-    // IDEA(stefano): expand into the different operators
     Op(Op),
 
     // Literal values
@@ -814,7 +814,8 @@ impl<'src> Tokenizer<'src> {
                     }
                     b')' => match brackets_indicies.pop() {
                         Some(bracket_index) => {
-                            let TokenKind::Bracket(bracket) = &tokens[bracket_index as usize].kind else {
+                            let TokenKind::Bracket(bracket) = &tokens[bracket_index as usize].kind
+                            else {
                                 unreachable!("incorrect bracket index");
                             };
 
@@ -853,7 +854,8 @@ impl<'src> Tokenizer<'src> {
                     }
                     b']' => match brackets_indicies.pop() {
                         Some(bracket_index) => {
-                            let TokenKind::Bracket(bracket) = &tokens[bracket_index as usize].kind else {
+                            let TokenKind::Bracket(bracket) = &tokens[bracket_index as usize].kind
+                            else {
                                 unreachable!("incorrect bracket index");
                             };
 
@@ -892,7 +894,8 @@ impl<'src> Tokenizer<'src> {
                     }
                     b'}' => match brackets_indicies.pop() {
                         Some(bracket_index) => {
-                            let TokenKind::Bracket(bracket) = &tokens[bracket_index as usize].kind else {
+                            let TokenKind::Bracket(bracket) = &tokens[bracket_index as usize].kind
+                            else {
                                 unreachable!("incorrect bracket index");
                             };
 

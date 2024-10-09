@@ -11,12 +11,12 @@ mod reg;
 use self::{artifacts::Artifacts, reg::Reg64};
 use crate::{
     error::MsgWithCause,
-    src_file::{offset32, Position, SrcFile},
-    syntax::{
+    front_end::{
         ast::{
             self, AssignmentOp, Ast, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression,
             IfStatement, Node, ScopeIndex, SizeOf, Type, TypeOf, UnaryOp,
         },
+        src_file::{offset32, Position, SrcFile},
         tokenizer::uint,
     },
     ERROR,

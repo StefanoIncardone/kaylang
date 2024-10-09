@@ -1,12 +1,10 @@
 pub mod ast;
+pub mod src_file;
+pub mod syntax_tree;
 pub mod tokenizer;
-pub mod untyped_ast;
 
-use crate::{
-    error::MsgWithCauseUnderTextWithLocation,
-    src_file::{column32, line32, offset32, DisplayPosition, SrcFile},
-    ERROR,
-};
+use self::src_file::{column32, line32, offset32, DisplayPosition, SrcFile};
+use crate::{error::MsgWithCauseUnderTextWithLocation, ERROR};
 use core::fmt::{Debug, Display};
 use std::{borrow::Cow, path::Path};
 

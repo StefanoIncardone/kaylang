@@ -1,6 +1,6 @@
 use crate::{
     color::{Bg, Colored, Fg, Flag},
-    src_file::{column32, offset32, line32},
+    front_end::src_file::{column32, line32, offset32},
     AT, BAR, CAUSE,
 };
 use core::fmt::Display;

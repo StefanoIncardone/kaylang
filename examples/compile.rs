@@ -1,10 +1,9 @@
 #![allow(clippy::print_stdout, clippy::print_stderr)] // it's a cli tool, it's normal to print to stderr and stdout
 
 use kaylang::{
-    compiler::{artifacts::Artifacts, Compiler},
+    back_end::{artifacts::Artifacts, Compiler},
     error,
-    src_file::SrcFile,
-    syntax::{ast::Parser, tokenizer::Tokenizer},
+    front_end::{ast::Parser, src_file::SrcFile, tokenizer::Tokenizer},
     Color, Logger, ASSEMBLING, ASSEMBLING_ERROR, BUILDING_AST, CHECKING, COMPILING,
     COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_LINKER, GENERATING_ASM, LINKING, LINKING_ERROR,
     LOADING_SOURCE, SUBSTEP_DONE, TOKENIZATION,

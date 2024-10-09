@@ -30,7 +30,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 #### Changed
 
-- Block comments delimited by `##` instead of `#{` and `#}`, this also removes the error related
+- Made block comments delimited by `##` instead of `#{` and `#}`, this also removes the error related
     to uclosed block comments:
     - single line block comments look symmetric with `}#`:
 
@@ -72,18 +72,31 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 #### Removed
 
-- do-statements in if and loop statements, thus reduced language complexity and inconsistencies
+- Removed do-statements in if and loop statements, thus reduced language complexity and inconsistencies
 
 ### Compiler
 
 #### Added
 
-- Information about error's absolute source code column
+- Added nformation about error's absolute source code column
 
 #### Changed
 
-- Refactored compilation stages <!-- TODO: document changes about untyped ast -->
-- Changed `tokenizer::ErrorKind` layout
+- Reworked compilation stages:
+    - old:
+        - loading of source code file and line boundaries precalculations
+        - tokenization
+        - abstract syntax tree parsing
+        - compilation of abstract syntax tree
+    - new:
+        - loading of source code file and line boundaries precalculations
+        - tokenization
+        - (added) parsing of syntax tree (phantom stage, does not affect other stages for now)
+        - abstract syntax tree parsing
+        - compilation of abstract syntax tree
+- Renamed `syntax` module to `front_end`
+- Moved `src_file` module into `front_end`
+- Renamed `compiler` module to `back_end`
 - Introduced `offset32`, `line32`, `column32` and `index32` type aliases for `u32`
 - Split `src_file::SrcFile::position` into `src_file::SrcFile::position` and
     `src_file::SrcFile::display_position`, returning respectively a:

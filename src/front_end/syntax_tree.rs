@@ -1,12 +1,12 @@
 // IDEA(stefano): make every offset that can never be zero into NonZero<offset>
 
 use super::{
+    src_file::{index32, offset32, DisplayPosition, SrcFile},
     tokenizer::{
         ascii, utf8, Base, Bracket, DisplayLen, Integer, Mutability, Op, Str, Token, TokenKind,
     },
     Error, ErrorDisplay, ErrorInfo, IntoErrorInfo,
 };
-use crate::src_file::{offset32, index32, DisplayPosition, SrcFile};
 use core::{fmt::Display, num::NonZero};
 use std::borrow::Cow;
 
@@ -417,7 +417,7 @@ enum ParsedNode {
 }
 
 #[derive(Debug)]
-pub struct UntypedAst<'src, 'tokens: 'src> {
+pub struct SyntaxTree<'src, 'tokens: 'src> {
     nodes: Vec<Node>,
 
     expressions: Vec<Expression<'src, 'tokens>>,
@@ -430,7 +430,7 @@ pub struct UntypedAst<'src, 'tokens: 'src> {
     else_ifs: Vec<Vec<ElseIf>>,
 }
 
-impl<'src, 'tokens: 'src> UntypedAst<'src, 'tokens> {
+impl<'src, 'tokens: 'src> SyntaxTree<'src, 'tokens> {
     #[inline]
     fn new_expression(&mut self, expression: Expression<'src, 'tokens>) -> ExpressionIndex {
         self.expressions.push(expression);
@@ -440,7 +440,7 @@ impl<'src, 'tokens: 'src> UntypedAst<'src, 'tokens> {
 
 const INDENT_INCREMENT: usize = 2;
 
-impl UntypedAst<'_, '_> {
+impl SyntaxTree<'_, '_> {
     fn info_node(
         &self,
         f: &mut core::fmt::Formatter<'_>,
@@ -733,7 +733,7 @@ impl UntypedAst<'_, '_> {
     }
 }
 
-impl Display for UntypedAst<'_, '_> {
+impl Display for SyntaxTree<'_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut node_index = 0;
         while node_index < self.nodes.len() as index32 {
@@ -753,7 +753,7 @@ pub struct Parser<'src, 'tokens: 'src> {
     tokens: &'tokens [Token<'src>],
 
     loop_depth: u32,
-    ast: UntypedAst<'src, 'tokens>,
+    syntax_tree: SyntaxTree<'src, 'tokens>,
 }
 
 /* NOTE(stefano):
@@ -765,8 +765,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     pub fn parse(
         src: &'src SrcFile,
         tokens: &'tokens [Token<'src>],
-    ) -> Result<UntypedAst<'src, 'tokens>, Vec<Error<ErrorKind>>> {
-        let ast = UntypedAst {
+    ) -> Result<SyntaxTree<'src, 'tokens>, Vec<Error<ErrorKind>>> {
+        let syntax_tree = SyntaxTree {
             nodes: Vec::new(),
 
             expressions: Vec::new(),
@@ -780,10 +780,17 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
 
         if tokens.is_empty() {
-            return Ok(ast);
+            return Ok(syntax_tree);
         }
 
-        let mut this = Self { src, errors: Vec::new(), token_index: 0, tokens, loop_depth: 0, ast };
+        let mut this = Self {
+            src,
+            errors: Vec::new(),
+            token_index: 0,
+            tokens,
+            loop_depth: 0,
+            syntax_tree,
+        };
 
         while let Some(peeked) = this.peek_next_token() {
             this.token_index = peeked.index;
@@ -803,10 +810,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
             };
 
-            this.ast.nodes.push(node);
+            this.syntax_tree.nodes.push(node);
         }
 
-        return if this.errors.is_empty() { Ok(this.ast) } else { Err(this.errors) };
+        return if this.errors.is_empty() { Ok(this.syntax_tree) } else { Err(this.errors) };
     }
 
     fn any(&mut self, token: &'tokens Token<'src>) -> Result<ParsedNode, Error<ErrorKind>> {
@@ -991,18 +998,18 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
             TokenKind::Mutability(Mutability::Let) => {
                 let variable_definition = self.variable_definition(token)?;
-                self.ast.variable_definitions.push(variable_definition);
+                self.syntax_tree.variable_definitions.push(variable_definition);
                 Ok(ParsedNode::Node(Node::LetVariableDefinition {
                     let_column: token.col,
-                    variable_definition: self.ast.variable_definitions.len() as index32 - 1,
+                    variable_definition: self.syntax_tree.variable_definitions.len() as index32 - 1,
                 }))
             }
             TokenKind::Mutability(Mutability::Var) => {
                 let variable_definition = self.variable_definition(token)?;
-                self.ast.variable_definitions.push(variable_definition);
+                self.syntax_tree.variable_definitions.push(variable_definition);
                 Ok(ParsedNode::Node(Node::VarVariableDefinition {
                     var_column: token.col,
-                    variable_definition: self.ast.variable_definitions.len() as index32 - 1,
+                    variable_definition: self.syntax_tree.variable_definitions.len() as index32 - 1,
                 }))
             }
 
@@ -1012,19 +1019,19 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     raw_nodes_in_scope_count: 0,
                     close_curly_bracket_column: 0,
                 };
-                self.ast.nodes.push(placeholder_scope);
-                let placeholder_scope_node_index = self.ast.nodes.len() as index32 - 1;
+                self.syntax_tree.nodes.push(placeholder_scope);
+                let placeholder_scope_node_index = self.syntax_tree.nodes.len() as index32 - 1;
 
                 while let Some(peeked) = self.peek_next_token() {
                     self.token_index = peeked.index;
 
                     if let TokenKind::Bracket(Bracket::CloseCurly) = peeked.token.kind {
-                        let last_scope_node_index = self.ast.nodes.len() as index32 - 1;
+                        let last_scope_node_index = self.syntax_tree.nodes.len() as index32 - 1;
                         let Node::Scope {
                             raw_nodes_in_scope_count,
                             close_curly_bracket_column,
                             ..
-                        } = &mut self.ast.nodes[placeholder_scope_node_index as usize]
+                        } = &mut self.syntax_tree.nodes[placeholder_scope_node_index as usize]
                         else {
                             self.unbalanced_bracket(token);
                         };
@@ -1043,7 +1050,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         ParsedNode::LoopStatement => continue,
                     };
 
-                    self.ast.nodes.push(node);
+                    self.syntax_tree.nodes.push(node);
                 }
 
                 Ok(ParsedNode::Scope)
@@ -1403,8 +1410,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
                 let close_round_bracket_token =
                     self.next_expected_token(Expected::CloseRoundBracket)?;
-                let TokenKind::Bracket(Bracket::CloseRound) = close_round_bracket_token.kind
-                else {
+                let TokenKind::Bracket(Bracket::CloseRound) = close_round_bracket_token.kind else {
                     return Err(Error {
                         kind: ErrorKind::ExpectedBracket(Bracket::CloseRound),
                         col: close_round_bracket_token.col,
@@ -1484,12 +1490,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     }
                 };
 
-                self.ast.array_items.push(items);
-                self.ast.array_commas_columns.push(commas_columns);
+                self.syntax_tree.array_items.push(items);
+                self.syntax_tree.array_commas_columns.push(commas_columns);
 
                 Expression::Array {
                     open_square_bracket_column: open_square_bracket_token.col,
-                    array: self.ast.array_items.len() as index32 - 1,
+                    array: self.syntax_tree.array_items.len() as index32 - 1,
                     close_square_bracket_column,
                 }
             }
@@ -1573,14 +1579,14 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             };
 
             expression = Expression::Index {
-                indexed_expression: self.ast.new_expression(expression),
+                indexed_expression: self.syntax_tree.new_expression(expression),
                 open_square_bracket_column,
                 index_expression,
                 close_square_bracket_column: after_expression_token.col,
             };
         }
 
-        return Ok(self.ast.new_expression(expression));
+        return Ok(self.syntax_tree.new_expression(expression));
     }
 
     fn exponentiative_expression(
@@ -1594,7 +1600,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.primary_expression(start_of_right_operand_token)?;
 
-            left_operand = self.ast.new_expression(Expression::Binary {
+            left_operand = self.syntax_tree.new_expression(Expression::Binary {
                 left_operand,
                 operator: operator.into(),
                 operator_column: operator_token.col,
@@ -1624,7 +1630,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.exponentiative_expression(start_of_right_operand_token)?;
 
-            left_operand = self.ast.new_expression(Expression::Binary {
+            left_operand = self.syntax_tree.new_expression(Expression::Binary {
                 left_operand,
                 operator: operator.into(),
                 operator_column: operator_token.col,
@@ -1653,7 +1659,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.multiplicative_expression(start_of_right_operand_token)?;
 
-            left_operand = self.ast.new_expression(Expression::Binary {
+            left_operand = self.syntax_tree.new_expression(Expression::Binary {
                 left_operand,
                 operator: operator.into(),
                 operator_column: operator_token.col,
@@ -1682,7 +1688,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.additive_expression(start_of_right_operand_token)?;
 
-            left_operand = self.ast.new_expression(Expression::Binary {
+            left_operand = self.syntax_tree.new_expression(Expression::Binary {
                 left_operand,
                 operator: operator.into(),
                 operator_column: operator_token.col,
@@ -1704,7 +1710,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.shift_expression(start_of_right_operand_token)?;
 
-            left_operand = self.ast.new_expression(Expression::Binary {
+            left_operand = self.syntax_tree.new_expression(Expression::Binary {
                 left_operand,
                 operator: operator.into(),
                 operator_column: operator_token.col,
@@ -1726,7 +1732,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.bitand_expression(start_of_right_operand_token)?;
 
-            left_operand = self.ast.new_expression(Expression::Binary {
+            left_operand = self.syntax_tree.new_expression(Expression::Binary {
                 left_operand,
                 operator: operator.into(),
                 operator_column: operator_token.col,
@@ -1748,7 +1754,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.bitxor_expression(start_of_right_operand_token)?;
 
-            left_operand = self.ast.new_expression(Expression::Binary {
+            left_operand = self.syntax_tree.new_expression(Expression::Binary {
                 left_operand,
                 operator: operator.into(),
                 operator_column: operator_token.col,
@@ -1778,7 +1784,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.bitor_expression(start_of_right_operand_token)?;
 
-            left_operand = self.ast.new_expression(Expression::Binary {
+            left_operand = self.syntax_tree.new_expression(Expression::Binary {
                 left_operand,
                 operator: operator.into(),
                 operator_column: operator_token.col,
@@ -1800,7 +1806,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.comparison_expression(start_of_right_operand_token)?;
 
-            left_operand = self.ast.new_expression(Expression::Binary {
+            left_operand = self.syntax_tree.new_expression(Expression::Binary {
                 left_operand,
                 operator: operator.into(),
                 operator_column: operator_token.col,
@@ -1822,7 +1828,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.and_expression(start_of_right_operand_token)?;
 
-            left_operand = self.ast.new_expression(Expression::Binary {
+            left_operand = self.syntax_tree.new_expression(Expression::Binary {
                 left_operand,
                 operator: operator.into(),
                 operator_column: operator_token.col,
@@ -2068,12 +2074,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             });
         };
 
-        self.ast.ifs.push(If { if_column, condition });
-        self.ast.else_ifs.push(Vec::new());
-        let if_index = self.ast.ifs.len() as index32 - 1;
+        self.syntax_tree.ifs.push(If { if_column, condition });
+        self.syntax_tree.else_ifs.push(Vec::new());
+        let if_index = self.syntax_tree.ifs.len() as index32 - 1;
 
-        self.ast.nodes.push(Node::If { if_index });
-        let placeholder_if_index = self.ast.nodes.len() - 1;
+        self.syntax_tree.nodes.push(Node::If { if_index });
+        let placeholder_if_index = self.syntax_tree.nodes.len() - 1;
 
         let ParsedNode::Scope = self.any(after_if_condition_token)? else {
             unreachable!();
@@ -2097,7 +2103,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         unreachable!("valid `else` should have non-zero column");
                     };
 
-                    self.ast.nodes[placeholder_if_index] = Node::IfElse { if_index, else_column };
+                    self.syntax_tree.nodes[placeholder_if_index] = Node::IfElse { if_index, else_column };
                     break;
                 }
                 TokenKind::If => {
@@ -2122,7 +2128,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         else_column,
                         iff: If { if_column: after_else_token.col, condition: else_if_condition }
                     };
-                    self.ast.else_ifs[if_index as usize].push(else_if);
+                    self.syntax_tree.else_ifs[if_index as usize].push(else_if);
 
                     let ParsedNode::Scope = self.any(after_else_if_condition_token)? else {
                         unreachable!();
@@ -2196,7 +2202,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             Some(column) => Node::DoLoop { do_column: column, loop_column, condition },
             None => Node::Loop { loop_column, condition },
         };
-        self.ast.nodes.push(loop_node);
+        self.syntax_tree.nodes.push(loop_node);
 
         let ParsedNode::Scope = self.any(after_condition_token)? else {
             unreachable!();

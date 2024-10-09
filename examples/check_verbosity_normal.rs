@@ -1,8 +1,7 @@
 #![allow(clippy::print_stdout, clippy::print_stderr)] // it's a cli tool, it's normal to print to stderr and stdout
 
 use kaylang::{
-    src_file::SrcFile,
-    syntax::{ast::Parser, tokenizer::Tokenizer},
+    front_end::{ast::Parser, src_file::SrcFile, tokenizer::Tokenizer},
     Color, Logger, CHECKING,
 };
 use std::{path::PathBuf, process::ExitCode};

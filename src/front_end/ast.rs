@@ -2,12 +2,11 @@
 // TODO(stefano): multidimensional arrays
 
 use super::{
-    tokenizer::{ascii, int, uint, Bracket, DisplayLen, Mutability, Op, Str, Token, TokenKind},
-    Error, ErrorInfo, IntoErrorInfo,
-};
-use crate::{
     src_file::{index32, offset32, Position, SrcFile},
-    syntax::tokenizer::{Base, Integer},
+    tokenizer::{
+        ascii, int, uint, Base, Bracket, DisplayLen, Integer, Mutability, Op, Str, Token, TokenKind,
+    },
+    Error, ErrorInfo, IntoErrorInfo,
 };
 use core::fmt::{Debug, Display};
 
@@ -1900,9 +1899,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             self.next_token_bounded(Expected::ArrayElementOrClosingSquareBracket)?;
                     }
 
-                    if let TokenKind::Bracket(Bracket::CloseSquare) =
-                        bracket_or_comma_token.kind
-                    {
+                    if let TokenKind::Bracket(Bracket::CloseSquare) = bracket_or_comma_token.kind {
                         debug_assert!(
                             items.len() >= 2,
                             "arrays of 0 and 1 elements are not allowed"

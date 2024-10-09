@@ -1,15 +1,14 @@
 #![warn(clippy::print_stdout, clippy::print_stderr)]
 
+pub mod back_end;
 pub mod color;
-pub mod compiler;
 pub mod error;
-pub mod src_file;
-pub mod syntax;
+pub mod front_end;
 
 use color::{Bg, Colored, Fg, Flag, Flags};
-use src_file::column32;
 use core::fmt::{Display, Write as _};
 use error::MsgWithCauseUnderText;
+use front_end::src_file::column32;
 use std::{
     path::{Path, PathBuf},
     time::Instant,
