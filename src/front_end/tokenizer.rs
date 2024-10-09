@@ -681,10 +681,6 @@ impl<'src> Tokenizer<'src> {
 
                     // next line
                     b'\n' => {
-                        if this.line_index >= this.src.lines.len() as index32 - 1 {
-                            break 'tokenization;
-                        }
-
                         this.line_index += 1;
                         continue 'next_token;
                     }
@@ -1269,10 +1265,6 @@ impl<'src> Tokenizer<'src> {
         let next = self.src.code.as_bytes()[self.col as usize];
         return match next {
             b'\n' => {
-                if self.line_index >= self.src.lines.len() as index32 - 1 {
-                    return None;
-                }
-
                 self.col += 1;
                 self.line_index += 1;
                 Some('\n')
@@ -1282,9 +1274,8 @@ impl<'src> Tokenizer<'src> {
                 Some(ascii_ch as utf8)
             }
             _utf8_ch => {
-                let line = &self.src.lines[self.line_index as usize];
-                let rest_of_line = &self.src.code[self.col as usize..line.end as usize];
-                let Some(utf8_ch) = rest_of_line.chars().next() else {
+                let rest_of_code = &self.src.code[self.col as usize..];
+                let Some(utf8_ch) = rest_of_code.chars().next() else {
                     unreachable!("this branch assured we would have a valid utf8 character");
                 };
 
@@ -1303,9 +1294,8 @@ impl<'src> Tokenizer<'src> {
         return match next {
             ascii_ch @ 0..=b'\x7F' => Ok(Some(ascii_ch)),
             _utf8_ch => {
-                let line = &self.src.lines[self.line_index as usize];
-                let rest_of_line = &self.src.code[self.col as usize..line.end as usize];
-                let mut rest_of_line_graphemes = rest_of_line.graphemes(true);
+                let rest_of_code = &self.src.code[self.col as usize..];
+                let mut rest_of_line_graphemes = rest_of_code.graphemes(true);
                 let Some(grapheme) = rest_of_line_graphemes.next() else {
                     unreachable!("this branch assured we would have a valid grapheme");
                 };
@@ -1345,9 +1335,8 @@ impl<'src> Tokenizer<'src> {
         return match next {
             ascii_ch @ 0..=b'\x7F' => Some(ascii_ch as utf8),
             _utf8_ch => {
-                let line = &self.src.lines[self.line_index as usize];
-                let rest_of_line = &self.src.code[self.col as usize..line.end as usize];
-                let Some(utf8_ch) = rest_of_line.chars().next() else {
+                let rest_of_code = &self.src.code[self.col as usize..];
+                let Some(utf8_ch) = rest_of_code.chars().next() else {
                     unreachable!("this branch assured we would have a valid utf8 character");
                 };
 

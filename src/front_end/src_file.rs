@@ -92,6 +92,7 @@ impl SrcFile {
         let mut start = 0;
         let mut current_ascii_column: column32 = 0;
 
+        // IDEA(stefano): add a cfg check to differentiate between windows' `\r\n` and "anything else sane's" `\n`
         let code_ascii = code.as_bytes();
         let code_bytes_len = code_ascii.len() as column32;
         while current_ascii_column < code_bytes_len {
