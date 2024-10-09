@@ -655,13 +655,13 @@ impl<'src> Tokenizer<'src> {
         let mut brackets_indicies = Vec::<index32>::new();
 
         'tokenization: loop {
-            let token_kind_result = 'next_token: loop {
+            let token_kind_result = 'next_token: {
                 this.token_start_col = this.col;
 
                 let next = match this.peek_next_ascii_char() {
-                    Ok(Some(ch)) => {
+                    Ok(Some(next)) => {
                         this.col += 1;
-                        ch
+                        next
                     }
                     Ok(None) => break 'tokenization,
                     Err(error) => {
@@ -675,14 +675,14 @@ impl<'src> Tokenizer<'src> {
                     }
                 };
 
-                break 'next_token match next {
+                match next {
                     // ignore whitespace
-                    b' ' | b'\t' | b'\r' | b'\x0C' => continue 'next_token,
+                    b' ' | b'\t' | b'\r' | b'\x0C' => continue 'tokenization,
 
                     // next line
                     b'\n' => {
                         this.line_index += 1;
-                        continue 'next_token;
+                        continue 'tokenization;
                     }
 
                     b'r' => match this.peek_next_utf8_char() {
@@ -754,7 +754,7 @@ impl<'src> Tokenizer<'src> {
                         Err(()) => Err(()),
                     },
                     b'#' => match this.peek_next_utf8_char() {
-                        Some('#') => {
+                        Some('#') => 'comment: {
                             'next_character: loop {
                                 match this.next_utf8_char_multiline() {
                                     Some('#') => match this.next_utf8_char_multiline() {
@@ -766,7 +766,7 @@ impl<'src> Tokenizer<'src> {
                                                 col: this.token_start_col,
                                                 pointers_count: 2,
                                             });
-                                            break 'next_token Err(());
+                                            break 'comment Err(());
                                         }
                                     },
                                     Some(_) => {}
@@ -776,7 +776,7 @@ impl<'src> Tokenizer<'src> {
                                             col: this.token_start_col,
                                             pointers_count: 2,
                                         });
-                                        break 'next_token Err(());
+                                        break 'comment Err(());
                                     }
                                 }
                             }
@@ -1210,7 +1210,7 @@ impl<'src> Tokenizer<'src> {
                         });
                         Err(())
                     }
-                };
+                }
             };
 
             let kind = match token_kind_result {
