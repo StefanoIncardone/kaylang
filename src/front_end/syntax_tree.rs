@@ -783,14 +783,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             return Ok(syntax_tree);
         }
 
-        let mut this = Self {
-            src,
-            errors: Vec::new(),
-            token_index: 0,
-            tokens,
-            loop_depth: 0,
-            syntax_tree,
-        };
+        let mut this =
+            Self { src, errors: Vec::new(), token_index: 0, tokens, loop_depth: 0, syntax_tree };
 
         while let Some(peeked) = this.peek_next_token() {
             this.token_index = peeked.index;

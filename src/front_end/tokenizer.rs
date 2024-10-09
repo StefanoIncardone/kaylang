@@ -643,27 +643,20 @@ pub struct Tokenizer<'src> {
 
 impl<'src> Tokenizer<'src> {
     pub fn tokenize(src: &'src SrcFile) -> Result<Vec<Token<'src>>, Vec<Error<ErrorKind<'src>>>> {
-        let mut this = Self {
-            src,
-            errors: Vec::new(),
-            col: 0,
-            token_start_col: 0,
-            line_index: 0,
-        };
+        let mut this = Self { src, errors: Vec::new(), col: 0, token_start_col: 0, line_index: 0 };
 
         let mut tokens = Vec::<Token<'src>>::new();
         let mut brackets_indicies = Vec::<index32>::new();
 
-        'tokenization: loop {
-            let token_kind_result = 'next_token: {
-                this.token_start_col = this.col;
+        'tokenization: while let Some(next_character) = this.peek_next_ascii_char() {
+            this.token_start_col = this.col;
 
-                let next = match this.peek_next_ascii_char() {
-                    Ok(Some(next)) => {
+            let token_kind_result = 'next_token: {
+                let next = match next_character {
+                    Ok(next) => {
                         this.col += 1;
                         next
                     }
-                    Ok(None) => break 'tokenization,
                     Err(error) => {
                         this.col += error.grapheme.len() as offset32;
                         this.errors.push(Error {
@@ -1285,14 +1278,14 @@ impl<'src> Tokenizer<'src> {
         };
     }
 
-    fn peek_next_ascii_char(&self) -> Result<Option<ascii>, Utf8Error<'src>> {
+    fn peek_next_ascii_char(&self) -> Option<Result<ascii, Utf8Error<'src>>> {
         if self.col as usize >= self.src.code.len() {
-            return Ok(None);
+            return None;
         }
 
         let next = self.src.code.as_bytes()[self.col as usize];
         return match next {
-            ascii_ch @ 0..=b'\x7F' => Ok(Some(ascii_ch)),
+            ascii_ch @ 0..=b'\x7F' => Some(Ok(ascii_ch)),
             _utf8_ch => {
                 let rest_of_code = &self.src.code[self.col as usize..];
                 let mut rest_of_line_graphemes = rest_of_code.graphemes(true);
@@ -1320,7 +1313,7 @@ impl<'src> Tokenizer<'src> {
                 // let grapheme = &self.src.code[self.col as usize..(self.col + end_of_character) as usize];
                 // let pointers_count = 1;
 
-                Err(Utf8Error { grapheme, col: self.col, pointers_count })
+                Some(Err(Utf8Error { grapheme, col: self.col, pointers_count }))
             }
         };
     }
@@ -1353,11 +1346,10 @@ impl<'src> Tokenizer<'src> {
 
         loop {
             match self.peek_next_ascii_char() {
-                Ok(Some(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {
+                Some(Ok(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {
                     self.col += 1;
                 }
-                Ok(Some(_) | None) => break,
-                Err(error) => {
+                Some(Err(error)) => {
                     self.col += error.grapheme.len() as offset32;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InIdentifier { grapheme: error.grapheme },
@@ -1365,6 +1357,7 @@ impl<'src> Tokenizer<'src> {
                         pointers_count: error.pointers_count,
                     });
                 }
+                Some(Ok(_)) | None => break,
             }
         }
 
@@ -1405,10 +1398,10 @@ impl<'src> Tokenizer<'src> {
 
         loop {
             match self.peek_next_ascii_char() {
-                Ok(Some(b'0'..=b'9' | b'_')) => {
+                Some(Ok(b'0'..=b'9' | b'_')) => {
                     self.col += 1;
                 }
-                Ok(Some(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
+                Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
                     self.col += 1;
                     self.errors.push(Error {
                         kind: ErrorKind::LetterInNumberLiteral(Base::Decimal, letter),
@@ -1416,8 +1409,7 @@ impl<'src> Tokenizer<'src> {
                         pointers_count: 1,
                     });
                 }
-                Ok(Some(_) | None) => break,
-                Err(error) => {
+                Some(Err(error)) => {
                     self.col += error.grapheme.len() as offset32;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
@@ -1425,6 +1417,7 @@ impl<'src> Tokenizer<'src> {
                         pointers_count: error.pointers_count,
                     });
                 }
+                Some(Ok(_)) | None => break,
             }
         }
 
@@ -1441,10 +1434,10 @@ impl<'src> Tokenizer<'src> {
 
         loop {
             match self.peek_next_ascii_char() {
-                Ok(Some(b'0'..=b'1' | b'_')) => {
+                Some(Ok(b'0'..=b'1' | b'_')) => {
                     self.col += 1;
                 }
-                Ok(Some(out_of_range @ b'2'..=b'9')) => {
+                Some(Ok(out_of_range @ b'2'..=b'9')) => {
                     self.col += 1;
                     self.errors.push(Error {
                         kind: ErrorKind::DigitOutOfRangeInNumberLiteral(Base::Binary, out_of_range),
@@ -1452,7 +1445,7 @@ impl<'src> Tokenizer<'src> {
                         pointers_count: 1,
                     });
                 }
-                Ok(Some(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
+                Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
                     self.col += 1;
                     self.errors.push(Error {
                         kind: ErrorKind::LetterInNumberLiteral(Base::Binary, letter),
@@ -1460,8 +1453,7 @@ impl<'src> Tokenizer<'src> {
                         pointers_count: 1,
                     });
                 }
-                Ok(Some(_) | None) => break,
-                Err(error) => {
+                Some(Err(error)) => {
                     self.col += error.grapheme.len() as offset32;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
@@ -1469,6 +1461,7 @@ impl<'src> Tokenizer<'src> {
                         pointers_count: error.pointers_count,
                     });
                 }
+                Some(Ok(_)) | None => break,
             }
         }
 
@@ -1495,10 +1488,10 @@ impl<'src> Tokenizer<'src> {
 
         loop {
             match self.peek_next_ascii_char() {
-                Ok(Some(b'0'..=b'7' | b'_')) => {
+                Some(Ok(b'0'..=b'7' | b'_')) => {
                     self.col += 1;
                 }
-                Ok(Some(out_of_range @ b'8'..=b'9')) => {
+                Some(Ok(out_of_range @ b'8'..=b'9')) => {
                     self.col += 1;
                     self.errors.push(Error {
                         kind: ErrorKind::DigitOutOfRangeInNumberLiteral(Base::Octal, out_of_range),
@@ -1506,7 +1499,7 @@ impl<'src> Tokenizer<'src> {
                         pointers_count: 1,
                     });
                 }
-                Ok(Some(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
+                Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
                     self.col += 1;
                     self.errors.push(Error {
                         kind: ErrorKind::LetterInNumberLiteral(Base::Octal, letter),
@@ -1514,8 +1507,7 @@ impl<'src> Tokenizer<'src> {
                         pointers_count: 1,
                     });
                 }
-                Ok(Some(_) | None) => break,
-                Err(error) => {
+                Some(Err(error)) => {
                     self.col += error.grapheme.len() as offset32;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
@@ -1523,6 +1515,7 @@ impl<'src> Tokenizer<'src> {
                         pointers_count: error.pointers_count,
                     });
                 }
+                Some(Ok(_)) | None => break,
             }
         }
 
@@ -1549,10 +1542,10 @@ impl<'src> Tokenizer<'src> {
 
         loop {
             match self.peek_next_ascii_char() {
-                Ok(Some(b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F' | b'_')) => {
+                Some(Ok(b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F' | b'_')) => {
                     self.col += 1;
                 }
-                Ok(Some(out_of_range @ (b'g'..=b'z' | b'G'..=b'Z'))) => {
+                Some(Ok(out_of_range @ (b'g'..=b'z' | b'G'..=b'Z'))) => {
                     self.col += 1;
                     self.errors.push(Error {
                         kind: ErrorKind::DigitOutOfRangeInNumberLiteral(
@@ -1563,8 +1556,7 @@ impl<'src> Tokenizer<'src> {
                         pointers_count: 1,
                     });
                 }
-                Ok(Some(_) | None) => break,
-                Err(error) => {
+                Some(Err(error)) => {
                     self.col += error.grapheme.len() as offset32;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
@@ -1572,6 +1564,7 @@ impl<'src> Tokenizer<'src> {
                         pointers_count: error.pointers_count,
                     });
                 }
+                Some(Ok(_)) | None => break,
             }
         }
 
@@ -1602,7 +1595,7 @@ impl<'src> Tokenizer<'src> {
 
         loop {
             let next_character = match self.peek_next_ascii_char() {
-                Ok(Some(b'\n') | None) => {
+                Some(Ok(b'\n')) | None => {
                     self.errors.push(Error {
                         kind: ErrorKind::UnclosedQuotedLiteral(kind),
                         col: self.token_start_col,
@@ -1610,11 +1603,11 @@ impl<'src> Tokenizer<'src> {
                     });
                     break;
                 }
-                Ok(Some(next_character)) => {
+                Some(Ok(next_character)) => {
                     self.col += 1;
                     next_character
                 }
-                Err(error) => {
+                Some(Err(error)) => {
                     self.col += error.grapheme.len() as offset32;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InIdentifier { grapheme: error.grapheme },
@@ -1628,7 +1621,7 @@ impl<'src> Tokenizer<'src> {
             let character = match next_character {
                 b'\\' => {
                     let escape_character = match self.peek_next_ascii_char() {
-                        Ok(Some(b'\n') | None) => {
+                        Some(Ok(b'\n')) | None => {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnclosedQuotedLiteral(kind),
                                 col: self.token_start_col,
@@ -1636,8 +1629,8 @@ impl<'src> Tokenizer<'src> {
                             });
                             break;
                         }
-                        Ok(Some(escape_character)) => escape_character,
-                        Err(error) => {
+                        Some(Ok(escape_character)) => escape_character,
+                        Some(Err(error)) => {
                             self.col += error.grapheme.len() as offset32;
                             self.errors.push(Error {
                                 kind: ErrorKind::Utf8InQuotedLiteral {
@@ -1687,7 +1680,7 @@ impl<'src> Tokenizer<'src> {
 
         loop {
             let next_character = match self.peek_next_ascii_char() {
-                Ok(Some(b'\n') | None) => {
+                Some(Ok(b'\n')) | None => {
                     self.errors.push(Error {
                         kind: ErrorKind::UnclosedQuotedLiteral(kind),
                         col: self.token_start_col,
@@ -1695,11 +1688,11 @@ impl<'src> Tokenizer<'src> {
                     });
                     break;
                 }
-                Ok(Some(next_character)) => {
+                Some(Ok(next_character)) => {
                     self.col += 1;
                     next_character
                 }
-                Err(error) => {
+                Some(Err(error)) => {
                     self.col += error.grapheme.len() as offset32;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InQuotedLiteral {
@@ -1716,7 +1709,7 @@ impl<'src> Tokenizer<'src> {
             let character = match next_character {
                 b'\\' => {
                     let escape_character = match self.peek_next_ascii_char() {
-                        Ok(Some(b'\n') | None) => {
+                        Some(Ok(b'\n')) | None => {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnclosedQuotedLiteral(kind),
                                 col: self.token_start_col,
@@ -1724,11 +1717,11 @@ impl<'src> Tokenizer<'src> {
                             });
                             break;
                         }
-                        Ok(Some(escape_character)) => {
+                        Some(Ok(escape_character)) => {
                             self.col += 1;
                             escape_character
                         }
-                        Err(error) => {
+                        Some(Err(error)) => {
                             self.col += error.grapheme.len() as offset32;
                             self.errors.push(Error {
                                 kind: ErrorKind::Utf8InQuotedLiteral {
