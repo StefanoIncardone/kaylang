@@ -4,6 +4,9 @@
 use super::{Error, ErrorInfo, IntoErrorInfo};
 use crate::src_file::{column32, index32, Line, SrcFile};
 use core::fmt::Display;
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthChar;
+
 pub(super) trait DisplayLen {
     fn display_len(&self) -> column32;
 }
@@ -460,21 +463,24 @@ impl QuotedLiteralKind {
 
 #[derive(Debug, Clone)]
 pub(crate) enum TokenKind<'src> {
+    // IDEA(stefano): remove from the returned tokens, to avoid encountering them during the parsing stage
     Comment(&'src str),
     BlockComment(&'src str),
-
     Unexpected(&'src str),
 
     // Symbols
+    // IDEA(stefano): expand into the different brackets
     Bracket(BracketKind),
     Colon,
     SemiColon,
     Comma,
+    // IDEA(stefano): expand into the different operators
     Op(Op),
 
     // Literal values
     False,
     True,
+    // IDEA(stefano): expand into the different bases, akin to Str and RawStr
     Integer(Base, Integer<'src>),
     Ascii(ascii),
     Str(Str),
@@ -500,6 +506,7 @@ pub(crate) enum TokenKind<'src> {
     /// temporary way of printing values followed by a newline to stderr
     EprintLn,
 
+    // IDEA(stefano): expant into TokenKind::Let and TokenKind::Var
     Mutability(Mutability),
     Do,
     If,
@@ -617,7 +624,7 @@ pub struct Token<'src> {
 #[derive(Debug)]
 pub struct Tokenizer<'src> {
     src: &'src SrcFile,
-    errors: Vec<Error<ErrorKind>>,
+    errors: Vec<Error<ErrorKind<'src>>>,
 
     col: column32,
     token_start_col: column32,
@@ -627,7 +634,7 @@ pub struct Tokenizer<'src> {
 }
 
 impl<'src> Tokenizer<'src> {
-    pub fn tokenize(src: &'src SrcFile) -> Result<Vec<Token<'src>>, Vec<Error<ErrorKind>>> {
+    pub fn tokenize(src: &'src SrcFile) -> Result<Vec<Token<'src>>, Vec<Error<ErrorKind<'src>>>> {
         let Some(first_line) = src.lines.first() else {
             return Ok(Vec::new());
         };
@@ -652,12 +659,12 @@ impl<'src> Tokenizer<'src> {
                     Ok(Some(ch)) => {
                         this.col += 1;
                         ch
-                    },
+                    }
                     Ok(None) => break 'tokenization,
                     Err(error) => {
-                        this.col += error.byte_len;
+                        this.col += error.grapheme.len() as column32;
                         this.errors.push(Error {
-                            kind: ErrorKind::Utf8Character(error.utf8_ch),
+                            kind: ErrorKind::Utf8Character { grapheme: error.grapheme },
                             col: error.col,
                             pointers_count: error.pointers_count,
                         });
@@ -1212,15 +1219,13 @@ impl<'src> Tokenizer<'src> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Utf8Error {
-    utf8_ch: utf8,
+struct Utf8Error<'src> {
+    grapheme: &'src str,
     col: column32,
-    byte_len: column32,
     pointers_count: column32,
 }
 
 // TODO(stefano): own utf8 parsing
-// TODO(stefano): properly handle multi-char utf8 characters (i.e. emojis)
 // iteration of characters
 impl<'src> Tokenizer<'src> {
     fn token_len(&self) -> column32 {
@@ -1228,6 +1233,7 @@ impl<'src> Tokenizer<'src> {
             as column32;
     }
 
+    // Note: this function is only called when parsing comments, so no special handling of graphemes is required
     fn next_utf8_char_multiline(&mut self) -> Option<utf8> {
         if self.col as usize >= self.src.code.len() {
             return None;
@@ -1261,7 +1267,7 @@ impl<'src> Tokenizer<'src> {
         };
     }
 
-    fn peek_next_ascii_char(&self) -> Result<Option<ascii>, Utf8Error> {
+    fn peek_next_ascii_char(&self) -> Result<Option<ascii>, Utf8Error<'src>> {
         if self.col as usize >= self.src.code.len() {
             return Ok(None);
         }
@@ -1271,20 +1277,30 @@ impl<'src> Tokenizer<'src> {
             ascii_ch @ 0..=b'\x7F' => Ok(Some(ascii_ch)),
             _utf8_ch => {
                 let rest_of_line = &self.src.code[self.col as usize..self.line.end as usize];
-                let Some(utf8_ch) = rest_of_line.chars().next() else {
-                    unreachable!("this branch assured we would have a valid utf8 character");
+                let mut rest_of_line_graphemes = rest_of_line.graphemes(true);
+                let Some(grapheme) = rest_of_line_graphemes.next() else {
+                    unreachable!("this branch assured we would have a valid grapheme");
                 };
 
-                Err(Utf8Error {
-                    utf8_ch,
-                    col: self.col,
-                    byte_len: utf8_ch.len_utf8() as column32,
-                    pointers_count: 1, // TODO(stefano): proper utf8 len
-                })
+                let mut pointers_count = 0;
+                for character in grapheme.chars() {
+                    let character_utf8_len = match character.width_cjk() {
+                        Some(character_utf8_len) => character_utf8_len as column32,
+                        None => 1,
+                    };
+                    pointers_count += character_utf8_len;
+                }
+
+                if pointers_count == 0 {
+                    pointers_count = 1;
+                }
+
+                Err(Utf8Error { grapheme, col: self.col, pointers_count })
             }
         };
     }
 
+    // Note: this function is only called when parsing operators, so no special handling of graphemes is required
     fn peek_next_utf8_char(&self) -> Option<utf8> {
         if self.col as usize >= self.src.code.len() {
             return None;
@@ -1317,9 +1333,9 @@ impl<'src> Tokenizer<'src> {
                 }
                 Ok(Some(_) | None) => break,
                 Err(error) => {
-                    self.col += error.byte_len;
+                    self.col += error.grapheme.len() as column32;
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InIdentifier(error.utf8_ch),
+                        kind: ErrorKind::Utf8InIdentifier { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
@@ -1377,9 +1393,9 @@ impl<'src> Tokenizer<'src> {
                 }
                 Ok(Some(_) | None) => break,
                 Err(error) => {
-                    self.col += error.byte_len;
+                    self.col += error.grapheme.len() as column32;
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InNumberLiteral(error.utf8_ch),
+                        kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
@@ -1406,10 +1422,7 @@ impl<'src> Tokenizer<'src> {
                 Ok(Some(out_of_range @ b'2'..=b'9')) => {
                     self.col += 1;
                     self.errors.push(Error {
-                        kind: ErrorKind::DigitOutOfRangeInNumberLiteral(
-                            Base::Binary,
-                            out_of_range,
-                        ),
+                        kind: ErrorKind::DigitOutOfRangeInNumberLiteral(Base::Binary, out_of_range),
                         col: self.col,
                         pointers_count: 1,
                     });
@@ -1424,9 +1437,9 @@ impl<'src> Tokenizer<'src> {
                 }
                 Ok(Some(_) | None) => break,
                 Err(error) => {
-                    self.col += error.byte_len;
+                    self.col += error.grapheme.len() as column32;
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InNumberLiteral(error.utf8_ch),
+                        kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
@@ -1478,9 +1491,9 @@ impl<'src> Tokenizer<'src> {
                 }
                 Ok(Some(_) | None) => break,
                 Err(error) => {
-                    self.col += error.byte_len;
+                    self.col += error.grapheme.len() as column32;
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InNumberLiteral(error.utf8_ch),
+                        kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
@@ -1527,9 +1540,9 @@ impl<'src> Tokenizer<'src> {
                 }
                 Ok(Some(_) | None) => break,
                 Err(error) => {
-                    self.col += error.byte_len;
+                    self.col += error.grapheme.len() as column32;
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InNumberLiteral(error.utf8_ch),
+                        kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
@@ -1577,9 +1590,9 @@ impl<'src> Tokenizer<'src> {
                     next_character
                 }
                 Err(error) => {
-                    self.col += error.byte_len;
+                    self.col += error.grapheme.len() as column32;
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InIdentifier(error.utf8_ch),
+                        kind: ErrorKind::Utf8InIdentifier { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
@@ -1600,9 +1613,12 @@ impl<'src> Tokenizer<'src> {
                         }
                         Ok(Some(escape_character)) => escape_character,
                         Err(error) => {
-                            self.col += error.byte_len;
+                            self.col += error.grapheme.len() as column32;
                             self.errors.push(Error {
-                                kind: ErrorKind::Utf8InQuotedLiteral(kind, error.utf8_ch),
+                                kind: ErrorKind::Utf8InQuotedLiteral {
+                                    grapheme: error.grapheme,
+                                    quoted_literal_kind: kind,
+                                },
                                 col: error.col,
                                 pointers_count: error.pointers_count,
                             });
@@ -1659,9 +1675,12 @@ impl<'src> Tokenizer<'src> {
                     next_character
                 }
                 Err(error) => {
-                    self.col += error.byte_len;
+                    self.col += error.grapheme.len() as column32;
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InQuotedLiteral(kind, error.utf8_ch),
+                        kind: ErrorKind::Utf8InQuotedLiteral {
+                            grapheme: error.grapheme,
+                            quoted_literal_kind: kind,
+                        },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
@@ -1685,9 +1704,12 @@ impl<'src> Tokenizer<'src> {
                             escape_character
                         }
                         Err(error) => {
-                            self.col += error.byte_len;
+                            self.col += error.grapheme.len() as column32;
                             self.errors.push(Error {
-                                kind: ErrorKind::Utf8InQuotedLiteral(kind, error.utf8_ch),
+                                kind: ErrorKind::Utf8InQuotedLiteral {
+                                    grapheme: error.grapheme,
+                                    quoted_literal_kind: kind,
+                                },
                                 col: error.col,
                                 pointers_count: error.pointers_count,
                             });
@@ -1737,33 +1759,33 @@ impl<'src> Tokenizer<'src> {
 }
 
 #[derive(Debug, Clone)]
-pub enum ErrorKind {
+pub enum ErrorKind<'src> {
     UnclosedBlockComment,
 
     UnclosedBracket(BracketKind),
     UnopenedBracket(BracketKind),
     MismatchedBracket { actual: BracketKind, expected: BracketKind },
 
-    Utf8InQuotedLiteral(QuotedLiteralKind, utf8),
+    Utf8InQuotedLiteral { grapheme: &'src str, quoted_literal_kind: QuotedLiteralKind },
     UnclosedQuotedLiteral(QuotedLiteralKind),
     ControlCharacterInQuotedLiteral(QuotedLiteralKind, utf8),
     UnrecognizedEscapeCharacterInQuotedLiteral(QuotedLiteralKind, utf8),
     EmptyCharacterLiteral,
     MultipleCharactersInCharacterLiteral,
 
-    Utf8InNumberLiteral(utf8),
+    Utf8InNumberLiteral { grapheme: &'src str },
     LetterInNumberLiteral(Base, ascii),
     DigitOutOfRangeInNumberLiteral(Base, ascii),
     EmptyNumberLiteral(MissingDigitsBase),
 
-    Utf8InIdentifier(utf8),
+    Utf8InIdentifier { grapheme: &'src str },
     IdentifierTooLong { max: column32 },
 
-    Utf8Character(utf8),
+    Utf8Character { grapheme: &'src str },
     UnrecognizedCharacter(utf8),
 }
 
-impl IntoErrorInfo for ErrorKind {
+impl IntoErrorInfo for ErrorKind<'_> {
     fn info(&self) -> ErrorInfo {
         let (error_message, error_cause_message) = match self {
             Self::UnclosedBlockComment => (
@@ -1784,8 +1806,8 @@ impl IntoErrorInfo for ErrorKind {
                 format!("'{actual}' closes the wrong bracket, expected a '{expected}' instead").into()
             ),
 
-            Self::Utf8InQuotedLiteral(kind, character) => (
-                format!("invalid {kind} literal character '{character}' {}", character.escape_unicode()).into(),
+            Self::Utf8InQuotedLiteral { grapheme, quoted_literal_kind } => (
+                format!("invalid {quoted_literal_kind} literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
             ),
             Self::UnclosedQuotedLiteral(kind) => (
@@ -1809,8 +1831,8 @@ impl IntoErrorInfo for ErrorKind {
                 format!("must not contain more than one character, if you meant to write a string literal try changing the quotes to {}", Quote::Double as u8 as char).into(),
             ),
 
-            Self::Utf8InNumberLiteral(character) => (
-                format!("invalid integer literal character '{character}' {}", character.escape_unicode()).into(),
+            Self::Utf8InNumberLiteral { grapheme } => (
+                format!("invalid integer literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
             ),
             Self::LetterInNumberLiteral(base, letter) => (
@@ -1826,8 +1848,8 @@ impl IntoErrorInfo for ErrorKind {
                 format!("at leasts one base {} digt must be present {:?}", *base as u8, base.range()).into(),
             ),
 
-            Self::Utf8InIdentifier(character) => (
-                format!("invalid identifier character '{character}' {}", character.escape_unicode()).into(),
+            Self::Utf8InIdentifier { grapheme } => (
+                format!("invalid identifier character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
             ),
             Self::IdentifierTooLong { max } => (
@@ -1835,8 +1857,8 @@ impl IntoErrorInfo for ErrorKind {
                 format!("exceeds the length limit of {max}").into(),
             ),
 
-            Self::Utf8Character(character) => (
-                format!("invalid character '{character}' {}", character.escape_unicode()).into(),
+            Self::Utf8Character { grapheme } => (
+                format!("invalid character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into()
             ),
             Self::UnrecognizedCharacter(unrecognized) => (

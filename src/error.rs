@@ -90,12 +90,14 @@ pub struct MsgWithCauseUnderTextWithLocation<'kind, 'message, 'cause, 'src> {
     pub cause: &'cause dyn Display,
     pub file: &'src Path,
     pub line: line32,
-    pub col: column32,
+    pub utf8_column: column32,
     pub source_code_col: column32,
     pub line_text: &'src dyn Display,
     pub pointers_count: u32,
+    pub pointers_offset: column32,
 }
 
+// BUG(stefano): improve displaying of tabs (substitute them with 4 spaces)
 impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let error_message = Colored {
@@ -129,17 +131,18 @@ impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_> {
         return write!(
             f,
             "{kind}: {error_message}\
-            \n{AT:>at_padding$}: {path}:{line}:{col} ({source_code_col})\
+            \n{AT:>at_padding$}: {path}:{line}:{utf8_column} ({source_code_col})\
             \n{BAR:>line_number_padding$}\
             \n{line_number} {BAR} {line_text}\
-            \n{BAR:>line_number_padding$}{spaces:>col$}{pointers_and_cause}",
+            \n{BAR:>line_number_padding$}{spaces:>pointers_offset$}{pointers_and_cause}",
             kind = self.kind,
             at_padding = line_number_padding - 1,
             path = self.file.display(),
             line = self.line,
-            col = self.col as usize,
+            utf8_column = self.utf8_column as usize,
             source_code_col = self.source_code_col as usize,
             line_text = self.line_text,
+            pointers_offset = self.pointers_offset as usize,
             spaces = "",
         );
     }

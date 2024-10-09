@@ -14,6 +14,10 @@ license = "MIT"
 [features]
 # IDEA(stefano): add configuration for max source code length
 
+[dependencies]
+unicode-width = "0.2.0"
+unicode-segmentation = "1.12.0"
+
 [profile.dev]
 debug = "full"
 opt-level = 0
@@ -37,7 +41,7 @@ non_ascii_idents = "forbid"
 unreachable_pub = "forbid"
 unnameable_types = "forbid"
 unstable_features = "forbid"
-unused_crate_dependencies = "warn"
+unused_crate_dependencies = "allow" # might be changed to 'warn' from time to time
 unused_extern_crates = "warn"
 unused_import_braces = "warn"
 unused_lifetimes = "warn"

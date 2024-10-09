@@ -1,6 +1,6 @@
 # Change Log
 
-All notable changes to this project will be documented in this file
+All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html),
@@ -26,15 +26,9 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ## 0.6.2 -
 
-### Added
+### Language
 
-#### Compiler
-
-- Information about error's absolute source code column
-
-### Changed
-
-#### Language
+#### Changed
 
 - Block comments delimited by `##` instead of `#{` and `#}`, this also removes the error related
     to uclosed block comments:
@@ -76,32 +70,24 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
         ##
         ```
 
-#### Compiler
+#### Removed
+
+- do-statements in if and loop statements, thus reduced language complexity and inconsistencies
+
+### Compiler
+
+#### Added
+
+- Information about error's absolute source code column
+
+#### Changed
 
 - Refactored compilation stages <!-- TODO: document changes about untyped ast -->
+- Changed `tokenizer::ErrorKind` layout
 
-### Fixed
+#### Fixed
 
-#### Compiler
-
-- Fixed parsing of if statements inside do-statements in an if branch:
-
-    ```kay
-    # wrong: we would expect that the else-if branches would be part of the first if block, but
-    # the are incorrectly part of the if inside the first do-statement, so this:
-    if a do if b do println "12";
-    else if c do println "21";
-    else if d println "19";
-    else do println "42";
-
-    # is in reality this, which will now be disallowed:
-    if a do
-        if b do println "12";
-      # ^^ error: if statement in do-statement inside if branch
-        else if c do println "21";
-        else if d println "19";
-        else do println "42";
-    ```
+- Improved error messages related to utf8 characters
 
 ## 0.6.1 - 2024-09-20
 
@@ -116,10 +102,6 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
     - `0x`: hexadecimal
 - Escape sequences in raw string literals: `r"nested \"quotes\" are now allowed by escaping them"`
 - Block comments, enclosed by `#{` and `#}`
-
-#### Removed
-
-- do-statements in if and loop statements, thus reduced language complexity and inconsistencies
 
 #### Fixed
 

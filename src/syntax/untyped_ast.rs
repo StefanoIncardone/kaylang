@@ -834,9 +834,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
                 let after_expression_token = self.next_expected_token(Expected::Semicolon)?;
                 match after_expression_token.kind {
-                    TokenKind::SemiColon => {
-                        Ok(ParsedNode::Node(Node::Expression(expression)))
-                    }
+                    TokenKind::SemiColon => Ok(ParsedNode::Node(Node::Expression(expression))),
                     TokenKind::Op(
                         operator @ (Op::Equals
                         | Op::PowEquals
@@ -1177,7 +1175,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         error_message: Cow<'static, str>,
         error_cause_message: Cow<'static, str>,
     ) -> ! {
-        let Position { line, col } = self.src.position(token.col);
+        let Position { line, utf8_column, display_column } = self.src.position(token.col);
         let line_span = &self.src.lines[line as usize - 1];
         let line_text = &self.src.code[line_span.start as usize..line_span.end as usize];
 
@@ -1185,10 +1183,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             error_message,
             file: &self.src.path,
             line,
-            col,
+            utf8_column,
             source_code_col: token.col,
             line_text,
             pointers_count: token.kind.display_len(),
+            pointers_offset: display_column,
             error_cause_message,
         };
         panic!("{error}\n");

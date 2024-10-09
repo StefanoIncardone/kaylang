@@ -5,6 +5,7 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
 };
+use unicode_width::UnicodeWidthChar;
 
 #[allow(non_camel_case_types)]
 pub type line32 = u32;
@@ -27,8 +28,8 @@ pub type Line = Span;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Position {
     pub line: line32,
-    pub col: column32,
-    // pub source_code_column: col,
+    pub utf8_column: column32,
+    pub display_column: column32,
 }
 
 #[derive(Debug)]
@@ -154,17 +155,19 @@ impl SrcFile {
 
         // converting from column offset to display offset (useful for utf8 characters)
         let line = &self.lines[left as usize];
-        let line_text = &self.code[line.start as usize..line.end as usize];
-        let target_column = column - line.start;
-        let mut display_column = 0;
-        for (index, _) in line_text.char_indices() {
-            display_column += 1;
-            if index == target_column as usize {
-                break;
-            }
+        let line_text_before_error = &self.code[line.start as usize..column as usize];
+        let mut display_column = 1;
+        let mut utf8_column = 1;
+        for character in line_text_before_error.chars() {
+            let character_utf8_len = match character.width_cjk() {
+                Some(character_utf8_len) => character_utf8_len as column32,
+                None => 1,
+            };
+            display_column += character_utf8_len;
+            utf8_column += 1;
         }
 
-        return Position { line: left + 1, col: display_column };
+        return Position { line: left + 1, utf8_column, display_column };
     }
 }
 
