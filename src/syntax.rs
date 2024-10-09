@@ -4,7 +4,7 @@ pub mod untyped_ast;
 
 use crate::{
     error::MsgWithCauseUnderTextWithLocation,
-    src_file::{column32, line32, Position, SrcFile},
+    src_file::{column32, line32, offset32, DisplayPosition, SrcFile},
     ERROR,
 };
 use core::fmt::{Debug, Display};
@@ -28,13 +28,13 @@ IDEA: introduce a pointers_col field
 pub struct Error<K: IntoErrorInfo> {
     pub kind: K,
     /// absolute source code byte position
-    pub col: column32,
-    pub pointers_count: u32,
+    pub col: offset32,
+    pub pointers_count: column32,
 }
 
 impl<K: IntoErrorInfo> Error<K> {
     pub fn display<'src>(&self, src: &'src SrcFile) -> ErrorDisplay<'src> {
-        let Position { line, utf8_column, display_column } = src.position(self.col);
+        let DisplayPosition { line, column, display_column } = src.display_position(self.col);
         let line_span = &src.lines[line as usize - 1];
         let line_text = &src.code[line_span.start as usize..line_span.end as usize];
 
@@ -43,8 +43,8 @@ impl<K: IntoErrorInfo> Error<K> {
             error_message,
             file: &src.path,
             line,
-            utf8_column,
-            source_code_col: self.col,
+            column,
+            absolute_column: self.col,
             line_text,
             pointers_count: self.pointers_count,
             pointers_offset: display_column,
@@ -53,19 +53,15 @@ impl<K: IntoErrorInfo> Error<K> {
     }
 }
 
-/* TODO(stefano):
-allow pointers to start past the end of the line
-IDEA: introduce a pointers_col field
-*/
 #[derive(Debug, Clone)]
 pub struct ErrorDisplay<'src> {
     pub error_message: Cow<'static, str>,
     pub file: &'src Path,
     pub line: line32,
-    pub utf8_column: column32,
-    pub source_code_col: column32,
+    pub column: column32,
+    pub absolute_column: offset32,
     pub line_text: &'src str,
-    pub pointers_count: u32,
+    pub pointers_count: column32,
     pub pointers_offset: column32,
     pub error_cause_message: Cow<'static, str>,
 }
@@ -78,8 +74,8 @@ impl Display for ErrorDisplay<'_> {
             cause: &self.error_cause_message,
             file: self.file,
             line: self.line,
-            utf8_column: self.utf8_column,
-            source_code_col: self.source_code_col,
+            column: self.column,
+            absolute_column: self.absolute_column,
             line_text: &self.line_text,
             pointers_count: self.pointers_count,
             pointers_offset: self.pointers_offset,

@@ -2,13 +2,13 @@
 // TODO(stefano): more escape characters
 
 use super::{Error, ErrorInfo, IntoErrorInfo};
-use crate::src_file::{column32, index32, Line, SrcFile};
+use crate::src_file::{index32, offset32, Line, SrcFile};
 use core::fmt::Display;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthChar;
 
 pub(super) trait DisplayLen {
-    fn display_len(&self) -> column32;
+    fn display_len(&self) -> offset32;
 }
 
 /// kay's equivalent to pointer sized signed integer
@@ -105,7 +105,7 @@ impl Display for Mutability {
 
 impl DisplayLen for Mutability {
     #[inline(always)]
-    fn display_len(&self) -> column32 {
+    fn display_len(&self) -> offset32 {
         return match self {
             Self::Let | Self::Var => 3,
         };
@@ -137,7 +137,7 @@ impl Display for BracketKind {
 
 impl DisplayLen for BracketKind {
     #[inline(always)]
-    fn display_len(&self) -> column32 {
+    fn display_len(&self) -> offset32 {
         return match self {
             Self::OpenRound
             | Self::CloseRound
@@ -149,10 +149,11 @@ impl DisplayLen for BracketKind {
     }
 }
 
+// REMOVE(stefano): replace with a token index
 #[derive(Debug)]
 struct Bracket {
     kind: BracketKind,
-    col: column32,
+    col: offset32,
 }
 
 /* IDEA(stefano):
@@ -341,7 +342,7 @@ impl Display for Op {
 }
 
 impl DisplayLen for Op {
-    fn display_len(&self) -> column32 {
+    fn display_len(&self) -> offset32 {
         return match self {
             Self::Len => 3,
             Self::Equals => 1,
@@ -563,18 +564,33 @@ impl Display for TokenKind<'_> {
 }
 
 impl DisplayLen for TokenKind<'_> {
-    fn display_len(&self) -> column32 {
+    fn display_len(&self) -> offset32 {
         #[inline]
-        fn ascii_escaped_len(ascii_char: ascii) -> column32 {
+        fn ascii_escaped_len(ascii_char: ascii) -> offset32 {
             // Note: ascii type guarantees the value to be valid utf8
             let utf8_char = ascii_char as utf8;
-            return utf8_char.escape_debug().len() as column32;
+            return utf8_char.escape_debug().len() as offset32;
+        }
+
+        fn utf8_len(text: &str) -> offset32 {
+            let mut len = 0;
+            for grapheme in text.graphemes(true) {
+                for character in grapheme.chars() {
+                    let character_utf8_len = match character.width_cjk() {
+                        Some(character_utf8_len) => character_utf8_len,
+                        None => 1,
+                    };
+                    len += character_utf8_len as offset32;
+                }
+            }
+
+            return len;
         }
 
         return match self {
-            Self::Comment(text) => text.chars().count() as column32 + 1, // + 1 to account for the `#`
-            Self::BlockComment(text) => text.chars().count() as column32 + 4, // + 4 to account for `##` and `##`
-            Self::Unexpected(text) => text.chars().count() as column32,
+            Self::Comment(text) => utf8_len(text) + 1, // + 1 to account for the `#`
+            Self::BlockComment(text) => utf8_len(text) + 4, // + 4 to account for `##` and `##`
+            Self::Unexpected(text) => utf8_len(text),
 
             Self::Bracket(bracket) => bracket.display_len(),
             Self::Colon => 1,
@@ -583,7 +599,7 @@ impl DisplayLen for TokenKind<'_> {
             Self::Op(op) => op.display_len(),
 
             Self::Integer(base, integer) => {
-                base.prefix().len() as column32 + integer.0.len() as column32
+                base.prefix().len() as offset32 + integer.0.len() as offset32
             }
             Self::Ascii(ascii_char) => ascii_escaped_len(*ascii_char) + 2, // + 2 to account for the quotes
             Self::True => 4,
@@ -595,9 +611,9 @@ impl DisplayLen for TokenKind<'_> {
                 }
                 len
             }
-            Self::RawStr(text) => text.0.len() as column32 + 3, // + 1 for the `r` prefix, and + 2 for the quotes
+            Self::RawStr(text) => text.0.len() as offset32 + 3, // + 1 for the `r` prefix, and + 2 for the quotes
 
-            Self::Identifier(name) => name.len() as column32,
+            Self::Identifier(name) => name.len() as offset32,
 
             Self::Print => 5,
             Self::PrintLn => 7,
@@ -618,7 +634,7 @@ impl DisplayLen for TokenKind<'_> {
 #[derive(Debug, Clone)]
 pub struct Token<'src> {
     pub(crate) kind: TokenKind<'src>,
-    pub(crate) col: column32,
+    pub(crate) col: offset32,
 }
 
 #[derive(Debug)]
@@ -626,8 +642,8 @@ pub struct Tokenizer<'src> {
     src: &'src SrcFile,
     errors: Vec<Error<ErrorKind<'src>>>,
 
-    col: column32,
-    token_start_col: column32,
+    col: offset32,
+    token_start_col: offset32,
 
     line_index: index32,
     line: &'src Line,
@@ -662,7 +678,7 @@ impl<'src> Tokenizer<'src> {
                     }
                     Ok(None) => break 'tokenization,
                     Err(error) => {
-                        this.col += error.grapheme.len() as column32;
+                        this.col += error.grapheme.len() as offset32;
                         this.errors.push(Error {
                             kind: ErrorKind::Utf8Character { grapheme: error.grapheme },
                             col: error.col,
@@ -1221,16 +1237,16 @@ impl<'src> Tokenizer<'src> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Utf8Error<'src> {
     grapheme: &'src str,
-    col: column32,
-    pointers_count: column32,
+    col: offset32,
+    pointers_count: offset32,
 }
 
 // TODO(stefano): own utf8 parsing
 // iteration of characters
 impl<'src> Tokenizer<'src> {
-    fn token_len(&self) -> column32 {
+    fn token_len(&self) -> offset32 {
         return self.src.code[self.token_start_col as usize..self.col as usize].chars().count()
-            as column32;
+            as offset32;
     }
 
     // Note: this function is only called when parsing comments, so no special handling of graphemes is required
@@ -1261,7 +1277,7 @@ impl<'src> Tokenizer<'src> {
                     unreachable!("this branch assured we would have a valid utf8 character");
                 };
 
-                self.col += utf8_ch.len_utf8() as column32;
+                self.col += utf8_ch.len_utf8() as offset32;
                 Some(utf8_ch)
             }
         };
@@ -1285,15 +1301,22 @@ impl<'src> Tokenizer<'src> {
                 let mut pointers_count = 0;
                 for character in grapheme.chars() {
                     let character_utf8_len = match character.width_cjk() {
-                        Some(character_utf8_len) => character_utf8_len as column32,
+                        Some(character_utf8_len) => character_utf8_len,
                         None => 1,
                     };
-                    pointers_count += character_utf8_len;
+                    pointers_count += character_utf8_len as offset32;
                 }
 
                 if pointers_count == 0 {
                     pointers_count = 1;
                 }
+
+                // let Some(utf8_ch) = rest_of_line.chars().next() else {
+                //     unreachable!();
+                // };
+                // let end_of_character = utf8_ch.len_utf8() as offset32;
+                // let grapheme = &self.src.code[self.col as usize..(self.col + end_of_character) as usize];
+                // let pointers_count = 1;
 
                 Err(Utf8Error { grapheme, col: self.col, pointers_count })
             }
@@ -1323,7 +1346,7 @@ impl<'src> Tokenizer<'src> {
 
 impl<'src> Tokenizer<'src> {
     fn identifier(&mut self) -> Result<TokenKind<'src>, ()> {
-        const MAX_IDENTIFIER_LEN: column32 = 63;
+        const MAX_IDENTIFIER_LEN: offset32 = 63;
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1333,7 +1356,7 @@ impl<'src> Tokenizer<'src> {
                 }
                 Ok(Some(_) | None) => break,
                 Err(error) => {
-                    self.col += error.grapheme.len() as column32;
+                    self.col += error.grapheme.len() as offset32;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InIdentifier { grapheme: error.grapheme },
                         col: error.col,
@@ -1361,7 +1384,7 @@ impl<'src> Tokenizer<'src> {
             "len" => TokenKind::Op(Op::Len),
             identifier => {
                 let identifier_len = self.token_len();
-                if identifier_len as column32 > MAX_IDENTIFIER_LEN {
+                if identifier_len as offset32 > MAX_IDENTIFIER_LEN {
                     self.errors.push(Error {
                         kind: ErrorKind::IdentifierTooLong { max: MAX_IDENTIFIER_LEN },
                         col: self.token_start_col,
@@ -1393,7 +1416,7 @@ impl<'src> Tokenizer<'src> {
                 }
                 Ok(Some(_) | None) => break,
                 Err(error) => {
-                    self.col += error.grapheme.len() as column32;
+                    self.col += error.grapheme.len() as offset32;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
                         col: error.col,
@@ -1437,7 +1460,7 @@ impl<'src> Tokenizer<'src> {
                 }
                 Ok(Some(_) | None) => break,
                 Err(error) => {
-                    self.col += error.grapheme.len() as column32;
+                    self.col += error.grapheme.len() as offset32;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
                         col: error.col,
@@ -1491,7 +1514,7 @@ impl<'src> Tokenizer<'src> {
                 }
                 Ok(Some(_) | None) => break,
                 Err(error) => {
-                    self.col += error.grapheme.len() as column32;
+                    self.col += error.grapheme.len() as offset32;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
                         col: error.col,
@@ -1540,7 +1563,7 @@ impl<'src> Tokenizer<'src> {
                 }
                 Ok(Some(_) | None) => break,
                 Err(error) => {
-                    self.col += error.grapheme.len() as column32;
+                    self.col += error.grapheme.len() as offset32;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
                         col: error.col,
@@ -1590,7 +1613,7 @@ impl<'src> Tokenizer<'src> {
                     next_character
                 }
                 Err(error) => {
-                    self.col += error.grapheme.len() as column32;
+                    self.col += error.grapheme.len() as offset32;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InIdentifier { grapheme: error.grapheme },
                         col: error.col,
@@ -1613,7 +1636,7 @@ impl<'src> Tokenizer<'src> {
                         }
                         Ok(Some(escape_character)) => escape_character,
                         Err(error) => {
-                            self.col += error.grapheme.len() as column32;
+                            self.col += error.grapheme.len() as offset32;
                             self.errors.push(Error {
                                 kind: ErrorKind::Utf8InQuotedLiteral {
                                     grapheme: error.grapheme,
@@ -1675,7 +1698,7 @@ impl<'src> Tokenizer<'src> {
                     next_character
                 }
                 Err(error) => {
-                    self.col += error.grapheme.len() as column32;
+                    self.col += error.grapheme.len() as offset32;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InQuotedLiteral {
                             grapheme: error.grapheme,
@@ -1704,7 +1727,7 @@ impl<'src> Tokenizer<'src> {
                             escape_character
                         }
                         Err(error) => {
-                            self.col += error.grapheme.len() as column32;
+                            self.col += error.grapheme.len() as offset32;
                             self.errors.push(Error {
                                 kind: ErrorKind::Utf8InQuotedLiteral {
                                     grapheme: error.grapheme,
@@ -1779,7 +1802,7 @@ pub enum ErrorKind<'src> {
     EmptyNumberLiteral(MissingDigitsBase),
 
     Utf8InIdentifier { grapheme: &'src str },
-    IdentifierTooLong { max: column32 },
+    IdentifierTooLong { max: offset32 },
 
     Utf8Character { grapheme: &'src str },
     UnrecognizedCharacter(utf8),

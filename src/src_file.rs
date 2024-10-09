@@ -8,6 +8,8 @@ use std::{
 use unicode_width::UnicodeWidthChar;
 
 #[allow(non_camel_case_types)]
+pub type offset32 = u32;
+#[allow(non_camel_case_types)]
 pub type line32 = u32;
 #[allow(non_camel_case_types)]
 pub type column32 = u32;
@@ -17,10 +19,10 @@ pub type index32 = u32;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span {
     /// inclusive
-    pub start: column32,
+    pub start: offset32,
 
     /// not inclusive
-    pub end: column32,
+    pub end: offset32,
 }
 
 pub type Line = Span;
@@ -28,7 +30,13 @@ pub type Line = Span;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Position {
     pub line: line32,
-    pub utf8_column: column32,
+    pub column: column32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DisplayPosition {
+    pub line: line32,
+    pub column: column32,
     pub display_column: column32,
 }
 
@@ -40,6 +48,7 @@ pub struct SrcFile {
 }
 
 impl SrcFile {
+    // IDEA(stefano): move parsing of lines for bounds into the tokenizer
     pub fn load(path: &Path) -> Result<Self, Error> {
         let path_buf = path.to_owned();
         let mut file = match File::open(path) {
@@ -140,7 +149,7 @@ impl SrcFile {
     }
 
     #[must_use]
-    pub fn position(&self, column: column32) -> Position {
+    pub fn position(&self, column: offset32) -> Position {
         let mut left: index32 = 0;
         let mut right = self.lines.len() as index32 - 1;
         while left < right {
@@ -153,21 +162,44 @@ impl SrcFile {
             }
         }
 
-        // converting from column offset to display offset (useful for utf8 characters)
+        let line = &self.lines[left as usize];
+        let line_text_before_error = &self.code[line.start as usize..column as usize];
+        let mut utf8_column = 1;
+        for _character in line_text_before_error.chars() {
+            utf8_column += 1;
+        }
+
+        return Position { line: left + 1, column: utf8_column };
+    }
+
+    #[must_use]
+    pub fn display_position(&self, column: offset32) -> DisplayPosition {
+        let mut left: index32 = 0;
+        let mut right = self.lines.len() as index32 - 1;
+        while left < right {
+            #[allow(clippy::integer_division)] // it's intended to lose precision
+            let middle = left + (right - left) / 2;
+            if column < self.lines[middle as usize].end {
+                right = middle;
+            } else {
+                left = middle + 1;
+            }
+        }
+
         let line = &self.lines[left as usize];
         let line_text_before_error = &self.code[line.start as usize..column as usize];
         let mut display_column = 1;
         let mut utf8_column = 1;
         for character in line_text_before_error.chars() {
             let character_utf8_len = match character.width_cjk() {
-                Some(character_utf8_len) => character_utf8_len as column32,
+                Some(character_utf8_len) => character_utf8_len,
                 None => 1,
             };
-            display_column += character_utf8_len;
+            display_column += character_utf8_len as column32;
             utf8_column += 1;
         }
 
-        return Position { line: left + 1, utf8_column, display_column };
+        return DisplayPosition { line: left + 1, column: utf8_column, display_column };
     }
 }
 

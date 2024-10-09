@@ -6,7 +6,7 @@ use super::{
     Error, ErrorInfo, IntoErrorInfo,
 };
 use crate::{
-    src_file::{column32, index32, Position, SrcFile},
+    src_file::{index32, offset32, Position, SrcFile},
     syntax::tokenizer::{Base, Integer},
 };
 use core::fmt::{Debug, Display};
@@ -483,7 +483,7 @@ pub(crate) enum Expression {
 
     Unary {
         op: UnaryOp,
-        op_col: column32,
+        op_col: offset32,
         operand_index: ExpressionIndex,
     },
     BooleanUnary {
@@ -493,7 +493,7 @@ pub(crate) enum Expression {
     Binary {
         lhs_index: ExpressionIndex,
         op: BinaryOp,
-        op_col: column32,
+        op_col: offset32,
         rhs_index: ExpressionIndex,
     },
     BooleanBinary {
@@ -509,7 +509,7 @@ pub(crate) enum Expression {
     ArrayIndex {
         base_type: BaseType,
         indexable_index: ExpressionIndex,
-        bracket_col: column32,
+        bracket_col: offset32,
         index_expression_index: ExpressionIndex,
     },
 
@@ -688,7 +688,7 @@ pub(crate) enum Node {
     Continue,
 
     Definition { var_index: VariableIndex },
-    Reassignment { target: Expression, op: AssignmentOp, op_col: column32, new_value: Expression },
+    Reassignment { target: Expression, op: AssignmentOp, op_col: offset32, new_value: Expression },
 
     Scope { index: ScopeIndex },
 
@@ -1150,18 +1150,18 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 Ok(Node::Semicolon)
             }
             TokenKind::Bracket(BracketKind::OpenCurly) => {
-                let Position { line, utf8_column, .. } = self.src.position(token.col);
+                let Position { line, column } = self.src.position(token.col);
                 unreachable!(
-                    "blocks not allowed in single statements: {file}:{line}:{utf8_column}",
+                    "blocks not allowed in single statements: {file}:{line}:{column}",
                     file = self.src.path.display(),
                 );
             }
             TokenKind::Bracket(
                 BracketKind::CloseCurly | BracketKind::CloseSquare | BracketKind::CloseRound,
             ) => {
-                let Position { line, utf8_column, .. } = self.src.position(token.col);
+                let Position { line, column } = self.src.position(token.col);
                 unreachable!(
-                    "should have been cought during tokenization: {file}:{line}:{utf8_column}",
+                    "should have been cought during tokenization: {file}:{line}:{column}",
                     file = self.src.path.display(),
                 );
             }

@@ -1,6 +1,6 @@
 use crate::{
     color::{Bg, Colored, Fg, Flag},
-    src_file::{column32, line32},
+    src_file::{column32, offset32, line32},
     AT, BAR, CAUSE,
 };
 use core::fmt::Display;
@@ -44,8 +44,8 @@ pub struct MsgWithCauseUnderText<'kind, 'message, 'cause, 'src> {
     pub message: &'message dyn Display,
     pub cause: &'cause dyn Display,
     pub line_text: &'src dyn Display,
-    pub pointers_offset: usize,
-    pub pointers_count: usize,
+    pub pointers_count: column32,
+    pub pointers_offset: column32,
 }
 
 impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
@@ -61,7 +61,7 @@ impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
             text: format!(
                 "{spaces:^>pointers_count$} {cause}",
                 spaces = "",
-                pointers_count = self.pointers_count,
+                pointers_count = self.pointers_count as usize,
                 cause = self.cause
             ),
             fg: Fg::LightRed,
@@ -77,7 +77,7 @@ impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
             \n{BAR} {spaces:>pointers_offset$}{pointers_and_cause}",
             kind = self.kind,
             line_text = self.line_text,
-            pointers_offset = self.pointers_offset,
+            pointers_offset = self.pointers_offset as usize,
             spaces = ""
         );
     }
@@ -90,10 +90,10 @@ pub struct MsgWithCauseUnderTextWithLocation<'kind, 'message, 'cause, 'src> {
     pub cause: &'cause dyn Display,
     pub file: &'src Path,
     pub line: line32,
-    pub utf8_column: column32,
-    pub source_code_col: column32,
+    pub column: column32,
+    pub absolute_column: offset32,
     pub line_text: &'src dyn Display,
-    pub pointers_count: u32,
+    pub pointers_count: column32,
     pub pointers_offset: column32,
 }
 
@@ -131,7 +131,7 @@ impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_> {
         return write!(
             f,
             "{kind}: {error_message}\
-            \n{AT:>at_padding$}: {path}:{line}:{utf8_column} ({source_code_col})\
+            \n{AT:>at_padding$}: {path}:{line}:{column} ({absolute_column})\
             \n{BAR:>line_number_padding$}\
             \n{line_number} {BAR} {line_text}\
             \n{BAR:>line_number_padding$}{spaces:>pointers_offset$}{pointers_and_cause}",
@@ -139,8 +139,8 @@ impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_> {
             at_padding = line_number_padding - 1,
             path = self.file.display(),
             line = self.line,
-            utf8_column = self.utf8_column as usize,
-            source_code_col = self.source_code_col as usize,
+            column = self.column as usize,
+            absolute_column = self.absolute_column as usize,
             line_text = self.line_text,
             pointers_offset = self.pointers_offset as usize,
             spaces = "",

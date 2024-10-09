@@ -84,6 +84,15 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Refactored compilation stages <!-- TODO: document changes about untyped ast -->
 - Changed `tokenizer::ErrorKind` layout
+- introduced `offset32`, `line32`, `column32` and `index32` type aliases for `u32`
+- split `src_file::SrcFile::position` into `src_file::SrcFile::position` and
+    `src_file::SrcFile::display_position`, returning respectively a:
+    - `src_file::Position` now only contains information about the sorce code position
+    - `src_file::DisplayPosition` contains information about the sorce code position and display position
+- renamed `error::MsgWithCauseUnderTextWithLocation::source_code_col` to
+    `error::MsgWithCauseUnderTextWithLocation::absolute_column`
+- reordered and changed `error::MsgWithCauseUnderText::pointers_count` and
+    `error::MsgWithCauseUnderText::pointers_offset` from `usize` to `column32`
 
 #### Fixed
 

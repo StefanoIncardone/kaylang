@@ -7,6 +7,7 @@ pub mod src_file;
 pub mod syntax;
 
 use color::{Bg, Colored, Fg, Flag, Flags};
+use src_file::column32;
 use core::fmt::{Display, Write as _};
 use error::MsgWithCauseUnderText;
 use std::{
@@ -882,8 +883,8 @@ impl Display for Error {
             message: &error_message,
             cause: &error_cause_message,
             line_text: &args_text,
-            pointers_offset,
-            pointers_count,
+            pointers_offset: pointers_offset as column32,
+            pointers_count: pointers_count as column32,
         };
         return write!(f, "{error}");
     }

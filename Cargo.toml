@@ -130,6 +130,7 @@ default_numeric_fallback = "allow"
 option_if_let_else = "allow"
 if_then_some_else_none = "allow"
 manual_map = "allow"
+manual_unwrap_or = "allow"
 equatable_if_let = "allow"
 
 large_stack_frames = "warn"
