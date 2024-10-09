@@ -2,7 +2,7 @@
 // TODO(stefano): more escape characters
 
 use super::{
-    src_file::{index32, offset32, Line, SrcFile},
+    src_file::{index32, offset32, SrcFile},
     Error, ErrorInfo, IntoErrorInfo,
 };
 use core::fmt::Display;
@@ -639,22 +639,16 @@ pub struct Tokenizer<'src> {
     token_start_col: offset32,
 
     line_index: index32,
-    line: &'src Line,
 }
 
 impl<'src> Tokenizer<'src> {
     pub fn tokenize(src: &'src SrcFile) -> Result<Vec<Token<'src>>, Vec<Error<ErrorKind<'src>>>> {
-        let Some(first_line) = src.lines.first() else {
-            return Ok(Vec::new());
-        };
-
         let mut this = Self {
             src,
             errors: Vec::new(),
             col: 0,
             token_start_col: 0,
             line_index: 0,
-            line: first_line,
         };
 
         let mut tokens = Vec::<Token<'src>>::new();
@@ -692,7 +686,6 @@ impl<'src> Tokenizer<'src> {
                         }
 
                         this.line_index += 1;
-                        this.line = &this.src.lines[this.line_index as usize];
                         continue 'next_token;
                     }
 
@@ -799,11 +792,13 @@ impl<'src> Tokenizer<'src> {
                             Ok(TokenKind::BlockComment(comment))
                         }
                         Some(_) | None => {
+                            let line = &this.src.lines[this.line_index as usize];
+
                             // starting a this.col to ignore the hash symbol
-                            let comment = &this.src.code[this.col as usize..this.line.end as usize];
+                            let comment = &this.src.code[this.col as usize..line.end as usize];
 
                             // consuming the rest of the characters in the current line
-                            this.col = this.line.end;
+                            this.col = line.end;
 
                             Ok(TokenKind::Comment(comment))
                         }
@@ -1280,7 +1275,6 @@ impl<'src> Tokenizer<'src> {
 
                 self.col += 1;
                 self.line_index += 1;
-                self.line = &self.src.lines[self.line_index as usize];
                 Some('\n')
             }
             ascii_ch @ 0..=b'\x7F' => {
@@ -1288,7 +1282,8 @@ impl<'src> Tokenizer<'src> {
                 Some(ascii_ch as utf8)
             }
             _utf8_ch => {
-                let rest_of_line = &self.src.code[self.col as usize..self.line.end as usize];
+                let line = &self.src.lines[self.line_index as usize];
+                let rest_of_line = &self.src.code[self.col as usize..line.end as usize];
                 let Some(utf8_ch) = rest_of_line.chars().next() else {
                     unreachable!("this branch assured we would have a valid utf8 character");
                 };
@@ -1308,7 +1303,8 @@ impl<'src> Tokenizer<'src> {
         return match next {
             ascii_ch @ 0..=b'\x7F' => Ok(Some(ascii_ch)),
             _utf8_ch => {
-                let rest_of_line = &self.src.code[self.col as usize..self.line.end as usize];
+                let line = &self.src.lines[self.line_index as usize];
+                let rest_of_line = &self.src.code[self.col as usize..line.end as usize];
                 let mut rest_of_line_graphemes = rest_of_line.graphemes(true);
                 let Some(grapheme) = rest_of_line_graphemes.next() else {
                     unreachable!("this branch assured we would have a valid grapheme");
@@ -1349,7 +1345,8 @@ impl<'src> Tokenizer<'src> {
         return match next {
             ascii_ch @ 0..=b'\x7F' => Some(ascii_ch as utf8),
             _utf8_ch => {
-                let rest_of_line = &self.src.code[self.col as usize..self.line.end as usize];
+                let line = &self.src.lines[self.line_index as usize];
+                let rest_of_line = &self.src.code[self.col as usize..line.end as usize];
                 let Some(utf8_ch) = rest_of_line.chars().next() else {
                     unreachable!("this branch assured we would have a valid utf8 character");
                 };
