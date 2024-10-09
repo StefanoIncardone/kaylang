@@ -52,7 +52,7 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
 
     Logger::info(&COMPILING, src_path);
 
-    let artifacts = match Artifacts::new_with_out_path(&src, out_path) {
+    let artifacts = match Artifacts::new_with_out_path(src_path, out_path) {
         Ok(artifacts) => artifacts,
         Err(err) => {
             eprintln!("{err}");

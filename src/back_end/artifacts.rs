@@ -1,4 +1,4 @@
-use crate::{error::MsgWithCause, front_end::src_file::SrcFile, ERROR};
+use crate::{error::MsgWithCause, ERROR};
 use core::fmt::{Display, Write as _};
 use std::{
     path::{Path, PathBuf},
@@ -14,8 +14,8 @@ pub struct Artifacts {
 
 impl Artifacts {
     #[must_use]
-    pub fn new(src: &SrcFile) -> Self {
-        let src_path_stem = match src.path.file_stem() {
+    pub fn new(src_path: &Path) -> Self {
+        let src_path_stem = match src_path.file_stem() {
             Some(path_name) => PathBuf::from(path_name),
             None => unreachable!("file stem should always be present"),
         };
@@ -27,7 +27,7 @@ impl Artifacts {
         };
     }
 
-    pub fn new_with_out_path(src: &SrcFile, out_path: &Path) -> Result<Self, Error> {
+    pub fn new_with_out_path(src_path: &Path, out_path: &Path) -> Result<Self, Error> {
         if out_path.is_file() {
             return Err(Error::MustBeADirectoryPath(out_path.to_owned()));
         }
@@ -40,7 +40,7 @@ impl Artifacts {
             }
         }
 
-        let src_path_stem = match src.path.file_stem() {
+        let src_path_stem = match src_path.file_stem() {
             Some(path_name) => PathBuf::from(path_name),
             None => unreachable!("file stem should always be present"),
         };

@@ -100,8 +100,8 @@ fn main() -> ExitCode {
     let compilation_sub_step = Logger::new(None);
 
     let artifacts = match out_path {
-        None => Artifacts::new(&src),
-        Some(path) => match Artifacts::new_with_out_path(&src, path) {
+        None => Artifacts::new(src_path),
+        Some(path) => match Artifacts::new_with_out_path(src_path, path) {
             Ok(artifacts) => artifacts,
             Err(err) => {
                 eprintln!("{err}");

@@ -107,6 +107,8 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Reordered and changed `error::MsgWithCauseUnderText::pointers_count` and
     `error::MsgWithCauseUnderText::pointers_offset` from `usize` to `column32`
 - Renamed `tokenizer::BracketKind` to `tokenizer::Bracket`
+- `artifacts::Artifacts::new` and `artifacts::Artifacts::new_with_out_path` now take a `&Path`
+    instead of `&SrcFile`
 
 #### Fixed
 
