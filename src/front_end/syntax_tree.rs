@@ -225,7 +225,7 @@ pub(crate) type ArrayIndex = index32;
 pub(crate) type ExpressionIndex = index32;
 
 #[derive(Debug, Clone)]
-pub(crate) enum Expression<'src, 'tokens: 'src> {
+pub(crate) enum Expression<'tokens, 'src: 'tokens> {
     False {
         column: offset32,
     },
@@ -297,7 +297,7 @@ pub(crate) struct ArrayDimension {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct TypeAnnotation<'src, 'tokens: 'src> {
+pub(crate) struct TypeAnnotation<'tokens, 'src: 'tokens> {
     colon_column: offset32,
     type_name: &'tokens &'src [ascii],
     type_name_column: offset32,
@@ -311,10 +311,10 @@ pub(crate) struct InitialValue {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct VariableDefinition<'src, 'tokens: 'src> {
+pub(crate) struct VariableDefinition<'tokens, 'src: 'tokens> {
     name: &'tokens &'src [ascii],
     name_column: offset32,
-    type_annotation: Option<TypeAnnotation<'src, 'tokens>>,
+    type_annotation: Option<TypeAnnotation<'tokens, 'src>>,
     initial_value: Option<InitialValue>,
 }
 
@@ -418,22 +418,22 @@ enum ParsedNode {
 }
 
 #[derive(Debug)]
-pub struct SyntaxTree<'src, 'tokens: 'src> {
+pub struct SyntaxTree<'tokens, 'src: 'tokens> {
     nodes: Vec<Node>,
 
-    expressions: Vec<Expression<'src, 'tokens>>,
+    expressions: Vec<Expression<'tokens, 'src>>,
     array_items: Vec<Vec<ExpressionIndex>>,
     array_commas_columns: Vec<Vec<NonZero<offset32>>>,
 
-    variable_definitions: Vec<VariableDefinition<'src, 'tokens>>,
+    variable_definitions: Vec<VariableDefinition<'tokens, 'src>>,
 
     ifs: Vec<If>,
     else_ifs: Vec<Vec<ElseIf>>,
 }
 
-impl<'src, 'tokens: 'src> SyntaxTree<'src, 'tokens> {
+impl<'tokens, 'src: 'tokens> SyntaxTree<'tokens, 'src> {
     #[inline]
-    fn new_expression(&mut self, expression: Expression<'src, 'tokens>) -> ExpressionIndex {
+    fn new_expression(&mut self, expression: Expression<'tokens, 'src>) -> ExpressionIndex {
         self.expressions.push(expression);
         return self.expressions.len() as index32 - 1;
     }
@@ -755,7 +755,7 @@ impl Display for SyntaxTree<'_, '_> {
 }
 
 #[derive(Debug)]
-pub struct Parser<'src, 'tokens: 'src, 'path> {
+pub struct Parser<'tokens, 'src: 'tokens, 'path: 'src> {
     src: &'src SrcFile<'path>,
     errors: Vec<Error<ErrorKind>>,
 
@@ -763,7 +763,7 @@ pub struct Parser<'src, 'tokens: 'src, 'path> {
     tokens: &'tokens [Token<'src>],
 
     loop_depth: u32,
-    syntax_tree: SyntaxTree<'src, 'tokens>,
+    syntax_tree: SyntaxTree<'tokens, 'src>,
 }
 
 /* NOTE(stefano):
@@ -771,11 +771,11 @@ only parsing until the first error until a fault tolerant parser is developed,
 this is because the first truly relevant error is the first one, which in turn causes a ripple
 effect that propagates to the rest of the parsing, causing subsequent errors to be wrong
 */
-impl<'src, 'tokens: 'src, 'path> Parser<'src, 'tokens, 'path> {
+impl<'tokens, 'src: 'tokens, 'path: 'src> Parser<'tokens, 'src, 'path> {
     pub fn parse(
         src: &'src SrcFile<'path>,
         tokens: &'tokens [Token<'src>],
-    ) -> Result<SyntaxTree<'src, 'tokens>, Vec<Error<ErrorKind>>> {
+    ) -> Result<SyntaxTree<'tokens, 'src>, Vec<Error<ErrorKind>>> {
         let syntax_tree = SyntaxTree {
             nodes: Vec::new(),
 
@@ -1177,7 +1177,7 @@ impl<'src, 'tokens: 'src, 'path> Parser<'src, 'tokens, 'path> {
     }
 }
 
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
+impl<'tokens, 'src: 'tokens> Parser<'tokens, 'src, '_> {
     #[allow(clippy::panic)]
     #[track_caller]
     fn invalid_token(
@@ -1233,13 +1233,13 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct Peeked<'src, 'tokens: 'src> {
+struct Peeked<'tokens, 'src: 'tokens> {
     token: &'tokens Token<'src>,
     index: index32,
 }
 
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
-    fn peek_next_token(&self) -> Option<Peeked<'src, 'tokens>> {
+impl<'tokens, 'src: 'tokens> Parser<'tokens, 'src, '_> {
+    fn peek_next_token(&self) -> Option<Peeked<'tokens, 'src>> {
         for next_token_index in self.token_index..self.tokens.len() as index32 {
             let next_token = &self.tokens[next_token_index as usize];
 
@@ -1280,7 +1280,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
     fn peek_next_expected_token(
         &self,
         expected: Expected,
-    ) -> Result<Peeked<'src, 'tokens>, Error<ErrorKind>> {
+    ) -> Result<Peeked<'tokens, 'src>, Error<ErrorKind>> {
         let Some(peeked) = self.peek_next_token() else {
             /* IDEA(stefano):
             suggest multiple expected places when encountering block comments:
@@ -1355,14 +1355,14 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct Operator<'src, 'tokens: 'src> {
+struct Operator<'tokens, 'src: 'tokens> {
     token: &'tokens Token<'src>,
     operator: Op,
 }
 
 // TODO(stefano): make less recursive by only recursing based on operator precedence
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
-    fn operator(&mut self, accepted_operators: &[Op]) -> Option<Operator<'src, 'tokens>> {
+impl<'tokens, 'src: 'tokens> Parser<'tokens, 'src, '_> {
+    fn operator(&mut self, accepted_operators: &[Op]) -> Option<Operator<'tokens, 'src>> {
         let peeked = self.peek_next_token()?;
         let TokenKind::Op(operator) = peeked.token.kind else {
             return None;
@@ -1851,11 +1851,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
     }
 }
 
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
+impl<'tokens, 'src: 'tokens> Parser<'tokens, 'src, '_> {
     fn variable_definition(
         &mut self,
         mutability_token: &'tokens Token<'src>,
-    ) -> Result<VariableDefinition<'src, 'tokens>, Error<ErrorKind>> {
+    ) -> Result<VariableDefinition<'tokens, 'src>, Error<ErrorKind>> {
         let variable_name_token = self.next_expected_token(Expected::VariableName)?;
         let variable_name = match &variable_name_token.kind {
             TokenKind::Identifier(name) => name,
@@ -2063,7 +2063,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
 }
 
 // control flow statements
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
+impl Parser<'_, '_, '_> {
     fn if_statement(&mut self, if_column: offset32) -> Result<(), Error<ErrorKind>> {
         let start_of_condition_token = self.next_expected_token(Expected::Expression)?;
         let condition = self.expression(start_of_condition_token)?;

@@ -712,7 +712,7 @@ pub struct Tokenizer<'src, 'path: 'src> {
     line_index: index32,
 }
 
-impl<'src, 'path> Tokenizer<'src, 'path> {
+impl<'src, 'path: 'src> Tokenizer<'src, 'path> {
     pub fn tokenize(src: &'src SrcFile<'path>) -> Result<Vec<Token<'src>>, Vec<Error<ErrorKind<'src>>>> {
         let mut this = Self { src, errors: Vec::new(), col: 0, token_start_col: 0, line_index: 0 };
         let mut tokens = Vec::<Token<'src>>::new();

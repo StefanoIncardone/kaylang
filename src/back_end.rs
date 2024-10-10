@@ -71,7 +71,7 @@ impl Display for Base {
 }
 
 #[derive(Debug)]
-struct Variable<'src, 'ast: 'src> {
+struct Variable<'ast, 'src: 'ast> {
     inner: &'ast ast::Variable<'src>,
     offset: usize,
 }
@@ -82,13 +82,13 @@ struct TemporaryValue<'ast> {
     offset: usize,
 }
 #[derive(Debug)]
-pub struct Compiler<'src, 'ast: 'src, 'path> {
+pub struct Compiler<'ast, 'src: 'ast, 'path: 'src> {
     src: &'src SrcFile<'path>,
     ast: &'ast Ast<'src>,
 
     asm: String,
 
-    variables: Vec<Variable<'src, 'ast>>,
+    variables: Vec<Variable<'ast, 'src>>,
     temporary_values: Vec<TemporaryValue<'ast>>,
 
     if_counter: u32,
@@ -100,7 +100,7 @@ pub struct Compiler<'src, 'ast: 'src, 'path> {
 }
 
 // Generation of compilation artifacts (.asm, .o, executable)
-impl<'src, 'ast: 'src, 'path> Compiler<'src, 'ast, 'path> {
+impl<'ast, 'src: 'ast, 'path: 'src> Compiler<'ast, 'src, 'path> {
     pub fn compile(
         src: &'src SrcFile<'path>,
         ast: &'ast Ast<'src>,
@@ -388,7 +388,7 @@ section .data
 }
 
 // nodes
-impl<'ast> Compiler<'_, 'ast, '_> {
+impl<'ast> Compiler<'ast, '_, '_> {
     fn node(&mut self, node: &'ast Node) {
         match node {
             Node::Print(argument) => {
@@ -575,8 +575,8 @@ impl<'ast> Compiler<'_, 'ast, '_> {
 }
 
 // expressions
-impl<'src, 'ast: 'src> Compiler<'src, 'ast, '_> {
-    fn resolve(&self, name: &'src [ascii]) -> &Variable<'src, 'ast> {
+impl<'ast, 'src: 'ast> Compiler<'ast, 'src, '_> {
+    fn resolve(&self, name: &'src [ascii]) -> &Variable<'ast, 'src> {
         for var in &self.variables {
             if var.inner.name == name {
                 return var;
@@ -1916,7 +1916,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast, '_> {
 }
 
 // definitions
-impl<'ast> Compiler<'_, 'ast, '_> {
+impl<'ast> Compiler<'ast, '_, '_> {
     fn definition(&mut self, value: &'ast Expression, base: Base, dst_offset: usize) {
         match value {
             Expression::Parenthesis { expression_index, .. } => {
@@ -2950,7 +2950,7 @@ impl<'ast> Compiler<'_, 'ast, '_> {
 }
 
 // ifs
-impl<'ast> Compiler<'_, 'ast, '_> {
+impl<'ast> Compiler<'ast, '_, '_> {
     fn iff(&mut self, iff: &'ast IfStatement, tag: &str, false_tag: &str) {
         _ = writeln!(self.asm, "{tag}:; {}", iff.condition.display(self.ast));
         self.condition(&iff.condition, false_tag);
@@ -2959,7 +2959,7 @@ impl<'ast> Compiler<'_, 'ast, '_> {
 }
 
 // print statements
-impl<'ast> Compiler<'_, 'ast, '_> {
+impl<'ast> Compiler<'ast, '_, '_> {
     fn print(&mut self, value: &'ast Expression) {
         let value_type = value.typ();
         self.expression(value, Dst::default(&value_type));
