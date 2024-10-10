@@ -112,6 +112,8 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Renamed `tokenizer::BracketKind` to `tokenizer::Bracket`
 - `artifacts::Artifacts::new` and `artifacts::Artifacts::new_with_out_path` now take a `&Path`
     instead of `&SrcFile`
+- `src_file::SrcFile::path` is now a `&Path` instead of `PathBuf`, thus reduced the number of
+    unnecessary allocations
 - Errors related to bracket pairs now contain more descriptive `tokenizer::OpenBracket` and
     `tokenizer::CloseBracket`
 

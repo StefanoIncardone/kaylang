@@ -1,11 +1,7 @@
 use unicode_width::UnicodeWidthChar;
 use crate::{error::MsgWithCause, ERROR};
 use core::fmt::Display;
-use std::{
-    fs::File,
-    io::Read,
-    path::{Path, PathBuf},
-};
+use std::{fs::File, io::Read, path::Path};
 
 #[allow(non_camel_case_types)]
 pub type offset32 = u32;
@@ -41,48 +37,44 @@ pub struct DisplayPosition {
 }
 
 #[derive(Debug)]
-pub struct SrcFile {
-    pub(crate) path: PathBuf,
+pub struct SrcFile<'path> {
+    pub(crate) path: &'path Path,
     pub(crate) code: String,
     pub(crate) lines: Vec<Line>,
 }
 
-impl SrcFile {
+impl<'path> SrcFile<'path> {
     // IDEA(stefano): move parsing of lines for bounds into the tokenizer
-    pub fn load(path: &Path) -> Result<Self, Error> {
-        let path_buf = path.to_owned();
+    pub fn load(path: &'path Path) -> Result<Self, Error<'path>> {
         let mut file = match File::open(path) {
             Ok(file) => file,
-            Err(err) => return Err(Error { path: path_buf, kind: ErrorKind::Io(err) }),
+            Err(err) => return Err(Error { path, kind: ErrorKind::Io(err) }),
         };
 
         let file_len = match file.metadata() {
             Ok(metadata) => {
                 if !metadata.is_file() {
-                    return Err(Error { path: path_buf, kind: ErrorKind::MustBeAFilePath });
+                    return Err(Error { path, kind: ErrorKind::MustBeAFilePath });
                 }
 
                 let file_len = metadata.len();
                 if file_len > column32::MAX as u64 {
-                    return Err(Error {
-                        path: path_buf,
-                        kind: ErrorKind::FileTooBig { max: column32::MAX },
-                    });
+                    return Err(Error { path, kind: ErrorKind::FileTooBig { max: column32::MAX } });
                 }
                 file_len as column32
             }
-            Err(err) => return Err(Error { path: path_buf, kind: ErrorKind::Io(err) }),
+            Err(err) => return Err(Error { path, kind: ErrorKind::Io(err) }),
         };
 
         let code = {
             let mut code = String::with_capacity(file_len as usize);
             let bytes_read = match file.read_to_string(&mut code) {
                 Ok(bytes_read) => bytes_read as column32,
-                Err(err) => return Err(Error { path: path_buf, kind: ErrorKind::Io(err) }),
+                Err(err) => return Err(Error { path, kind: ErrorKind::Io(err) }),
             };
 
             if bytes_read != file_len {
-                return Err(Error { path: path_buf, kind: ErrorKind::CouldNotReadEntireFile });
+                return Err(Error { path, kind: ErrorKind::CouldNotReadEntireFile });
             }
 
             code
@@ -128,13 +120,13 @@ impl SrcFile {
             lines.push(Line { start, end: current_ascii_column });
         }
 
-        return Ok(Self { path: path_buf, code, lines });
+        return Ok(Self { path, code, lines });
     }
 
     #[must_use]
     #[inline(always)]
-    pub fn path(&self) -> &Path {
-        return &self.path;
+    pub const fn path(&self) -> &'path Path {
+        return self.path;
     }
 
     #[must_use]
@@ -210,12 +202,12 @@ pub enum ErrorKind {
 }
 
 #[derive(Debug)]
-pub struct Error {
-    pub path: PathBuf,
+pub struct Error<'path> {
+    pub path: &'path Path,
     pub kind: ErrorKind,
 }
 
-impl Display for Error {
+impl Display for Error<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let message = format!("could not read '{}'", self.path.display());
         let cause = match &self.kind {
@@ -232,4 +224,4 @@ impl Display for Error {
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for Error<'_> {}

@@ -731,8 +731,8 @@ pub struct Ast<'src> {
 }
 
 #[derive(Debug)]
-pub struct Parser<'src, 'tokens: 'src> {
-    src: &'src SrcFile,
+pub struct Parser<'src, 'tokens: 'src, 'path> {
+    src: &'src SrcFile<'path>,
     errors: Vec<Error<ErrorKind>>,
 
     token: TokenIndex,
@@ -744,9 +744,9 @@ pub struct Parser<'src, 'tokens: 'src> {
     ast: Ast<'src>,
 }
 
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+impl<'src, 'tokens: 'src, 'path> Parser<'src, 'tokens, 'path> {
     pub fn parse(
-        src: &'src SrcFile,
+        src: &'src SrcFile<'path>,
         tokens: &'tokens [Token<'src>],
     ) -> Result<Ast<'src>, Vec<Error<ErrorKind>>> {
         let ast = Ast {
@@ -801,7 +801,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 }
 
 // parsing of statements
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
     fn semicolon(&mut self) -> Result<(), Error<ErrorKind>> {
         let semicolon_token = self.current_token(Expected::Semicolon)?;
         let TokenKind::SemiColon = semicolon_token.kind else {
@@ -1297,7 +1297,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 }
 
 // iteration over tokens
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
     // IDEA(stefano): remove self.current_token method and pass the current token around
     fn current_token(&self, expected: Expected) -> Result<&'tokens Token<'src>, Error<ErrorKind>> {
         let Some(token) = self.tokens.get(self.token as usize) else {
@@ -1388,7 +1388,7 @@ pub enum ParseIntError {
 }
 
 // expressions
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
     fn new_expression(&mut self, expression: Expression) -> ExpressionIndex {
         let index = self.ast.expressions.len() as ExpressionIndex;
         self.ast.expressions.push(expression);
@@ -2782,7 +2782,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 }
 
 // variables and types
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
     fn resolve_variable(&self, name: &'src [ascii]) -> Option<(Mutability, VariableIndex)> {
         let mut scope_index = self.scope;
         loop {
@@ -3273,7 +3273,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 }
 
 // print statements
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
     fn print_arg(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let _start_of_expression_token = self.next_token_bounded(Expected::Expression)?;
         let argument = self.expression()?;
@@ -3289,7 +3289,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 }
 
 // if statements
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
     fn iff(&mut self) -> Result<Node, Error<ErrorKind>> {
         let mut ifs = Vec::new();
         let mut els = None;
@@ -3436,7 +3436,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 }
 
 // loop statements
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
     fn loop_statement(&mut self) -> Result<Node, Error<ErrorKind>> {
         let do_token = &self.tokens[self.token as usize];
         let loop_token = match do_token.kind {

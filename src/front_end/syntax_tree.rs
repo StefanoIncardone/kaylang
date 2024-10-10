@@ -755,8 +755,8 @@ impl Display for SyntaxTree<'_, '_> {
 }
 
 #[derive(Debug)]
-pub struct Parser<'src, 'tokens: 'src> {
-    src: &'src SrcFile,
+pub struct Parser<'src, 'tokens: 'src, 'path> {
+    src: &'src SrcFile<'path>,
     errors: Vec<Error<ErrorKind>>,
 
     token_index: index32,
@@ -771,9 +771,9 @@ only parsing until the first error until a fault tolerant parser is developed,
 this is because the first truly relevant error is the first one, which in turn causes a ripple
 effect that propagates to the rest of the parsing, causing subsequent errors to be wrong
 */
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+impl<'src, 'tokens: 'src, 'path> Parser<'src, 'tokens, 'path> {
     pub fn parse(
-        src: &'src SrcFile,
+        src: &'src SrcFile<'path>,
         tokens: &'tokens [Token<'src>],
     ) -> Result<SyntaxTree<'src, 'tokens>, Vec<Error<ErrorKind>>> {
         let syntax_tree = SyntaxTree {
@@ -1177,7 +1177,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     }
 }
 
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
     #[allow(clippy::panic)]
     #[track_caller]
     fn invalid_token(
@@ -1192,7 +1192,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
         let error = ErrorDisplay {
             error_message,
-            file: &self.src.path,
+            file: self.src.path,
             line,
             column,
             absolute_column: token.col,
@@ -1238,7 +1238,7 @@ struct Peeked<'src, 'tokens: 'src> {
     index: index32,
 }
 
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
     fn peek_next_token(&self) -> Option<Peeked<'src, 'tokens>> {
         for next_token_index in self.token_index..self.tokens.len() as index32 {
             let next_token = &self.tokens[next_token_index as usize];
@@ -1361,7 +1361,7 @@ struct Operator<'src, 'tokens: 'src> {
 }
 
 // TODO(stefano): make less recursive by only recursing based on operator precedence
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
     fn operator(&mut self, accepted_operators: &[Op]) -> Option<Operator<'src, 'tokens>> {
         let peeked = self.peek_next_token()?;
         let TokenKind::Op(operator) = peeked.token.kind else {
@@ -1851,7 +1851,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     }
 }
 
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
     fn variable_definition(
         &mut self,
         mutability_token: &'tokens Token<'src>,
@@ -2063,7 +2063,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 }
 
 // control flow statements
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+impl<'src, 'tokens: 'src> Parser<'src, 'tokens, '_> {
     fn if_statement(&mut self, if_column: offset32) -> Result<(), Error<ErrorKind>> {
         let start_of_condition_token = self.next_expected_token(Expected::Expression)?;
         let condition = self.expression(start_of_condition_token)?;

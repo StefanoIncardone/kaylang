@@ -82,8 +82,8 @@ struct TemporaryValue<'ast> {
     offset: usize,
 }
 #[derive(Debug)]
-pub struct Compiler<'src, 'ast: 'src> {
-    src: &'src SrcFile,
+pub struct Compiler<'src, 'ast: 'src, 'path> {
+    src: &'src SrcFile<'path>,
     ast: &'ast Ast<'src>,
 
     asm: String,
@@ -100,9 +100,9 @@ pub struct Compiler<'src, 'ast: 'src> {
 }
 
 // Generation of compilation artifacts (.asm, .o, executable)
-impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
+impl<'src, 'ast: 'src, 'path> Compiler<'src, 'ast, 'path> {
     pub fn compile(
-        src: &'src SrcFile,
+        src: &'src SrcFile<'path>,
         ast: &'ast Ast<'src>,
         artifacts: &Artifacts,
     ) -> Result<(), Error> {
@@ -388,7 +388,7 @@ section .data
 }
 
 // nodes
-impl<'ast> Compiler<'_, 'ast> {
+impl<'ast> Compiler<'_, 'ast, '_> {
     fn node(&mut self, node: &'ast Node) {
         match node {
             Node::Print(argument) => {
@@ -575,7 +575,7 @@ impl<'ast> Compiler<'_, 'ast> {
 }
 
 // expressions
-impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
+impl<'src, 'ast: 'src> Compiler<'src, 'ast, '_> {
     fn resolve(&self, name: &'src [ascii]) -> &Variable<'src, 'ast> {
         for var in &self.variables {
             if var.inner.name == name {
@@ -1916,7 +1916,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 }
 
 // definitions
-impl<'ast> Compiler<'_, 'ast> {
+impl<'ast> Compiler<'_, 'ast, '_> {
     fn definition(&mut self, value: &'ast Expression, base: Base, dst_offset: usize) {
         match value {
             Expression::Parenthesis { expression_index, .. } => {
@@ -2950,7 +2950,7 @@ impl<'ast> Compiler<'_, 'ast> {
 }
 
 // ifs
-impl<'ast> Compiler<'_, 'ast> {
+impl<'ast> Compiler<'_, 'ast, '_> {
     fn iff(&mut self, iff: &'ast IfStatement, tag: &str, false_tag: &str) {
         _ = writeln!(self.asm, "{tag}:; {}", iff.condition.display(self.ast));
         self.condition(&iff.condition, false_tag);
@@ -2959,7 +2959,7 @@ impl<'ast> Compiler<'_, 'ast> {
 }
 
 // print statements
-impl<'ast> Compiler<'_, 'ast> {
+impl<'ast> Compiler<'_, 'ast, '_> {
     fn print(&mut self, value: &'ast Expression) {
         let value_type = value.typ();
         self.expression(value, Dst::default(&value_type));

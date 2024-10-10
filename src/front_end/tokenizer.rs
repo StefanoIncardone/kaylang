@@ -702,8 +702,8 @@ pub struct Token<'src> {
 }
 
 #[derive(Debug)]
-pub struct Tokenizer<'src> {
-    src: &'src SrcFile,
+pub struct Tokenizer<'src, 'path: 'src> {
+    src: &'src SrcFile<'path>,
     errors: Vec<Error<ErrorKind<'src>>>,
 
     col: offset32,
@@ -712,8 +712,8 @@ pub struct Tokenizer<'src> {
     line_index: index32,
 }
 
-impl<'src> Tokenizer<'src> {
-    pub fn tokenize(src: &'src SrcFile) -> Result<Vec<Token<'src>>, Vec<Error<ErrorKind<'src>>>> {
+impl<'src, 'path> Tokenizer<'src, 'path> {
+    pub fn tokenize(src: &'src SrcFile<'path>) -> Result<Vec<Token<'src>>, Vec<Error<ErrorKind<'src>>>> {
         let mut this = Self { src, errors: Vec::new(), col: 0, token_start_col: 0, line_index: 0 };
         let mut tokens = Vec::<Token<'src>>::new();
         let mut brackets_indicies = Vec::<index32>::new();
@@ -1304,7 +1304,7 @@ struct Utf8Error<'src> {
 
 // TODO(stefano): own utf8 parsing
 // iteration of characters
-impl<'src> Tokenizer<'src> {
+impl<'src> Tokenizer<'src, '_> {
     fn token_text(&self) -> &'src str {
         return &self.src.code[self.token_start_col as usize..self.col as usize];
     }
@@ -1391,7 +1391,7 @@ impl<'src> Tokenizer<'src> {
     }
 }
 
-impl<'src> Tokenizer<'src> {
+impl<'src> Tokenizer<'src, '_> {
     fn identifier(&mut self) -> Result<TokenKind<'src>, ()> {
         const MAX_IDENTIFIER_LEN: offset32 = 63;
         let previous_errors_len = self.errors.len();
