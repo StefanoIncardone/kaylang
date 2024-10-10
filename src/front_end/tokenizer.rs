@@ -1402,12 +1402,12 @@ impl<'src> Tokenizer<'src> {
                     self.col += 1;
                 }
                 Some(Err(error)) => {
-                    self.col += error.grapheme.len() as offset32;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InIdentifier { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
+                    self.col += error.grapheme.len() as offset32;
                 }
                 Some(Ok(_)) | None => break,
             }
@@ -1459,20 +1459,20 @@ impl<'src> Tokenizer<'src> {
                     self.col += 1;
                 }
                 Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
-                    self.col += 1;
                     self.errors.push(Error {
                         kind: ErrorKind::LetterInNumberLiteral(Base::Decimal, letter),
                         col: self.col,
                         pointers_count: 1,
                     });
+                    self.col += 1;
                 }
                 Some(Err(error)) => {
-                    self.col += error.grapheme.len() as offset32;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
+                    self.col += error.grapheme.len() as offset32;
                 }
                 Some(Ok(_)) | None => break,
             }
@@ -1495,28 +1495,28 @@ impl<'src> Tokenizer<'src> {
                     self.col += 1;
                 }
                 Some(Ok(out_of_range @ b'2'..=b'9')) => {
-                    self.col += 1;
                     self.errors.push(Error {
                         kind: ErrorKind::DigitOutOfRangeInNumberLiteral(Base::Binary, out_of_range),
                         col: self.col,
                         pointers_count: 1,
                     });
+                    self.col += 1;
                 }
                 Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
-                    self.col += 1;
                     self.errors.push(Error {
                         kind: ErrorKind::LetterInNumberLiteral(Base::Binary, letter),
                         col: self.col,
                         pointers_count: 1,
                     });
+                    self.col += 1;
                 }
                 Some(Err(error)) => {
-                    self.col += error.grapheme.len() as offset32;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
+                    self.col += error.grapheme.len() as offset32;
                 }
                 Some(Ok(_)) | None => break,
             }
@@ -1549,28 +1549,28 @@ impl<'src> Tokenizer<'src> {
                     self.col += 1;
                 }
                 Some(Ok(out_of_range @ b'8'..=b'9')) => {
-                    self.col += 1;
                     self.errors.push(Error {
                         kind: ErrorKind::DigitOutOfRangeInNumberLiteral(Base::Octal, out_of_range),
                         col: self.col,
                         pointers_count: 1,
                     });
+                    self.col += 1;
                 }
                 Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
-                    self.col += 1;
                     self.errors.push(Error {
                         kind: ErrorKind::LetterInNumberLiteral(Base::Octal, letter),
                         col: self.col,
                         pointers_count: 1,
                     });
+                    self.col += 1;
                 }
                 Some(Err(error)) => {
-                    self.col += error.grapheme.len() as offset32;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
+                    self.col += error.grapheme.len() as offset32;
                 }
                 Some(Ok(_)) | None => break,
             }
@@ -1603,7 +1603,6 @@ impl<'src> Tokenizer<'src> {
                     self.col += 1;
                 }
                 Some(Ok(out_of_range @ (b'g'..=b'z' | b'G'..=b'Z'))) => {
-                    self.col += 1;
                     self.errors.push(Error {
                         kind: ErrorKind::DigitOutOfRangeInNumberLiteral(
                             Base::Hexadecimal,
@@ -1612,14 +1611,15 @@ impl<'src> Tokenizer<'src> {
                         col: self.col,
                         pointers_count: 1,
                     });
+                    self.col += 1;
                 }
                 Some(Err(error)) => {
-                    self.col += error.grapheme.len() as offset32;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
+                    self.col += error.grapheme.len() as offset32;
                 }
                 Some(Ok(_)) | None => break,
             }
@@ -1665,12 +1665,12 @@ impl<'src> Tokenizer<'src> {
                     next_character
                 }
                 Some(Err(error)) => {
-                    self.col += error.grapheme.len() as offset32;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InIdentifier { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
+                    self.col += error.grapheme.len() as offset32;
                     continue;
                 }
             };
@@ -1688,7 +1688,6 @@ impl<'src> Tokenizer<'src> {
                         }
                         Some(Ok(escape_character)) => escape_character,
                         Some(Err(error)) => {
-                            self.col += error.grapheme.len() as offset32;
                             self.errors.push(Error {
                                 kind: ErrorKind::Utf8InQuotedLiteral {
                                     grapheme: error.grapheme,
@@ -1697,6 +1696,7 @@ impl<'src> Tokenizer<'src> {
                                 col: error.col,
                                 pointers_count: error.pointers_count,
                             });
+                            self.col += error.grapheme.len() as offset32;
                             continue;
                         }
                     };
@@ -1750,7 +1750,6 @@ impl<'src> Tokenizer<'src> {
                     next_character
                 }
                 Some(Err(error)) => {
-                    self.col += error.grapheme.len() as offset32;
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InQuotedLiteral {
                             grapheme: error.grapheme,
@@ -1759,6 +1758,7 @@ impl<'src> Tokenizer<'src> {
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
+                    self.col += error.grapheme.len() as offset32;
                     continue;
                 }
             };
@@ -1779,7 +1779,6 @@ impl<'src> Tokenizer<'src> {
                             escape_character
                         }
                         Some(Err(error)) => {
-                            self.col += error.grapheme.len() as offset32;
                             self.errors.push(Error {
                                 kind: ErrorKind::Utf8InQuotedLiteral {
                                     grapheme: error.grapheme,
@@ -1788,6 +1787,7 @@ impl<'src> Tokenizer<'src> {
                                 col: error.col,
                                 pointers_count: error.pointers_count,
                             });
+                            self.col += error.grapheme.len() as offset32;
                             continue;
                         }
                     };
