@@ -645,7 +645,8 @@ impl<'src, 'ast: 'src> ExpressionDisplay<'src, 'ast> {
             }
             Expression::Variable { variable_index, .. } => {
                 let variable = &self.ast.variables[*variable_index as usize];
-                write!(f, "{}", variable.name)
+                let variable_name_str = unsafe { core::str::from_utf8_unchecked(variable.name) };
+                write!(f, "{variable_name_str}")
             }
         };
     }
@@ -707,7 +708,7 @@ pub(crate) struct Scope {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Variable<'src> {
-    pub(crate) name: &'src str,
+    pub(crate) name: &'src [ascii],
     pub(crate) value: Expression,
 }
 
@@ -2782,7 +2783,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
 // variables and types
 impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
-    fn resolve_variable(&self, name: &'src str) -> Option<(Mutability, VariableIndex)> {
+    fn resolve_variable(&self, name: &'src [ascii]) -> Option<(Mutability, VariableIndex)> {
         let mut scope_index = self.scope;
         loop {
             let scope = &self.scopes[scope_index as usize];
@@ -2807,12 +2808,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         }
     }
 
-    fn resolve_type(&self, name: &'src str) -> Option<BaseType> {
+    fn resolve_type(&self, name: &'src [ascii]) -> Option<BaseType> {
         let mut scope_index = self.scope;
         loop {
             let scope = &self.scopes[scope_index as usize];
             for typ in &scope.base_types {
-                if typ.to_string() == name {
+                if typ.to_string().as_bytes() == name {
                     return Some(*typ);
                 }
             }

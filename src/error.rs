@@ -6,6 +6,23 @@ use crate::{
 use core::fmt::Display;
 use std::path::Path;
 
+use unicode_width::UnicodeWidthChar;
+
+pub(crate) trait CharsWidth {
+    fn chars_width(&self) -> offset32;
+}
+
+impl CharsWidth for str {
+    fn chars_width(&self) -> offset32 {
+        let mut len = 0;
+        for character in self.chars() {
+            let character_utf8_len = character.width_cjk().unwrap_or_default();
+            len += character_utf8_len as offset32;
+        }
+        return len;
+    }
+}
+
 #[derive(Clone)]
 pub struct Msg<'kind, 'message> {
     pub kind: &'kind dyn Display,

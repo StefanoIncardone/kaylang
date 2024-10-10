@@ -3,7 +3,7 @@
 use super::{
     src_file::{index32, offset32, DisplayPosition, SrcFile},
     tokenizer::{
-        ascii, utf8, Base, Bracket, CloseBracket, DisplayLen, Integer, Mutability, Op, Str, Token,
+        ascii, Base, Bracket, CloseBracket, DisplayLen, Integer, Mutability, Op, Str, Token,
         TokenKind,
     },
     Error, ErrorDisplay, ErrorInfo, IntoErrorInfo,
@@ -11,7 +11,7 @@ use super::{
 use core::{fmt::Display, num::NonZero};
 use std::borrow::Cow;
 
-#[allow(dead_code)]
+#[allow(dead_code)] // it's in reality created by trasmuting an `Op`
 #[rustfmt::skip]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -58,7 +58,7 @@ impl DisplayLen for PrefixOperator {
     }
 }
 
-#[allow(dead_code)]
+#[allow(dead_code)] // it's in reality created by trasmuting an `Op`
 #[rustfmt::skip]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -145,7 +145,7 @@ impl DisplayLen for BinaryOperator {
     }
 }
 
-#[allow(dead_code)]
+#[allow(dead_code)] // it's in reality created by trasmuting an `Op`
 #[rustfmt::skip]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -250,7 +250,7 @@ pub(crate) enum Expression<'src, 'tokens: 'src> {
         column: offset32,
     },
     Identifier {
-        identifier: &'tokens &'src str,
+        identifier: &'tokens &'src [ascii],
         column: offset32,
     },
     Array {
@@ -299,7 +299,7 @@ pub(crate) struct ArrayDimension {
 #[derive(Debug, Clone)]
 pub(crate) struct TypeAnnotation<'src, 'tokens: 'src> {
     colon_column: offset32,
-    type_name: &'tokens &'src str,
+    type_name: &'tokens &'src [ascii],
     type_name_column: offset32,
     array_dimensions: Vec<ArrayDimension>,
 }
@@ -312,7 +312,7 @@ pub(crate) struct InitialValue {
 
 #[derive(Debug, Clone)]
 pub(crate) struct VariableDefinition<'src, 'tokens: 'src> {
-    name: &'tokens &'src str,
+    name: &'tokens &'src [ascii],
     name_column: offset32,
     type_annotation: Option<TypeAnnotation<'src, 'tokens>>,
     initial_value: Option<InitialValue>,
@@ -598,18 +598,20 @@ impl SyntaxTree<'_, '_> {
                 writeln!(f, "{:>indent$}Integer: {column} = {prefix}{literal_str}", "", prefix = base.prefix())
             }
             Expression::Ascii { character, column } => {
-                writeln!(f, "{:>indent$}Ascii: {column} = {character}", "", character = *character as utf8)
+                let character_escaped = character.escape_ascii();
+                writeln!(f, "{:>indent$}Ascii: {column} = '{character_escaped}'", "")
             }
             Expression::Str { literal, column } => {
-                let literal_str = unsafe { core::str::from_utf8_unchecked(&literal.0) };
-                writeln!(f, "{:>indent$}Str: {column} = {literal_str}", "")
+                let literal_str = literal.0.escape_ascii();
+                writeln!(f, "{:>indent$}Str: {column} = \"{literal_str}\"", "")
             }
             Expression::RawStr { literal, column } => {
                 let literal_str = unsafe { core::str::from_utf8_unchecked(&literal.0) };
-                writeln!(f, "{:>indent$}RawStr: {column} = {literal_str}", "")
+                writeln!(f, "{:>indent$}RawStr: {column} = r\"{literal_str}\"", "")
             }
             Expression::Identifier { identifier, column } => {
-                writeln!(f, "{:>indent$}Identifier: {column} = {identifier}", "")
+                let identifier_str = unsafe { core::str::from_utf8_unchecked(identifier) };
+                writeln!(f, "{:>indent$}Identifier: {column} = {identifier_str}", "")
             },
             Expression::Array {
                 open_square_bracket_column,
@@ -694,9 +696,14 @@ impl SyntaxTree<'_, '_> {
         variable_definition_index: VariableDefinitionIndex,
         indent: usize,
     ) -> core::fmt::Result {
-        let VariableDefinition { name, name_column, type_annotation, initial_value } =
-            &self.variable_definitions[variable_definition_index as usize];
-        writeln!(f, "{:>indent$}Name: {name_column} = {name}", "")?;
+        let VariableDefinition {
+            name,
+            name_column,
+            type_annotation,
+            initial_value
+        } = &self.variable_definitions[variable_definition_index as usize];
+        let name_str = unsafe { core::str::from_utf8_unchecked(name) };
+        writeln!(f, "{:>indent$}Name: {name_column} = {name_str}", "")?;
 
         if let Some(TypeAnnotation {
             colon_column,
@@ -706,7 +713,9 @@ impl SyntaxTree<'_, '_> {
         }) = type_annotation
         {
             writeln!(f, "{:>indent$}Colon: {colon_column} = :", "")?;
-            writeln!(f, "{:>indent$}TypeName: {type_name_column} = {type_name}", "")?;
+
+            let type_name_str = unsafe { core::str::from_utf8_unchecked(type_name) };
+            writeln!(f, "{:>indent$}TypeName: {type_name_column} = {type_name_str}", "")?;
 
             let dimension_indent = indent + INDENT_INCREMENT;
             for ArrayDimension {

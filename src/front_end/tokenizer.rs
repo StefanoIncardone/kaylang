@@ -1,13 +1,13 @@
 // TODO(stefano): multiline strings
 // TODO(stefano): more escape characters
 
+use unicode_segmentation::UnicodeSegmentation;
+use crate::error::CharsWidth;
 use super::{
     src_file::{index32, offset32, SrcFile},
     Error, ErrorInfo, IntoErrorInfo,
 };
 use core::fmt::Display;
-use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::UnicodeWidthChar;
 
 pub(super) trait DisplayLen {
     fn display_len(&self) -> offset32;
@@ -577,7 +577,7 @@ pub(crate) enum TokenKind<'src> {
         _ptr: PhantomData<&'src ascii>,
     }
     */
-    Identifier(&'src str),
+    Identifier(&'src [ascii]),
 
     // Keywords
     /// temporary way of printing values to stdout
@@ -619,15 +619,19 @@ impl Display for TokenKind<'_> {
                 write!(f, "{prefix}{integer_str}", prefix = base.prefix())
             }
             Self::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
-            Self::Str(string) | Self::RawStr(string) => {
-                write!(f, "\"")?;
-                for ch in &*string.0 {
-                    write!(f, "{}", ch.escape_ascii())?;
-                }
-                write!(f, "\"")
+            Self::Str(string) => {
+                let string_str = string.0.escape_ascii();
+                write!(f, "\"{string_str}\"")
+            }
+            Self::RawStr(string) => {
+                let string_str = unsafe { core::str::from_utf8_unchecked(&string.0) };
+                write!(f, "r\"{string_str}\"")
             }
 
-            Self::Identifier(name) => write!(f, "{name}"),
+            Self::Identifier(identifier) => {
+                let identifier_str = unsafe { core::str::from_utf8_unchecked(identifier) };
+                write!(f, "{identifier_str}")
+            }
 
             Self::Print => write!(f, "print"),
             Self::PrintLn => write!(f, "println"),
@@ -647,31 +651,10 @@ impl Display for TokenKind<'_> {
 
 impl DisplayLen for TokenKind<'_> {
     fn display_len(&self) -> offset32 {
-        #[inline(always)]
-        fn ascii_escaped_len(ascii_char: ascii) -> offset32 {
-            let utf8_char = ascii_char as utf8;
-            return utf8_char.escape_debug().len() as offset32;
-        }
-
-        fn utf8_len(text: &str) -> offset32 {
-            let mut len = 0;
-            for grapheme in text.graphemes(true) {
-                for character in grapheme.chars() {
-                    let character_utf8_len = match character.width_cjk() {
-                        Some(character_utf8_len) => character_utf8_len,
-                        None => 1,
-                    };
-                    len += character_utf8_len as offset32;
-                }
-            }
-
-            return len;
-        }
-
         return match self {
-            Self::Comment(text) => utf8_len(text) + 1, // + 1 to account for the `#`
-            Self::BlockComment(text) => utf8_len(text) + 4, // + 4 to account for `##` and `##`
-            Self::Unexpected(text) => utf8_len(text),
+            Self::Comment(text) => text.chars_width() + 1, // + 1 to account for the `#`
+            Self::BlockComment(text) => text.chars_width() + 4, // + 4 to account for `##` and `##`
+            Self::Unexpected(text) => text.chars_width(),
 
             Self::Bracket(bracket) => bracket.display_len(),
             Self::Colon => 1,
@@ -682,13 +665,13 @@ impl DisplayLen for TokenKind<'_> {
             Self::Integer(base, integer) => {
                 base.prefix().len() as offset32 + integer.0.len() as offset32
             }
-            Self::Ascii(ascii_char) => ascii_escaped_len(*ascii_char) + 2, // + 2 to account for the quotes
+            Self::Ascii(ascii_char) => ascii_char.escape_ascii().len() as offset32 + 2, // + 2 to account for the quotes
             Self::True => 4,
             Self::False => 5,
             Self::Str(text) => {
                 let mut len = 2; // starting at 2 to account for the quotes
                 for ascii_char in &*text.0 {
-                    len += ascii_escaped_len(*ascii_char);
+                    len += ascii_char.escape_ascii().len() as offset32;
                 }
                 len
             }
@@ -732,7 +715,6 @@ pub struct Tokenizer<'src> {
 impl<'src> Tokenizer<'src> {
     pub fn tokenize(src: &'src SrcFile) -> Result<Vec<Token<'src>>, Vec<Error<ErrorKind<'src>>>> {
         let mut this = Self { src, errors: Vec::new(), col: 0, token_start_col: 0, line_index: 0 };
-
         let mut tokens = Vec::<Token<'src>>::new();
         let mut brackets_indicies = Vec::<index32>::new();
 
@@ -827,7 +809,7 @@ impl<'src> Tokenizer<'src> {
                                 this.errors.push(Error {
                                     kind: ErrorKind::MultipleCharactersInCharacterLiteral,
                                     col: this.token_start_col,
-                                    pointers_count: this.token_len(),
+                                    pointers_count: this.token_text().chars_width(),
                                 });
                                 Err(())
                             }
@@ -1323,9 +1305,8 @@ struct Utf8Error<'src> {
 // TODO(stefano): own utf8 parsing
 // iteration of characters
 impl<'src> Tokenizer<'src> {
-    fn token_len(&self) -> offset32 {
-        return self.src.code[self.token_start_col as usize..self.col as usize].chars().count()
-            as offset32;
+    fn token_text(&self) -> &'src str {
+        return &self.src.code[self.token_start_col as usize..self.col as usize];
     }
 
     // Note: this function is only called when parsing comments, so no special handling of graphemes is required
@@ -1372,18 +1353,10 @@ impl<'src> Tokenizer<'src> {
                     unreachable!("this branch assured we would have a valid grapheme");
                 };
 
-                let mut pointers_count = 0;
-                for character in grapheme.chars() {
-                    let character_utf8_len = match character.width_cjk() {
-                        Some(character_utf8_len) => character_utf8_len,
-                        None => 1,
-                    };
-                    pointers_count += character_utf8_len as offset32;
-                }
-
-                if pointers_count == 0 {
-                    pointers_count = 1;
-                }
+                let pointers_count = match grapheme.chars_width() {
+                    0 => 1,
+                    pointers_count => pointers_count,
+                };
 
                 // let Some(utf8_ch) = rest_of_line.chars().next() else {
                 //     unreachable!();
@@ -1440,6 +1413,10 @@ impl<'src> Tokenizer<'src> {
             }
         }
 
+        if previous_errors_len != self.errors.len() {
+            return Err(());
+        };
+
         let identifier = match &self.src.code[self.token_start_col as usize..self.col as usize] {
             "let" => TokenKind::Mutability(Mutability::Let),
             "var" => TokenKind::Mutability(Mutability::Var),
@@ -1457,19 +1434,20 @@ impl<'src> Tokenizer<'src> {
             "continue" => TokenKind::Continue,
             "len" => TokenKind::Op(Op::Len),
             identifier => {
-                let identifier_len = self.token_len();
+                let identifier_len = identifier.len() as offset32;
                 if identifier_len as offset32 > MAX_IDENTIFIER_LEN {
                     self.errors.push(Error {
                         kind: ErrorKind::IdentifierTooLong { max: MAX_IDENTIFIER_LEN },
                         col: self.token_start_col,
                         pointers_count: identifier_len,
                     });
+                    return Err(());
                 }
-                TokenKind::Identifier(identifier)
+                TokenKind::Identifier(identifier.as_bytes())
             }
         };
 
-        return if previous_errors_len == self.errors.len() { Ok(identifier) } else { Err(()) };
+        return Ok(identifier);
     }
 
     fn integer_decimal(&mut self) -> Result<&'src [ascii], ()> {
@@ -1544,22 +1522,22 @@ impl<'src> Tokenizer<'src> {
             }
         }
 
-        return if previous_errors_len == self.errors.len() {
-            // starting at self.token_start_col + 2 to account for the 0b prefix
-            let digits = &self.src.code[self.token_start_col as usize + 2..self.col as usize];
-            if digits.is_empty() {
-                self.errors.push(Error {
-                    kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Binary),
-                    col: self.token_start_col,
-                    pointers_count: self.token_len(),
-                });
-                Err(())
-            } else {
-                Ok(digits.as_bytes())
-            }
-        } else {
+        if previous_errors_len != self.errors.len() {
+            return Err(());
+        }
+
+        // starting at self.token_start_col + 2 to account for the 0b prefix
+        let digits = &self.src.code[self.token_start_col as usize + 2..self.col as usize];
+        return if digits.is_empty() {
+            self.errors.push(Error {
+                kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Binary),
+                col: self.token_start_col,
+                pointers_count: self.token_text().chars_width(),
+            });
             Err(())
-        };
+        } else {
+            Ok(digits.as_bytes())
+        }
     }
 
     fn integer_octal(&mut self) -> Result<&'src [ascii], ()> {
@@ -1598,21 +1576,21 @@ impl<'src> Tokenizer<'src> {
             }
         }
 
-        return if previous_errors_len == self.errors.len() {
-            // starting at self.token_start_col + 2 to account for the 0o prefix
-            let digits = &self.src.code[self.token_start_col as usize + 2..self.col as usize];
-            if digits.is_empty() {
-                self.errors.push(Error {
-                    kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Octal),
-                    col: self.token_start_col,
-                    pointers_count: self.token_len(),
-                });
-                Err(())
-            } else {
-                Ok(digits.as_bytes())
-            }
-        } else {
+        if previous_errors_len != self.errors.len() {
+            return Err(());
+        }
+
+        // starting at self.token_start_col + 2 to account for the 0o prefix
+        let digits = &self.src.code[self.token_start_col as usize + 2..self.col as usize];
+        return if digits.is_empty() {
+            self.errors.push(Error {
+                kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Octal),
+                col: self.token_start_col,
+                pointers_count: self.token_text().chars_width(),
+            });
             Err(())
+        } else {
+            Ok(digits.as_bytes())
         };
     }
 
@@ -1647,21 +1625,21 @@ impl<'src> Tokenizer<'src> {
             }
         }
 
-        return if previous_errors_len == self.errors.len() {
-            // starting at self.token_start_col + 2 to account for the 0x prefix
-            let digits = &self.src.code[self.token_start_col as usize + 2..self.col as usize];
-            if digits.is_empty() {
-                self.errors.push(Error {
-                    kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Hexadecimal),
-                    col: self.token_start_col,
-                    pointers_count: self.token_len(),
-                });
-                Err(())
-            } else {
-                Ok(digits.as_bytes())
-            }
-        } else {
+        if previous_errors_len != self.errors.len() {
+            return Err(());
+        }
+
+        // starting at self.token_start_col + 2 to account for the 0x prefix
+        let digits = &self.src.code[self.token_start_col as usize + 2..self.col as usize];
+        return if digits.is_empty() {
+            self.errors.push(Error {
+                kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Hexadecimal),
+                col: self.token_start_col,
+                pointers_count: self.token_text().chars_width(),
+            });
             Err(())
+        } else {
+            Ok(digits.as_bytes())
         };
     }
 
@@ -1678,7 +1656,7 @@ impl<'src> Tokenizer<'src> {
                     self.errors.push(Error {
                         kind: ErrorKind::UnclosedQuotedLiteral(kind),
                         col: self.token_start_col,
-                        pointers_count: self.token_len(),
+                        pointers_count: self.token_text().chars_width(),
                     });
                     break;
                 }
@@ -1704,7 +1682,7 @@ impl<'src> Tokenizer<'src> {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnclosedQuotedLiteral(kind),
                                 col: self.token_start_col,
-                                pointers_count: self.token_len(),
+                                pointers_count: self.token_text().chars_width(),
                             });
                             break;
                         }
@@ -1763,7 +1741,7 @@ impl<'src> Tokenizer<'src> {
                     self.errors.push(Error {
                         kind: ErrorKind::UnclosedQuotedLiteral(kind),
                         col: self.token_start_col,
-                        pointers_count: self.token_len(),
+                        pointers_count: self.token_text().chars_width(),
                     });
                     break;
                 }
@@ -1792,7 +1770,7 @@ impl<'src> Tokenizer<'src> {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnclosedQuotedLiteral(kind),
                                 col: self.token_start_col,
-                                pointers_count: self.token_len(),
+                                pointers_count: self.token_text().chars_width(),
                             });
                             break;
                         }

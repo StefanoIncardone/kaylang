@@ -32,43 +32,44 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Made block comments delimited by `##` instead of `#{` and `#}`, this also removes the error
     related to uclosed block comments:
-    - single line block comments look symmetric with `}#`:
 
-        ```text
-        println #{ symmetric }# 21;
-        ```
+    single line block comments look symmetric with `}#`:
 
-    - single line block comments look asymmetric with `#}`:
+    ```text
+    println #{ symmetric }# 21;
+    ```
 
-        ```text
-        println #{ asymmetric #} 21;
-        ```
+    single line block comments look asymmetric with `#}`:
 
-    - multiline block comments looke symmetric with `#}`:
+    ```text
+    println #{ asymmetric #} 21;
+    ```
 
-        ```text
-        #{
-        symmetric
-        #}
-        ```
+    multiline block comments looke symmetric with `#}`:
 
-    - multiline block comments looke asymmetric with `}#`:
+    ```text
+    #{
+    symmetric
+    #}
+    ```
 
-        ```text
-        #{
-        asymmetric
-        }#
-        ```
+    multiline block comments looke asymmetric with `}#`:
 
-    - with `##` both single line and multiline block comments look symmetric:
+    ```text
+    #{
+    asymmetric
+    }#
+    ```
 
-        ```kay
-        println ## symmetric ## 12;
+    with `##` both single line and multiline block comments look symmetric:
 
-        ##
-        symmetric
-        ##
-        ```
+    ```kay
+    println ## symmetric ## 12;
+
+    ##
+    symmetric
+    ##
+    ```
 
 #### Removed
 

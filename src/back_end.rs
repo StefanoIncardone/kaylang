@@ -17,7 +17,7 @@ use crate::{
             IfStatement, Node, ScopeIndex, SizeOf, Type, TypeOf, UnaryOp,
         },
         src_file::{offset32, Position, SrcFile},
-        tokenizer::uint,
+        tokenizer::{ascii, uint},
     },
     ERROR,
 };
@@ -530,13 +530,13 @@ impl<'ast> Compiler<'_, 'ast> {
             Node::Definition { var_index } => {
                 let ast_var = &self.ast.variables[*var_index as usize];
 
-                let name = ast_var.name;
+                let ast_variable_name_str = unsafe { core::str::from_utf8_unchecked(ast_var.name) };
                 let value = &ast_var.value;
 
-                let var = self.resolve(name);
+                let var = self.resolve(ast_var.name);
                 let dst_offset = var.offset;
 
-                _ = writeln!(self.asm, " ; {name} = {}", value.display(self.ast));
+                _ = writeln!(self.asm, " ; {ast_variable_name_str} = {}", value.display(self.ast));
                 self.definition(value, Base::Rbp, dst_offset);
             }
             Node::Reassignment { target, op, op_col, new_value } => {
@@ -576,7 +576,7 @@ impl<'ast> Compiler<'_, 'ast> {
 
 // expressions
 impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
-    fn resolve(&self, name: &'src str) -> &Variable<'src, 'ast> {
+    fn resolve(&self, name: &'src [ascii]) -> &Variable<'src, 'ast> {
         for var in &self.variables {
             if var.inner.name == name {
                 return var;
@@ -2742,10 +2742,10 @@ impl<'ast> Compiler<'_, 'ast> {
                 let var = self.resolve(ast_variable.name);
                 let dst_offset = var.offset;
 
+                let ast_variable_name_str = unsafe { core::str::from_utf8_unchecked(ast_variable.name) };
                 _ = writeln!(
                     self.asm,
-                    " ; {} {op} {}",
-                    ast_variable.name,
+                    " ; {ast_variable_name_str} {op} {}",
                     new_value.display(self.ast)
                 );
                 if let AssignmentOp::Equals = op {

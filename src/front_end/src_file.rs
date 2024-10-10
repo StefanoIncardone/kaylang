@@ -1,3 +1,4 @@
+use unicode_width::UnicodeWidthChar;
 use crate::{error::MsgWithCause, ERROR};
 use core::fmt::Display;
 use std::{
@@ -5,7 +6,6 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
 };
-use unicode_width::UnicodeWidthChar;
 
 #[allow(non_camel_case_types)]
 pub type offset32 = u32;
@@ -192,10 +192,7 @@ impl SrcFile {
         let mut display_column = 1;
         let mut utf8_column = 1;
         for character in line_text_before_error.chars() {
-            let character_utf8_len = match character.width_cjk() {
-                Some(character_utf8_len) => character_utf8_len,
-                None => 1,
-            };
+            let character_utf8_len = character.width_cjk().unwrap_or_default();
             display_column += character_utf8_len as column32;
             utf8_column += 1;
         }
