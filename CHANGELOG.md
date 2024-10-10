@@ -30,8 +30,8 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 #### Changed
 
-- Made block comments delimited by `##` instead of `#{` and `#}`, this also removes the error related
-    to uclosed block comments:
+- Made block comments delimited by `##` instead of `#{` and `#}`, this also removes the error
+    related to uclosed block comments:
     - single line block comments look symmetric with `}#`:
 
         ```text
@@ -72,7 +72,8 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 #### Removed
 
-- Removed do-statements in if and loop statements, thus reduced language complexity and inconsistencies
+- Removed do-statements in if and loop statements, thus reduced language complexity and
+    inconsistencies
 
 ### Compiler
 
@@ -101,7 +102,8 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Split `src_file::SrcFile::position` into `src_file::SrcFile::position` and
     `src_file::SrcFile::display_position`, returning respectively a:
     - `src_file::Position` now only contains information about the sorce code position
-    - `src_file::DisplayPosition` contains information about the sorce code position and display position
+    - `src_file::DisplayPosition` contains information about the sorce code position and display
+        position
 - Renamed `error::MsgWithCauseUnderTextWithLocation::source_code_col` to
     `error::MsgWithCauseUnderTextWithLocation::absolute_column`
 - Reordered and changed `error::MsgWithCauseUnderText::pointers_count` and
@@ -109,6 +111,8 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Renamed `tokenizer::BracketKind` to `tokenizer::Bracket`
 - `artifacts::Artifacts::new` and `artifacts::Artifacts::new_with_out_path` now take a `&Path`
     instead of `&SrcFile`
+- Errors related to bracket pairs now contain more descriptive `tokenizer::OpenBracket` and
+    `tokenizer::CloseBracket`
 
 #### Fixed
 

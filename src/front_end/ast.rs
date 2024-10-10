@@ -4,7 +4,8 @@
 use super::{
     src_file::{index32, offset32, Position, SrcFile},
     tokenizer::{
-        ascii, int, uint, Base, Bracket, DisplayLen, Integer, Mutability, Op, Str, Token, TokenKind,
+        ascii, int, uint, Base, Bracket, OpenBracket, DisplayLen, Integer, Mutability, Op, Str,
+        Token, TokenKind,
     },
     Error, ErrorInfo, IntoErrorInfo,
 };
@@ -1807,7 +1808,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
                 let TokenKind::Bracket(Bracket::CloseRound) = close_bracket_token.kind else {
                     return Err(Error {
-                        kind: ErrorKind::UnclosedBracket(Bracket::OpenRound),
+                        kind: ErrorKind::UnclosedBracket(OpenBracket::Round),
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(),
                     });
@@ -3611,7 +3612,7 @@ pub enum ErrorKind {
     CannotIndexIntoExpression,
     TypeInExpression,
     EmptyExpression,
-    UnclosedBracket(Bracket),
+    UnclosedBracket(OpenBracket),
     ArrayOfNegativeLength,
     ArrayOfZeroElements,
     ArrayOfOneElement,

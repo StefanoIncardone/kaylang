@@ -1,8 +1,8 @@
 use core::fmt::Display;
 
 #[allow(dead_code)]
-#[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[repr(u8)]
 pub(crate) enum Reg64 {
     Rax = 0,
     Rbx = 1,
@@ -51,8 +51,8 @@ impl Display for Reg64 {
 }
 
 #[allow(dead_code)]
-#[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[repr(u8)]
 pub(crate) enum Reg32 {
     Eax = 0,
     Ebx = 1,
@@ -101,8 +101,8 @@ impl Display for Reg32 {
 }
 
 #[allow(dead_code)]
-#[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[repr(u8)]
 pub(crate) enum Reg16 {
     Ax = 0,
     Bx = 1,
@@ -151,8 +151,8 @@ impl Display for Reg16 {
 }
 
 #[allow(dead_code)]
-#[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[repr(u8)]
 pub(crate) enum Reg8l {
     Al = 0,
     Bl = 1,
@@ -201,8 +201,8 @@ impl Display for Reg8l {
 }
 
 #[allow(dead_code)]
-#[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[repr(u8)]
 pub(crate) enum Reg8h {
     Ah = 0,
     Bh = 1,

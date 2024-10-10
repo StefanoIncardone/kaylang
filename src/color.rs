@@ -52,8 +52,7 @@ pub enum Bg {
 pub type Flags = u8;
 pub struct Flag;
 
-#[allow(non_upper_case_globals)]
-#[allow(dead_code)]
+#[allow(non_upper_case_globals, dead_code)]
 impl Flag {
     pub const Default: Flags = 0b0000_0000;
     pub const Bold: Flags = 0b0000_0001;

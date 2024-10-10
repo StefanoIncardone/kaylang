@@ -3,17 +3,18 @@
 use super::{
     src_file::{index32, offset32, DisplayPosition, SrcFile},
     tokenizer::{
-        ascii, utf8, Base, Bracket, DisplayLen, Integer, Mutability, Op, Str, Token, TokenKind,
+        ascii, utf8, Base, Bracket, CloseBracket, DisplayLen, Integer, Mutability, Op, Str, Token,
+        TokenKind,
     },
     Error, ErrorDisplay, ErrorInfo, IntoErrorInfo,
 };
 use core::{fmt::Display, num::NonZero};
 use std::borrow::Cow;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
 #[allow(dead_code)]
 #[rustfmt::skip]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub(crate) enum PrefixOperator {
     Len = Op::Len as u8,
     Not = Op::Not as u8,
@@ -57,10 +58,10 @@ impl DisplayLen for PrefixOperator {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
 #[allow(dead_code)]
 #[rustfmt::skip]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub(crate) enum BinaryOperator {
     // binary operators
     Pow           = Op::Pow as u8,
@@ -144,10 +145,10 @@ impl DisplayLen for BinaryOperator {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
 #[allow(dead_code)]
 #[rustfmt::skip]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub(crate) enum AssignmentOperator {
     Equals = Op::Equals as u8,
 
@@ -1406,7 +1407,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     self.next_expected_token(Expected::CloseRoundBracket)?;
                 let TokenKind::Bracket(Bracket::CloseRound) = close_round_bracket_token.kind else {
                     return Err(Error {
-                        kind: ErrorKind::ExpectedBracket(Bracket::CloseRound),
+                        kind: ErrorKind::ExpectedBracket(CloseBracket::Round),
                         col: close_round_bracket_token.col,
                         pointers_count: close_round_bracket_token.kind.display_len(),
                     });
@@ -2264,7 +2265,7 @@ pub enum ErrorKind {
     // expressions
     KeywordInExpression,
     ExpectedOperand,
-    ExpectedBracket(Bracket),
+    ExpectedBracket(CloseBracket),
     ExpectedComma,
     MissingCloseSquareBracketInIndex,
 
