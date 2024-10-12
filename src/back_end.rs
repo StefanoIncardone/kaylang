@@ -16,7 +16,7 @@ use crate::{
             self, AssignmentOp, Ast, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression,
             IfStatement, Node, ScopeIndex, SizeOf, Type, TypeOf, UnaryOp,
         },
-        src_file::{offset32, Position, SrcFile},
+        src_file::{offset32, Position, SrcCode},
         tokenizer::{ascii, uint},
     },
     ERROR,
@@ -71,8 +71,8 @@ impl Display for Base {
 }
 
 #[derive(Debug)]
-struct Variable<'ast, 'src: 'ast> {
-    inner: &'ast ast::Variable<'src>,
+struct Variable<'ast, 'code: 'ast> {
+    inner: &'ast ast::Variable<'code>,
     offset: usize,
 }
 
@@ -82,13 +82,13 @@ struct TemporaryValue<'ast> {
     offset: usize,
 }
 #[derive(Debug)]
-pub struct Compiler<'ast, 'src: 'ast, 'path: 'src> {
-    src: &'src SrcFile<'path>,
-    ast: &'ast Ast<'src>,
+pub struct Compiler<'ast, 'src: 'ast, 'path: 'src, 'code: 'src> {
+    src: &'src SrcCode<'code, 'path>,
+    ast: &'ast Ast<'code>,
 
     asm: String,
 
-    variables: Vec<Variable<'ast, 'src>>,
+    variables: Vec<Variable<'ast, 'code>>,
     temporary_values: Vec<TemporaryValue<'ast>>,
 
     if_counter: u32,
@@ -100,10 +100,10 @@ pub struct Compiler<'ast, 'src: 'ast, 'path: 'src> {
 }
 
 // Generation of compilation artifacts (.asm, .o, executable)
-impl<'ast, 'src: 'ast, 'path: 'src> Compiler<'ast, 'src, 'path> {
+impl<'ast, 'src: 'ast, 'path: 'src, 'code: 'src> Compiler<'ast, 'src, 'path, 'code> {
     pub fn compile(
-        src: &'src SrcFile<'path>,
-        ast: &'ast Ast<'src>,
+        src: &'src SrcCode<'code, 'path>,
+        ast: &'ast Ast<'code>,
         artifacts: &Artifacts,
     ) -> Result<(), Error> {
         #[allow(clippy::wildcard_imports)]
@@ -362,7 +362,7 @@ section .bss
 section .data
 {strings}"#,
             asm = this.asm,
-            src_path = src.path.display(),
+            src_path = src.path().display(),
         );
 
         // IDEA(stefano): remove this creation and let the user pass in the file instead
@@ -388,7 +388,7 @@ section .data
 }
 
 // nodes
-impl<'ast> Compiler<'ast, '_, '_> {
+impl<'ast> Compiler<'ast, '_, '_, '_> {
     fn node(&mut self, node: &'ast Node) {
         match node {
             Node::Print(argument) => {
@@ -575,8 +575,8 @@ impl<'ast> Compiler<'ast, '_, '_> {
 }
 
 // expressions
-impl<'ast, 'src: 'ast> Compiler<'ast, 'src, '_> {
-    fn resolve(&self, name: &'src [ascii]) -> &Variable<'ast, 'src> {
+impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
+    fn resolve(&self, name: &'code [ascii]) -> &Variable<'ast, 'code> {
         for var in &self.variables {
             if var.inner.name == name {
                 return var;
@@ -1916,7 +1916,7 @@ impl<'ast, 'src: 'ast> Compiler<'ast, 'src, '_> {
 }
 
 // definitions
-impl<'ast> Compiler<'ast, '_, '_> {
+impl<'ast> Compiler<'ast, '_, '_, '_> {
     fn definition(&mut self, value: &'ast Expression, base: Base, dst_offset: usize) {
         match value {
             Expression::Parenthesis { expression_index, .. } => {
@@ -2742,7 +2742,8 @@ impl<'ast> Compiler<'ast, '_, '_> {
                 let var = self.resolve(ast_variable.name);
                 let dst_offset = var.offset;
 
-                let ast_variable_name_str = unsafe { core::str::from_utf8_unchecked(ast_variable.name) };
+                let ast_variable_name_str =
+                    unsafe { core::str::from_utf8_unchecked(ast_variable.name) };
                 _ = writeln!(
                     self.asm,
                     " ; {ast_variable_name_str} {op} {}",
@@ -2950,7 +2951,7 @@ impl<'ast> Compiler<'ast, '_, '_> {
 }
 
 // ifs
-impl<'ast> Compiler<'ast, '_, '_> {
+impl<'ast> Compiler<'ast, '_, '_, '_> {
     fn iff(&mut self, iff: &'ast IfStatement, tag: &str, false_tag: &str) {
         _ = writeln!(self.asm, "{tag}:; {}", iff.condition.display(self.ast));
         self.condition(&iff.condition, false_tag);
@@ -2959,7 +2960,7 @@ impl<'ast> Compiler<'ast, '_, '_> {
 }
 
 // print statements
-impl<'ast> Compiler<'ast, '_, '_> {
+impl<'ast> Compiler<'ast, '_, '_, '_> {
     fn print(&mut self, value: &'ast Expression) {
         let value_type = value.typ();
         self.expression(value, Dst::default(&value_type));

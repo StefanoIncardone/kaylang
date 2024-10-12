@@ -3,7 +3,11 @@
 use kaylang::{
     back_end::{artifacts::Artifacts, Compiler},
     error,
-    front_end::{ast::Parser, src_file::SrcFile, tokenizer::Tokenizer},
+    front_end::{
+        ast::Parser,
+        src_file::SrcFile,
+        tokenizer::{TokenizedCode, Tokenizer},
+    },
     Color, Logger, ASSEMBLING, ASSEMBLING_ERROR, BUILDING_AST, CHECKING, COMPILING,
     COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, GENERATING_ASM,
     LINKING, LINKING_ERROR, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
@@ -26,12 +30,12 @@ fn main() -> ExitCode {
     Logger::info(&CHECKING, &src_path);
     let checking_sub_step = Logger::new(None);
 
-    let src = {
+    let src_file = {
         let loading_source_sub_step = Logger::new(None);
         let source_loading_result = SrcFile::load(&src_path);
         loading_source_sub_step.sub_step_done(&LOADING_SOURCE);
         match source_loading_result {
-            Ok(src) => src,
+            Ok(src_file) => src_file,
             Err(err) => {
                 eprintln!("{err}");
                 return ExitCode::FAILURE;
@@ -39,12 +43,12 @@ fn main() -> ExitCode {
         }
     };
 
-    let tokens = {
+    let (src, tokens) = {
         let tokenization_sub_step = Logger::new(None);
-        let tokenizer_result = Tokenizer::tokenize(&src);
+        let TokenizedCode { result, src } = Tokenizer::tokenize(&src_file);
         tokenization_sub_step.sub_step_done(&TOKENIZATION);
-        match tokenizer_result {
-            Ok(tokens) => tokens,
+        match result {
+            Ok(tokens) => (src, tokens),
             Err(errors) => {
                 for error in errors {
                     eprintln!("{}\n", error.display(&src));

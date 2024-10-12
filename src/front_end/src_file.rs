@@ -1,7 +1,7 @@
-use unicode_width::UnicodeWidthChar;
 use crate::{error::MsgWithCause, ERROR};
 use core::fmt::Display;
 use std::{fs::File, io::Read, path::Path};
+use unicode_width::UnicodeWidthChar;
 
 #[allow(non_camel_case_types)]
 pub type offset32 = u32;
@@ -40,87 +40,39 @@ pub struct DisplayPosition {
 pub struct SrcFile<'path> {
     pub(crate) path: &'path Path,
     pub(crate) code: String,
-    pub(crate) lines: Vec<Line>,
 }
 
 impl<'path> SrcFile<'path> {
-    // IDEA(stefano): move parsing of lines for bounds into the tokenizer
-    pub fn load(path: &'path Path) -> Result<Self, Error<'path>> {
+    pub fn load(path: &'path Path) -> Result<Self, Error<'_>> {
         let mut file = match File::open(path) {
             Ok(file) => file,
             Err(err) => return Err(Error { path, kind: ErrorKind::Io(err) }),
         };
 
-        let file_len = match file.metadata() {
-            Ok(metadata) => {
-                if !metadata.is_file() {
-                    return Err(Error { path, kind: ErrorKind::MustBeAFilePath });
-                }
-
-                let file_len = metadata.len();
-                if file_len > column32::MAX as u64 {
-                    return Err(Error { path, kind: ErrorKind::FileTooBig { max: column32::MAX } });
-                }
-                file_len as column32
-            }
+        let file_metadata = match file.metadata() {
+            Ok(file_metadata) => file_metadata,
             Err(err) => return Err(Error { path, kind: ErrorKind::Io(err) }),
         };
 
-        let code = {
-            let mut code = String::with_capacity(file_len as usize);
-            let bytes_read = match file.read_to_string(&mut code) {
-                Ok(bytes_read) => bytes_read as column32,
-                Err(err) => return Err(Error { path, kind: ErrorKind::Io(err) }),
-            };
+        if !file_metadata.is_file() {
+            return Err(Error { path, kind: ErrorKind::MustBeAFilePath });
+        }
 
-            if bytes_read != file_len {
-                return Err(Error { path, kind: ErrorKind::CouldNotReadEntireFile });
-            }
-
-            code
+        let Ok(file_len) = column32::try_from(file_metadata.len()) else {
+            return Err(Error { path, kind: ErrorKind::FileTooBig { max: column32::MAX } });
         };
 
-        let mut lines = Vec::<Line>::new();
-        let mut start = 0;
-        let mut current_ascii_column: column32 = 0;
+        let mut code = String::with_capacity(file_len as usize);
+        let bytes_read = match file.read_to_string(&mut code) {
+            Ok(bytes_read) => bytes_read as column32,
+            Err(err) => return Err(Error { path, kind: ErrorKind::Io(err) }),
+        };
 
-        // IDEA(stefano): add a cfg check to differentiate between windows' `\r\n` and "anything else sane's" `\n`
-        let code_ascii = code.as_bytes();
-        let code_bytes_len = code_ascii.len() as column32;
-        while current_ascii_column < code_bytes_len {
-            match code_ascii[current_ascii_column as usize] {
-                b'\n' => {
-                    // we reached the end of the line on a LF (\n)
-                    lines.push(Line { start, end: current_ascii_column });
-                    start = current_ascii_column + 1;
-                }
-                b'\r' => {
-                    let Some(possible_new_line) = code_ascii.get(current_ascii_column as usize + 1)
-                    else {
-                        // we reached the end of the file on a stray \r
-                        lines.push(Line { start, end: current_ascii_column });
-                        break;
-                    };
-
-                    if *possible_new_line == b'\n' {
-                        // we reached the end of the line on a CRLF (\r\n)
-                        lines.push(Line { start, end: current_ascii_column });
-                        current_ascii_column += 1;
-                        start = current_ascii_column + 1;
-                    }
-                }
-                _ => {}
-            }
-
-            current_ascii_column += 1;
+        if bytes_read != file_len {
+            return Err(Error { path, kind: ErrorKind::CouldNotReadEntireFile });
         }
 
-        if !code.is_empty() && code_ascii[current_ascii_column as usize - 1] != b'\n' {
-            // we reached the end of the file on a line without a trailing \n
-            lines.push(Line { start, end: current_ascii_column });
-        }
-
-        return Ok(Self { path, code, lines });
+        return Ok(Self { path, code });
     }
 
     #[must_use]
@@ -134,6 +86,26 @@ impl<'path> SrcFile<'path> {
     pub fn code(&self) -> &str {
         return &self.code;
     }
+}
+
+#[derive(Debug)]
+pub struct SrcCode<'code, 'path: 'code> {
+    pub(crate) src_file: &'code SrcFile<'path>,
+    pub(crate) lines: Vec<Line>,
+}
+
+impl<'code, 'path: 'code> SrcCode<'code, 'path> {
+    #[must_use]
+    #[inline(always)]
+    pub const fn path(&self) -> &'path Path {
+        return self.src_file.path();
+    }
+
+    #[must_use]
+    #[inline(always)]
+    pub fn code(&self) -> &'code str {
+        return self.src_file.code();
+    }
 
     #[must_use]
     #[inline(always)]
@@ -146,7 +118,7 @@ impl<'path> SrcFile<'path> {
         let mut left: index32 = 0;
         let mut right = self.lines.len() as index32 - 1;
         while left < right {
-            #[allow(clippy::integer_division)] // it's intended to lose precision
+            #[allow(clippy::integer_division)] // it's intended to loose precision
             let middle = left + (right - left) / 2;
             if column < self.lines[middle as usize].end {
                 right = middle;
@@ -156,7 +128,7 @@ impl<'path> SrcFile<'path> {
         }
 
         let line = &self.lines[left as usize];
-        let line_text_before_error = &self.code[line.start as usize..column as usize];
+        let line_text_before_error = &self.code()[line.start as usize..column as usize];
         let mut utf8_column = 1;
         for _character in line_text_before_error.chars() {
             utf8_column += 1;
@@ -170,7 +142,7 @@ impl<'path> SrcFile<'path> {
         let mut left: index32 = 0;
         let mut right = self.lines.len() as index32 - 1;
         while left < right {
-            #[allow(clippy::integer_division)] // it's intended to lose precision
+            #[allow(clippy::integer_division)] // it's intended to loose precision
             let middle = left + (right - left) / 2;
             if column < self.lines[middle as usize].end {
                 right = middle;
@@ -180,7 +152,7 @@ impl<'path> SrcFile<'path> {
         }
 
         let line = &self.lines[left as usize];
-        let line_text_before_error = &self.code[line.start as usize..column as usize];
+        let line_text_before_error = &self.code()[line.start as usize..column as usize];
         let mut display_column = 1;
         let mut utf8_column = 1;
         for character in line_text_before_error.chars() {

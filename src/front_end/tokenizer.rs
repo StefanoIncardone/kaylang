@@ -1,13 +1,13 @@
 // TODO(stefano): multiline strings
 // TODO(stefano): more escape characters
 
-use unicode_segmentation::UnicodeSegmentation;
-use crate::error::CharsWidth;
 use super::{
-    src_file::{index32, offset32, SrcFile},
+    src_file::{index32, offset32, Line, SrcCode, SrcFile},
     Error, ErrorInfo, IntoErrorInfo,
 };
+use crate::error::CharsWidth;
 use core::fmt::Display;
+use unicode_segmentation::UnicodeSegmentation;
 
 pub(super) trait DisplayLen {
     fn display_len(&self) -> offset32;
@@ -32,7 +32,7 @@ pub(crate) type utf8 = char;
 /// integer literals are never empty and always contain valid ascii digits
 #[derive(Debug, Clone, Copy)]
 #[repr(transparent)]
-pub(crate) struct Integer<'src>(pub(crate) &'src [ascii]);
+pub(crate) struct Integer<'code>(pub(crate) &'code [ascii]);
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[repr(u8)]
@@ -547,11 +547,11 @@ impl QuotedLiteralKind {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum TokenKind<'src> {
+pub(crate) enum TokenKind<'code> {
     // IDEA(stefano): remove from the returned tokens, to avoid encountering them during the parsing stage
-    Comment(&'src str),
-    BlockComment(&'src str),
-    Unexpected(&'src str),
+    Comment(&'code str),
+    BlockComment(&'code str),
+    Unexpected(&'code str),
 
     // Symbols
     Bracket(Bracket),
@@ -564,20 +564,20 @@ pub(crate) enum TokenKind<'src> {
     False,
     True,
     // IDEA(stefano): expand into the different bases, akin to Str and RawStr
-    Integer(Base, Integer<'src>),
+    Integer(Base, Integer<'code>),
     Ascii(ascii),
     Str(Str),
     RawStr(Str),
 
     /* IDEA(stefano):
     create:
-    struct ShortStr<'src> {
+    struct ShortStr<'code> {
         len: offset,
         ptr: offset,
-        _ptr: PhantomData<&'src ascii>,
+        _ptr: PhantomData<&'code ascii>,
     }
     */
-    Identifier(&'src [ascii]),
+    Identifier(&'code [ascii]),
 
     // Keywords
     /// temporary way of printing values to stdout
@@ -696,37 +696,83 @@ impl DisplayLen for TokenKind<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Token<'src> {
-    pub(crate) kind: TokenKind<'src>,
+pub struct Token<'code> {
+    pub(crate) kind: TokenKind<'code>,
     pub(crate) col: offset32,
 }
 
+pub struct TokenizedCode<'code, 'path: 'code> {
+    pub result: Result<Vec<Token<'code>>, Vec<Error<ErrorKind<'code>>>>,
+    pub src: SrcCode<'code, 'path>,
+}
+
 #[derive(Debug)]
-pub struct Tokenizer<'src, 'path: 'src> {
-    src: &'src SrcFile<'path>,
-    errors: Vec<Error<ErrorKind<'src>>>,
+pub struct Tokenizer<'code> {
+    code: &'code str,
+    lines: Vec<Line>,
+    line_start: offset32,
 
     col: offset32,
     token_start_col: offset32,
 
-    line_index: index32,
+    errors: Vec<Error<ErrorKind<'code>>>,
 }
 
-impl<'src, 'path: 'src> Tokenizer<'src, 'path> {
-    pub fn tokenize(src: &'src SrcFile<'path>) -> Result<Vec<Token<'src>>, Vec<Error<ErrorKind<'src>>>> {
-        let mut this = Self { src, errors: Vec::new(), col: 0, token_start_col: 0, line_index: 0 };
-        let mut tokens = Vec::<Token<'src>>::new();
+impl<'code, 'path: 'code> Tokenizer<'code> {
+    #[must_use]
+    pub fn tokenize(src_file: &'code SrcFile<'path>) -> TokenizedCode<'code, 'path> {
+        let mut this = Self {
+            code: &src_file.code,
+            lines: Vec::new(),
+            line_start: 0,
+
+            col: 0,
+            token_start_col: 0,
+
+            errors: Vec::new(),
+        };
+        let mut tokens = Vec::<Token<'code>>::new();
         let mut brackets_indicies = Vec::<index32>::new();
 
         'tokenization: while let Some(next_character) = this.peek_next_ascii_char() {
-            this.token_start_col = this.col;
-
             let token_kind_result = 'next_token: {
                 let next = match next_character {
-                    Ok(next) => {
-                        this.col += 1;
-                        next
-                    }
+                    Ok(next) => match next {
+                        // ignore whitespace
+                        b' ' | b'\t' | b'\x0C' => {
+                            this.col += 1;
+                            continue 'tokenization;
+                        }
+
+                        // we reached the end of the line on a LF (\n)
+                        b'\n' => {
+                            this.lines.push(Line { start: this.line_start, end: this.col });
+                            this.col += 1;
+                            this.line_start = this.col;
+                            continue 'tokenization;
+                        }
+                        b'\r' => {
+                            if this.col as usize + 1 >= this.code.len() {
+                                this.col += 1;
+                                continue 'tokenization;
+                            }
+
+                            if let b'\n' = this.code.as_bytes()[this.col as usize + 1] {
+                                this.lines.push(Line { start: this.line_start, end: this.col });
+                                this.col += 2;
+                                this.line_start = this.col;
+                                continue 'tokenization;
+                            };
+
+                            this.col += 1;
+                            continue 'tokenization;
+                        }
+                        other => {
+                            this.token_start_col = this.col;
+                            this.col += 1;
+                            other
+                        }
+                    },
                     Err(error) => {
                         this.col += error.grapheme.len() as offset32;
                         this.errors.push(Error {
@@ -739,15 +785,6 @@ impl<'src, 'path: 'src> Tokenizer<'src, 'path> {
                 };
 
                 match next {
-                    // ignore whitespace
-                    b' ' | b'\t' | b'\r' | b'\x0C' => continue 'tokenization,
-
-                    // next line
-                    b'\n' => {
-                        this.line_index += 1;
-                        continue 'tokenization;
-                    }
-
                     b'r' => match this.peek_next_utf8_char() {
                         Some('"') => {
                             this.col += 1; // skip the `r` prefix
@@ -846,19 +883,33 @@ impl<'src, 'path: 'src> Tokenizer<'src, 'path> {
 
                             // starting at this.token_start_col + 2 to skip the `##`
                             // ending at this.col - 2 to skip the `##`
-                            let comment = &this.src.code
+                            let comment = &this.code
                                 [this.token_start_col as usize + 2..this.col as usize - 2];
                             Ok(TokenKind::BlockComment(comment))
                         }
                         Some(_) | None => {
-                            let line = &this.src.lines[this.line_index as usize];
+                            loop {
+                                match this.peek_next_utf8_char() {
+                                    Some('\n') | None => break,
+                                    Some('\r') => {
+                                        if this.col as usize + 1 >= this.code.len() {
+                                            this.col += 1;
+                                            continue;
+                                        }
 
-                            // starting a this.col to ignore the hash symbol
-                            let comment = &this.src.code[this.col as usize..line.end as usize];
+                                        if let b'\n' = this.code.as_bytes()[this.col as usize + 1] {
+                                            break;
+                                        };
 
-                            // consuming the rest of the characters in the current line
-                            this.col = line.end;
+                                        this.col += 1;
+                                    }
+                                    Some(other) => this.col += other.len_utf8() as offset32,
+                                }
+                            }
 
+                            // starting at this.token_start_col + 1 to skip the `#`
+                            let comment =
+                                &this.code[this.token_start_col as usize + 1..this.col as usize];
                             Ok(TokenKind::Comment(comment))
                         }
                     },
@@ -1270,11 +1321,16 @@ impl<'src, 'path: 'src> Tokenizer<'src, 'path> {
             let kind = match token_kind_result {
                 Ok(kind) => kind,
                 Err(()) => TokenKind::Unexpected(
-                    &this.src.code[this.token_start_col as usize..this.col as usize],
+                    &this.code[this.token_start_col as usize..this.col as usize],
                 ),
             };
 
             tokens.push(Token { kind, col: this.token_start_col });
+        }
+
+        if let Some(b'\n') = this.code.as_bytes().last() {
+        } else {
+            this.lines.push(Line { start: this.line_start, end: this.col });
         }
 
         for bracket_index in brackets_indicies {
@@ -1291,43 +1347,61 @@ impl<'src, 'path: 'src> Tokenizer<'src, 'path> {
             });
         }
 
-        return if this.errors.is_empty() { Ok(tokens) } else { Err(this.errors) };
+        let result = if this.errors.is_empty() { Ok(tokens) } else { Err(this.errors) };
+        return TokenizedCode { result, src: SrcCode { src_file, lines: this.lines } };
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Utf8Error<'src> {
-    grapheme: &'src str,
+struct Utf8Error<'code> {
+    grapheme: &'code str,
     col: offset32,
     pointers_count: offset32,
 }
 
 // TODO(stefano): own utf8 parsing
 // iteration of characters
-impl<'src> Tokenizer<'src, '_> {
-    fn token_text(&self) -> &'src str {
-        return &self.src.code[self.token_start_col as usize..self.col as usize];
+impl<'code> Tokenizer<'code> {
+    fn token_text(&self) -> &'code str {
+        return &self.code[self.token_start_col as usize..self.col as usize];
     }
 
     // Note: this function is only called when parsing comments, so no special handling of graphemes is required
     fn next_utf8_char_multiline(&mut self) -> Option<utf8> {
-        if self.col as usize >= self.src.code.len() {
+        if self.col as usize >= self.code.len() {
             return None;
         }
 
-        let next = self.src.code.as_bytes()[self.col as usize];
+        let next = self.code.as_bytes()[self.col as usize];
         return match next {
             b'\n' => {
+                self.lines.push(Line { start: self.line_start, end: self.col });
                 self.col += 1;
-                self.line_index += 1;
+                self.line_start = self.col;
                 Some('\n')
+            }
+            b'\r' => {
+                if self.col as usize + 1 >= self.code.len() {
+                    self.col += 1;
+                    return Some('\r');
+                }
+
+                if let b'\n' = self.code.as_bytes()[self.col as usize + 1] {
+                    self.lines.push(Line { start: self.line_start, end: self.col });
+                    self.col += 2;
+                    self.line_start = self.col;
+                    return Some('\n');
+                }
+
+                self.col += 1;
+                return Some('\r');
             }
             ascii_ch @ 0..=b'\x7F' => {
                 self.col += 1;
                 Some(ascii_ch as utf8)
             }
             _utf8_ch => {
-                let rest_of_code = &self.src.code[self.col as usize..];
+                let rest_of_code = &self.code[self.col as usize..];
                 let Some(utf8_ch) = rest_of_code.chars().next() else {
                     unreachable!("this branch assured we would have a valid utf8 character");
                 };
@@ -1338,16 +1412,16 @@ impl<'src> Tokenizer<'src, '_> {
         };
     }
 
-    fn peek_next_ascii_char(&self) -> Option<Result<ascii, Utf8Error<'src>>> {
-        if self.col as usize >= self.src.code.len() {
+    fn peek_next_ascii_char(&self) -> Option<Result<ascii, Utf8Error<'code>>> {
+        if self.col as usize >= self.code.len() {
             return None;
         }
 
-        let next = self.src.code.as_bytes()[self.col as usize];
+        let next = self.code.as_bytes()[self.col as usize];
         return match next {
             ascii_ch @ 0..=b'\x7F' => Some(Ok(ascii_ch)),
             _utf8_ch => {
-                let rest_of_code = &self.src.code[self.col as usize..];
+                let rest_of_code = &self.code[self.col as usize..];
                 let mut rest_of_line_graphemes = rest_of_code.graphemes(true);
                 let Some(grapheme) = rest_of_line_graphemes.next() else {
                     unreachable!("this branch assured we would have a valid grapheme");
@@ -1362,7 +1436,7 @@ impl<'src> Tokenizer<'src, '_> {
                 //     unreachable!();
                 // };
                 // let end_of_character = utf8_ch.len_utf8() as offset32;
-                // let grapheme = &self.src.code[self.col as usize..(self.col + end_of_character) as usize];
+                // let grapheme = &self.code[self.col as usize..(self.col + end_of_character) as usize];
                 // let pointers_count = 1;
 
                 Some(Err(Utf8Error { grapheme, col: self.col, pointers_count }))
@@ -1372,15 +1446,15 @@ impl<'src> Tokenizer<'src, '_> {
 
     // Note: this function is only called when parsing operators, so no special handling of graphemes is required
     fn peek_next_utf8_char(&self) -> Option<utf8> {
-        if self.col as usize >= self.src.code.len() {
+        if self.col as usize >= self.code.len() {
             return None;
         }
 
-        let next = self.src.code.as_bytes()[self.col as usize];
+        let next = self.code.as_bytes()[self.col as usize];
         return match next {
             ascii_ch @ 0..=b'\x7F' => Some(ascii_ch as utf8),
             _utf8_ch => {
-                let rest_of_code = &self.src.code[self.col as usize..];
+                let rest_of_code = &self.code[self.col as usize..];
                 let Some(utf8_ch) = rest_of_code.chars().next() else {
                     unreachable!("this branch assured we would have a valid utf8 character");
                 };
@@ -1391,8 +1465,8 @@ impl<'src> Tokenizer<'src, '_> {
     }
 }
 
-impl<'src> Tokenizer<'src, '_> {
-    fn identifier(&mut self) -> Result<TokenKind<'src>, ()> {
+impl<'code> Tokenizer<'code> {
+    fn identifier(&mut self) -> Result<TokenKind<'code>, ()> {
         const MAX_IDENTIFIER_LEN: offset32 = 63;
         let previous_errors_len = self.errors.len();
 
@@ -1417,7 +1491,7 @@ impl<'src> Tokenizer<'src, '_> {
             return Err(());
         };
 
-        let identifier = match &self.src.code[self.token_start_col as usize..self.col as usize] {
+        let identifier = match &self.code[self.token_start_col as usize..self.col as usize] {
             "let" => TokenKind::Mutability(Mutability::Let),
             "var" => TokenKind::Mutability(Mutability::Var),
             "print" => TokenKind::Print,
@@ -1450,7 +1524,7 @@ impl<'src> Tokenizer<'src, '_> {
         return Ok(identifier);
     }
 
-    fn integer_decimal(&mut self) -> Result<&'src [ascii], ()> {
+    fn integer_decimal(&mut self) -> Result<&'code [ascii], ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1479,14 +1553,14 @@ impl<'src> Tokenizer<'src, '_> {
         }
 
         return if previous_errors_len == self.errors.len() {
-            let digits = &self.src.code[self.token_start_col as usize..self.col as usize];
+            let digits = &self.code[self.token_start_col as usize..self.col as usize];
             Ok(digits.as_bytes())
         } else {
             Err(())
         };
     }
 
-    fn integer_binary(&mut self) -> Result<&'src [ascii], ()> {
+    fn integer_binary(&mut self) -> Result<&'code [ascii], ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1527,7 +1601,7 @@ impl<'src> Tokenizer<'src, '_> {
         }
 
         // starting at self.token_start_col + 2 to account for the 0b prefix
-        let digits = &self.src.code[self.token_start_col as usize + 2..self.col as usize];
+        let digits = &self.code[self.token_start_col as usize + 2..self.col as usize];
         return if digits.is_empty() {
             self.errors.push(Error {
                 kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Binary),
@@ -1537,10 +1611,10 @@ impl<'src> Tokenizer<'src, '_> {
             Err(())
         } else {
             Ok(digits.as_bytes())
-        }
+        };
     }
 
-    fn integer_octal(&mut self) -> Result<&'src [ascii], ()> {
+    fn integer_octal(&mut self) -> Result<&'code [ascii], ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1581,7 +1655,7 @@ impl<'src> Tokenizer<'src, '_> {
         }
 
         // starting at self.token_start_col + 2 to account for the 0o prefix
-        let digits = &self.src.code[self.token_start_col as usize + 2..self.col as usize];
+        let digits = &self.code[self.token_start_col as usize + 2..self.col as usize];
         return if digits.is_empty() {
             self.errors.push(Error {
                 kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Octal),
@@ -1594,7 +1668,7 @@ impl<'src> Tokenizer<'src, '_> {
         };
     }
 
-    fn integer_hexadecimal(&mut self) -> Result<&'src [ascii], ()> {
+    fn integer_hexadecimal(&mut self) -> Result<&'code [ascii], ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1630,7 +1704,7 @@ impl<'src> Tokenizer<'src, '_> {
         }
 
         // starting at self.token_start_col + 2 to account for the 0x prefix
-        let digits = &self.src.code[self.token_start_col as usize + 2..self.col as usize];
+        let digits = &self.code[self.token_start_col as usize + 2..self.col as usize];
         return if digits.is_empty() {
             self.errors.push(Error {
                 kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Hexadecimal),
@@ -1834,29 +1908,29 @@ impl<'src> Tokenizer<'src, '_> {
 }
 
 #[derive(Debug, Clone)]
-pub enum ErrorKind<'src> {
+pub enum ErrorKind<'code> {
     UnclosedBlockComment,
 
     UnclosedBracket(OpenBracket),
     UnopenedBracket(CloseBracket),
     MismatchedBracket { actual: OpenBracket, expected: CloseBracket },
 
-    Utf8InQuotedLiteral { grapheme: &'src str, quoted_literal_kind: QuotedLiteralKind },
+    Utf8InQuotedLiteral { grapheme: &'code str, quoted_literal_kind: QuotedLiteralKind },
     UnclosedQuotedLiteral(QuotedLiteralKind),
     ControlCharacterInQuotedLiteral(QuotedLiteralKind, utf8),
     UnrecognizedEscapeCharacterInQuotedLiteral(QuotedLiteralKind, utf8),
     EmptyCharacterLiteral,
     MultipleCharactersInCharacterLiteral,
 
-    Utf8InNumberLiteral { grapheme: &'src str },
+    Utf8InNumberLiteral { grapheme: &'code str },
     LetterInNumberLiteral(Base, ascii),
     DigitOutOfRangeInNumberLiteral(Base, ascii),
     EmptyNumberLiteral(MissingDigitsBase),
 
-    Utf8InIdentifier { grapheme: &'src str },
+    Utf8InIdentifier { grapheme: &'code str },
     IdentifierTooLong { max: offset32 },
 
-    Utf8Character { grapheme: &'src str },
+    Utf8Character { grapheme: &'code str },
     UnrecognizedCharacter(utf8),
 }
 

@@ -3,7 +3,7 @@ pub mod src_file;
 pub mod syntax_tree;
 pub mod tokenizer;
 
-use self::src_file::{column32, line32, offset32, DisplayPosition, SrcFile};
+use self::src_file::{column32, line32, offset32, DisplayPosition, SrcCode};
 use crate::{error::MsgWithCauseUnderTextWithLocation, ERROR};
 use core::fmt::{Debug, Display};
 use std::{borrow::Cow, path::Path};
@@ -31,15 +31,18 @@ pub struct Error<K: IntoErrorInfo> {
 }
 
 impl<K: IntoErrorInfo> Error<K> {
-    pub fn display<'src>(&self, src: &'src SrcFile<'_>) -> ErrorDisplay<'src> {
+    pub fn display<'code, 'path: 'code>(
+        &self,
+        src: &SrcCode<'code, 'path>,
+    ) -> ErrorDisplay<'code, 'path> {
         let DisplayPosition { line, column, display_column } = src.display_position(self.col);
         let line_span = &src.lines[line as usize - 1];
-        let line_text = &src.code[line_span.start as usize..line_span.end as usize];
+        let line_text = &src.code()[line_span.start as usize..line_span.end as usize];
 
         let ErrorInfo { error_message, error_cause_message } = self.kind.info();
         return ErrorDisplay {
             error_message,
-            file: src.path,
+            file: src.path(),
             line,
             column,
             absolute_column: self.col,
@@ -52,19 +55,19 @@ impl<K: IntoErrorInfo> Error<K> {
 }
 
 #[derive(Debug, Clone)]
-pub struct ErrorDisplay<'src> {
+pub struct ErrorDisplay<'code, 'path: 'code> {
     pub error_message: Cow<'static, str>,
-    pub file: &'src Path,
+    pub file: &'path Path,
     pub line: line32,
     pub column: column32,
     pub absolute_column: offset32,
-    pub line_text: &'src str,
+    pub line_text: &'code str,
     pub pointers_count: column32,
     pub pointers_offset: column32,
     pub error_cause_message: Cow<'static, str>,
 }
 
-impl Display for ErrorDisplay<'_> {
+impl Display for ErrorDisplay<'_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let error = MsgWithCauseUnderTextWithLocation {
             kind: &ERROR,
@@ -82,4 +85,4 @@ impl Display for ErrorDisplay<'_> {
     }
 }
 
-impl std::error::Error for ErrorDisplay<'_> {}
+impl std::error::Error for ErrorDisplay<'_, '_> {}

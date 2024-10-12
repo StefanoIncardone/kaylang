@@ -97,25 +97,29 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
         - abstract syntax tree parsing
         - compilation of abstract syntax tree
 - Renamed `syntax` module to `front_end`
-- Moved `src_file` module into `front_end`
-- Renamed `compiler` module to `back_end`
 - Introduced `offset32`, `line32`, `column32` and `index32` type aliases for `u32`
-- Split `src_file::SrcFile::position` into `src_file::SrcFile::position` and
-    `src_file::SrcFile::display_position`, returning respectively a:
-    - `src_file::Position` now only contains information about the sorce code position
-    - `src_file::DisplayPosition` contains information about the sorce code position and display
-        position
+- Renamed `tokenizer::BracketKind` to `tokenizer::Bracket`
+- Errors related to bracket pairs now contain more descriptive `tokenizer::OpenBracket` and
+    `tokenizer::CloseBracket`
+- Moved `src_file` module into `front_end`
+    - `src_file::SrcFile::path` and `src_file::Error::path` are now a `&Path` instead of `PathBuf`,
+        thus reduced the number of unnecessary allocations
+    - `src_file::SrcFile::lines` is now part of the new `src_file::SrcCode`, and `src_file::SrcFile`
+        is now contained withing it
+    - `src_file::SrcFile::lines` is now calculated and returned from
+        `tokenizer::Tokenizer::tokenize`, which now returns the new `tokenizer::TokenizedCode`
+    - Split `src_file::SrcFile::position` into `src_file::SrcFile::position` and
+        `src_file::SrcFile::display_position`, returning respectively a:
+        - `src_file::Position` now only contains information about the sorce code position
+        - `src_file::DisplayPosition` contains information about the source code position and
+            display position
 - Renamed `error::MsgWithCauseUnderTextWithLocation::source_code_col` to
     `error::MsgWithCauseUnderTextWithLocation::absolute_column`
 - Reordered and changed `error::MsgWithCauseUnderText::pointers_count` and
     `error::MsgWithCauseUnderText::pointers_offset` from `usize` to `column32`
-- Renamed `tokenizer::BracketKind` to `tokenizer::Bracket`
+- Renamed `compiler` module to `back_end`
 - `artifacts::Artifacts::new` and `artifacts::Artifacts::new_with_out_path` now take a `&Path`
     instead of `&SrcFile`
-- `src_file::SrcFile::path` is now a `&Path` instead of `PathBuf`, thus reduced the number of
-    unnecessary allocations
-- Errors related to bracket pairs now contain more descriptive `tokenizer::OpenBracket` and
-    `tokenizer::CloseBracket`
 
 #### Fixed
 
