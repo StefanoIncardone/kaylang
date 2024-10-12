@@ -463,6 +463,12 @@ let ok = match answer {
 
 ## Operators
 
+- boolean operators:
+    | operator | shortcircuting | non-shortcircuiting | bitwise |
+    | :------- | :------------: | :-----------------: | :-----: |
+    | and      |      `&&`      |        `&&&`        |   `&`   |
+    | or       |     `\|\|`     |      `\|\|\|`       |  `\|`   |
+    | xor      |       NA       |        `^^^`        |   `^`   |
 - checked (`++`, `--`, `//`, ..., or `+?`, `-?`, `/?`, ...):
     - overflow/underflow may return both the result and the overflow of the addition
     - division will return either the result or an error value
@@ -472,9 +478,8 @@ let ok = match answer {
     let division, remainder = 3 /% 2; # will result in 1, 1
     ```
 
-- boolean flip operator `=!`:  
-    so: boolean = !boolean;
-    would become: boolean =!;
+- boolean flip operator `=!`:
+    `boolean = !boolean;` -> `boolean =!;`
 
 ### Revised remainder/mod operators
 
@@ -491,12 +496,9 @@ let ok = match answer {
 | strategy                     | symbol | x86-64 instruction |
 | :--------------------------- | :----: | :----------------- |
 | **left logical shift**       |  `<<`  | `shl` / `shlx`     |
-| **left arithmetical shift**  |  TBD   | `sal`              |
+| **left arithmetical shift**  |  `<<`  | `sal`              |
 | **right logical shift**      |  `>>`  | `shr` / `shrx`     |
-| **right arithmetical shift** |  TBD   | `sar` / `sarx`     |
-
-Note: left logical shift and left arithmetical shift are completely identical, just kept for
-consistency with their right shifts counterparts
+| **right arithmetical shift** | `>>-`  | `sar` / `sarx`     |
 
 
 ## Strings

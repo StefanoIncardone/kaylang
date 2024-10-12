@@ -1,6 +1,6 @@
 # Change Log
 
-All notable changes to this project will be documented in this file
+All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html),
@@ -26,55 +26,112 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ## 0.6.2 -
 
-### Changed
+### Language
 
-#### Language
+#### Changed
 
-- Block comments delimited by `##` instead of `#{` and `#}`, this also removes the error related
-    to uclosed block comments:
-    - single line block comments look symmetric with `}#`:
+- Made block comments delimited by `##` instead of `#{` and `#}`, this also removes the error
+    related to uclosed block comments:
 
-        ```text
-        println #{ symmetric }# 21;
-        ```
+    single line block comments look symmetric with `}#`:
 
-    - single line block comments look asymmetric with `#}`:
+    ```text
+    println #{ symmetric }# 21;
+    ```
 
-        ```text
-        println #{ asymmetric #} 21;
-        ```
+    single line block comments look asymmetric with `#}`:
 
-    - multiline block comments looke symmetric with `#}`:
+    ```text
+    println #{ asymmetric #} 21;
+    ```
 
-        ```text
-        #{
-        symmetric
-        #}
-        ```
+    multiline block comments looke symmetric with `#}`:
 
-    - multiline block comments looke asymmetric with `}#`:
+    ```text
+    #{
+    symmetric
+    #}
+    ```
 
-        ```text
-        #{
-        asymmetric
-        }#
-        ```
+    multiline block comments looke asymmetric with `}#`:
 
-    - with `##` both single line and multiline block comments look symmetric:
+    ```text
+    #{
+    asymmetric
+    }#
+    ```
 
-        ```kay
-        println ## symmetric ## 12;
+    with `##` both single line and multiline block comments look symmetric:
 
-        ##
-        symmetric
-        ##
-        ```
+    ```kay
+    println ## symmetric ## 12;
+
+    ##
+    symmetric
+    ##
+    ```
+
+#### Removed
+
+- Removed do-statements in if and loop statements, thus reduced language complexity and
+    inconsistencies
+
+### Compiler
+
+#### Added
+
+- Added nformation about error's absolute source code column
+
+#### Changed
+
+- Reworked compilation stages:
+    - old:
+        - loading of source code file and line boundaries precalculations
+        - tokenization
+        - abstract syntax tree parsing
+        - compilation of abstract syntax tree
+    - new:
+        - loading of source code file and line boundaries precalculations
+        - tokenization
+        - (added) parsing of syntax tree (phantom stage, does not affect other stages for now)
+        - abstract syntax tree parsing
+        - compilation of abstract syntax tree
+- Renamed `syntax` module to `front_end`
+- Introduced `offset32`, `line32`, `column32` and `index32` type aliases for `u32`
+- Renamed `tokenizer::BracketKind` to `tokenizer::Bracket`
+- Errors related to bracket pairs now contain more descriptive `tokenizer::OpenBracket` and
+    `tokenizer::CloseBracket`
+- Moved `src_file` module into `front_end`
+    - `src_file::SrcFile::path` and `src_file::Error::path` are now a `&Path` instead of `PathBuf`,
+        thus reduced the number of unnecessary allocations
+    - `src_file::SrcFile::lines` is now part of the new `src_file::SrcCode`, and `src_file::SrcFile`
+        is now contained withing it
+    - `src_file::SrcFile::lines` is now calculated and returned from
+        `tokenizer::Tokenizer::tokenize`, which now returns the new `tokenizer::TokenizedCode`
+    - `src_file::SrcFile::position` is no longer public due to out-of bounds unsafety and
+        inconsistencies between Unix's `\n` and Windows' `\r\n` line terminators
+    - Split `src_file::SrcFile::position` into `src_file::SrcFile::position` and
+        `src_file::SrcFile::display_position`, returning respectively a:
+        - `src_file::Position` now only contains information about the sorce code position
+        - `src_file::DisplayPosition` contains information about the source code position and
+            display position
+- Renamed `error::MsgWithCauseUnderTextWithLocation::source_code_col` to
+    `error::MsgWithCauseUnderTextWithLocation::absolute_column`
+- Reordered and changed `error::MsgWithCauseUnderText::pointers_count` and
+    `error::MsgWithCauseUnderText::pointers_offset` from `usize` to `column32`
+- Renamed `compiler` module to `back_end`
+- `artifacts::Artifacts::new` and `artifacts::Artifacts::new_with_out_path` now take a `&Path`
+    instead of `&SrcFile`
+
+#### Fixed
+
+- Improved error messages related to utf8 characters
 
 ## 0.6.1 - 2024-09-20
 
-### Added
+### Language
 
-#### Language
+#### Added
 
 - `_` as a digit separator, e.g.: `123_456_678` is now a valid number literal
 - Alternative number literals bases:
@@ -84,13 +141,17 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Escape sequences in raw string literals: `r"nested \"quotes\" are now allowed by escaping them"`
 - Block comments, enclosed by `#{` and `#}`
 
-#### Compiler
+#### Fixed
+
+- Added missing `break` and `continue` statements to the [syntax specification](SYNTAX.ebnf)
+
+### Compiler
+
+#### Added
 
 - Created and exposed API for error messages, introduced the `error` module
 
-### Changed
-
-#### Compiler
+#### Changed
 
 - Restricted max source file size to 4GB
 - Restricted max identifiers length to 63 characters
@@ -98,13 +159,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Imported from `core` instead of `std` where possible
 - `Logger` methods now accept `&dyn Display`
 
-### Fixed
-
-#### Language
-
-- Added `break` and `continue` statements to the [syntax specification](SYNTAX.ebnf)
-
-#### Compiler
+#### Fixed
 
 - Corrected error messages related to:
     - undefined variables and variables already defined

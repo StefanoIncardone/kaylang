@@ -1,10 +1,13 @@
 #![allow(clippy::print_stdout, clippy::print_stderr)] // it's a cli tool, it's normal to print to stderr and stdout
 
 use kaylang::{
-    compiler::{artifacts::Artifacts, Compiler},
+    back_end::{artifacts::Artifacts, Compiler},
     error,
-    src_file::SrcFile,
-    syntax::{ast::Parser, tokenizer::Tokenizer},
+    front_end::{
+        ast::Parser,
+        src_file::SrcFile,
+        tokenizer::{TokenizedCode, Tokenizer},
+    },
     Color, Logger, ASSEMBLING, ASSEMBLING_ERROR, BUILDING_AST, CHECKING, COMPILING,
     COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_LINKER, GENERATING_ASM, LINKING, LINKING_ERROR,
     LOADING_SOURCE, SUBSTEP_DONE, TOKENIZATION,
@@ -24,12 +27,12 @@ fn main() -> ExitCode {
     Logger::info(&CHECKING, &src_path);
     let checking_sub_step = Logger::new(None);
 
-    let src = {
+    let src_file = {
         let loading_source_sub_step = Logger::new(None);
         let source_loading_result = SrcFile::load(&src_path);
         loading_source_sub_step.sub_step_done(&LOADING_SOURCE);
         match source_loading_result {
-            Ok(src) => src,
+            Ok(src_file) => src_file,
             Err(err) => {
                 eprintln!("{err}");
                 return ExitCode::FAILURE;
@@ -37,12 +40,12 @@ fn main() -> ExitCode {
         }
     };
 
-    let tokens = {
+    let (src, tokens) = {
         let tokenization_sub_step = Logger::new(None);
-        let tokenizer_result = Tokenizer::tokenize(&src);
+        let TokenizedCode { result, src } = Tokenizer::tokenize(&src_file);
         tokenization_sub_step.sub_step_done(&TOKENIZATION);
-        match tokenizer_result {
-            Ok(tokens) => tokens,
+        match result {
+            Ok(tokens) => (src, tokens),
             Err(errors) => {
                 for error in errors {
                     eprintln!("{}\n", error.display(&src));
@@ -70,7 +73,7 @@ fn main() -> ExitCode {
     checking_sub_step.sub_step_done(&SUBSTEP_DONE);
 
     let out_path = PathBuf::from("out");
-    let artifacts = match Artifacts::new_with_out_path(&src, &out_path) {
+    let artifacts = match Artifacts::new_with_out_path(&src_path, &out_path) {
         Ok(artifacts) => artifacts,
         Err(err) => {
             eprintln!("{err}");

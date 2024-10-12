@@ -6,7 +6,7 @@ use common::run;
 use kaylang::Color;
 use std::{path::PathBuf, process::ExitCode};
 
-#[allow(clippy::panic, clippy::unwrap_used, clippy::panic_in_result_fn)]
+#[allow(clippy::panic, clippy::panic_in_result_fn)]
 #[test]
 fn check_project_euler() -> Result<(), ExitCode> {
     let color = Color::Auto;

@@ -1,10 +1,16 @@
 // TODO(stefano): multiline strings
+// TODO(stefano): more escape characters
 
-use super::{Error, ErrorInfo, IntoErrorInfo};
-use crate::src_file::{offset, Line, SrcFile};
+use super::{
+    src_file::{index32, offset32, Line, SrcCode, SrcFile},
+    Error, ErrorInfo, IntoErrorInfo,
+};
+use crate::error::CharsWidth;
 use core::fmt::Display;
+use unicode_segmentation::UnicodeSegmentation;
+
 pub(super) trait DisplayLen {
-    fn display_len(&self) -> offset;
+    fn display_len(&self) -> offset32;
 }
 
 /// kay's equivalent to pointer sized signed integer
@@ -24,12 +30,12 @@ pub(crate) type ascii = u8;
 pub(crate) type utf8 = char;
 
 /// integer literals are never empty and always contain valid ascii digits
-#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Integer<'src>(pub(crate) &'src [ascii]);
+#[repr(transparent)]
+pub(crate) struct Integer<'code>(pub(crate) &'code [ascii]);
 
-#[repr(u8)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[repr(u8)]
 pub enum Base {
     #[default]
     Decimal = 10,
@@ -50,41 +56,60 @@ impl Base {
     }
 
     #[must_use]
-    pub fn range(self) -> Vec<core::ops::RangeInclusive<utf8>> {
+    pub const fn range(self) -> &'static [core::ops::RangeInclusive<utf8>] {
         return match self {
-            Self::Decimal => vec!['0'..='9'],
-            Self::Binary => vec!['0'..='1'],
-            Self::Octal => vec!['0'..='7'],
-            Self::Hexadecimal => vec!['0'..='9', 'A'..='F', 'a'..='f'],
+            Self::Decimal => &['0'..='9'],
+            Self::Binary => &['0'..='1'],
+            Self::Octal => &['0'..='7'],
+            Self::Hexadecimal => &['0'..='9', 'A'..='F', 'a'..='f'],
         };
     }
 }
 
-#[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum MissingDigitsBase {
-    Binary = 0b10,
-    Octal = 0o10,
-    Hexadecimal = 0x10,
+    Binary = Base::Binary as u8,
+    Octal = Base::Octal as u8,
+    Hexadecimal = Base::Hexadecimal as u8,
+}
+
+impl Into<MissingDigitsBase> for Base {
+    #[inline(always)]
+    fn into(self) -> MissingDigitsBase {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<Base> for MissingDigitsBase {
+    #[inline(always)]
+    fn into(self) -> Base {
+        return unsafe { core::mem::transmute(self) };
+    }
 }
 
 impl MissingDigitsBase {
     #[must_use]
-    pub const fn prefix(self) -> &'static str {
-        return unsafe { core::mem::transmute::<Self, Base>(self) }.prefix();
+    #[inline(always)]
+    pub fn prefix(self) -> &'static str {
+        let base: Base = self.into();
+        return base.prefix();
     }
 
     #[must_use]
-    pub fn range(self) -> Vec<core::ops::RangeInclusive<utf8>> {
-        return unsafe { core::mem::transmute::<Self, Base>(self) }.range();
+    #[inline(always)]
+    pub fn range(self) -> &'static [core::ops::RangeInclusive<utf8>] {
+        let base: Base = self.into();
+        return base.range();
     }
 }
 
-#[repr(transparent)]
 #[derive(Debug, Clone)]
+#[repr(transparent)]
 pub(crate) struct Str(pub(crate) Box<[ascii]>);
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub(crate) enum Mutability {
     Let,
     Var,
@@ -101,15 +126,16 @@ impl Display for Mutability {
 
 impl DisplayLen for Mutability {
     #[inline(always)]
-    fn display_len(&self) -> offset {
+    fn display_len(&self) -> offset32 {
         return match self {
             Self::Let | Self::Var => 3,
         };
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum BracketKind {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Bracket {
     OpenRound,
     CloseRound,
     OpenSquare,
@@ -118,7 +144,7 @@ pub enum BracketKind {
     CloseCurly,
 }
 
-impl Display for BracketKind {
+impl Display for Bracket {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::OpenRound => write!(f, "("),
@@ -131,24 +157,87 @@ impl Display for BracketKind {
     }
 }
 
-impl DisplayLen for BracketKind {
+impl DisplayLen for Bracket {
     #[inline(always)]
-    fn display_len(&self) -> offset {
-        return match self {
-            Self::OpenRound
-            | Self::CloseRound
-            | Self::OpenSquare
-            | Self::CloseSquare
-            | Self::OpenCurly
-            | Self::CloseCurly => 1,
-        };
+    fn display_len(&self) -> offset32 {
+        return 1;
     }
 }
 
-#[derive(Debug)]
-struct Bracket {
-    kind: BracketKind,
-    col: offset,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum OpenBracket {
+    Round = Bracket::OpenRound as u8,
+    Square = Bracket::OpenSquare as u8,
+    Curly = Bracket::OpenCurly as u8,
+}
+
+impl Into<OpenBracket> for Bracket {
+    #[inline(always)]
+    fn into(self) -> OpenBracket {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<Bracket> for OpenBracket {
+    #[inline(always)]
+    fn into(self) -> Bracket {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Display for OpenBracket {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let bracket: Bracket = (*self).into();
+        return write!(f, "{bracket}");
+    }
+}
+
+impl DisplayLen for OpenBracket {
+    #[inline(always)]
+    fn display_len(&self) -> offset32 {
+        let bracket: Bracket = (*self).into();
+        return bracket.display_len();
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum CloseBracket {
+    Round = Bracket::CloseRound as u8,
+    Square = Bracket::CloseSquare as u8,
+    Curly = Bracket::CloseCurly as u8,
+}
+
+impl Into<CloseBracket> for Bracket {
+    #[inline(always)]
+    fn into(self) -> CloseBracket {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<Bracket> for CloseBracket {
+    #[inline(always)]
+    fn into(self) -> Bracket {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Display for CloseBracket {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let bracket: Bracket = (*self).into();
+        return write!(f, "{bracket}");
+    }
+}
+
+impl DisplayLen for CloseBracket {
+    #[inline(always)]
+    fn display_len(&self) -> offset32 {
+        let bracket: Bracket = (*self).into();
+        return bracket.display_len();
+    }
 }
 
 /* IDEA(stefano):
@@ -158,9 +247,12 @@ skip safety checks, maybe using the '?' or the '!' suffix, i.e:
 - **? -> skip the check for a neagtive index
 */
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum Op {
-    Len, // temporary way of getting the length of strings and arrays
     Equals,
+
+    /// temporary way of getting the length of strings and arrays
+    Len,
     Not,
 
     Pow,
@@ -187,15 +279,21 @@ pub enum Op {
     Remainder,
     RemainderEquals,
 
+    /// also unary safe absolute value
     Plus,
+    /// also unary wrapping absolute value
     WrappingPlus,
+    /// also unary saturating absolute value
     SaturatingPlus,
     PlusEquals,
     WrappingPlusEquals,
     SaturatingPlusEquals,
 
+    /// also unary integer negation
     Minus,
+    /// also unary wrapping integer negation
     WrappingMinus,
+    /// also unary saturating integer negation
     SaturatingMinus,
     MinusEquals,
     WrappingMinusEquals,
@@ -241,8 +339,8 @@ pub enum Op {
 }
 
 impl Display for Op {
-    #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
             Self::Len                       => write!(f, "len"),
             Self::Equals                    => write!(f, "="),
@@ -272,16 +370,16 @@ impl Display for Op {
             Self::Remainder                 => write!(f, "%"),
             Self::RemainderEquals           => write!(f, "%="),
 
-            Self::Plus                      => write!(f,  "+"), // also unary safe absolute value
-            Self::WrappingPlus              => write!(f, r"+\"), // also unary wrapping absolute value
-            Self::SaturatingPlus            => write!(f,  "+|"), // also unary saturating absolute value
+            Self::Plus                      => write!(f,  "+"),
+            Self::WrappingPlus              => write!(f, r"+\"),
+            Self::SaturatingPlus            => write!(f,  "+|"),
             Self::PlusEquals                => write!(f,  "+="),
             Self::WrappingPlusEquals        => write!(f, r"+\="),
             Self::SaturatingPlusEquals      => write!(f,  "+|="),
 
-            Self::Minus                     => write!(f,  "-"), // also unary integer negation
-            Self::WrappingMinus             => write!(f, r"-\"), // also unary wrapping integer negation
-            Self::SaturatingMinus           => write!(f,  "-|"), // also unary saturating integer negation
+            Self::Minus                     => write!(f,  "-"),
+            Self::WrappingMinus             => write!(f, r"-\"),
+            Self::SaturatingMinus           => write!(f,  "-|"),
             Self::MinusEquals               => write!(f,  "-="),
             Self::WrappingMinusEquals       => write!(f, r"-\="),
             Self::SaturatingMinusEquals     => write!(f,  "-|="),
@@ -328,7 +426,7 @@ impl Display for Op {
 }
 
 impl DisplayLen for Op {
-    fn display_len(&self) -> offset {
+    fn display_len(&self) -> offset32 {
         return match self {
             Self::Len => 3,
             Self::Equals => 1,
@@ -413,15 +511,15 @@ impl DisplayLen for Op {
     }
 }
 
-#[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum Quote {
     Single = b'\'',
     Double = b'"',
 }
 
-#[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum QuotedLiteralKind {
     Ascii,
     Str,
@@ -449,14 +547,14 @@ impl QuotedLiteralKind {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum TokenKind<'src> {
-    Comment(&'src str),
-    BlockComment(&'src str),
-
-    Unexpected(&'src str),
+pub(crate) enum TokenKind<'code> {
+    // IDEA(stefano): remove from the returned tokens, to avoid encountering them during the parsing stage
+    Comment(&'code str),
+    BlockComment(&'code str),
+    Unexpected(&'code str),
 
     // Symbols
-    Bracket(BracketKind),
+    Bracket(Bracket),
     Colon,
     SemiColon,
     Comma,
@@ -465,20 +563,21 @@ pub(crate) enum TokenKind<'src> {
     // Literal values
     False,
     True,
-    Integer(Base, Integer<'src>),
+    // IDEA(stefano): expand into the different bases, akin to Str and RawStr
+    Integer(Base, Integer<'code>),
     Ascii(ascii),
     Str(Str),
     RawStr(Str),
 
     /* IDEA(stefano):
     create:
-    struct ShortStr<'src> {
+    struct ShortStr<'code> {
         len: offset,
         ptr: offset,
-        _ptr: PhantomData<&'src ascii>,
+        _ptr: PhantomData<&'code ascii>,
     }
     */
-    Identifier(&'src str),
+    Identifier(&'code [ascii]),
 
     // Keywords
     /// temporary way of printing values to stdout
@@ -490,6 +589,7 @@ pub(crate) enum TokenKind<'src> {
     /// temporary way of printing values followed by a newline to stderr
     EprintLn,
 
+    // IDEA(stefano): expant into TokenKind::Let and TokenKind::Var
     Mutability(Mutability),
     Do,
     If,
@@ -519,15 +619,19 @@ impl Display for TokenKind<'_> {
                 write!(f, "{prefix}{integer_str}", prefix = base.prefix())
             }
             Self::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
-            Self::Str(string) | Self::RawStr(string) => {
-                write!(f, "\"")?;
-                for ch in &*string.0 {
-                    write!(f, "{}", ch.escape_ascii())?;
-                }
-                write!(f, "\"")
+            Self::Str(string) => {
+                let string_str = string.0.escape_ascii();
+                write!(f, "\"{string_str}\"")
+            }
+            Self::RawStr(string) => {
+                let string_str = unsafe { core::str::from_utf8_unchecked(&string.0) };
+                write!(f, "r\"{string_str}\"")
             }
 
-            Self::Identifier(name) => write!(f, "{name}"),
+            Self::Identifier(identifier) => {
+                let identifier_str = unsafe { core::str::from_utf8_unchecked(identifier) };
+                write!(f, "{identifier_str}")
+            }
 
             Self::Print => write!(f, "print"),
             Self::PrintLn => write!(f, "println"),
@@ -546,18 +650,11 @@ impl Display for TokenKind<'_> {
 }
 
 impl DisplayLen for TokenKind<'_> {
-    fn display_len(&self) -> offset {
-        #[inline]
-        fn ascii_escaped_len(ascii_char: ascii) -> offset {
-            // Note: ascii type guarantees the value to be valid utf8
-            let utf8_char = ascii_char as utf8;
-            return utf8_char.escape_debug().len() as offset;
-        }
-
+    fn display_len(&self) -> offset32 {
         return match self {
-            Self::Comment(text) => text.chars().count() as offset + 1, // + 1 to account for the `#`
-            Self::BlockComment(text) => text.chars().count() as offset + 4, // + 4 to account for `##` and `##`
-            Self::Unexpected(text) => text.chars().count() as offset,
+            Self::Comment(text) => text.chars_width() + 1, // + 1 to account for the `#`
+            Self::BlockComment(text) => text.chars_width() + 4, // + 4 to account for `##` and `##`
+            Self::Unexpected(text) => text.chars_width(),
 
             Self::Bracket(bracket) => bracket.display_len(),
             Self::Colon => 1,
@@ -566,21 +663,21 @@ impl DisplayLen for TokenKind<'_> {
             Self::Op(op) => op.display_len(),
 
             Self::Integer(base, integer) => {
-                base.prefix().len() as offset + integer.0.len() as offset
+                base.prefix().len() as offset32 + integer.0.len() as offset32
             }
-            Self::Ascii(ascii_char) => ascii_escaped_len(*ascii_char) + 2, // + 2 to account for the quotes
+            Self::Ascii(ascii_char) => ascii_char.escape_ascii().len() as offset32 + 2, // + 2 to account for the quotes
             Self::True => 4,
             Self::False => 5,
             Self::Str(text) => {
                 let mut len = 2; // starting at 2 to account for the quotes
                 for ascii_char in &*text.0 {
-                    len += ascii_escaped_len(*ascii_char);
+                    len += ascii_char.escape_ascii().len() as offset32;
                 }
                 len
             }
-            Self::RawStr(text) => text.0.len() as offset + 3, // + 1 for the `r` prefix, and + 2 for the quotes
+            Self::RawStr(text) => text.0.len() as offset32 + 3, // + 1 for the `r` prefix, and + 2 for the quotes
 
-            Self::Identifier(name) => name.len() as offset,
+            Self::Identifier(name) => name.len() as offset32,
 
             Self::Print => 5,
             Self::PrintLn => 7,
@@ -599,80 +696,104 @@ impl DisplayLen for TokenKind<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Token<'src> {
-    pub(crate) kind: TokenKind<'src>,
-    pub(crate) col: offset,
+pub struct Token<'code> {
+    pub(crate) kind: TokenKind<'code>,
+    pub(crate) col: offset32,
+}
+
+pub struct TokenizedCode<'code, 'path: 'code> {
+    pub result: Result<Vec<Token<'code>>, Vec<Error<ErrorKind<'code>>>>,
+    pub src: SrcCode<'code, 'path>,
 }
 
 #[derive(Debug)]
-pub struct Tokenizer<'src> {
-    src: &'src SrcFile,
-    errors: Vec<Error<ErrorKind>>,
+pub struct Tokenizer<'code> {
+    code: &'code str,
+    lines: Vec<Line>,
+    line_start: offset32,
 
-    col: offset,
-    token_start_col: offset,
+    col: offset32,
+    token_start_col: offset32,
 
-    line_index: offset,
-    line: &'src Line,
+    errors: Vec<Error<ErrorKind<'code>>>,
 }
 
-impl<'src> Tokenizer<'src> {
-    pub fn tokenize(src: &'src SrcFile) -> Result<Vec<Token<'src>>, Vec<Error<ErrorKind>>> {
-        let Some(first_line) = src.lines.first() else {
-            return Ok(Vec::new());
-        };
-
+impl<'code, 'path: 'code> Tokenizer<'code> {
+    #[must_use]
+    pub fn tokenize(src_file: &'code SrcFile<'path>) -> TokenizedCode<'code, 'path> {
         let mut this = Self {
-            src,
-            errors: Vec::new(),
+            code: &src_file.code,
+            lines: Vec::new(),
+            line_start: 0,
+
             col: 0,
             token_start_col: 0,
-            line_index: 0,
-            line: first_line,
+
+            errors: Vec::new(),
         };
+        let mut tokens = Vec::<Token<'code>>::new();
+        let mut brackets_indicies = Vec::<index32>::new();
 
-        let mut tokens = Vec::<Token<'src>>::new();
-        let mut brackets = Vec::<Bracket>::new();
+        'tokenization: while let Some(next_character) = this.peek_next_ascii_char() {
+            let token_kind_result = 'next_token: {
+                let next = match next_character {
+                    Ok(next) => match next {
+                        // ignore whitespace
+                        b' ' | b'\t' | b'\x0C' => {
+                            this.col += 1;
+                            continue 'tokenization;
+                        }
 
-        'tokenization: loop {
-            let token_kind_result = 'next_token: loop {
-                this.token_start_col = this.col;
+                        // we reached the end of the line on a LF (\n)
+                        b'\n' => {
+                            this.lines.push(Line { start: this.line_start, end: this.col });
+                            this.col += 1;
+                            this.line_start = this.col;
+                            continue 'tokenization;
+                        }
+                        b'\r' => {
+                            if this.col as usize + 1 >= this.code.len() {
+                                this.col += 1;
+                                continue 'tokenization;
+                            }
 
-                let next = match this.next_ascii_char() {
-                    Ok(Some(ch)) => ch,
-                    Ok(None) => break 'tokenization,
-                    Err(err) => {
+                            if let b'\n' = this.code.as_bytes()[this.col as usize + 1] {
+                                this.lines.push(Line { start: this.line_start, end: this.col });
+                                this.col += 2;
+                                this.line_start = this.col;
+                                continue 'tokenization;
+                            };
+
+                            this.col += 1;
+                            continue 'tokenization;
+                        }
+                        other => {
+                            this.token_start_col = this.col;
+                            this.col += 1;
+                            other
+                        }
+                    },
+                    Err(error) => {
+                        this.col += error.grapheme.len() as offset32;
                         this.errors.push(Error {
-                            kind: ErrorKind::Utf8Character(err.utf8_ch),
-                            col: err.col,
-                            pointers_count: err.pointers_count,
+                            kind: ErrorKind::Utf8Character { grapheme: error.grapheme },
+                            col: error.col,
+                            pointers_count: error.pointers_count,
                         });
                         break 'next_token Err(());
                     }
                 };
 
-                break 'next_token match next {
-                    // ignore whitespace
-                    b' ' | b'\t' | b'\r' | b'\x0C' => continue 'next_token,
-
-                    // next line
-                    b'\n' => {
-                        if this.line_index >= this.src.lines.len() as offset - 1 {
-                            break 'tokenization;
-                        }
-
-                        this.line_index += 1;
-                        this.line = &this.src.lines[this.line_index as usize];
-                        continue 'next_token;
-                    }
-
+                match next {
                     b'r' => match this.peek_next_utf8_char() {
                         Some('"') => {
                             this.col += 1; // skip the `r` prefix
 
                             match this.raw_string_literal() {
-                                Ok(literal) => Ok(TokenKind::RawStr(Str(literal.into_boxed_slice()))),
-                                Err(()) => Err(())
+                                Ok(literal) => {
+                                    Ok(TokenKind::RawStr(Str(literal.into_boxed_slice())))
+                                }
+                                Err(()) => Err(()),
                             }
                         }
                         _ => this.identifier(),
@@ -708,7 +829,7 @@ impl<'src> Tokenizer<'src> {
                     },
                     b'"' => match this.quoted_literal(QuotedLiteralKind::Str) {
                         Ok(literal) => Ok(TokenKind::Str(Str(literal.into_boxed_slice()))),
-                        Err(()) => Err(())
+                        Err(()) => Err(()),
                     },
                     b'\'' => match this.quoted_literal(QuotedLiteralKind::Ascii) {
                         Ok(literal) => match literal.as_slice() {
@@ -725,15 +846,15 @@ impl<'src> Tokenizer<'src> {
                                 this.errors.push(Error {
                                     kind: ErrorKind::MultipleCharactersInCharacterLiteral,
                                     col: this.token_start_col,
-                                    pointers_count: this.token_len(),
+                                    pointers_count: this.token_text().chars_width(),
                                 });
                                 Err(())
                             }
-                        }
-                        Err(()) => Err(())
+                        },
+                        Err(()) => Err(()),
                     },
                     b'#' => match this.peek_next_utf8_char() {
-                        Some('#') => {
+                        Some('#') => 'comment: {
                             'next_character: loop {
                                 match this.next_utf8_char_multiline() {
                                     Some('#') => match this.next_utf8_char_multiline() {
@@ -745,7 +866,7 @@ impl<'src> Tokenizer<'src> {
                                                 col: this.token_start_col,
                                                 pointers_count: 2,
                                             });
-                                            break 'next_token Err(());
+                                            break 'comment Err(());
                                         }
                                     },
                                     Some(_) => {}
@@ -755,129 +876,154 @@ impl<'src> Tokenizer<'src> {
                                             col: this.token_start_col,
                                             pointers_count: 2,
                                         });
-                                        break 'next_token Err(());
+                                        break 'comment Err(());
                                     }
                                 }
                             }
 
                             // starting at this.token_start_col + 2 to skip the `##`
                             // ending at this.col - 2 to skip the `##`
-                            let comment = &this.src.code
+                            let comment = &this.code
                                 [this.token_start_col as usize + 2..this.col as usize - 2];
                             Ok(TokenKind::BlockComment(comment))
                         }
                         Some(_) | None => {
-                            // starting a this.col to ignore the hash symbol
-                            let comment = &this.src.code[this.col as usize..this.line.end as usize];
+                            loop {
+                                match this.peek_next_utf8_char() {
+                                    Some('\n') | None => break,
+                                    Some('\r') => {
+                                        if this.col as usize + 1 >= this.code.len() {
+                                            this.col += 1;
+                                            continue;
+                                        }
 
-                            // consuming the rest of the characters in the current line
-                            this.col = this.line.end;
+                                        if let b'\n' = this.code.as_bytes()[this.col as usize + 1] {
+                                            break;
+                                        };
 
+                                        this.col += 1;
+                                    }
+                                    Some(other) => this.col += other.len_utf8() as offset32,
+                                }
+                            }
+
+                            // starting at this.token_start_col + 1 to skip the `#`
+                            let comment =
+                                &this.code[this.token_start_col as usize + 1..this.col as usize];
                             Ok(TokenKind::Comment(comment))
                         }
                     },
                     b'(' => {
-                        let kind = BracketKind::OpenRound;
-                        brackets.push(Bracket { kind, col: this.token_start_col });
-                        Ok(TokenKind::Bracket(kind))
+                        brackets_indicies.push(tokens.len() as index32);
+                        Ok(TokenKind::Bracket(Bracket::OpenRound))
                     }
-                    b')' => match brackets.pop() {
-                        Some(bracket) => match bracket.kind {
-                            BracketKind::OpenRound
-                            | BracketKind::CloseRound
-                            | BracketKind::CloseCurly
-                            | BracketKind::CloseSquare => {
-                                Ok(TokenKind::Bracket(BracketKind::CloseRound))
-                            }
-                            actual @ (BracketKind::OpenCurly | BracketKind::OpenSquare) => {
+                    b')' => 'bracket: {
+                        let Some(bracket_index) = brackets_indicies.pop() else {
+                            this.errors.push(Error {
+                                kind: ErrorKind::UnopenedBracket(CloseBracket::Round),
+                                col: this.token_start_col,
+                                pointers_count: 1,
+                            });
+                            break 'bracket Err(());
+                        };
+
+                        let TokenKind::Bracket(bracket) = &tokens[bracket_index as usize].kind
+                        else {
+                            unreachable!("incorrect bracket index");
+                        };
+
+                        match *bracket {
+                            Bracket::OpenRound
+                            | Bracket::CloseRound
+                            | Bracket::CloseCurly
+                            | Bracket::CloseSquare => Ok(TokenKind::Bracket(Bracket::CloseRound)),
+                            actual @ (Bracket::OpenCurly | Bracket::OpenSquare) => {
                                 this.errors.push(Error {
                                     kind: ErrorKind::MismatchedBracket {
-                                        expected: BracketKind::CloseRound,
-                                        actual,
+                                        expected: CloseBracket::Round,
+                                        actual: actual.into(),
                                     },
                                     col: this.token_start_col,
                                     pointers_count: 1,
                                 });
                                 Err(())
                             }
-                        },
-                        None => {
-                            this.errors.push(Error {
-                                kind: ErrorKind::UnopenedBracket(BracketKind::CloseRound),
-                                col: this.token_start_col,
-                                pointers_count: 1,
-                            });
-                            Err(())
                         }
-                    },
+                    }
                     b'[' => {
-                        let kind = BracketKind::OpenSquare;
-                        brackets.push(Bracket { kind, col: this.token_start_col });
-                        Ok(TokenKind::Bracket(kind))
+                        brackets_indicies.push(tokens.len() as index32);
+                        Ok(TokenKind::Bracket(Bracket::OpenSquare))
                     }
-                    b']' => match brackets.pop() {
-                        Some(bracket) => match bracket.kind {
-                            BracketKind::OpenSquare
-                            | BracketKind::CloseSquare
-                            | BracketKind::CloseCurly
-                            | BracketKind::CloseRound => {
-                                Ok(TokenKind::Bracket(BracketKind::CloseSquare))
-                            }
-                            actual @ (BracketKind::OpenCurly | BracketKind::OpenRound) => {
+                    b']' => 'bracket: {
+                        let Some(bracket_index) = brackets_indicies.pop() else {
+                            this.errors.push(Error {
+                                kind: ErrorKind::UnopenedBracket(CloseBracket::Square),
+                                col: this.token_start_col,
+                                pointers_count: 1,
+                            });
+                            break 'bracket Err(());
+                        };
+
+                        let TokenKind::Bracket(bracket) = &tokens[bracket_index as usize].kind
+                        else {
+                            unreachable!("incorrect bracket index");
+                        };
+
+                        match *bracket {
+                            Bracket::OpenSquare
+                            | Bracket::CloseSquare
+                            | Bracket::CloseCurly
+                            | Bracket::CloseRound => Ok(TokenKind::Bracket(Bracket::CloseSquare)),
+                            actual @ (Bracket::OpenCurly | Bracket::OpenRound) => {
                                 this.errors.push(Error {
                                     kind: ErrorKind::MismatchedBracket {
-                                        expected: BracketKind::CloseSquare,
-                                        actual,
+                                        expected: CloseBracket::Square,
+                                        actual: actual.into(),
                                     },
                                     col: this.token_start_col,
                                     pointers_count: 1,
                                 });
                                 Err(())
                             }
-                        },
-                        None => {
-                            this.errors.push(Error {
-                                kind: ErrorKind::UnopenedBracket(BracketKind::CloseSquare),
-                                col: this.token_start_col,
-                                pointers_count: 1,
-                            });
-                            Err(())
                         }
-                    },
+                    }
                     b'{' => {
-                        let kind = BracketKind::OpenCurly;
-                        brackets.push(Bracket { kind, col: this.token_start_col });
-                        Ok(TokenKind::Bracket(kind))
+                        brackets_indicies.push(tokens.len() as index32);
+                        Ok(TokenKind::Bracket(Bracket::OpenCurly))
                     }
-                    b'}' => match brackets.pop() {
-                        Some(bracket) => match bracket.kind {
-                            BracketKind::OpenCurly
-                            | BracketKind::CloseCurly
-                            | BracketKind::CloseRound
-                            | BracketKind::CloseSquare => {
-                                Ok(TokenKind::Bracket(BracketKind::CloseCurly))
-                            }
-                            actual @ (BracketKind::OpenRound | BracketKind::OpenSquare) => {
+                    b'}' => 'bracket: {
+                        let Some(bracket_index) = brackets_indicies.pop() else {
+                            this.errors.push(Error {
+                                kind: ErrorKind::UnopenedBracket(CloseBracket::Curly),
+                                col: this.token_start_col,
+                                pointers_count: 1,
+                            });
+                            break 'bracket Err(());
+                        };
+
+                        let TokenKind::Bracket(bracket) = &tokens[bracket_index as usize].kind
+                        else {
+                            unreachable!("incorrect bracket index");
+                        };
+
+                        match *bracket {
+                            Bracket::OpenCurly
+                            | Bracket::CloseCurly
+                            | Bracket::CloseRound
+                            | Bracket::CloseSquare => Ok(TokenKind::Bracket(Bracket::CloseCurly)),
+                            actual @ (Bracket::OpenRound | Bracket::OpenSquare) => {
                                 this.errors.push(Error {
                                     kind: ErrorKind::MismatchedBracket {
-                                        expected: BracketKind::CloseCurly,
-                                        actual,
+                                        expected: CloseBracket::Curly,
+                                        actual: actual.into(),
                                     },
                                     col: this.token_start_col,
                                     pointers_count: 1,
                                 });
                                 Err(())
                             }
-                        },
-                        None => {
-                            this.errors.push(Error {
-                                kind: ErrorKind::UnopenedBracket(BracketKind::CloseCurly),
-                                col: this.token_start_col,
-                                pointers_count: 1,
-                            });
-                            Err(())
                         }
-                    },
+                    }
                     b':' => Ok(TokenKind::Colon),
                     b';' => Ok(TokenKind::SemiColon),
                     b',' => Ok(TokenKind::Comma),
@@ -1169,137 +1315,147 @@ impl<'src> Tokenizer<'src> {
                         });
                         Err(())
                     }
-                };
+                }
             };
 
             let kind = match token_kind_result {
                 Ok(kind) => kind,
                 Err(()) => TokenKind::Unexpected(
-                    &this.src.code[this.token_start_col as usize..this.col as usize],
+                    &this.code[this.token_start_col as usize..this.col as usize],
                 ),
             };
 
             tokens.push(Token { kind, col: this.token_start_col });
         }
 
-        for bracket in brackets {
+        if let Some(b'\n') = this.code.as_bytes().last() {
+        } else {
+            this.lines.push(Line { start: this.line_start, end: this.col });
+        }
+
+        for bracket_index in brackets_indicies {
             // there can only be open brackets at this point
+            let bracket_token = &tokens[bracket_index as usize];
+            let TokenKind::Bracket(bracket) = bracket_token.kind else {
+                unreachable!("incorrect bracket index");
+            };
+
             this.errors.push(Error {
-                kind: ErrorKind::UnclosedBracket(bracket.kind),
-                col: bracket.col,
+                kind: ErrorKind::UnclosedBracket(bracket.into()),
+                col: bracket_token.col,
                 pointers_count: 1,
             });
         }
 
-        return if this.errors.is_empty() { Ok(tokens) } else { Err(this.errors) };
+        let result = if this.errors.is_empty() { Ok(tokens) } else { Err(this.errors) };
+        return TokenizedCode { result, src: SrcCode { src_file, lines: this.lines } };
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Utf8Error {
-    utf8_ch: utf8,
-    col: offset,
-    byte_len: offset,
-    pointers_count: offset,
+struct Utf8Error<'code> {
+    grapheme: &'code str,
+    col: offset32,
+    pointers_count: offset32,
 }
 
 // TODO(stefano): own utf8 parsing
-// TODO(stefano): properly handle multi-char utf8 characters (i.e. emojis)
 // iteration of characters
-impl<'src> Tokenizer<'src> {
-    fn token_len(&self) -> offset {
-        return self.src.code[self.token_start_col as usize..self.col as usize].chars().count()
-            as offset;
+impl<'code> Tokenizer<'code> {
+    fn token_text(&self) -> &'code str {
+        return &self.code[self.token_start_col as usize..self.col as usize];
     }
 
-    fn next_ascii_char(&mut self) -> Result<Option<ascii>, Utf8Error> {
-        let Some(next) = self.src.code.as_bytes().get(self.col as usize) else {
-            return Ok(None);
-        };
-
-        return match next {
-            ascii_ch @ 0..=b'\x7F' => {
-                self.col += 1;
-                Ok(Some(*ascii_ch))
-            }
-            _utf8_ch => {
-                let rest_of_line = &self.src.code[self.col as usize..self.line.end as usize];
-                let Some(utf8_ch) = rest_of_line.chars().next() else {
-                    unreachable!("this branch assured we would have a valid utf8 character");
-                };
-
-                let utf8_byte_len = utf8_ch.len_utf8() as offset;
-                let utf8_ch_col = self.col;
-                self.col += utf8_byte_len;
-                Err(Utf8Error {
-                    utf8_ch,
-                    col: utf8_ch_col,
-                    byte_len: utf8_byte_len,
-                    pointers_count: 1, // TODO(stefano): proper utf8 len
-                })
-            }
-        };
-    }
-
+    // Note: this function is only called when parsing comments, so no special handling of graphemes is required
     fn next_utf8_char_multiline(&mut self) -> Option<utf8> {
-        let next = self.src.code.as_bytes().get(self.col as usize)?;
+        if self.col as usize >= self.code.len() {
+            return None;
+        }
+
+        let next = self.code.as_bytes()[self.col as usize];
         return match next {
             b'\n' => {
-                if self.line_index >= self.src.lines.len() as offset - 1 {
-                    return None;
+                self.lines.push(Line { start: self.line_start, end: self.col });
+                self.col += 1;
+                self.line_start = self.col;
+                Some('\n')
+            }
+            b'\r' => {
+                if self.col as usize + 1 >= self.code.len() {
+                    self.col += 1;
+                    return Some('\r');
+                }
+
+                if let b'\n' = self.code.as_bytes()[self.col as usize + 1] {
+                    self.lines.push(Line { start: self.line_start, end: self.col });
+                    self.col += 2;
+                    self.line_start = self.col;
+                    return Some('\n');
                 }
 
                 self.col += 1;
-                self.line_index += 1;
-                self.line = &self.src.lines[self.line_index as usize];
-                Some('\n')
+                return Some('\r');
             }
             ascii_ch @ 0..=b'\x7F' => {
                 self.col += 1;
-                Some(*ascii_ch as utf8)
+                Some(ascii_ch as utf8)
             }
             _utf8_ch => {
-                let rest_of_line = &self.src.code[self.col as usize..self.line.end as usize];
-                let Some(utf8_ch) = rest_of_line.chars().next() else {
+                let rest_of_code = &self.code[self.col as usize..];
+                let Some(utf8_ch) = rest_of_code.chars().next() else {
                     unreachable!("this branch assured we would have a valid utf8 character");
                 };
 
-                self.col += utf8_ch.len_utf8() as offset;
+                self.col += utf8_ch.len_utf8() as offset32;
                 Some(utf8_ch)
             }
         };
     }
 
-    fn peek_next_ascii_char(&self) -> Result<Option<&'src ascii>, Utf8Error> {
-        let Some(next) = self.src.code.as_bytes().get(self.col as usize) else {
-            return Ok(None);
-        };
+    fn peek_next_ascii_char(&self) -> Option<Result<ascii, Utf8Error<'code>>> {
+        if self.col as usize >= self.code.len() {
+            return None;
+        }
 
+        let next = self.code.as_bytes()[self.col as usize];
         return match next {
-            ascii_ch @ 0..=b'\x7F' => Ok(Some(ascii_ch)),
+            ascii_ch @ 0..=b'\x7F' => Some(Ok(ascii_ch)),
             _utf8_ch => {
-                let rest_of_line = &self.src.code[self.col as usize..self.line.end as usize];
-                let Some(utf8_ch) = rest_of_line.chars().next() else {
-                    unreachable!("this branch assured we would have a valid utf8 character");
+                let rest_of_code = &self.code[self.col as usize..];
+                let mut rest_of_line_graphemes = rest_of_code.graphemes(true);
+                let Some(grapheme) = rest_of_line_graphemes.next() else {
+                    unreachable!("this branch assured we would have a valid grapheme");
                 };
 
-                Err(Utf8Error {
-                    utf8_ch,
-                    col: self.col,
-                    byte_len: utf8_ch.len_utf8() as offset,
-                    pointers_count: 1, // TODO(stefano): proper utf8 len
-                })
+                let pointers_count = match grapheme.chars_width() {
+                    0 => 1,
+                    pointers_count => pointers_count,
+                };
+
+                // let Some(utf8_ch) = rest_of_line.chars().next() else {
+                //     unreachable!();
+                // };
+                // let end_of_character = utf8_ch.len_utf8() as offset32;
+                // let grapheme = &self.code[self.col as usize..(self.col + end_of_character) as usize];
+                // let pointers_count = 1;
+
+                Some(Err(Utf8Error { grapheme, col: self.col, pointers_count }))
             }
         };
     }
 
+    // Note: this function is only called when parsing operators, so no special handling of graphemes is required
     fn peek_next_utf8_char(&self) -> Option<utf8> {
-        let next = self.src.code.as_bytes().get(self.col as usize)?;
+        if self.col as usize >= self.code.len() {
+            return None;
+        }
+
+        let next = self.code.as_bytes()[self.col as usize];
         return match next {
-            ascii_ch @ 0..=b'\x7F' => Some(*ascii_ch as utf8),
+            ascii_ch @ 0..=b'\x7F' => Some(ascii_ch as utf8),
             _utf8_ch => {
-                let rest_of_line = &self.src.code[self.col as usize..self.line.end as usize];
-                let Some(utf8_ch) = rest_of_line.chars().next() else {
+                let rest_of_code = &self.code[self.col as usize..];
+                let Some(utf8_ch) = rest_of_code.chars().next() else {
                     unreachable!("this branch assured we would have a valid utf8 character");
                 };
 
@@ -1309,26 +1465,33 @@ impl<'src> Tokenizer<'src> {
     }
 }
 
-impl<'src> Tokenizer<'src> {
-    fn identifier(&mut self) -> Result<TokenKind<'src>, ()> {
-        const MAX_IDENTIFIER_LEN: offset = 63;
+impl<'code> Tokenizer<'code> {
+    fn identifier(&mut self) -> Result<TokenKind<'code>, ()> {
+        const MAX_IDENTIFIER_LEN: offset32 = 63;
         let previous_errors_len = self.errors.len();
 
         loop {
             match self.peek_next_ascii_char() {
-                Ok(Some(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {}
-                Ok(Some(_) | None) => break,
-                Err(error) => self.errors.push(Error {
-                    kind: ErrorKind::Utf8InIdentifier(error.utf8_ch),
-                    col: error.col,
-                    pointers_count: error.pointers_count,
-                }),
+                Some(Ok(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {
+                    self.col += 1;
+                }
+                Some(Err(error)) => {
+                    self.errors.push(Error {
+                        kind: ErrorKind::Utf8InIdentifier { grapheme: error.grapheme },
+                        col: error.col,
+                        pointers_count: error.pointers_count,
+                    });
+                    self.col += error.grapheme.len() as offset32;
+                }
+                Some(Ok(_)) | None => break,
             }
-
-            _ = self.next_ascii_char();
         }
 
-        let identifier = match &self.src.code[self.token_start_col as usize..self.col as usize] {
+        if previous_errors_len != self.errors.len() {
+            return Err(());
+        };
+
+        let identifier = match &self.code[self.token_start_col as usize..self.col as usize] {
             "let" => TokenKind::Mutability(Mutability::Let),
             "var" => TokenKind::Mutability(Mutability::Var),
             "print" => TokenKind::Print,
@@ -1345,204 +1508,212 @@ impl<'src> Tokenizer<'src> {
             "continue" => TokenKind::Continue,
             "len" => TokenKind::Op(Op::Len),
             identifier => {
-                let identifier_len = self.token_len();
-                if identifier_len as offset > MAX_IDENTIFIER_LEN {
+                let identifier_len = identifier.len() as offset32;
+                if identifier_len as offset32 > MAX_IDENTIFIER_LEN {
                     self.errors.push(Error {
                         kind: ErrorKind::IdentifierTooLong { max: MAX_IDENTIFIER_LEN },
                         col: self.token_start_col,
                         pointers_count: identifier_len,
                     });
+                    return Err(());
                 }
-                TokenKind::Identifier(identifier)
+                TokenKind::Identifier(identifier.as_bytes())
             }
         };
 
-        return if previous_errors_len == self.errors.len() { Ok(identifier) } else { Err(()) };
+        return Ok(identifier);
     }
 
-    fn integer_decimal(&mut self) -> Result<&'src [ascii], ()> {
+    fn integer_decimal(&mut self) -> Result<&'code [ascii], ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
             match self.peek_next_ascii_char() {
-                Ok(Some(b'0'..=b'9' | b'_')) => {}
-                Ok(Some(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
+                Some(Ok(b'0'..=b'9' | b'_')) => {
+                    self.col += 1;
+                }
+                Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::LetterInNumberLiteral(Base::Decimal, *letter),
+                        kind: ErrorKind::LetterInNumberLiteral(Base::Decimal, letter),
                         col: self.col,
                         pointers_count: 1,
                     });
+                    self.col += 1;
                 }
-                Ok(Some(_) | None) => break,
-                Err(error) => {
+                Some(Err(error)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InNumberLiteral(error.utf8_ch),
+                        kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
+                    self.col += error.grapheme.len() as offset32;
                 }
+                Some(Ok(_)) | None => break,
             }
-
-            _ = self.next_ascii_char();
         }
 
         return if previous_errors_len == self.errors.len() {
-            let digits = &self.src.code[self.token_start_col as usize..self.col as usize];
+            let digits = &self.code[self.token_start_col as usize..self.col as usize];
             Ok(digits.as_bytes())
         } else {
             Err(())
         };
     }
 
-    fn integer_binary(&mut self) -> Result<&'src [ascii], ()> {
+    fn integer_binary(&mut self) -> Result<&'code [ascii], ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
             match self.peek_next_ascii_char() {
-                Ok(Some(b'0'..=b'1' | b'_')) => {}
-                Ok(Some(out_of_range @ b'2'..=b'9')) => {
+                Some(Ok(b'0'..=b'1' | b'_')) => {
+                    self.col += 1;
+                }
+                Some(Ok(out_of_range @ b'2'..=b'9')) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::DigitOutOfRangeInNumberLiteral(
-                            Base::Binary,
-                            *out_of_range,
-                        ),
+                        kind: ErrorKind::DigitOutOfRangeInNumberLiteral(Base::Binary, out_of_range),
                         col: self.col,
                         pointers_count: 1,
                     });
+                    self.col += 1;
                 }
-                Ok(Some(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
+                Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::LetterInNumberLiteral(Base::Binary, *letter),
+                        kind: ErrorKind::LetterInNumberLiteral(Base::Binary, letter),
                         col: self.col,
                         pointers_count: 1,
                     });
+                    self.col += 1;
                 }
-                Ok(Some(_) | None) => break,
-                Err(error) => {
+                Some(Err(error)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InNumberLiteral(error.utf8_ch),
+                        kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
+                    self.col += error.grapheme.len() as offset32;
                 }
+                Some(Ok(_)) | None => break,
             }
-
-            _ = self.next_ascii_char();
         }
 
-        return if previous_errors_len == self.errors.len() {
-            // starting at self.token_start_col + 2 to account for the 0b prefix
-            let digits = &self.src.code[self.token_start_col as usize + 2..self.col as usize];
-            if digits.is_empty() {
-                self.errors.push(Error {
-                    kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Binary),
-                    col: self.token_start_col,
-                    pointers_count: self.token_len(),
-                });
-                Err(())
-            } else {
-                Ok(digits.as_bytes())
-            }
-        } else {
+        if previous_errors_len != self.errors.len() {
+            return Err(());
+        }
+
+        // starting at self.token_start_col + 2 to account for the 0b prefix
+        let digits = &self.code[self.token_start_col as usize + 2..self.col as usize];
+        return if digits.is_empty() {
+            self.errors.push(Error {
+                kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Binary),
+                col: self.token_start_col,
+                pointers_count: self.token_text().chars_width(),
+            });
             Err(())
+        } else {
+            Ok(digits.as_bytes())
         };
     }
 
-    fn integer_octal(&mut self) -> Result<&'src [ascii], ()> {
+    fn integer_octal(&mut self) -> Result<&'code [ascii], ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
             match self.peek_next_ascii_char() {
-                Ok(Some(b'0'..=b'7' | b'_')) => {}
-                Ok(Some(out_of_range @ b'8'..=b'9')) => {
+                Some(Ok(b'0'..=b'7' | b'_')) => {
+                    self.col += 1;
+                }
+                Some(Ok(out_of_range @ b'8'..=b'9')) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::DigitOutOfRangeInNumberLiteral(Base::Octal, *out_of_range),
+                        kind: ErrorKind::DigitOutOfRangeInNumberLiteral(Base::Octal, out_of_range),
                         col: self.col,
                         pointers_count: 1,
                     });
+                    self.col += 1;
                 }
-                Ok(Some(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
+                Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::LetterInNumberLiteral(Base::Octal, *letter),
+                        kind: ErrorKind::LetterInNumberLiteral(Base::Octal, letter),
                         col: self.col,
                         pointers_count: 1,
                     });
+                    self.col += 1;
                 }
-                Ok(Some(_) | None) => break,
-                Err(error) => {
+                Some(Err(error)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InNumberLiteral(error.utf8_ch),
+                        kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
+                    self.col += error.grapheme.len() as offset32;
                 }
+                Some(Ok(_)) | None => break,
             }
-
-            _ = self.next_ascii_char();
         }
 
-        return if previous_errors_len == self.errors.len() {
-            // starting at self.token_start_col + 2 to account for the 0o prefix
-            let digits = &self.src.code[self.token_start_col as usize + 2..self.col as usize];
-            if digits.is_empty() {
-                self.errors.push(Error {
-                    kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Octal),
-                    col: self.token_start_col,
-                    pointers_count: self.token_len(),
-                });
-                Err(())
-            } else {
-                Ok(digits.as_bytes())
-            }
-        } else {
+        if previous_errors_len != self.errors.len() {
+            return Err(());
+        }
+
+        // starting at self.token_start_col + 2 to account for the 0o prefix
+        let digits = &self.code[self.token_start_col as usize + 2..self.col as usize];
+        return if digits.is_empty() {
+            self.errors.push(Error {
+                kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Octal),
+                col: self.token_start_col,
+                pointers_count: self.token_text().chars_width(),
+            });
             Err(())
+        } else {
+            Ok(digits.as_bytes())
         };
     }
 
-    fn integer_hexadecimal(&mut self) -> Result<&'src [ascii], ()> {
+    fn integer_hexadecimal(&mut self) -> Result<&'code [ascii], ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
             match self.peek_next_ascii_char() {
-                Ok(Some(b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F' | b'_')) => {}
-                Ok(Some(out_of_range @ (b'g'..=b'z' | b'G'..=b'Z'))) => {
+                Some(Ok(b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F' | b'_')) => {
+                    self.col += 1;
+                }
+                Some(Ok(out_of_range @ (b'g'..=b'z' | b'G'..=b'Z'))) => {
                     self.errors.push(Error {
                         kind: ErrorKind::DigitOutOfRangeInNumberLiteral(
                             Base::Hexadecimal,
-                            *out_of_range,
+                            out_of_range,
                         ),
                         col: self.col,
                         pointers_count: 1,
                     });
+                    self.col += 1;
                 }
-                Ok(Some(_) | None) => break,
-                Err(error) => {
+                Some(Err(error)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InNumberLiteral(error.utf8_ch),
+                        kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
+                    self.col += error.grapheme.len() as offset32;
                 }
+                Some(Ok(_)) | None => break,
             }
-
-            _ = self.next_ascii_char();
         }
 
-        return if previous_errors_len == self.errors.len() {
-            // starting at self.token_start_col + 2 to account for the 0x prefix
-            let digits = &self.src.code[self.token_start_col as usize + 2..self.col as usize];
-            if digits.is_empty() {
-                self.errors.push(Error {
-                    kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Hexadecimal),
-                    col: self.token_start_col,
-                    pointers_count: self.token_len(),
-                });
-                Err(())
-            } else {
-                Ok(digits.as_bytes())
-            }
-        } else {
+        if previous_errors_len != self.errors.len() {
+            return Err(());
+        }
+
+        // starting at self.token_start_col + 2 to account for the 0x prefix
+        let digits = &self.code[self.token_start_col as usize + 2..self.col as usize];
+        return if digits.is_empty() {
+            self.errors.push(Error {
+                kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Hexadecimal),
+                col: self.token_start_col,
+                pointers_count: self.token_text().chars_width(),
+            });
             Err(())
+        } else {
+            Ok(digits.as_bytes())
         };
     }
 
@@ -1555,51 +1726,51 @@ impl<'src> Tokenizer<'src> {
 
         loop {
             let next_character = match self.peek_next_ascii_char() {
-                Ok(Some(b'\n') | None) => {
+                Some(Ok(b'\n')) | None => {
                     self.errors.push(Error {
                         kind: ErrorKind::UnclosedQuotedLiteral(kind),
                         col: self.token_start_col,
-                        pointers_count: self.token_len(),
+                        pointers_count: self.token_text().chars_width(),
                     });
                     break;
                 }
-                Ok(Some(next_character)) => {
+                Some(Ok(next_character)) => {
                     self.col += 1;
                     next_character
                 }
-                Err(error) => {
-                    self.col += error.byte_len;
+                Some(Err(error)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InIdentifier(error.utf8_ch),
+                        kind: ErrorKind::Utf8InIdentifier { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
+                    self.col += error.grapheme.len() as offset32;
                     continue;
                 }
             };
 
-            let character = match *next_character {
+            let character = match next_character {
                 b'\\' => {
                     let escape_character = match self.peek_next_ascii_char() {
-                        Ok(Some(b'\n') | None) => {
+                        Some(Ok(b'\n')) | None => {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnclosedQuotedLiteral(kind),
                                 col: self.token_start_col,
-                                pointers_count: self.token_len(),
+                                pointers_count: self.token_text().chars_width(),
                             });
                             break;
                         }
-                        Ok(Some(escape_character)) => escape_character,
-                        Err(error) => {
-                            self.col += error.byte_len;
+                        Some(Ok(escape_character)) => escape_character,
+                        Some(Err(error)) => {
                             self.errors.push(Error {
-                                kind: ErrorKind::Utf8InQuotedLiteral(
-                                    kind,
-                                    error.utf8_ch,
-                                ),
+                                kind: ErrorKind::Utf8InQuotedLiteral {
+                                    grapheme: error.grapheme,
+                                    quoted_literal_kind: kind,
+                                },
                                 col: error.col,
                                 pointers_count: error.pointers_count,
                             });
+                            self.col += error.grapheme.len() as offset32;
                             continue;
                         }
                     };
@@ -1614,10 +1785,7 @@ impl<'src> Tokenizer<'src> {
                 }
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Error {
-                        kind: ErrorKind::ControlCharacterInQuotedLiteral(
-                            kind,
-                            control as utf8,
-                        ),
+                        kind: ErrorKind::ControlCharacterInQuotedLiteral(kind, control as utf8),
                         col: self.col - 1,
                         pointers_count: 1,
                     });
@@ -1643,59 +1811,62 @@ impl<'src> Tokenizer<'src> {
 
         loop {
             let next_character = match self.peek_next_ascii_char() {
-                Ok(Some(b'\n') | None) => {
+                Some(Ok(b'\n')) | None => {
                     self.errors.push(Error {
                         kind: ErrorKind::UnclosedQuotedLiteral(kind),
                         col: self.token_start_col,
-                        pointers_count: self.token_len(),
+                        pointers_count: self.token_text().chars_width(),
                     });
                     break;
                 }
-                Ok(Some(next_character)) => {
+                Some(Ok(next_character)) => {
                     self.col += 1;
                     next_character
                 }
-                Err(error) => {
-                    self.col += error.byte_len;
+                Some(Err(error)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InQuotedLiteral(kind, error.utf8_ch),
+                        kind: ErrorKind::Utf8InQuotedLiteral {
+                            grapheme: error.grapheme,
+                            quoted_literal_kind: kind,
+                        },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
+                    self.col += error.grapheme.len() as offset32;
                     continue;
                 }
             };
 
-            let character = match *next_character {
+            let character = match next_character {
                 b'\\' => {
                     let escape_character = match self.peek_next_ascii_char() {
-                        Ok(Some(b'\n') | None) => {
+                        Some(Ok(b'\n')) | None => {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnclosedQuotedLiteral(kind),
                                 col: self.token_start_col,
-                                pointers_count: self.token_len(),
+                                pointers_count: self.token_text().chars_width(),
                             });
                             break;
                         }
-                        Ok(Some(escape_character)) => {
+                        Some(Ok(escape_character)) => {
                             self.col += 1;
                             escape_character
                         }
-                        Err(error) => {
-                            self.col += error.byte_len;
+                        Some(Err(error)) => {
                             self.errors.push(Error {
-                                kind: ErrorKind::Utf8InQuotedLiteral(
-                                    kind,
-                                    error.utf8_ch,
-                                ),
+                                kind: ErrorKind::Utf8InQuotedLiteral {
+                                    grapheme: error.grapheme,
+                                    quoted_literal_kind: kind,
+                                },
                                 col: error.col,
                                 pointers_count: error.pointers_count,
                             });
+                            self.col += error.grapheme.len() as offset32;
                             continue;
                         }
                     };
 
-                    match *escape_character {
+                    match escape_character {
                         b'\\' => b'\\',
                         b'\'' => b'\'',
                         b'"' => b'"',
@@ -1719,10 +1890,7 @@ impl<'src> Tokenizer<'src> {
                 }
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Error {
-                        kind: ErrorKind::ControlCharacterInQuotedLiteral(
-                            kind,
-                            control as utf8,
-                        ),
+                        kind: ErrorKind::ControlCharacterInQuotedLiteral(kind, control as utf8),
                         col: self.col - 1,
                         pointers_count: 1,
                     });
@@ -1740,33 +1908,33 @@ impl<'src> Tokenizer<'src> {
 }
 
 #[derive(Debug, Clone)]
-pub enum ErrorKind {
+pub enum ErrorKind<'code> {
     UnclosedBlockComment,
 
-    UnclosedBracket(BracketKind),
-    UnopenedBracket(BracketKind),
-    MismatchedBracket { actual: BracketKind, expected: BracketKind },
+    UnclosedBracket(OpenBracket),
+    UnopenedBracket(CloseBracket),
+    MismatchedBracket { actual: OpenBracket, expected: CloseBracket },
 
-    Utf8InQuotedLiteral(QuotedLiteralKind, utf8),
+    Utf8InQuotedLiteral { grapheme: &'code str, quoted_literal_kind: QuotedLiteralKind },
     UnclosedQuotedLiteral(QuotedLiteralKind),
     ControlCharacterInQuotedLiteral(QuotedLiteralKind, utf8),
     UnrecognizedEscapeCharacterInQuotedLiteral(QuotedLiteralKind, utf8),
     EmptyCharacterLiteral,
     MultipleCharactersInCharacterLiteral,
 
-    Utf8InNumberLiteral(utf8),
+    Utf8InNumberLiteral { grapheme: &'code str },
     LetterInNumberLiteral(Base, ascii),
     DigitOutOfRangeInNumberLiteral(Base, ascii),
     EmptyNumberLiteral(MissingDigitsBase),
 
-    Utf8InIdentifier(utf8),
-    IdentifierTooLong { max: offset },
+    Utf8InIdentifier { grapheme: &'code str },
+    IdentifierTooLong { max: offset32 },
 
-    Utf8Character(utf8),
+    Utf8Character { grapheme: &'code str },
     UnrecognizedCharacter(utf8),
 }
 
-impl IntoErrorInfo for ErrorKind {
+impl IntoErrorInfo for ErrorKind<'_> {
     fn info(&self) -> ErrorInfo {
         let (error_message, error_cause_message) = match self {
             Self::UnclosedBlockComment => (
@@ -1787,8 +1955,8 @@ impl IntoErrorInfo for ErrorKind {
                 format!("'{actual}' closes the wrong bracket, expected a '{expected}' instead").into()
             ),
 
-            Self::Utf8InQuotedLiteral(kind, character) => (
-                format!("invalid {kind} literal character '{character}' {}", character.escape_unicode()).into(),
+            Self::Utf8InQuotedLiteral { grapheme, quoted_literal_kind } => (
+                format!("invalid {quoted_literal_kind} literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
             ),
             Self::UnclosedQuotedLiteral(kind) => (
@@ -1812,8 +1980,8 @@ impl IntoErrorInfo for ErrorKind {
                 format!("must not contain more than one character, if you meant to write a string literal try changing the quotes to {}", Quote::Double as u8 as char).into(),
             ),
 
-            Self::Utf8InNumberLiteral(character) => (
-                format!("invalid integer literal character '{character}' {}", character.escape_unicode()).into(),
+            Self::Utf8InNumberLiteral { grapheme } => (
+                format!("invalid integer literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
             ),
             Self::LetterInNumberLiteral(base, letter) => (
@@ -1829,8 +1997,8 @@ impl IntoErrorInfo for ErrorKind {
                 format!("at leasts one base {} digt must be present {:?}", *base as u8, base.range()).into(),
             ),
 
-            Self::Utf8InIdentifier(character) => (
-                format!("invalid identifier character '{character}' {}", character.escape_unicode()).into(),
+            Self::Utf8InIdentifier { grapheme } => (
+                format!("invalid identifier character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
             ),
             Self::IdentifierTooLong { max } => (
@@ -1838,8 +2006,8 @@ impl IntoErrorInfo for ErrorKind {
                 format!("exceeds the length limit of {max}").into(),
             ),
 
-            Self::Utf8Character(character) => (
-                format!("invalid character '{character}' {}", character.escape_unicode()).into(),
+            Self::Utf8Character { grapheme } => (
+                format!("invalid character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into()
             ),
             Self::UnrecognizedCharacter(unrecognized) => (

@@ -11,13 +11,13 @@ mod reg;
 use self::{artifacts::Artifacts, reg::Reg64};
 use crate::{
     error::MsgWithCause,
-    src_file::{offset, Position, SrcFile},
-    syntax::{
+    front_end::{
         ast::{
             self, AssignmentOp, Ast, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression,
             IfStatement, Node, ScopeIndex, SizeOf, Type, TypeOf, UnaryOp,
         },
-        tokenizer::uint,
+        src_file::{offset32, Position, SrcCode},
+        tokenizer::{ascii, uint},
     },
     ERROR,
 };
@@ -71,8 +71,8 @@ impl Display for Base {
 }
 
 #[derive(Debug)]
-struct Variable<'src, 'ast: 'src> {
-    inner: &'ast ast::Variable<'src>,
+struct Variable<'ast, 'code: 'ast> {
+    inner: &'ast ast::Variable<'code>,
     offset: usize,
 }
 
@@ -82,28 +82,28 @@ struct TemporaryValue<'ast> {
     offset: usize,
 }
 #[derive(Debug)]
-pub struct Compiler<'src, 'ast: 'src> {
-    src: &'src SrcFile,
-    ast: &'ast Ast<'src>,
+pub struct Compiler<'ast, 'src: 'ast, 'path: 'src, 'code: 'src> {
+    src: &'src SrcCode<'code, 'path>,
+    ast: &'ast Ast<'code>,
 
     asm: String,
 
-    variables: Vec<Variable<'src, 'ast>>,
+    variables: Vec<Variable<'ast, 'code>>,
     temporary_values: Vec<TemporaryValue<'ast>>,
 
-    if_counter: offset,
+    if_counter: u32,
 
-    loop_counter: offset,
-    loop_counters: Vec<offset>,
+    loop_counter: u32,
+    loop_counters: Vec<u32>,
     // and_counter: usize,
     // or_counter: usize,
 }
 
 // Generation of compilation artifacts (.asm, .o, executable)
-impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
+impl<'ast, 'src: 'ast, 'path: 'src, 'code: 'src> Compiler<'ast, 'src, 'path, 'code> {
     pub fn compile(
-        src: &'src SrcFile,
-        ast: &'ast Ast<'src>,
+        src: &'src SrcCode<'code, 'path>,
+        ast: &'ast Ast<'code>,
         artifacts: &Artifacts,
     ) -> Result<(), Error> {
         #[allow(clippy::wildcard_imports)]
@@ -362,7 +362,7 @@ section .bss
 section .data
 {strings}"#,
             asm = this.asm,
-            src_path = src.path.display(),
+            src_path = src.path().display(),
         );
 
         // IDEA(stefano): remove this creation and let the user pass in the file instead
@@ -388,7 +388,7 @@ section .data
 }
 
 // nodes
-impl<'ast> Compiler<'_, 'ast> {
+impl<'ast> Compiler<'ast, '_, '_, '_> {
     fn node(&mut self, node: &'ast Node) {
         match node {
             Node::Print(argument) => {
@@ -530,13 +530,13 @@ impl<'ast> Compiler<'_, 'ast> {
             Node::Definition { var_index } => {
                 let ast_var = &self.ast.variables[*var_index as usize];
 
-                let name = ast_var.name;
+                let ast_variable_name_str = unsafe { core::str::from_utf8_unchecked(ast_var.name) };
                 let value = &ast_var.value;
 
-                let var = self.resolve(name);
+                let var = self.resolve(ast_var.name);
                 let dst_offset = var.offset;
 
-                _ = writeln!(self.asm, " ; {name} = {}", value.display(self.ast));
+                _ = writeln!(self.asm, " ; {ast_variable_name_str} = {}", value.display(self.ast));
                 self.definition(value, Base::Rbp, dst_offset);
             }
             Node::Reassignment { target, op, op_col, new_value } => {
@@ -575,8 +575,8 @@ impl<'ast> Compiler<'_, 'ast> {
 }
 
 // expressions
-impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
-    fn resolve(&self, name: &'src str) -> &Variable<'src, 'ast> {
+impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
+    fn resolve(&self, name: &'code [ascii]) -> &Variable<'ast, 'code> {
         for var in &self.variables {
             if var.inner.name == name {
                 return var;
@@ -723,10 +723,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
         &mut self,
         base_type: BaseType,
         value: &'ast Expression,
-        bracket_col: offset,
+        bracket_col: offset32,
         index: &'ast Expression,
     ) {
-        let Position { line, col } = self.src.position(bracket_col);
+        let Position { line, column } = self.src.position(bracket_col);
 
         match value {
             Expression::Parenthesis { .. } => {
@@ -738,7 +738,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     self.asm,
                     " mov rsi, str_{label}_len\
                     \n mov rdx, {line}\
-                    \n mov rcx, {col}\
+                    \n mov rcx, {column}\
                     \n call assert_str_index_in_range\
                     \n movzx rdi, byte [str_{label} + rdi]\n",
                 );
@@ -781,7 +781,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             self.asm,
                             " pop rsi\
                             \n mov rdx, {line}\
-                            \n mov rcx, {col}\
+                            \n mov rcx, {column}\
                             \n call assert_str_index_in_range\
                             \n pop rsi\
                             \n movzx rdi, byte [rsi + rdi]\n",
@@ -805,7 +805,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                             self.asm,
                             " mov rsi, [rbp + {var_offset}]\
                             \n mov rdx, {line}\
-                            \n mov rcx, {col}\
+                            \n mov rcx, {column}\
                             \n call assert_str_index_in_range\
                             \n mov rsi, [rbp + {var_offset} + {ptr_offset}]\
                             \n movzx rdi, byte [rsi + rdi]\n",
@@ -813,12 +813,15 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         );
                     }
                     Type::Array { len: array_len, .. } => {
-                        debug_assert!(*array_len >= 2, "arrays of 0 and 1 elements are not allowed");
+                        debug_assert!(
+                            *array_len >= 2,
+                            "arrays of 0 and 1 elements are not allowed"
+                        );
                         _ = writeln!(
                             self.asm,
                             " mov rsi, {array_len}\
                             \n mov rdx, {line}\
-                            \n mov rcx, {col}\
+                            \n mov rcx, {column}\
                             \n call assert_array_index_in_range"
                         );
 
@@ -934,7 +937,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                                     _ = writeln!(self.asm, " mov {reg}, [rbp + {var_offset}]");
                                 }
                                 Type::Array { len, .. } => {
-                                    debug_assert!(*len >= 2, "arrays of 0 and 1 elements are not allowed");
+                                    debug_assert!(
+                                        *len >= 2,
+                                        "arrays of 0 and 1 elements are not allowed"
+                                    );
                                     _ = writeln!(self.asm, " mov {reg}, {len}");
                                 }
                                 Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => {
@@ -981,11 +987,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         self.expression(operand, dst);
                         match operand.typ() {
                             Type::Base(BaseType::Int) => {
-                                let Position { line, col } = self.src.position(*op_col);
+                                let Position { line, column } = self.src.position(*op_col);
                                 _ = writeln!(
                                     self.asm,
                                     " mov rdx, {line}\
-                                    \n mov rcx, {col}\
+                                    \n mov rcx, {column}\
                                     \n call int_safe_abs",
                                 );
                             }
@@ -1011,11 +1017,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         self.expression(operand, dst);
                         match operand.typ() {
                             Type::Base(BaseType::Int) => {
-                                let Position { line, col } = self.src.position(*op_col);
+                                let Position { line, column } = self.src.position(*op_col);
                                 _ = writeln!(
                                     self.asm,
                                     " mov rdx, {line}\
-                                    \n mov rcx, {col}\
+                                    \n mov rcx, {column}\
                                     \n call int_saturating_abs",
                                 );
                             }
@@ -1029,11 +1035,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         self.expression(operand, dst);
                         match operand.typ() {
                             Type::Base(BaseType::Int | BaseType::Ascii) => {
-                                let Position { line, col } = self.src.position(*op_col);
+                                let Position { line, column } = self.src.position(*op_col);
                                 _ = writeln!(
                                     self.asm,
                                     " mov rdx, {line}\
-                                    \n mov rcx, {col}\
+                                    \n mov rcx, {column}\
                                     \n call int_safe_negate",
                                 );
                             }
@@ -1057,11 +1063,11 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                         self.expression(operand, dst);
                         match operand.typ() {
                             Type::Base(BaseType::Int | BaseType::Ascii) => {
-                                let Position { line, col } = self.src.position(*op_col);
+                                let Position { line, column } = self.src.position(*op_col);
                                 _ = writeln!(
                                     self.asm,
                                     " mov rdx, {line}\
-                                    \n mov rcx, {col}\
+                                    \n mov rcx, {column}\
                                     \n call int_saturating_negate",
                                 );
                             }
@@ -1106,37 +1112,37 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                 let rhs_dst = Dst::Reg(Rsi);
                 let op_asm: Cow<'static, str> = match op {
                     BinaryOp::Pow => {
-                        let Position { line, col } = self.src.position(*op_col);
+                        let Position { line, column } = self.src.position(*op_col);
                         format!(
                             " mov rdx, {line}\
-                            \n mov rcx, {col}\
+                            \n mov rcx, {column}\
                             \n call int_safe_pow",
                         )
                         .into()
                     }
                     BinaryOp::WrappingPow => {
-                        let Position { line, col } = self.src.position(*op_col);
+                        let Position { line, column } = self.src.position(*op_col);
                         format!(
                             " mov rdx, {line}\
-                            \n mov rcx, {col}\
+                            \n mov rcx, {column}\
                             \n call int_wrapping_pow",
                         )
                         .into()
                     }
                     BinaryOp::SaturatingPow => {
-                        let Position { line, col } = self.src.position(*op_col);
+                        let Position { line, column } = self.src.position(*op_col);
                         format!(
                             " mov rdx, {line}\
-                            \n mov rcx, {col}\
+                            \n mov rcx, {column}\
                             \n call int_saturating_pow",
                         )
                         .into()
                     }
                     BinaryOp::Times => {
-                        let Position { line, col } = self.src.position(*op_col);
+                        let Position { line, column } = self.src.position(*op_col);
                         format!(
                             " mov rdx, {line}\
-                            \n mov rcx, {col}\
+                            \n mov rcx, {column}\
                             \n call int_safe_mul",
                         )
                         .into()
@@ -1144,46 +1150,46 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     BinaryOp::WrappingTimes => " imul rdi, rsi".into(),
                     BinaryOp::SaturatingTimes => " call int_saturating_mul".into(),
                     BinaryOp::Divide => {
-                        let Position { line, col } = self.src.position(*op_col);
+                        let Position { line, column } = self.src.position(*op_col);
                         format!(
                             " mov rdx, {line}\
-                            \n mov rcx, {col}\
+                            \n mov rcx, {column}\
                             \n call int_safe_div",
                         )
                         .into()
                     }
                     BinaryOp::WrappingDivide => {
-                        let Position { line, col } = self.src.position(*op_col);
+                        let Position { line, column } = self.src.position(*op_col);
                         format!(
                             " mov rdx, {line}\
-                            \n mov rcx, {col}\
+                            \n mov rcx, {column}\
                             \n call int_wrapping_div",
                         )
                         .into()
                     }
                     BinaryOp::SaturatingDivide => {
-                        let Position { line, col } = self.src.position(*op_col);
+                        let Position { line, column } = self.src.position(*op_col);
                         format!(
                             " mov rdx, {line}\
-                            \n mov rcx, {col}\
+                            \n mov rcx, {column}\
                             \n call int_saturating_div",
                         )
                         .into()
                     }
                     BinaryOp::Remainder => {
-                        let Position { line, col } = self.src.position(*op_col);
+                        let Position { line, column } = self.src.position(*op_col);
                         format!(
                             " mov rdx, {line}\
-                            \n mov rcx, {col}\
+                            \n mov rcx, {column}\
                             \n call int_safe_remainder",
                         )
                         .into()
                     }
                     BinaryOp::Plus => {
-                        let Position { line, col } = self.src.position(*op_col);
+                        let Position { line, column } = self.src.position(*op_col);
                         format!(
                             " mov rdx, {line}\
-                            \n mov rcx, {col}\
+                            \n mov rcx, {column}\
                             \n call int_safe_add",
                         )
                         .into()
@@ -1191,10 +1197,10 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     BinaryOp::WrappingPlus => " add rdi, rsi".into(),
                     BinaryOp::SaturatingPlus => " call int_saturating_add".into(),
                     BinaryOp::Minus => {
-                        let Position { line, col } = self.src.position(*op_col);
+                        let Position { line, column } = self.src.position(*op_col);
                         format!(
                             " mov rdx, {line}\
-                            \n mov rcx, {col}\
+                            \n mov rcx, {column}\
                             \n call int_safe_sub",
                         )
                         .into()
@@ -1205,55 +1211,55 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
                     BinaryOp::BitOr => " or rdi, rsi".into(),
                     BinaryOp::BitXor => " xor rdi, rsi".into(),
                     BinaryOp::LeftShift => {
-                        let Position { line, col } = self.src.position(*op_col);
+                        let Position { line, column } = self.src.position(*op_col);
                         format!(
                             " mov rdx, {line}\
-                            \n mov rcx, {col}\
+                            \n mov rcx, {column}\
                             \n call int_safe_left_shift",
                         )
                         .into()
                     }
                     BinaryOp::WrappingLeftShift => {
-                        let Position { line, col } = self.src.position(*op_col);
+                        let Position { line, column } = self.src.position(*op_col);
                         format!(
                             " mov rdx, {line}\
-                            \n mov rcx, {col}\
+                            \n mov rcx, {column}\
                             \n call int_wrapping_left_shift",
                         )
                         .into()
                     }
                     BinaryOp::SaturatingLeftShift => {
-                        let Position { line, col } = self.src.position(*op_col);
+                        let Position { line, column } = self.src.position(*op_col);
                         format!(
                             " mov rdx, {line}\
-                            \n mov rcx, {col}\
+                            \n mov rcx, {column}\
                             \n call int_saturating_left_shift",
                         )
                         .into()
                     }
                     BinaryOp::RightShift => {
-                        let Position { line, col } = self.src.position(*op_col);
+                        let Position { line, column } = self.src.position(*op_col);
                         format!(
                             " mov rdx, {line}\
-                            \n mov rcx, {col}\
+                            \n mov rcx, {column}\
                             \n call int_safe_right_shift",
                         )
                         .into()
                     }
                     BinaryOp::LeftRotate => {
-                        let Position { line, col } = self.src.position(*op_col);
+                        let Position { line, column } = self.src.position(*op_col);
                         format!(
                             " mov rdx, {line}\
-                            \n mov rcx, {col}\
+                            \n mov rcx, {column}\
                             \n call int_safe_left_rotate",
                         )
                         .into()
                     }
                     BinaryOp::RightRotate => {
-                        let Position { line, col } = self.src.position(*op_col);
+                        let Position { line, column } = self.src.position(*op_col);
                         format!(
                             " mov rdx, {line}\
-                            \n mov rcx, {col}\
+                            \n mov rcx, {column}\
                             \n call int_safe_right_rotate",
                         )
                         .into()
@@ -1910,7 +1916,7 @@ impl<'src, 'ast: 'src> Compiler<'src, 'ast> {
 }
 
 // definitions
-impl<'ast> Compiler<'_, 'ast> {
+impl<'ast> Compiler<'ast, '_, '_, '_> {
     fn definition(&mut self, value: &'ast Expression, base: Base, dst_offset: usize) {
         match value {
             Expression::Parenthesis { expression_index, .. } => {
@@ -1989,7 +1995,10 @@ impl<'ast> Compiler<'_, 'ast> {
                                     );
                                 }
                                 Type::Array { len, .. } => {
-                                    debug_assert!(*len >= 2, "arrays of 0 and 1 elements are not allowed");
+                                    debug_assert!(
+                                        *len >= 2,
+                                        "arrays of 0 and 1 elements are not allowed"
+                                    );
                                     _ = writeln!(
                                         self.asm,
                                         " mov qword [{base} + {dst_offset}], {len}\n"
@@ -2060,11 +2069,11 @@ impl<'ast> Compiler<'_, 'ast> {
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
                         Type::Base(BaseType::Int) => {
-                            let Position { line, col } = self.src.position(*op_col);
+                            let Position { line, column } = self.src.position(*op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_safe_abs\
                                 \n mov [{base} + {dst_offset}], rdi\n",
                             );
@@ -2097,11 +2106,11 @@ impl<'ast> Compiler<'_, 'ast> {
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
                         Type::Base(BaseType::Int) => {
-                            let Position { line, col } = self.src.position(*op_col);
+                            let Position { line, column } = self.src.position(*op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_saturating_abs\
                                 \n mov [{base} + {dst_offset}], rdi\n",
                             );
@@ -2117,21 +2126,21 @@ impl<'ast> Compiler<'_, 'ast> {
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
                         Type::Base(BaseType::Int) => {
-                            let Position { line, col } = self.src.position(*op_col);
+                            let Position { line, column } = self.src.position(*op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_safe_negate\
                                 \n mov [{base} + {dst_offset}], rdi\n",
                             );
                         }
                         Type::Base(BaseType::Ascii) => {
-                            let Position { line, col } = self.src.position(*op_col);
+                            let Position { line, column } = self.src.position(*op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_safe_negate\
                                 \n mov [{base} + {dst_offset}], dil\n",
                             );
@@ -2169,21 +2178,21 @@ impl<'ast> Compiler<'_, 'ast> {
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
                         Type::Base(BaseType::Int) => {
-                            let Position { line, col } = self.src.position(*op_col);
+                            let Position { line, column } = self.src.position(*op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_saturating_negate\
                                 \n mov [{base} + {dst_offset}], rdi\n",
                             );
                         }
                         Type::Base(BaseType::Ascii) => {
-                            let Position { line, col } = self.src.position(*op_col);
+                            let Position { line, column } = self.src.position(*op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_saturating_negate\
                                 \n mov [{base} + {dst_offset}], dil\n",
                             );
@@ -2328,7 +2337,7 @@ impl<'ast> Compiler<'_, 'ast> {
         &mut self,
         target: &'ast Expression,
         op: AssignmentOp,
-        op_col: offset,
+        op_col: offset32,
         new_value: &'ast Expression,
     ) {
         match target {
@@ -2358,7 +2367,7 @@ impl<'ast> Compiler<'_, 'ast> {
                             target.display(self.ast),
                             new_value.display(self.ast)
                         );
-                        let Position { line, col } = self.src.position(*bracket_col);
+                        let Position { line, column } = self.src.position(*bracket_col);
 
                         let nested_indexable =
                             &self.ast.expressions[*nested_indexable_index as usize];
@@ -2391,7 +2400,7 @@ impl<'ast> Compiler<'_, 'ast> {
                                     self.asm,
                                     " pop rsi\
                                     \n mov rdx, {line}\
-                                    \n mov rcx, {col}\
+                                    \n mov rcx, {column}\
                                     \n call assert_str_index_in_range\
                                     \n push rdi\n",
                                 );
@@ -2420,7 +2429,7 @@ impl<'ast> Compiler<'_, 'ast> {
                         let ast_variable = &self.ast.variables[*variable_index as usize];
                         let var = self.resolve(ast_variable.name);
                         let var_offset = var.offset;
-                        let Position { line: index_line, col: index_col } =
+                        let Position { line: index_line, column: index_col } =
                             self.src.position(*bracket_col);
 
                         match typ {
@@ -2446,7 +2455,10 @@ impl<'ast> Compiler<'_, 'ast> {
                                 );
                             }
                             Type::Array { len: array_len, .. } => {
-                                debug_assert!(*array_len >= 2, "arrays of 0 and 1 elements are not allowed");
+                                debug_assert!(
+                                    *array_len >= 2,
+                                    "arrays of 0 and 1 elements are not allowed"
+                                );
                                 self.expression(index_expression, Dst::Reg(Rdi));
                                 _ = writeln!(
                                     self.asm,
@@ -2503,38 +2515,42 @@ impl<'ast> Compiler<'_, 'ast> {
 
                                     match op {
                                         AssignmentOp::Pow => {
-                                            let Position { line, col } = self.src.position(op_col);
+                                            let Position { line, column } =
+                                                self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
-                                                \n mov rcx, {col}\
+                                                \n mov rcx, {column}\
                                                 \n call int_safe_pow",
                                             );
                                         }
                                         AssignmentOp::WrappingPow => {
-                                            let Position { line, col } = self.src.position(op_col);
+                                            let Position { line, column } =
+                                                self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
-                                                \n mov rcx, {col}\
+                                                \n mov rcx, {column}\
                                                 \n call int_wrapping_pow",
                                             );
                                         }
                                         AssignmentOp::SaturatingPow => {
-                                            let Position { line, col } = self.src.position(op_col);
+                                            let Position { line, column } =
+                                                self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
-                                                \n mov rcx, {col}\
+                                                \n mov rcx, {column}\
                                                 \n call int_saturating_pow",
                                             );
                                         }
                                         AssignmentOp::Times => {
-                                            let Position { line, col } = self.src.position(op_col);
+                                            let Position { line, column } =
+                                                self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
-                                                \n mov rcx, {col}\
+                                                \n mov rcx, {column}\
                                                 \n call int_safe_mul",
                                             );
                                         }
@@ -2545,47 +2561,52 @@ impl<'ast> Compiler<'_, 'ast> {
                                             _ = writeln!(self.asm, " call int_saturating_mul");
                                         }
                                         AssignmentOp::Divide => {
-                                            let Position { line, col } = self.src.position(op_col);
+                                            let Position { line, column } =
+                                                self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
-                                                \n mov rcx, {col}\
+                                                \n mov rcx, {column}\
                                                 \n call int_safe_div",
                                             );
                                         }
                                         AssignmentOp::WrappingDivide => {
-                                            let Position { line, col } = self.src.position(op_col);
+                                            let Position { line, column } =
+                                                self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
-                                                \n mov rcx, {col}\
+                                                \n mov rcx, {column}\
                                                 \n call int_wrapping_div",
                                             );
                                         }
                                         AssignmentOp::SaturatingDivide => {
-                                            let Position { line, col } = self.src.position(op_col);
+                                            let Position { line, column } =
+                                                self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
-                                                \n mov rcx, {col}\
+                                                \n mov rcx, {column}\
                                                 \n call int_saturating_div",
                                             );
                                         }
                                         AssignmentOp::Remainder => {
-                                            let Position { line, col } = self.src.position(op_col);
+                                            let Position { line, column } =
+                                                self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
-                                                \n mov rcx, {col}\
+                                                \n mov rcx, {column}\
                                                 \n call int_safe_remainder",
                                             );
                                         }
                                         AssignmentOp::Plus => {
-                                            let Position { line, col } = self.src.position(op_col);
+                                            let Position { line, column } =
+                                                self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
-                                                \n mov rcx, {col}\
+                                                \n mov rcx, {column}\
                                                 \n call int_safe_add",
                                             );
                                         }
@@ -2596,11 +2617,12 @@ impl<'ast> Compiler<'_, 'ast> {
                                             _ = writeln!(self.asm, " call int_saturating_add");
                                         }
                                         AssignmentOp::Minus => {
-                                            let Position { line, col } = self.src.position(op_col);
+                                            let Position { line, column } =
+                                                self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
-                                                \n mov rcx, {col}\
+                                                \n mov rcx, {column}\
                                                 \n call int_safe_sub",
                                             );
                                         }
@@ -2620,56 +2642,62 @@ impl<'ast> Compiler<'_, 'ast> {
                                             _ = writeln!(self.asm, " xor rdi, rsi");
                                         }
                                         AssignmentOp::LeftShift => {
-                                            let Position { line, col } = self.src.position(op_col);
+                                            let Position { line, column } =
+                                                self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
-                                                \n mov rcx, {col}\
+                                                \n mov rcx, {column}\
                                                 \n call int_safe_left_shift",
                                             );
                                         }
                                         AssignmentOp::WrappingLeftShift => {
-                                            let Position { line, col } = self.src.position(op_col);
+                                            let Position { line, column } =
+                                                self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
-                                                \n mov rcx, {col}\
+                                                \n mov rcx, {column}\
                                                 \n call int_wrapping_left_shift",
                                             );
                                         }
                                         AssignmentOp::SaturatingLeftShift => {
-                                            let Position { line, col } = self.src.position(op_col);
+                                            let Position { line, column } =
+                                                self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
-                                                \n mov rcx, {col}\
+                                                \n mov rcx, {column}\
                                                 \n call int_saturating_left_shift",
                                             );
                                         }
                                         AssignmentOp::RightShift => {
-                                            let Position { line, col } = self.src.position(op_col);
+                                            let Position { line, column } =
+                                                self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
-                                                \n mov rcx, {col}\
+                                                \n mov rcx, {column}\
                                                 \n call int_safe_right_shift",
                                             );
                                         }
                                         AssignmentOp::LeftRotate => {
-                                            let Position { line, col } = self.src.position(op_col);
+                                            let Position { line, column } =
+                                                self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
-                                                \n mov rcx, {col}\
+                                                \n mov rcx, {column}\
                                                 \n call int_safe_left_rotate",
                                             );
                                         }
                                         AssignmentOp::RightRotate => {
-                                            let Position { line, col } = self.src.position(op_col);
+                                            let Position { line, column } =
+                                                self.src.position(op_col);
                                             _ = writeln!(
                                                 self.asm,
                                                 " mov rdx, {line}\
-                                                \n mov rcx, {col}\
+                                                \n mov rcx, {column}\
                                                 \n call int_safe_right_rotate",
                                             );
                                         }
@@ -2714,10 +2742,11 @@ impl<'ast> Compiler<'_, 'ast> {
                 let var = self.resolve(ast_variable.name);
                 let dst_offset = var.offset;
 
+                let ast_variable_name_str =
+                    unsafe { core::str::from_utf8_unchecked(ast_variable.name) };
                 _ = writeln!(
                     self.asm,
-                    " ; {} {op} {}",
-                    ast_variable.name,
+                    " ; {ast_variable_name_str} {op} {}",
                     new_value.display(self.ast)
                 );
                 if let AssignmentOp::Equals = op {
@@ -2734,38 +2763,38 @@ impl<'ast> Compiler<'_, 'ast> {
 
                     match op {
                         AssignmentOp::Pow => {
-                            let Position { line, col } = self.src.position(op_col);
+                            let Position { line, column } = self.src.position(op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_safe_pow",
                             );
                         }
                         AssignmentOp::WrappingPow => {
-                            let Position { line, col } = self.src.position(op_col);
+                            let Position { line, column } = self.src.position(op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_wrapping_pow",
                             );
                         }
                         AssignmentOp::SaturatingPow => {
-                            let Position { line, col } = self.src.position(op_col);
+                            let Position { line, column } = self.src.position(op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_saturating_pow",
                             );
                         }
                         AssignmentOp::Times => {
-                            let Position { line, col } = self.src.position(op_col);
+                            let Position { line, column } = self.src.position(op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_safe_mul",
                             );
                         }
@@ -2774,47 +2803,47 @@ impl<'ast> Compiler<'_, 'ast> {
                             _ = writeln!(self.asm, " call int_saturating_mul");
                         }
                         AssignmentOp::Divide => {
-                            let Position { line, col } = self.src.position(op_col);
+                            let Position { line, column } = self.src.position(op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_safe_div",
                             );
                         }
                         AssignmentOp::WrappingDivide => {
-                            let Position { line, col } = self.src.position(op_col);
+                            let Position { line, column } = self.src.position(op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_wrapping_div",
                             );
                         }
                         AssignmentOp::SaturatingDivide => {
-                            let Position { line, col } = self.src.position(op_col);
+                            let Position { line, column } = self.src.position(op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_saturating_div",
                             );
                         }
                         AssignmentOp::Remainder => {
-                            let Position { line, col } = self.src.position(op_col);
+                            let Position { line, column } = self.src.position(op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_safe_remainder",
                             );
                         }
                         AssignmentOp::Plus => {
-                            let Position { line, col } = self.src.position(op_col);
+                            let Position { line, column } = self.src.position(op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_safe_add",
                             );
                         }
@@ -2823,11 +2852,11 @@ impl<'ast> Compiler<'_, 'ast> {
                             _ = writeln!(self.asm, " call int_saturating_add");
                         }
                         AssignmentOp::Minus => {
-                            let Position { line, col } = self.src.position(op_col);
+                            let Position { line, column } = self.src.position(op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_safe_sub",
                             );
                         }
@@ -2843,56 +2872,56 @@ impl<'ast> Compiler<'_, 'ast> {
                         }
                         AssignmentOp::BitXor => _ = writeln!(self.asm, " xor rdi, rsi"),
                         AssignmentOp::LeftShift => {
-                            let Position { line, col } = self.src.position(op_col);
+                            let Position { line, column } = self.src.position(op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_safe_left_shift",
                             );
                         }
                         AssignmentOp::WrappingLeftShift => {
-                            let Position { line, col } = self.src.position(op_col);
+                            let Position { line, column } = self.src.position(op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_wrapping_left_shift",
                             );
                         }
                         AssignmentOp::SaturatingLeftShift => {
-                            let Position { line, col } = self.src.position(op_col);
+                            let Position { line, column } = self.src.position(op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_saturating_left_shift",
                             );
                         }
                         AssignmentOp::RightShift => {
-                            let Position { line, col } = self.src.position(op_col);
+                            let Position { line, column } = self.src.position(op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_safe_right_shift",
                             );
                         }
                         AssignmentOp::LeftRotate => {
-                            let Position { line, col } = self.src.position(op_col);
+                            let Position { line, column } = self.src.position(op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_safe_left_rotate",
                             );
                         }
                         AssignmentOp::RightRotate => {
-                            let Position { line, col } = self.src.position(op_col);
+                            let Position { line, column } = self.src.position(op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
-                                \n mov rcx, {col}\
+                                \n mov rcx, {column}\
                                 \n call int_safe_right_rotate",
                             );
                         }
@@ -2922,7 +2951,7 @@ impl<'ast> Compiler<'_, 'ast> {
 }
 
 // ifs
-impl<'ast> Compiler<'_, 'ast> {
+impl<'ast> Compiler<'ast, '_, '_, '_> {
     fn iff(&mut self, iff: &'ast IfStatement, tag: &str, false_tag: &str) {
         _ = writeln!(self.asm, "{tag}:; {}", iff.condition.display(self.ast));
         self.condition(&iff.condition, false_tag);
@@ -2931,7 +2960,7 @@ impl<'ast> Compiler<'_, 'ast> {
 }
 
 // print statements
-impl<'ast> Compiler<'_, 'ast> {
+impl<'ast> Compiler<'ast, '_, '_, '_> {
     fn print(&mut self, value: &'ast Expression) {
         let value_type = value.typ();
         self.expression(value, Dst::default(&value_type));

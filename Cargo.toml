@@ -11,6 +11,13 @@ readme = "README.md"
 documentation = "https://github.com/StefanoIncardone/kaylang/blob/main/LANGUAGE_REFERENCE.md"
 license = "MIT"
 
+[features]
+# IDEA(stefano): add configuration for max source code length
+
+[dependencies]
+unicode-width = "0.2.0"
+unicode-segmentation = "1.12.0"
+
 [profile.dev]
 debug = "full"
 opt-level = 0
@@ -34,7 +41,7 @@ non_ascii_idents = "forbid"
 unreachable_pub = "forbid"
 unnameable_types = "forbid"
 unstable_features = "forbid"
-unused_crate_dependencies = "warn"
+unused_crate_dependencies = "allow" # might be changed to 'warn' from time to time
 unused_extern_crates = "warn"
 unused_import_braces = "warn"
 unused_lifetimes = "warn"
@@ -57,6 +64,8 @@ self_named_module_files = "allow"
 mod_module_files = "warn"
 
 std_instead_of_alloc = "allow"
+
+struct_field_names = "allow" # unreliable
 
 # improve readability and self documenting code
 implicit_return = "forbid"
@@ -95,7 +104,7 @@ string_slice = "allow" # how else would i take a string slice?
 from_over_into = "allow" # i found that implementing the From trait and hoping for a correct Into implementation to be unreliable
 missing_transmute_annotations = "allow"
 arithmetic_side_effects = "allow" # could be changed to "warn"
-unreachable = "allow" # trust me, might be changed to "warn" to encourage bettere style and soundness
+unreachable = "allow" # trust me, might be changed to "warn" to encourage better style and soundness
 undocumented_unsafe_blocks = "allow" # trust me
 missing_errors_doc = "allow" # will be changed to "warn" in the future when it comes time to document everything
 as_conversions = "allow" # do as i say please
@@ -105,13 +114,14 @@ cast_sign_loss = "allow" # do as i say please
 question_mark_used = "allow" # needlessly advocates for a macro instead of a language feature
 verbose_file_reads = "allow"
 single_match_else = "allow" # avoid forgetting to change the consumer when signatures change
+redundant_pattern_matching = "allow" # i hate inconsistencies in ifs and matches
 
 # doesn't solve the problem, i.e.:
 # ```rust
 # let mut i: i32 = 0; // this explicit annotation is useful and prevents incorrect inference
 #
 # // but this still raises a warning, which it should not in my opinion, since the type of the
-# // literal 1 shoul be already inferred as being an i32
+# // literal 1 should be already inferred as being an i32
 # i += 1;
 # ```
 default_numeric_fallback = "allow"
@@ -119,7 +129,8 @@ default_numeric_fallback = "allow"
 # i prefer imperative programming
 option_if_let_else = "allow"
 if_then_some_else_none = "allow"
-# manual_map = "allow"
+manual_map = "allow"
+manual_unwrap_or = "allow"
 equatable_if_let = "allow"
 
 large_stack_frames = "warn"

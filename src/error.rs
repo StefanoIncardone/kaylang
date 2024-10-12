@@ -1,10 +1,27 @@
 use crate::{
     color::{Bg, Colored, Fg, Flag},
-    src_file::offset,
+    front_end::src_file::{column32, line32, offset32},
     AT, BAR, CAUSE,
 };
 use core::fmt::Display;
 use std::path::Path;
+
+use unicode_width::UnicodeWidthChar;
+
+pub(crate) trait CharsWidth {
+    fn chars_width(&self) -> offset32;
+}
+
+impl CharsWidth for str {
+    fn chars_width(&self) -> offset32 {
+        let mut len = 0;
+        for character in self.chars() {
+            let character_utf8_len = character.width_cjk().unwrap_or_default();
+            len += character_utf8_len as offset32;
+        }
+        return len;
+    }
+}
 
 #[derive(Clone)]
 pub struct Msg<'kind, 'message> {
@@ -44,8 +61,8 @@ pub struct MsgWithCauseUnderText<'kind, 'message, 'cause, 'src> {
     pub message: &'message dyn Display,
     pub cause: &'cause dyn Display,
     pub line_text: &'src dyn Display,
-    pub pointers_offset: usize,
-    pub pointers_count: usize,
+    pub pointers_count: column32,
+    pub pointers_offset: column32,
 }
 
 impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
@@ -61,7 +78,7 @@ impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
             text: format!(
                 "{spaces:^>pointers_count$} {cause}",
                 spaces = "",
-                pointers_count = self.pointers_count,
+                pointers_count = self.pointers_count as usize,
                 cause = self.cause
             ),
             fg: Fg::LightRed,
@@ -77,7 +94,7 @@ impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
             \n{BAR} {spaces:>pointers_offset$}{pointers_and_cause}",
             kind = self.kind,
             line_text = self.line_text,
-            pointers_offset = self.pointers_offset,
+            pointers_offset = self.pointers_offset as usize,
             spaces = ""
         );
     }
@@ -89,12 +106,15 @@ pub struct MsgWithCauseUnderTextWithLocation<'kind, 'message, 'cause, 'src> {
     pub message: &'message dyn Display,
     pub cause: &'cause dyn Display,
     pub file: &'src Path,
-    pub line: offset,
-    pub col: offset,
+    pub line: line32,
+    pub column: column32,
+    pub absolute_column: offset32,
     pub line_text: &'src dyn Display,
-    pub pointers_count: offset,
+    pub pointers_count: column32,
+    pub pointers_offset: column32,
 }
 
+// BUG(stefano): improve displaying of tabs (substitute them with 4 spaces)
 impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let error_message = Colored {
@@ -128,16 +148,18 @@ impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_> {
         return write!(
             f,
             "{kind}: {error_message}\
-            \n{AT:>at_padding$}: {path}:{line}:{col}\
+            \n{AT:>at_padding$}: {path}:{line}:{column} ({absolute_column})\
             \n{BAR:>line_number_padding$}\
             \n{line_number} {BAR} {line_text}\
-            \n{BAR:>line_number_padding$}{spaces:>col$}{pointers_and_cause}",
+            \n{BAR:>line_number_padding$}{spaces:>pointers_offset$}{pointers_and_cause}",
             kind = self.kind,
             at_padding = line_number_padding - 1,
             path = self.file.display(),
             line = self.line,
-            col = self.col as usize,
+            column = self.column as usize,
+            absolute_column = self.absolute_column as usize,
             line_text = self.line_text,
+            pointers_offset = self.pointers_offset as usize,
             spaces = "",
         );
     }

@@ -2,12 +2,12 @@
 // TODO(stefano): multidimensional arrays
 
 use super::{
-    tokenizer::{ascii, int, uint, BracketKind, DisplayLen, Mutability, Op, Str, Token, TokenKind},
+    src_file::{index32, offset32, Position, SrcCode},
+    tokenizer::{
+        ascii, int, uint, Base, Bracket, DisplayLen, Integer, Mutability, Op, OpenBracket, Str,
+        Token, TokenKind,
+    },
     Error, ErrorInfo, IntoErrorInfo,
-};
-use crate::{
-    src_file::{offset, Position, SrcFile},
-    syntax::tokenizer::{Base, Integer},
 };
 use core::fmt::{Debug, Display};
 
@@ -136,8 +136,8 @@ pub(crate) enum UnaryOp {
 }
 
 impl Display for UnaryOp {
-    #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
             Self::Len             => write!(f, "len"),
             Self::Not             => write!(f, "!"),
@@ -173,8 +173,8 @@ pub(crate) enum BooleanUnaryOp {
 }
 
 impl Display for BooleanUnaryOp {
-    #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
             Self::Not => write!(f, "!"),
         };
@@ -234,8 +234,8 @@ pub(crate) enum BinaryOp {
 }
 
 impl Display for BinaryOp {
-    #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
             Self::Pow                 => write!(f,  "**"),
             Self::WrappingPow         => write!(f, r"**\"),
@@ -295,8 +295,8 @@ pub(crate) enum BooleanBinaryOp {
 }
 
 impl Display for BooleanBinaryOp {
-    #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
             Self::And => write!(f, "&&"),
             Self::Or  => write!(f, "||"),
@@ -330,8 +330,8 @@ pub(crate) enum ComparisonOp {
 }
 
 impl Display for ComparisonOp {
-    #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
             Self::Compare         => write!(f, "<=>"),
             Self::EqualsEquals    => write!(f, "=="),
@@ -340,7 +340,7 @@ impl Display for ComparisonOp {
             Self::GreaterOrEquals => write!(f, ">="),
             Self::Less            => write!(f, "<"),
             Self::LessOrEquals    => write!(f, "<="),
-        }
+        };
     }
 }
 
@@ -409,8 +409,8 @@ pub(crate) enum AssignmentOp {
 }
 
 impl Display for AssignmentOp {
-    #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
             Self::Equals              => write!(f, "="),
 
@@ -453,13 +453,13 @@ impl Display for AssignmentOp {
     }
 }
 
-type StringLabel = offset;
-type TokenIndex = offset;
-type VariableIndex = offset;
-type IfIndex = offset;
-type LoopIndex = offset;
-type ExpressionIndex = offset;
-pub(crate) type ScopeIndex = offset;
+type StringLabel = index32;
+type TokenIndex = index32;
+type VariableIndex = index32;
+type IfIndex = index32;
+type LoopIndex = index32;
+type ExpressionIndex = index32;
+pub(crate) type ScopeIndex = index32;
 
 #[derive(Debug, Clone)]
 pub(crate) enum Expression {
@@ -483,7 +483,7 @@ pub(crate) enum Expression {
 
     Unary {
         op: UnaryOp,
-        op_col: offset,
+        op_col: offset32,
         operand_index: ExpressionIndex,
     },
     BooleanUnary {
@@ -493,7 +493,7 @@ pub(crate) enum Expression {
     Binary {
         lhs_index: ExpressionIndex,
         op: BinaryOp,
-        op_col: offset,
+        op_col: offset32,
         rhs_index: ExpressionIndex,
     },
     BooleanBinary {
@@ -509,7 +509,7 @@ pub(crate) enum Expression {
     ArrayIndex {
         base_type: BaseType,
         indexable_index: ExpressionIndex,
-        bracket_col: offset,
+        bracket_col: offset32,
         index_expression_index: ExpressionIndex,
     },
 
@@ -548,19 +548,22 @@ impl TypeOf for Expression {
     }
 }
 
-impl<'src, 'ast: 'src> Expression {
+impl<'ast, 'code: 'ast> Expression {
     #[inline(always)]
-    pub(crate) const fn display(&'ast self, ast: &'ast Ast<'src>) -> ExpressionDisplay<'src, 'ast> {
+    pub(crate) const fn display(
+        &'ast self,
+        ast: &'ast Ast<'code>,
+    ) -> ExpressionDisplay<'ast, 'code> {
         return ExpressionDisplay { ast, expr: self };
     }
 }
 
-pub(crate) struct ExpressionDisplay<'src, 'ast: 'src> {
-    ast: &'ast Ast<'src>,
+pub(crate) struct ExpressionDisplay<'ast, 'code: 'ast> {
+    ast: &'ast Ast<'code>,
     expr: &'ast Expression,
 }
 
-impl<'src, 'ast: 'src> ExpressionDisplay<'src, 'ast> {
+impl<'ast, 'code: 'ast> ExpressionDisplay<'ast, 'code> {
     pub(crate) fn display(
         &self,
         f: &mut core::fmt::Formatter<'_>,
@@ -645,7 +648,8 @@ impl<'src, 'ast: 'src> ExpressionDisplay<'src, 'ast> {
             }
             Expression::Variable { variable_index, .. } => {
                 let variable = &self.ast.variables[*variable_index as usize];
-                write!(f, "{}", variable.name)
+                let variable_name_str = unsafe { core::str::from_utf8_unchecked(variable.name) };
+                write!(f, "{variable_name_str}")
             }
         };
     }
@@ -688,7 +692,7 @@ pub(crate) enum Node {
     Continue,
 
     Definition { var_index: VariableIndex },
-    Reassignment { target: Expression, op: AssignmentOp, op_col: offset, new_value: Expression },
+    Reassignment { target: Expression, op: AssignmentOp, op_col: offset32, new_value: Expression },
 
     Scope { index: ScopeIndex },
 
@@ -706,8 +710,8 @@ pub(crate) struct Scope {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Variable<'src> {
-    pub(crate) name: &'src str,
+pub(crate) struct Variable<'code> {
+    pub(crate) name: &'code [ascii],
     pub(crate) value: Expression,
 }
 
@@ -716,7 +720,7 @@ this is in reality closer to an intermediate representation than to an AST
 TODO: introduce other representation before and after this Ast
 */
 #[derive(Debug)]
-pub struct Ast<'src> {
+pub struct Ast<'code> {
     pub(crate) nodes: Vec<Vec<Node>>,
 
     pub(crate) ifs: Vec<If>,
@@ -724,30 +728,30 @@ pub struct Ast<'src> {
 
     pub(crate) expressions: Vec<Expression>,
     pub(crate) temporaries: Vec<Expression>,
-    pub(crate) variables: Vec<Variable<'src>>,
+    pub(crate) variables: Vec<Variable<'code>>,
 
     pub(crate) strings: Vec<Str>,
 }
 
 #[derive(Debug)]
-pub struct Parser<'src, 'tokens: 'src> {
-    src: &'src SrcFile,
+pub struct Parser<'tokens, 'src: 'tokens, 'path: 'src, 'code: 'path> {
+    src: &'src SrcCode<'code, 'path>,
     errors: Vec<Error<ErrorKind>>,
 
     token: TokenIndex,
-    tokens: &'tokens [Token<'src>],
+    tokens: &'tokens [Token<'code>],
 
-    loop_depth: offset,
+    loop_depth: u32,
     scope: ScopeIndex,
     scopes: Vec<Scope>,
-    ast: Ast<'src>,
+    ast: Ast<'code>,
 }
 
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+impl<'tokens, 'src: 'tokens, 'path: 'src, 'code: 'src> Parser<'tokens, 'src, 'path, 'code> {
     pub fn parse(
-        src: &'src SrcFile,
-        tokens: &'tokens [Token<'src>],
-    ) -> Result<Ast<'src>, Vec<Error<ErrorKind>>> {
+        src: &'src SrcCode<'code, 'path>,
+        tokens: &'tokens [Token<'code>],
+    ) -> Result<Ast<'code>, Vec<Error<ErrorKind>>> {
         let ast = Ast {
             nodes: vec![vec![]],
 
@@ -766,8 +770,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         }
 
         // skipping to the first non-comment token
-        let mut token: offset = 0;
-        let tokens_len = tokens.len() as offset;
+        let mut token: index32 = 0;
+        let tokens_len = tokens.len() as index32;
         while token < tokens_len {
             let current = &tokens[token as usize];
             let (TokenKind::Comment(_) | TokenKind::BlockComment(_)) = current.kind else {
@@ -800,7 +804,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 }
 
 // parsing of statements
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
     fn semicolon(&mut self) -> Result<(), Error<ErrorKind>> {
         let semicolon_token = self.current_token(Expected::Semicolon)?;
         let TokenKind::SemiColon = semicolon_token.kind else {
@@ -832,14 +836,14 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     self.errors.push(err);
 
                     // consuming all remaining tokens until the end of the file
-                    self.token = self.tokens.len() as offset;
+                    self.token = self.tokens.len() as index32;
                     break;
                 }
             }
         }
     }
 
-    fn statement(&mut self, token: &'tokens Token<'src>) -> Result<Node, Error<ErrorKind>> {
+    fn statement(&mut self, token: &'tokens Token<'code>) -> Result<Node, Error<ErrorKind>> {
         return match token.kind {
             TokenKind::False
             | TokenKind::True
@@ -848,7 +852,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
-            | TokenKind::Bracket(BracketKind::OpenRound | BracketKind::OpenSquare)
+            | TokenKind::Bracket(Bracket::OpenRound | Bracket::OpenSquare)
             | TokenKind::Op(
                 Op::Len
                 | Op::Not
@@ -871,7 +875,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 match after_expression_token.kind {
                     TokenKind::SemiColon => {
                         if let Expression::Array { .. } = expression {
-                            let temporary_value_index = self.ast.temporaries.len() as offset;
+                            let temporary_value_index = self.ast.temporaries.len() as index32;
                             let expression_type = expression.typ();
                             self.ast.temporaries.push(expression);
                             expression = Expression::Temporary {
@@ -1149,20 +1153,20 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 _ = self.next_token();
                 Ok(Node::Semicolon)
             }
-            TokenKind::Bracket(BracketKind::OpenCurly) => {
-                let Position { line, col } = self.src.position(token.col);
+            TokenKind::Bracket(Bracket::OpenCurly) => {
+                let Position { line, column } = self.src.position(token.col);
                 unreachable!(
-                    "blocks not allowed in single statements: {file}:{line}:{col}",
-                    file = self.src.path.display(),
+                    "blocks not allowed in single statements: {file}:{line}:{column}",
+                    file = self.src.path().display(),
                 );
             }
             TokenKind::Bracket(
-                BracketKind::CloseCurly | BracketKind::CloseSquare | BracketKind::CloseRound,
+                Bracket::CloseCurly | Bracket::CloseSquare | Bracket::CloseRound,
             ) => {
-                let Position { line, col } = self.src.position(token.col);
+                let Position { line, column } = self.src.position(token.col);
                 unreachable!(
-                    "should have been cought during tokenization: {file}:{line}:{col}",
-                    file = self.src.path.display(),
+                    "should have been cought during tokenization: {file}:{line}:{column}",
+                    file = self.src.path().display(),
                 );
             }
             TokenKind::Colon => {
@@ -1199,7 +1203,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn do_statement(&mut self) -> Result<Node, Error<ErrorKind>> {
         let token = self.next_token_bounded(Expected::StatementAfterDo)?;
         return match token.kind {
-            TokenKind::Bracket(BracketKind::OpenCurly) => {
+            TokenKind::Bracket(Bracket::OpenCurly) => {
                 _ = self.next_token();
                 Err(Error {
                     kind: ErrorKind::BlockInDoStatement,
@@ -1243,10 +1247,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
     }
 
-    fn any(&mut self, token: &'tokens Token<'src>) -> Result<Node, Error<ErrorKind>> {
+    fn any(&mut self, token: &'tokens Token<'code>) -> Result<Node, Error<ErrorKind>> {
         return match token.kind {
-            TokenKind::Bracket(BracketKind::OpenCurly) => {
-                let new_scope_index = self.scopes.len() as offset;
+            TokenKind::Bracket(Bracket::OpenCurly) => {
+                let new_scope_index = self.scopes.len() as index32;
                 self.scopes.push(Scope {
                     parent: self.scope,
                     base_types: Vec::new(),
@@ -1260,7 +1264,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 self.scope();
                 Ok(Node::Scope { index: new_scope_index })
             }
-            TokenKind::Bracket(BracketKind::CloseCurly) => {
+            TokenKind::Bracket(Bracket::CloseCurly) => {
                 self.scope = self.scopes[self.scope as usize].parent;
                 _ = self.next_token();
                 Ok(Node::ScopeEnd)
@@ -1296,9 +1300,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 }
 
 // iteration over tokens
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
     // IDEA(stefano): remove self.current_token method and pass the current token around
-    fn current_token(&self, expected: Expected) -> Result<&'tokens Token<'src>, Error<ErrorKind>> {
+    fn current_token(&self, expected: Expected) -> Result<&'tokens Token<'code>, Error<ErrorKind>> {
         let Some(token) = self.tokens.get(self.token as usize) else {
             let previous = self.peek_previous_token();
             return Err(Error {
@@ -1311,9 +1315,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         return Ok(token);
     }
 
-    fn next_token(&mut self) -> Option<&'tokens Token<'src>> {
+    fn next_token(&mut self) -> Option<&'tokens Token<'code>> {
         loop {
-            let tokens_len = self.tokens.len() as offset;
+            let tokens_len = self.tokens.len() as index32;
             if self.token >= tokens_len - 1 {
                 self.token = tokens_len;
                 return None;
@@ -1330,9 +1334,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn next_token_bounded(
         &mut self,
         expected: Expected,
-    ) -> Result<&'tokens Token<'src>, Error<ErrorKind>> {
+    ) -> Result<&'tokens Token<'code>, Error<ErrorKind>> {
         loop {
-            let tokens_len = self.tokens.len() as offset;
+            let tokens_len = self.tokens.len() as index32;
             if self.token >= tokens_len - 1 {
                 let previous = &self.tokens[self.token as usize];
                 self.token = tokens_len;
@@ -1351,10 +1355,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         }
     }
 
-    const fn peek_next_token(&self) -> Option<&'tokens Token<'src>> {
+    const fn peek_next_token(&self) -> Option<&'tokens Token<'code>> {
         let mut current_token = self.token;
         loop {
-            if current_token >= self.tokens.len() as offset - 1 {
+            if current_token >= self.tokens.len() as index32 - 1 {
                 return None;
             }
 
@@ -1368,7 +1372,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
     // Note: this function is always called when underflowing the tokens array is never the case,
     // so there is no need for bounds checking
-    const fn peek_previous_token(&self) -> &'tokens Token<'src> {
+    const fn peek_previous_token(&self) -> &'tokens Token<'code> {
         let mut current_token = self.token;
         loop {
             current_token -= 1;
@@ -1387,7 +1391,7 @@ pub enum ParseIntError {
 }
 
 // expressions
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
     fn new_expression(&mut self, expression: Expression) -> ExpressionIndex {
         let index = self.ast.expressions.len() as ExpressionIndex;
         self.ast.expressions.push(expression);
@@ -1395,7 +1399,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     }
 
     fn assert_lhs_is_not_string_or_array(
-        op_token: &'tokens Token<'src>,
+        op_token: &'tokens Token<'code>,
         lhs: &Expression,
     ) -> Result<(), Error<ErrorKind>> {
         let lhs_type = lhs.typ();
@@ -1411,7 +1415,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     }
 
     fn assert_rhs_is_not_string_or_array(
-        op_token: &'tokens Token<'src>,
+        op_token: &'tokens Token<'code>,
         rhs: &Expression,
     ) -> Result<(), Error<ErrorKind>> {
         let rhs_type = rhs.typ();
@@ -1427,7 +1431,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     }
 
     fn assert_lhs_is_bool(
-        op_token: &'tokens Token<'src>,
+        op_token: &'tokens Token<'code>,
         lhs: &Expression,
     ) -> Result<(), Error<ErrorKind>> {
         let lhs_type = lhs.typ();
@@ -1443,7 +1447,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     }
 
     fn assert_rhs_is_bool(
-        op_token: &'tokens Token<'src>,
+        op_token: &'tokens Token<'code>,
         rhs: &Expression,
     ) -> Result<(), Error<ErrorKind>> {
         let rhs_type = rhs.typ();
@@ -1461,7 +1465,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn operator(
         &mut self,
         ops: &[Op],
-    ) -> Result<Option<(&'tokens Token<'src>, Op)>, Error<ErrorKind>> {
+    ) -> Result<Option<(&'tokens Token<'code>, Op)>, Error<ErrorKind>> {
         let current_token = self.current_token(Expected::OperatorOrSemicolon)?;
         let TokenKind::Op(op) = current_token.kind else {
             return Ok(None);
@@ -1792,10 +1796,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     }
                 }
             },
-            TokenKind::Bracket(BracketKind::OpenRound) => 'parenthesis: {
+            TokenKind::Bracket(Bracket::OpenRound) => 'parenthesis: {
                 let expression_start_token = self.next_token_bounded(Expected::Expression)?;
 
-                if let TokenKind::Bracket(BracketKind::CloseRound) = expression_start_token.kind {
+                if let TokenKind::Bracket(Bracket::CloseRound) = expression_start_token.kind {
                     break 'parenthesis Err(Error {
                         kind: ErrorKind::EmptyExpression,
                         col: expression_start_token.col,
@@ -1806,9 +1810,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 let expression = self.expression()?;
                 let close_bracket_token = self.current_token(Expected::ClosingRoundBracket)?;
 
-                let TokenKind::Bracket(BracketKind::CloseRound) = close_bracket_token.kind else {
+                let TokenKind::Bracket(Bracket::CloseRound) = close_bracket_token.kind else {
                     return Err(Error {
-                        kind: ErrorKind::UnclosedBracket(BracketKind::OpenRound),
+                        kind: ErrorKind::UnclosedBracket(OpenBracket::Round),
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(),
                     });
@@ -1819,12 +1823,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     expression_index: self.new_expression(expression),
                 })
             }
-            TokenKind::Bracket(BracketKind::OpenSquare) => 'array: {
+            TokenKind::Bracket(Bracket::OpenSquare) => 'array: {
                 let mut bracket_or_comma_token =
                     self.next_token_bounded(Expected::ArrayElementOrClosingSquareBracket)?;
 
                 // REMOVE(stefano): allow arrays of 0 elements
-                if let TokenKind::Bracket(BracketKind::CloseSquare) = bracket_or_comma_token.kind {
+                if let TokenKind::Bracket(Bracket::CloseSquare) = bracket_or_comma_token.kind {
                     break 'array Err(Error {
                         kind: ErrorKind::ArrayOfZeroElements,
                         col: current_token.col,
@@ -1843,7 +1847,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                 }
 
                 // REMOVE(stefano): allow arrays of 0 elements
-                if let TokenKind::Bracket(BracketKind::CloseSquare) = bracket_or_comma_token.kind {
+                if let TokenKind::Bracket(Bracket::CloseSquare) = bracket_or_comma_token.kind {
                     break 'array Err(Error {
                         kind: ErrorKind::ArrayOfOneElement,
                         col: current_token.col,
@@ -1900,10 +1904,11 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                             self.next_token_bounded(Expected::ArrayElementOrClosingSquareBracket)?;
                     }
 
-                    if let TokenKind::Bracket(BracketKind::CloseSquare) =
-                        bracket_or_comma_token.kind
-                    {
-                        debug_assert!(items.len() >= 2, "arrays of 0 and 1 elements are not allowed");
+                    if let TokenKind::Bracket(Bracket::CloseSquare) = bracket_or_comma_token.kind {
+                        debug_assert!(
+                            items.len() >= 2,
+                            "arrays of 0 and 1 elements are not allowed"
+                        );
                         break 'array Ok(Expression::Array { base_type: items_type, items });
                     }
                 }
@@ -2358,7 +2363,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
         let mut expression = expression_result?;
         while let Some(
-            open_bracket_token @ Token { kind: TokenKind::Bracket(BracketKind::OpenSquare), .. },
+            open_bracket_token @ Token { kind: TokenKind::Bracket(Bracket::OpenSquare), .. },
         ) = self.next_token()
         {
             let _start_of_index = self.next_token();
@@ -2373,7 +2378,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
             let after_index_token = self.current_token(Expected::ClosingSquareBracket)?;
 
-            let TokenKind::Bracket(BracketKind::CloseSquare) = after_index_token.kind else {
+            let TokenKind::Bracket(Bracket::CloseSquare) = after_index_token.kind else {
                 let before_index_token = self.peek_previous_token();
                 return Err(Error {
                     kind: ErrorKind::MissingClosingSquareBracketInIndex,
@@ -2780,8 +2785,8 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 }
 
 // variables and types
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
-    fn resolve_variable(&self, name: &'src str) -> Option<(Mutability, VariableIndex)> {
+impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
+    fn resolve_variable(&self, name: &'code [ascii]) -> Option<(Mutability, VariableIndex)> {
         let mut scope_index = self.scope;
         loop {
             let scope = &self.scopes[scope_index as usize];
@@ -2806,12 +2811,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         }
     }
 
-    fn resolve_type(&self, name: &'src str) -> Option<BaseType> {
+    fn resolve_type(&self, name: &'code [ascii]) -> Option<BaseType> {
         let mut scope_index = self.scope;
         loop {
             let scope = &self.scopes[scope_index as usize];
             for typ in &scope.base_types {
-                if typ.to_string() == name {
+                if typ.to_string().as_bytes() == name {
                     return Some(*typ);
                 }
             }
@@ -2825,7 +2830,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
     fn type_annotation(
         &mut self,
-    ) -> Result<Option<(&'tokens Token<'src>, Type)>, Error<ErrorKind>> {
+    ) -> Result<Option<(&'tokens Token<'code>, Type)>, Error<ErrorKind>> {
         let colon_token = self.next_token_bounded(Expected::TypeAnnotationOrVariableDefinition)?;
 
         let TokenKind::Colon = colon_token.kind else {
@@ -2843,6 +2848,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
 
         let Some(base_type) = self.resolve_type(type_name) else {
+            // REMOVE(stefano): remove possibility of emulating `typeof` using other variables as type annotation
             return match self.resolve_variable(type_name) {
                 Some((_, var_index)) => {
                     let var = &self.ast.variables[var_index as usize];
@@ -2860,7 +2866,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
             return Ok(Some((type_token, Type::Base(base_type))));
         };
 
-        let TokenKind::Bracket(BracketKind::OpenSquare) = open_square_bracket_token.kind else {
+        let TokenKind::Bracket(Bracket::OpenSquare) = open_square_bracket_token.kind else {
             return Ok(Some((type_token, Type::Base(base_type))));
         };
 
@@ -2904,7 +2910,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
         };
 
         let close_square_bracket_token = self.current_token(Expected::ClosingSquareBracket)?;
-        let TokenKind::Bracket(BracketKind::CloseSquare) = close_square_bracket_token.kind else {
+        let TokenKind::Bracket(Bracket::CloseSquare) = close_square_bracket_token.kind else {
             return Err(Error {
                 kind: ErrorKind::MissingClosingSquareBracketInArrayType,
                 col: open_square_bracket_token.col,
@@ -3060,7 +3066,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                     Mutability::Var => &mut self.scopes[self.scope as usize].var_variables,
                 };
 
-                let var_index = self.ast.variables.len() as offset;
+                let var_index = self.ast.variables.len() as index32;
                 scope_variables.push(var_index);
                 self.ast.variables.push(Variable { name, value });
 
@@ -3073,7 +3079,10 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         Type::Array { base_type, len } => {
                             debug_assert!(len >= 2, "arrays of 0 and 1 elements are not allowed");
                             let items = vec![self.expression_from_base_type(base_type); len];
-                            debug_assert!(items.len() >= 2, "arrays of 0 and 1 elements are not allowed");
+                            debug_assert!(
+                                items.len() >= 2,
+                                "arrays of 0 and 1 elements are not allowed"
+                            );
                             Expression::Array { base_type, items }
                         }
                     };
@@ -3083,7 +3092,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
                         Mutability::Var => &mut self.scopes[self.scope as usize].var_variables,
                     };
 
-                    let var_index = self.ast.variables.len() as offset;
+                    let var_index = self.ast.variables.len() as index32;
                     scope_variables.push(var_index);
                     self.ast.variables.push(Variable { name, value });
 
@@ -3102,9 +3111,9 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
     fn reassignment(
         &mut self,
         target: Expression,
-        target_token: &'tokens Token<'src>,
+        target_token: &'tokens Token<'code>,
         op: AssignmentOp,
-        op_token: &'tokens Token<'src>,
+        op_token: &'tokens Token<'code>,
     ) -> Result<Node, Error<ErrorKind>> {
         let (error_token, target_type) = match &target {
             Expression::ArrayIndex { base_type, indexable_index, .. } => {
@@ -3267,12 +3276,12 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 }
 
 // print statements
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+impl Parser<'_, '_, '_, '_> {
     fn print_arg(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let _start_of_expression_token = self.next_token_bounded(Expected::Expression)?;
         let argument = self.expression()?;
         if let Expression::Array { .. } = argument {
-            let temporary_value_index = self.ast.temporaries.len() as offset;
+            let temporary_value_index = self.ast.temporaries.len() as index32;
             let argument_type = argument.typ();
             self.ast.temporaries.push(argument);
             return Ok(Expression::Temporary { typ: argument_type, temporary_value_index });
@@ -3283,7 +3292,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 }
 
 // if statements
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+impl Parser<'_, '_, '_, '_> {
     fn iff(&mut self) -> Result<Node, Error<ErrorKind>> {
         let mut ifs = Vec::new();
         let mut els = None;
@@ -3302,7 +3311,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
             let after_condition_token = self.current_token(Expected::DoOrBlock)?;
             let if_statement = match after_condition_token.kind {
-                TokenKind::Bracket(BracketKind::OpenCurly) => {
+                TokenKind::Bracket(Bracket::OpenCurly) => {
                     let scope = self.any(after_condition_token)?;
                     IfStatement { condition, statement: scope }
                 }
@@ -3378,7 +3387,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
                 // we are now inside an else branch
                 let else_if = match after_else_token.kind {
-                    TokenKind::Bracket(BracketKind::OpenCurly) => {
+                    TokenKind::Bracket(Bracket::OpenCurly) => {
                         let scope = self.any(after_else_token)?;
                         els = Some(scope);
                         break 'iff;
@@ -3430,7 +3439,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 }
 
 // loop statements
-impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
+impl Parser<'_, '_, '_, '_> {
     fn loop_statement(&mut self) -> Result<Node, Error<ErrorKind>> {
         let do_token = &self.tokens[self.token as usize];
         let loop_token = match do_token.kind {
@@ -3485,7 +3494,7 @@ impl<'src, 'tokens: 'src> Parser<'src, 'tokens> {
 
         let after_condition_token = self.current_token(Expected::DoOrBlock)?;
         let statement_result = match after_condition_token.kind {
-            TokenKind::Bracket(BracketKind::OpenCurly) => {
+            TokenKind::Bracket(Bracket::OpenCurly) => {
                 let scope = self.any(after_condition_token)?;
                 Ok(scope)
             }
@@ -3607,7 +3616,7 @@ pub enum ErrorKind {
     CannotIndexIntoExpression,
     TypeInExpression,
     EmptyExpression,
-    UnclosedBracket(BracketKind),
+    UnclosedBracket(OpenBracket),
     ArrayOfNegativeLength,
     ArrayOfZeroElements,
     ArrayOfOneElement,
@@ -3654,7 +3663,7 @@ pub enum ErrorKind {
     StrayContinueStatement,
 
     BlockInDoStatement,
-    VariableInDoStatement,
+    VariableInDoStatement, // IDEA(stefano): allow variables and emit an unused variable warning instead
 }
 
 impl IntoErrorInfo for ErrorKind {
