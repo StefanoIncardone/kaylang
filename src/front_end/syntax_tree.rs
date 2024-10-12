@@ -1183,7 +1183,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, '_> {
         error_cause_message: Cow<'static, str>,
     ) -> ! {
         let DisplayPosition { line, column, display_column } = self.src.display_position(token.col);
-        let line_span = &self.src.lines[line as usize - 1];
+        let line_span = self.src.lines[line as usize - 1];
         let line_text = &self.src.code()[line_span.start as usize..line_span.end as usize];
 
         let error = ErrorDisplay {

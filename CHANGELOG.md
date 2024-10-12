@@ -108,6 +108,8 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
         is now contained withing it
     - `src_file::SrcFile::lines` is now calculated and returned from
         `tokenizer::Tokenizer::tokenize`, which now returns the new `tokenizer::TokenizedCode`
+    - `src_file::SrcFile::position` is no longer public due to out-of bounds unsafety and
+        inconsistencies between Unix's `\n` and Windows' `\r\n` line terminators
     - Split `src_file::SrcFile::position` into `src_file::SrcFile::position` and
         `src_file::SrcFile::display_position`, returning respectively a:
         - `src_file::Position` now only contains information about the sorce code position

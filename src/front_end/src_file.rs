@@ -58,13 +58,13 @@ impl<'path> SrcFile<'path> {
             return Err(Error { path, kind: ErrorKind::MustBeAFilePath });
         }
 
-        let Ok(file_len) = column32::try_from(file_metadata.len()) else {
-            return Err(Error { path, kind: ErrorKind::FileTooBig { max: column32::MAX } });
+        let Ok(file_len) = offset32::try_from(file_metadata.len()) else {
+            return Err(Error { path, kind: ErrorKind::FileTooBig { max: offset32::MAX } });
         };
 
         let mut code = String::with_capacity(file_len as usize);
         let bytes_read = match file.read_to_string(&mut code) {
-            Ok(bytes_read) => bytes_read as column32,
+            Ok(bytes_read) => bytes_read as offset32,
             Err(err) => return Err(Error { path, kind: ErrorKind::Io(err) }),
         };
 
@@ -114,7 +114,7 @@ impl<'code, 'path: 'code> SrcCode<'code, 'path> {
     }
 
     #[must_use]
-    pub fn position(&self, column: offset32) -> Position {
+    fn line_index(&self, column: offset32) -> index32 {
         let mut left: index32 = 0;
         let mut right = self.lines.len() as index32 - 1;
         while left < right {
@@ -126,32 +126,26 @@ impl<'code, 'path: 'code> SrcCode<'code, 'path> {
                 left = middle + 1;
             }
         }
+        return left;
+    }
 
-        let line = &self.lines[left as usize];
+    #[must_use]
+    pub(crate) fn position(&self, column: offset32) -> Position {
+        let line_index = self.line_index(column);
+        let line = self.lines[line_index as usize];
         let line_text_before_error = &self.code()[line.start as usize..column as usize];
         let mut utf8_column = 1;
         for _character in line_text_before_error.chars() {
             utf8_column += 1;
         }
 
-        return Position { line: left + 1, column: utf8_column };
+        return Position { line: line_index + 1, column: utf8_column };
     }
 
     #[must_use]
-    pub fn display_position(&self, column: offset32) -> DisplayPosition {
-        let mut left: index32 = 0;
-        let mut right = self.lines.len() as index32 - 1;
-        while left < right {
-            #[allow(clippy::integer_division)] // it's intended to loose precision
-            let middle = left + (right - left) / 2;
-            if column < self.lines[middle as usize].end {
-                right = middle;
-            } else {
-                left = middle + 1;
-            }
-        }
-
-        let line = &self.lines[left as usize];
+    pub(crate) fn display_position(&self, column: offset32) -> DisplayPosition {
+        let line_index = self.line_index(column);
+        let line = self.lines[line_index as usize];
         let line_text_before_error = &self.code()[line.start as usize..column as usize];
         let mut display_column = 1;
         let mut utf8_column = 1;
@@ -161,7 +155,7 @@ impl<'code, 'path: 'code> SrcCode<'code, 'path> {
             utf8_column += 1;
         }
 
-        return DisplayPosition { line: left + 1, column: utf8_column, display_column };
+        return DisplayPosition { line: line_index + 1, column: utf8_column, display_column };
     }
 }
 

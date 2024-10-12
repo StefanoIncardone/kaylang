@@ -36,7 +36,7 @@ impl<K: IntoErrorInfo> Error<K> {
         src: &SrcCode<'code, 'path>,
     ) -> ErrorDisplay<'code, 'path> {
         let DisplayPosition { line, column, display_column } = src.display_position(self.col);
-        let line_span = &src.lines[line as usize - 1];
+        let line_span = src.lines[line as usize - 1];
         let line_text = &src.code()[line_span.start as usize..line_span.end as usize];
 
         let ErrorInfo { error_message, error_cause_message } = self.kind.info();
