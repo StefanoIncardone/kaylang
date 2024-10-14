@@ -45,8 +45,8 @@ loop total_factor_count <= TARGET_FACTOR_COUNT {
             is_not_prime = false;
             prime_factor += 1;
 
-            if prime_factor == 2 || prime_factor == 3 do break;
-            else if prime_factor <= 1 || prime_factor % 2 == 0 || prime_factor % 3 == 0 do continue;
+            if prime_factor == 2 || prime_factor == 3 { break; }
+            else if prime_factor <= 1 || prime_factor % 2 == 0 || prime_factor % 3 == 0 { continue; }
             else {
                 var divisor = 5;
                 loop divisor ** 2 <= prime_factor {

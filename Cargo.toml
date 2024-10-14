@@ -65,6 +65,7 @@ mod_module_files = "warn"
 
 std_instead_of_alloc = "allow"
 
+module_name_repetitions = "allow" # unrealiable
 struct_field_names = "allow" # unreliable
 
 # improve readability and self documenting code

@@ -25,7 +25,7 @@ loop number <= MAX_DIGIT_NUMBER {
         number_copy /= 10;
     }
 
-    if current_digit_power_sum == number do digit_power_sum += current_digit_power_sum;
+    if current_digit_power_sum == number { digit_power_sum += current_digit_power_sum; }
 
     number += 1;
 }

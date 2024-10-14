@@ -4,8 +4,7 @@
 use super::{
     src_file::{index32, offset32, Position, SrcCode},
     tokenizer::{
-        ascii, int, uint, Base, Bracket, DisplayLen, Integer, Mutability, Op, OpenBracket, Str,
-        Token, TokenKind,
+        ascii, int, uint, Base, Bracket, Mutability, Op, OpenBracket, Str, Token, TokenIndex, TokenKind, Tokens
     },
     Error, ErrorInfo, IntoErrorInfo,
 };
@@ -454,7 +453,6 @@ impl Display for AssignmentOp {
 }
 
 type StringLabel = index32;
-type TokenIndex = index32;
 type VariableIndex = index32;
 type IfIndex = index32;
 type LoopIndex = index32;
@@ -739,7 +737,7 @@ pub struct Parser<'tokens, 'src: 'tokens, 'path: 'src, 'code: 'path> {
     errors: Vec<Error<ErrorKind>>,
 
     token: TokenIndex,
-    tokens: &'tokens [Token<'code>],
+    tokens: &'tokens Tokens<'code, 'path>,
 
     loop_depth: u32,
     scope: ScopeIndex,
@@ -750,7 +748,7 @@ pub struct Parser<'tokens, 'src: 'tokens, 'path: 'src, 'code: 'path> {
 impl<'tokens, 'src: 'tokens, 'path: 'src, 'code: 'src> Parser<'tokens, 'src, 'path, 'code> {
     pub fn parse(
         src: &'src SrcCode<'code, 'path>,
-        tokens: &'tokens [Token<'code>],
+        tokens: &'tokens Tokens<'code, 'path>,
     ) -> Result<Ast<'code>, Vec<Error<ErrorKind>>> {
         let ast = Ast {
             nodes: vec![vec![]],
@@ -765,15 +763,14 @@ impl<'tokens, 'src: 'tokens, 'path: 'src, 'code: 'src> Parser<'tokens, 'src, 'pa
             strings: Vec::new(),
         };
 
-        if tokens.is_empty() {
+        if tokens.tokens.is_empty() {
             return Ok(ast);
         }
 
         // skipping to the first non-comment token
-        let mut token: index32 = 0;
-        let tokens_len = tokens.len() as index32;
-        while token < tokens_len {
-            let current = &tokens[token as usize];
+        let mut token: TokenIndex = 0;
+        while token < tokens.tokens.len() as TokenIndex {
+            let current = tokens.tokens[token as usize];
             let (TokenKind::Comment(_) | TokenKind::BlockComment(_)) = current.kind else {
                 break;
             };
@@ -812,7 +809,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             return Err(Error {
                 kind: ErrorKind::MissingSemicolon,
                 col: previous_token.col,
-                pointers_count: previous_token.kind.display_len(),
+                pointers_count: previous_token.kind.display_len(self.tokens),
             });
         };
 
@@ -826,8 +823,8 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
     effect that propagates to the rest of the parsing, causing subsequent errors to be wrong
     */
     fn scope(&mut self) {
-        while let Some(token) = self.tokens.get(self.token as usize) {
-            match self.any(token) {
+        while let Some(token) = self.tokens.tokens.get(self.token as usize) {
+            match self.any(*token) {
                 // skip to the next token after a semicolon
                 Ok(Node::Semicolon) => continue,
                 Ok(Node::ScopeEnd) => break,
@@ -836,14 +833,14 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                     self.errors.push(err);
 
                     // consuming all remaining tokens until the end of the file
-                    self.token = self.tokens.len() as index32;
+                    self.token = self.tokens.tokens.len() as TokenIndex;
                     break;
                 }
             }
         }
     }
 
-    fn statement(&mut self, token: &'tokens Token<'code>) -> Result<Node, Error<ErrorKind>> {
+    fn statement(&mut self, token: Token) -> Result<Node, Error<ErrorKind>> {
         return match token.kind {
             TokenKind::False
             | TokenKind::True
@@ -875,7 +872,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 match after_expression_token.kind {
                     TokenKind::SemiColon => {
                         if let Expression::Array { .. } = expression {
-                            let temporary_value_index = self.ast.temporaries.len() as index32;
+                            let temporary_value_index = self.ast.temporaries.len() as ExpressionIndex;
                             let expression_type = expression.typ();
                             self.ast.temporaries.push(expression);
                             expression = Expression::Temporary {
@@ -1034,7 +1031,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                             Err(Error {
                                 kind: ErrorKind::MissingSemicolon,
                                 col: previous_token.col,
-                                pointers_count: previous_token.kind.display_len(),
+                                pointers_count: previous_token.kind.display_len(self.tokens),
                             })
                         }
                     },
@@ -1053,7 +1050,8 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                     | TokenKind::PrintLn
                     | TokenKind::Eprint
                     | TokenKind::EprintLn
-                    | TokenKind::Mutability(_)
+                    | TokenKind::Let
+                    | TokenKind::Var
                     | TokenKind::Do
                     | TokenKind::If
                     | TokenKind::Else
@@ -1064,7 +1062,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                         Err(Error {
                             kind: ErrorKind::MissingSemicolon,
                             col: previous_token.col,
-                            pointers_count: previous_token.kind.display_len(),
+                            pointers_count: previous_token.kind.display_len(self.tokens),
                         })
                     }
                     TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
@@ -1073,8 +1071,13 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                     TokenKind::Unexpected(_) => unreachable!("only valid tokens should be present"),
                 }
             }
-            TokenKind::Mutability(mutability) => {
-                let definition = self.variable_definition(mutability)?;
+            TokenKind::Let => {
+                let definition = self.variable_definition(Mutability::Let)?;
+                self.semicolon()?;
+                Ok(definition)
+            }
+            TokenKind::Var => {
+                let definition = self.variable_definition(Mutability::Var)?;
                 self.semicolon()?;
                 Ok(definition)
             }
@@ -1084,7 +1087,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 Ok(Node::Print(arg))
             }
             TokenKind::PrintLn => {
-                if let Some(&Token { kind: TokenKind::SemiColon, .. }) = self.peek_next_token() {
+                if let Some(Token { kind: TokenKind::SemiColon, .. }) = self.peek_next_token() {
                     _ = self.next_token();
                     return Ok(Node::Println(None));
                 }
@@ -1099,7 +1102,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 Ok(Node::Eprint(arg))
             }
             TokenKind::EprintLn => {
-                if let Some(&Token { kind: TokenKind::SemiColon, .. }) = self.peek_next_token() {
+                if let Some(Token { kind: TokenKind::SemiColon, .. }) = self.peek_next_token() {
                     _ = self.next_token();
                     return Ok(Node::Eprintln(None));
                 }
@@ -1114,7 +1117,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 Err(Error {
                     kind: ErrorKind::StrayElseBlock,
                     col: token.col,
-                    pointers_count: token.kind.display_len(),
+                    pointers_count: token.kind.display_len(self.tokens),
                 })
             }
             TokenKind::Do | TokenKind::Loop => {
@@ -1129,7 +1132,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                     return Err(Error {
                         kind: ErrorKind::StrayBreakStatement,
                         col: token.col,
-                        pointers_count: token.kind.display_len(),
+                        pointers_count: token.kind.display_len(self.tokens),
                     });
                 }
 
@@ -1142,7 +1145,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                     return Err(Error {
                         kind: ErrorKind::StrayContinueStatement,
                         col: token.col,
-                        pointers_count: token.kind.display_len(),
+                        pointers_count: token.kind.display_len(self.tokens),
                     });
                 }
 
@@ -1174,7 +1177,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 Err(Error {
                     kind: ErrorKind::StrayColon,
                     col: token.col,
-                    pointers_count: token.kind.display_len(),
+                    pointers_count: token.kind.display_len(self.tokens),
                 })
             }
             TokenKind::Comma => {
@@ -1182,7 +1185,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 Err(Error {
                     kind: ErrorKind::StrayComma,
                     col: token.col,
-                    pointers_count: token.kind.display_len(),
+                    pointers_count: token.kind.display_len(self.tokens),
                 })
             }
             TokenKind::Op(op) => {
@@ -1190,7 +1193,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 Err(Error {
                     kind: ErrorKind::StrayOperator(op),
                     col: token.col,
-                    pointers_count: token.kind.display_len(),
+                    pointers_count: token.kind.display_len(self.tokens),
                 })
             }
             TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
@@ -1208,15 +1211,15 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 Err(Error {
                     kind: ErrorKind::BlockInDoStatement,
                     col: token.col,
-                    pointers_count: token.kind.display_len(),
+                    pointers_count: token.kind.display_len(self.tokens),
                 })
             }
-            TokenKind::Mutability(_) => {
+            TokenKind::Let | TokenKind::Var => {
                 _ = self.next_token();
                 Err(Error {
                     kind: ErrorKind::VariableInDoStatement,
                     col: token.col,
-                    pointers_count: token.kind.display_len(),
+                    pointers_count: token.kind.display_len(self.tokens),
                 })
             }
             TokenKind::Bracket(_)
@@ -1247,10 +1250,10 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
         };
     }
 
-    fn any(&mut self, token: &'tokens Token<'code>) -> Result<Node, Error<ErrorKind>> {
+    fn any(&mut self, token: Token) -> Result<Node, Error<ErrorKind>> {
         return match token.kind {
             TokenKind::Bracket(Bracket::OpenCurly) => {
-                let new_scope_index = self.scopes.len() as index32;
+                let new_scope_index = self.scopes.len() as ScopeIndex;
                 self.scopes.push(Scope {
                     parent: self.scope,
                     base_types: Vec::new(),
@@ -1284,7 +1287,8 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
-            | TokenKind::Mutability(_)
+            | TokenKind::Let
+            | TokenKind::Var
             | TokenKind::Print
             | TokenKind::PrintLn
             | TokenKind::Eprint
@@ -1302,29 +1306,29 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
 // iteration over tokens
 impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
     // IDEA(stefano): remove self.current_token method and pass the current token around
-    fn current_token(&self, expected: Expected) -> Result<&'tokens Token<'code>, Error<ErrorKind>> {
-        let Some(token) = self.tokens.get(self.token as usize) else {
+    fn current_token(&self, expected: Expected) -> Result<Token, Error<ErrorKind>> {
+        let Some(token) = self.tokens.tokens.get(self.token as usize) else {
             let previous = self.peek_previous_token();
             return Err(Error {
                 kind: ErrorKind::PrematureEndOfFile(expected),
                 col: previous.col,
-                pointers_count: previous.kind.display_len(),
+                pointers_count: previous.kind.display_len(self.tokens),
             });
         };
 
-        return Ok(token);
+        return Ok(*token);
     }
 
-    fn next_token(&mut self) -> Option<&'tokens Token<'code>> {
+    fn next_token(&mut self) -> Option<Token> {
         loop {
-            let tokens_len = self.tokens.len() as index32;
+            let tokens_len = self.tokens.tokens.len() as TokenIndex;
             if self.token >= tokens_len - 1 {
                 self.token = tokens_len;
                 return None;
             }
 
             self.token += 1;
-            let next = &self.tokens[self.token as usize];
+            let next = self.tokens.tokens[self.token as usize];
             let (TokenKind::Comment(_) | TokenKind::BlockComment(_)) = next.kind else {
                 return Some(next);
             };
@@ -1334,36 +1338,36 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
     fn next_token_bounded(
         &mut self,
         expected: Expected,
-    ) -> Result<&'tokens Token<'code>, Error<ErrorKind>> {
+    ) -> Result<Token, Error<ErrorKind>> {
         loop {
-            let tokens_len = self.tokens.len() as index32;
+            let tokens_len = self.tokens.tokens.len() as TokenIndex;
             if self.token >= tokens_len - 1 {
-                let previous = &self.tokens[self.token as usize];
+                let previous = self.tokens.tokens[self.token as usize];
                 self.token = tokens_len;
                 return Err(Error {
                     kind: ErrorKind::PrematureEndOfFile(expected),
                     col: previous.col,
-                    pointers_count: previous.kind.display_len(),
+                    pointers_count: previous.kind.display_len(self.tokens),
                 });
             }
 
             self.token += 1;
-            let next = &self.tokens[self.token as usize];
+            let next = self.tokens.tokens[self.token as usize];
             let (TokenKind::Comment(_) | TokenKind::BlockComment(_)) = next.kind else {
                 return Ok(next);
             };
         }
     }
 
-    const fn peek_next_token(&self) -> Option<&'tokens Token<'code>> {
+    fn peek_next_token(&self) -> Option<Token> {
         let mut current_token = self.token;
         loop {
-            if current_token >= self.tokens.len() as index32 - 1 {
+            if current_token >= self.tokens.tokens.len() as TokenIndex - 1 {
                 return None;
             }
 
             current_token += 1;
-            let next = &self.tokens[current_token as usize];
+            let next = self.tokens.tokens[current_token as usize];
             let (TokenKind::Comment(_) | TokenKind::BlockComment(_)) = next.kind else {
                 return Some(next);
             };
@@ -1372,11 +1376,11 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
 
     // Note: this function is always called when underflowing the tokens array is never the case,
     // so there is no need for bounds checking
-    const fn peek_previous_token(&self) -> &'tokens Token<'code> {
+    fn peek_previous_token(&self) -> Token {
         let mut current_token = self.token;
         loop {
             current_token -= 1;
-            let previous = &self.tokens[current_token as usize];
+            let previous = self.tokens.tokens[current_token as usize];
             let (TokenKind::Comment(_) | TokenKind::BlockComment(_)) = previous.kind else {
                 return previous;
             };
@@ -1399,7 +1403,8 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
     }
 
     fn assert_lhs_is_not_string_or_array(
-        op_token: &'tokens Token<'code>,
+        &self,
+        op_token: Token,
         lhs: &Expression,
     ) -> Result<(), Error<ErrorKind>> {
         let lhs_type = lhs.typ();
@@ -1407,7 +1412,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             return Err(Error {
                 kind: ErrorKind::LeftOperandTypeMismatch(lhs_type),
                 col: op_token.col,
-                pointers_count: op_token.kind.display_len(),
+                pointers_count: op_token.kind.display_len(self.tokens),
             });
         }
 
@@ -1415,7 +1420,8 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
     }
 
     fn assert_rhs_is_not_string_or_array(
-        op_token: &'tokens Token<'code>,
+        &self,
+        op_token: Token,
         rhs: &Expression,
     ) -> Result<(), Error<ErrorKind>> {
         let rhs_type = rhs.typ();
@@ -1423,7 +1429,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             return Err(Error {
                 kind: ErrorKind::RightOperandTypeMismatch(rhs_type),
                 col: op_token.col,
-                pointers_count: op_token.kind.display_len(),
+                pointers_count: op_token.kind.display_len(self.tokens),
             });
         }
 
@@ -1431,7 +1437,8 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
     }
 
     fn assert_lhs_is_bool(
-        op_token: &'tokens Token<'code>,
+        &self,
+        op_token: Token,
         lhs: &Expression,
     ) -> Result<(), Error<ErrorKind>> {
         let lhs_type = lhs.typ();
@@ -1439,7 +1446,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             return Err(Error {
                 kind: ErrorKind::LeftOperandTypeMismatch(lhs_type),
                 col: op_token.col,
-                pointers_count: op_token.kind.display_len(),
+                pointers_count: op_token.kind.display_len(self.tokens),
             });
         };
 
@@ -1447,7 +1454,8 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
     }
 
     fn assert_rhs_is_bool(
-        op_token: &'tokens Token<'code>,
+        &self,
+        op_token: Token,
         rhs: &Expression,
     ) -> Result<(), Error<ErrorKind>> {
         let rhs_type = rhs.typ();
@@ -1455,7 +1463,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             return Err(Error {
                 kind: ErrorKind::RightOperandTypeMismatch(rhs_type),
                 col: op_token.col,
-                pointers_count: op_token.kind.display_len(),
+                pointers_count: op_token.kind.display_len(self.tokens),
             });
         };
 
@@ -1465,7 +1473,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
     fn operator(
         &mut self,
         ops: &[Op],
-    ) -> Result<Option<(&'tokens Token<'code>, Op)>, Error<ErrorKind>> {
+    ) -> Result<Option<(Token, Op)>, Error<ErrorKind>> {
         let current_token = self.current_token(Expected::OperatorOrSemicolon)?;
         let TokenKind::Op(op) = current_token.kind else {
             return Ok(None);
@@ -1486,10 +1494,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
     }
 
     fn primary_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
-        fn parse_positive_int(
-            base: Base,
-            Integer(literal): Integer<'_>,
-        ) -> Result<int, ParseIntError> {
+        fn parse_positive_int(base: Base, literal: &[ascii]) -> Result<int, ParseIntError> {
             let mut integer: int = 0;
 
             match base {
@@ -1578,10 +1583,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             return Ok(integer);
         }
 
-        fn parse_negative_int(
-            base: Base,
-            Integer(literal): Integer<'_>,
-        ) -> Result<int, ParseIntError> {
+        fn parse_negative_int(base: Base, literal: &[ascii]) -> Result<int, ParseIntError> {
             let mut integer: int = 0;
 
             match base {
@@ -1671,131 +1673,138 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
         }
 
         let current_token = self.current_token(Expected::Expression)?;
-        let expression_result = match &current_token.kind {
+        let expression_result = match current_token.kind {
             TokenKind::False => Ok(Expression::False),
             TokenKind::True => Ok(Expression::True),
-            TokenKind::Integer(base, literal) => match parse_positive_int(*base, *literal) {
-                Ok(integer) => Ok(Expression::Int(integer)),
-                Err(error) => Err(Error {
-                    kind: ErrorKind::InvalidInteger(error, *base),
-                    col: current_token.col,
-                    pointers_count: current_token.kind.display_len(),
-                }),
-            },
-            TokenKind::Ascii(ascii_ch) => Ok(Expression::Ascii(*ascii_ch)),
-            TokenKind::Str(string) | TokenKind::RawStr(string) => {
-                Ok(Expression::Str { label: self.new_string(string.clone()) })
-            }
-            TokenKind::Identifier(name) => match self.resolve_type(name) {
-                None => match self.resolve_variable(name) {
-                    Some((_, variable_index)) => {
-                        let var = &self.ast.variables[variable_index as usize];
-                        Ok(Expression::Variable { typ: var.value.typ(), variable_index })
-                    }
-                    None => Err(Error {
-                        kind: ErrorKind::VariableNotPreviouslyDefined,
+            TokenKind::Integer(base, literal_index) => {
+                let literal = self.tokens.text[literal_index as usize];
+                match parse_positive_int(base, literal.as_bytes()) {
+                    Ok(integer) => Ok(Expression::Int(integer)),
+                    Err(error) => Err(Error {
+                        kind: ErrorKind::InvalidInteger(error, base),
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
+                        pointers_count: current_token.kind.display_len(self.tokens),
                     }),
-                },
-                Some(_) => 'type_in_expression: {
-                    let Some(possible_reassignment_operator) = self.peek_next_token() else {
-                        break 'type_in_expression Err(Error {
-                            kind: ErrorKind::TypeInExpression,
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
-                        });
-                    };
-
-                    let TokenKind::Op(op) = possible_reassignment_operator.kind else {
-                        break 'type_in_expression Err(Error {
-                            kind: ErrorKind::TypeInExpression,
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
-                        });
-                    };
-
-                    match op {
-                        Op::Equals
-                        | Op::PowEquals
-                        | Op::WrappingPowEquals
-                        | Op::SaturatingPowEquals
-                        | Op::TimesEquals
-                        | Op::WrappingTimesEquals
-                        | Op::SaturatingTimesEquals
-                        | Op::DivideEquals
-                        | Op::WrappingDivideEquals
-                        | Op::SaturatingDivideEquals
-                        | Op::RemainderEquals
-                        | Op::PlusEquals
-                        | Op::WrappingPlusEquals
-                        | Op::SaturatingPlusEquals
-                        | Op::MinusEquals
-                        | Op::WrappingMinusEquals
-                        | Op::SaturatingMinusEquals
-                        | Op::LeftShiftEquals
-                        | Op::WrappingLeftShiftEquals
-                        | Op::SaturatingLeftShiftEquals
-                        | Op::RightShiftEquals
-                        | Op::LeftRotateEquals
-                        | Op::RightRotateEquals
-                        | Op::BitAndEquals
-                        | Op::BitXorEquals
-                        | Op::BitOrEquals
-                        | Op::AndEquals
-                        | Op::OrEquals => {
-                            break 'type_in_expression Err(Error {
-                                kind: ErrorKind::TypeInVariableReassignment,
-                                col: current_token.col,
-                                pointers_count: current_token.kind.display_len(),
-                            });
+                }
+            }
+            TokenKind::Ascii(ascii_ch) => Ok(Expression::Ascii(ascii_ch)),
+            TokenKind::Str(string_index) | TokenKind::RawStr(string_index) => {
+                let string = self.tokens.strings[string_index as usize].clone();
+                Ok(Expression::Str { label: self.new_string(string) })
+            }
+            TokenKind::Identifier(name_index) => {
+                let name = self.tokens.text[name_index as usize];
+                match self.resolve_type(name.as_bytes()) {
+                    None => match self.resolve_variable(name.as_bytes()) {
+                        Some((_, variable_index)) => {
+                            let var = &self.ast.variables[variable_index as usize];
+                            Ok(Expression::Variable { typ: var.value.typ(), variable_index })
                         }
-
-                        Op::Len
-                        | Op::Not
-                        | Op::Pow
-                        | Op::WrappingPow
-                        | Op::SaturatingPow
-                        | Op::Times
-                        | Op::WrappingTimes
-                        | Op::SaturatingTimes
-                        | Op::Divide
-                        | Op::WrappingDivide
-                        | Op::SaturatingDivide
-                        | Op::Remainder
-                        | Op::Plus
-                        | Op::WrappingPlus
-                        | Op::SaturatingPlus
-                        | Op::Minus
-                        | Op::WrappingMinus
-                        | Op::SaturatingMinus
-                        | Op::LeftShift
-                        | Op::WrappingLeftShift
-                        | Op::SaturatingLeftShift
-                        | Op::RightShift
-                        | Op::LeftRotate
-                        | Op::RightRotate
-                        | Op::BitAnd
-                        | Op::BitXor
-                        | Op::BitOr
-                        | Op::And
-                        | Op::Or
-                        | Op::Compare
-                        | Op::EqualsEquals
-                        | Op::NotEquals
-                        | Op::Greater
-                        | Op::GreaterOrEquals
-                        | Op::Less
-                        | Op::LessOrEquals => {
+                        None => Err(Error {
+                            kind: ErrorKind::VariableNotPreviouslyDefined,
+                            col: current_token.col,
+                            pointers_count: current_token.kind.display_len(self.tokens),
+                        }),
+                    },
+                    Some(_) => 'type_in_expression: {
+                        let Some(possible_reassignment_operator) = self.peek_next_token() else {
                             break 'type_in_expression Err(Error {
                                 kind: ErrorKind::TypeInExpression,
                                 col: current_token.col,
-                                pointers_count: current_token.kind.display_len(),
+                                pointers_count: current_token.kind.display_len(self.tokens),
                             });
+                        };
+
+                        let TokenKind::Op(op) = possible_reassignment_operator.kind else {
+                            break 'type_in_expression Err(Error {
+                                kind: ErrorKind::TypeInExpression,
+                                col: current_token.col,
+                                pointers_count: current_token.kind.display_len(self.tokens),
+                            });
+                        };
+
+                        match op {
+                            Op::Equals
+                            | Op::PowEquals
+                            | Op::WrappingPowEquals
+                            | Op::SaturatingPowEquals
+                            | Op::TimesEquals
+                            | Op::WrappingTimesEquals
+                            | Op::SaturatingTimesEquals
+                            | Op::DivideEquals
+                            | Op::WrappingDivideEquals
+                            | Op::SaturatingDivideEquals
+                            | Op::RemainderEquals
+                            | Op::PlusEquals
+                            | Op::WrappingPlusEquals
+                            | Op::SaturatingPlusEquals
+                            | Op::MinusEquals
+                            | Op::WrappingMinusEquals
+                            | Op::SaturatingMinusEquals
+                            | Op::LeftShiftEquals
+                            | Op::WrappingLeftShiftEquals
+                            | Op::SaturatingLeftShiftEquals
+                            | Op::RightShiftEquals
+                            | Op::LeftRotateEquals
+                            | Op::RightRotateEquals
+                            | Op::BitAndEquals
+                            | Op::BitXorEquals
+                            | Op::BitOrEquals
+                            | Op::AndEquals
+                            | Op::OrEquals => {
+                                break 'type_in_expression Err(Error {
+                                    kind: ErrorKind::TypeInVariableReassignment,
+                                    col: current_token.col,
+                                    pointers_count: current_token.kind.display_len(self.tokens),
+                                });
+                            }
+
+                            Op::Len
+                            | Op::Not
+                            | Op::Pow
+                            | Op::WrappingPow
+                            | Op::SaturatingPow
+                            | Op::Times
+                            | Op::WrappingTimes
+                            | Op::SaturatingTimes
+                            | Op::Divide
+                            | Op::WrappingDivide
+                            | Op::SaturatingDivide
+                            | Op::Remainder
+                            | Op::Plus
+                            | Op::WrappingPlus
+                            | Op::SaturatingPlus
+                            | Op::Minus
+                            | Op::WrappingMinus
+                            | Op::SaturatingMinus
+                            | Op::LeftShift
+                            | Op::WrappingLeftShift
+                            | Op::SaturatingLeftShift
+                            | Op::RightShift
+                            | Op::LeftRotate
+                            | Op::RightRotate
+                            | Op::BitAnd
+                            | Op::BitXor
+                            | Op::BitOr
+                            | Op::And
+                            | Op::Or
+                            | Op::Compare
+                            | Op::EqualsEquals
+                            | Op::NotEquals
+                            | Op::Greater
+                            | Op::GreaterOrEquals
+                            | Op::Less
+                            | Op::LessOrEquals => {
+                                break 'type_in_expression Err(Error {
+                                    kind: ErrorKind::TypeInExpression,
+                                    col: current_token.col,
+                                    pointers_count: current_token.kind.display_len(self.tokens),
+                                });
+                            }
                         }
                     }
                 }
-            },
+            }
             TokenKind::Bracket(Bracket::OpenRound) => 'parenthesis: {
                 let expression_start_token = self.next_token_bounded(Expected::Expression)?;
 
@@ -1803,7 +1812,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                     break 'parenthesis Err(Error {
                         kind: ErrorKind::EmptyExpression,
                         col: expression_start_token.col,
-                        pointers_count: expression_start_token.kind.display_len(),
+                        pointers_count: expression_start_token.kind.display_len(self.tokens),
                     });
                 }
 
@@ -1814,7 +1823,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                     return Err(Error {
                         kind: ErrorKind::UnclosedBracket(OpenBracket::Round),
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
+                        pointers_count: current_token.kind.display_len(self.tokens),
                     });
                 };
 
@@ -1832,7 +1841,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                     break 'array Err(Error {
                         kind: ErrorKind::ArrayOfZeroElements,
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
+                        pointers_count: current_token.kind.display_len(self.tokens),
                     });
                 }
 
@@ -1851,7 +1860,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                     break 'array Err(Error {
                         kind: ErrorKind::ArrayOfOneElement,
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
+                        pointers_count: current_token.kind.display_len(self.tokens),
                     });
                 }
 
@@ -1861,7 +1870,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                         break 'array Err(Error {
                             kind: ErrorKind::NestedArrayNotSupportedYet,
                             col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                            pointers_count: current_token.kind.display_len(self.tokens),
                         })
                     }
                 };
@@ -1882,7 +1891,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                                 expected: Type::Base(items_type),
                             },
                             col: bracket_or_comma_token.col,
-                            pointers_count: bracket_or_comma_token.kind.display_len(),
+                            pointers_count: bracket_or_comma_token.kind.display_len(self.tokens),
                         });
                     }
 
@@ -1890,7 +1899,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                         break 'array Err(Error {
                             kind: ErrorKind::NestedArrayNotSupportedYet,
                             col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                            pointers_count: current_token.kind.display_len(self.tokens),
                         });
                     };
 
@@ -1925,17 +1934,17 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                     Expression::Int(_) => Err(Error {
                         kind: ErrorKind::CannotTakeLenOf(Type::Base(BaseType::Int)),
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
+                        pointers_count: current_token.kind.display_len(self.tokens),
                     }),
                     Expression::Ascii(_) => Err(Error {
                         kind: ErrorKind::CannotTakeLenOf(Type::Base(BaseType::Ascii)),
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
+                        pointers_count: current_token.kind.display_len(self.tokens),
                     }),
                     Expression::True | Expression::False => Err(Error {
                         kind: ErrorKind::CannotTakeLenOf(Type::Base(BaseType::Bool)),
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
+                        pointers_count: current_token.kind.display_len(self.tokens),
                     }),
                     Expression::Array { .. } => Ok(Expression::Unary {
                         op: UnaryOp::Len,
@@ -1952,7 +1961,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                             Err(Error {
                                 kind: ErrorKind::CannotTakeLenOf(*typ),
                                 col: current_token.col,
-                                pointers_count: current_token.kind.display_len(),
+                                pointers_count: current_token.kind.display_len(self.tokens),
                             })
                         }
                     },
@@ -1965,38 +1974,38 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                         BaseType::Int | BaseType::Ascii | BaseType::Bool => Err(Error {
                             kind: ErrorKind::CannotTakeLenOf(Type::Base(*base_type)),
                             col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                            pointers_count: current_token.kind.display_len(self.tokens),
                         }),
                     },
                     Expression::Parenthesis { typ, .. } => Err(Error {
                         kind: ErrorKind::CannotTakeLenOf(*typ),
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
+                        pointers_count: current_token.kind.display_len(self.tokens),
                     }),
                     Expression::Unary { op, .. } => Err(Error {
                         kind: ErrorKind::CannotTakeLenOf(op.typ()),
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
+                        pointers_count: current_token.kind.display_len(self.tokens),
                     }),
                     Expression::BooleanUnary { op, .. } => Err(Error {
                         kind: ErrorKind::CannotTakeLenOf(op.typ()),
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
+                        pointers_count: current_token.kind.display_len(self.tokens),
                     }),
                     Expression::Binary { op, .. } => Err(Error {
                         kind: ErrorKind::CannotTakeLenOf(op.typ()),
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
+                        pointers_count: current_token.kind.display_len(self.tokens),
                     }),
                     Expression::BooleanBinary { op, .. } => Err(Error {
                         kind: ErrorKind::CannotTakeLenOf(op.typ()),
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
+                        pointers_count: current_token.kind.display_len(self.tokens),
                     }),
                     Expression::Comparison { op, .. } => Err(Error {
                         kind: ErrorKind::CannotTakeLenOf(op.typ()),
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
+                        pointers_count: current_token.kind.display_len(self.tokens),
                     }),
                     Expression::Temporary { .. } => {
                         unreachable!("should be returned from expressions");
@@ -2008,7 +2017,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
 
                 // NOTE(stefano): this optimization should be moved to later stages
                 // removing extra "+" symbols
-                while let Some(&Token { kind: TokenKind::Op(Op::Plus), .. }) = self.next_token() {
+                while let Some(Token { kind: TokenKind::Op(Op::Plus), .. }) = self.next_token() {
                     should_be_made_positive = !should_be_made_positive;
                 }
 
@@ -2033,7 +2042,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                     | Type::Array { .. }) => Err(Error {
                         kind: ErrorKind::CannotTakeAbsoluteValueOf(invalid_type),
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
+                        pointers_count: current_token.kind.display_len(self.tokens),
                     }),
                 };
             }
@@ -2042,7 +2051,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
 
                 // NOTE(stefano): this optimization should be moved to later stages
                 // removing extra "+\" symbols
-                while let Some(&Token { kind: TokenKind::Op(Op::WrappingPlus), .. }) =
+                while let Some(Token { kind: TokenKind::Op(Op::WrappingPlus), .. }) =
                     self.next_token()
                 {
                     should_be_made_positive = !should_be_made_positive;
@@ -2069,7 +2078,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                     | Type::Array { .. }) => Err(Error {
                         kind: ErrorKind::CannotTakeAbsoluteValueOf(invalid_type),
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
+                        pointers_count: current_token.kind.display_len(self.tokens),
                     }),
                 };
             }
@@ -2078,7 +2087,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
 
                 // NOTE(stefano): this optimization should be moved to later stages
                 // removing extra "+|" symbols
-                while let Some(&Token { kind: TokenKind::Op(Op::SaturatingPlus), .. }) =
+                while let Some(Token { kind: TokenKind::Op(Op::SaturatingPlus), .. }) =
                     self.next_token()
                 {
                     should_be_made_positive = !should_be_made_positive;
@@ -2103,7 +2112,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                     | Type::Array { .. }) => Err(Error {
                         kind: ErrorKind::CannotTakeAbsoluteValueOf(invalid_typ),
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
+                        pointers_count: current_token.kind.display_len(self.tokens),
                     }),
                 };
             }
@@ -2112,12 +2121,12 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
 
                 // NOTE(stefano): this optimization should be moved to later stages
                 // removing extra "-" symbols
-                while let Some(&Token { kind: TokenKind::Op(Op::Minus), .. }) = self.next_token() {
+                while let Some(Token { kind: TokenKind::Op(Op::Minus), .. }) = self.next_token() {
                     should_be_negated = !should_be_negated;
                 }
 
-                let start_of_expression = &self.tokens[self.token as usize];
-                let TokenKind::Integer(base, literal) = start_of_expression.kind else {
+                let start_of_expression = self.tokens.tokens[self.token as usize];
+                let TokenKind::Integer(base, literal_index) = start_of_expression.kind else {
                     let operand = self.primary_expression()?;
 
                     // returning to avoid the call to tokens.next at the end of the function
@@ -2137,32 +2146,33 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                         | Type::Array { .. }) => Err(Error {
                             kind: ErrorKind::CannotNegate(invalid_typ),
                             col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                            pointers_count: current_token.kind.display_len(self.tokens),
                         }),
                     };
                 };
 
+                let literal = self.tokens.text[literal_index as usize];
                 if should_be_negated {
-                    match parse_negative_int(base, literal) {
+                    match parse_negative_int(base, literal.as_bytes()) {
                         Ok(0) => Err(Error {
                             kind: ErrorKind::MinusZeroInteger,
                             col: start_of_expression.col,
-                            pointers_count: start_of_expression.kind.display_len(),
+                            pointers_count: start_of_expression.kind.display_len(self.tokens),
                         }),
                         Ok(integer) => Ok(Expression::Int(integer)),
                         Err(error) => Err(Error {
                             kind: ErrorKind::InvalidInteger(error, base),
                             col: start_of_expression.col,
-                            pointers_count: start_of_expression.kind.display_len(),
+                            pointers_count: start_of_expression.kind.display_len(self.tokens),
                         }),
                     }
                 } else {
-                    match parse_positive_int(base, literal) {
+                    match parse_positive_int(base, literal.as_bytes()) {
                         Ok(integer) => Ok(Expression::Int(integer)),
                         Err(error) => Err(Error {
                             kind: ErrorKind::InvalidInteger(error, base),
                             col: start_of_expression.col,
-                            pointers_count: start_of_expression.kind.display_len(),
+                            pointers_count: start_of_expression.kind.display_len(self.tokens),
                         }),
                     }
                 }
@@ -2172,14 +2182,14 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
 
                 // NOTE(stefano): this optimization should be moved to later stages
                 // removing extra "-\" symbols
-                while let Some(&Token { kind: TokenKind::Op(Op::WrappingMinus), .. }) =
+                while let Some(Token { kind: TokenKind::Op(Op::WrappingMinus), .. }) =
                     self.next_token()
                 {
                     should_be_negated = !should_be_negated;
                 }
 
-                let start_of_expression = &self.tokens[self.token as usize];
-                let TokenKind::Integer(base, literal) = start_of_expression.kind else {
+                let start_of_expression = self.tokens.tokens[self.token as usize];
+                let TokenKind::Integer(base, literal_index) = start_of_expression.kind else {
                     let operand = self.primary_expression()?;
 
                     // returning to avoid the call to tokens.next at the end of the function
@@ -2199,32 +2209,33 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                         | Type::Array { .. }) => Err(Error {
                             kind: ErrorKind::CannotNegate(invalid_typ),
                             col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                            pointers_count: current_token.kind.display_len(self.tokens),
                         }),
                     };
                 };
 
+                let literal = self.tokens.text[literal_index as usize];
                 if should_be_negated {
-                    match parse_negative_int(base, literal) {
+                    match parse_negative_int(base, literal.as_bytes()) {
                         Ok(0) => Err(Error {
                             kind: ErrorKind::MinusZeroInteger,
                             col: start_of_expression.col,
-                            pointers_count: start_of_expression.kind.display_len(),
+                            pointers_count: start_of_expression.kind.display_len(self.tokens),
                         }),
                         Ok(integer) => Ok(Expression::Int(integer)),
                         Err(error) => Err(Error {
                             kind: ErrorKind::InvalidInteger(error, base),
                             col: start_of_expression.col,
-                            pointers_count: start_of_expression.kind.display_len(),
+                            pointers_count: start_of_expression.kind.display_len(self.tokens),
                         }),
                     }
                 } else {
-                    match parse_positive_int(base, literal) {
+                    match parse_positive_int(base, literal.as_bytes()) {
                         Ok(integer) => Ok(Expression::Int(integer)),
                         Err(error) => Err(Error {
                             kind: ErrorKind::InvalidInteger(error, base),
                             col: start_of_expression.col,
-                            pointers_count: start_of_expression.kind.display_len(),
+                            pointers_count: start_of_expression.kind.display_len(self.tokens),
                         }),
                     }
                 }
@@ -2234,14 +2245,14 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
 
                 // NOTE(stefano): this optimization should be moved to later stages
                 // removing extra "-|" symbols
-                while let Some(&Token { kind: TokenKind::Op(Op::SaturatingMinus), .. }) =
+                while let Some(Token { kind: TokenKind::Op(Op::SaturatingMinus), .. }) =
                     self.next_token()
                 {
                     should_be_negated = !should_be_negated;
                 }
 
-                let start_of_expression = &self.tokens[self.token as usize];
-                let TokenKind::Integer(base, literal) = start_of_expression.kind else {
+                let start_of_expression = self.tokens.tokens[self.token as usize];
+                let TokenKind::Integer(base, literal_index) = start_of_expression.kind else {
                     let operand = self.primary_expression()?;
 
                     // returning to avoid the call to tokens.next at the end of the function
@@ -2261,32 +2272,33 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                         | Type::Array { .. }) => Err(Error {
                             kind: ErrorKind::CannotNegate(invalid_typ),
                             col: current_token.col,
-                            pointers_count: current_token.kind.display_len(),
+                            pointers_count: current_token.kind.display_len(self.tokens),
                         }),
                     };
                 };
 
+                let literal = self.tokens.text[literal_index as usize];
                 if should_be_negated {
-                    match parse_negative_int(base, literal) {
+                    match parse_negative_int(base, literal.as_bytes()) {
                         Ok(0) => Err(Error {
                             kind: ErrorKind::MinusZeroInteger,
                             col: start_of_expression.col,
-                            pointers_count: start_of_expression.kind.display_len(),
+                            pointers_count: start_of_expression.kind.display_len(self.tokens),
                         }),
                         Ok(integer) => Ok(Expression::Int(integer)),
                         Err(error) => Err(Error {
                             kind: ErrorKind::InvalidInteger(error, base),
                             col: start_of_expression.col,
-                            pointers_count: start_of_expression.kind.display_len(),
+                            pointers_count: start_of_expression.kind.display_len(self.tokens),
                         }),
                     }
                 } else {
-                    match parse_positive_int(base, literal) {
+                    match parse_positive_int(base, literal.as_bytes()) {
                         Ok(integer) => Ok(Expression::Int(integer)),
                         Err(error) => Err(Error {
                             kind: ErrorKind::InvalidInteger(error, base),
                             col: start_of_expression.col,
-                            pointers_count: start_of_expression.kind.display_len(),
+                            pointers_count: start_of_expression.kind.display_len(self.tokens),
                         }),
                     }
                 }
@@ -2296,7 +2308,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
 
                 // NOTE(stefano): this optimization should be moved to later stages
                 // removing extra "!" symbols
-                while let Some(&Token { kind: TokenKind::Op(Op::Not), .. }) = self.next_token() {
+                while let Some(Token { kind: TokenKind::Op(Op::Not), .. }) = self.next_token() {
                     should_be_inverted = !should_be_inverted;
                 }
 
@@ -2328,11 +2340,12 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                     invalid_typ @ (Type::Base(BaseType::Str) | Type::Array { .. }) => Err(Error {
                         kind: ErrorKind::CannotInvert(invalid_typ),
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(),
+                        pointers_count: current_token.kind.display_len(self.tokens),
                     }),
                 };
             }
-            TokenKind::Mutability(_)
+            TokenKind::Let
+            | TokenKind::Var
             | TokenKind::Print
             | TokenKind::PrintLn
             | TokenKind::If
@@ -2345,7 +2358,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             | TokenKind::Do => Err(Error {
                 kind: ErrorKind::KeywordInExpression,
                 col: current_token.col,
-                pointers_count: current_token.kind.display_len(),
+                pointers_count: current_token.kind.display_len(self.tokens),
             }),
             TokenKind::Bracket(_)
             | TokenKind::Op(_)
@@ -2357,7 +2370,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             | TokenKind::Comma => Err(Error {
                 kind: ErrorKind::ExpectedOperand,
                 col: current_token.col,
-                pointers_count: current_token.kind.display_len(),
+                pointers_count: current_token.kind.display_len(self.tokens),
             }),
         };
 
@@ -2372,7 +2385,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 return Err(Error {
                     kind: ErrorKind::ExpectedNumberLiteralInArrayIndex,
                     col: open_bracket_token.col,
-                    pointers_count: open_bracket_token.kind.display_len(),
+                    pointers_count: open_bracket_token.kind.display_len(self.tokens),
                 });
             };
 
@@ -2383,7 +2396,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 return Err(Error {
                     kind: ErrorKind::MissingClosingSquareBracketInIndex,
                     col: before_index_token.col,
-                    pointers_count: before_index_token.kind.display_len(),
+                    pointers_count: before_index_token.kind.display_len(self.tokens),
                 });
             };
 
@@ -2391,7 +2404,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 return Err(Error {
                     kind: ErrorKind::CannotIndexIntoExpression,
                     col: open_bracket_token.col,
-                    pointers_count: open_bracket_token.kind.display_len(),
+                    pointers_count: open_bracket_token.kind.display_len(self.tokens),
                 });
             };
 
@@ -2408,7 +2421,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                         return Err(Error {
                             kind: ErrorKind::CannotIndexNonArrayType(expression_type),
                             col: open_bracket_token.col,
-                            pointers_count: open_bracket_token.kind.display_len(),
+                            pointers_count: open_bracket_token.kind.display_len(self.tokens),
                         })
                     }
                 },
@@ -2429,10 +2442,10 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
 
         let ops = [Op::Pow, Op::WrappingPow, Op::SaturatingPow];
         while let Some((op_token, op)) = self.operator(&ops)? {
-            Self::assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
 
             let rhs = self.primary_expression()?;
-            Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
+            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             #[allow(clippy::wildcard_enum_match_arm)]
             let binary_op = match op {
@@ -2466,10 +2479,10 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             Op::Remainder,
         ];
         while let Some((op_token, op)) = self.operator(&ops)? {
-            Self::assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
 
             let rhs = self.exponentiative_expression()?;
-            Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
+            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             #[allow(clippy::wildcard_enum_match_arm)]
             let binary_op = match op {
@@ -2506,10 +2519,10 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             Op::SaturatingMinus,
         ];
         while let Some((op_token, op)) = self.operator(&ops)? {
-            Self::assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
 
             let rhs = self.multiplicative_expression()?;
-            Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
+            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             #[allow(clippy::wildcard_enum_match_arm)]
             let binary_op = match op {
@@ -2549,10 +2562,10 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             Op::RightRotate,
         ];
         while let Some((op_token, op)) = self.operator(&ops)? {
-            Self::assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
 
             let rhs = self.additive_expression()?;
-            Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
+            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             #[allow(clippy::wildcard_enum_match_arm)]
             let binary_op = match op {
@@ -2580,10 +2593,10 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
         let mut lhs = self.shift_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitAnd])? {
-            Self::assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
 
             let rhs = self.shift_expression()?;
-            Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
+            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             #[allow(clippy::wildcard_enum_match_arm)]
             let binary_op = match op {
@@ -2606,10 +2619,10 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
         let mut lhs = self.bitand_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitXor])? {
-            Self::assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
 
             let rhs = self.bitand_expression()?;
-            Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
+            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             #[allow(clippy::wildcard_enum_match_arm)]
             let binary_op = match op {
@@ -2632,10 +2645,10 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
         let mut lhs = self.bitxor_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitOr])? {
-            Self::assert_lhs_is_not_string_or_array(op_token, &lhs)?;
+            self.assert_lhs_is_not_string_or_array(op_token, &lhs)?;
 
             let rhs = self.bitxor_expression()?;
-            Self::assert_rhs_is_not_string_or_array(op_token, &rhs)?;
+            self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
             #[allow(clippy::wildcard_enum_match_arm)]
             let binary_op = match op {
@@ -2692,7 +2705,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 return Err(Error {
                     kind: ErrorKind::CannotCompareOperands { lhs_type, rhs_type },
                     col: op_token.col,
-                    pointers_count: op_token.kind.display_len(),
+                    pointers_count: op_token.kind.display_len(self.tokens),
                 });
             }
 
@@ -2700,7 +2713,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 return Err(Error {
                     kind: ErrorKind::CannotChainComparisons,
                     col: op_token.col,
-                    pointers_count: op_token.kind.display_len(),
+                    pointers_count: op_token.kind.display_len(self.tokens),
                 });
             }
             is_chained = true;
@@ -2731,10 +2744,10 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
         let mut lhs = self.comparison_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::And])? {
-            Self::assert_lhs_is_bool(op_token, &lhs)?;
+            self.assert_lhs_is_bool(op_token, &lhs)?;
 
             let rhs = self.comparison_expression()?;
-            Self::assert_rhs_is_bool(op_token, &rhs)?;
+            self.assert_rhs_is_bool(op_token, &rhs)?;
 
             #[allow(clippy::wildcard_enum_match_arm)]
             let binary_op = match op {
@@ -2756,10 +2769,10 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
         let mut lhs = self.and_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::Or])? {
-            Self::assert_lhs_is_bool(op_token, &lhs)?;
+            self.assert_lhs_is_bool(op_token, &lhs)?;
 
             let rhs = self.and_expression()?;
-            Self::assert_rhs_is_bool(op_token, &rhs)?;
+            self.assert_rhs_is_bool(op_token, &rhs)?;
 
             #[allow(clippy::wildcard_enum_match_arm)]
             let binary_op = match op {
@@ -2830,7 +2843,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
 
     fn type_annotation(
         &mut self,
-    ) -> Result<Option<(&'tokens Token<'code>, Type)>, Error<ErrorKind>> {
+    ) -> Result<Option<(Token, Type)>, Error<ErrorKind>> {
         let colon_token = self.next_token_bounded(Expected::TypeAnnotationOrVariableDefinition)?;
 
         let TokenKind::Colon = colon_token.kind else {
@@ -2839,17 +2852,18 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
         };
 
         let type_token = self.next_token_bounded(Expected::TypeAnnotation)?;
-        let TokenKind::Identifier(type_name) = type_token.kind else {
+        let TokenKind::Identifier(type_name_index) = type_token.kind else {
             return Err(Error {
                 kind: ErrorKind::ExpectedType,
                 col: colon_token.col,
-                pointers_count: colon_token.kind.display_len(),
+                pointers_count: colon_token.kind.display_len(self.tokens),
             });
         };
 
-        let Some(base_type) = self.resolve_type(type_name) else {
+        let type_name = self.tokens.text[type_name_index as usize];
+        let Some(base_type) = self.resolve_type(type_name.as_bytes()) else {
             // REMOVE(stefano): remove possibility of emulating `typeof` using other variables as type annotation
-            return match self.resolve_variable(type_name) {
+            return match self.resolve_variable(type_name.as_bytes()) {
                 Some((_, var_index)) => {
                     let var = &self.ast.variables[var_index as usize];
                     Ok(Some((type_token, var.value.typ())))
@@ -2857,7 +2871,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 None => Err(Error {
                     kind: ErrorKind::VariableNotPreviouslyDefined,
                     col: type_token.col,
-                    pointers_count: type_token.kind.display_len(),
+                    pointers_count: type_token.kind.display_len(self.tokens),
                 }),
             };
         };
@@ -2878,7 +2892,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             return Err(Error {
                 kind: ErrorKind::ExpectedNumberLiteralInArrayType,
                 col: open_square_bracket_token.col,
-                pointers_count: open_square_bracket_token.kind.display_len(),
+                pointers_count: open_square_bracket_token.kind.display_len(self.tokens),
             });
         };
 
@@ -2887,7 +2901,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 return Err(Error {
                     kind: ErrorKind::ArrayOfNegativeLength,
                     col: len_token.col,
-                    pointers_count: len_token.kind.display_len(),
+                    pointers_count: len_token.kind.display_len(self.tokens),
                 });
             }
             // REMOVE(stefano): allow arrays of 0 elements
@@ -2895,7 +2909,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 return Err(Error {
                     kind: ErrorKind::ArrayOfZeroElements,
                     col: len_token.col,
-                    pointers_count: len_token.kind.display_len(),
+                    pointers_count: len_token.kind.display_len(self.tokens),
                 });
             }
             // REMOVE(stefano): allow arrays of 0 elements
@@ -2903,7 +2917,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 return Err(Error {
                     kind: ErrorKind::ArrayOfOneElement,
                     col: len_token.col,
-                    pointers_count: len_token.kind.display_len(),
+                    pointers_count: len_token.kind.display_len(self.tokens),
                 });
             }
             _ => literal_len as uint,
@@ -2914,7 +2928,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             return Err(Error {
                 kind: ErrorKind::MissingClosingSquareBracketInArrayType,
                 col: open_square_bracket_token.col,
-                pointers_count: open_square_bracket_token.kind.display_len(),
+                pointers_count: open_square_bracket_token.kind.display_len(self.tokens),
             });
         };
 
@@ -2936,16 +2950,19 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
     fn variable_definition(&mut self, mutability: Mutability) -> Result<Node, Error<ErrorKind>> {
         let name_token = self.next_token_bounded(Expected::Identifier)?;
         let name = match name_token.kind {
-            TokenKind::Identifier(name) => match self.resolve_type(name) {
-                None => name,
-                Some(_) => {
-                    return Err(Error {
-                        kind: ErrorKind::TypeInVariableName,
-                        col: name_token.col,
-                        pointers_count: name_token.kind.display_len(),
-                    })
+            TokenKind::Identifier(name_index) => {
+                let name = self.tokens.text[name_index as usize];
+                match self.resolve_type(name.as_bytes()) {
+                    None => name,
+                    Some(_) => {
+                        return Err(Error {
+                            kind: ErrorKind::TypeInVariableName,
+                            col: name_token.col,
+                            pointers_count: name_token.kind.display_len(self.tokens),
+                        })
+                    }
                 }
-            },
+            }
             TokenKind::Comment(_)
             | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
@@ -2963,10 +2980,11 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 return Err(Error {
                     kind: ErrorKind::ExpectedVariableName,
                     col: name_token.col,
-                    pointers_count: name_token.kind.display_len(),
+                    pointers_count: name_token.kind.display_len(self.tokens),
                 })
             }
-            TokenKind::Mutability(_)
+            TokenKind::Let
+            | TokenKind::Var
             | TokenKind::Print
             | TokenKind::PrintLn
             | TokenKind::Eprint
@@ -2980,7 +2998,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 return Err(Error {
                     kind: ErrorKind::KeywordInVariableName,
                     col: name_token.col,
-                    pointers_count: name_token.kind.display_len(),
+                    pointers_count: name_token.kind.display_len(self.tokens),
                 })
             }
         };
@@ -3009,7 +3027,8 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
-            | TokenKind::Mutability(_)
+            | TokenKind::Let
+            | TokenKind::Var
             | TokenKind::Print
             | TokenKind::PrintLn
             | TokenKind::Eprint
@@ -3024,24 +3043,24 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                     return Err(Error {
                         kind: ErrorKind::ExpectedEqualsOrSemicolonAfterVariableName,
                         col: name_token.col,
-                        pointers_count: name_token.kind.display_len(),
+                        pointers_count: name_token.kind.display_len(self.tokens),
                     })
                 }
                 Some((annotation_token, _)) => {
                     return Err(Error {
                         kind: ErrorKind::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
                         col: annotation_token.col,
-                        pointers_count: annotation_token.kind.display_len(),
+                        pointers_count: annotation_token.kind.display_len(self.tokens),
                     })
                 }
             },
         };
 
-        let None = self.resolve_variable(name) else {
+        let None = self.resolve_variable(name.as_bytes()) else {
             return Err(Error {
                 kind: ErrorKind::VariableAlreadyDefined,
                 col: name_token.col,
-                pointers_count: name_token.kind.display_len(),
+                pointers_count: name_token.kind.display_len(self.tokens),
             });
         };
 
@@ -3056,7 +3075,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                                 actual: value_typ,
                             },
                             col: token.col,
-                            pointers_count: token.kind.display_len(),
+                            pointers_count: token.kind.display_len(self.tokens),
                         });
                     }
                 }
@@ -3066,9 +3085,9 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                     Mutability::Var => &mut self.scopes[self.scope as usize].var_variables,
                 };
 
-                let var_index = self.ast.variables.len() as index32;
+                let var_index = self.ast.variables.len() as VariableIndex;
                 scope_variables.push(var_index);
-                self.ast.variables.push(Variable { name, value });
+                self.ast.variables.push(Variable { name: name.as_bytes(), value });
 
                 Ok(Node::Definition { var_index })
             }
@@ -3092,16 +3111,16 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                         Mutability::Var => &mut self.scopes[self.scope as usize].var_variables,
                     };
 
-                    let var_index = self.ast.variables.len() as index32;
+                    let var_index = self.ast.variables.len() as VariableIndex;
                     scope_variables.push(var_index);
-                    self.ast.variables.push(Variable { name, value });
+                    self.ast.variables.push(Variable { name: name.as_bytes(), value });
 
                     Ok(Node::Definition { var_index })
                 }
                 None => Err(Error {
                     kind: ErrorKind::CannotInferTypeOfVariable,
                     col: name_token.col,
-                    pointers_count: name_token.kind.display_len(),
+                    pointers_count: name_token.kind.display_len(self.tokens),
                 }),
             },
         };
@@ -3111,9 +3130,9 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
     fn reassignment(
         &mut self,
         target: Expression,
-        target_token: &'tokens Token<'code>,
+        target_token: Token,
         op: AssignmentOp,
-        op_token: &'tokens Token<'code>,
+        op_token: Token,
     ) -> Result<Node, Error<ErrorKind>> {
         let (error_token, target_type) = match &target {
             Expression::ArrayIndex { base_type, indexable_index, .. } => {
@@ -3131,12 +3150,13 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                     return Err(Error {
                         kind: ErrorKind::CannotAssignToExpression,
                         col: op_token.col,
-                        pointers_count: op_token.kind.display_len(),
+                        pointers_count: op_token.kind.display_len(self.tokens),
                     });
                 };
 
-                let error_token = if let TokenKind::Identifier(name) = target_token.kind {
-                    let Some((mutability, _)) = self.resolve_variable(name) else {
+                let error_token = if let TokenKind::Identifier(name_index) = target_token.kind {
+                    let name = self.tokens.text[name_index as usize];
+                    let Some((mutability, _)) = self.resolve_variable(name.as_bytes()) else {
                         unreachable!("should have been checked during lhs parsing");
                     };
 
@@ -3144,7 +3164,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                         return Err(Error {
                             kind: ErrorKind::CannotMutateVariable,
                             col: target_token.col,
-                            pointers_count: target_token.kind.display_len(),
+                            pointers_count: target_token.kind.display_len(self.tokens),
                         });
                     };
 
@@ -3153,7 +3173,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                             return Err(Error {
                                 kind: ErrorKind::CannotMutateStringCharacters,
                                 col: target_token.col,
-                                pointers_count: target_token.kind.display_len(),
+                                pointers_count: target_token.kind.display_len(self.tokens),
                             });
                         }
                     }
@@ -3175,7 +3195,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                     return Err(Error {
                         kind: ErrorKind::CannotMutateVariable,
                         col: target_token.col,
-                        pointers_count: target_token.kind.display_len(),
+                        pointers_count: target_token.kind.display_len(self.tokens),
                     });
                 };
 
@@ -3198,7 +3218,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 return Err(Error {
                     kind: ErrorKind::CannotAssignToExpression,
                     col: op_token.col,
-                    pointers_count: op_token.kind.display_len(),
+                    pointers_count: op_token.kind.display_len(self.tokens),
                 });
             }
         };
@@ -3217,7 +3237,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                     actual: new_value_type,
                 },
                 col: error_token.col,
-                pointers_count: error_token.kind.display_len(),
+                pointers_count: error_token.kind.display_len(self.tokens),
             }),
             AssignmentOp::Pow
             | AssignmentOp::WrappingPow
@@ -3260,7 +3280,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 (Type::Base(BaseType::Ascii | BaseType::Bool), _) => Err(Error {
                     kind: ErrorKind::CannotModifyInplace(target_type),
                     col: op_token.col,
-                    pointers_count: op_token.kind.display_len(),
+                    pointers_count: op_token.kind.display_len(self.tokens),
                 }),
                 _ => Err(Error {
                     kind: ErrorKind::VariableReassignmentTypeMismatch {
@@ -3268,7 +3288,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                         actual: new_value_type,
                     },
                     col: error_token.col,
-                    pointers_count: error_token.kind.display_len(),
+                    pointers_count: error_token.kind.display_len(self.tokens),
                 }),
             },
         };
@@ -3281,7 +3301,7 @@ impl Parser<'_, '_, '_, '_> {
         let _start_of_expression_token = self.next_token_bounded(Expected::Expression)?;
         let argument = self.expression()?;
         if let Expression::Array { .. } = argument {
-            let temporary_value_index = self.ast.temporaries.len() as index32;
+            let temporary_value_index = self.ast.temporaries.len() as ExpressionIndex;
             let argument_type = argument.typ();
             self.ast.temporaries.push(argument);
             return Ok(Expression::Temporary { typ: argument_type, temporary_value_index });
@@ -3297,7 +3317,7 @@ impl Parser<'_, '_, '_, '_> {
         let mut ifs = Vec::new();
         let mut els = None;
 
-        'iff: while let Some(if_token) = self.tokens.get(self.token as usize) {
+        'iff: while let Some(if_token) = self.tokens.tokens.get(self.token as usize) {
             _ = self.next_token_bounded(Expected::BooleanExpression)?;
 
             let condition = self.expression()?;
@@ -3305,7 +3325,7 @@ impl Parser<'_, '_, '_, '_> {
                 return Err(Error {
                     kind: ErrorKind::IfMustBeFollowedByBooleanExpression,
                     col: if_token.col,
-                    pointers_count: if_token.kind.display_len(),
+                    pointers_count: if_token.kind.display_len(self.tokens),
                 });
             };
 
@@ -3334,7 +3354,8 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_)
                 | TokenKind::Identifier(_)
-                | TokenKind::Mutability(_)
+                | TokenKind::Let
+                | TokenKind::Var
                 | TokenKind::Print
                 | TokenKind::PrintLn
                 | TokenKind::Eprint
@@ -3348,14 +3369,14 @@ impl Parser<'_, '_, '_, '_> {
                     return Err(Error {
                         kind: ErrorKind::IfMustBeFollowedByDoOrBlock,
                         col: before_curly_bracket_token.col,
-                        pointers_count: before_curly_bracket_token.kind.display_len(),
+                        pointers_count: before_curly_bracket_token.kind.display_len(self.tokens),
                     });
                 }
             };
 
             ifs.push(if_statement);
 
-            while let Some(else_token) = self.tokens.get(self.token as usize) {
+            while let Some(else_token) = self.tokens.tokens.get(self.token as usize) {
                 let after_else_token = match else_token.kind {
                     TokenKind::Else => self.next_token_bounded(Expected::DoOrBlockOrIfStatement)?,
                     TokenKind::Comment(_)
@@ -3373,7 +3394,8 @@ impl Parser<'_, '_, '_, '_> {
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
                     | TokenKind::Identifier(_)
-                    | TokenKind::Mutability(_)
+                    | TokenKind::Let
+                    | TokenKind::Var
                     | TokenKind::Print
                     | TokenKind::PrintLn
                     | TokenKind::Eprint
@@ -3413,7 +3435,8 @@ impl Parser<'_, '_, '_, '_> {
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
                     | TokenKind::Identifier(_)
-                    | TokenKind::Mutability(_)
+                    | TokenKind::Let
+                    | TokenKind::Var
                     | TokenKind::Print
                     | TokenKind::PrintLn
                     | TokenKind::Eprint
@@ -3424,7 +3447,7 @@ impl Parser<'_, '_, '_, '_> {
                     | TokenKind::Continue => Err(Error {
                         kind: ErrorKind::MustBeFollowedByDoOrBlockOrIfStatement,
                         col: else_token.col,
-                        pointers_count: else_token.kind.display_len(),
+                        pointers_count: else_token.kind.display_len(self.tokens),
                     }),
                 };
 
@@ -3441,7 +3464,7 @@ impl Parser<'_, '_, '_, '_> {
 // loop statements
 impl Parser<'_, '_, '_, '_> {
     fn loop_statement(&mut self) -> Result<Node, Error<ErrorKind>> {
-        let do_token = &self.tokens[self.token as usize];
+        let do_token = self.tokens.tokens[self.token as usize];
         let loop_token = match do_token.kind {
             TokenKind::Do => {
                 let loop_token = self.next_token_bounded(Expected::LoopStatement)?;
@@ -3449,7 +3472,7 @@ impl Parser<'_, '_, '_, '_> {
                     return Err(Error {
                         kind: ErrorKind::DoMustBeFollowedByLoop,
                         col: do_token.col,
-                        pointers_count: do_token.kind.display_len(),
+                        pointers_count: do_token.kind.display_len(self.tokens),
                     });
                 };
 
@@ -3470,7 +3493,8 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
-            | TokenKind::Mutability(_)
+            | TokenKind::Let
+            | TokenKind::Var
             | TokenKind::Print
             | TokenKind::PrintLn
             | TokenKind::Eprint
@@ -3488,7 +3512,7 @@ impl Parser<'_, '_, '_, '_> {
             return Err(Error {
                 kind: ErrorKind::LoopMustBeFollowedByBooleanExpression,
                 col: loop_token.col,
-                pointers_count: loop_token.kind.display_len(),
+                pointers_count: loop_token.kind.display_len(self.tokens),
             });
         };
 
@@ -3517,7 +3541,8 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
-            | TokenKind::Mutability(_)
+            | TokenKind::Let
+            | TokenKind::Var
             | TokenKind::Print
             | TokenKind::PrintLn
             | TokenKind::Eprint
@@ -3531,7 +3556,7 @@ impl Parser<'_, '_, '_, '_> {
                 Err(Error {
                     kind: ErrorKind::LoopMustBeFollowedByDoOrBlock,
                     col: before_curly_bracket_token.col,
-                    pointers_count: before_curly_bracket_token.kind.display_len(),
+                    pointers_count: before_curly_bracket_token.kind.display_len(self.tokens),
                 })
             }
         };

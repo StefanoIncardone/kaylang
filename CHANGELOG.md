@@ -98,23 +98,27 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
         - compilation of abstract syntax tree
 - Renamed `syntax` module to `front_end`
 - Introduced `offset32`, `line32`, `column32` and `index32` type aliases for `u32`
-- Renamed `tokenizer::BracketKind` to `tokenizer::Bracket`
 - Errors related to bracket pairs now contain more descriptive `tokenizer::OpenBracket` and
     `tokenizer::CloseBracket`
 - Moved `src_file` module into `front_end`
-    - `src_file::SrcFile::path` and `src_file::Error::path` are now a `&Path` instead of `PathBuf`,
-        thus reduced the number of unnecessary allocations
-    - `src_file::SrcFile::lines` is now part of the new `src_file::SrcCode`, and `src_file::SrcFile`
-        is now contained withing it
-    - `src_file::SrcFile::lines` is now calculated and returned from
-        `tokenizer::Tokenizer::tokenize`, which now returns the new `tokenizer::TokenizedCode`
-    - `src_file::SrcFile::position` is no longer public due to out-of bounds unsafety and
-        inconsistencies between Unix's `\n` and Windows' `\r\n` line terminators
-    - Split `src_file::SrcFile::position` into `src_file::SrcFile::position` and
-        `src_file::SrcFile::display_position`, returning respectively a:
-        - `src_file::Position` now only contains information about the sorce code position
-        - `src_file::DisplayPosition` contains information about the source code position and
-            display position
+- `src_file::SrcFile::path` and `src_file::Error::path` are now a `&Path` instead of `PathBuf`
+- Split `src_file::SrcFile::position` into `src_file::SrcFile::position` and
+    `src_file::SrcFile::display_position`, returning respectively a:
+    - `src_file::Position` now only contains information about the sorce code position
+    - `src_file::DisplayPosition` contains information about the source code position and
+        display position
+- Split `src_file::SrcFile` into:
+    - `src_file::SrcFile` -> the path and the source code
+    - `src_file::SrcCode` -> contains `src_file::SrcFile` and `Vec<Line>`
+- `src_file::SrcFile::load` now only reads the contents of the source code without calculating line
+    bounds
+- `tokenizer::Tokenizer::tokenize` now takes the revised `src_file::SrcFile` and returns the new
+    `tokenizer::TokenizedCode` struct, containing:
+    - `tokenizer::Tokens` struct, which is an optimized memory layout representation of
+        `tokenizer::Token`
+    - the calculated `src_file::lines`
+- `src_file::SrcFile::position` is no longer public due to out-of bounds unsafety and
+    inconsistencies between Unix's `\n` and Windows' `\r\n` line terminators
 - Renamed `error::MsgWithCauseUnderTextWithLocation::source_code_col` to
     `error::MsgWithCauseUnderTextWithLocation::absolute_column`
 - Reordered and changed `error::MsgWithCauseUnderText::pointers_count` and

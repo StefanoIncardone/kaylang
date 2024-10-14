@@ -6,7 +6,7 @@ use super::{
     Error, ErrorInfo, IntoErrorInfo,
 };
 use crate::error::CharsWidth;
-use core::fmt::Display;
+use core::{fmt::Display, marker::PhantomData};
 use unicode_segmentation::UnicodeSegmentation;
 
 pub(super) trait DisplayLen {
@@ -28,11 +28,6 @@ pub(crate) type ascii = u8;
 /// kay's utf8 character type
 #[allow(non_camel_case_types)]
 pub(crate) type utf8 = char;
-
-/// integer literals are never empty and always contain valid ascii digits
-#[derive(Debug, Clone, Copy)]
-#[repr(transparent)]
-pub(crate) struct Integer<'code>(pub(crate) &'code [ascii]);
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[repr(u8)]
@@ -546,12 +541,17 @@ impl QuotedLiteralKind {
     }
 }
 
-#[derive(Debug, Clone)]
-pub(crate) enum TokenKind<'code> {
+pub(crate) type BracketIndex = index32;
+pub(crate) type TextIndex = index32;
+pub(crate) type StrIndex = index32;
+pub(crate) type TokenIndex = index32;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TokenKind {
     // IDEA(stefano): remove from the returned tokens, to avoid encountering them during the parsing stage
-    Comment(&'code str),
-    BlockComment(&'code str),
-    Unexpected(&'code str),
+    Comment(TextIndex),
+    BlockComment(TextIndex),
+    Unexpected(TextIndex),
 
     // Symbols
     Bracket(Bracket),
@@ -564,20 +564,13 @@ pub(crate) enum TokenKind<'code> {
     False,
     True,
     // IDEA(stefano): expand into the different bases, akin to Str and RawStr
-    Integer(Base, Integer<'code>),
+    /// integer literals are never empty and always contain valid ascii digits
+    Integer(Base, TextIndex),
     Ascii(ascii),
-    Str(Str),
-    RawStr(Str),
+    Str(StrIndex),
+    RawStr(StrIndex),
 
-    /* IDEA(stefano):
-    create:
-    struct ShortStr<'code> {
-        len: offset,
-        ptr: offset,
-        _ptr: PhantomData<&'code ascii>,
-    }
-    */
-    Identifier(&'code [ascii]),
+    Identifier(TextIndex),
 
     // Keywords
     /// temporary way of printing values to stdout
@@ -589,8 +582,8 @@ pub(crate) enum TokenKind<'code> {
     /// temporary way of printing values followed by a newline to stderr
     EprintLn,
 
-    // IDEA(stefano): expant into TokenKind::Let and TokenKind::Var
-    Mutability(Mutability),
+    Let,
+    Var,
     Do,
     If,
     Else,
@@ -599,62 +592,21 @@ pub(crate) enum TokenKind<'code> {
     Continue,
 }
 
-impl Display for TokenKind<'_> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl TokenKind {
+    pub(crate) fn display_len(self, tokens: &Tokens<'_, '_>) -> offset32 {
         return match self {
-            Self::Comment(text) => write!(f, "#{text}"),
-            Self::BlockComment(text) => write!(f, "##{text}##"),
-            Self::Unexpected(text) => write!(f, "{text}"),
-
-            Self::Bracket(bracket) => write!(f, "{bracket}"),
-            Self::Colon => write!(f, ":"),
-            Self::SemiColon => write!(f, ";"),
-            Self::Comma => write!(f, ","),
-            Self::Op(op) => write!(f, "{op}"),
-
-            Self::False => write!(f, "false"),
-            Self::True => write!(f, "true"),
-            Self::Integer(base, integer) => {
-                let integer_str = unsafe { core::str::from_utf8_unchecked(integer.0) };
-                write!(f, "{prefix}{integer_str}", prefix = base.prefix())
+            Self::Comment(comment) => {
+                let text = tokens.text[comment as usize];
+                text.chars_width() + 1 // + 1 to account for the `#`
             }
-            Self::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
-            Self::Str(string) => {
-                let string_str = string.0.escape_ascii();
-                write!(f, "\"{string_str}\"")
+            Self::BlockComment(comment) => {
+                let text = tokens.text[comment as usize];
+                text.chars_width() + 4 // + 4 to account for `##` and `##`
             }
-            Self::RawStr(string) => {
-                let string_str = unsafe { core::str::from_utf8_unchecked(&string.0) };
-                write!(f, "r\"{string_str}\"")
+            Self::Unexpected(unexpected) => {
+                let text = tokens.text[unexpected as usize];
+                text.chars_width()
             }
-
-            Self::Identifier(identifier) => {
-                let identifier_str = unsafe { core::str::from_utf8_unchecked(identifier) };
-                write!(f, "{identifier_str}")
-            }
-
-            Self::Print => write!(f, "print"),
-            Self::PrintLn => write!(f, "println"),
-            Self::Eprint => write!(f, "eprint"),
-            Self::EprintLn => write!(f, "eprintln"),
-
-            Self::Mutability(kind) => write!(f, "{kind}"),
-            Self::Do => write!(f, "do"),
-            Self::If => write!(f, "if"),
-            Self::Else => write!(f, "else"),
-            Self::Loop => write!(f, "loop"),
-            Self::Break => write!(f, "break"),
-            Self::Continue => write!(f, "continue"),
-        };
-    }
-}
-
-impl DisplayLen for TokenKind<'_> {
-    fn display_len(&self) -> offset32 {
-        return match self {
-            Self::Comment(text) => text.chars_width() + 1, // + 1 to account for the `#`
-            Self::BlockComment(text) => text.chars_width() + 4, // + 4 to account for `##` and `##`
-            Self::Unexpected(text) => text.chars_width(),
 
             Self::Bracket(bracket) => bracket.display_len(),
             Self::Colon => 1,
@@ -663,28 +615,37 @@ impl DisplayLen for TokenKind<'_> {
             Self::Op(op) => op.display_len(),
 
             Self::Integer(base, integer) => {
-                base.prefix().len() as offset32 + integer.0.len() as offset32
+                let literal = tokens.text[integer as usize];
+                base.prefix().len() as offset32 + literal.len() as offset32
             }
             Self::Ascii(ascii_char) => ascii_char.escape_ascii().len() as offset32 + 2, // + 2 to account for the quotes
             Self::True => 4,
             Self::False => 5,
-            Self::Str(text) => {
+            Self::Str(string) => {
+                let text = &tokens.strings[string as usize];
                 let mut len = 2; // starting at 2 to account for the quotes
                 for ascii_char in &*text.0 {
                     len += ascii_char.escape_ascii().len() as offset32;
                 }
                 len
             }
-            Self::RawStr(text) => text.0.len() as offset32 + 3, // + 1 for the `r` prefix, and + 2 for the quotes
+            Self::RawStr(string) => {
+                let text = &tokens.strings[string as usize];
+                text.0.len() as offset32 + 3 // + 1 for the `r` prefix, and + 2 for the quotes
+            }
 
-            Self::Identifier(name) => name.len() as offset32,
+            Self::Identifier(identifier) => {
+                let text = tokens.text[identifier as usize];
+                text.len() as offset32
+            }
 
             Self::Print => 5,
             Self::PrintLn => 7,
             Self::Eprint => 6,
             Self::EprintLn => 8,
 
-            Self::Mutability(kind) => kind.display_len(),
+            Self::Let => 3,
+            Self::Var => 3,
             Self::Do => 2,
             Self::If => 2,
             Self::Else => 4,
@@ -695,30 +656,42 @@ impl DisplayLen for TokenKind<'_> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Token<'code> {
-    pub(crate) kind: TokenKind<'code>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Token {
+    pub(crate) kind: TokenKind,
     pub(crate) col: offset32,
 }
 
+#[derive(Debug, Clone)]
+pub struct Tokens<'code, 'path: 'code> {
+    pub(crate) tokens: Vec<Token>,
+
+    // IDEA(stefano): store a Range<offset32> instead
+    pub(crate) text: Vec<&'code str>,
+    pub(crate) strings: Vec<Str>,
+
+    _src: PhantomData<&'code SrcFile<'path>>,
+}
+
 pub struct TokenizedCode<'code, 'path: 'code> {
-    pub result: Result<Vec<Token<'code>>, Vec<Error<ErrorKind<'code>>>>,
+    pub result: Result<Tokens<'code, 'path>, Vec<Error<ErrorKind<'code>>>>,
     pub src: SrcCode<'code, 'path>,
 }
 
 #[derive(Debug)]
-pub struct Tokenizer<'code> {
+pub struct Tokenizer<'code, 'path: 'code> {
     code: &'code str,
     lines: Vec<Line>,
     line_start: offset32,
 
     col: offset32,
     token_start_col: offset32,
+    tokens: Tokens<'code, 'path>,
 
     errors: Vec<Error<ErrorKind<'code>>>,
 }
 
-impl<'code, 'path: 'code> Tokenizer<'code> {
+impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
     #[must_use]
     pub fn tokenize(src_file: &'code SrcFile<'path>) -> TokenizedCode<'code, 'path> {
         let mut this = Self {
@@ -728,11 +701,16 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
 
             col: 0,
             token_start_col: 0,
+            tokens: Tokens {
+                tokens: Vec::new(),
+                text: Vec::new(),
+                strings: Vec::new(),
+                _src: PhantomData,
+            },
 
             errors: Vec::new(),
         };
-        let mut tokens = Vec::<Token<'code>>::new();
-        let mut brackets_indicies = Vec::<index32>::new();
+        let mut brackets_indicies = Vec::<BracketIndex>::new();
 
         'tokenization: while let Some(next_character) = this.peek_next_ascii_char() {
             let token_kind_result = 'next_token: {
@@ -791,7 +769,9 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
 
                             match this.raw_string_literal() {
                                 Ok(literal) => {
-                                    Ok(TokenKind::RawStr(Str(literal.into_boxed_slice())))
+                                    this.tokens.strings.push(Str(literal.into_boxed_slice()));
+                                    let string_index = this.tokens.strings.len() as StrIndex - 1;
+                                    Ok(TokenKind::RawStr(string_index))
                                 }
                                 Err(()) => Err(()),
                             }
@@ -819,16 +799,30 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         };
 
                         match integer {
-                            Ok(literal) => Ok(TokenKind::Integer(base, Integer(literal))),
+                            Ok(literal) => {
+                                let literal_str = unsafe { core::str::from_utf8_unchecked(literal) };
+                                this.tokens.text.push(literal_str);
+                                let literal_index = this.tokens.text.len() as TextIndex - 1;
+                                Ok(TokenKind::Integer(base, literal_index))
+                            }
                             Err(()) => Err(()),
                         }
                     }
                     b'1'..=b'9' => match this.integer_decimal() {
-                        Ok(literal) => Ok(TokenKind::Integer(Base::Decimal, Integer(literal))),
+                        Ok(literal) => {
+                            let literal_str = unsafe { core::str::from_utf8_unchecked(literal) };
+                            this.tokens.text.push(literal_str);
+                            let literal_index = this.tokens.text.len() as TextIndex - 1;
+                            Ok(TokenKind::Integer(Base::Decimal, literal_index))
+                        }
                         Err(()) => Err(()),
                     },
                     b'"' => match this.quoted_literal(QuotedLiteralKind::Str) {
-                        Ok(literal) => Ok(TokenKind::Str(Str(literal.into_boxed_slice()))),
+                        Ok(literal) => {
+                            this.tokens.strings.push(Str(literal.into_boxed_slice()));
+                            let string_index = this.tokens.strings.len() as StrIndex - 1;
+                            Ok(TokenKind::Str(string_index))
+                        }
                         Err(()) => Err(()),
                     },
                     b'\'' => match this.quoted_literal(QuotedLiteralKind::Ascii) {
@@ -883,9 +877,11 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
 
                             // starting at this.token_start_col + 2 to skip the `##`
                             // ending at this.col - 2 to skip the `##`
-                            let comment = &this.code
-                                [this.token_start_col as usize + 2..this.col as usize - 2];
-                            Ok(TokenKind::BlockComment(comment))
+                            let comment_str = &this.code
+                                [this.token_start_col as usize + 2..this.col as usize + 2];
+                            this.tokens.text.push(comment_str);
+                            let comment_index = this.tokens.text.len() as TextIndex - 1;
+                            Ok(TokenKind::BlockComment(comment_index))
                         }
                         Some(_) | None => {
                             loop {
@@ -907,14 +903,15 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                 }
                             }
 
-                            // starting at this.token_start_col + 1 to skip the `#`
-                            let comment =
-                                &this.code[this.token_start_col as usize + 1..this.col as usize];
-                            Ok(TokenKind::Comment(comment))
+                            let comment_str = &this.code
+                                [this.token_start_col as usize + 1..this.col as usize];
+                            this.tokens.text.push(comment_str);
+                            let comment_index = this.tokens.text.len() as TextIndex - 1;
+                            Ok(TokenKind::Comment(comment_index))
                         }
                     },
                     b'(' => {
-                        brackets_indicies.push(tokens.len() as index32);
+                        brackets_indicies.push(this.tokens.tokens.len() as TokenIndex);
                         Ok(TokenKind::Bracket(Bracket::OpenRound))
                     }
                     b')' => 'bracket: {
@@ -927,7 +924,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             break 'bracket Err(());
                         };
 
-                        let TokenKind::Bracket(bracket) = &tokens[bracket_index as usize].kind
+                        let TokenKind::Bracket(bracket) = &this.tokens.tokens[bracket_index as usize].kind
                         else {
                             unreachable!("incorrect bracket index");
                         };
@@ -951,7 +948,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         }
                     }
                     b'[' => {
-                        brackets_indicies.push(tokens.len() as index32);
+                        brackets_indicies.push(this.tokens.tokens.len() as TokenIndex);
                         Ok(TokenKind::Bracket(Bracket::OpenSquare))
                     }
                     b']' => 'bracket: {
@@ -964,7 +961,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             break 'bracket Err(());
                         };
 
-                        let TokenKind::Bracket(bracket) = &tokens[bracket_index as usize].kind
+                        let TokenKind::Bracket(bracket) = &this.tokens.tokens[bracket_index as usize].kind
                         else {
                             unreachable!("incorrect bracket index");
                         };
@@ -988,7 +985,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         }
                     }
                     b'{' => {
-                        brackets_indicies.push(tokens.len() as index32);
+                        brackets_indicies.push(this.tokens.tokens.len() as TokenIndex);
                         Ok(TokenKind::Bracket(Bracket::OpenCurly))
                     }
                     b'}' => 'bracket: {
@@ -1001,7 +998,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             break 'bracket Err(());
                         };
 
-                        let TokenKind::Bracket(bracket) = &tokens[bracket_index as usize].kind
+                        let TokenKind::Bracket(bracket) = &this.tokens.tokens[bracket_index as usize].kind
                         else {
                             unreachable!("incorrect bracket index");
                         };
@@ -1320,12 +1317,15 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
 
             let kind = match token_kind_result {
                 Ok(kind) => kind,
-                Err(()) => TokenKind::Unexpected(
-                    &this.code[this.token_start_col as usize..this.col as usize],
-                ),
+                Err(()) => {
+                    let unexpected_text = &this.code[this.token_start_col as usize..this.col as usize];
+                    this.tokens.text.push(unexpected_text);
+                    let unexpected_index = this.tokens.text.len() as TextIndex - 1;
+                    TokenKind::Unexpected(unexpected_index)
+                }
             };
 
-            tokens.push(Token { kind, col: this.token_start_col });
+            this.tokens.tokens.push(Token { kind, col: this.token_start_col });
         }
 
         if let Some(b'\n') = this.code.as_bytes().last() {
@@ -1335,19 +1335,19 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
 
         for bracket_index in brackets_indicies {
             // there can only be open brackets at this point
-            let bracket_token = &tokens[bracket_index as usize];
+            let bracket_token = &this.tokens.tokens[bracket_index as usize];
             let TokenKind::Bracket(bracket) = bracket_token.kind else {
                 unreachable!("incorrect bracket index");
             };
 
             this.errors.push(Error {
-                kind: ErrorKind::UnclosedBracket(bracket.into()),
+                kind: ErrorKind::UnclosedBracket((bracket).into()),
                 col: bracket_token.col,
                 pointers_count: 1,
             });
         }
 
-        let result = if this.errors.is_empty() { Ok(tokens) } else { Err(this.errors) };
+        let result = if this.errors.is_empty() { Ok(this.tokens) } else { Err(this.errors) };
         return TokenizedCode { result, src: SrcCode { src_file, lines: this.lines } };
     }
 }
@@ -1361,7 +1361,7 @@ struct Utf8Error<'code> {
 
 // TODO(stefano): own utf8 parsing
 // iteration of characters
-impl<'code> Tokenizer<'code> {
+impl<'code> Tokenizer<'code, '_> {
     fn token_text(&self) -> &'code str {
         return &self.code[self.token_start_col as usize..self.col as usize];
     }
@@ -1465,8 +1465,8 @@ impl<'code> Tokenizer<'code> {
     }
 }
 
-impl<'code> Tokenizer<'code> {
-    fn identifier(&mut self) -> Result<TokenKind<'code>, ()> {
+impl<'code> Tokenizer<'code, '_> {
+    fn identifier(&mut self) -> Result<TokenKind, ()> {
         const MAX_IDENTIFIER_LEN: offset32 = 63;
         let previous_errors_len = self.errors.len();
 
@@ -1492,8 +1492,8 @@ impl<'code> Tokenizer<'code> {
         };
 
         let identifier = match &self.code[self.token_start_col as usize..self.col as usize] {
-            "let" => TokenKind::Mutability(Mutability::Let),
-            "var" => TokenKind::Mutability(Mutability::Var),
+            "let" => TokenKind::Let,
+            "var" => TokenKind::Var,
             "print" => TokenKind::Print,
             "println" => TokenKind::PrintLn,
             "eprint" => TokenKind::Eprint,
@@ -1517,7 +1517,10 @@ impl<'code> Tokenizer<'code> {
                     });
                     return Err(());
                 }
-                TokenKind::Identifier(identifier.as_bytes())
+
+                self.tokens.text.push(identifier);
+                let identifier_index = self.tokens.text.len() as TextIndex - 1;
+                TokenKind::Identifier(identifier_index)
             }
         };
 
