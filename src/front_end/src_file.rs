@@ -3,13 +3,28 @@ use core::fmt::Display;
 use std::{fs::File, io::Read, path::Path};
 use unicode_width::UnicodeWidthChar;
 
-#[allow(non_camel_case_types)]
+#[expect(
+    non_camel_case_types,
+    reason = "behaves like a primitive type, so it should be named like a primitive type"
+)]
 pub type offset32 = u32;
-#[allow(non_camel_case_types)]
+
+#[expect(
+    non_camel_case_types,
+    reason = "behaves like a primitive type, so it should be named like a primitive type"
+)]
 pub type line32 = u32;
-#[allow(non_camel_case_types)]
+
+#[expect(
+    non_camel_case_types,
+    reason = "behaves like a primitive type, so it should be named like a primitive type"
+)]
 pub type column32 = u32;
-#[allow(non_camel_case_types)]
+
+#[expect(
+    non_camel_case_types,
+    reason = "behaves like a primitive type, so it should be named like a primitive type"
+)]
 pub type index32 = u32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,7 +133,7 @@ impl<'code, 'path: 'code> SrcCode<'code, 'path> {
         let mut left: index32 = 0;
         let mut right = self.lines.len() as index32 - 1;
         while left < right {
-            #[allow(clippy::integer_division)] // it's intended to loose precision
+            #[expect(clippy::integer_division, reason = "it's intended to lose precision")]
             let middle = left + (right - left) / 2;
             if column < self.lines[middle as usize].end {
                 right = middle;
@@ -190,4 +205,4 @@ impl Display for Error<'_> {
     }
 }
 
-impl std::error::Error for Error<'_> {}
+impl core::error::Error for Error<'_> {}

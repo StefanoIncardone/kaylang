@@ -1,5 +1,6 @@
 [package]
 name = "kaylang"
+rust-version = "1.81.0"
 version = "0.6.2"
 edition = "2021"
 authors = ["Stefano Incardone"]
@@ -53,7 +54,6 @@ private_interfaces = "forbid"
 unused_must_use = "forbid"
 
 [lints.clippy] # to be used once in a while
-blanket_clippy_restriction_lints = "allow"
 nursery = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
 restriction = { level = "warn", priority = -1 }
@@ -62,8 +62,6 @@ cargo = { level = "forbid", priority = -1 }
 # still not convinced on the benefits of either approaches
 self_named_module_files = "allow"
 mod_module_files = "warn"
-
-std_instead_of_alloc = "allow"
 
 module_name_repetitions = "allow" # unrealiable
 struct_field_names = "allow" # unreliable
@@ -91,6 +89,9 @@ too-many-arguments = "allow"
 exhaustive_enums = "allow"
 exhaustive_structs = "allow"
 
+blanket_clippy_restriction_lints = "allow"
+std_instead_of_alloc = "allow"
+field_scoped_visibility_modifiers = "allow" # too much OOP
 missing_inline_in_public_items = "allow" # not all functions should be inlined
 inline_always = "allow" # do as i say please
 needless_raw_strings = "allow" # raw strings preserve leading spaces while regular strings don't
@@ -116,6 +117,9 @@ question_mark_used = "allow" # needlessly advocates for a macro instead of a lan
 verbose_file_reads = "allow"
 single_match_else = "allow" # avoid forgetting to change the consumer when signatures change
 redundant_pattern_matching = "allow" # i hate inconsistencies in ifs and matches
+large_stack_frames = "warn"
+zero_prefixed_literal = "allow"
+no_effect_underscore_binding = "warn"
 
 # doesn't solve the problem, i.e.:
 # ```rust
@@ -132,9 +136,5 @@ option_if_let_else = "allow"
 if_then_some_else_none = "allow"
 manual_map = "allow"
 manual_unwrap_or = "allow"
-equatable_if_let = "allow"
-
-large_stack_frames = "warn"
-zero_prefixed_literal = "allow"
 manual_let_else = "warn"
-no_effect_underscore_binding = "warn"
+equatable_if_let = "allow"

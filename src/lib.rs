@@ -92,7 +92,7 @@ impl<'path> Logger<'path> {
 }
 
 // logging without verbosity information, intended for use in specialized cases
-#[allow(clippy::print_stderr)]
+#[expect(clippy::print_stderr, reason = "it's a logger")]
 impl Logger<'_> {
     pub fn info(step: &dyn Display, path: &Path) {
         eprintln!(
@@ -371,7 +371,10 @@ impl TryFrom<Vec<String>> for Args {
             return matches!(verbosity_flag.as_str(), "-q" | "--quiet" | "-V" | "--verbose");
         }
 
-        #[allow(clippy::single_call_fn)]
+        #[expect(
+            clippy::single_call_fn,
+            reason = "is consistent with the `is_verbosity_flag` function"
+        )]
         #[inline]
         fn is_out_flag((_out_flag_index, out_flag): &(usize, &String)) -> bool {
             return matches!(out_flag.as_str(), "-o" | "--output");
@@ -889,4 +892,4 @@ impl Display for Error {
     }
 }
 
-impl std::error::Error for Error {}
+impl core::error::Error for Error {}

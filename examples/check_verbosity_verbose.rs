@@ -1,4 +1,4 @@
-#![allow(clippy::print_stdout, clippy::print_stderr)] // it's a cli tool, it's normal to print to stderr and stdout
+#![allow(clippy::print_stdout, clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
     front_end::{

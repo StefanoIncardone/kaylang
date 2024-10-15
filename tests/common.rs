@@ -1,4 +1,4 @@
-#![allow(clippy::print_stdout, clippy::print_stderr)] // it's a cli tool, it's normal to print to stderr and stdout
+#![allow(clippy::print_stdout, clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
     back_end::{artifacts::Artifacts, Compiler},
@@ -15,12 +15,13 @@ use std::{
     process::{Command, ExitCode},
 };
 
+#[allow(clippy::allow_attributes, reason = "unrealiable")]
 #[allow(
-    clippy::panic,
     clippy::unwrap_used,
     clippy::panic_in_result_fn,
     dead_code,
-    clippy::single_call_fn
+    clippy::single_call_fn,
+    reason = "it's for testing"
 )]
 pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
     let execution_step = Logger::new(None);

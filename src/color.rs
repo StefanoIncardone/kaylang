@@ -3,7 +3,6 @@ use std::io::IsTerminal;
 
 use crate::Color;
 
-#[allow(dead_code)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Fg {
     #[default]
@@ -26,7 +25,6 @@ pub enum Fg {
     White = 97,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Bg {
     #[default]
@@ -52,7 +50,7 @@ pub enum Bg {
 pub type Flags = u8;
 pub struct Flag;
 
-#[allow(non_upper_case_globals, dead_code)]
+#[expect(non_upper_case_globals, reason = "used as type safe constants")]
 impl Flag {
     pub const Default: Flags = 0b0000_0000;
     pub const Bold: Flags = 0b0000_0001;
@@ -62,7 +60,7 @@ impl Flag {
     pub const PositiveText: Flags = 0b0001_0000;
 }
 
-#[allow(non_upper_case_globals)]
+#[expect(non_upper_case_globals, reason = "it's a function, so it should be named like a function")]
 pub(crate) static mut print: fn(
     &str,
     Fg,

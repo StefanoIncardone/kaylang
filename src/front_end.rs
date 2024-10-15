@@ -85,4 +85,4 @@ impl Display for ErrorDisplay<'_, '_> {
     }
 }
 
-impl std::error::Error for ErrorDisplay<'_, '_> {}
+impl core::error::Error for ErrorDisplay<'_, '_> {}

@@ -29,16 +29,7 @@ use std::{
     path::PathBuf,
 };
 
-#[allow(unused_imports, clippy::enum_glob_use)]
-use self::reg::Reg16::*;
-#[allow(unused_imports, clippy::enum_glob_use)]
-use self::reg::Reg32::*;
-#[allow(unused_imports, clippy::enum_glob_use)]
-use self::reg::Reg64::*;
-#[allow(unused_imports, clippy::enum_glob_use)]
-use self::reg::Reg8h::*;
-#[allow(unused_imports, clippy::enum_glob_use)]
-use self::reg::Reg8l::*;
+use self::reg::Reg64::{Rcx, Rdi, Rdx, Rsi};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Dst {
@@ -106,8 +97,23 @@ impl<'ast, 'src: 'ast, 'path: 'src, 'code: 'src> Compiler<'ast, 'src, 'path, 'co
         ast: &'ast Ast<'code>,
         artifacts: &Artifacts,
     ) -> Result<(), Error> {
-        #[allow(clippy::wildcard_imports)]
-        use asm::*;
+        use asm::{
+            ASCII_ARRAY_DEBUG_EPRINT_ASM, ASCII_ARRAY_DEBUG_PRINT_ASM, ASCII_EPRINT_ASM,
+            ASCII_PRINT_ASM, ASSERT_ARRAY_INDEX_IN_RANGE_ASM, ASSERT_STR_INDEX_IN_RANGE_ASM,
+            BOOL_ARRAY_DEBUG_EPRINT_ASM, BOOL_ARRAY_DEBUG_PRINT_ASM, BOOL_EPRINT_ASM,
+            BOOL_PRINT_ASM, CRASH_ASM, INT_ARRAY_DEBUG_EPRINT_ASM, INT_ARRAY_DEBUG_PRINT_ASM,
+            INT_EPRINT_ASM, INT_PRINT_ASM, INT_SAFE_ABS_ASM, INT_SAFE_ADD_ASM, INT_SAFE_DIV_ASM,
+            INT_SAFE_LEFT_ROTATE_ASM, INT_SAFE_LEFT_SHIFT_ASM, INT_SAFE_MUL_ASM,
+            INT_SAFE_MUL_POW_ASM, INT_SAFE_NEGATE_ASM, INT_SAFE_POW_ASM, INT_SAFE_REMAINDER_ASM,
+            INT_SAFE_RIGHT_ROTATE_ASM, INT_SAFE_RIGHT_SHIFT_ASM, INT_SAFE_SUB_ASM,
+            INT_SATURATING_ABS_ASM, INT_SATURATING_ADD_ASM, INT_SATURATING_DIV_ASM,
+            INT_SATURATING_LEFT_SHIFT_ASM, INT_SATURATING_MUL_ASM, INT_SATURATING_NEGATE_ASM,
+            INT_SATURATING_POW_ASM, INT_SATURATING_SUB_ASM, INT_TO_STR_ASM, INT_WRAPPING_ABS_ASM,
+            INT_WRAPPING_DIV_ASM, INT_WRAPPING_LEFT_SHIFT_ASM, INT_WRAPPING_POW_ASM,
+            STR_ARRAY_CMP_ASM, STR_ARRAY_DEBUG_EPRINT_ASM, STR_ARRAY_DEBUG_PRINT_ASM,
+            STR_ARRAY_EQ_ASM, STR_ARRAY_NEQ_ASM, STR_CMP_ASM, STR_EPRINT_ASM, STR_EQ_ASM,
+            STR_NEQ_ASM, STR_PRINT_ASM,
+        };
 
         let mut this = Compiler {
             src,
@@ -3024,4 +3030,4 @@ impl Display for Error {
     }
 }
 
-impl std::error::Error for Error {}
+impl core::error::Error for Error {}

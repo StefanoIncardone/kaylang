@@ -1,6 +1,5 @@
 use core::fmt::Display;
 
-#[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(u8)]
 pub(crate) enum Reg64 {
@@ -50,28 +49,28 @@ impl Display for Reg64 {
     }
 }
 
-#[allow(dead_code)]
+#[expect(dead_code, reason = "it's in reality created by trasmuting a `Reg64`")]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(u8)]
 pub(crate) enum Reg32 {
-    Eax = 0,
-    Ebx = 1,
-    Ecx = 2,
-    Edx = 3,
+    Eax = Reg64::Rax as u8,
+    Ebx = Reg64::Rbx as u8,
+    Ecx = Reg64::Rcx as u8,
+    Edx = Reg64::Rdx as u8,
 
-    Esi = 4,
-    Edi = 5,
-    Ebp = 6,
-    Esp = 7,
+    Esi = Reg64::Rsi as u8,
+    Edi = Reg64::Rdi as u8,
+    Ebp = Reg64::Rbp as u8,
+    Esp = Reg64::Rsp as u8,
 
-    R8d = 8,
-    R9d = 9,
-    R10d = 10,
-    R11d = 11,
-    R12d = 12,
-    R13d = 13,
-    R14d = 14,
-    R15d = 15,
+    R8d = Reg64::R8 as u8,
+    R9d = Reg64::R9 as u8,
+    R10d = Reg64::R10 as u8,
+    R11d = Reg64::R11 as u8,
+    R12d = Reg64::R12 as u8,
+    R13d = Reg64::R13 as u8,
+    R14d = Reg64::R14 as u8,
+    R15d = Reg64::R15 as u8,
 }
 
 impl Display for Reg32 {
@@ -100,28 +99,28 @@ impl Display for Reg32 {
     }
 }
 
-#[allow(dead_code)]
+#[expect(dead_code, reason = "it's in reality created by trasmuting a `Reg64`")]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(u8)]
 pub(crate) enum Reg16 {
-    Ax = 0,
-    Bx = 1,
-    Cx = 2,
-    Dx = 3,
+    Ax = Reg64::Rax as u8,
+    Bx = Reg64::Rbx as u8,
+    Cx = Reg64::Rcx as u8,
+    Dx = Reg64::Rdx as u8,
 
-    Si = 4,
-    Di = 5,
-    Bp = 6,
-    Sp = 7,
+    Si = Reg64::Rsi as u8,
+    Di = Reg64::Rdi as u8,
+    Bp = Reg64::Rbp as u8,
+    Sp = Reg64::Rsp as u8,
 
-    R8w = 8,
-    R9w = 9,
-    R10w = 10,
-    R11w = 11,
-    R12w = 12,
-    R13w = 13,
-    R14w = 14,
-    R15w = 15,
+    R8w = Reg64::R8 as u8,
+    R9w = Reg64::R9 as u8,
+    R10w = Reg64::R10 as u8,
+    R11w = Reg64::R11 as u8,
+    R12w = Reg64::R12 as u8,
+    R13w = Reg64::R13 as u8,
+    R14w = Reg64::R14 as u8,
+    R15w = Reg64::R15 as u8,
 }
 
 impl Display for Reg16 {
@@ -150,28 +149,28 @@ impl Display for Reg16 {
     }
 }
 
-#[allow(dead_code)]
+#[expect(dead_code, reason = "it's in reality created by trasmuting a `Reg64`")]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(u8)]
 pub(crate) enum Reg8l {
-    Al = 0,
-    Bl = 1,
-    Cl = 2,
-    Dl = 3,
+    Al = Reg64::Rax as u8,
+    Bl = Reg64::Rbx as u8,
+    Cl = Reg64::Rcx as u8,
+    Dl = Reg64::Rdx as u8,
 
-    Sil = 4,
-    Dil = 5,
-    Bpl = 6,
-    Spl = 7,
+    Sil = Reg64::Rsi as u8,
+    Dil = Reg64::Rdi as u8,
+    Bpl = Reg64::Rbp as u8,
+    Spl = Reg64::Rsp as u8,
 
-    R8b = 8,
-    R9b = 9,
-    R10b = 10,
-    R11b = 11,
-    R12b = 12,
-    R13b = 13,
-    R14b = 14,
-    R15b = 15,
+    R8b = Reg64::R8 as u8,
+    R9b = Reg64::R9 as u8,
+    R10b = Reg64::R10 as u8,
+    R11b = Reg64::R11 as u8,
+    R12b = Reg64::R12 as u8,
+    R13b = Reg64::R13 as u8,
+    R14b = Reg64::R14 as u8,
+    R15b = Reg64::R15 as u8,
 }
 
 impl Display for Reg8l {
@@ -200,14 +199,14 @@ impl Display for Reg8l {
     }
 }
 
-#[allow(dead_code)]
+#[expect(dead_code, reason = "it's in reality created by trasmuting a `Reg64`")]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(u8)]
 pub(crate) enum Reg8h {
-    Ah = 0,
-    Bh = 1,
-    Ch = 2,
-    Dh = 3,
+    Ah = Reg64::Rax as u8,
+    Bh = Reg64::Rbx as u8,
+    Ch = Reg64::Rcx as u8,
+    Dh = Reg64::Rdx as u8,
 }
 
 impl Display for Reg8h {
@@ -290,23 +289,8 @@ impl Into<Reg8l> for Reg32 {
 impl Into<Option<Reg8h>> for Reg32 {
     #[inline(always)]
     fn into(self) -> Option<Reg8h> {
-        return match self {
-            Self::Eax | Self::Ebx | Self::Ecx | Self::Edx => unsafe {
-                Some(core::mem::transmute(self))
-            },
-            Self::Esi
-            | Self::Edi
-            | Self::Ebp
-            | Self::Esp
-            | Self::R8d
-            | Self::R9d
-            | Self::R10d
-            | Self::R11d
-            | Self::R12d
-            | Self::R13d
-            | Self::R14d
-            | Self::R15d => None,
-        };
+        let reg64: Reg64 = self.into();
+        return reg64.into();
     }
 }
 
@@ -334,23 +318,8 @@ impl Into<Reg8l> for Reg16 {
 impl Into<Option<Reg8h>> for Reg16 {
     #[inline(always)]
     fn into(self) -> Option<Reg8h> {
-        return match self {
-            Self::Ax | Self::Bx | Self::Cx | Self::Dx => unsafe {
-                Some(core::mem::transmute(self))
-            },
-            Self::Si
-            | Self::Di
-            | Self::Bp
-            | Self::Sp
-            | Self::R8w
-            | Self::R9w
-            | Self::R10w
-            | Self::R11w
-            | Self::R12w
-            | Self::R13w
-            | Self::R14w
-            | Self::R15w => None,
-        };
+        let reg64: Reg64 = self.into();
+        return reg64.into();
     }
 }
 
@@ -378,23 +347,8 @@ impl Into<Reg16> for Reg8l {
 impl Into<Option<Reg8h>> for Reg8l {
     #[inline(always)]
     fn into(self) -> Option<Reg8h> {
-        return match self {
-            Self::Al | Self::Bl | Self::Cl | Self::Dl => unsafe {
-                Some(core::mem::transmute(self))
-            },
-            Self::Sil
-            | Self::Dil
-            | Self::Bpl
-            | Self::Spl
-            | Self::R8b
-            | Self::R9b
-            | Self::R10b
-            | Self::R11b
-            | Self::R12b
-            | Self::R13b
-            | Self::R14b
-            | Self::R15b => None,
-        };
+        let reg64: Reg64 = self.into();
+        return reg64.into();
     }
 }
 

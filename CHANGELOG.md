@@ -84,6 +84,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 #### Changed
 
+- Update rust version to [1.81.0](https://releases.rs/docs/1.81.0/)
 - Reworked compilation stages:
     - old:
         - loading of source code file and line boundaries precalculations

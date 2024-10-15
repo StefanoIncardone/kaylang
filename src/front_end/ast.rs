@@ -4,7 +4,8 @@
 use super::{
     src_file::{index32, offset32, Position, SrcCode},
     tokenizer::{
-        ascii, int, uint, Base, Bracket, Mutability, Op, OpenBracket, Str, Token, TokenIndex, TokenKind, Tokens
+        ascii, int, uint, Base, Bracket, Mutability, Op, OpenBracket, Str, Token, TokenIndex,
+        TokenKind, Tokens,
     },
     Error, ErrorInfo, IntoErrorInfo,
 };
@@ -121,34 +122,39 @@ impl SizeOf for Type {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub(crate) enum UnaryOp {
-    Len,
-    Not,
+    Len = Op::Len as u8,
+    Not = Op::Not as u8,
 
-    Plus,
-    WrappingPlus,
-    SaturatingPlus,
+    Plus = Op::Plus as u8,
+    WrappingPlus = Op::WrappingPlus as u8,
+    SaturatingPlus = Op::SaturatingPlus as u8,
 
-    Minus,
-    WrappingMinus,
-    SaturatingMinus,
+    Minus = Op::Minus as u8,
+    WrappingMinus = Op::WrappingMinus as u8,
+    SaturatingMinus = Op::SaturatingMinus as u8,
+}
+
+impl Into<UnaryOp> for Op {
+    #[inline(always)]
+    fn into(self) -> UnaryOp {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<Op> for UnaryOp {
+    #[inline(always)]
+    fn into(self) -> Op {
+        return unsafe { core::mem::transmute(self) };
+    }
 }
 
 impl Display for UnaryOp {
+    #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        #[rustfmt::skip]
-        return match self {
-            Self::Len             => write!(f, "len"),
-            Self::Not             => write!(f, "!"),
-
-            Self::Plus            => write!(f,  "+"),
-            Self::WrappingPlus    => write!(f, r"+\"),
-            Self::SaturatingPlus  => write!(f,  "+|"),
-
-            Self::Minus           => write!(f,  "-"),
-            Self::WrappingMinus   => write!(f, r"-\"),
-            Self::SaturatingMinus => write!(f,  "-|"),
-        };
+        let op: Op = (*self).into();
+        return write!(f, "{op}");
     }
 }
 
@@ -167,16 +173,30 @@ impl BaseTypeOf for UnaryOp {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub(crate) enum BooleanUnaryOp {
-    Not,
+    Not = Op::Not as u8,
+}
+
+impl Into<BooleanUnaryOp> for Op {
+    #[inline(always)]
+    fn into(self) -> BooleanUnaryOp {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<Op> for BooleanUnaryOp {
+    #[inline(always)]
+    fn into(self) -> Op {
+        return unsafe { core::mem::transmute(self) };
+    }
 }
 
 impl Display for BooleanUnaryOp {
+    #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        #[rustfmt::skip]
-        return match self {
-            Self::Not => write!(f, "!"),
-        };
+        let op: Op = (*self).into();
+        return write!(f, "{op}");
     }
 }
 
@@ -194,82 +214,65 @@ impl BaseTypeOf for BooleanUnaryOp {
     }
 }
 
+#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub(crate) enum BinaryOp {
-    Pow,
-    WrappingPow,
-    SaturatingPow,
+    Pow = Op::Pow as u8,
+    WrappingPow = Op::WrappingPow as u8,
+    SaturatingPow = Op::SaturatingPow as u8,
 
-    Times,
-    WrappingTimes,
-    SaturatingTimes,
+    Times = Op::Times as u8,
+    WrappingTimes = Op::WrappingTimes as u8,
+    SaturatingTimes = Op::SaturatingTimes as u8,
 
-    Divide,
-    WrappingDivide,
-    SaturatingDivide,
+    Divide = Op::Divide as u8,
+    WrappingDivide = Op::WrappingDivide as u8,
+    SaturatingDivide = Op::SaturatingDivide as u8,
 
-    Remainder,
+    Remainder = Op::Remainder as u8,
 
-    Plus,
-    WrappingPlus,
-    SaturatingPlus,
+    Plus = Op::Plus as u8,
+    WrappingPlus = Op::WrappingPlus as u8,
+    SaturatingPlus = Op::SaturatingPlus as u8,
 
-    Minus,
-    WrappingMinus,
-    SaturatingMinus,
+    Minus = Op::Minus as u8,
+    WrappingMinus = Op::WrappingMinus as u8,
+    SaturatingMinus = Op::SaturatingMinus as u8,
 
-    LeftShift,
-    WrappingLeftShift,
-    SaturatingLeftShift,
+    LeftShift = Op::LeftShift as u8,
+    WrappingLeftShift = Op::WrappingLeftShift as u8,
+    SaturatingLeftShift = Op::SaturatingLeftShift as u8,
 
-    RightShift,
+    RightShift = Op::RightShift as u8,
 
-    LeftRotate,
-    RightRotate,
+    LeftRotate = Op::LeftRotate as u8,
+    RightRotate = Op::RightRotate as u8,
 
-    BitAnd,
-    BitXor,
-    BitOr,
+    BitAnd = Op::BitAnd as u8,
+    BitXor = Op::BitXor as u8,
+    BitOr = Op::BitOr as u8,
+}
+
+impl Into<BinaryOp> for Op {
+    #[inline(always)]
+    fn into(self) -> BinaryOp {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<Op> for BinaryOp {
+    #[inline(always)]
+    fn into(self) -> Op {
+        return unsafe { core::mem::transmute(self) };
+    }
 }
 
 impl Display for BinaryOp {
+    #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        #[rustfmt::skip]
-        return match self {
-            Self::Pow                 => write!(f,  "**"),
-            Self::WrappingPow         => write!(f, r"**\"),
-            Self::SaturatingPow       => write!(f,  "**|"),
-
-            Self::Times               => write!(f,  "*"),
-            Self::WrappingTimes       => write!(f, r"*\"),
-            Self::SaturatingTimes     => write!(f,  "*|"),
-
-            Self::Divide              => write!(f,  "/"),
-            Self::WrappingDivide      => write!(f, r"/\"),
-            Self::SaturatingDivide    => write!(f,  "/|"),
-
-            Self::Remainder           => write!(f, "%"),
-
-            Self::Plus                => write!(f,  "+"),
-            Self::WrappingPlus        => write!(f, r"+\"),
-            Self::SaturatingPlus      => write!(f,  "+|"),
-
-            Self::Minus               => write!(f,  "-"),
-            Self::WrappingMinus       => write!(f, r"-\"),
-            Self::SaturatingMinus     => write!(f,  "-|"),
-
-            Self::LeftShift           => write!(f,  "<<"),
-            Self::WrappingLeftShift   => write!(f, r"<<\"),
-            Self::SaturatingLeftShift => write!(f,  "<<|"),
-
-            Self::RightShift          => write!(f,  ">>"),
-            Self::LeftRotate          => write!(f, "<<<"),
-            Self::RightRotate         => write!(f, ">>>"),
-
-            Self::BitAnd              => write!(f, "&"),
-            Self::BitOr               => write!(f, "|"),
-            Self::BitXor              => write!(f, "^"),
-        };
+        let op: Op = (*self).into();
+        return write!(f, "{op}");
     }
 }
 
@@ -287,19 +290,33 @@ impl BaseTypeOf for BinaryOp {
     }
 }
 
+#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub(crate) enum BooleanBinaryOp {
-    And,
-    Or,
+    And = Op::And as u8,
+    Or = Op::Or as u8,
+}
+
+impl Into<BooleanBinaryOp> for Op {
+    #[inline(always)]
+    fn into(self) -> BooleanBinaryOp {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<Op> for BooleanBinaryOp {
+    #[inline(always)]
+    fn into(self) -> Op {
+        return unsafe { core::mem::transmute(self) };
+    }
 }
 
 impl Display for BooleanBinaryOp {
+    #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        #[rustfmt::skip]
-        return match self {
-            Self::And => write!(f, "&&"),
-            Self::Or  => write!(f, "||"),
-        };
+        let op: Op = (*self).into();
+        return write!(f, "{op}");
     }
 }
 
@@ -317,29 +334,38 @@ impl BaseTypeOf for BooleanBinaryOp {
     }
 }
 
+#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub(crate) enum ComparisonOp {
-    Compare,
-    EqualsEquals,
-    NotEquals,
-    Greater,
-    GreaterOrEquals,
-    Less,
-    LessOrEquals,
+    Compare = Op::Compare as u8,
+    EqualsEquals = Op::EqualsEquals as u8,
+    NotEquals = Op::NotEquals as u8,
+    Greater = Op::Greater as u8,
+    GreaterOrEquals = Op::GreaterOrEquals as u8,
+    Less = Op::Less as u8,
+    LessOrEquals = Op::LessOrEquals as u8,
+}
+
+impl Into<ComparisonOp> for Op {
+    #[inline(always)]
+    fn into(self) -> ComparisonOp {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<Op> for ComparisonOp {
+    #[inline(always)]
+    fn into(self) -> Op {
+        return unsafe { core::mem::transmute(self) };
+    }
 }
 
 impl Display for ComparisonOp {
+    #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        #[rustfmt::skip]
-        return match self {
-            Self::Compare         => write!(f, "<=>"),
-            Self::EqualsEquals    => write!(f, "=="),
-            Self::NotEquals       => write!(f, "!="),
-            Self::Greater         => write!(f, ">"),
-            Self::GreaterOrEquals => write!(f, ">="),
-            Self::Less            => write!(f, "<"),
-            Self::LessOrEquals    => write!(f, "<="),
-        };
+        let op: Op = (*self).into();
+        return write!(f, "{op}");
     }
 }
 
@@ -365,90 +391,71 @@ impl BaseTypeOf for ComparisonOp {
     }
 }
 
+#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
+#[rustfmt::skip]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub(crate) enum AssignmentOp {
-    Equals,
+    Equals = Op::Equals as u8,
 
-    Pow,
-    WrappingPow,
-    SaturatingPow,
+    Pow           = Op::PowEquals as u8,
+    WrappingPow   = Op::WrappingPowEquals as u8,
+    SaturatingPow = Op::SaturatingPowEquals as u8,
 
-    Times,
-    WrappingTimes,
-    SaturatingTimes,
+    Times           = Op::TimesEquals as u8,
+    WrappingTimes   = Op::WrappingTimesEquals as u8,
+    SaturatingTimes = Op::SaturatingTimesEquals as u8,
 
-    Divide,
-    WrappingDivide,
-    SaturatingDivide,
+    Divide           = Op::DivideEquals as u8,
+    WrappingDivide   = Op::WrappingDivideEquals as u8,
+    SaturatingDivide = Op::SaturatingDivideEquals as u8,
 
-    Remainder,
+    Remainder = Op::RemainderEquals as u8,
 
-    Plus,
-    WrappingPlus,
-    SaturatingPlus,
+    Plus           = Op::PlusEquals as u8,
+    WrappingPlus   = Op::WrappingPlusEquals as u8,
+    SaturatingPlus = Op::SaturatingPlusEquals as u8,
 
-    Minus,
-    WrappingMinus,
-    SaturatingMinus,
+    Minus           = Op::MinusEquals as u8,
+    WrappingMinus   = Op::WrappingMinusEquals as u8,
+    SaturatingMinus = Op::SaturatingMinusEquals as u8,
 
-    LeftShift,
-    WrappingLeftShift,
-    SaturatingLeftShift,
+    LeftShift           = Op::LeftShiftEquals as u8,
+    WrappingLeftShift   = Op::WrappingLeftShiftEquals as u8,
+    SaturatingLeftShift = Op::SaturatingLeftShiftEquals as u8,
 
-    RightShift,
+    RightShift = Op::RightShiftEquals as u8,
 
-    LeftRotate,
-    RightRotate,
+    LeftRotate  = Op::LeftRotateEquals as u8,
+    RightRotate = Op::RightRotateEquals as u8,
 
-    And,
-    BitAnd,
-    BitXor,
-    Or,
-    BitOr,
+    BitAnd = Op::BitAndEquals as u8,
+    BitXor = Op::BitXorEquals as u8,
+    BitOr  = Op::BitOrEquals as u8,
+
+    And    = Op::AndEquals as u8,
+    Or     = Op::OrEquals as u8,
+}
+
+impl Into<AssignmentOp> for Op {
+    #[inline(always)]
+    fn into(self) -> AssignmentOp {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<Op> for AssignmentOp {
+    #[inline(always)]
+    fn into(self) -> Op {
+        return unsafe { core::mem::transmute(self) };
+    }
 }
 
 impl Display for AssignmentOp {
+    #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        #[rustfmt::skip]
-        return match self {
-            Self::Equals              => write!(f, "="),
-
-            Self::Pow                 => write!(f,  "**="),
-            Self::WrappingPow         => write!(f, r"**\="),
-            Self::SaturatingPow       => write!(f,  "**|="),
-
-            Self::Times               => write!(f,  "*="),
-            Self::WrappingTimes       => write!(f, r"*\="),
-            Self::SaturatingTimes     => write!(f,  "*|="),
-
-            Self::Divide              => write!(f,  "/="),
-            Self::WrappingDivide      => write!(f, r"/\="),
-            Self::SaturatingDivide    => write!(f,  "/|="),
-
-            Self::Remainder           => write!(f, "%="),
-
-            Self::Plus                => write!(f,  "+="),
-            Self::WrappingPlus        => write!(f, r"+\="),
-            Self::SaturatingPlus      => write!(f,  "+|="),
-
-            Self::Minus               => write!(f,  "-="),
-            Self::WrappingMinus       => write!(f, r"-\="),
-            Self::SaturatingMinus     => write!(f,  "-|="),
-
-            Self::And                 => write!(f, "&&="),
-            Self::BitAnd              => write!(f, "&="),
-            Self::Or                  => write!(f, "||="),
-            Self::BitOr               => write!(f, "|="),
-            Self::BitXor              => write!(f, "^="),
-
-            Self::LeftShift           => write!(f,  "<<="),
-            Self::WrappingLeftShift   => write!(f, r"<<\="),
-            Self::SaturatingLeftShift => write!(f,  "<<|="),
-
-            Self::RightShift          => write!(f,  ">>="),
-            Self::LeftRotate          => write!(f, "<<<="),
-            Self::RightRotate         => write!(f, ">>>="),
-        };
+        let op: Op = (*self).into();
+        return write!(f, "{op}");
     }
 }
 
@@ -872,7 +879,8 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 match after_expression_token.kind {
                     TokenKind::SemiColon => {
                         if let Expression::Array { .. } = expression {
-                            let temporary_value_index = self.ast.temporaries.len() as ExpressionIndex;
+                            let temporary_value_index =
+                                self.ast.temporaries.len() as ExpressionIndex;
                             let expression_type = expression.typ();
                             self.ast.temporaries.push(expression);
                             expression = Expression::Temporary {
@@ -884,8 +892,8 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                         _ = self.next_token();
                         Ok(Node::Expression(expression))
                     }
-                    TokenKind::Op(op) => match op {
-                        Op::Equals
+                    TokenKind::Op(
+                        op @ (Op::Equals
                         | Op::PowEquals
                         | Op::WrappingPowEquals
                         | Op::SaturatingPowEquals
@@ -912,85 +920,21 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                         | Op::BitXorEquals
                         | Op::BitOrEquals
                         | Op::AndEquals
-                        | Op::OrEquals => {
-                            let assignment_op = match op {
-                                Op::Equals => AssignmentOp::Equals,
-                                Op::PowEquals => AssignmentOp::Pow,
-                                Op::WrappingPowEquals => AssignmentOp::WrappingPow,
-                                Op::SaturatingPowEquals => AssignmentOp::SaturatingPow,
-                                Op::TimesEquals => AssignmentOp::Times,
-                                Op::WrappingTimesEquals => AssignmentOp::WrappingTimes,
-                                Op::SaturatingTimesEquals => AssignmentOp::SaturatingTimes,
-                                Op::DivideEquals => AssignmentOp::Divide,
-                                Op::WrappingDivideEquals => AssignmentOp::WrappingDivide,
-                                Op::SaturatingDivideEquals => AssignmentOp::SaturatingDivide,
-                                Op::RemainderEquals => AssignmentOp::Remainder,
-                                Op::PlusEquals => AssignmentOp::Plus,
-                                Op::WrappingPlusEquals => AssignmentOp::WrappingPlus,
-                                Op::SaturatingPlusEquals => AssignmentOp::SaturatingPlus,
-                                Op::MinusEquals => AssignmentOp::Minus,
-                                Op::WrappingMinusEquals => AssignmentOp::WrappingMinus,
-                                Op::SaturatingMinusEquals => AssignmentOp::SaturatingMinus,
-                                Op::LeftShiftEquals => AssignmentOp::LeftShift,
-                                Op::WrappingLeftShiftEquals => AssignmentOp::WrappingLeftShift,
-                                Op::SaturatingLeftShiftEquals => AssignmentOp::SaturatingLeftShift,
-                                Op::RightShiftEquals => AssignmentOp::RightShift,
-                                Op::BitAndEquals => AssignmentOp::BitAnd,
-                                Op::BitXorEquals => AssignmentOp::BitXor,
-                                Op::BitOrEquals => AssignmentOp::BitOr,
-                                Op::AndEquals => AssignmentOp::And,
-                                Op::OrEquals => AssignmentOp::Or,
-                                Op::LeftRotateEquals => AssignmentOp::LeftRotate,
-                                Op::RightRotateEquals => AssignmentOp::RightRotate,
-                                Op::Len
-                                | Op::Not
-                                | Op::Pow
-                                | Op::WrappingPow
-                                | Op::SaturatingPow
-                                | Op::Times
-                                | Op::WrappingTimes
-                                | Op::SaturatingTimes
-                                | Op::Divide
-                                | Op::WrappingDivide
-                                | Op::SaturatingDivide
-                                | Op::Remainder
-                                | Op::Plus
-                                | Op::WrappingPlus
-                                | Op::SaturatingPlus
-                                | Op::Minus
-                                | Op::WrappingMinus
-                                | Op::SaturatingMinus
-                                | Op::LeftShift
-                                | Op::WrappingLeftShift
-                                | Op::SaturatingLeftShift
-                                | Op::RightShift
-                                | Op::LeftRotate
-                                | Op::RightRotate
-                                | Op::And
-                                | Op::BitAnd
-                                | Op::BitXor
-                                | Op::Or
-                                | Op::BitOr
-                                | Op::Compare
-                                | Op::EqualsEquals
-                                | Op::NotEquals
-                                | Op::Greater
-                                | Op::GreaterOrEquals
-                                | Op::Less
-                                | Op::LessOrEquals => unreachable!("not an 'equals' operator"),
-                            };
+                        | Op::OrEquals),
+                    ) => {
+                        let assignment_op: AssignmentOp = op.into();
+                        let reassignment = self.reassignment(
+                            expression,
+                            token,
+                            assignment_op,
+                            after_expression_token,
+                        )?;
 
-                            let reassignment = self.reassignment(
-                                expression,
-                                token,
-                                assignment_op,
-                                after_expression_token,
-                            )?;
+                        self.semicolon()?;
+                        Ok(reassignment)
+                    }
 
-                            self.semicolon()?;
-                            Ok(reassignment)
-                        }
-
+                    TokenKind::Op(
                         Op::Len
                         | Op::Not
                         | Op::Pow
@@ -1026,15 +970,15 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                         | Op::Greater
                         | Op::GreaterOrEquals
                         | Op::Less
-                        | Op::LessOrEquals => {
-                            let previous_token = self.peek_previous_token();
-                            Err(Error {
-                                kind: ErrorKind::MissingSemicolon,
-                                col: previous_token.col,
-                                pointers_count: previous_token.kind.display_len(self.tokens),
-                            })
-                        }
-                    },
+                        | Op::LessOrEquals,
+                    ) => {
+                        let previous_token = self.peek_previous_token();
+                        Err(Error {
+                            kind: ErrorKind::MissingSemicolon,
+                            col: previous_token.col,
+                            pointers_count: previous_token.kind.display_len(self.tokens),
+                        })
+                    }
 
                     TokenKind::Bracket(_)
                     | TokenKind::Colon
@@ -1335,10 +1279,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
         }
     }
 
-    fn next_token_bounded(
-        &mut self,
-        expected: Expected,
-    ) -> Result<Token, Error<ErrorKind>> {
+    fn next_token_bounded(&mut self, expected: Expected) -> Result<Token, Error<ErrorKind>> {
         loop {
             let tokens_len = self.tokens.tokens.len() as TokenIndex;
             if self.token >= tokens_len - 1 {
@@ -1470,10 +1411,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
         return Ok(());
     }
 
-    fn operator(
-        &mut self,
-        ops: &[Op],
-    ) -> Result<Option<(Token, Op)>, Error<ErrorKind>> {
+    fn operator(&mut self, ops: &[Op]) -> Result<Option<(Token, Op)>, Error<ErrorKind>> {
         let current_token = self.current_token(Expected::OperatorOrSemicolon)?;
         let TokenKind::Op(op) = current_token.kind else {
             return Ok(None);
@@ -2447,17 +2385,9 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             let rhs = self.primary_expression()?;
             self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
-            #[allow(clippy::wildcard_enum_match_arm)]
-            let binary_op = match op {
-                Op::Pow => BinaryOp::Pow,
-                Op::WrappingPow => BinaryOp::WrappingPow,
-                Op::SaturatingPow => BinaryOp::SaturatingPow,
-                _ => unreachable!(),
-            };
-
             lhs = Expression::Binary {
                 lhs_index: self.new_expression(lhs),
-                op: binary_op,
+                op: op.into(),
                 op_col: op_token.col,
                 rhs_index: self.new_expression(rhs),
             };
@@ -2484,21 +2414,9 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             let rhs = self.exponentiative_expression()?;
             self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
-            #[allow(clippy::wildcard_enum_match_arm)]
-            let binary_op = match op {
-                Op::Times => BinaryOp::Times,
-                Op::WrappingTimes => BinaryOp::WrappingTimes,
-                Op::SaturatingTimes => BinaryOp::SaturatingTimes,
-                Op::Divide => BinaryOp::Divide,
-                Op::WrappingDivide => BinaryOp::WrappingDivide,
-                Op::SaturatingDivide => BinaryOp::SaturatingDivide,
-                Op::Remainder => BinaryOp::Remainder,
-                _ => unreachable!(),
-            };
-
             lhs = Expression::Binary {
                 lhs_index: self.new_expression(lhs),
-                op: binary_op,
+                op: op.into(),
                 op_col: op_token.col,
                 rhs_index: self.new_expression(rhs),
             };
@@ -2524,20 +2442,9 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             let rhs = self.multiplicative_expression()?;
             self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
-            #[allow(clippy::wildcard_enum_match_arm)]
-            let binary_op = match op {
-                Op::Plus => BinaryOp::Plus,
-                Op::WrappingPlus => BinaryOp::WrappingPlus,
-                Op::SaturatingPlus => BinaryOp::SaturatingPlus,
-                Op::Minus => BinaryOp::Minus,
-                Op::WrappingMinus => BinaryOp::WrappingMinus,
-                Op::SaturatingMinus => BinaryOp::SaturatingMinus,
-                _ => unreachable!(),
-            };
-
             lhs = Expression::Binary {
                 lhs_index: self.new_expression(lhs),
-                op: binary_op,
+                op: op.into(),
                 op_col: op_token.col,
                 rhs_index: self.new_expression(rhs),
             };
@@ -2567,20 +2474,9 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             let rhs = self.additive_expression()?;
             self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
-            #[allow(clippy::wildcard_enum_match_arm)]
-            let binary_op = match op {
-                Op::LeftShift => BinaryOp::LeftShift,
-                Op::WrappingLeftShift => BinaryOp::WrappingLeftShift,
-                Op::SaturatingLeftShift => BinaryOp::SaturatingLeftShift,
-                Op::RightShift => BinaryOp::RightShift,
-                Op::LeftRotate => BinaryOp::LeftRotate,
-                Op::RightRotate => BinaryOp::RightRotate,
-                _ => unreachable!(),
-            };
-
             lhs = Expression::Binary {
                 lhs_index: self.new_expression(lhs),
-                op: binary_op,
+                op: op.into(),
                 op_col: op_token.col,
                 rhs_index: self.new_expression(rhs),
             };
@@ -2598,15 +2494,9 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             let rhs = self.shift_expression()?;
             self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
-            #[allow(clippy::wildcard_enum_match_arm)]
-            let binary_op = match op {
-                Op::BitAnd => BinaryOp::BitAnd,
-                _ => unreachable!(),
-            };
-
             lhs = Expression::Binary {
                 lhs_index: self.new_expression(lhs),
-                op: binary_op,
+                op: op.into(),
                 op_col: op_token.col,
                 rhs_index: self.new_expression(rhs),
             };
@@ -2624,15 +2514,9 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             let rhs = self.bitand_expression()?;
             self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
-            #[allow(clippy::wildcard_enum_match_arm)]
-            let binary_op = match op {
-                Op::BitXor => BinaryOp::BitXor,
-                _ => unreachable!(),
-            };
-
             lhs = Expression::Binary {
                 lhs_index: self.new_expression(lhs),
-                op: binary_op,
+                op: op.into(),
                 op_col: op_token.col,
                 rhs_index: self.new_expression(rhs),
             };
@@ -2650,15 +2534,9 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             let rhs = self.bitxor_expression()?;
             self.assert_rhs_is_not_string_or_array(op_token, &rhs)?;
 
-            #[allow(clippy::wildcard_enum_match_arm)]
-            let binary_op = match op {
-                Op::BitOr => BinaryOp::BitOr,
-                _ => unreachable!(),
-            };
-
             lhs = Expression::Binary {
                 lhs_index: self.new_expression(lhs),
-                op: binary_op,
+                op: op.into(),
                 op_col: op_token.col,
                 rhs_index: self.new_expression(rhs),
             };
@@ -2718,21 +2596,9 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             }
             is_chained = true;
 
-            #[allow(clippy::wildcard_enum_match_arm)]
-            let comparison_op = match op {
-                Op::Compare => ComparisonOp::Compare,
-                Op::EqualsEquals => ComparisonOp::EqualsEquals,
-                Op::NotEquals => ComparisonOp::NotEquals,
-                Op::Greater => ComparisonOp::Greater,
-                Op::GreaterOrEquals => ComparisonOp::GreaterOrEquals,
-                Op::Less => ComparisonOp::Less,
-                Op::LessOrEquals => ComparisonOp::LessOrEquals,
-                _ => unreachable!(),
-            };
-
             lhs = Expression::Comparison {
                 lhs_index: self.new_expression(lhs),
-                op: comparison_op,
+                op: op.into(),
                 rhs_index: self.new_expression(rhs),
             };
         }
@@ -2749,15 +2615,9 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             let rhs = self.comparison_expression()?;
             self.assert_rhs_is_bool(op_token, &rhs)?;
 
-            #[allow(clippy::wildcard_enum_match_arm)]
-            let binary_op = match op {
-                Op::And => BooleanBinaryOp::And,
-                _ => unreachable!(),
-            };
-
             lhs = Expression::BooleanBinary {
                 lhs_index: self.new_expression(lhs),
-                op: binary_op,
+                op: op.into(),
                 rhs_index: self.new_expression(rhs),
             };
         }
@@ -2774,15 +2634,9 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             let rhs = self.and_expression()?;
             self.assert_rhs_is_bool(op_token, &rhs)?;
 
-            #[allow(clippy::wildcard_enum_match_arm)]
-            let binary_op = match op {
-                Op::Or => BooleanBinaryOp::Or,
-                _ => unreachable!(),
-            };
-
             lhs = Expression::BooleanBinary {
                 lhs_index: self.new_expression(lhs),
-                op: binary_op,
+                op: op.into(),
                 rhs_index: self.new_expression(rhs),
             };
         }
@@ -2841,9 +2695,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
         }
     }
 
-    fn type_annotation(
-        &mut self,
-    ) -> Result<Option<(Token, Type)>, Error<ErrorKind>> {
+    fn type_annotation(&mut self) -> Result<Option<(Token, Type)>, Error<ErrorKind>> {
         let colon_token = self.next_token_bounded(Expected::TypeAnnotationOrVariableDefinition)?;
 
         let TokenKind::Colon = colon_token.kind else {

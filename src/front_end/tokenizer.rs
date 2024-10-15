@@ -13,20 +13,32 @@ pub(super) trait DisplayLen {
     fn display_len(&self) -> offset32;
 }
 
+#[expect(
+    non_camel_case_types,
+    reason = "behaves like a primitive type, so it should be named like a primitive type"
+)]
 /// kay's equivalent to pointer sized signed integer
-#[allow(non_camel_case_types)]
 pub(crate) type int = isize;
 
-#[allow(non_camel_case_types)]
+#[expect(
+    non_camel_case_types,
+    reason = "behaves like a primitive type, so it should be named like a primitive type"
+)]
 /// kay's equivalent to pointer sized unsigned integer
 pub(crate) type uint = usize;
 
+#[expect(
+    non_camel_case_types,
+    reason = "behaves like a primitive type, so it should be named like a primitive type"
+)]
 /// kay's ascii character type
-#[allow(non_camel_case_types)]
 pub(crate) type ascii = u8;
 
+#[expect(
+    non_camel_case_types,
+    reason = "behaves like a primitive type, so it should be named like a primitive type"
+)]
 /// kay's utf8 character type
-#[allow(non_camel_case_types)]
 pub(crate) type utf8 = char;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -800,7 +812,8 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
 
                         match integer {
                             Ok(literal) => {
-                                let literal_str = unsafe { core::str::from_utf8_unchecked(literal) };
+                                let literal_str =
+                                    unsafe { core::str::from_utf8_unchecked(literal) };
                                 this.tokens.text.push(literal_str);
                                 let literal_index = this.tokens.text.len() as TextIndex - 1;
                                 Ok(TokenKind::Integer(base, literal_index))
@@ -903,8 +916,8 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                                 }
                             }
 
-                            let comment_str = &this.code
-                                [this.token_start_col as usize + 1..this.col as usize];
+                            let comment_str =
+                                &this.code[this.token_start_col as usize + 1..this.col as usize];
                             this.tokens.text.push(comment_str);
                             let comment_index = this.tokens.text.len() as TextIndex - 1;
                             Ok(TokenKind::Comment(comment_index))
@@ -924,7 +937,8 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             break 'bracket Err(());
                         };
 
-                        let TokenKind::Bracket(bracket) = &this.tokens.tokens[bracket_index as usize].kind
+                        let TokenKind::Bracket(bracket) =
+                            &this.tokens.tokens[bracket_index as usize].kind
                         else {
                             unreachable!("incorrect bracket index");
                         };
@@ -961,7 +975,8 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             break 'bracket Err(());
                         };
 
-                        let TokenKind::Bracket(bracket) = &this.tokens.tokens[bracket_index as usize].kind
+                        let TokenKind::Bracket(bracket) =
+                            &this.tokens.tokens[bracket_index as usize].kind
                         else {
                             unreachable!("incorrect bracket index");
                         };
@@ -998,7 +1013,8 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             break 'bracket Err(());
                         };
 
-                        let TokenKind::Bracket(bracket) = &this.tokens.tokens[bracket_index as usize].kind
+                        let TokenKind::Bracket(bracket) =
+                            &this.tokens.tokens[bracket_index as usize].kind
                         else {
                             unreachable!("incorrect bracket index");
                         };
@@ -1318,7 +1334,8 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
             let kind = match token_kind_result {
                 Ok(kind) => kind,
                 Err(()) => {
-                    let unexpected_text = &this.code[this.token_start_col as usize..this.col as usize];
+                    let unexpected_text =
+                        &this.code[this.token_start_col as usize..this.col as usize];
                     this.tokens.text.push(unexpected_text);
                     let unexpected_index = this.tokens.text.len() as TextIndex - 1;
                     TokenKind::Unexpected(unexpected_index)

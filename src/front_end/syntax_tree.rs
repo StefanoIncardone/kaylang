@@ -3,14 +3,15 @@
 use super::{
     src_file::{index32, offset32, DisplayPosition, SrcCode},
     tokenizer::{
-        ascii, Base, Bracket, CloseBracket, DisplayLen, Op, StrIndex, TextIndex, Token, TokenIndex, TokenKind, Tokens
+        ascii, Base, Bracket, CloseBracket, DisplayLen, Op, StrIndex, TextIndex, Token, TokenIndex,
+        TokenKind, Tokens,
     },
     Error, ErrorDisplay, ErrorInfo, IntoErrorInfo,
 };
-use core::{fmt::Display, num::NonZero, marker::PhantomData};
+use core::{fmt::Display, marker::PhantomData, num::NonZero};
 use std::borrow::Cow;
 
-#[allow(dead_code)] // it's in reality created by trasmuting an `Op`
+#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
 #[rustfmt::skip]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -57,7 +58,7 @@ impl DisplayLen for PrefixOperator {
     }
 }
 
-#[allow(dead_code)] // it's in reality created by trasmuting an `Op`
+#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
 #[rustfmt::skip]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -144,7 +145,7 @@ impl DisplayLen for BinaryOperator {
     }
 }
 
-#[allow(dead_code)] // it's in reality created by trasmuting an `Op`
+#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
 #[rustfmt::skip]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -453,7 +454,10 @@ pub struct SyntaxTreeDisplay<'syntax_tree, 'tokens: 'syntax_tree, 'code: 'tokens
 impl<'tokens, 'code: 'tokens> SyntaxTree<'tokens, 'code, '_> {
     #[must_use]
     #[inline(always)]
-    pub const fn display(&self, tokens: &'tokens Tokens<'code, '_>) -> SyntaxTreeDisplay<'_, 'tokens, 'code, '_> {
+    pub const fn display(
+        &self,
+        tokens: &'tokens Tokens<'code, '_>,
+    ) -> SyntaxTreeDisplay<'_, 'tokens, 'code, '_> {
         return SyntaxTreeDisplay { syntax_tree: self, tokens };
     }
 }
@@ -810,7 +814,7 @@ impl<'tokens, 'src: 'tokens, 'path: 'src, 'code: 'src> Parser<'tokens, 'src, 'pa
                 else_ifs: Vec::new(),
 
                 _tokens: PhantomData,
-            }
+            },
         };
 
         while let Some(peeked) = this.peek_next_token() {
@@ -1023,7 +1027,9 @@ impl<'tokens, 'src: 'tokens, 'path: 'src, 'code: 'src> Parser<'tokens, 'src, 'pa
                 self.syntax_tree.variable_definitions.push(variable_definition);
                 Ok(ParsedNode::Node(Node::LetVariableDefinition {
                     let_column: token.col,
-                    variable_definition: self.syntax_tree.variable_definitions.len() as VariableDefinitionIndex - 1,
+                    variable_definition: self.syntax_tree.variable_definitions.len()
+                        as VariableDefinitionIndex
+                        - 1,
                 }))
             }
             TokenKind::Var => {
@@ -1031,7 +1037,9 @@ impl<'tokens, 'src: 'tokens, 'path: 'src, 'code: 'src> Parser<'tokens, 'src, 'pa
                 self.syntax_tree.variable_definitions.push(variable_definition);
                 Ok(ParsedNode::Node(Node::VarVariableDefinition {
                     var_column: token.col,
-                    variable_definition: self.syntax_tree.variable_definitions.len() as VariableDefinitionIndex - 1,
+                    variable_definition: self.syntax_tree.variable_definitions.len()
+                        as VariableDefinitionIndex
+                        - 1,
                 }))
             }
 
@@ -1196,7 +1204,7 @@ impl<'tokens, 'src: 'tokens, 'path: 'src, 'code: 'src> Parser<'tokens, 'src, 'pa
 }
 
 impl Parser<'_, '_, '_, '_> {
-    #[allow(clippy::panic)]
+    #[expect(clippy::panic, reason = "it's basically a more descriptive panic implementation")]
     #[track_caller]
     fn invalid_token(
         &self,
@@ -1289,7 +1297,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                     return Some(Peeked { token: next_token, index: next_token_index + 1 })
                 }
                 TokenKind::Comment(_) | TokenKind::BlockComment(_) => {}
-                TokenKind::Unexpected(_) => self.unexpected(next_token)
+                TokenKind::Unexpected(_) => self.unexpected(next_token),
             }
         }
 
@@ -1360,7 +1368,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
                 | TokenKind::Break
                 | TokenKind::Continue => return previous_token,
                 TokenKind::Comment(_) | TokenKind::BlockComment(_) => {}
-                TokenKind::Unexpected(_) => self.unexpected(previous_token)
+                TokenKind::Unexpected(_) => self.unexpected(previous_token),
             }
         }
 
@@ -1399,15 +1407,9 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
             TokenKind::Integer(base, literal) => {
                 Expression::Integer { base, literal, column: token.col }
             }
-            TokenKind::Ascii(character) => {
-                Expression::Ascii { character, column: token.col }
-            }
-            TokenKind::Str(literal) => {
-                Expression::Str { literal, column: token.col }
-            }
-            TokenKind::RawStr(literal) => {
-                Expression::RawStr { literal, column: token.col }
-            }
+            TokenKind::Ascii(character) => Expression::Ascii { character, column: token.col },
+            TokenKind::Str(literal) => Expression::Str { literal, column: token.col },
+            TokenKind::RawStr(literal) => Expression::RawStr { literal, column: token.col },
             TokenKind::Identifier(identifier) => {
                 Expression::Identifier { identifier, column: token.col }
             }
@@ -1662,10 +1664,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
         return Ok(left_operand);
     }
 
-    fn additive_expression(
-        &mut self,
-        token: Token,
-    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn additive_expression(&mut self, token: Token) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 6] = [
             Op::Plus,
             Op::WrappingPlus,
@@ -1691,10 +1690,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
         return Ok(left_operand);
     }
 
-    fn shift_expression(
-        &mut self,
-        token: Token,
-    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn shift_expression(&mut self, token: Token) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 6] = [
             Op::LeftShift,
             Op::WrappingLeftShift,
@@ -1720,10 +1716,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
         return Ok(left_operand);
     }
 
-    fn bitand_expression(
-        &mut self,
-        token: Token,
-    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn bitand_expression(&mut self, token: Token) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 1] = [Op::BitAnd];
 
         let mut left_operand = self.shift_expression(token)?;
@@ -1742,10 +1735,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
         return Ok(left_operand);
     }
 
-    fn bitxor_expression(
-        &mut self,
-        token: Token,
-    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn bitxor_expression(&mut self, token: Token) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 1] = [Op::BitXor];
 
         let mut left_operand = self.bitand_expression(token)?;
@@ -1764,10 +1754,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
         return Ok(left_operand);
     }
 
-    fn bitor_expression(
-        &mut self,
-        token: Token,
-    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn bitor_expression(&mut self, token: Token) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 1] = [Op::BitOr];
 
         let mut left_operand = self.bitxor_expression(token)?;
@@ -1786,10 +1773,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
         return Ok(left_operand);
     }
 
-    fn comparison_expression(
-        &mut self,
-        token: Token,
-    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn comparison_expression(&mut self, token: Token) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 7] = [
             Op::Compare,
             Op::EqualsEquals,
@@ -1816,10 +1800,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
         return Ok(left_operand);
     }
 
-    fn and_expression(
-        &mut self,
-        token: Token,
-    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn and_expression(&mut self, token: Token) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 1] = [Op::And];
 
         let mut left_operand = self.comparison_expression(token)?;
@@ -1838,10 +1819,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
         return Ok(left_operand);
     }
 
-    fn or_expression(
-        &mut self,
-        token: Token,
-    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn or_expression(&mut self, token: Token) -> Result<ExpressionIndex, Error<ErrorKind>> {
         static OPS: [Op; 1] = [Op::Or];
 
         let mut left_operand = self.and_expression(token)?;
@@ -1860,10 +1838,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
         return Ok(left_operand);
     }
 
-    fn expression(
-        &mut self,
-        token: Token,
-    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn expression(&mut self, token: Token) -> Result<ExpressionIndex, Error<ErrorKind>> {
         return self.or_expression(token);
     }
 }
