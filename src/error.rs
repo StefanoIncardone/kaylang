@@ -1,5 +1,5 @@
 use crate::{
-    color::{Bg, Colored, Fg, Flag},
+    color::{flags, Bg, Colored, Fg},
     front_end::src_file::{column32, line32, offset32},
     AT, BAR, CAUSE,
 };
@@ -71,7 +71,7 @@ impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
             text: self.message.to_string(),
             fg: Fg::White,
             bg: Bg::Default,
-            flags: Flag::Bold,
+            flags: flags::Bold,
         };
 
         let pointers_and_cause = Colored {
@@ -83,7 +83,7 @@ impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
             ),
             fg: Fg::LightRed,
             bg: Bg::Default,
-            flags: Flag::Bold,
+            flags: flags::Bold,
         };
 
         return write!(
@@ -114,21 +114,25 @@ pub struct MsgWithCauseUnderTextWithLocation<'kind, 'message, 'cause, 'src> {
     pub pointers_offset: column32,
 }
 
-// BUG(stefano): improve displaying of tabs (substitute them with 4 spaces)
+/* BUG(stefano):
+improve displaying of tabs (substitute them with 4 spaces)
+
+IDEA(stefano): add feature flag for tab indent width and cli flag
+*/
 impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let error_message = Colored {
             text: self.message.to_string(),
             fg: Fg::White,
             bg: Bg::Default,
-            flags: Flag::Bold,
+            flags: flags::Bold,
         };
 
         let line_number = Colored {
             text: self.line.to_string(),
             fg: Fg::LightBlue,
             bg: Bg::Default,
-            flags: Flag::Bold,
+            flags: flags::Bold,
         };
 
         let line_number_padding = line_number.text.len() + 1 + BAR.text.len();
@@ -142,7 +146,7 @@ impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_> {
             ),
             fg: Fg::LightRed,
             bg: Bg::Default,
-            flags: Flag::Bold,
+            flags: flags::Bold,
         };
 
         return write!(

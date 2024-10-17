@@ -5,7 +5,7 @@ pub mod color;
 pub mod error;
 pub mod front_end;
 
-use color::{Bg, Colored, Fg, Flag, Flags};
+use color::{Bg, Colored, Fg, flags, flag};
 use core::fmt::{Display, Write as _};
 use error::MsgWithCauseUnderText;
 use front_end::src_file::column32;
@@ -17,7 +17,7 @@ use std::{
 // help and version messages
 const HELP_FG: Fg = Fg::White;
 const HELP_BG: Bg = Bg::Default;
-const HELP_FLAGS: Flags = Flag::Bold;
+const HELP_FLAGS: flag = flags::Bold;
 
 #[rustfmt::skip] pub(crate) static VERSION:   Colored<&str> = Colored { text: env!("CARGO_PKG_VERSION"), fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
 #[rustfmt::skip] pub(crate) static USAGE:     Colored<&str> = Colored { text: "Usage",                   fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
@@ -32,7 +32,7 @@ const HELP_FLAGS: Flags = Flag::Bold;
 // main compilation steps (displayed when verbosity level is normal or verbose)
 const STEP_FG: Fg = Fg::LightGreen;
 const STEP_BG: Bg = Bg::Default;
-const STEP_FLAGS: Flags = Flag::Bold;
+const STEP_FLAGS: flag = flags::Bold;
 const STEP_INDENT: usize = 0;
 const STEP_PADDING: usize = 9;
 
@@ -44,7 +44,7 @@ const STEP_PADDING: usize = 9;
 // sub compilation steps (displayed when verbosity lever is verbose)
 const SUBSTEP_FG: Fg = Fg::LightBlue;
 const SUBSTEP_BG: Bg = Bg::Default;
-const SUBSTEP_FLAGS: Flags = Flag::Bold;
+const SUBSTEP_FLAGS: flag = flags::Bold;
 const SUBSTEP_INDENT: usize = 4;
 const SUBSTEP_PADDING: usize = 20;
 
@@ -60,11 +60,11 @@ const SUBSTEP_PADDING: usize = 20;
 // errors
 const ERR_FG: Fg = Fg::LightRed;
 const ERR_BG: Bg = Bg::Default;
-const ERR_FLAGS: Flags = Flag::Bold;
+const ERR_FLAGS: flag = flags::Bold;
 
 const BAR_FG: Fg = Fg::LightBlue;
 const BAR_BG: Bg = Bg::Default;
-const BAR_FLAGS: Flags = Flag::Bold;
+const BAR_FLAGS: flag = flags::Bold;
 
 #[rustfmt::skip] pub(crate) static ERROR: Colored<&str> = Colored { text: "Error",  fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 #[rustfmt::skip] pub(crate) static CAUSE: Colored<&str> = Colored { text: "Cause",  fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };

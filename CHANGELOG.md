@@ -80,7 +80,8 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 #### Added
 
-- Added nformation about error's absolute source code column
+- Added information about error's absolute source code column
+- Added `color::ansi_code` type alias and `color::ansi_codes` module for text modifiers codes
 
 #### Changed
 
@@ -127,10 +128,13 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Renamed `compiler` module to `back_end`
 - `artifacts::Artifacts::new` and `artifacts::Artifacts::new_with_out_path` now take a `&Path`
     instead of `&SrcFile`
+- Renamed `color::Flags` to `color::flag`
+- Struct `color::Flag` was only used as a namespace, so its now a module named `color::flags`
 
 #### Fixed
 
 - Improved error messages related to utf8 characters
+- Optimized colored output
 
 ## 0.6.1 - 2024-09-20
 

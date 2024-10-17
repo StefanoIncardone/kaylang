@@ -12,9 +12,6 @@ readme = "README.md"
 documentation = "https://github.com/StefanoIncardone/kaylang/blob/main/LANGUAGE_REFERENCE.md"
 license = "MIT"
 
-[features]
-# IDEA(stefano): add configuration for max source code length
-
 [dependencies]
 unicode-width = "0.2.0"
 unicode-segmentation = "1.12.0"
