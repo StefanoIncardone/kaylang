@@ -1,5 +1,3 @@
-// IDEA(stefano): make every offset that can never be zero into NonZero<offset>
-
 use super::{
     src_file::{index32, offset32, DisplayPosition, SrcCode},
     tokenizer::{
@@ -333,7 +331,7 @@ pub(crate) type IfIndex = index32;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ElseIf {
-    pub(crate) else_column: NonZero<offset32>,
+    pub(crate) else_column: offset32,
     pub(crate) iff: If,
 }
 
@@ -391,7 +389,7 @@ pub(crate) enum Node {
     },
     IfElse {
         if_index: IfIndex,
-        else_column: NonZero<offset32>,
+        else_column: offset32,
     },
 
     Loop {
@@ -404,10 +402,10 @@ pub(crate) enum Node {
         condition: ExpressionIndex,
     },
     Break {
-        break_column: NonZero<offset32>,
+        break_column: offset32,
     },
     Continue {
-        continue_column: NonZero<offset32>,
+        continue_column: offset32,
     },
 }
 
@@ -1137,11 +1135,7 @@ impl<'tokens, 'src: 'tokens, 'path: 'src, 'code: 'src> Parser<'tokens, 'src, 'pa
                     });
                 }
 
-                let Some(break_column) = NonZero::new(token.col) else {
-                    unreachable!("valid `break` should have non-zero column");
-                };
-
-                Ok(ParsedNode::Node(Node::Break { break_column }))
+                Ok(ParsedNode::Node(Node::Break { break_column: token.col }))
             }
             TokenKind::Continue => {
                 self.semicolon()?;
@@ -1154,11 +1148,7 @@ impl<'tokens, 'src: 'tokens, 'path: 'src, 'code: 'src> Parser<'tokens, 'src, 'pa
                     });
                 }
 
-                let Some(continue_column) = NonZero::new(token.col) else {
-                    unreachable!("valid `continue` should have non-zero column");
-                };
-
-                Ok(ParsedNode::Node(Node::Continue { continue_column }))
+                Ok(ParsedNode::Node(Node::Continue { continue_column: token.col }))
             }
 
             TokenKind::Else => Err(Error {
@@ -2088,7 +2078,7 @@ impl Parser<'_, '_, '_, '_> {
         };
 
         while let Some(Peeked {
-            token: else_token @ Token { kind: TokenKind::Else, col: else_token_column },
+            token: else_token @ Token { kind: TokenKind::Else, col: else_column },
             index: else_token_index,
         }) = self.peek_next_token()
         {
@@ -2099,10 +2089,6 @@ impl Parser<'_, '_, '_, '_> {
                 TokenKind::Bracket(Bracket::OpenCurly) => {
                     let ParsedNode::Scope = self.any(after_else_token)? else {
                         unreachable!();
-                    };
-
-                    let Some(else_column) = NonZero::new(else_token_column) else {
-                        unreachable!("valid `else` should have non-zero column");
                     };
 
                     self.syntax_tree.nodes[placeholder_if_index] = Node::IfElse { if_index, else_column };
@@ -2120,10 +2106,6 @@ impl Parser<'_, '_, '_, '_> {
                             col: end_of_else_if_condition_token.col,
                             pointers_count: end_of_else_if_condition_token.kind.display_len(self.tokens),
                         });
-                    };
-
-                    let Some(else_column) = NonZero::new(else_token_column) else {
-                        unreachable!("valid `else` should have non-zero column");
                     };
 
                     let else_if = ElseIf {
