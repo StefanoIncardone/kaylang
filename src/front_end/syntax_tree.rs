@@ -3,7 +3,7 @@
 use super::{
     src_file::{index32, offset32, DisplayPosition, SrcCode},
     tokenizer::{
-        ascii, Base, Bracket, CloseBracket, DisplayLen, Op, StrIndex, TextIndex, Token, TokenIndex,
+        ascii, Base, Bracket, CloseBracket, Op, StrIndex, TextIndex, Token, TokenIndex,
         TokenKind, Tokens,
     },
     Error, ErrorDisplay, ErrorInfo, IntoErrorInfo,
@@ -43,17 +43,18 @@ impl Into<Op> for PrefixOperator {
 }
 
 impl Display for PrefixOperator {
-    #[inline]
+    #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
         return write!(f, "{op}");
     }
 }
 
-impl DisplayLen for PrefixOperator {
+impl PrefixOperator {
+    #[expect(dead_code, reason = "kept for consistency")]
     #[inline(always)]
-    fn display_len(&self) -> offset32 {
-        let op: Op = (*self).into();
+    pub(super) fn display_len(self) -> offset32 {
+        let op: Op = self.into();
         return op.display_len();
     }
 }
@@ -130,17 +131,18 @@ impl Into<Op> for BinaryOperator {
 }
 
 impl Display for BinaryOperator {
-    #[inline]
+    #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
         return write!(f, "{op}");
     }
 }
 
-impl DisplayLen for BinaryOperator {
+impl BinaryOperator {
+    #[expect(dead_code, reason = "kept for consistency")]
     #[inline(always)]
-    fn display_len(&self) -> offset32 {
-        let op: Op = (*self).into();
+    pub(super) fn display_len(self) -> offset32 {
+        let op: Op = self.into();
         return op.display_len();
     }
 }
@@ -206,17 +208,18 @@ impl Into<Op> for AssignmentOperator {
 }
 
 impl Display for AssignmentOperator {
-    #[inline]
+    #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
         return write!(f, "{op}");
     }
 }
 
-impl DisplayLen for AssignmentOperator {
+impl AssignmentOperator {
+    #[expect(dead_code, reason = "kept for consistency")]
     #[inline(always)]
-    fn display_len(&self) -> offset32 {
-        let op: Op = (*self).into();
+    pub(super) fn display_len(self) -> offset32 {
+        let op: Op = self.into();
         return op.display_len();
     }
 }

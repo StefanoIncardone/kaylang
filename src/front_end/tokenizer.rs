@@ -9,10 +9,6 @@ use crate::error::CharsWidth;
 use core::{fmt::Display, marker::PhantomData};
 use unicode_segmentation::UnicodeSegmentation;
 
-pub(super) trait DisplayLen {
-    fn display_len(&self) -> offset32;
-}
-
 #[expect(
     non_camel_case_types,
     reason = "behaves like a primitive type, so it should be named like a primitive type"
@@ -131,9 +127,10 @@ impl Display for Mutability {
     }
 }
 
-impl DisplayLen for Mutability {
+impl Mutability {
+    #[expect(dead_code, reason = "kept for consistency")]
     #[inline(always)]
-    fn display_len(&self) -> offset32 {
+    pub(super) const fn display_len(self) -> offset32 {
         return match self {
             Self::Let | Self::Var => 3,
         };
@@ -164,9 +161,10 @@ impl Display for Bracket {
     }
 }
 
-impl DisplayLen for Bracket {
+impl Bracket {
+    #[expect(clippy::unused_self, reason = "kept for consistency")]
     #[inline(always)]
-    fn display_len(&self) -> offset32 {
+    pub(super) const fn display_len(self) -> offset32 {
         return 1;
     }
 }
@@ -194,17 +192,18 @@ impl Into<Bracket> for OpenBracket {
 }
 
 impl Display for OpenBracket {
-    #[inline]
+    #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let bracket: Bracket = (*self).into();
         return write!(f, "{bracket}");
     }
 }
 
-impl DisplayLen for OpenBracket {
+impl OpenBracket {
+    #[expect(dead_code, reason = "kept for consistency")]
     #[inline(always)]
-    fn display_len(&self) -> offset32 {
-        let bracket: Bracket = (*self).into();
+    pub(super) fn display_len(self) -> offset32 {
+        let bracket: Bracket = self.into();
         return bracket.display_len();
     }
 }
@@ -232,17 +231,18 @@ impl Into<Bracket> for CloseBracket {
 }
 
 impl Display for CloseBracket {
-    #[inline]
+    #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let bracket: Bracket = (*self).into();
         return write!(f, "{bracket}");
     }
 }
 
-impl DisplayLen for CloseBracket {
+impl CloseBracket {
+    #[expect(dead_code, reason = "kept for consistency")]
     #[inline(always)]
-    fn display_len(&self) -> offset32 {
-        let bracket: Bracket = (*self).into();
+    pub(super) fn display_len(self) -> offset32 {
+        let bracket: Bracket = self.into();
         return bracket.display_len();
     }
 }
@@ -432,8 +432,8 @@ impl Display for Op {
     }
 }
 
-impl DisplayLen for Op {
-    fn display_len(&self) -> offset32 {
+impl Op {
+    pub(super) const fn display_len(self) -> offset32 {
         return match self {
             Self::Len => 3,
             Self::Equals => 1,
@@ -605,7 +605,7 @@ pub(crate) enum TokenKind {
 }
 
 impl TokenKind {
-    pub(crate) fn display_len(self, tokens: &Tokens<'_, '_>) -> offset32 {
+    pub(super) fn display_len(self, tokens: &Tokens<'_, '_>) -> offset32 {
         return match self {
             Self::Comment(comment) => {
                 let text = tokens.text[comment as usize];
@@ -1376,7 +1376,6 @@ struct Utf8Error<'code> {
     pointers_count: offset32,
 }
 
-// TODO(stefano): own utf8 parsing
 // iteration of characters
 impl<'code> Tokenizer<'code, '_> {
     fn token_text(&self) -> &'code str {
