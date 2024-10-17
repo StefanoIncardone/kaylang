@@ -48,7 +48,9 @@ loop digit_idx <= DIGITS_COUNT - DIGITS_WINDOW {
         char_digit_idx += 1;
     }
 
-    if current_product > max_product { max_product = current_product; }
+    if current_product > max_product {
+        max_product = current_product;
+    }
 
     digit_idx += 1;
 }

@@ -13,8 +13,12 @@ let HIGH_DIVISOR = 20;
 var number = 1;
 loop true {
     var divisor = 2;
-    loop divisor <= HIGH_DIVISOR && number % divisor == 0 { divisor += 1; }
-    if divisor - 1 == HIGH_DIVISOR { break; }
+    loop divisor <= HIGH_DIVISOR && number % divisor == 0 {
+        divisor += 1;
+    }
+    if divisor - 1 == HIGH_DIVISOR {
+        break;
+    }
     number += 1;
 }
 
