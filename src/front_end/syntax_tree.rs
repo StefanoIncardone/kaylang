@@ -444,8 +444,6 @@ impl SyntaxTree<'_, '_, '_> {
     }
 }
 
-const INDENT_INCREMENT: usize = 2;
-
 #[derive(Debug)]
 pub struct SyntaxTreeDisplay<'syntax_tree, 'tokens: 'syntax_tree, 'code: 'tokens, 'path: 'code> {
     pub(crate) syntax_tree: &'syntax_tree SyntaxTree<'tokens, 'code, 'path>,
@@ -464,6 +462,8 @@ impl<'tokens, 'code: 'tokens> SyntaxTree<'tokens, 'code, '_> {
 }
 
 impl SyntaxTreeDisplay<'_, '_, '_, '_> {
+    const INDENT_INCREMENT: usize = 2;
+
     fn info_node(
         &self,
         f: &mut core::fmt::Formatter<'_>,
@@ -479,12 +479,12 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
 
             Node::Print { print_column, argument } => {
                 writeln!(f, "{:>indent$}Print: {print_column} = print", "")?;
-                let argument_indent = indent + INDENT_INCREMENT;
+                let argument_indent = indent + Self::INDENT_INCREMENT;
                 self.info_expression(f, *argument, argument_indent)
             }
             Node::Println { println_column, argument } => {
                 writeln!(f, "{:>indent$}Println: {println_column} = println", "")?;
-                let argument_indent = indent + INDENT_INCREMENT;
+                let argument_indent = indent + Self::INDENT_INCREMENT;
                 self.info_expression(f, *argument, argument_indent)
             }
             Node::PrintlnNoArg { println_column } => {
@@ -492,12 +492,12 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
             }
             Node::Eprint { eprint_column, argument } => {
                 writeln!(f, "{:>indent$}Eprint: {eprint_column} = eprint", "")?;
-                let argument_indent = indent + INDENT_INCREMENT;
+                let argument_indent = indent + Self::INDENT_INCREMENT;
                 self.info_expression(f, *argument, argument_indent)
             }
             Node::Eprintln { eprintln_column, argument } => {
                 writeln!(f, "{:>indent$}Eprintln: {eprintln_column} = eprintln", "")?;
-                let argument_indent = indent + INDENT_INCREMENT;
+                let argument_indent = indent + Self::INDENT_INCREMENT;
                 self.info_expression(f, *argument, argument_indent)
             }
             Node::EprintlnNoArg { eprintln_column } => {
@@ -506,17 +506,17 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
 
             Node::LetVariableDefinition { let_column, variable_definition } => {
                 writeln!(f, "{:>indent$}VariableDefinition: {let_column} = let", "")?;
-                let definition_indent = indent + INDENT_INCREMENT;
+                let definition_indent = indent + Self::INDENT_INCREMENT;
                 self.info_variable_definition(f, *variable_definition, definition_indent)
             }
             Node::VarVariableDefinition { var_column, variable_definition } => {
                 writeln!(f, "{:>indent$}VariableDefinition: {var_column} = var", "")?;
-                let definition_indent = indent + INDENT_INCREMENT;
+                let definition_indent = indent + Self::INDENT_INCREMENT;
                 self.info_variable_definition(f, *variable_definition, definition_indent)
             }
             Node::Assignment { target, operator, operator_column, new_value } => {
                 writeln!(f, "{:>indent$}Assignment", "")?;
-                let assignment_indent = indent + INDENT_INCREMENT;
+                let assignment_indent = indent + Self::INDENT_INCREMENT;
                 self.info_expression(f, *target, assignment_indent)?;
                 writeln!(f, "{:>assignment_indent$}AssignmentOp: {operator_column} = {operator}", "")?;
                 self.info_expression(f, *new_value, assignment_indent)
@@ -524,7 +524,7 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
 
             Node::Scope { open_curly_bracket_column, raw_nodes_in_scope_count, close_curly_bracket_column } => {
                 writeln!(f, "{:>indent$}Scope", "")?;
-                let scope_indent = indent + INDENT_INCREMENT;
+                let scope_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:>scope_indent$}OpenCurlyBracket: {open_curly_bracket_column} = {{", "")?;
 
                 let after_end_scope_node_index = *node_index + raw_nodes_in_scope_count;
@@ -535,7 +535,7 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
             }
 
             Node::If { if_index } => {
-                let if_indent = indent + INDENT_INCREMENT;
+                let if_indent = indent + Self::INDENT_INCREMENT;
 
                 let If { if_column, condition } = &self.syntax_tree.ifs[*if_index as usize];
                 let else_ifs = &self.syntax_tree.else_ifs[*if_index as usize];
@@ -557,7 +557,7 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
                 Ok(())
             }
             Node::IfElse { if_index, else_column } => {
-                let if_indent = indent + INDENT_INCREMENT;
+                let if_indent = indent + Self::INDENT_INCREMENT;
 
                 let If { if_column, condition } = &self.syntax_tree.ifs[*if_index as usize];
                 let else_ifs = &self.syntax_tree.else_ifs[*if_index as usize];
@@ -582,14 +582,14 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
 
             Node::Loop { loop_column, condition } => {
                 writeln!(f, "{:>indent$}Loop: {loop_column} = loop", "")?;
-                let loop_indent = indent + INDENT_INCREMENT;
+                let loop_indent = indent + Self::INDENT_INCREMENT;
                 self.info_expression(f, *condition, loop_indent)?;
                 self.info_node(f, node_index, loop_indent)
             }
             Node::DoLoop { do_column, loop_column, condition } => {
                 writeln!(f, "{:>indent$}Do: {do_column} = do", "")?;
                 writeln!(f, "{:>indent$}Loop: {loop_column} = loop", "")?;
-                let loop_indent = indent + INDENT_INCREMENT;
+                let loop_indent = indent + Self::INDENT_INCREMENT;
                 self.info_expression(f, *condition, loop_indent)?;
                 self.info_node(f, node_index, loop_indent)
             }
@@ -608,7 +608,7 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
         expression_index: ExpressionIndex,
         indent: usize,
     ) -> core::fmt::Result {
-        let expression_indent = indent + INDENT_INCREMENT;
+        let expression_indent = indent + Self::INDENT_INCREMENT;
         let expression = &self.syntax_tree.expressions[expression_index as usize];
 
         #[rustfmt::skip]
@@ -650,7 +650,7 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
 
                 let mut item_index = 0;
 
-                let items_indent = expression_indent + INDENT_INCREMENT;
+                let items_indent = expression_indent + Self::INDENT_INCREMENT;
                 while item_index < commas.len() {
                     let item_expression = items[item_index];
                     let comma_column = commas[item_index].get();
@@ -737,7 +737,7 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
             let type_name_str = self.tokens.text[*type_name as usize];
             writeln!(f, "{:>indent$}TypeName: {type_name_column} = {type_name_str}", "")?;
 
-            let dimension_indent = indent + INDENT_INCREMENT;
+            let dimension_indent = indent + Self::INDENT_INCREMENT;
             for ArrayDimension {
                 open_square_bracket_column,
                 dimension_expression,
@@ -775,7 +775,7 @@ impl Display for SyntaxTreeDisplay<'_, '_, '_, '_> {
 }
 
 #[derive(Debug)]
-pub struct Parser<'tokens, 'src: 'tokens, 'path: 'src, 'code: 'src> {
+pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     src: &'src SrcCode<'code, 'path>,
     errors: Vec<Error<ErrorKind>>,
 
@@ -791,7 +791,7 @@ only parsing until the first error until a fault tolerant parser is developed,
 this is because the first truly relevant error is the first one, which in turn causes a ripple
 effect that propagates to the rest of the parsing, causing subsequent errors to be wrong
 */
-impl<'tokens, 'src: 'tokens, 'path: 'src, 'code: 'src> Parser<'tokens, 'src, 'path, 'code> {
+impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'code, 'path> {
     pub fn parse(
         src: &'src SrcCode<'code, 'path>,
         tokens: &'tokens Tokens<'code, 'path>,
@@ -1257,7 +1257,7 @@ struct Peeked {
     index: TokenIndex,
 }
 
-impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
+impl Parser<'_, '_, '_, '_> {
     fn peek_next_token(&self) -> Option<Peeked> {
         for next_token_index in self.token_index..self.tokens.tokens.len() as TokenIndex {
             let next_token = self.tokens.tokens[next_token_index as usize];
@@ -1376,7 +1376,7 @@ struct Operator {
 }
 
 // TODO(stefano): make less recursive by only recursing based on operator precedence
-impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
+impl Parser<'_, '_, '_, '_> {
     fn operator(&mut self, accepted_operators: &[Op]) -> Option<Operator> {
         let peeked = self.peek_next_token()?;
         let TokenKind::Op(operator) = peeked.token.kind else {
@@ -1836,7 +1836,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
     }
 }
 
-impl<'src, 'code: 'src> Parser<'_, '_, '_, 'code> {
+impl Parser<'_, '_, '_, '_> {
     fn variable_definition(
         &mut self,
         mutability_token: Token,

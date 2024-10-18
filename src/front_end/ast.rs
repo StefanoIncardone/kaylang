@@ -739,7 +739,7 @@ pub struct Ast<'code> {
 }
 
 #[derive(Debug)]
-pub struct Parser<'tokens, 'src: 'tokens, 'path: 'src, 'code: 'path> {
+pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     src: &'src SrcCode<'code, 'path>,
     errors: Vec<Error<ErrorKind>>,
 
@@ -752,7 +752,7 @@ pub struct Parser<'tokens, 'src: 'tokens, 'path: 'src, 'code: 'path> {
     ast: Ast<'code>,
 }
 
-impl<'tokens, 'src: 'tokens, 'path: 'src, 'code: 'src> Parser<'tokens, 'src, 'path, 'code> {
+impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'code, 'path> {
     pub fn parse(
         src: &'src SrcCode<'code, 'path>,
         tokens: &'tokens Tokens<'code, 'path>,
@@ -808,7 +808,7 @@ impl<'tokens, 'src: 'tokens, 'path: 'src, 'code: 'src> Parser<'tokens, 'src, 'pa
 }
 
 // parsing of statements
-impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
+impl Parser<'_, '_, '_, '_> {
     fn semicolon(&mut self) -> Result<(), Error<ErrorKind>> {
         let semicolon_token = self.current_token(Expected::Semicolon)?;
         let TokenKind::SemiColon = semicolon_token.kind else {
@@ -1248,7 +1248,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
 }
 
 // iteration over tokens
-impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
+impl Parser<'_, '_, '_, '_> {
     // IDEA(stefano): remove self.current_token method and pass the current token around
     fn current_token(&self, expected: Expected) -> Result<Token, Error<ErrorKind>> {
         let Some(token) = self.tokens.tokens.get(self.token as usize) else {
@@ -1336,7 +1336,7 @@ pub enum ParseIntError {
 }
 
 // expressions
-impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
+impl Parser<'_, '_, '_, '_> {
     fn new_expression(&mut self, expression: Expression) -> ExpressionIndex {
         let index = self.ast.expressions.len() as ExpressionIndex;
         self.ast.expressions.push(expression);
@@ -2651,9 +2651,9 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
     }
 }
 
-// variables and types
-impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
-    fn resolve_variable(&self, name: &'code [ascii]) -> Option<(Mutability, VariableIndex)> {
+// variables and typesk
+impl Parser<'_, '_, '_, '_> {
+    fn resolve_variable(&self, name: &[ascii]) -> Option<(Mutability, VariableIndex)> {
         let mut scope_index = self.scope;
         loop {
             let scope = &self.scopes[scope_index as usize];
@@ -2678,7 +2678,7 @@ impl<'tokens, 'code: 'tokens> Parser<'tokens, '_, '_, 'code> {
         }
     }
 
-    fn resolve_type(&self, name: &'code [ascii]) -> Option<BaseType> {
+    fn resolve_type(&self, name: &[ascii]) -> Option<BaseType> {
         let mut scope_index = self.scope;
         loop {
             let scope = &self.scopes[scope_index as usize];

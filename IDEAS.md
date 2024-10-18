@@ -502,6 +502,56 @@ let ok = match answer {
 | **right logical shift**      |  `>>`  | `shr` / `shrx`     |
 | **right arithmetical shift** | `>>-`  | `sar` / `sarx`     |
 
+## Labels on blocks
+
+```kay
+# possible label syntax
+loop: label ... {
+    loop {
+        break;
+    }
+    loop {
+        loop {
+            break: label;
+        }
+    }
+    ...
+}
+
+let x = loop: label ... {
+    ...
+    break: label 12;
+}
+let x =: label {
+    ...
+    break: label 21;
+}
+```
+
+compared to rust:
+
+```rust
+'label: loop ... {
+    loop {
+        break;
+    }
+    loop {
+        loop {
+            break 'label;
+        }
+    }
+    ...
+}
+
+let x = 'label: loop ... {
+    ...
+    break 'label 12;
+}
+let x = 'label: {
+    ...
+    break 'label 21;
+}
+```
 
 ## Strings
 
