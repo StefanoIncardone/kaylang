@@ -98,35 +98,38 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
         - (added) parsing of syntax tree (phantom stage, does not affect other stages for now)
         - abstract syntax tree parsing
         - compilation of abstract syntax tree
+- `tokenizer::Tokenizer` is now private and `tokenizer::Tokenizer::tokenize()` is now in
+    `tokenizer::Tokens::tokenize()`
+- `ast::Parser` is now private and `ast::Parser::parse()` is now in `ast::Ast::parse()`
 - Renamed `syntax` module to `front_end`
 - Introduced `offset32`, `line32`, `column32` and `index32` type aliases for `u32`
 - Errors related to bracket pairs now contain more descriptive `tokenizer::OpenBracket` and
     `tokenizer::CloseBracket`
 - Moved `src_file` module into `front_end`
 - `src_file::SrcFile::path` and `src_file::Error::path` are now a `&Path` instead of `PathBuf`
-- Split `src_file::SrcFile::position` into `src_file::SrcFile::position` and
-    `src_file::SrcFile::display_position`, returning respectively a:
+- Split `src_file::SrcFile::position()` into `src_file::SrcFile::position()` and
+    `src_file::SrcFile::display_position()`:
+    - `src_file::SrcFile::position()` is no longer public due to out-of bounds unsafety and
+        inconsistencies between Unix's `\n` and Windows' `\r\n` line terminators
     - `src_file::Position` now only contains information about the sorce code position
-    - `src_file::DisplayPosition` contains information about the source code position and
+    - new `src_file::DisplayPosition` information about the source code position and
         display position
 - Split `src_file::SrcFile` into:
     - `src_file::SrcFile` -> the path and the source code
     - `src_file::SrcCode` -> contains `src_file::SrcFile` and `Vec<Line>`
-- `src_file::SrcFile::load` now only reads the contents of the source code without calculating line
+- `src_file::SrcFile::load()` now only reads the contents of the source code without calculating line
     bounds
-- `tokenizer::Tokenizer::tokenize` now takes the revised `src_file::SrcFile` and returns the new
+- `tokenizer::Tokens::tokenize()` now takes the revised `src_file::SrcFile` and returns the new
     `tokenizer::TokenizedCode` struct, containing:
     - `tokenizer::Tokens` struct, which is an optimized memory layout representation of
         `tokenizer::Token`
     - the calculated `src_file::lines`
-- `src_file::SrcFile::position` is no longer public due to out-of bounds unsafety and
-    inconsistencies between Unix's `\n` and Windows' `\r\n` line terminators
 - Renamed `error::MsgWithCauseUnderTextWithLocation::source_code_col` to
     `error::MsgWithCauseUnderTextWithLocation::absolute_column`
 - Reordered and changed `error::MsgWithCauseUnderText::pointers_count` and
     `error::MsgWithCauseUnderText::pointers_offset` from `usize` to `column32`
 - Renamed `compiler` module to `back_end`
-- `artifacts::Artifacts::new` and `artifacts::Artifacts::new_with_out_path` now take a `&Path`
+- `artifacts::Artifacts::new()` and `artifacts::Artifacts::new_with_out_path()` now take a `&Path`
     instead of `&SrcFile`
 - Renamed `color::Flags` to `color::flag`
 - Struct `color::Flag` was only used as a namespace, so its now a module named `color::flags`

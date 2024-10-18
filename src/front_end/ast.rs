@@ -739,7 +739,7 @@ pub struct Ast<'code> {
 }
 
 #[derive(Debug)]
-pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
+struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     src: &'src SrcCode<'code, 'path>,
     errors: Vec<Error<ErrorKind>>,
 
@@ -752,12 +752,12 @@ pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     ast: Ast<'code>,
 }
 
-impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'code, 'path> {
+impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Ast<'code> {
     pub fn parse(
         src: &'src SrcCode<'code, 'path>,
         tokens: &'tokens Tokens<'code, 'path>,
-    ) -> Result<Ast<'code>, Vec<Error<ErrorKind>>> {
-        let ast = Ast {
+    ) -> Result<Self, Vec<Error<ErrorKind>>> {
+        let ast = Self {
             nodes: vec![vec![]],
 
             ifs: Vec::new(),
@@ -785,7 +785,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
             token += 1;
         }
 
-        let mut this = Self {
+        let mut parser = Parser {
             src,
             errors: Vec::new(),
             token,
@@ -801,9 +801,9 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
             ast,
         };
 
-        this.scope();
+        parser.scope();
 
-        return if this.errors.is_empty() { Ok(this.ast) } else { Err(this.errors) };
+        return if parser.errors.is_empty() { Ok(parser.ast) } else { Err(parser.errors) };
     }
 }
 

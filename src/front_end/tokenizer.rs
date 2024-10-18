@@ -691,7 +691,7 @@ pub struct TokenizedCode<'code, 'path: 'code> {
 }
 
 #[derive(Debug)]
-pub struct Tokenizer<'code, 'path: 'code> {
+struct Tokenizer<'code, 'path: 'code> {
     code: &'code str,
     lines: Vec<Line>,
     line_start: offset32,
@@ -703,10 +703,10 @@ pub struct Tokenizer<'code, 'path: 'code> {
     errors: Vec<Error<ErrorKind<'code>>>,
 }
 
-impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
+impl<'code, 'path: 'code> Tokens<'code, 'path> {
     #[must_use]
     pub fn tokenize(src_file: &'code SrcFile<'path>) -> TokenizedCode<'code, 'path> {
-        let mut this = Self {
+        let mut tokenizer = Tokenizer {
             code: &src_file.code,
             lines: Vec::new(),
             line_start: 0,
@@ -724,48 +724,48 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
         };
         let mut brackets_indicies = Vec::<BracketIndex>::new();
 
-        'tokenization: while let Some(next_character) = this.peek_next_ascii_char() {
+        'tokenization: while let Some(next_character) = tokenizer.peek_next_ascii_char() {
             let token_kind_result = 'next_token: {
                 let next = match next_character {
                     Ok(next) => match next {
                         // ignore whitespace
                         b' ' | b'\t' | b'\x0C' => {
-                            this.col += 1;
+                            tokenizer.col += 1;
                             continue 'tokenization;
                         }
 
                         // we reached the end of the line on a LF (\n)
                         b'\n' => {
-                            this.lines.push(Line { start: this.line_start, end: this.col });
-                            this.col += 1;
-                            this.line_start = this.col;
+                            tokenizer.lines.push(Line { start: tokenizer.line_start, end: tokenizer.col });
+                            tokenizer.col += 1;
+                            tokenizer.line_start = tokenizer.col;
                             continue 'tokenization;
                         }
                         b'\r' => {
-                            if this.col as usize + 1 >= this.code.len() {
-                                this.col += 1;
+                            if tokenizer.col as usize + 1 >= tokenizer.code.len() {
+                                tokenizer.col += 1;
                                 continue 'tokenization;
                             }
 
-                            if let b'\n' = this.code.as_bytes()[this.col as usize + 1] {
-                                this.lines.push(Line { start: this.line_start, end: this.col });
-                                this.col += 2;
-                                this.line_start = this.col;
+                            if let b'\n' = tokenizer.code.as_bytes()[tokenizer.col as usize + 1] {
+                                tokenizer.lines.push(Line { start: tokenizer.line_start, end: tokenizer.col });
+                                tokenizer.col += 2;
+                                tokenizer.line_start = tokenizer.col;
                                 continue 'tokenization;
                             };
 
-                            this.col += 1;
+                            tokenizer.col += 1;
                             continue 'tokenization;
                         }
                         other => {
-                            this.token_start_col = this.col;
-                            this.col += 1;
+                            tokenizer.token_start_col = tokenizer.col;
+                            tokenizer.col += 1;
                             other
                         }
                     },
                     Err(error) => {
-                        this.col += error.grapheme.len() as offset32;
-                        this.errors.push(Error {
+                        tokenizer.col += error.grapheme.len() as offset32;
+                        tokenizer.errors.push(Error {
                             kind: ErrorKind::Utf8Character { grapheme: error.grapheme },
                             col: error.col,
                             pointers_count: error.pointers_count,
@@ -775,102 +775,102 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                 };
 
                 match next {
-                    b'r' => match this.peek_next_utf8_char() {
+                    b'r' => match tokenizer.peek_next_utf8_char() {
                         Some('"') => {
-                            this.col += 1; // skip the `r` prefix
+                            tokenizer.col += 1; // skip the `r` prefix
 
-                            match this.raw_string_literal() {
+                            match tokenizer.raw_string_literal() {
                                 Ok(literal) => {
-                                    this.tokens.strings.push(Str(literal.into_boxed_slice()));
-                                    let string_index = this.tokens.strings.len() as StrIndex - 1;
+                                    tokenizer.tokens.strings.push(Str(literal.into_boxed_slice()));
+                                    let string_index = tokenizer.tokens.strings.len() as StrIndex - 1;
                                     Ok(TokenKind::RawStr(string_index))
                                 }
                                 Err(()) => Err(()),
                             }
                         }
-                        _ => this.identifier(),
+                        _ => tokenizer.identifier(),
                     },
-                    b'a'..=b'z' | b'A'..=b'Z' | b'_' => this.identifier(),
+                    b'a'..=b'z' | b'A'..=b'Z' | b'_' => tokenizer.identifier(),
                     // IDEA(stefano): debate wether to allow trailing underscores or to emit a warning
                     // IDEA(stefano): emit warning of inconsistent casing of letters, i.e. 0xFFff_fFfF_ffFF_ffFF
                     b'0' => {
-                        let (base, integer) = match this.peek_next_utf8_char() {
+                        let (base, integer) = match tokenizer.peek_next_utf8_char() {
                             Some('b') => {
-                                this.col += 1;
-                                (Base::Binary, this.integer_binary())
+                                tokenizer.col += 1;
+                                (Base::Binary, tokenizer.integer_binary())
                             }
                             Some('o') => {
-                                this.col += 1;
-                                (Base::Octal, this.integer_octal())
+                                tokenizer.col += 1;
+                                (Base::Octal, tokenizer.integer_octal())
                             }
                             Some('x') => {
-                                this.col += 1;
-                                (Base::Hexadecimal, this.integer_hexadecimal())
+                                tokenizer.col += 1;
+                                (Base::Hexadecimal, tokenizer.integer_hexadecimal())
                             }
-                            Some(_) | None => (Base::Decimal, this.integer_decimal()),
+                            Some(_) | None => (Base::Decimal, tokenizer.integer_decimal()),
                         };
 
                         match integer {
                             Ok(literal) => {
                                 let literal_str =
                                     unsafe { core::str::from_utf8_unchecked(literal) };
-                                this.tokens.text.push(literal_str);
-                                let literal_index = this.tokens.text.len() as TextIndex - 1;
+                                tokenizer.tokens.text.push(literal_str);
+                                let literal_index = tokenizer.tokens.text.len() as TextIndex - 1;
                                 Ok(TokenKind::Integer(base, literal_index))
                             }
                             Err(()) => Err(()),
                         }
                     }
-                    b'1'..=b'9' => match this.integer_decimal() {
+                    b'1'..=b'9' => match tokenizer.integer_decimal() {
                         Ok(literal) => {
                             let literal_str = unsafe { core::str::from_utf8_unchecked(literal) };
-                            this.tokens.text.push(literal_str);
-                            let literal_index = this.tokens.text.len() as TextIndex - 1;
+                            tokenizer.tokens.text.push(literal_str);
+                            let literal_index = tokenizer.tokens.text.len() as TextIndex - 1;
                             Ok(TokenKind::Integer(Base::Decimal, literal_index))
                         }
                         Err(()) => Err(()),
                     },
-                    b'"' => match this.quoted_literal(QuotedLiteralKind::Str) {
+                    b'"' => match tokenizer.quoted_literal(QuotedLiteralKind::Str) {
                         Ok(literal) => {
-                            this.tokens.strings.push(Str(literal.into_boxed_slice()));
-                            let string_index = this.tokens.strings.len() as StrIndex - 1;
+                            tokenizer.tokens.strings.push(Str(literal.into_boxed_slice()));
+                            let string_index = tokenizer.tokens.strings.len() as StrIndex - 1;
                             Ok(TokenKind::Str(string_index))
                         }
                         Err(()) => Err(()),
                     },
-                    b'\'' => match this.quoted_literal(QuotedLiteralKind::Ascii) {
+                    b'\'' => match tokenizer.quoted_literal(QuotedLiteralKind::Ascii) {
                         Ok(literal) => match literal.as_slice() {
                             [character] => Ok(TokenKind::Ascii(*character)),
                             [] => {
-                                this.errors.push(Error {
+                                tokenizer.errors.push(Error {
                                     kind: ErrorKind::EmptyCharacterLiteral,
-                                    col: this.token_start_col,
+                                    col: tokenizer.token_start_col,
                                     pointers_count: 2,
                                 });
                                 Err(())
                             }
                             [_, ..] => {
-                                this.errors.push(Error {
+                                tokenizer.errors.push(Error {
                                     kind: ErrorKind::MultipleCharactersInCharacterLiteral,
-                                    col: this.token_start_col,
-                                    pointers_count: this.token_text().chars_width(),
+                                    col: tokenizer.token_start_col,
+                                    pointers_count: tokenizer.token_text().chars_width(),
                                 });
                                 Err(())
                             }
                         },
                         Err(()) => Err(()),
                     },
-                    b'#' => match this.peek_next_utf8_char() {
+                    b'#' => match tokenizer.peek_next_utf8_char() {
                         Some('#') => 'comment: {
                             'next_character: loop {
-                                match this.next_utf8_char_multiline() {
-                                    Some('#') => match this.next_utf8_char_multiline() {
+                                match tokenizer.next_utf8_char_multiline() {
+                                    Some('#') => match tokenizer.next_utf8_char_multiline() {
                                         Some('#') => break 'next_character,
                                         Some(_) => {}
                                         None => {
-                                            this.errors.push(Error {
+                                            tokenizer.errors.push(Error {
                                                 kind: ErrorKind::UnclosedBlockComment,
-                                                col: this.token_start_col,
+                                                col: tokenizer.token_start_col,
                                                 pointers_count: 2,
                                             });
                                             break 'comment Err(());
@@ -878,9 +878,9 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                                     },
                                     Some(_) => {}
                                     None => {
-                                        this.errors.push(Error {
+                                        tokenizer.errors.push(Error {
                                             kind: ErrorKind::UnclosedBlockComment,
-                                            col: this.token_start_col,
+                                            col: tokenizer.token_start_col,
                                             pointers_count: 2,
                                         });
                                         break 'comment Err(());
@@ -890,55 +890,55 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
 
                             // starting at this.token_start_col + 2 to skip the `##`
                             // ending at this.col - 2 to skip the `##`
-                            let comment_str = &this.code
-                                [this.token_start_col as usize + 2..this.col as usize + 2];
-                            this.tokens.text.push(comment_str);
-                            let comment_index = this.tokens.text.len() as TextIndex - 1;
+                            let comment_str = &tokenizer.code
+                                [tokenizer.token_start_col as usize + 2..tokenizer.col as usize + 2];
+                            tokenizer.tokens.text.push(comment_str);
+                            let comment_index = tokenizer.tokens.text.len() as TextIndex - 1;
                             Ok(TokenKind::BlockComment(comment_index))
                         }
                         Some(_) | None => {
                             loop {
-                                match this.peek_next_utf8_char() {
+                                match tokenizer.peek_next_utf8_char() {
                                     Some('\n') | None => break,
                                     Some('\r') => {
-                                        if this.col as usize + 1 >= this.code.len() {
-                                            this.col += 1;
+                                        if tokenizer.col as usize + 1 >= tokenizer.code.len() {
+                                            tokenizer.col += 1;
                                             continue;
                                         }
 
-                                        if let b'\n' = this.code.as_bytes()[this.col as usize + 1] {
+                                        if let b'\n' = tokenizer.code.as_bytes()[tokenizer.col as usize + 1] {
                                             break;
                                         };
 
-                                        this.col += 1;
+                                        tokenizer.col += 1;
                                     }
-                                    Some(other) => this.col += other.len_utf8() as offset32,
+                                    Some(other) => tokenizer.col += other.len_utf8() as offset32,
                                 }
                             }
 
                             let comment_str =
-                                &this.code[this.token_start_col as usize + 1..this.col as usize];
-                            this.tokens.text.push(comment_str);
-                            let comment_index = this.tokens.text.len() as TextIndex - 1;
+                                &tokenizer.code[tokenizer.token_start_col as usize + 1..tokenizer.col as usize];
+                            tokenizer.tokens.text.push(comment_str);
+                            let comment_index = tokenizer.tokens.text.len() as TextIndex - 1;
                             Ok(TokenKind::Comment(comment_index))
                         }
                     },
                     b'(' => {
-                        brackets_indicies.push(this.tokens.tokens.len() as TokenIndex);
+                        brackets_indicies.push(tokenizer.tokens.tokens.len() as TokenIndex);
                         Ok(TokenKind::Bracket(Bracket::OpenRound))
                     }
                     b')' => 'bracket: {
                         let Some(bracket_index) = brackets_indicies.pop() else {
-                            this.errors.push(Error {
+                            tokenizer.errors.push(Error {
                                 kind: ErrorKind::UnopenedBracket(CloseBracket::Round),
-                                col: this.token_start_col,
+                                col: tokenizer.token_start_col,
                                 pointers_count: 1,
                             });
                             break 'bracket Err(());
                         };
 
                         let TokenKind::Bracket(bracket) =
-                            &this.tokens.tokens[bracket_index as usize].kind
+                            &tokenizer.tokens.tokens[bracket_index as usize].kind
                         else {
                             unreachable!("incorrect bracket index");
                         };
@@ -949,12 +949,12 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             | Bracket::CloseCurly
                             | Bracket::CloseSquare => Ok(TokenKind::Bracket(Bracket::CloseRound)),
                             actual @ (Bracket::OpenCurly | Bracket::OpenSquare) => {
-                                this.errors.push(Error {
+                                tokenizer.errors.push(Error {
                                     kind: ErrorKind::MismatchedBracket {
                                         expected: CloseBracket::Round,
                                         actual: actual.into(),
                                     },
-                                    col: this.token_start_col,
+                                    col: tokenizer.token_start_col,
                                     pointers_count: 1,
                                 });
                                 Err(())
@@ -962,21 +962,21 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                     }
                     b'[' => {
-                        brackets_indicies.push(this.tokens.tokens.len() as TokenIndex);
+                        brackets_indicies.push(tokenizer.tokens.tokens.len() as TokenIndex);
                         Ok(TokenKind::Bracket(Bracket::OpenSquare))
                     }
                     b']' => 'bracket: {
                         let Some(bracket_index) = brackets_indicies.pop() else {
-                            this.errors.push(Error {
+                            tokenizer.errors.push(Error {
                                 kind: ErrorKind::UnopenedBracket(CloseBracket::Square),
-                                col: this.token_start_col,
+                                col: tokenizer.token_start_col,
                                 pointers_count: 1,
                             });
                             break 'bracket Err(());
                         };
 
                         let TokenKind::Bracket(bracket) =
-                            &this.tokens.tokens[bracket_index as usize].kind
+                            &tokenizer.tokens.tokens[bracket_index as usize].kind
                         else {
                             unreachable!("incorrect bracket index");
                         };
@@ -987,12 +987,12 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             | Bracket::CloseCurly
                             | Bracket::CloseRound => Ok(TokenKind::Bracket(Bracket::CloseSquare)),
                             actual @ (Bracket::OpenCurly | Bracket::OpenRound) => {
-                                this.errors.push(Error {
+                                tokenizer.errors.push(Error {
                                     kind: ErrorKind::MismatchedBracket {
                                         expected: CloseBracket::Square,
                                         actual: actual.into(),
                                     },
-                                    col: this.token_start_col,
+                                    col: tokenizer.token_start_col,
                                     pointers_count: 1,
                                 });
                                 Err(())
@@ -1000,21 +1000,21 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                     }
                     b'{' => {
-                        brackets_indicies.push(this.tokens.tokens.len() as TokenIndex);
+                        brackets_indicies.push(tokenizer.tokens.tokens.len() as TokenIndex);
                         Ok(TokenKind::Bracket(Bracket::OpenCurly))
                     }
                     b'}' => 'bracket: {
                         let Some(bracket_index) = brackets_indicies.pop() else {
-                            this.errors.push(Error {
+                            tokenizer.errors.push(Error {
                                 kind: ErrorKind::UnopenedBracket(CloseBracket::Curly),
-                                col: this.token_start_col,
+                                col: tokenizer.token_start_col,
                                 pointers_count: 1,
                             });
                             break 'bracket Err(());
                         };
 
                         let TokenKind::Bracket(bracket) =
-                            &this.tokens.tokens[bracket_index as usize].kind
+                            &tokenizer.tokens.tokens[bracket_index as usize].kind
                         else {
                             unreachable!("incorrect bracket index");
                         };
@@ -1025,12 +1025,12 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             | Bracket::CloseRound
                             | Bracket::CloseSquare => Ok(TokenKind::Bracket(Bracket::CloseCurly)),
                             actual @ (Bracket::OpenRound | Bracket::OpenSquare) => {
-                                this.errors.push(Error {
+                                tokenizer.errors.push(Error {
                                     kind: ErrorKind::MismatchedBracket {
                                         expected: CloseBracket::Curly,
                                         actual: actual.into(),
                                     },
-                                    col: this.token_start_col,
+                                    col: tokenizer.token_start_col,
                                     pointers_count: 1,
                                 });
                                 Err(())
@@ -1040,36 +1040,36 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                     b':' => Ok(TokenKind::Colon),
                     b';' => Ok(TokenKind::SemiColon),
                     b',' => Ok(TokenKind::Comma),
-                    b'!' => match this.peek_next_utf8_char() {
+                    b'!' => match tokenizer.peek_next_utf8_char() {
                         Some('=') => {
-                            this.col += 1;
+                            tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::NotEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::Not)),
                     },
-                    b'*' => match this.peek_next_utf8_char() {
+                    b'*' => match tokenizer.peek_next_utf8_char() {
                         Some('*') => {
-                            this.col += 1;
-                            match this.peek_next_utf8_char() {
+                            tokenizer.col += 1;
+                            match tokenizer.peek_next_utf8_char() {
                                 Some('=') => {
-                                    this.col += 1;
+                                    tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::PowEquals))
                                 }
                                 Some('\\') => {
-                                    this.col += 1;
-                                    match this.peek_next_utf8_char() {
+                                    tokenizer.col += 1;
+                                    match tokenizer.peek_next_utf8_char() {
                                         Some('=') => {
-                                            this.col += 1;
+                                            tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::WrappingPowEquals))
                                         }
                                         _ => Ok(TokenKind::Op(Op::WrappingPow)),
                                     }
                                 }
                                 Some('|') => {
-                                    this.col += 1;
-                                    match this.peek_next_utf8_char() {
+                                    tokenizer.col += 1;
+                                    match tokenizer.peek_next_utf8_char() {
                                         Some('=') => {
-                                            this.col += 1;
+                                            tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::SaturatingPowEquals))
                                         }
                                         _ => Ok(TokenKind::Op(Op::SaturatingPow)),
@@ -1079,24 +1079,24 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             }
                         }
                         Some('=') => {
-                            this.col += 1;
+                            tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::TimesEquals))
                         }
                         Some('\\') => {
-                            this.col += 1;
-                            match this.peek_next_utf8_char() {
+                            tokenizer.col += 1;
+                            match tokenizer.peek_next_utf8_char() {
                                 Some('=') => {
-                                    this.col += 1;
+                                    tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::WrappingTimesEquals))
                                 }
                                 _ => Ok(TokenKind::Op(Op::WrappingTimes)),
                             }
                         }
                         Some('|') => {
-                            this.col += 1;
-                            match this.peek_next_utf8_char() {
+                            tokenizer.col += 1;
+                            match tokenizer.peek_next_utf8_char() {
                                 Some('=') => {
-                                    this.col += 1;
+                                    tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::SaturatingTimesEquals))
                                 }
                                 _ => Ok(TokenKind::Op(Op::SaturatingTimes)),
@@ -1104,26 +1104,26 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                         _ => Ok(TokenKind::Op(Op::Times)),
                     },
-                    b'/' => match this.peek_next_utf8_char() {
+                    b'/' => match tokenizer.peek_next_utf8_char() {
                         Some('=') => {
-                            this.col += 1;
+                            tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::DivideEquals))
                         }
                         Some('\\') => {
-                            this.col += 1;
-                            match this.peek_next_utf8_char() {
+                            tokenizer.col += 1;
+                            match tokenizer.peek_next_utf8_char() {
                                 Some('=') => {
-                                    this.col += 1;
+                                    tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::WrappingDivideEquals))
                                 }
                                 _ => Ok(TokenKind::Op(Op::WrappingDivide)),
                             }
                         }
                         Some('|') => {
-                            this.col += 1;
-                            match this.peek_next_utf8_char() {
+                            tokenizer.col += 1;
+                            match tokenizer.peek_next_utf8_char() {
                                 Some('=') => {
-                                    this.col += 1;
+                                    tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::SaturatingDivideEquals))
                                 }
                                 _ => Ok(TokenKind::Op(Op::SaturatingDivide)),
@@ -1131,33 +1131,33 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                         _ => Ok(TokenKind::Op(Op::Divide)),
                     },
-                    b'%' => match this.peek_next_utf8_char() {
+                    b'%' => match tokenizer.peek_next_utf8_char() {
                         Some('=') => {
-                            this.col += 1;
+                            tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::RemainderEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::Remainder)),
                     },
-                    b'+' => match this.peek_next_utf8_char() {
+                    b'+' => match tokenizer.peek_next_utf8_char() {
                         Some('=') => {
-                            this.col += 1;
+                            tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::PlusEquals))
                         }
                         Some('\\') => {
-                            this.col += 1;
-                            match this.peek_next_utf8_char() {
+                            tokenizer.col += 1;
+                            match tokenizer.peek_next_utf8_char() {
                                 Some('=') => {
-                                    this.col += 1;
+                                    tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::WrappingPlusEquals))
                                 }
                                 _ => Ok(TokenKind::Op(Op::WrappingPlus)),
                             }
                         }
                         Some('|') => {
-                            this.col += 1;
-                            match this.peek_next_utf8_char() {
+                            tokenizer.col += 1;
+                            match tokenizer.peek_next_utf8_char() {
                                 Some('=') => {
-                                    this.col += 1;
+                                    tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::SaturatingPlusEquals))
                                 }
                                 _ => Ok(TokenKind::Op(Op::SaturatingPlus)),
@@ -1165,26 +1165,26 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                         _ => Ok(TokenKind::Op(Op::Plus)),
                     },
-                    b'-' => match this.peek_next_utf8_char() {
+                    b'-' => match tokenizer.peek_next_utf8_char() {
                         Some('=') => {
-                            this.col += 1;
+                            tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::MinusEquals))
                         }
                         Some('\\') => {
-                            this.col += 1;
-                            match this.peek_next_utf8_char() {
+                            tokenizer.col += 1;
+                            match tokenizer.peek_next_utf8_char() {
                                 Some('=') => {
-                                    this.col += 1;
+                                    tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::WrappingMinusEquals))
                                 }
                                 _ => Ok(TokenKind::Op(Op::WrappingMinus)),
                             }
                         }
                         Some('|') => {
-                            this.col += 1;
-                            match this.peek_next_utf8_char() {
+                            tokenizer.col += 1;
+                            match tokenizer.peek_next_utf8_char() {
                                 Some('=') => {
-                                    this.col += 1;
+                                    tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::SaturatingMinusEquals))
                                 }
                                 _ => Ok(TokenKind::Op(Op::SaturatingMinus)),
@@ -1192,114 +1192,114 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                         _ => Ok(TokenKind::Op(Op::Minus)),
                     },
-                    b'&' => match this.peek_next_utf8_char() {
+                    b'&' => match tokenizer.peek_next_utf8_char() {
                         Some('&') => {
-                            this.col += 1;
-                            match this.peek_next_utf8_char() {
+                            tokenizer.col += 1;
+                            match tokenizer.peek_next_utf8_char() {
                                 Some('=') => {
-                                    this.col += 1;
+                                    tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::AndEquals))
                                 }
                                 _ => Ok(TokenKind::Op(Op::And)),
                             }
                         }
                         Some('=') => {
-                            this.col += 1;
+                            tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::BitAndEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::BitAnd)),
                     },
-                    b'^' => match this.peek_next_utf8_char() {
+                    b'^' => match tokenizer.peek_next_utf8_char() {
                         Some('=') => {
-                            this.col += 1;
+                            tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::BitXorEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::BitXor)),
                     },
-                    b'|' => match this.peek_next_utf8_char() {
+                    b'|' => match tokenizer.peek_next_utf8_char() {
                         Some('|') => {
-                            this.col += 1;
-                            match this.peek_next_utf8_char() {
+                            tokenizer.col += 1;
+                            match tokenizer.peek_next_utf8_char() {
                                 Some('=') => {
-                                    this.col += 1;
+                                    tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::OrEquals))
                                 }
                                 _ => Ok(TokenKind::Op(Op::Or)),
                             }
                         }
                         Some('=') => {
-                            this.col += 1;
+                            tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::BitOrEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::BitOr)),
                     },
-                    b'=' => match this.peek_next_utf8_char() {
+                    b'=' => match tokenizer.peek_next_utf8_char() {
                         Some('=') => {
-                            this.col += 1;
+                            tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::EqualsEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::Equals)),
                     },
-                    b'>' => match this.peek_next_utf8_char() {
+                    b'>' => match tokenizer.peek_next_utf8_char() {
                         Some('>') => {
-                            this.col += 1;
-                            match this.peek_next_utf8_char() {
+                            tokenizer.col += 1;
+                            match tokenizer.peek_next_utf8_char() {
                                 Some('>') => {
-                                    this.col += 1;
-                                    match this.peek_next_utf8_char() {
+                                    tokenizer.col += 1;
+                                    match tokenizer.peek_next_utf8_char() {
                                         Some('=') => {
-                                            this.col += 1;
+                                            tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::RightRotateEquals))
                                         }
                                         _ => Ok(TokenKind::Op(Op::RightRotate)),
                                     }
                                 }
                                 Some('=') => {
-                                    this.col += 1;
+                                    tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::RightShiftEquals))
                                 }
                                 _ => Ok(TokenKind::Op(Op::RightShift)),
                             }
                         }
                         Some('=') => {
-                            this.col += 1;
+                            tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::GreaterOrEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::Greater)),
                     },
-                    b'<' => match this.peek_next_utf8_char() {
+                    b'<' => match tokenizer.peek_next_utf8_char() {
                         Some('<') => {
-                            this.col += 1;
-                            match this.peek_next_utf8_char() {
+                            tokenizer.col += 1;
+                            match tokenizer.peek_next_utf8_char() {
                                 Some('<') => {
-                                    this.col += 1;
-                                    match this.peek_next_utf8_char() {
+                                    tokenizer.col += 1;
+                                    match tokenizer.peek_next_utf8_char() {
                                         Some('=') => {
-                                            this.col += 1;
+                                            tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::LeftRotateEquals))
                                         }
                                         _ => Ok(TokenKind::Op(Op::LeftRotate)),
                                     }
                                 }
                                 Some('=') => {
-                                    this.col += 1;
+                                    tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::LeftShiftEquals))
                                 }
                                 Some('\\') => {
-                                    this.col += 1;
-                                    match this.peek_next_utf8_char() {
+                                    tokenizer.col += 1;
+                                    match tokenizer.peek_next_utf8_char() {
                                         Some('=') => {
-                                            this.col += 1;
+                                            tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::WrappingLeftShiftEquals))
                                         }
                                         _ => Ok(TokenKind::Op(Op::WrappingLeftShift)),
                                     }
                                 }
                                 Some('|') => {
-                                    this.col += 1;
-                                    match this.peek_next_utf8_char() {
+                                    tokenizer.col += 1;
+                                    match tokenizer.peek_next_utf8_char() {
                                         Some('=') => {
-                                            this.col += 1;
+                                            tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::SaturatingLeftShiftEquals))
                                         }
                                         _ => Ok(TokenKind::Op(Op::SaturatingLeftShift)),
@@ -1309,10 +1309,10 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             }
                         }
                         Some('=') => {
-                            this.col += 1;
-                            match this.peek_next_utf8_char() {
+                            tokenizer.col += 1;
+                            match tokenizer.peek_next_utf8_char() {
                                 Some('>') => {
-                                    this.col += 1;
+                                    tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::Compare))
                                 }
                                 _ => Ok(TokenKind::Op(Op::LessOrEquals)),
@@ -1321,9 +1321,9 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         _ => Ok(TokenKind::Op(Op::Less)),
                     },
                     unrecognized => {
-                        this.errors.push(Error {
+                        tokenizer.errors.push(Error {
                             kind: ErrorKind::UnrecognizedCharacter(unrecognized as utf8),
-                            col: this.token_start_col,
+                            col: tokenizer.token_start_col,
                             pointers_count: 1,
                         });
                         Err(())
@@ -1335,37 +1335,37 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                 Ok(kind) => kind,
                 Err(()) => {
                     let unexpected_text =
-                        &this.code[this.token_start_col as usize..this.col as usize];
-                    this.tokens.text.push(unexpected_text);
-                    let unexpected_index = this.tokens.text.len() as TextIndex - 1;
+                        &tokenizer.code[tokenizer.token_start_col as usize..tokenizer.col as usize];
+                    tokenizer.tokens.text.push(unexpected_text);
+                    let unexpected_index = tokenizer.tokens.text.len() as TextIndex - 1;
                     TokenKind::Unexpected(unexpected_index)
                 }
             };
 
-            this.tokens.tokens.push(Token { kind, col: this.token_start_col });
+            tokenizer.tokens.tokens.push(Token { kind, col: tokenizer.token_start_col });
         }
 
-        if let Some(b'\n') = this.code.as_bytes().last() {
+        if let Some(b'\n') = tokenizer.code.as_bytes().last() {
         } else {
-            this.lines.push(Line { start: this.line_start, end: this.col });
+            tokenizer.lines.push(Line { start: tokenizer.line_start, end: tokenizer.col });
         }
 
         for bracket_index in brackets_indicies {
             // there can only be open brackets at this point
-            let bracket_token = &this.tokens.tokens[bracket_index as usize];
+            let bracket_token = &tokenizer.tokens.tokens[bracket_index as usize];
             let TokenKind::Bracket(bracket) = bracket_token.kind else {
                 unreachable!("incorrect bracket index");
             };
 
-            this.errors.push(Error {
+            tokenizer.errors.push(Error {
                 kind: ErrorKind::UnclosedBracket((bracket).into()),
                 col: bracket_token.col,
                 pointers_count: 1,
             });
         }
 
-        let result = if this.errors.is_empty() { Ok(this.tokens) } else { Err(this.errors) };
-        return TokenizedCode { result, src: SrcCode { src_file, lines: this.lines } };
+        let result = if tokenizer.errors.is_empty() { Ok(tokenizer.tokens) } else { Err(tokenizer.errors) };
+        return TokenizedCode { result, src: SrcCode { src_file, lines: tokenizer.lines } };
     }
 }
 

@@ -775,7 +775,7 @@ impl Display for SyntaxTreeDisplay<'_, '_, '_, '_> {
 }
 
 #[derive(Debug)]
-pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
+struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     src: &'src SrcCode<'code, 'path>,
     errors: Vec<Error<ErrorKind>>,
 
@@ -791,18 +791,18 @@ only parsing until the first error until a fault tolerant parser is developed,
 this is because the first truly relevant error is the first one, which in turn causes a ripple
 effect that propagates to the rest of the parsing, causing subsequent errors to be wrong
 */
-impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'code, 'path> {
+impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> SyntaxTree<'tokens, 'code, 'path> {
     pub fn parse(
         src: &'src SrcCode<'code, 'path>,
         tokens: &'tokens Tokens<'code, 'path>,
-    ) -> Result<SyntaxTree<'tokens, 'code, 'path>, Vec<Error<ErrorKind>>> {
-        let mut this = Self {
+    ) -> Result<Self, Vec<Error<ErrorKind>>> {
+        let mut parser = Parser {
             src,
             errors: Vec::new(),
             token_index: 0,
             tokens,
             loop_depth: 0,
-            syntax_tree: SyntaxTree {
+            syntax_tree: Self {
                 nodes: Vec::new(),
 
                 expressions: Vec::new(),
@@ -818,30 +818,32 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
             },
         };
 
-        while let Some(peeked) = this.peek_next_token() {
-            this.token_index = peeked.index;
+        while let Some(peeked) = parser.peek_next_token() {
+            parser.token_index = peeked.index;
 
-            let node = match this.any(peeked.token) {
+            let node = match parser.any(peeked.token) {
                 Ok(ParsedNode::Node(node)) => node,
                 Ok(ParsedNode::SemiColon) => continue,
                 Ok(ParsedNode::Scope) => continue,
                 Ok(ParsedNode::IfStatement) => continue,
                 Ok(ParsedNode::LoopStatement) => continue,
                 Err(err) => {
-                    this.errors.push(err);
+                    parser.errors.push(err);
 
                     // consuming all remaining tokens until the end of the file
-                    this.token_index = this.tokens.tokens.len() as TokenIndex;
+                    parser.token_index = parser.tokens.tokens.len() as TokenIndex;
                     break;
                 }
             };
 
-            this.syntax_tree.nodes.push(node);
+            parser.syntax_tree.nodes.push(node);
         }
 
-        return if this.errors.is_empty() { Ok(this.syntax_tree) } else { Err(this.errors) };
+        return if parser.errors.is_empty() { Ok(parser.syntax_tree) } else { Err(parser.errors) };
     }
+}
 
+impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'code, 'path> {
     fn any(&mut self, token: Token) -> Result<ParsedNode, Error<ErrorKind>> {
         return match token.kind {
             TokenKind::True
