@@ -6,7 +6,7 @@ use kaylang::{
         src_file::SrcFile,
         tokenizer::{TokenizedCode, Tokens},
     },
-    Color, Logger, Verbosity, BUILDING_AST, CHECKING, LOADING_SOURCE, SUBSTEP_DONE, TOKENIZATION,
+    Color, Logger, Verbosity, PARSING_AST, CHECKING, LOADING_SOURCE, SUBSTEP_DONE, TOKENIZATION,
 };
 use std::{path::PathBuf, process::ExitCode};
 
@@ -57,7 +57,7 @@ fn main() -> ExitCode {
     let _ast = {
         let building_ast_sub_step = Logger::new(None);
         let building_ast_result = Ast::parse(&src, &tokens);
-        building_ast_sub_step.sub_step_done_with_verbosity(&BUILDING_AST, verbosity);
+        building_ast_sub_step.sub_step_done_with_verbosity(&PARSING_AST, verbosity);
         match building_ast_result {
             Ok(ast) => ast,
             Err(errors) => {

@@ -8,7 +8,7 @@ use kaylang::{
         src_file::SrcFile,
         tokenizer::{TokenizedCode, Tokens},
     },
-    Color, Logger, ASSEMBLING, ASSEMBLING_ERROR, BUILDING_AST, CHECKING, COMPILING,
+    Color, Logger, ASSEMBLING, ASSEMBLING_ERROR, PARSING_AST, CHECKING, COMPILING,
     COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_LINKER, GENERATING_ASM, LINKING, LINKING_ERROR,
     LOADING_SOURCE, SUBSTEP_DONE, TOKENIZATION,
 };
@@ -58,7 +58,7 @@ fn main() -> ExitCode {
     let ast = {
         let building_ast_sub_step = Logger::new(None);
         let building_ast_result = Ast::parse(&src, &tokens);
-        building_ast_sub_step.sub_step_done(&BUILDING_AST);
+        building_ast_sub_step.sub_step_done(&PARSING_AST);
         match building_ast_result {
             Ok(ast) => ast,
             Err(errors) => {

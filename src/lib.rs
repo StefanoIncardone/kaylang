@@ -14,6 +14,20 @@ use std::{
     time::Instant,
 };
 
+const fn max_text_len(texts: &[&str]) -> usize {
+    let mut max_len = 0;
+    let mut text_index = 0;
+    while text_index < texts.len() {
+        let text = texts[text_index];
+        let text_len = text.len();
+        if text_len > max_len {
+            max_len = text_len;
+        }
+        text_index += 1;
+    }
+    return max_len;
+}
+
 // help and version messages
 const HELP_FG: Fg = Fg::White;
 const HELP_BG: Bg = Bg::Default;
@@ -34,7 +48,12 @@ const STEP_FG: Fg = Fg::LightGreen;
 const STEP_BG: Bg = Bg::Default;
 const STEP_FLAGS: flag = flags::Bold;
 const STEP_INDENT: usize = 0;
-const STEP_PADDING: usize = 9;
+static STEP_PADDING: usize = max_text_len(&[
+    CHECKING.text,
+    COMPILING.text,
+    RUNNING.text,
+    DONE.text
+]);
 
 #[rustfmt::skip] pub static CHECKING:  Colored<&str> = Colored { text: "Checking",  fg: STEP_FG, bg: STEP_BG, flags: STEP_FLAGS };
 #[rustfmt::skip] pub static COMPILING: Colored<&str> = Colored { text: "Compiling", fg: STEP_FG, bg: STEP_BG, flags: STEP_FLAGS };
@@ -45,17 +64,26 @@ const STEP_PADDING: usize = 9;
 const SUBSTEP_FG: Fg = Fg::LightBlue;
 const SUBSTEP_BG: Bg = Bg::Default;
 const SUBSTEP_FLAGS: flag = flags::Bold;
-const SUBSTEP_INDENT: usize = 4;
-const SUBSTEP_PADDING: usize = 20;
+const SUBSTEP_INDENT: usize = STEP_INDENT + 4;
+static SUBSTEP_PADDING: usize = max_text_len(&[
+    LOADING_SOURCE.text,
+    TOKENIZATION.text,
+    PARSING_SYNTAX_TREE.text,
+    PARSING_AST.text,
+    GENERATING_ASM.text,
+    ASSEMBLING.text,
+    LINKING.text,
+    SUBSTEP_DONE.text,
+]);
 
-#[rustfmt::skip] pub static LOADING_SOURCE:       Colored<&str> = Colored { text: "Loding Source",        fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static TOKENIZATION:         Colored<&str> = Colored { text: "Tokenizing",           fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static BUILDING_UNTYPED_AST: Colored<&str> = Colored { text: "Building Untyped Ast", fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static BUILDING_AST:         Colored<&str> = Colored { text: "Building Ast",         fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static GENERATING_ASM:       Colored<&str> = Colored { text: "Generating asm",       fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static ASSEMBLING:           Colored<&str> = Colored { text: "Assembling",           fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static LINKING:              Colored<&str> = Colored { text: "Linking",              fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static SUBSTEP_DONE:         Colored<&str> = Colored { text: "Done",                 fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static LOADING_SOURCE:      Colored<&str> = Colored { text: "Loading Source",      fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static TOKENIZATION:        Colored<&str> = Colored { text: "Tokenizing",          fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static PARSING_SYNTAX_TREE: Colored<&str> = Colored { text: "Parsing Syntax Tree", fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static PARSING_AST:         Colored<&str> = Colored { text: "Parsing Ast",         fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static GENERATING_ASM:      Colored<&str> = Colored { text: "Generating asm",      fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static ASSEMBLING:          Colored<&str> = Colored { text: "Assembling",          fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static LINKING:             Colored<&str> = Colored { text: "Linking",             fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static SUBSTEP_DONE:        Colored<&str> = Colored { text: "Done",                fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
 
 // errors
 const ERR_FG: Fg = Fg::LightRed;

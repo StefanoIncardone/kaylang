@@ -133,9 +133,13 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
     instead of `&SrcFile`
 - Renamed `color::Flags` to `color::flag`
 - Struct `color::Flag` was only used as a namespace, so its now a module named `color::flags`
+- Improved compilation stages and variables naming consistency
+- Renamed `BUILDING_UNTYPED_AST` to `PARSING_SYNTAX_TREE`
+- Renamed `BUILDING_AST` to `PARSING_AST`
 
 #### Fixed
 
+- Fixed typo in compilation steps names
 - Improved error messages related to utf8 characters
 - Optimized colored output
 
