@@ -739,7 +739,7 @@ pub struct Ast<'code> {
 }
 
 #[derive(Debug)]
-struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
+pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     src: &'src SrcCode<'code, 'path>,
     errors: Vec<Error<ErrorKind>>,
 
@@ -752,12 +752,13 @@ struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     ast: Ast<'code>,
 }
 
-impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Ast<'code> {
+impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'code, 'path> {
+    // IDEA(stefano): move into freestanding function
     pub fn parse(
         src: &'src SrcCode<'code, 'path>,
         tokens: &'tokens Tokens<'code, 'path>,
-    ) -> Result<Self, Vec<Error<ErrorKind>>> {
-        let ast = Self {
+    ) -> Result<Ast<'code>, Vec<Error<ErrorKind>>> {
+        let ast = Ast {
             nodes: vec![vec![]],
 
             ifs: Vec::new(),

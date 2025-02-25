@@ -114,11 +114,7 @@ pub struct MsgWithCauseUnderTextWithLocation<'kind, 'message, 'cause, 'src> {
     pub pointers_offset: column32,
 }
 
-/* BUG(stefano):
-improve displaying of tabs (substitute them with 4 spaces)
-
-IDEA(stefano): add feature flag for tab indent width and cli flag
-*/
+// IDEA(stefano): add cli flag to control the amount of spaces (default 4) to display when printing tabs
 impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let error_message = Colored {

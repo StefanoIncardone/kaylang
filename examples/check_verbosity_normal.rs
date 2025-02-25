@@ -2,9 +2,9 @@
 
 use kaylang::{
     front_end::{
-        ast::Ast,
+        ast::Parser,
         src_file::SrcFile,
-        tokenizer::{TokenizedCode, Tokens},
+        tokenizer::{TokenizedCode, Tokenizer},
     },
     Color, Logger, CHECKING,
 };
@@ -30,7 +30,7 @@ fn main() -> ExitCode {
     };
 
     let (src, tokens) = {
-        let TokenizedCode { result, src } = Tokens::tokenize(&src_file);
+        let TokenizedCode { result, src } = Tokenizer::tokenize(&src_file);
         match result {
             Ok(tokens) => (src, tokens),
             Err(errors) => {
@@ -42,7 +42,7 @@ fn main() -> ExitCode {
         }
     };
 
-    let _ast = match Ast::parse(&src, &tokens) {
+    let _ast = match Parser::parse(&src, &tokens) {
         Ok(ast) => ast,
         Err(errors) => {
             for error in errors {

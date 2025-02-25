@@ -93,14 +93,11 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
         - abstract syntax tree parsing
         - compilation of abstract syntax tree
     - new:
-        - loading of source code file and line boundaries precalculations
-        - tokenization
+        - loading of source code file
+        - tokenization and line boundaries calculations
         - (added) parsing of syntax tree (phantom stage, does not affect other stages for now)
         - abstract syntax tree parsing
         - compilation of abstract syntax tree
-- `tokenizer::Tokenizer` is now private and `tokenizer::Tokenizer::tokenize()` is now in
-    `tokenizer::Tokens::tokenize()`
-- `ast::Parser` is now private and `ast::Parser::parse()` is now in `ast::Ast::parse()`
 - Renamed `syntax` module to `front_end`
 - Introduced `offset32`, `line32`, `column32` and `index32` type aliases for `u32`
 - Errors related to bracket pairs now contain more descriptive `tokenizer::OpenBracket` and

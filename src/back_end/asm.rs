@@ -1,3 +1,5 @@
+// IDEA(stefano): split into nasm files and include them
+
 pub(crate) static CRASH_ASM: &str = {
     r"; fn ! = crash(msg: str @rdi:rsi, line: uint @rdx, col: uint @rcx)
 crash:

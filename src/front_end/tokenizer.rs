@@ -685,7 +685,7 @@ pub struct TokenizedCode<'code, 'path: 'code> {
 }
 
 #[derive(Debug)]
-struct Tokenizer<'code, 'path: 'code> {
+pub struct Tokenizer<'code, 'path: 'code> {
     code: &'code str,
     lines: Vec<Line>,
     line_start: offset32,
@@ -697,7 +697,8 @@ struct Tokenizer<'code, 'path: 'code> {
     errors: Vec<Error<ErrorKind<'code>>>,
 }
 
-impl<'code, 'path: 'code> Tokens<'code, 'path> {
+impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
+    // IDEA(stefano): move into freestanding function
     pub fn tokenize(src_file: &'code SrcFile<'path>) -> TokenizedCode<'code, 'path> {
         let mut tokenizer = Tokenizer {
             code: &src_file.code,

@@ -3,8 +3,6 @@
 # any file used to test language functionality
 test*.kay
 
-out
-
 # vscode settings, tasks and launch configurations
 .vscode
 

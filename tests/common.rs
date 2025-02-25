@@ -3,9 +3,9 @@
 use kaylang::{
     back_end::{artifacts::Artifacts, Compiler},
     front_end::{
-        ast::Ast,
+        ast::Parser,
         src_file::SrcFile,
-        tokenizer::{TokenizedCode, Tokens},
+        tokenizer::{TokenizedCode, Tokenizer},
     },
     Logger, ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER,
     COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, LINKING_ERROR, RUNNING,
@@ -36,7 +36,7 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
     };
 
     let (src, tokens) = {
-        let TokenizedCode { result, src } = Tokens::tokenize(&src_file);
+        let TokenizedCode { result, src } = Tokenizer::tokenize(&src_file);
         match result {
             Ok(tokens) => (src, tokens),
             Err(errors) => {
@@ -48,7 +48,7 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
         }
     };
 
-    let ast = match Ast::parse(&src, &tokens) {
+    let ast = match Parser::parse(&src, &tokens) {
         Ok(ast) => ast,
         Err(errors) => {
             for error in errors {
