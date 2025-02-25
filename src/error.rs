@@ -1,5 +1,5 @@
 use crate::{
-    color::{flags, Bg, Colored, Fg},
+    color::{AnsiFlag, ansi_flag, Bg, Colored, Fg},
     front_end::src_file::{column32, line32, offset32},
     AT, BAR, CAUSE,
 };
@@ -71,7 +71,7 @@ impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
             text: self.message.to_string(),
             fg: Fg::White,
             bg: Bg::Default,
-            flags: flags::Bold,
+            flags: AnsiFlag::Bold as ansi_flag,
         };
 
         let pointers_and_cause = Colored {
@@ -83,7 +83,7 @@ impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
             ),
             fg: Fg::LightRed,
             bg: Bg::Default,
-            flags: flags::Bold,
+            flags: AnsiFlag::Bold as ansi_flag,
         };
 
         return write!(
@@ -121,14 +121,14 @@ impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_> {
             text: self.message.to_string(),
             fg: Fg::White,
             bg: Bg::Default,
-            flags: flags::Bold,
+            flags: AnsiFlag::Bold as ansi_flag,
         };
 
         let line_number = Colored {
             text: self.line.to_string(),
             fg: Fg::LightBlue,
             bg: Bg::Default,
-            flags: flags::Bold,
+            flags: AnsiFlag::Bold as ansi_flag,
         };
 
         let line_number_padding = line_number.text.len() + 1 + BAR.text.len();
@@ -142,7 +142,7 @@ impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_> {
             ),
             fg: Fg::LightRed,
             bg: Bg::Default,
-            flags: flags::Bold,
+            flags: AnsiFlag::Bold as ansi_flag,
         };
 
         return write!(

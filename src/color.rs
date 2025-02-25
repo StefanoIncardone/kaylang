@@ -47,48 +47,43 @@ pub enum Bg {
     White = 107,
 }
 
-#[expect(
-    non_camel_case_types,
-    reason = "behaves like a primitive type, so it should be named like a primitive type"
-)]
-pub type flag = u8;
+#[expect(non_camel_case_types, reason = "alias to a primitive type")]
+pub type ansi_flag = u8;
 
-#[expect(non_upper_case_globals, reason = "used as type safe constants")]
-pub mod flags {
-    use super::flag;
-
-    pub const Default: flag = 0b0000_0000;
-    pub const Bold: flag = 0b0000_0001;
-    pub const Underline: flag = 0b0000_0010;
-    pub const NoUnderline: flag = 0b0000_0100;
-    pub const ReverseText: flag = 0b0000_1000;
-    pub const PositiveText: flag = 0b0001_0000;
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum AnsiFlag {
+    #[default]
+    Default = 0b0000_0000,
+    Bold = 0b0000_0001,
+    Underline = 0b0000_0010,
+    NoUnderline = 0b0000_0100,
+    ReverseText = 0b0000_1000,
+    PositiveText = 0b0001_0000,
 }
 
-#[expect(
-    non_camel_case_types,
-    reason = "behaves like a primitive type, so it should be named like a primitive type"
-)]
+#[expect(non_camel_case_types, reason = "alias to a primitive type")]
 pub type ansi_code = u8;
 
-#[expect(non_upper_case_globals, reason = "used as type safe constants")]
-pub mod ansi_codes {
-    use super::ansi_code;
-
-    pub const Default: ansi_code = 0;
-    pub const Bold: ansi_code = 1;
-    pub const Underline: ansi_code = 4;
-    pub const NoUnderline: ansi_code = 24;
-    pub const ReverseText: ansi_code = 7;
-    pub const PositiveText: ansi_code = 27;
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum AnsiCode {
+    #[default]
+    Default = 0,
+    Bold = 1,
+    Underline = 4,
+    NoUnderline = 24,
+    ReverseText = 7,
+    PositiveText = 27,
 }
 
+// REMOVE(stefano): make more "pure" by selecting the printing mode each time
 #[expect(non_upper_case_globals, reason = "it's a function, so it should be named like a function")]
 pub(crate) static mut print: fn(
     &str,
     Fg,
     Bg,
-    flag,
+    ansi_flag,
     &mut core::fmt::Formatter<'_>,
 ) -> core::fmt::Result = print_color;
 
@@ -109,7 +104,7 @@ fn print_no_color(
     text: &str,
     _: Fg,
     _: Bg,
-    _: flag,
+    _: ansi_flag,
     f: &mut core::fmt::Formatter<'_>,
 ) -> core::fmt::Result {
     return text.fmt(f);
@@ -119,39 +114,38 @@ fn print_color(
     text: &str,
     fg: Fg,
     bg: Bg,
-    flags: flag,
+    flags: ansi_flag,
     f: &mut core::fmt::Formatter<'_>,
 ) -> core::fmt::Result {
     const CODES_LEN: usize = 24;
 
     let mut codes_bytes = 0_u64;
-
     if fg != Fg::Default {
-        codes_bytes |= fg as ansi_code as u64;
+        codes_bytes |= fg as u64;
         codes_bytes <<= u8::BITS as u64;
     }
     if bg != Bg::Default {
-        codes_bytes |= bg as ansi_code as u64;
+        codes_bytes |= bg as u64;
         codes_bytes <<= u8::BITS as u64;
     }
-    if flags & flags::Bold != 0 {
-        codes_bytes |= ansi_codes::Bold as u64;
+    if flags & AnsiFlag::Bold as ansi_flag != 0 {
+        codes_bytes |= AnsiCode::Bold as u64;
         codes_bytes <<= u8::BITS as u64;
     }
-    if flags & flags::Underline != 0 {
-        codes_bytes |= ansi_codes::Underline as u64;
+    if flags & AnsiFlag::Underline as ansi_flag != 0 {
+        codes_bytes |= AnsiCode::Underline as u64;
         codes_bytes <<= u8::BITS as u64;
     }
-    if flags & flags::NoUnderline != 0 {
-        codes_bytes |= ansi_codes::NoUnderline as u64;
+    if flags & AnsiFlag::NoUnderline as ansi_flag != 0 {
+        codes_bytes |= AnsiCode::NoUnderline as u64;
         codes_bytes <<= u8::BITS as u64;
     }
-    if flags & flags::ReverseText != 0 {
-        codes_bytes |= ansi_codes::ReverseText as u64;
+    if flags & AnsiFlag::ReverseText as ansi_flag != 0 {
+        codes_bytes |= AnsiCode::ReverseText as u64;
         codes_bytes <<= u8::BITS as u64;
     }
-    if flags & flags::PositiveText != 0 {
-        codes_bytes |= ansi_codes::PositiveText as u64;
+    if flags & AnsiFlag::PositiveText as ansi_flag != 0 {
+        codes_bytes |= AnsiCode::PositiveText as u64;
         codes_bytes <<= u8::BITS as u64;
     }
 
@@ -160,6 +154,7 @@ fn print_color(
         return text.fmt(f);
     }
 
+    // IDEA(stefano): make into static mut
     let mut codes: [u8; CODES_LEN] = [b';'; CODES_LEN];
     let mut codes_end_pointer = codes.as_mut_ptr().wrapping_add(codes.len());
 
@@ -198,7 +193,7 @@ pub struct Colored<Text: AsRef<str>> {
     pub text: Text,
     pub fg: Fg,
     pub bg: Bg,
-    pub flags: flag,
+    pub flags: ansi_flag,
 }
 
 impl<Text: AsRef<str>> Display for Colored<Text> {

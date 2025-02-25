@@ -56,7 +56,7 @@ could introduce flags to customize individual file output directories and file n
 
 | file kind   | output directory flag        | output file path flag      |
 | :---------- | :--------------------------- | :------------------------- |
-| general     | `-o`, `--output`             |                            |
+| general     | `-o`, `--output`             | `-n`, `--name`             |
 | assembly    | `-oa`, `--output-assembly`   | `-na`, `--name-assembly`   |
 | object file | `-oo`, `--output-object`     | `-no`, `--name-object`     |
 | executable  | `-oe`, `--output-exectuable` | `-ne`, `--name-exectuable` |

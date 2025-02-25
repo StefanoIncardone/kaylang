@@ -129,7 +129,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - `artifacts::Artifacts::new()` and `artifacts::Artifacts::new_with_out_path()` now take a `&Path`
     instead of `&SrcFile`
 - Renamed `color::Flags` to `color::flag`
-- Struct `color::Flag` was only used as a namespace, so its now a module named `color::flags`
+- Struct `color::Flag` was only used as a namespace, so its now an enum named `color::AnsiFlag`
 - Improved compilation stages and variables naming consistency
 - Renamed `BUILDING_UNTYPED_AST` to `PARSING_SYNTAX_TREE`
 - Renamed `BUILDING_AST` to `PARSING_AST`

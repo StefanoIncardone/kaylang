@@ -5,7 +5,7 @@ pub mod color;
 pub mod error;
 pub mod front_end;
 
-use color::{Bg, Colored, Fg, flags, flag};
+use color::{Bg, Colored, Fg, AnsiFlag, ansi_flag};
 use core::fmt::{Display, Write as _};
 use error::MsgWithCauseUnderText;
 use front_end::src_file::column32;
@@ -31,7 +31,7 @@ const fn max_text_len(texts: &[&str]) -> usize {
 // help and version messages
 const HELP_FG: Fg = Fg::White;
 const HELP_BG: Bg = Bg::Default;
-const HELP_FLAGS: flag = flags::Bold;
+const HELP_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 
 #[rustfmt::skip] pub(crate) static VERSION:   Colored<&str> = Colored { text: env!("CARGO_PKG_VERSION"), fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
 #[rustfmt::skip] pub(crate) static USAGE:     Colored<&str> = Colored { text: "Usage",                   fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
@@ -46,7 +46,7 @@ const HELP_FLAGS: flag = flags::Bold;
 // main compilation steps (displayed when verbosity level is normal or verbose)
 const STEP_FG: Fg = Fg::LightGreen;
 const STEP_BG: Bg = Bg::Default;
-const STEP_FLAGS: flag = flags::Bold;
+const STEP_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 const STEP_INDENT: usize = 0;
 static STEP_PADDING: usize = max_text_len(&[
     CHECKING.text,
@@ -63,7 +63,7 @@ static STEP_PADDING: usize = max_text_len(&[
 // sub compilation steps (displayed when verbosity lever is verbose)
 const SUBSTEP_FG: Fg = Fg::LightBlue;
 const SUBSTEP_BG: Bg = Bg::Default;
-const SUBSTEP_FLAGS: flag = flags::Bold;
+const SUBSTEP_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 const SUBSTEP_INDENT: usize = STEP_INDENT + 4;
 static SUBSTEP_PADDING: usize = max_text_len(&[
     LOADING_SOURCE.text,
@@ -88,11 +88,11 @@ static SUBSTEP_PADDING: usize = max_text_len(&[
 // errors
 const ERR_FG: Fg = Fg::LightRed;
 const ERR_BG: Bg = Bg::Default;
-const ERR_FLAGS: flag = flags::Bold;
+const ERR_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 
 const BAR_FG: Fg = Fg::LightBlue;
 const BAR_BG: Bg = Bg::Default;
-const BAR_FLAGS: flag = flags::Bold;
+const BAR_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 
 #[rustfmt::skip] pub(crate) static ERROR: Colored<&str> = Colored { text: "Error",  fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 #[rustfmt::skip] pub(crate) static CAUSE: Colored<&str> = Colored { text: "Cause",  fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
