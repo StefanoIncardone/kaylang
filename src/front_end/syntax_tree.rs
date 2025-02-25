@@ -7,7 +7,8 @@ use super::{
     Error, ErrorDisplay, ErrorInfo, IntoErrorInfo,
 };
 use core::{fmt::Display, marker::PhantomData, num::NonZero};
-use std::borrow::Cow;
+extern crate alloc;
+use alloc::borrow::Cow;
 
 #[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
 #[rustfmt::skip]
@@ -422,16 +423,16 @@ enum ParsedNode {
 
 #[derive(Debug)]
 pub struct SyntaxTree<'tokens, 'code: 'tokens, 'path: 'code> {
-    nodes: Vec<Node>,
+    pub(crate) nodes: Vec<Node>,
 
-    expressions: Vec<Expression>,
-    array_items: Vec<Vec<ExpressionIndex>>,
-    array_commas_columns: Vec<Vec<NonZero<offset32>>>,
+    pub(crate) expressions: Vec<Expression>,
+    pub(crate) array_items: Vec<Vec<ExpressionIndex>>,
+    pub(crate) array_commas_columns: Vec<Vec<NonZero<offset32>>>,
 
-    variable_definitions: Vec<VariableDefinition>,
+    pub(crate) variable_definitions: Vec<VariableDefinition>,
 
-    ifs: Vec<If>,
-    else_ifs: Vec<Vec<ElseIf>>,
+    pub(crate) ifs: Vec<If>,
+    pub(crate) else_ifs: Vec<Vec<ElseIf>>,
 
     _tokens: PhantomData<&'tokens Tokens<'code, 'path>>,
 }

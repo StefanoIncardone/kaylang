@@ -1,3 +1,4 @@
+// TODO(stefano): move everything in this file to `error.rs`
 pub mod ast;
 pub mod src_file;
 pub mod syntax_tree;
@@ -6,7 +7,9 @@ pub mod tokenizer;
 use self::src_file::{column32, line32, offset32, DisplayPosition, SrcCode};
 use crate::{error::MsgWithCauseUnderTextWithLocation, ERROR};
 use core::fmt::{Debug, Display};
-use std::{borrow::Cow, path::Path};
+extern crate alloc;
+use alloc::borrow::Cow;
+use std::path::Path;
 
 pub trait IntoErrorInfo: Debug + Clone {
     fn info(&self) -> ErrorInfo;
@@ -85,4 +88,5 @@ impl Display for ErrorDisplay<'_, '_> {
     }
 }
 
+#[expect(clippy::missing_trait_methods, reason = "using core::error::Error default implementations")]
 impl core::error::Error for ErrorDisplay<'_, '_> {}

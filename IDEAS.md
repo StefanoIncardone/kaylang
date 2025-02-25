@@ -466,14 +466,19 @@ let ok = match answer {
 ## Operators
 
 - boolean operators:
+
     | operator | shortcircuting | non-shortcircuiting | bitwise |
     | :------- | :------------: | :-----------------: | :-----: |
     | and      |      `&&`      |        `&&&`        |   `&`   |
     | or       |     `\|\|`     |      `\|\|\|`       |  `\|`   |
     | xor      |       NA       |        `^^^`        |   `^`   |
+
 - checked (`++`, `--`, `//`, ..., or `+?`, `-?`, `/?`, ...):
     - overflow/underflow may return both the result and the overflow of the addition
     - division will return either the result or an error value
+- unchecked, skip safety checks, maybe using the '?' or the '!' suffix:
+    - `<<?`, `<<<?`, `>>>?`, or `<<!`, `>>!`, `<<<!`, `>>>!` -> skip the check for a positive 6bit shift amount
+    - `**?` or `**!` -> skip the check for a neagtive power
 - divmod:
 
     ```kay
@@ -1966,7 +1971,4 @@ let answer = $21 * 2;
 # or even this
 let _21 = 9 + 10;
 let answer = _21 * 2;
-
-# or allow for stuff like this, where a trailing underscore would indicate that this is an identifier instead of a number
-let 21_ = 9 + 10;
 ```

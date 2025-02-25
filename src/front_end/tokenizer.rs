@@ -1,13 +1,12 @@
-// TODO(stefano): multiline strings
 // TODO(stefano): more escape characters
 
 use super::{
     src_file::{index32, offset32, Line, SrcCode, SrcFile},
     Error, ErrorInfo, IntoErrorInfo,
 };
-use crate::error::CharsWidth;
+use crate::error::CharsWidth as _;
 use core::{fmt::Display, marker::PhantomData};
-use unicode_segmentation::UnicodeSegmentation;
+use unicode_segmentation::UnicodeSegmentation as _;
 
 #[expect(
     non_camel_case_types,
@@ -247,12 +246,6 @@ impl CloseBracket {
     }
 }
 
-/* IDEA(stefano):
-introduce "unchecked" operators
-skip safety checks, maybe using the '?' or the '!' suffix, i.e:
-- <<?, <<<?, >>>?, or <<!, >>!, <<<!, >>>! -> skip the check for a positive 6bit shift amount
-- **? -> skip the check for a neagtive index
-*/
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Op {
@@ -685,6 +678,7 @@ pub struct Tokens<'code, 'path: 'code> {
     _src: PhantomData<&'code SrcFile<'path>>,
 }
 
+#[must_use = "this is similar to a `Result`, which should be handled"]
 pub struct TokenizedCode<'code, 'path: 'code> {
     pub result: Result<Tokens<'code, 'path>, Vec<Error<ErrorKind<'code>>>>,
     pub src: SrcCode<'code, 'path>,
@@ -704,7 +698,6 @@ struct Tokenizer<'code, 'path: 'code> {
 }
 
 impl<'code, 'path: 'code> Tokens<'code, 'path> {
-    #[must_use]
     pub fn tokenize(src_file: &'code SrcFile<'path>) -> TokenizedCode<'code, 'path> {
         let mut tokenizer = Tokenizer {
             code: &src_file.code,

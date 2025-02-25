@@ -1,7 +1,7 @@
 use crate::{error::MsgWithCause, ERROR};
 use core::fmt::Display;
-use std::{fs::File, io::Read, path::Path};
-use unicode_width::UnicodeWidthChar;
+use std::{fs::File, io::Read as _, path::Path};
+use unicode_width::UnicodeWidthChar as _;
 
 #[expect(
     non_camel_case_types,
@@ -58,7 +58,7 @@ pub struct SrcFile<'path> {
 }
 
 impl<'path> SrcFile<'path> {
-    pub fn load(path: &'path Path) -> Result<Self, Error<'_>> {
+    pub fn load(path: &'path Path) -> Result<Self, Error<'path>> {
         let mut file = match File::open(path) {
             Ok(file) => file,
             Err(err) => return Err(Error { path, kind: ErrorKind::Io(err) }),
@@ -205,4 +205,5 @@ impl Display for Error<'_> {
     }
 }
 
+#[expect(clippy::missing_trait_methods, reason = "using core::error::Error default implementations")]
 impl core::error::Error for Error<'_> {}

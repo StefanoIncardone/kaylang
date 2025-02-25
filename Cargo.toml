@@ -87,7 +87,7 @@ exhaustive_enums = "allow"
 exhaustive_structs = "allow"
 
 blanket_clippy_restriction_lints = "allow"
-std_instead_of_alloc = "allow"
+std_instead_of_alloc = "warn"
 field_scoped_visibility_modifiers = "allow" # too much OOP
 missing_inline_in_public_items = "allow" # not all functions should be inlined
 inline_always = "allow" # do as i say please
@@ -95,9 +95,10 @@ needless_raw_strings = "allow" # raw strings preserve leading spaces while regul
 min_ident_chars = "allow" # mainly used for formatters parameters in Display implementation from autocomplete
 pattern_type_mismatch = "allow" # mainly used when matching on &self (i.e: "match self" vs "match *self")
 error_impl_error = "allow"
-missing_trait_methods = "allow"
+missing_trait_methods = "warn"
 missing_docs_in_private_items = "allow"
 integer_division_remainder_used = "allow" # would be relevant in cryptographic contexts
+integer_division = "allow"
 indexing_slicing = "allow" # may consider safer options
 string_slice = "allow" # how else would i take a string slice?
 from_over_into = "allow" # i found that implementing the From trait and hoping for a correct Into implementation to be unreliable
@@ -117,6 +118,7 @@ redundant_pattern_matching = "allow" # i hate inconsistencies in ifs and matches
 large_stack_frames = "warn"
 zero_prefixed_literal = "allow"
 no_effect_underscore_binding = "warn"
+len_without_is_empty = "allow"
 
 # doesn't solve the problem, i.e.:
 # ```rust
@@ -135,3 +137,6 @@ manual_map = "allow"
 manual_unwrap_or = "allow"
 manual_let_else = "warn"
 equatable_if_let = "allow"
+comparison_chain = "allow"
+checked_conversions = "allow"
+needless_range_loop = "allow"

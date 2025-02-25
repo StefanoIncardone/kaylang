@@ -14,7 +14,7 @@ use crate::{
     front_end::{
         ast::{
             self, AssignmentOp, Ast, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression,
-            IfStatement, Node, ScopeIndex, SizeOf, Type, TypeOf, UnaryOp,
+            IfStatement, Node, ScopeIndex, SizeOf as _, Type, TypeOf as _, UnaryOp,
         },
         src_file::{offset32, Position, SrcCode},
         tokenizer::{ascii, uint},
@@ -22,10 +22,11 @@ use crate::{
     ERROR,
 };
 use core::fmt::{Display, Write as _};
+extern crate alloc;
+use alloc::borrow::Cow;
 use std::{
-    borrow::Cow,
     fs::File,
-    io::{BufWriter, Write},
+    io::{BufWriter, Write as _},
     path::PathBuf,
 };
 
@@ -371,7 +372,8 @@ section .data
             src_path = src.path().display(),
         );
 
-        // IDEA(stefano): remove this creation and let the user pass in the file instead
+        // IDEA(stefano: provide a cli flag to just print the compiled source code
+        // REMOVE(stefano): remove this file and return the program to write instead
         let asm_file = match File::create(&artifacts.asm_path) {
             Ok(file) => file,
             Err(err) => {
@@ -379,7 +381,7 @@ section .data
             }
         };
 
-        // IDEA(stefano): remove this writer and return the program to write instead
+        // REMOVE(stefano): remove this writer and return the program to write instead
         let mut asm_writer = BufWriter::new(asm_file);
         if let Err(err) = asm_writer.write_all(program.as_bytes()) {
             return Err(Error::WritingAssemblyFailed { err });
@@ -3030,4 +3032,5 @@ impl Display for Error {
     }
 }
 
+#[expect(clippy::missing_trait_methods, reason = "using core::error::Error default implementations")]
 impl core::error::Error for Error {}

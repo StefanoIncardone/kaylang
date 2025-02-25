@@ -60,6 +60,7 @@ impl Artifacts {
             .arg("-gdwarf")
             .arg("-Werror")
             .arg("-Wall")
+            .arg("-W-error=reloc")
             .arg(self.asm_path.as_os_str())
             .arg("-o")
             .arg(self.obj_path.as_os_str());
@@ -100,4 +101,5 @@ impl Display for Error {
     }
 }
 
+#[expect(clippy::missing_trait_methods, reason = "using core::error::Error default implementations")]
 impl core::error::Error for Error {}

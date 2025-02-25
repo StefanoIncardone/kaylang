@@ -6,7 +6,7 @@ use crate::{
 use core::fmt::Display;
 use std::path::Path;
 
-use unicode_width::UnicodeWidthChar;
+use unicode_width::UnicodeWidthChar as _;
 
 pub(crate) trait CharsWidth {
     fn chars_width(&self) -> offset32;

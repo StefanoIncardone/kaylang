@@ -437,13 +437,11 @@ impl TryFrom<Vec<String>> for Args {
                 "auto" => Color::Auto,
                 "always" => Color::Always,
                 "never" => Color::Never,
-                _ => {
-                    return Err(Error::FromArgs {
-                        kind: ErrorKind::UnrecognizedColorMode,
-                        args,
-                        erroneous_arg_index: selected_color_index,
-                    })
-                }
+                _ => return Err(Error::FromArgs {
+                    kind: ErrorKind::UnrecognizedColorMode,
+                    args,
+                    erroneous_arg_index: selected_color_index,
+                }),
             };
 
             let selected_color_mode = ColorMode { flag, color };
@@ -470,6 +468,7 @@ impl TryFrom<Vec<String>> for Args {
 
         let mut command_option: Option<(CommandFlag, Command)> = None;
 
+        // IDEA(stefano): make help and version commands only behave as commands when placed as the first argument
         let mut other_args = args_iter.clone().peekable();
         while let Some((selected_flag_index, selected_flag)) = other_args.next() {
             match selected_flag.as_str() {
@@ -920,4 +919,5 @@ impl Display for Error {
     }
 }
 
+#[expect(clippy::missing_trait_methods, reason = "using core::error::Error default implementations")]
 impl core::error::Error for Error {}
