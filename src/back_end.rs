@@ -8,29 +8,18 @@ pub mod artifacts;
 mod asm;
 mod reg;
 
-use self::{artifacts::Artifacts, reg::Reg64};
-use crate::{
-    error::MsgWithCause,
-    front_end::{
-        ast::{
-            self, AssignmentOp, Ast, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression,
-            IfStatement, Node, ScopeIndex, SizeOf as _, Type, TypeOf as _, UnaryOp,
-        },
-        src_file::{offset32, Position, SrcCode},
-        tokenizer::{ascii, uint},
+use self::reg::Reg64::{self, Rcx, Rdi, Rdx, Rsi};
+use crate::front_end::{
+    ast::{
+        self, AssignmentOp, Ast, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression,
+        IfStatement, Node, ScopeIndex, SizeOf as _, Type, TypeOf as _, UnaryOp,
     },
-    ERROR,
+    src_file::{offset32, Position, SrcCode},
+    tokenizer::{ascii, uint},
 };
 use core::fmt::{Display, Write as _};
 extern crate alloc;
 use alloc::borrow::Cow;
-use std::{
-    fs::File,
-    io::{BufWriter, Write as _},
-    path::PathBuf,
-};
-
-use self::reg::Reg64::{Rcx, Rdi, Rdx, Rsi};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Dst {
@@ -93,11 +82,8 @@ pub struct Compiler<'ast, 'src: 'ast, 'path: 'src, 'code: 'src> {
 
 // Generation of compilation artifacts (.asm, .o, executable)
 impl<'ast, 'src: 'ast, 'path: 'src, 'code: 'src> Compiler<'ast, 'src, 'path, 'code> {
-    pub fn compile(
-        src: &'src SrcCode<'code, 'path>,
-        ast: &'ast Ast<'code>,
-        artifacts: &Artifacts,
-    ) -> Result<(), Error> {
+    #[must_use]
+    pub fn compile(src: &'src SrcCode<'code, 'path>, ast: &'ast Ast<'code>) -> String {
         use asm::{
             ASCII_ARRAY_DEBUG_EPRINT_ASM, ASCII_ARRAY_DEBUG_PRINT_ASM, ASCII_EPRINT_ASM,
             ASCII_PRINT_ASM, ASSERT_ARRAY_INDEX_IN_RANGE_ASM, ASSERT_STR_INDEX_IN_RANGE_ASM,
@@ -372,26 +358,7 @@ section .data
             src_path = src.path().display(),
         );
 
-        // IDEA(stefano: provide a cli flag to just print the compiled source code
-        // REMOVE(stefano): remove this file and return the program to write instead
-        let asm_file = match File::create(&artifacts.asm_path) {
-            Ok(file) => file,
-            Err(err) => {
-                return Err(Error::CouldNotCreateFile { path: artifacts.asm_path.clone(), err });
-            }
-        };
-
-        // REMOVE(stefano): remove this writer and return the program to write instead
-        let mut asm_writer = BufWriter::new(asm_file);
-        if let Err(err) = asm_writer.write_all(program.as_bytes()) {
-            return Err(Error::WritingAssemblyFailed { err });
-        }
-
-        if let Err(err) = asm_writer.flush() {
-            return Err(Error::WritingAssemblyFailed { err });
-        }
-
-        return Ok(());
+        return program;
     }
 }
 
@@ -3005,32 +2972,3 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
         }
     }
 }
-
-#[derive(Debug)]
-pub enum Error {
-    CouldNotCreateFile { path: PathBuf, err: std::io::Error },
-    WritingAssemblyFailed { err: std::io::Error },
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let mut message = String::new();
-        let mut cause = String::new();
-        match self {
-            Self::CouldNotCreateFile { path, err } => {
-                _ = write!(message, "could not create file '{}'", path.display());
-                _ = write!(cause, "{err} ({})", err.kind());
-            }
-            Self::WritingAssemblyFailed { err } => {
-                _ = write!(message, "writing to assembly file failed");
-                _ = write!(cause, "{err} ({})", err.kind());
-            }
-        };
-
-        let error = MsgWithCause { kind: &ERROR, message: &message, cause: &cause };
-        return write!(f, "{error}");
-    }
-}
-
-#[expect(clippy::missing_trait_methods, reason = "using core::error::Error default implementations")]
-impl core::error::Error for Error {}

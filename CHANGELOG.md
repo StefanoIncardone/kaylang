@@ -100,6 +100,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
         - (added) parsing of syntax tree (phantom stage, does not affect other stages for now)
         - abstract syntax tree parsing
         - compilation of abstract syntax tree
+        - return the compiled code
 - Renamed `syntax` module to `front_end`
 - Introduced `offset32`, `line32`, `column32` and `index32` type aliases for `u32`
 - Errors related to bracket pairs now contain more descriptive `tokenizer::OpenBracket` and
@@ -114,20 +115,19 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
     - new `src_file::DisplayPosition` information about the source code position and
         display position
 - Split `src_file::SrcFile` into:
-    - `src_file::SrcFile` -> the path and the source code
-    - `src_file::SrcCode` -> contains `src_file::SrcFile` and `Vec<Line>`
+    - `src_file::SrcFile`: the path and the source code
+    - `src_file::SrcCode`: contains `src_file::SrcFile` and `Vec<Line>`
 - `src_file::SrcFile::load()` now only reads the contents of the source code without calculating line
     bounds
-- `tokenizer::Tokens::tokenize()` now takes the revised `src_file::SrcFile` and returns the new
-    `tokenizer::TokenizedCode` struct, containing:
-    - `tokenizer::Tokens` struct, which is an optimized memory layout representation of
-        `tokenizer::Token`
-    - the calculated `src_file::lines`
+- `tokenizer::Tokens::tokenize()` now takes `src_file::SrcFile` and returns the new
+    `tokenizer::TokenizedCode` struct
 - Renamed `error::MsgWithCauseUnderTextWithLocation::source_code_col` to
     `error::MsgWithCauseUnderTextWithLocation::absolute_column`
 - Reordered and changed `error::MsgWithCauseUnderText::pointers_count` and
     `error::MsgWithCauseUnderText::pointers_offset` from `usize` to `column32`
 - Renamed `compiler` module to `back_end`
+- `back_end::Compiler::compile()` no longer immediately writes the compiled code, it now returns the
+    compiled code as a `String`
 - `artifacts::Artifacts::new()` and `artifacts::Artifacts::new_with_out_path()` now take a `&Path`
     instead of `&SrcFile`
 - Renamed `color::Flags` to `color::flag`

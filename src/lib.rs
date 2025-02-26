@@ -99,11 +99,13 @@ const BAR_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 #[rustfmt::skip] pub(crate) static AT:    Colored<&str> = Colored { text: "at",     fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 #[rustfmt::skip] pub(crate) static BAR:   Colored<&str> = Colored { text: "|",      fg: BAR_FG, bg: BAR_BG, flags: BAR_FLAGS };
 
-#[rustfmt::skip] pub static COULD_NOT_RUN_ASSEMBLER:  Colored<&str> = Colored { text: "Could not run assembler",  fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
-#[rustfmt::skip] pub static COULD_NOT_RUN_LINKER:     Colored<&str> = Colored { text: "Could not run linker",     fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
-#[rustfmt::skip] pub static COULD_NOT_RUN_EXECUTABLE: Colored<&str> = Colored { text: "Could not run executable", fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
-#[rustfmt::skip] pub static ASSEMBLING_ERROR:         Colored<&str> = Colored { text: "Assembling Error",         fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
-#[rustfmt::skip] pub static LINKING_ERROR:            Colored<&str> = Colored { text: "Linking Error",            fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
+// REMOVE(stefano): they should not be part of the library, as they should be provided by the users of the compiler
+#[rustfmt::skip] pub static COULD_NOT_WRITE_COMPILED_CODE: Colored<&str> = Colored { text: "Could not write compile code", fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
+#[rustfmt::skip] pub static COULD_NOT_RUN_ASSEMBLER:       Colored<&str> = Colored { text: "Could not run assembler",      fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
+#[rustfmt::skip] pub static COULD_NOT_RUN_LINKER:          Colored<&str> = Colored { text: "Could not run linker",         fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
+#[rustfmt::skip] pub static COULD_NOT_RUN_EXECUTABLE:      Colored<&str> = Colored { text: "Could not run executable",     fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
+#[rustfmt::skip] pub static ASSEMBLING_ERROR:              Colored<&str> = Colored { text: "Assembling Error",             fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
+#[rustfmt::skip] pub static LINKING_ERROR:                 Colored<&str> = Colored { text: "Linking Error",                fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 
 #[derive(Debug)]
 pub struct Logger<'path> {

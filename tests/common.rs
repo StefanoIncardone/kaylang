@@ -1,14 +1,11 @@
 #![allow(clippy::print_stdout, clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
-    back_end::{artifacts::Artifacts, Compiler},
-    front_end::{
+    back_end::{artifacts::Artifacts, Compiler}, front_end::{
         ast::Parser,
         src_file::SrcFile,
         tokenizer::{TokenizedCode, Tokenizer},
-    },
-    Logger, ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER,
-    COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, LINKING_ERROR, RUNNING,
+    }, Logger, ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, LINKING_ERROR, RUNNING
 };
 use std::{
     path::{Path, PathBuf},
@@ -68,13 +65,11 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
         }
     };
 
-    let _compiler_result: () = match Compiler::compile(&src, &ast, &artifacts) {
-        Ok(()) => (),
-        Err(err) => {
-            eprintln!("{err}");
-            return Err(ExitCode::FAILURE);
-        }
-    };
+    let compiled_code = Compiler::compile(&src, &ast);
+    if let Err(err) = std::fs::write(&artifacts.asm_path, compiled_code) {
+        eprintln!("{COULD_NOT_WRITE_COMPILED_CODE}: {err}");
+        return Err(ExitCode::FAILURE);
+    }
 
     let _assembler_status: () = match artifacts.assembler().output() {
         Ok(output) => {
