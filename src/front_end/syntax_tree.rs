@@ -616,9 +616,9 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
         return match expression {
             Expression::False { column } => writeln!(f, "{:>indent$}False: {column} = false", ""),
             Expression::True { column } => writeln!(f, "{:>indent$}True: {column} = true", ""),
-            Expression::Integer { base, literal, column } => {
+            Expression::Integer { base: _base, literal, column } => {
                 let literal_str = self.tokens.text[*literal as usize];
-                writeln!(f, "{:>indent$}Integer: {column} = {prefix}{literal_str}", "", prefix = base.prefix())
+                writeln!(f, "{:>indent$}Integer: {column} = {literal_str}", "")
             }
             Expression::Ascii { character, column } => {
                 let character_escaped = character.escape_ascii();

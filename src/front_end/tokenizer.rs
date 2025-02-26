@@ -68,44 +68,7 @@ impl Base {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum MissingDigitsBase {
-    Binary = Base::Binary as u8,
-    Octal = Base::Octal as u8,
-    Hexadecimal = Base::Hexadecimal as u8,
-}
-
-impl Into<MissingDigitsBase> for Base {
-    #[inline(always)]
-    fn into(self) -> MissingDigitsBase {
-        return unsafe { core::mem::transmute(self) };
-    }
-}
-
-impl Into<Base> for MissingDigitsBase {
-    #[inline(always)]
-    fn into(self) -> Base {
-        return unsafe { core::mem::transmute(self) };
-    }
-}
-
-impl MissingDigitsBase {
-    #[must_use]
-    #[inline(always)]
-    pub fn prefix(self) -> &'static str {
-        let base: Base = self.into();
-        return base.prefix();
-    }
-
-    #[must_use]
-    #[inline(always)]
-    pub fn range(self) -> &'static [core::ops::RangeInclusive<utf8>] {
-        let base: Base = self.into();
-        return base.range();
-    }
-}
-
+// REMOVE(stefano): too much abstraction
 #[derive(Debug, Clone)]
 #[repr(transparent)]
 pub(crate) struct Str(pub(crate) Box<[ascii]>);
@@ -1339,6 +1302,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
             tokenizer.tokens.tokens.push(Token { kind, col: tokenizer.token_start_col });
         }
 
+        // TODO(stefano): handle \r\n
         if let Some(b'\n') = tokenizer.code.as_bytes().last() {
         } else {
             tokenizer.lines.push(Line { start: tokenizer.line_start, end: tokenizer.col });
@@ -1404,7 +1368,7 @@ impl<'code> Tokenizer<'code, '_> {
                 }
 
                 self.col += 1;
-                return Some('\r');
+                Some('\r')
             }
             ascii_ch @ 0..=b'\x7F' => {
                 self.col += 1;
@@ -1477,6 +1441,7 @@ impl<'code> Tokenizer<'code, '_> {
 
 impl<'code> Tokenizer<'code, '_> {
     fn identifier(&mut self) -> Result<TokenKind, ()> {
+        // NOTE(stefano): why 63 and not 64?
         const MAX_IDENTIFIER_LEN: offset32 = 63;
         let previous_errors_len = self.errors.len();
 
@@ -1613,18 +1578,8 @@ impl<'code> Tokenizer<'code, '_> {
             return Err(());
         }
 
-        // starting at self.token_start_col + 2 to account for the 0b prefix
-        let digits = &self.code[self.token_start_col as usize + 2..self.col as usize];
-        return if digits.is_empty() {
-            self.errors.push(Error {
-                kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Binary),
-                col: self.token_start_col,
-                pointers_count: self.token_text().chars_width(),
-            });
-            Err(())
-        } else {
-            Ok(digits.as_bytes())
-        };
+        let digits = &self.code[self.token_start_col as usize..self.col as usize];
+        return Ok(digits.as_bytes());
     }
 
     fn integer_octal(&mut self) -> Result<&'code [ascii], ()> {
@@ -1667,18 +1622,8 @@ impl<'code> Tokenizer<'code, '_> {
             return Err(());
         }
 
-        // starting at self.token_start_col + 2 to account for the 0o prefix
-        let digits = &self.code[self.token_start_col as usize + 2..self.col as usize];
-        return if digits.is_empty() {
-            self.errors.push(Error {
-                kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Octal),
-                col: self.token_start_col,
-                pointers_count: self.token_text().chars_width(),
-            });
-            Err(())
-        } else {
-            Ok(digits.as_bytes())
-        };
+        let digits = &self.code[self.token_start_col as usize..self.col as usize];
+        return Ok(digits.as_bytes());
     }
 
     fn integer_hexadecimal(&mut self) -> Result<&'code [ascii], ()> {
@@ -1716,18 +1661,8 @@ impl<'code> Tokenizer<'code, '_> {
             return Err(());
         }
 
-        // starting at self.token_start_col + 2 to account for the 0x prefix
-        let digits = &self.code[self.token_start_col as usize + 2..self.col as usize];
-        return if digits.is_empty() {
-            self.errors.push(Error {
-                kind: ErrorKind::EmptyNumberLiteral(MissingDigitsBase::Hexadecimal),
-                col: self.token_start_col,
-                pointers_count: self.token_text().chars_width(),
-            });
-            Err(())
-        } else {
-            Ok(digits.as_bytes())
-        };
+        let digits = &self.code[self.token_start_col as usize..self.col as usize];
+        return Ok(digits.as_bytes());
     }
 
     fn raw_string_literal(&mut self) -> Result<Vec<ascii>, ()> {
@@ -1938,7 +1873,6 @@ pub enum ErrorKind<'code> {
     Utf8InNumberLiteral { grapheme: &'code str },
     LetterInNumberLiteral(Base, ascii),
     DigitOutOfRangeInNumberLiteral(Base, ascii),
-    EmptyNumberLiteral(MissingDigitsBase),
 
     Utf8InIdentifier { grapheme: &'code str },
     IdentifierTooLong { max: offset32 },
@@ -2004,10 +1938,6 @@ impl IntoErrorInfo for ErrorKind<'_> {
             Self::DigitOutOfRangeInNumberLiteral(base, digit) => (
                 format!("invalid integer literal digit '{}'", *digit as utf8).into(),
                 format!("out of the valid range for a base {} number {:?}", *base as u8, base.range()).into(),
-            ),
-            Self::EmptyNumberLiteral(base) => (
-                "invalid integer literal".into(),
-                format!("at leasts one base {} digt must be present {:?}", *base as u8, base.range()).into(),
             ),
 
             Self::Utf8InIdentifier { grapheme } => (

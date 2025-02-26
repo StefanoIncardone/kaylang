@@ -1330,6 +1330,7 @@ impl Parser<'_, '_, '_, '_> {
     }
 }
 
+// IDEA(stefano): remove and specialize on the ErrorKind instead
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParseIntError {
     Overflow,
@@ -1435,7 +1436,6 @@ impl Parser<'_, '_, '_, '_> {
     fn primary_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         fn parse_positive_int(base: Base, literal: &[ascii]) -> Result<int, ParseIntError> {
             let mut integer: int = 0;
-
             match base {
                 Base::Decimal => {
                     for ascii_digit in literal {
@@ -1457,7 +1457,11 @@ impl Parser<'_, '_, '_, '_> {
                     }
                 }
                 Base::Binary => {
-                    for ascii_digit in literal {
+                    let mut digits = literal.iter();
+                    let _leading_zero = digits.next();
+                    let _base = digits.next();
+
+                    for ascii_digit in digits {
                         if *ascii_digit == b'_' {
                             continue;
                         }
@@ -1476,7 +1480,11 @@ impl Parser<'_, '_, '_, '_> {
                     }
                 }
                 Base::Octal => {
-                    for ascii_digit in literal {
+                    let mut digits = literal.iter();
+                    let _leading_zero = digits.next();
+                    let _base = digits.next();
+
+                    for ascii_digit in digits {
                         if *ascii_digit == b'_' {
                             continue;
                         }
@@ -1495,7 +1503,11 @@ impl Parser<'_, '_, '_, '_> {
                     }
                 }
                 Base::Hexadecimal => {
-                    for ascii_digit in literal {
+                    let mut digits = literal.iter();
+                    let _leading_zero = digits.next();
+                    let _base = digits.next();
+
+                    for ascii_digit in digits {
                         if *ascii_digit == b'_' {
                             continue;
                         }
@@ -1524,7 +1536,6 @@ impl Parser<'_, '_, '_, '_> {
 
         fn parse_negative_int(base: Base, literal: &[ascii]) -> Result<int, ParseIntError> {
             let mut integer: int = 0;
-
             match base {
                 Base::Decimal => {
                     for ascii_digit in literal {
@@ -1546,7 +1557,11 @@ impl Parser<'_, '_, '_, '_> {
                     }
                 }
                 Base::Binary => {
-                    for ascii_digit in literal {
+                    let mut digits = literal.iter();
+                    let _leading_zero = digits.next();
+                    let _base = digits.next();
+
+                    for ascii_digit in digits {
                         if *ascii_digit == b'_' {
                             continue;
                         }
@@ -1565,7 +1580,11 @@ impl Parser<'_, '_, '_, '_> {
                     }
                 }
                 Base::Octal => {
-                    for ascii_digit in literal {
+                    let mut digits = literal.iter();
+                    let _leading_zero = digits.next();
+                    let _base = digits.next();
+
+                    for ascii_digit in digits {
                         if *ascii_digit == b'_' {
                             continue;
                         }
@@ -1584,7 +1603,11 @@ impl Parser<'_, '_, '_, '_> {
                     }
                 }
                 Base::Hexadecimal => {
-                    for ascii_digit in literal {
+                    let mut digits = literal.iter();
+                    let _leading_zero = digits.next();
+                    let _base = digits.next();
+
+                    for ascii_digit in digits {
                         if *ascii_digit == b'_' {
                             continue;
                         }

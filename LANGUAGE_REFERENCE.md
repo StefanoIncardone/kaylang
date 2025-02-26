@@ -79,7 +79,7 @@ and hexadecimal, with the appropriate prefixes:
 | hexadecimal       | 16   | 0..=9, A..=F or a..=f | `0x`   | `0xc` or `0xC` |
 
 >[!NOTE]
-> empty numbers in bases other than decimal are not allowed, i.e. `0b`, `0o` and `0x`
+> empty numbers in bases other than decimal, i.e. `0b`, `0o` and `0x`, are all equal to `0`
 
 ## Booleans
 
