@@ -3,6 +3,51 @@
 >[!WARNING]
 > no feature is final, modifications can happen at any moment
 
+## explicit loop continue/break block
+
+Allow for a loop to specify what should happen when using `continue` and `break`:
+
+```kay
+var i = 0;
+loop i < 10 {
+    continue { i += 1; }
+    break { println "done"; }
+
+    if i & 1 == 0 {
+        continue; # goes inside the continue block previously declared
+    } else if i == 3 {
+        break; # goes inside the break block previously declared
+    }
+    # each block except the first will start executing from the continue block
+}
+
+# or
+loop i < 10
+continue { i += 1; }
+break { println "done"; } {
+    if i & 1 == 0 {
+        continue; # goes inside the continue block previously declared
+    } else if i == 3 {
+        break; # goes inside the break block previously declared
+    }
+    # each block except the first will start executing from the continue block
+}
+
+# or
+loop i < 10 {
+    if i & 1 == 0 {
+        continue; # goes inside the continue block previously declared
+    } else if i == 3 {
+        break; # goes inside the break block previously declared
+    }
+    # each block except the first will start executing from the continue block
+} continue {
+    i += 1;
+} break {
+    println "done";
+}
+```
+
 ## Expressions formatting
 
 emit a warning for ambiguos use of unary/binary operators, i.e.:
