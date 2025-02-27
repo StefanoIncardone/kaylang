@@ -603,43 +603,40 @@ let x = 'label: {
 }
 ```
 
-## Strings
+## String and character literals
 
-- immutable strings are surrounded by `"`: `"hello world"`
-- mutable strings (like string builders) are surrounded by `` ` ``: `` `hello world` ``
-    - seamlees way to convert from one string type to another
-- multiline strings are prefixed by a `m`, or by multiple quotes like in Java:
-    - multiline strings may follow C-style string concatenation
-    - lines will have newline characters appended to them unless they end in a `\`, which can be escaped using a `\\`
-    - whitespace will be preserved (except before the closing quote) and leading whitespace is calculated based on the
-        position of the closing quote, or by the text furthest to the left
-- formatted strings are prefixed by a `f`: `f"the answer is {40 + 2}"`
+- multiline strings are prefixed by a `m`:
+- may follow C-style string concatenation
+- lines will have newline characters appended to them unless they end in a `\`, which can be escaped using a `\\`
+- like in Java, whitespace will be preserved (except before the closing quote) and leading whitespace is calculated based on the
+    position of the closing quote, or by the text furthest to the left
 - options can appear in any order right before the opening quote, but only once:
-    - `frm"`, `fr"`, `rm"` are valid
-    - `frrm`, `ff "`, `r "` are not valid
-- ascii/utf strings and chars (need to decide on proper names):
+    - `frm""`, `fr""`, `rm""` are valid
+    - `frrm"`, `ff ""`, `r ""` are not valid
 
-    | type name  | type    | type size (bytes) | example  | notes                                 |
-    | :--------- | :------ | :---------------- | :------- | :------------------------------------ |
-    | ascii char | `ascii` | 1                 | `'h'`    | guaranteed to be valid ascii and utf8 |
-    | utf8 char  | `utf8`  | 4                 | `u8'è'`  | guaranteed to be valid utf8           |
-    | utf16 char | `utf16` | 4                 | `u16'è'` | guaranteed to be valid utf16          |
-    | utf32 char | `utf32` | 4                 | `u32'è'` | guaranteed to be valid utf32          |
+### Character types
 
-    | type name    | type       | pointer type | type size (bytes)              | example      | notes                                 |
-    | :----------- | :--------- | :----------- | :----------------------------- | :----------- | :------------------------------------ |
-    | ascii string | `str`      | ascii\*      | 1 \* len                       | `"hello"`    | guaranteed to be valid ascii and utf8 |
-    | utf8 string  | `utf8str`  | utf8\*       | 1 to 4 \* len (in code points) | `u8"hellò"`  | guaranteed to be valid utf8           |
-    | utf16 string | `utf16str` | utf16\*      | 2 or 4 \* len (in code points) | `u16"hellò"` | guaranteed to be valid utf16          |
-    | utf32 string | `utf32str` | utf32\*      | 4 \* len                       | `u32"hellò"` | guaranteed to be valid utf32          |
+| type name  | type    | type size (bytes) | example  | notes                                 |
+| :--------- | :------ | :---------------- | :------- | :------------------------------------ |
+| ascii char | `ascii` | 1                 | `'h'`    | guaranteed to be valid ascii and utf8 |
+| utf32 char | `utf32` | 4                 | `u32'è'` | guaranteed to be valid utf32          |
+
+### String types
+
+| type name    | type                                  | pointer type       | size per character/code point | example      | notes                                 |
+| :----------- | :------------------------------------ | :----------------- | :---------------------------- | :----------- | :------------------------------------ |
+| ascii string | `str`                                 | `ascii*`           | 1 \* len                      | `"hello"`    | guaranteed to be valid ascii and utf8 |
+| utf8 string  | `utf8str` or `u8str` or `str_utf8`    | `u8*` or `utf8*`   | 1 to 4 \* len                 | `u8"hellò"`  | guaranteed to be valid utf8           |
+| utf16 string | `utf16str` or `u16str` or `str_utf16` | `u16*` or `utf16*` | 2 or 4 \* len                 | `u16"hellò"` | guaranteed to be valid utf16          |
+| utf32 string | `utf32str` or `str_utf32`             | `utf32*`           | 4 \* len                      | `u32"hellò"` | guaranteed to be valid utf32          |
 
 - utf8str/utf16str indexing, since characters might be more than one byte long, indexing doesn't
     work, i.e. `string[12]` might land in the middle of a multibyte character, so we could introduce
     rounding indexing (syntax subject to discussion):
     - ceil indexing: `string[+:12]` or `string.at_or_next(12)`, would mean that if the index lands on a non starting byte, it
-        would find the next character and return that
+        would find the next character and return that or `none` if out of bounds
     - floor indexing: `string[-:12]` or `string.at_or_previous(12)`, would mean that if the index lands on a non starting byte, it
-        would find the previous character and return that
+        would find the previous character and return that or `none` if out of bounds
     - checked indexing: `string[?:12]` or `string.at_or_none(12)`, would mean that if the index lands on a non starting byte, it
         would return a `none` value, else the value of the character
     - unchecked indexing: `string[!:12]` or `string.at_byte(12)`, would just return the byte at index 12
@@ -1973,6 +1970,9 @@ let this is not a valid variable name = "some value";
 # new syntax, repurposing single quotes
 let 'this is not a valid variable name' = c"s"; # character literals would become this, or something else
 
+# or using back ticks
+let `this is not a valid variable name` = "s";
+
 # or like this, where the i string modifier would mean "identifier"
 let i"this is not a valid variable name" = "some value";
 
@@ -1981,39 +1981,4 @@ let i"let" = "let";
 
 # or for this
 let i"2" = 2;
-```
-
-debate over usefulness and syntax:
-
-```kay
-# this
-let i"this is not a valid variable name" = "some value";
-
-# could be just this
-let this_is_not_a_valid_variable_name = "some value";
-
-# while this
-let i"let" = "let";
-
-# or this (or with some other symbol)
-let $let = "let";
-
-# could be just this
-let lett = "let";
-
-# or simply this
-let _let = "let";
-
-
-# while this
-let i"21" = 9 + 10; # complex calculation might be done here
-let answer = i"21" * 2;
-
-# could become this
-let $21 = 9 + 10;
-let answer = $21 * 2;
-
-# or even this
-let _21 = 9 + 10;
-let answer = _21 * 2;
 ```
