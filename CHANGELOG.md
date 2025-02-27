@@ -1,6 +1,6 @@
 # Change Log
 
-All notable changes to this project will be documented in this file
+All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html),
@@ -8,7 +8,6 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ## Unreleased
 
-- Ability to reconstruct the source code from the tokens and the ast
 - Shortcircuted and/or operators
 - Unsigned integers
 - Casting operator
@@ -25,11 +24,120 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
     type byte = u8;
     ```
 
+## 0.6.2 - 2025-02-27
+
+### Language
+
+#### Changed
+
+- Empty binary/octal/hexadecimal numbers literals (`0b`, `0o`, `0x`) are no longer considered syntax
+    errors and now mean `0`
+- Made block comments delimited by `##` instead of `#{` and `#}`, this also removes the error
+    related to uclosed block comments:
+
+    - with opening `#{` and closing `}#` or `#}`:
+
+        ```text
+        println #{ symmetric }# 21; # looks symetric with `}#`
+
+        # look asymetric with `}#`
+        #{
+        asymmetric
+        }#
+
+        println #{ asymmetric #} 21; # looks asymetric with `#}`
+
+        # look symetric with `#}` 
+        #{
+        symmetric
+        #}
+        ```
+
+    - with `##`:
+
+        ```kay
+        # both single line and multiline block comments look symmetric
+        println ## symmetric ## 12;
+
+        ##
+        symmetric
+        ##
+        ```
+
+#### Removed
+
+- Removed do-statements in if and loop statements, thus reduced language complexity and
+    inconsistencies
+
+### Compiler
+
+#### Added
+
+- Added information about error's absolute source code column
+- Added `color::ansi_code` type alias and `color::AnsiCode` enum for text modifiers codes
+
+#### Changed
+
+- Update rust version to [1.81.0](https://releases.rs/docs/1.81.0/)
+- Reworked compilation stages:
+    - old:
+        - loading of source code file and line boundaries precalculations
+        - tokenization
+        - abstract syntax tree parsing
+        - compilation of abstract syntax tree
+    - new:
+        - loading of source code file
+        - tokenization and line boundaries calculations
+        - (added) parsing of syntax tree (phantom stage, does not affect other stages for now)
+        - abstract syntax tree parsing
+        - compilation of abstract syntax tree
+        - return the compiled code
+- Renamed `syntax` module to `front_end`
+- Introduced `offset32`, `line32`, `column32` and `index32` type aliases for `u32`
+- Errors related to bracket pairs now contain more descriptive `tokenizer::OpenBracket` and
+    `tokenizer::CloseBracket`
+- Moved `src_file` module into `front_end`
+- `src_file::SrcFile::path` and `src_file::Error::path` are now a `&Path` instead of `PathBuf`
+- Split `src_file::SrcFile::position()` into `src_file::SrcFile::position()` and
+    `src_file::SrcFile::display_position()`:
+    - `src_file::SrcFile::position()` is no longer public due to out-of bounds unsafety and
+        inconsistencies between Unix's `\n` and Windows' `\r\n` line terminators
+    - `src_file::Position` now only contains information about the sorce code position
+    - new `src_file::DisplayPosition` information about the source code position and
+        display position
+- Split `src_file::SrcFile` into:
+    - `src_file::SrcFile`: the path and the source code
+    - `src_file::SrcCode`: contains `src_file::SrcFile` and `Vec<Line>`
+- `src_file::SrcFile::load()` now only reads the contents of the source code without calculating
+    line bounds
+- `tokenizer::Tokens::tokenize()` now takes `src_file::SrcFile` and returns the new
+    `tokenizer::TokenizedCode` struct
+- Renamed `error::MsgWithCauseUnderTextWithLocation::source_code_col` to
+    `error::MsgWithCauseUnderTextWithLocation::absolute_column`
+- Reordered and changed `error::MsgWithCauseUnderText::pointers_count` and
+    `error::MsgWithCauseUnderText::pointers_offset` from `usize` to `column32`
+- Renamed `compiler` module to `back_end`
+- `back_end::Compiler::compile()` no longer immediately writes the compiled code, it now returns the
+    compiled code as a `String`
+- `artifacts::Artifacts::new()` and `artifacts::Artifacts::new_with_out_path()` now take a `&Path`
+    instead of `&SrcFile`
+- Renamed `color::Flags` to `color::flag`
+- Struct `color::Flag` was only used as a namespace, so its now an enum named `color::AnsiFlag`
+- Improved compilation stages and variables naming consistency
+- Renamed `BUILDING_UNTYPED_AST` to `PARSING_SYNTAX_TREE`
+- Renamed `BUILDING_AST` to `PARSING_AST`
+
+#### Fixed
+
+- Fixed typo in compilation steps names
+- Improved error messages related to utf8 characters
+- Optimized colored output
+
 ## 0.6.1 - 2024-09-20
 
-### Added
+### Language
 
-Language:
+#### Added
 
 - `_` as a digit separator, e.g.: `123_456_678` is now a valid number literal
 - Alternative number literals bases:
@@ -37,15 +145,19 @@ Language:
     - `0o`: octal
     - `0x`: hexadecimal
 - Escape sequences in raw string literals: `r"nested \"quotes\" are now allowed by escaping them"`
-- Multiline comments, enclosed by `#{` and `#}`
+- Block comments, enclosed by `#{` and `#}`
 
-Compiler:
+#### Fixed
+
+- Added missing `break` and `continue` statements to the [syntax specification](SYNTAX.ebnf)
+
+### Compiler
+
+#### Added
 
 - Created and exposed API for error messages, introduced the `error` module
 
-### Changed
-
-Compiler:
+#### Changed
 
 - Restricted max source file size to 4GB
 - Restricted max identifiers length to 63 characters
@@ -53,13 +165,7 @@ Compiler:
 - Imported from `core` instead of `std` where possible
 - `Logger` methods now accept `&dyn Display`
 
-### Fixed
-
-Language:
-
-- Added `break` and `continue` statements to the [syntax specification](SYNTAX.ebnf)
-
-Compiler:
+#### Fixed
 
 - Corrected error messages related to:
     - undefined variables and variables already defined

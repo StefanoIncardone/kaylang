@@ -1,9 +1,5 @@
-use core::fmt::{Display, Write as _};
-use std::io::IsTerminal;
+use core::fmt::Display;
 
-use crate::Color;
-
-#[allow(dead_code)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Fg {
     #[default]
@@ -26,7 +22,6 @@ pub enum Fg {
     White = 97,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Bg {
     #[default]
@@ -49,92 +44,134 @@ pub enum Bg {
     White = 107,
 }
 
-pub type Flags = u8;
-pub struct Flag;
+#[expect(non_camel_case_types, reason = "alias to a primitive type")]
+pub type ansi_flag = u8;
 
-#[allow(non_upper_case_globals)]
-#[allow(dead_code)]
-impl Flag {
-    pub const Default: Flags = 0b0000_0000;
-    pub const Bold: Flags = 0b0000_0001;
-    pub const Underline: Flags = 0b0000_0010;
-    pub const NoUnderline: Flags = 0b0000_0100;
-    pub const ReverseText: Flags = 0b0000_1000;
-    pub const PositiveText: Flags = 0b0001_0000;
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum AnsiFlag {
+    #[default]
+    Default = 0b0000_0000,
+    Bold = 0b0000_0001,
+    Underline = 0b0000_0010,
+    NoUnderline = 0b0000_0100,
+    ReverseText = 0b0000_1000,
+    PositiveText = 0b0001_0000,
 }
 
-#[allow(non_upper_case_globals)]
-pub(crate) static mut print: fn(
+#[expect(non_camel_case_types, reason = "alias to a primitive type")]
+pub type ansi_code = u8;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum AnsiCode {
+    #[default]
+    Default = 0,
+    Bold = 1,
+    Underline = 4,
+    NoUnderline = 24,
+    ReverseText = 7,
+    PositiveText = 27,
+}
+
+// REMOVE(stefano): make more "pure" by selecting the printing mode each time
+#[expect(non_upper_case_globals, reason = "it's a function, so it should be named like a function")]
+pub(super) static mut print: fn(
     &str,
     Fg,
     Bg,
-    Flags,
+    ansi_flag,
     &mut core::fmt::Formatter<'_>,
 ) -> core::fmt::Result = print_color;
 
-impl Color {
-    pub fn set<I: IsTerminal>(self, sink: &I) {
-        unsafe {
-            print = match self {
-                Self::Auto if sink.is_terminal() => print_color,
-                Self::Auto => print_no_color,
-                Self::Always => print_color,
-                Self::Never => print_no_color,
-            }
-        }
-    }
-}
-
-fn print_no_color(
+pub(super) fn print_no_color(
     text: &str,
     _: Fg,
     _: Bg,
-    _: Flags,
+    _: ansi_flag,
     f: &mut core::fmt::Formatter<'_>,
 ) -> core::fmt::Result {
     return text.fmt(f);
 }
 
-fn print_color(
+pub(super) fn print_color(
     text: &str,
     fg: Fg,
     bg: Bg,
-    flags: Flags,
+    flags: ansi_flag,
     f: &mut core::fmt::Formatter<'_>,
 ) -> core::fmt::Result {
-    let mut codes = String::with_capacity(24);
+    const CODES_LEN: usize = 24;
 
+    let mut codes_bytes = 0_u64;
     if fg != Fg::Default {
-        _ = write!(codes, "{};", fg as u8);
+        codes_bytes |= fg as u64;
+        codes_bytes <<= u8::BITS as u64;
     }
     if bg != Bg::Default {
-        _ = write!(codes, "{};", bg as u8);
+        codes_bytes |= bg as u64;
+        codes_bytes <<= u8::BITS as u64;
     }
-    if flags & Flag::Bold != 0 {
-        codes += "1;";
+    if flags & AnsiFlag::Bold as ansi_flag != 0 {
+        codes_bytes |= AnsiCode::Bold as u64;
+        codes_bytes <<= u8::BITS as u64;
     }
-    if flags & Flag::Underline != 0 {
-        codes += "4;";
+    if flags & AnsiFlag::Underline as ansi_flag != 0 {
+        codes_bytes |= AnsiCode::Underline as u64;
+        codes_bytes <<= u8::BITS as u64;
     }
-    if flags & Flag::NoUnderline != 0 {
-        codes += "24;";
+    if flags & AnsiFlag::NoUnderline as ansi_flag != 0 {
+        codes_bytes |= AnsiCode::NoUnderline as u64;
+        codes_bytes <<= u8::BITS as u64;
     }
-    if flags & Flag::ReverseText != 0 {
-        codes += "7;";
+    if flags & AnsiFlag::ReverseText as ansi_flag != 0 {
+        codes_bytes |= AnsiCode::ReverseText as u64;
+        codes_bytes <<= u8::BITS as u64;
     }
-    if flags & Flag::PositiveText != 0 {
-        codes += "27;";
+    if flags & AnsiFlag::PositiveText as ansi_flag != 0 {
+        codes_bytes |= AnsiCode::PositiveText as u64;
+        codes_bytes <<= u8::BITS as u64;
     }
 
-    return if codes.is_empty() {
-        text.fmt(f)
-    } else {
-        let _last_semicolon = codes.pop();
+    codes_bytes >>= u8::BITS as u64;
+    if codes_bytes == 0 {
+        return text.fmt(f);
+    }
 
-        write!(f, "\x1b[{codes}m")?;
-        text.fmt(f)?;
-        write!(f, "\x1b[0m")
-    };
+    // IDEA(stefano): make into static mut
+    let mut codes: [u8; CODES_LEN] = [b';'; CODES_LEN];
+    let mut codes_end_pointer = codes.as_mut_ptr().wrapping_add(codes.len());
+
+    loop {
+        let mut code = codes_bytes as u8;
+        loop {
+            codes_end_pointer = codes_end_pointer.wrapping_sub(1);
+            unsafe {
+                *codes_end_pointer = (code % 10) + b'0';
+            }
+            code /= 10;
+            if code == 0 {
+                break;
+            }
+        }
+        codes_end_pointer = codes_end_pointer.wrapping_sub(1);
+
+        codes_bytes >>= u8::BITS as u64;
+        if codes_bytes == 0 {
+            break;
+        }
+    }
+
+    // skipping the last semicolon
+    codes_end_pointer = codes_end_pointer.wrapping_add(1);
+    let codes_len = CODES_LEN - (codes_end_pointer as usize - codes.as_ptr() as usize);
+
+    let codes_slice = unsafe { core::slice::from_raw_parts(codes_end_pointer, codes_len) };
+    let codes_str = unsafe { core::str::from_utf8_unchecked(codes_slice) };
+
+    write!(f, "\x1b[{codes_str}m")?;
+    text.fmt(f)?;
+    return write!(f, "\x1b[0m");
 }
 
 #[derive(Debug, Default)]
@@ -142,7 +179,7 @@ pub struct Colored<Text: AsRef<str>> {
     pub text: Text,
     pub fg: Fg,
     pub bg: Bg,
-    pub flags: Flags,
+    pub flags: ansi_flag,
 }
 
 impl<Text: AsRef<str>> Display for Colored<Text> {

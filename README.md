@@ -25,13 +25,14 @@ machines and combination of components.
 
 ## Getting started
 
-The language is written in [Rust](https://www.rust-lang.org/) version 1.80.0 using
-[cargo](https://doc.rust-lang.org/cargo/) as the build system.
+The language is written in [Rust](https://www.rust-lang.org/) version
+[1.81.0](https://releases.rs/docs/1.81.0/) using [cargo](https://doc.rust-lang.org/cargo/) as the
+build system.
 It also uses the [nasm](https://www.nasm.us/) assembler version 2.15.05 and the
 [ld](https://ftp.gnu.org/old-gnu/Manuals/ld-2.9.1/html_mono/ld.html) linker verision 2.38, thus only
 requiring the following steps to get started:
 
-1. Checking if Rust and cargo are installed and up to version 1.80.0:
+1. Checking if Rust and cargo are installed and up to version 1.81.0:
 
     ```shell
     cargo --version

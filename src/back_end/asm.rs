@@ -1,3 +1,5 @@
+// IDEA(stefano): split into nasm files and include them
+
 pub(crate) static CRASH_ASM: &str = {
     r"; fn ! = crash(msg: str @rdi:rsi, line: uint @rdx, col: uint @rcx)
 crash:
@@ -83,7 +85,10 @@ assert_array_index_in_range:
  call crash"
 };
 
-#[allow(dead_code)] // Note: temporarily disabled, will be reanabled when we introduce the `bits` type
+#[expect(
+    dead_code,
+    reason = "temporarily disabled, will be reanabled when we introduce the `bits` type"
+)]
 static ASSERT_INT_BIT_INDEX_IN_RANGE_ASM: &str = {
     r"; fn !? = assert_int_bit_index_in_range(index: int @rdi, bits: uint @rsi, line: uint @rdx, col: uint @rcx)
 assert_int_bit_index_in_range:

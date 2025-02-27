@@ -1,6 +1,7 @@
 [package]
 name = "kaylang"
-version = "0.6.1"
+rust-version = "1.81.0"
+version = "0.6.2"
 edition = "2021"
 authors = ["Stefano Incardone"]
 categories = ["compilers", "command-line-utilities"]
@@ -10,6 +11,10 @@ repository = "https://github.com/StefanoIncardone/kaylang"
 readme = "README.md"
 documentation = "https://github.com/StefanoIncardone/kaylang/blob/main/LANGUAGE_REFERENCE.md"
 license = "MIT"
+
+[dependencies]
+unicode-width = "0.2.0"
+unicode-segmentation = "1.12.0"
 
 [profile.dev]
 debug = "full"
@@ -34,7 +39,7 @@ non_ascii_idents = "forbid"
 unreachable_pub = "forbid"
 unnameable_types = "forbid"
 unstable_features = "forbid"
-unused_crate_dependencies = "warn"
+unused_crate_dependencies = "allow" # might be changed to 'warn' from time to time
 unused_extern_crates = "warn"
 unused_import_braces = "warn"
 unused_lifetimes = "warn"
@@ -46,7 +51,6 @@ private_interfaces = "forbid"
 unused_must_use = "forbid"
 
 [lints.clippy] # to be used once in a while
-blanket_clippy_restriction_lints = "allow"
 nursery = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
 restriction = { level = "warn", priority = -1 }
@@ -56,7 +60,8 @@ cargo = { level = "forbid", priority = -1 }
 self_named_module_files = "allow"
 mod_module_files = "warn"
 
-std_instead_of_alloc = "allow"
+module_name_repetitions = "allow" # unrealiable
+struct_field_names = "allow" # unreliable
 
 # improve readability and self documenting code
 implicit_return = "forbid"
@@ -81,21 +86,25 @@ too-many-arguments = "allow"
 exhaustive_enums = "allow"
 exhaustive_structs = "allow"
 
+blanket_clippy_restriction_lints = "allow"
+std_instead_of_alloc = "warn"
+field_scoped_visibility_modifiers = "allow" # too much OOP
 missing_inline_in_public_items = "allow" # not all functions should be inlined
 inline_always = "allow" # do as i say please
 needless_raw_strings = "allow" # raw strings preserve leading spaces while regular strings don't
 min_ident_chars = "allow" # mainly used for formatters parameters in Display implementation from autocomplete
 pattern_type_mismatch = "allow" # mainly used when matching on &self (i.e: "match self" vs "match *self")
 error_impl_error = "allow"
-missing_trait_methods = "allow"
+missing_trait_methods = "warn"
 missing_docs_in_private_items = "allow"
 integer_division_remainder_used = "allow" # would be relevant in cryptographic contexts
+integer_division = "allow"
 indexing_slicing = "allow" # may consider safer options
 string_slice = "allow" # how else would i take a string slice?
 from_over_into = "allow" # i found that implementing the From trait and hoping for a correct Into implementation to be unreliable
 missing_transmute_annotations = "allow"
 arithmetic_side_effects = "allow" # could be changed to "warn"
-unreachable = "allow" # trust me, might be changed to "warn" to encourage bettere style and soundness
+unreachable = "allow" # trust me, might be changed to "warn" to encourage better style and soundness
 undocumented_unsafe_blocks = "allow" # trust me
 missing_errors_doc = "allow" # will be changed to "warn" in the future when it comes time to document everything
 as_conversions = "allow" # do as i say please
@@ -105,23 +114,29 @@ cast_sign_loss = "allow" # do as i say please
 question_mark_used = "allow" # needlessly advocates for a macro instead of a language feature
 verbose_file_reads = "allow"
 single_match_else = "allow" # avoid forgetting to change the consumer when signatures change
+redundant_pattern_matching = "allow" # i hate inconsistencies in ifs and matches
+large_stack_frames = "warn"
+zero_prefixed_literal = "allow"
+no_effect_underscore_binding = "warn"
+len_without_is_empty = "allow"
 
 # doesn't solve the problem, i.e.:
 # ```rust
 # let mut i: i32 = 0; // this explicit annotation is useful and prevents incorrect inference
 #
 # // but this still raises a warning, which it should not in my opinion, since the type of the
-# // literal 1 shoul be already inferred as being an i32
+# // literal 1 should be already inferred as being an i32
 # i += 1;
 # ```
 default_numeric_fallback = "allow"
 
 # i prefer imperative programming
 option_if_let_else = "allow"
-# manual_map = "allow"
-equatable_if_let = "allow"
-
-large_stack_frames = "warn"
-zero_prefixed_literal = "allow"
+if_then_some_else_none = "allow"
+manual_map = "allow"
+manual_unwrap_or = "allow"
 manual_let_else = "warn"
-no_effect_underscore_binding = "warn"
+equatable_if_let = "allow"
+comparison_chain = "allow"
+checked_conversions = "allow"
+needless_range_loop = "allow"

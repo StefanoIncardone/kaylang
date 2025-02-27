@@ -3,6 +3,51 @@
 >[!WARNING]
 > no feature is final, modifications can happen at any moment
 
+## explicit loop continue/break block
+
+Allow for a loop to specify what should happen when using `continue` and `break`:
+
+```kay
+var i = 0;
+loop i < 10 {
+    continue { i += 1; }
+    break { println "done"; }
+
+    if i & 1 == 0 {
+        continue; # goes inside the continue block previously declared
+    } else if i == 3 {
+        break; # goes inside the break block previously declared
+    }
+    # each block except the first will start executing from the continue block
+}
+
+# or
+loop i < 10
+continue { i += 1; }
+break { println "done"; } {
+    if i & 1 == 0 {
+        continue; # goes inside the continue block previously declared
+    } else if i == 3 {
+        break; # goes inside the break block previously declared
+    }
+    # each block except the first will start executing from the continue block
+}
+
+# or
+loop i < 10 {
+    if i & 1 == 0 {
+        continue; # goes inside the continue block previously declared
+    } else if i == 3 {
+        break; # goes inside the break block previously declared
+    }
+    # each block except the first will start executing from the continue block
+} continue {
+    i += 1;
+} break {
+    println "done";
+}
+```
+
 ## Expressions formatting
 
 emit a warning for ambiguos use of unary/binary operators, i.e.:
@@ -34,7 +79,13 @@ TODO(stefano): file.kay:12: implement this feature
 IDEA(stefano): file.kay:42:genious
 ```
 
-Could create a config file that specifies what notes to look for, like a notes.toml
+Could create a config file that specifies what notes to look for, like a notes.toml, or create
+dedicated cli commands and flags:
+
+```shell
+kay notes -n TODO -n IDEA -n NOTE # would recognize TODO, IDEA and NOTE
+kay notes # Error: no specified tags to look for
+```
 
 ## More output file names flags
 
@@ -50,7 +101,7 @@ could introduce flags to customize individual file output directories and file n
 
 | file kind   | output directory flag        | output file path flag      |
 | :---------- | :--------------------------- | :------------------------- |
-| general     | `-o`, `--output`             |                            |
+| general     | `-o`, `--output`             | `-n`, `--name`             |
 | assembly    | `-oa`, `--output-assembly`   | `-na`, `--name-assembly`   |
 | object file | `-oo`, `--output-object`     | `-no`, `--name-object`     |
 | executable  | `-oe`, `--output-exectuable` | `-ne`, `--name-exectuable` |
@@ -197,8 +248,8 @@ case 19 {
 # - short and concise
 # - can declare mutability modifiers `let` or `var` on matched values
 if answer
-case let Ok(ok) do println ok; # ok is available only in the do statement and is immutable
-case var Err(err) do println err; # err is available only in the do statement and is mutable
+case let Ok(ok) { println ok; } # ok is available only in the do statement and is immutable
+case var Err(err) { println err; } # err is available only in the do statement and is mutable
 case let Err2(var err1, err2) {
     println err1; # err1 is available only in this block and is mutable
     println err2; # err2 is available only in this block and is immutable
@@ -211,9 +262,9 @@ case var Err2(let err1, err2) {
 # could benefit from rust's mutability modifiers
 # - would get rid of the initial mutabilty modifiers
 if answer
-case Ok(ok) do println ok; # ok is available only in the do statement and is immutable by default
-case Ok_b(let ok) do println ok; # `let` is redundant
-case Err(var err) do println err; # err is available only in the do statement and is mutable
+case Ok(ok) { println ok; } # ok is available only in the do statement and is immutable by default
+case Ok_b(let ok) { println ok; } # `let` is redundant
+case Err(var err) { println err; } # err is available only in the do statement and is mutable
 case Err2(var err1, err2) {
     println err1; # err1 is available only in this block and is mutable
     println err2; # err2 is available only in this block and is immutable
@@ -259,7 +310,9 @@ case let Err0(err0) {
 
 # would just be syntactic sugar for
 let ok = if answer
-case let Ok(ok) do break ok;
+case let Ok(ok) {
+    break ok;
+}
 case let Err0(err0) {
     println err0;
     return;
@@ -457,18 +510,28 @@ let ok = match answer {
 
 ## Operators
 
+- boolean operators:
+
+    | operator | shortcircuting | non-shortcircuiting | bitwise |
+    | :------- | :------------: | :-----------------: | :-----: |
+    | and      |      `&&`      |        `&&&`        |   `&`   |
+    | or       |     `\|\|`     |      `\|\|\|`       |  `\|`   |
+    | xor      |       NA       |        `^^^`        |   `^`   |
+
 - checked (`++`, `--`, `//`, ..., or `+?`, `-?`, `/?`, ...):
     - overflow/underflow may return both the result and the overflow of the addition
     - division will return either the result or an error value
+- unchecked, skip safety checks, maybe using the '?' or the '!' suffix:
+    - `<<?`, `<<<?`, `>>>?`, or `<<!`, `>>!`, `<<<!`, `>>>!` -> skip the check for a positive 6bit shift amount
+    - `**?` or `**!` -> skip the check for a neagtive power
 - divmod:
 
     ```kay
     let division, remainder = 3 /% 2; # will result in 1, 1
     ```
 
-- boolean flip operator `=!`:  
-    so: boolean = !boolean;
-    would become: boolean =!;
+- boolean flip operator `=!`:
+    `boolean = !boolean;` -> `boolean =!;`
 
 ### Revised remainder/mod operators
 
@@ -485,51 +548,95 @@ let ok = match answer {
 | strategy                     | symbol | x86-64 instruction |
 | :--------------------------- | :----: | :----------------- |
 | **left logical shift**       |  `<<`  | `shl` / `shlx`     |
-| **left arithmetical shift**  |  TBD   | `sal`              |
+| **left arithmetical shift**  |  `<<`  | `sal`              |
 | **right logical shift**      |  `>>`  | `shr` / `shrx`     |
-| **right arithmetical shift** |  TBD   | `sar` / `sarx`     |
+| **right arithmetical shift** | `>>-`  | `sar` / `sarx`     |
 
-Note: left logical shift and left arithmetical shift are completely identical, just kept for
-consistency with their right shifts counterparts
+## Labels on blocks
 
+```kay
+# possible label syntax
+loop: label ... {
+    loop {
+        break;
+    }
+    loop {
+        loop {
+            break: label;
+        }
+    }
+    ...
+}
 
-## Strings
+let x = loop: label ... {
+    ...
+    break: label 12;
+}
+let x =: label {
+    ...
+    break: label 21;
+}
+```
 
-- immutable strings are surrounded by `"`: `"hello world"`
-- mutable strings (like string builders) are surrounded by `` ` ``: `` `hello world` ``
-    - seamlees way to convert from one string type to another
-- multiline strings are prefixed by a `m`, or by multiple quotes like in Java:
-    - multiline strings may follow C-style string concatenation
-    - lines will have newline characters appended to them unless they end in a `\`, which can be escaped using a `\\`
-    - whitespace will be preserved (except before the closing quote) and leading whitespace is calculated based on the
-        position of the closing quote, or by the text furthest to the left.  
-- formatted strings are prefixed by a `f`: `f"the answer is {40 + 2}"`
+compared to rust:
+
+```rust
+'label: loop ... {
+    loop {
+        break;
+    }
+    loop {
+        loop {
+            break 'label;
+        }
+    }
+    ...
+}
+
+let x = 'label: loop ... {
+    ...
+    break 'label 12;
+}
+let x = 'label: {
+    ...
+    break 'label 21;
+}
+```
+
+## String and character literals
+
+- multiline strings are prefixed by a `m`:
+- may follow C-style string concatenation
+- lines will have newline characters appended to them unless they end in a `\`, which can be escaped using a `\\`
+- like in Java, whitespace will be preserved (except before the closing quote) and leading whitespace is calculated based on the
+    position of the closing quote, or by the text furthest to the left
 - options can appear in any order right before the opening quote, but only once:
-    - `frm"`, `fr"`, `rm"` are valid
-    - `frrm`, `ff "`, `r "` are not valid
-- ascii/utf strings and chars (need to decide on proper names):
+    - `frm""`, `fr""`, `rm""` are valid
+    - `frrm"`, `ff ""`, `r ""` are not valid
 
-    | type name  | type    | type size (bytes) | example  | notes                                 |
-    | :--------- | :------ | :---------------- | :------- | :------------------------------------ |
-    | ascii char | `ascii` | 1                 | `'h'`    | guaranteed to be valid ascii and utf8 |
-    | utf8 char  | `utf8`  | 4                 | `u8'è'`  | guaranteed to be valid utf8           |
-    | utf16 char | `utf16` | 4                 | `u16'è'` | guaranteed to be valid utf16          |
-    | utf32 char | `utf32` | 4                 | `u32'è'` | guaranteed to be valid utf32          |
+### Character types
 
-    | type name    | type       | pointer type | type size (bytes)              | example      | notes                                 |
-    | :----------- | :--------- | :----------- | :----------------------------- | :----------- | :------------------------------------ |
-    | ascii string | `str`      | ascii\*      | 1 \* len                       | `"hello"`    | guaranteed to be valid ascii and utf8 |
-    | utf8 string  | `utf8str`  | utf8\*       | 1 to 4 \* len (in code points) | `u8"hellò"`  | guaranteed to be valid utf8           |
-    | utf16 string | `utf16str` | utf16\*      | 2 or 4 \* len (in code points) | `u16"hellò"` | guaranteed to be valid utf16          |
-    | utf32 string | `utf32str` | utf32\*      | 4 \* len                       | `u32"hellò"` | guaranteed to be valid utf32          |
+| type name  | type    | type size (bytes) | example  | notes                                 |
+| :--------- | :------ | :---------------- | :------- | :------------------------------------ |
+| ascii char | `ascii` | 1                 | `'h'`    | guaranteed to be valid ascii and utf8 |
+| utf32 char | `utf32` | 4                 | `u32'è'` | guaranteed to be valid utf32          |
+
+### String types
+
+| type name    | type                                  | pointer type       | size per character/code point | example      | notes                                 |
+| :----------- | :------------------------------------ | :----------------- | :---------------------------- | :----------- | :------------------------------------ |
+| ascii string | `str`                                 | `ascii*`           | 1 \* len                      | `"hello"`    | guaranteed to be valid ascii and utf8 |
+| utf8 string  | `utf8str` or `u8str` or `str_utf8`    | `u8*` or `utf8*`   | 1 to 4 \* len                 | `u8"hellò"`  | guaranteed to be valid utf8           |
+| utf16 string | `utf16str` or `u16str` or `str_utf16` | `u16*` or `utf16*` | 2 or 4 \* len                 | `u16"hellò"` | guaranteed to be valid utf16          |
+| utf32 string | `utf32str` or `str_utf32`             | `utf32*`           | 4 \* len                      | `u32"hellò"` | guaranteed to be valid utf32          |
 
 - utf8str/utf16str indexing, since characters might be more than one byte long, indexing doesn't
     work, i.e. `string[12]` might land in the middle of a multibyte character, so we could introduce
     rounding indexing (syntax subject to discussion):
     - ceil indexing: `string[+:12]` or `string.at_or_next(12)`, would mean that if the index lands on a non starting byte, it
-        would find the next character and return that
+        would find the next character and return that or `none` if out of bounds
     - floor indexing: `string[-:12]` or `string.at_or_previous(12)`, would mean that if the index lands on a non starting byte, it
-        would find the previous character and return that
+        would find the previous character and return that or `none` if out of bounds
     - checked indexing: `string[?:12]` or `string.at_or_none(12)`, would mean that if the index lands on a non starting byte, it
         would return a `none` value, else the value of the character
     - unchecked indexing: `string[!:12]` or `string.at_byte(12)`, would just return the byte at index 12
@@ -694,13 +801,13 @@ let b = ["hello", "from", "kay"];
 let a = ["hello", "from", "stefano"];
 
 if array_eq(a, b)
-case let mismatch: none do println("equals"); # would not be reached since there was a mismatch
-else let mismatch: uint do println(f"mismatch at index {mismatch}"); # mismatch would have the value of 2
+case let mismatch: none { println("equals"); } # would not be reached since there was a mismatch
+else let mismatch: uint { println(f"mismatch at index {mismatch}"); } # mismatch would have the value of 2
 
 if array_eq(a, b)
-case let mismatch: none do println("equals"); # would not be reached since there was a mismatch
-case let mismatch: uint do println(f"mismatch at index {mismatch}"); # mismatch would have the value of 2
-else do ...; # unreachable branch: all variants have been matched
+case let mismatch: none { println("equals"); } # would not be reached since there was a mismatch
+case let mismatch: uint { println(f"mismatch at index {mismatch}"); } # mismatch would have the value of 2
+else { ... } # unreachable branch: all variants have been matched
 
 
 fn mismatch_index: uint? = array_eq[T: type, N: uint](dst: T[N]*, src: T[N]*) {
@@ -808,15 +915,15 @@ fn<Rgb> do_stuff(rgb: Self, ...) { ... }
 ####
 
 # no need to convert from curly brackets to round brackets, but could need to use the `struct`
-# keyword to avoid colliding with a possible function named `Rgb` 
+# keyword to avoid colliding with a possible function named `Rgb`
 # "equivalent" constructor function, has no access to fields that can only be set inside the struct constructor
 fn Rgb = Rgb(r: u8, g: u8, b: u8) {
     return struct Rgb(r, g, b);
 }
 
 let rgb = Rgb(r = 0, g = 0, b = 0);         # this will call a function named `Rgb`
-let rgb = struct Rgb(r = 0, g = 0, b = 0);  # this will call the struct constructor for `Rgb` 
-let rgb = Rgb { r = 0, g = 0, b = 0 };      # traditional way of calling the struct constructor for `Rgb` 
+let rgb = struct Rgb(r = 0, g = 0, b = 0);  # this will call the struct constructor for `Rgb`
+let rgb = Rgb { r = 0, g = 0, b = 0 };      # traditional way of calling the struct constructor for `Rgb`
 let rgb = Rgb.new(r = 0, g = 0, b = 0);     # this will call the function `Rgb.new`
 
 rgb.do_stuff();
@@ -1013,7 +1120,7 @@ struct Pixel {
     position: using Point,
 }
 
-# which is equivalent to 
+# which is equivalent to
 struct Pixel {
     union {
         rgba: Rgba,
@@ -1289,18 +1396,78 @@ if reference != none {
 dereferenced = ^reference;
 ```
 
+## Index pointers
+
+basically just 'type safe' indexes with semantics roughly similar to pointers and borrow checking
+
+```kay
+# imagine there being different kinds of integers: u8, u16, u32, u64, uint
+
+let some_array: int[3] = [1, 2, 3];
+# would basically get the value of the index between brackets, syntax is similar to regular pointers
+let index_pointer: int&<u8, some_array ## can specify to what this index refers to ##> = &some_array[0];
+let index_pointer: int&<u8 ## or it can be inferred from the right hand side of the assignment ##> = &some_array[0];
+
+# would basically be syntactic sugar for
+let index_pointer: u8 = 0;
+
+# or with inference
+let index_pointer = &<u8>some_array[0];
+
+# if the array has a known length bigger that the index pointer size it would result in an error
+let some_array: int[257] = [...];
+let index_pointer: int&<u8> = &some_array[0]; # Error: index type is too small to index into all array items
+
+# would need no bounds checking since bounds checking has already been performed during index pointer definition
+let first_item = some_array[index_pointer];
+```
+
+index pointer should be treated differently than regular pointers
+
+```kay
+let list: int[3..] = [1, 2, 3]; # growable array
+# indexes of width smaller that the list's length are allowed since length is not known at compile
+# time, hence its the programmer's responsibility to make sure to have the proper index type,
+# thus this u8 index pointer can only reach the first 255 items of the list
+let list_index_pointer = &<u8>list[0];
+let list_pointer = &list[0];
+
+fn append(list: int[..], item: int) {
+    # append operation only adds items to the end of the list:
+    # - does not invalidate previously created indexes
+    # - it may invalidate regular pointers if the list were to reallocate
+    ...
+}
+
+# could create attributes to signal possible indexs invalidation of the specified list
+fn int = pop(@invalidates_indexes list: &var int[..]) {
+    # pop operation only removes from the end of the list:
+    # - may invalidate indexe poitners that pointed to the end of the list
+    # - may invalidate regular pointers that pointed to the end of the list
+    ...
+}
+
+let last_element_index = &<u8>list[len list - 1];
+let last_element = pop(&var list); # Error: cannot pop, it would invalidate index 'last_element_indexe'
+
+# example usage
+fn &int = get(list: &var int[..], index: int&<u8, list>) { ... }
+```
+
 ## Optional types (nullable pointers)
 
 types that may or may not contain a value (introducing the `none` keyword/value):
 they are basically tagged unions in the case of non-pointer variables (like Rust's Options)
 
 ```kay
-# nullable pointers are just "optional pointers" 
+# nullable pointers are just "optional pointers"
 let nullable: int*?;
 let nullable: int&?;
+let nullable: int& | none;
 
 let option: int? = 42; # this will create a variable that has a value
 let option: int? = none; # this will create a variable that doesn't have a value
+let option: int | none = none; # this will create a variable that doesn't have a value
 
 let maybe: int?;
 
@@ -1339,7 +1506,7 @@ enum Option<T> {
 let optional_int_in_rust: Option<int>;
 
 # errors
-let int_or_error: int!SomeError; 
+let int_or_error: int!SomeError;
 let int_or_error: int | SomeError;
 let int_or_int_error: int | int; # would need to find a way to express this
 
@@ -1362,17 +1529,17 @@ let int_or_int_error: Result<int, int>;
 # so a function could use them like
 fn result: int as ok | int as err = foo(i: int) {
     if i
-    case 0 do return 1 as err;
-    case 12 do return 21 as err;
-    case 21 do return 42 as ok;
+    case 0 { return 1 as err; }
+    case 12 { return 21 as err; }
+    case 21 { return 42 as ok; }
 }
 
 # so to match on it would look like this
 let result = foo(i);
 if result
-case let integer: ok do {
+case let integer: ok {
     # integer is of type `int`
-} case let err_code: err do {
+} case let err_code: err {
     # integer is of type `int` as well
 }
 
@@ -1427,26 +1594,26 @@ type enum Result<T, E> {
 # so to match on it would look like this
 let result = int_or_error_code.integer(1);
 if result
-case let int_or_error_code.integer(integer) do {
+case let int_or_error_code.integer(integer) {
     # `integer` is of type `int`
-} case let int_or_error_code.err_code(code) do {
+} case let int_or_error_code.err_code(code) {
     # `code` is of type `int` as well
 }
 
 let result: Result<int, bool> = Result.Ok(1);
 if result
-case let Result.Ok(integer) do {
+case let Result.Ok(integer) {
     # `integer` is of type `int`
-} case let Result.Err(err) do {
+} case let Result.Err(err) {
     # `err` is of type `bool`
 }
 
 # or
 let result: Result<int, bool> = Result.Ok(1);
 if result
-case let integer: Result.Ok do {
+case let integer: Result.Ok {
     # `integer` is of type `int`
-} case let err: Result.Err do {
+} case let err: Result.Err {
     # `err` is of type `bool`
 }
 
@@ -1583,7 +1750,7 @@ red_plus_green.a = red.a + green.b;
 const answer = 40 + 2; # would just copy paste the value everytime
 let i = answer; # equivalent to `let i = 40 + 2`
 
-const fn int = answer() do return 42;
+const fn int = answer() { return 42 };
 let i = const answer(); # equivalent to `let i = { return 42 }` -> `let i = 42`
 ```
 
@@ -1633,34 +1800,34 @@ putting it all together:
 
 ```kay
 # no return values
-fn answer() do return 42;
+fn answer() { return 42 };
 
 # with unnamed return values
-fn int, int = divmod(dividend: int, divisor: int) do
+fn int, int = divmod(dividend: int, divisor: int) {
     return dividend / divisor, dividend % divisor;
+}
 
 # with named return values (NOTE: naked returns are not going to be allowed)
-fn result: int, remainder: int = divmod(dividend: int, divisor: int) do
+fn result: int, remainder: int = divmod(dividend: int, divisor: int) {
     return result = dividend / divisor, remainder = dividend % divisor;
+}
 ```
 
 going from function definition to usage would look like this
 
 ```kay
 # function definition
-fn result: int, remainder: int = divmod(dividend: int, divisor: int) do
+fn result: int, remainder: int = divmod(dividend: int, divisor: int) {
     return result = dividend / divisor, remainder = dividend % divisor;
+}
 
 # from here onwards we are pretending that each line is the progression of steps needed to go from function definition to the usage
 
 # copy paste the definition
-fn result: int, remainder: int = divmod(dividend: int, divisor: int) do
+fn result: int, remainder: int = divmod(dividend: int, divisor: int)
 
 # change 'fn' to 'let'/'var'
 # - explicit mutability qualifiers needed for each variable
-let result: int, var remainder: int = divmod(dividend: int, divisor: int) do
-
-# remove everything after the arguments' closing round bracket
 let result: int, var remainder: int = divmod(dividend: int, divisor: int)
 
 # add a semicolon at the end
@@ -1691,16 +1858,19 @@ fn result: int, remainder: int = dividend / divisor, dividend % divisor;
 fn result: int, remainder: int = divmod(dividend: int, divisor: int) dividend / divisor, dividend % divisor;
 
 # add the function body, with no named returns
-fn result: int, remainder: int = divmod(dividend: int, divisor: int) do
+fn result: int, remainder: int = divmod(dividend: int, divisor: int) {
     return dividend / divisor, dividend % divisor;
+}
 
 # optionally remove named returns
-fn int, int = divmod(dividend: int, divisor: int) do
+fn int, int = divmod(dividend: int, divisor: int) {
     return dividend / divisor, dividend % divisor;
+}
 
 # or add them back
-fn result: int, remainder: int = divmod(dividend: int, divisor: int) do
+fn result: int, remainder: int = divmod(dividend: int, divisor: int) {
     return result = dividend / divisor, remainder = dividend % divisor;
+}
 
 # and done!
 ```
@@ -1800,6 +1970,9 @@ let this is not a valid variable name = "some value";
 # new syntax, repurposing single quotes
 let 'this is not a valid variable name' = c"s"; # character literals would become this, or something else
 
+# or using back ticks
+let `this is not a valid variable name` = "s";
+
 # or like this, where the i string modifier would mean "identifier"
 let i"this is not a valid variable name" = "some value";
 
@@ -1808,42 +1981,4 @@ let i"let" = "let";
 
 # or for this
 let i"2" = 2;
-```
-
-debate over usefulness and syntax:
-
-```kay
-# this
-let i"this is not a valid variable name" = "some value";
-
-# could be just this
-let this_is_not_a_valid_variable_name = "some value";
-
-# while this
-let i"let" = "let";
-
-# or this (or with some other symbol)
-let $let = "let";
-
-# could be just this
-let lett = "let";
-
-# or simply this
-let _let = "let";
-
-
-# while this
-let i"21" = 9 + 10; # complex calculation might be done here
-let answer = i"21" * 2;
-
-# could become this
-let $21 = 9 + 10;
-let answer = $21 * 2;
-
-# or even this
-let _21 = 9 + 10; 
-let answer = _21 * 2;
-
-# or allow for stuff like this, where a trailing underscore would indicate that this is an identifier instead of a number
-let 21_ = 9 + 10;
 ```

@@ -1,23 +1,36 @@
 #![warn(clippy::print_stdout, clippy::print_stderr)]
 
+pub mod back_end;
 pub mod color;
-pub mod compiler;
 pub mod error;
-pub mod src_file;
-pub mod syntax;
+pub mod front_end;
 
-use color::{Bg, Colored, Fg, Flag, Flags};
+use color::{ansi_flag, AnsiFlag, Bg, Colored, Fg};
 use core::fmt::{Display, Write as _};
 use error::MsgWithCauseUnderText;
+use front_end::src_file::column32;
 use std::{
-    path::{Path, PathBuf},
-    time::Instant,
+    io::IsTerminal, path::{Path, PathBuf}, time::Instant
 };
+
+const fn max_text_len(texts: &[&str]) -> usize {
+    let mut max_len = 0;
+    let mut text_index = 0;
+    while text_index < texts.len() {
+        let text = texts[text_index];
+        let text_len = text.len();
+        if text_len > max_len {
+            max_len = text_len;
+        }
+        text_index += 1;
+    }
+    return max_len;
+}
 
 // help and version messages
 const HELP_FG: Fg = Fg::White;
 const HELP_BG: Bg = Bg::Default;
-const HELP_FLAGS: Flags = Flag::Bold;
+const HELP_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 
 #[rustfmt::skip] pub(crate) static VERSION:   Colored<&str> = Colored { text: env!("CARGO_PKG_VERSION"), fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
 #[rustfmt::skip] pub(crate) static USAGE:     Colored<&str> = Colored { text: "Usage",                   fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
@@ -32,9 +45,10 @@ const HELP_FLAGS: Flags = Flag::Bold;
 // main compilation steps (displayed when verbosity level is normal or verbose)
 const STEP_FG: Fg = Fg::LightGreen;
 const STEP_BG: Bg = Bg::Default;
-const STEP_FLAGS: Flags = Flag::Bold;
+const STEP_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 const STEP_INDENT: usize = 0;
-const STEP_PADDING: usize = 9;
+static STEP_PADDING: usize =
+    max_text_len(&[CHECKING.text, COMPILING.text, RUNNING.text, DONE.text]);
 
 #[rustfmt::skip] pub static CHECKING:  Colored<&str> = Colored { text: "Checking",  fg: STEP_FG, bg: STEP_BG, flags: STEP_FLAGS };
 #[rustfmt::skip] pub static COMPILING: Colored<&str> = Colored { text: "Compiling", fg: STEP_FG, bg: STEP_BG, flags: STEP_FLAGS };
@@ -44,37 +58,49 @@ const STEP_PADDING: usize = 9;
 // sub compilation steps (displayed when verbosity lever is verbose)
 const SUBSTEP_FG: Fg = Fg::LightBlue;
 const SUBSTEP_BG: Bg = Bg::Default;
-const SUBSTEP_FLAGS: Flags = Flag::Bold;
-const SUBSTEP_INDENT: usize = 4;
-const SUBSTEP_PADDING: usize = 14;
+const SUBSTEP_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
+const SUBSTEP_INDENT: usize = STEP_INDENT + 4;
+static SUBSTEP_PADDING: usize = max_text_len(&[
+    LOADING_SOURCE.text,
+    TOKENIZATION.text,
+    PARSING_SYNTAX_TREE.text,
+    PARSING_AST.text,
+    GENERATING_ASM.text,
+    ASSEMBLING.text,
+    LINKING.text,
+    SUBSTEP_DONE.text,
+]);
 
-#[rustfmt::skip] pub static LOADING_SOURCE: Colored<&str> = Colored { text: "Loding Source",  fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static TOKENIZATION:   Colored<&str> = Colored { text: "Tokenizing",     fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static BUILDING_AST:   Colored<&str> = Colored { text: "Building Ast",   fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static GENERATING_ASM: Colored<&str> = Colored { text: "Generating asm", fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static ASSEMBLING:     Colored<&str> = Colored { text: "Assembling",     fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static LINKING:        Colored<&str> = Colored { text: "Linking",        fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
-#[rustfmt::skip] pub static SUBSTEP_DONE:   Colored<&str> = Colored { text: "Done",           fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static LOADING_SOURCE:      Colored<&str> = Colored { text: "Loading Source",      fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static TOKENIZATION:        Colored<&str> = Colored { text: "Tokenizing",          fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static PARSING_SYNTAX_TREE: Colored<&str> = Colored { text: "Parsing Syntax Tree", fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static PARSING_AST:         Colored<&str> = Colored { text: "Parsing Ast",         fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static GENERATING_ASM:      Colored<&str> = Colored { text: "Generating asm",      fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static ASSEMBLING:          Colored<&str> = Colored { text: "Assembling",          fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static LINKING:             Colored<&str> = Colored { text: "Linking",             fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
+#[rustfmt::skip] pub static SUBSTEP_DONE:        Colored<&str> = Colored { text: "Done",                fg: SUBSTEP_FG, bg: SUBSTEP_BG, flags: SUBSTEP_FLAGS };
 
 // errors
 const ERR_FG: Fg = Fg::LightRed;
 const ERR_BG: Bg = Bg::Default;
-const ERR_FLAGS: Flags = Flag::Bold;
+const ERR_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 
 const BAR_FG: Fg = Fg::LightBlue;
 const BAR_BG: Bg = Bg::Default;
-const BAR_FLAGS: Flags = Flag::Bold;
+const BAR_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 
 #[rustfmt::skip] pub(crate) static ERROR: Colored<&str> = Colored { text: "Error",  fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 #[rustfmt::skip] pub(crate) static CAUSE: Colored<&str> = Colored { text: "Cause",  fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 #[rustfmt::skip] pub(crate) static AT:    Colored<&str> = Colored { text: "at",     fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 #[rustfmt::skip] pub(crate) static BAR:   Colored<&str> = Colored { text: "|",      fg: BAR_FG, bg: BAR_BG, flags: BAR_FLAGS };
 
-#[rustfmt::skip] pub static COULD_NOT_RUN_ASSEMBLER:  Colored<&str> = Colored { text: "Could not run assembler",  fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
-#[rustfmt::skip] pub static COULD_NOT_RUN_LINKER:     Colored<&str> = Colored { text: "Could not run linker",     fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
-#[rustfmt::skip] pub static COULD_NOT_RUN_EXECUTABLE: Colored<&str> = Colored { text: "Could not run executable", fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
-#[rustfmt::skip] pub static ASSEMBLING_ERROR:         Colored<&str> = Colored { text: "Assembling Error",         fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
-#[rustfmt::skip] pub static LINKING_ERROR:            Colored<&str> = Colored { text: "Linking Error",            fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
+// REMOVE(stefano): they should not be part of the library, as they should be provided by the users of the compiler
+#[rustfmt::skip] pub static COULD_NOT_WRITE_COMPILED_CODE: Colored<&str> = Colored { text: "Could not write compile code", fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
+#[rustfmt::skip] pub static COULD_NOT_RUN_ASSEMBLER:       Colored<&str> = Colored { text: "Could not run assembler",      fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
+#[rustfmt::skip] pub static COULD_NOT_RUN_LINKER:          Colored<&str> = Colored { text: "Could not run linker",         fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
+#[rustfmt::skip] pub static COULD_NOT_RUN_EXECUTABLE:      Colored<&str> = Colored { text: "Could not run executable",     fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
+#[rustfmt::skip] pub static ASSEMBLING_ERROR:              Colored<&str> = Colored { text: "Assembling Error",             fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
+#[rustfmt::skip] pub static LINKING_ERROR:                 Colored<&str> = Colored { text: "Linking Error",                fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 
 #[derive(Debug)]
 pub struct Logger<'path> {
@@ -91,7 +117,7 @@ impl<'path> Logger<'path> {
 }
 
 // logging without verbosity information, intended for use in specialized cases
-#[allow(clippy::print_stderr)]
+#[expect(clippy::print_stderr, reason = "it's a logger")]
 impl Logger<'_> {
     pub fn info(step: &dyn Display, path: &Path) {
         eprintln!(
@@ -170,6 +196,20 @@ pub enum Color {
     Auto,
     Always,
     Never,
+}
+
+impl Color {
+    pub fn set<I: IsTerminal>(self, sink: &I) {
+        use crate::color::{print, print_color, print_no_color};
+        unsafe {
+            print = match self {
+                Self::Auto if sink.is_terminal() => print_color,
+                Self::Auto => print_no_color,
+                Self::Always => print_color,
+                Self::Never => print_no_color,
+            }
+        }
+    }
 }
 
 impl Display for Color {
@@ -299,8 +339,8 @@ pub struct Help {
 }
 
 impl Display for Help {
-    #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return write!(
             f,
             r"{Version}
@@ -365,13 +405,16 @@ impl TryFrom<Vec<String>> for Args {
     type Error = Error;
 
     fn try_from(args: Vec<String>) -> Result<Self, Self::Error> {
-        #[inline]
+        #[inline(always)]
         fn is_verbosity_flag((_verbosity_flag_index, verbosity_flag): &(usize, &String)) -> bool {
             return matches!(verbosity_flag.as_str(), "-q" | "--quiet" | "-V" | "--verbose");
         }
 
-        #[allow(clippy::single_call_fn)]
-        #[inline]
+        #[expect(
+            clippy::single_call_fn,
+            reason = "is consistent with the `is_verbosity_flag` function"
+        )]
+        #[inline(always)]
         fn is_out_flag((_out_flag_index, out_flag): &(usize, &String)) -> bool {
             return matches!(out_flag.as_str(), "-o" | "--output");
         }
@@ -438,6 +481,7 @@ impl TryFrom<Vec<String>> for Args {
 
         let mut command_option: Option<(CommandFlag, Command)> = None;
 
+        // IDEA(stefano): make help and version commands only behave as commands when placed as the first argument
         let mut other_args = args_iter.clone().peekable();
         while let Some((selected_flag_index, selected_flag)) = other_args.next() {
             match selected_flag.as_str() {
@@ -881,11 +925,12 @@ impl Display for Error {
             message: &error_message,
             cause: &error_cause_message,
             line_text: &args_text,
-            pointers_offset,
-            pointers_count,
+            pointers_offset: pointers_offset as column32,
+            pointers_count: pointers_count as column32,
         };
         return write!(f, "{error}");
     }
 }
 
-impl std::error::Error for Error {}
+#[expect(clippy::missing_trait_methods, reason = "using default implementations")]
+impl core::error::Error for Error {}

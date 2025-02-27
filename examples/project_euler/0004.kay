@@ -1,11 +1,11 @@
-#{
+##
 PROBLEM: Largest Palindrome Product (https://projecteuler.net/problem=4)
 A palindromic number reads the same both ways. The largest palindrome made from the product of two
 2-digit numbers is 9009 = 91 * 99.
 
 QUESTION:
 Find the largest palindrome made from the product of two 3-digit numbers.
-#}
+##
 
 let MAX_DIGITS = 3;
 let MIN_NUMBER = 10 ** (MAX_DIGITS - 1);
@@ -15,7 +15,9 @@ var max_palindrome = 0;
 
 var lhs = MAX_NUMBER;
 loop lhs > MIN_NUMBER {
-    if max_palindrome > lhs * MAX_NUMBER do break;
+    if max_palindrome > lhs * MAX_NUMBER {
+        break;
+    }
 
     var rhs = MAX_NUMBER;
     loop rhs > MIN_NUMBER {
@@ -28,7 +30,9 @@ loop lhs > MIN_NUMBER {
             target_copy /= 10;
         }
 
-        if target == reversed_target && target > max_palindrome do max_palindrome = target;
+        if target == reversed_target && target > max_palindrome {
+            max_palindrome = target;
+        }
 
         rhs -= 1;
     }

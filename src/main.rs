@@ -1,13 +1,17 @@
-#![allow(clippy::print_stdout, clippy::print_stderr)] // it's a cli tool, it's normal to print to stderr and stdout
+#![allow(clippy::print_stdout, clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
-    compiler::{artifacts::Artifacts, Compiler},
+    back_end::{artifacts::Artifacts, Compiler},
     error,
-    src_file::SrcFile,
-    syntax::{ast::Parser, tokenizer::Tokenizer},
-    Args, Command, Help, Logger, Version, ASSEMBLING, ASSEMBLING_ERROR, BUILDING_AST, CHECKING,
-    COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER,
-    GENERATING_ASM, LINKING, LINKING_ERROR, LOADING_SOURCE, RUNNING, SUBSTEP_DONE, TOKENIZATION,
+    front_end::{
+        ast::Parser,
+        src_file::SrcFile,
+        tokenizer::{TokenizedCode, Tokenizer},
+    },
+    Args, Command, Help, Logger, Version, ASSEMBLING, ASSEMBLING_ERROR, CHECKING, COMPILING,
+    COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER,
+    COULD_NOT_WRITE_COMPILED_CODE, GENERATING_ASM, LINKING, LINKING_ERROR, LOADING_SOURCE,
+    PARSING_AST, RUNNING, SUBSTEP_DONE, TOKENIZATION,
 };
 use std::{path::PathBuf, process::ExitCode};
 
@@ -47,12 +51,12 @@ fn main() -> ExitCode {
     Logger::info_with_verbosity(&CHECKING, src_path, verbosity);
     let checking_sub_step = Logger::new(None);
 
-    let src = {
+    let src_file = {
         let loading_source_sub_step = Logger::new(None);
         let source_loading_result = SrcFile::load(src_path);
         loading_source_sub_step.sub_step_done_with_verbosity(&LOADING_SOURCE, verbosity);
         match source_loading_result {
-            Ok(src) => src,
+            Ok(src_file) => src_file,
             Err(err) => {
                 eprintln!("{err}");
                 return ExitCode::FAILURE;
@@ -60,12 +64,12 @@ fn main() -> ExitCode {
         }
     };
 
-    let tokens = {
+    let (src, tokens) = {
         let tokenization_sub_step = Logger::new(None);
-        let tokenizer_result = Tokenizer::tokenize(&src);
+        let TokenizedCode { result, src } = Tokenizer::tokenize(&src_file);
         tokenization_sub_step.sub_step_done_with_verbosity(&TOKENIZATION, verbosity);
-        match tokenizer_result {
-            Ok(tokens) => tokens,
+        match result {
+            Ok(tokens) => (src, tokens),
             Err(errors) => {
                 for error in errors {
                     eprintln!("{}\n", error.display(&src));
@@ -78,7 +82,7 @@ fn main() -> ExitCode {
     let ast = {
         let building_ast_sub_step = Logger::new(None);
         let building_ast_result = Parser::parse(&src, &tokens);
-        building_ast_sub_step.sub_step_done_with_verbosity(&BUILDING_AST, verbosity);
+        building_ast_sub_step.sub_step_done_with_verbosity(&PARSING_AST, verbosity);
         match building_ast_result {
             Ok(ast) => ast,
             Err(errors) => {
@@ -101,8 +105,8 @@ fn main() -> ExitCode {
     let compilation_sub_step = Logger::new(None);
 
     let artifacts = match out_path {
-        None => Artifacts::new(&src),
-        Some(path) => match Artifacts::new_with_out_path(&src, path) {
+        None => Artifacts::new(src_path),
+        Some(path) => match Artifacts::new_with_out_path(src_path, path) {
             Ok(artifacts) => artifacts,
             Err(err) => {
                 eprintln!("{err}");
@@ -113,14 +117,12 @@ fn main() -> ExitCode {
 
     let _compiler_result: () = {
         let generating_asm_sub_step = Logger::new(Some(&artifacts.asm_path));
-        let compiler_result = Compiler::compile(&src, &ast, &artifacts);
+        let compiled_code = Compiler::compile(&src, &ast);
         generating_asm_sub_step.sub_step_done_with_verbosity(&GENERATING_ASM, verbosity);
-        match compiler_result {
-            Ok(()) => (),
-            Err(err) => {
-                eprintln!("{err}");
-                return ExitCode::FAILURE;
-            }
+        if let Err(err) = std::fs::write(&artifacts.asm_path, compiled_code) {
+            let error = error::Msg { kind: &COULD_NOT_WRITE_COMPILED_CODE, message: &err };
+            eprintln!("{error}");
+            return ExitCode::FAILURE;
         }
     };
 

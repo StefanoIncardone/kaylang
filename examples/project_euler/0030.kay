@@ -1,4 +1,4 @@
-#{
+##
 PROBLEM: Digit Fifth Powers (https://projecteuler.net/problem=30)
 Surprisingly there are only three numbers that can be written as the sum of fourth powers of their
 digits:
@@ -10,7 +10,7 @@ The sum of these numbers is 1634 + 8208 + 9474 = 19316.
 
 QUESTION:
 Find the sum of all the numbers that can be written as the sum of fifth powers of their digits.
-#}
+##
 
 let DIGITS_COUNT = 5;
 let MAX_DIGIT_NUMBER = 10 ** (DIGITS_COUNT + 1);
@@ -25,7 +25,9 @@ loop number <= MAX_DIGIT_NUMBER {
         number_copy /= 10;
     }
 
-    if current_digit_power_sum == number do digit_power_sum += current_digit_power_sum;
+    if current_digit_power_sum == number {
+        digit_power_sum += current_digit_power_sum;
+    }
 
     number += 1;
 }

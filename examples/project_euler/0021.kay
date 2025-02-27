@@ -1,4 +1,4 @@
-#{
+##
 PROBLEM: Amicable Numbers (https://projecteuler.net/problem=21)
 Let d(n) be defined as the sum of proper divisors of n (numbers less than n which divide evenly
 into n).
@@ -9,7 +9,7 @@ d(220) = 284. The proper divisors of 284 are 1, 2, 4, 71 and 142; so d(284) = 22
 
 QUESTION:
 Evaluate the sum of all the amicable numbers under 10000.
-#}
+##
 
 let MAX = 10000;
 var sum_of_amicable_numbers = 0;
@@ -21,7 +21,9 @@ loop number < MAX {
 
     var divisor = 1;
     loop divisor <= number_copy / 2 {
-        if number_copy % divisor == 0 do sum_of_divisor += divisor;
+        if number_copy % divisor == 0 {
+            sum_of_divisor += divisor;
+        }
         divisor += 1;
     }
 
@@ -30,7 +32,9 @@ loop number < MAX {
 
     divisor = 1;
     loop divisor <= second_number / 2 {
-        if second_number % divisor == 0 do second_sum_of_divisors += divisor;
+        if second_number % divisor == 0 {
+            second_sum_of_divisors += divisor;
+        }
         divisor += 1;
     }
 

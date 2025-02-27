@@ -2,10 +2,6 @@
 
 # any file used to test language functionality
 test*.kay
-test*.*
-
-# ignoring any non .kay file in subdirectories
-out
 
 # vscode settings, tasks and launch configurations
 .vscode

@@ -1,43 +1,51 @@
-#![allow(clippy::print_stdout, clippy::print_stderr)] // it's a cli tool, it's normal to print to stderr and stdout
+#![allow(clippy::print_stdout, clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
-    compiler::{artifacts::Artifacts, Compiler},
-    src_file::SrcFile,
-    syntax::{ast::Parser, tokenizer::Tokenizer},
+    back_end::{artifacts::Artifacts, Compiler},
+    front_end::{
+        ast::Parser,
+        src_file::SrcFile,
+        tokenizer::{TokenizedCode, Tokenizer},
+    },
     Logger, ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER,
-    COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, LINKING_ERROR, RUNNING,
+    COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, LINKING_ERROR,
+    RUNNING,
 };
 use std::{
     path::{Path, PathBuf},
     process::{Command, ExitCode},
 };
 
+#[allow(clippy::allow_attributes, reason = "unrealiable")]
 #[allow(
-    clippy::panic,
     clippy::unwrap_used,
     clippy::panic_in_result_fn,
     dead_code,
-    clippy::single_call_fn
+    clippy::single_call_fn,
+    reason = "it's for testing"
 )]
 pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
     let execution_step = Logger::new(None);
     Logger::info(&CHECKING, src_path);
 
-    let src = match SrcFile::load(src_path) {
-        Ok(src) => src,
+    let src_file = match SrcFile::load(src_path) {
+        Ok(src_file) => src_file,
         Err(err) => {
             eprintln!("{err}");
             return Err(ExitCode::FAILURE);
         }
     };
 
-    let tokens = match Tokenizer::tokenize(&src) {
-        Ok(tokens) => tokens,
-        Err(errors) => {
-            for error in errors {
-                eprintln!("{}\n", error.display(&src));
+    let (src, tokens) = {
+        let TokenizedCode { result, src } = Tokenizer::tokenize(&src_file);
+        match result {
+            Ok(tokens) => (src, tokens),
+            Err(errors) => {
+                for error in errors {
+                    eprintln!("{}\n", error.display(&src));
+                }
+                return Err(ExitCode::FAILURE);
             }
-            return Err(ExitCode::FAILURE);
         }
     };
 
@@ -53,7 +61,7 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
 
     Logger::info(&COMPILING, src_path);
 
-    let artifacts = match Artifacts::new_with_out_path(&src, out_path) {
+    let artifacts = match Artifacts::new_with_out_path(src_path, out_path) {
         Ok(artifacts) => artifacts,
         Err(err) => {
             eprintln!("{err}");
@@ -61,13 +69,11 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
         }
     };
 
-    let _compiler_result: () = match Compiler::compile(&src, &ast, &artifacts) {
-        Ok(()) => (),
-        Err(err) => {
-            eprintln!("{err}");
-            return Err(ExitCode::FAILURE);
-        }
-    };
+    let compiled_code = Compiler::compile(&src, &ast);
+    if let Err(err) = std::fs::write(&artifacts.asm_path, compiled_code) {
+        eprintln!("{COULD_NOT_WRITE_COMPILED_CODE}: {err}");
+        return Err(ExitCode::FAILURE);
+    }
 
     let _assembler_status: () = match artifacts.assembler().output() {
         Ok(output) => {
@@ -123,9 +129,9 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
         return Err(ExitCode::from(run_result.status.code().unwrap_or(1) as u8));
     }
 
-    let mut lines = stdout.lines();
-    let expected = lines.next().unwrap().strip_prefix("expected:").unwrap().trim_start();
-    let actual = lines.next().unwrap().strip_prefix("actual:").unwrap().trim_start();
+    let mut example_lines = stdout.lines();
+    let expected = example_lines.next().unwrap().strip_prefix("expected:").unwrap().trim_start();
+    let actual = example_lines.next().unwrap().strip_prefix("actual:").unwrap().trim_start();
 
     if !actual.starts_with("# TODO") {
         assert!(expected == actual, "program didn't produce expected output");

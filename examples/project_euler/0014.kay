@@ -1,4 +1,4 @@
-#{
+##
 PROBLEM: Longest Collatz Sequence (https://projecteuler.net/problem=14)
 The following iterative sequence is defined for the set of positive integers:
 n -> n/2 (n is even)
@@ -11,7 +11,7 @@ it has not been proved yet (Collatz Problem), it is thought that all starting nu
 QUESTION:
 Which starting number, under one million, produces the longest chain?
 Note: Once the chain starts the terms are allowed to go above one million.
-#}
+##
 
 var max_chain_length = 1;
 var number = 2;
@@ -20,8 +20,12 @@ loop number < 1000000 {
     var chain_length = 1;
     var number_copy = number;
     loop number_copy > 1 {
-        if number_copy % 2 == 0 do number_copy /= 2;
-        else                    do number_copy = 3 * number_copy + 1;
+        if number_copy % 2 == 0 {
+            number_copy /= 2;
+        }
+        else {
+            number_copy = 3 * number_copy + 1;
+        }
 
         chain_length += 1;
     }
