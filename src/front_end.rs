@@ -1,7 +1,6 @@
 // TODO(stefano): move everything in this file to `error.rs`
 pub mod ast;
 pub mod src_file;
-pub mod syntax_tree;
 pub mod tokenizer;
 
 use self::src_file::{column32, line32, offset32, DisplayPosition, SrcCode};
