@@ -5,7 +5,7 @@ pub mod color;
 pub mod error;
 pub mod front_end;
 
-use color::{Bg, Colored, Fg, AnsiFlag, ansi_flag};
+use color::{ansi_flag, AnsiFlag, Bg, Colored, Fg};
 use core::fmt::{Display, Write as _};
 use error::MsgWithCauseUnderText;
 use front_end::src_file::column32;
@@ -48,12 +48,8 @@ const STEP_FG: Fg = Fg::LightGreen;
 const STEP_BG: Bg = Bg::Default;
 const STEP_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 const STEP_INDENT: usize = 0;
-static STEP_PADDING: usize = max_text_len(&[
-    CHECKING.text,
-    COMPILING.text,
-    RUNNING.text,
-    DONE.text
-]);
+static STEP_PADDING: usize =
+    max_text_len(&[CHECKING.text, COMPILING.text, RUNNING.text, DONE.text]);
 
 #[rustfmt::skip] pub static CHECKING:  Colored<&str> = Colored { text: "Checking",  fg: STEP_FG, bg: STEP_BG, flags: STEP_FLAGS };
 #[rustfmt::skip] pub static COMPILING: Colored<&str> = Colored { text: "Compiling", fg: STEP_FG, bg: STEP_BG, flags: STEP_FLAGS };
@@ -439,11 +435,13 @@ impl TryFrom<Vec<String>> for Args {
                 "auto" => Color::Auto,
                 "always" => Color::Always,
                 "never" => Color::Never,
-                _ => return Err(Error::FromArgs {
-                    kind: ErrorKind::UnrecognizedColorMode,
-                    args,
-                    erroneous_arg_index: selected_color_index,
-                }),
+                _ => {
+                    return Err(Error::FromArgs {
+                        kind: ErrorKind::UnrecognizedColorMode,
+                        args,
+                        erroneous_arg_index: selected_color_index,
+                    })
+                }
             };
 
             let selected_color_mode = ColorMode { flag, color };
@@ -921,5 +919,5 @@ impl Display for Error {
     }
 }
 
-#[expect(clippy::missing_trait_methods, reason = "using core::error::Error default implementations")]
+#[expect(clippy::missing_trait_methods, reason = "using default implementations")]
 impl core::error::Error for Error {}

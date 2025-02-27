@@ -1,5 +1,5 @@
 use crate::{
-    color::{AnsiFlag, ansi_flag, Bg, Colored, Fg},
+    color::{ansi_flag, AnsiFlag, Bg, Colored, Fg},
     front_end::src_file::{column32, line32, offset32},
     AT, BAR, CAUSE,
 };
@@ -148,7 +148,7 @@ impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_> {
         return write!(
             f,
             "{kind}: {error_message}\
-            \n{AT:>at_padding$}: {path}:{line}:{column} ({absolute_column})\
+            \n{AT:>at_padding$}: {path}:{line}:{column}:{absolute_column}\
             \n{BAR:>line_number_padding$}\
             \n{line_number} {BAR} {line_text}\
             \n{BAR:>line_number_padding$}{spaces:>pointers_offset$}{pointers_and_cause}",

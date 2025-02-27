@@ -693,7 +693,8 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
 
                         // we reached the end of the line on a LF (\n)
                         b'\n' => {
-                            tokenizer.lines.push(Line { start: tokenizer.line_start, end: tokenizer.col });
+                            let line = Line { start: tokenizer.line_start, end: tokenizer.col };
+                            tokenizer.lines.push(line);
                             tokenizer.col += 1;
                             tokenizer.line_start = tokenizer.col;
                             continue 'tokenization;
@@ -705,7 +706,8 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             }
 
                             if let b'\n' = tokenizer.code.as_bytes()[tokenizer.col as usize + 1] {
-                                tokenizer.lines.push(Line { start: tokenizer.line_start, end: tokenizer.col });
+                                let line = Line { start: tokenizer.line_start, end: tokenizer.col };
+                                tokenizer.lines.push(line);
                                 tokenizer.col += 2;
                                 tokenizer.line_start = tokenizer.col;
                                 continue 'tokenization;
@@ -739,7 +741,8 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             match tokenizer.raw_string_literal() {
                                 Ok(literal) => {
                                     tokenizer.tokens.strings.push(Str(literal.into_boxed_slice()));
-                                    let string_index = tokenizer.tokens.strings.len() as StrIndex - 1;
+                                    let string_index =
+                                        tokenizer.tokens.strings.len() as StrIndex - 1;
                                     Ok(TokenKind::RawStr(string_index))
                                 }
                                 Err(()) => Err(()),
@@ -847,8 +850,8 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
 
                             // starting at this.token_start_col + 2 to skip the `##`
                             // ending at this.col - 2 to skip the `##`
-                            let comment_str = &tokenizer.code
-                                [tokenizer.token_start_col as usize + 2..tokenizer.col as usize + 2];
+                            let comment_str = &tokenizer.code[tokenizer.token_start_col as usize + 2
+                                ..tokenizer.col as usize + 2];
                             tokenizer.tokens.text.push(comment_str);
                             let comment_index = tokenizer.tokens.text.len() as TextIndex - 1;
                             Ok(TokenKind::BlockComment(comment_index))
@@ -863,7 +866,9 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                                             continue;
                                         }
 
-                                        if let b'\n' = tokenizer.code.as_bytes()[tokenizer.col as usize + 1] {
+                                        if let b'\n' =
+                                            tokenizer.code.as_bytes()[tokenizer.col as usize + 1]
+                                        {
                                             break;
                                         };
 
@@ -873,8 +878,8 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                                 }
                             }
 
-                            let comment_str =
-                                &tokenizer.code[tokenizer.token_start_col as usize + 1..tokenizer.col as usize];
+                            let comment_str = &tokenizer.code
+                                [tokenizer.token_start_col as usize + 1..tokenizer.col as usize];
                             tokenizer.tokens.text.push(comment_str);
                             let comment_index = tokenizer.tokens.text.len() as TextIndex - 1;
                             Ok(TokenKind::Comment(comment_index))
@@ -1322,7 +1327,8 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
             });
         }
 
-        let result = if tokenizer.errors.is_empty() { Ok(tokenizer.tokens) } else { Err(tokenizer.errors) };
+        let result =
+            if tokenizer.errors.is_empty() { Ok(tokenizer.tokens) } else { Err(tokenizer.errors) };
         return TokenizedCode { result, src: SrcCode { src_file, lines: tokenizer.lines } };
     }
 }
@@ -1825,8 +1831,7 @@ impl<'code> Tokenizer<'code, '_> {
                         unrecognized => {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnrecognizedEscapeCharacterInQuotedLiteral(
-                                    kind,
-                                    unrecognized as utf8,
+                                    kind, unrecognized as utf8,
                                 ),
                                 col: self.col - 2,
                                 pointers_count: 2,

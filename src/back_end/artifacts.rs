@@ -101,5 +101,5 @@ impl Display for Error {
     }
 }
 
-#[expect(clippy::missing_trait_methods, reason = "using core::error::Error default implementations")]
+#[expect(clippy::missing_trait_methods, reason = "using default implementations")]
 impl core::error::Error for Error {}

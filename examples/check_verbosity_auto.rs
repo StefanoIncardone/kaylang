@@ -6,7 +6,7 @@ use kaylang::{
         src_file::SrcFile,
         tokenizer::{TokenizedCode, Tokenizer},
     },
-    Color, Logger, Verbosity, PARSING_AST, CHECKING, LOADING_SOURCE, SUBSTEP_DONE, TOKENIZATION,
+    Color, Logger, Verbosity, CHECKING, LOADING_SOURCE, PARSING_AST, SUBSTEP_DONE, TOKENIZATION,
 };
 use std::{path::PathBuf, process::ExitCode};
 

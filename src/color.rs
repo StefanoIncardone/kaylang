@@ -162,7 +162,9 @@ fn print_color(
         let mut code = codes_bytes as u8;
         loop {
             codes_end_pointer = codes_end_pointer.wrapping_sub(1);
-            unsafe { *codes_end_pointer = (code % 10) + b'0'; }
+            unsafe {
+                *codes_end_pointer = (code % 10) + b'0';
+            }
             code /= 10;
             if code == 0 {
                 break;

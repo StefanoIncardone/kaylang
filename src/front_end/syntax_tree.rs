@@ -1,8 +1,8 @@
 use super::{
     src_file::{index32, offset32, DisplayPosition, SrcCode},
     tokenizer::{
-        ascii, Base, Bracket, CloseBracket, Op, StrIndex, TextIndex, Token, TokenIndex,
-        TokenKind, Tokens,
+        ascii, Base, Bracket, CloseBracket, Op, StrIndex, TextIndex, Token, TokenIndex, TokenKind,
+        Tokens,
     },
     Error, ErrorDisplay, ErrorInfo, IntoErrorInfo,
 };

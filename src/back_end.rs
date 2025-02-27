@@ -1996,10 +1996,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                 &self.ast.expressions[*index_expression_index as usize];
 
                             self.index(
-                                *base_type,
-                                base_array_indexable,
-                                *bracket_col,
-                                index_expression,
+                                *base_type, base_array_indexable, *bracket_col, index_expression,
                             );
                             _ = writeln!(self.asm, "mov [{base} + {dst_offset}], rdi\n");
                         }
