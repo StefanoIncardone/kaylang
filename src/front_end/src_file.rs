@@ -58,6 +58,7 @@ pub struct SrcFile<'path> {
 }
 
 impl<'path> SrcFile<'path> {
+    // REMOVE(stefano): let the user chose how to obtain the source code
     pub fn load(path: &'path Path) -> Result<Self, Error<'path>> {
         let mut file = match File::open(path) {
             Ok(file) => file,

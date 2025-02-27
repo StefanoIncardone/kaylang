@@ -1,7 +1,4 @@
 use core::fmt::Display;
-use std::io::IsTerminal;
-
-use crate::Color;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Fg {
@@ -79,7 +76,7 @@ pub enum AnsiCode {
 
 // REMOVE(stefano): make more "pure" by selecting the printing mode each time
 #[expect(non_upper_case_globals, reason = "it's a function, so it should be named like a function")]
-pub(crate) static mut print: fn(
+pub(super) static mut print: fn(
     &str,
     Fg,
     Bg,
@@ -87,20 +84,7 @@ pub(crate) static mut print: fn(
     &mut core::fmt::Formatter<'_>,
 ) -> core::fmt::Result = print_color;
 
-impl Color {
-    pub fn set<I: IsTerminal>(self, sink: &I) {
-        unsafe {
-            print = match self {
-                Self::Auto if sink.is_terminal() => print_color,
-                Self::Auto => print_no_color,
-                Self::Always => print_color,
-                Self::Never => print_no_color,
-            }
-        }
-    }
-}
-
-fn print_no_color(
+pub(super) fn print_no_color(
     text: &str,
     _: Fg,
     _: Bg,
@@ -110,7 +94,7 @@ fn print_no_color(
     return text.fmt(f);
 }
 
-fn print_color(
+pub(super) fn print_color(
     text: &str,
     fg: Fg,
     bg: Bg,

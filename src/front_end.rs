@@ -21,10 +21,8 @@ pub struct ErrorInfo {
     pub error_cause_message: Cow<'static, str>,
 }
 
-/* TODO(stefano):
-allow pointers to start past the end of the line
-IDEA: introduce a pointers_col field
-*/
+// TODO(stefano): allow pointers to start past the end of the line
+// IDEA(stefano): introduce a pointers_col field
 #[derive(Debug, Clone)]
 pub struct Error<K: IntoErrorInfo> {
     pub kind: K,
@@ -34,6 +32,7 @@ pub struct Error<K: IntoErrorInfo> {
 }
 
 impl<K: IntoErrorInfo> Error<K> {
+    // IDEA(stefano): accept an Option<&Path> to allow for errors related to text not coming from files
     pub fn display<'code, 'path: 'code>(
         &self,
         src: &SrcCode<'code, 'path>,

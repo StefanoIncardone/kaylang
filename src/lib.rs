@@ -10,8 +10,7 @@ use core::fmt::{Display, Write as _};
 use error::MsgWithCauseUnderText;
 use front_end::src_file::column32;
 use std::{
-    path::{Path, PathBuf},
-    time::Instant,
+    io::IsTerminal, path::{Path, PathBuf}, time::Instant
 };
 
 const fn max_text_len(texts: &[&str]) -> usize {
@@ -197,6 +196,20 @@ pub enum Color {
     Auto,
     Always,
     Never,
+}
+
+impl Color {
+    pub fn set<I: IsTerminal>(self, sink: &I) {
+        use crate::color::{print, print_color, print_no_color};
+        unsafe {
+            print = match self {
+                Self::Auto if sink.is_terminal() => print_color,
+                Self::Auto => print_no_color,
+                Self::Always => print_color,
+                Self::Never => print_no_color,
+            }
+        }
+    }
 }
 
 impl Display for Color {
@@ -392,7 +405,7 @@ impl TryFrom<Vec<String>> for Args {
     type Error = Error;
 
     fn try_from(args: Vec<String>) -> Result<Self, Self::Error> {
-        #[inline]
+        #[inline(always)]
         fn is_verbosity_flag((_verbosity_flag_index, verbosity_flag): &(usize, &String)) -> bool {
             return matches!(verbosity_flag.as_str(), "-q" | "--quiet" | "-V" | "--verbose");
         }
@@ -401,7 +414,7 @@ impl TryFrom<Vec<String>> for Args {
             clippy::single_call_fn,
             reason = "is consistent with the `is_verbosity_flag` function"
         )]
-        #[inline]
+        #[inline(always)]
         fn is_out_flag((_out_flag_index, out_flag): &(usize, &String)) -> bool {
             return matches!(out_flag.as_str(), "-o" | "--output");
         }

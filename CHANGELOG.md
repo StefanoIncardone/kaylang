@@ -35,43 +35,34 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Made block comments delimited by `##` instead of `#{` and `#}`, this also removes the error
     related to uclosed block comments:
 
-    single line block comments look symmetric with `}#`:
+    - with opening `#{` and closing `}#` or `#}`:
 
-    ```text
-    println #{ symmetric }# 21;
-    ```
+        ```text
+        println #{ symmetric }# 21; # looks symetric with `}#`
 
-    single line block comments look asymmetric with `#}`:
+        # look asymetric with `}#`
+        #{
+        asymmetric
+        }#
 
-    ```text
-    println #{ asymmetric #} 21;
-    ```
+        println #{ asymmetric #} 21; # looks asymetric with `#}`
 
-    multiline block comments looke symmetric with `#}`:
+        # look symetric with `#}` 
+        #{
+        symmetric
+        #}
+        ```
 
-    ```text
-    #{
-    symmetric
-    #}
-    ```
+    - with `##`:
 
-    multiline block comments looke asymmetric with `}#`:
+        ```kay
+        # both single line and multiline block comments look symmetric
+        println ## symmetric ## 12;
 
-    ```text
-    #{
-    asymmetric
-    }#
-    ```
-
-    with `##` both single line and multiline block comments look symmetric:
-
-    ```kay
-    println ## symmetric ## 12;
-
-    ##
-    symmetric
-    ##
-    ```
+        ##
+        symmetric
+        ##
+        ```
 
 #### Removed
 
@@ -83,7 +74,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 #### Added
 
 - Added information about error's absolute source code column
-- Added `color::ansi_code` type alias and `color::ansi_codes` module for text modifiers codes
+- Added `color::ansi_code` type alias and `color::AnsiCode` enum for text modifiers codes
 
 #### Changed
 
@@ -117,8 +108,8 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Split `src_file::SrcFile` into:
     - `src_file::SrcFile`: the path and the source code
     - `src_file::SrcCode`: contains `src_file::SrcFile` and `Vec<Line>`
-- `src_file::SrcFile::load()` now only reads the contents of the source code without calculating line
-    bounds
+- `src_file::SrcFile::load()` now only reads the contents of the source code without calculating
+    line bounds
 - `tokenizer::Tokens::tokenize()` now takes `src_file::SrcFile` and returns the new
     `tokenizer::TokenizedCode` struct
 - Renamed `error::MsgWithCauseUnderTextWithLocation::source_code_col` to
