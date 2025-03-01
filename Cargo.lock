@@ -3,9 +3,15 @@
 version = 3
 
 [[package]]
+name = "back-to-front"
+version = "0.1.0"
+source = "git+https://github.com/StefanoIncardone/back-to-front?rev=db992b9c30baec8b3b1f138917ce34cd71e3c88b#db992b9c30baec8b3b1f138917ce34cd71e3c88b"
+
+[[package]]
 name = "kaylang"
 version = "0.6.2"
 dependencies = [
+ "back-to-front",
  "unicode-segmentation",
  "unicode-width",
 ]

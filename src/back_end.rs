@@ -6,9 +6,8 @@ fix allocation of arrays of 0 or 1 elements when thet will be allowed by either
 
 pub mod artifacts;
 mod asm;
-mod reg;
 
-use self::reg::Reg64::{self, Rcx, Rdi, Rdx, Rsi};
+use back_to_front::back_end::x86_64::reg::Reg64::{self, Rcx, Rdi, Rdx, Rsi};
 use crate::front_end::{
     ast::{
         self, AssignmentOp, Ast, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression,

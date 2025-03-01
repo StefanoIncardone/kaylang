@@ -1698,17 +1698,6 @@ union Rgba {
     }
 }
 
-# or to
-struct union Rgba {
-    rgba: u32,
-    struct {
-        r: u8,
-        g: u8,
-        b: u8,
-        a: u8,
-    }
-}
-
 # this would result in a type size mismatch, or in some other constrait (need to be defined) being broken
 struct Rgba like u8 {
     r: u8,
@@ -1723,7 +1712,11 @@ treat the values are of different types:
 
 ```kay
 let rgba: Rgba;
-let rgba_u32: u32 = rgba as u32; # bit-casting should be a nop, in this case just a plain copy or rgba memory
+# bit-casting should be a nop, in this case just a plain copy or rgba memory
+let rgba_u32: u32 = rgba as u32;
+let rgba_u32: u32 = rgba alias u32;
+let rgba_u32: u32 = rgba cast u32;
+let rgba_u32: u32 = rgba view u32;
 
 let red = Rgba { r = 255 };
 let green = Rgba { g = 255 };
@@ -1740,6 +1733,25 @@ red_plus_green.r = red.r + green.r;
 red_plus_green.g = red.g + green.g;
 red_plus_green.b = red.b + green.b;
 red_plus_green.a = red.a + green.b;
+```
+
+casts that call conversion functions/builtins that are not just bit reinterpretations:
+
+```kay
+struct SomeStruct { ... }
+struct SomeOtherStruct { ... }
+
+impl SomeStruct {
+    # member function
+    op SomeOtherStruct = cast(self, other: SomeOtherStruct) { ...; return ...; }
+    op SomeOtherStruct = into(self, other: SomeOtherStruct) { ...; return ...; }
+    op SomeOtherStruct = convert(self, other: SomeOtherStruct) { ...; return ...; }
+    op SomeOtherStruct = into(self, other: SomeOtherStruct, other_args: ...) { ...; return ...; }
+    op SomeOtherStruct = self into other: SomeOtherStruct ## how do i add other args? ## { ...; return ...; }
+}
+
+# freestanding function
+op SomeOtherStruct = cast(self: SomeStruct, other: SomeOtherStruct) { ...; return ...; }
 ```
 
 ### **BREAKING**: Bit-casting operator for primitive types and removal of implicit conversions

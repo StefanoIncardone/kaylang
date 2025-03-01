@@ -24,6 +24,15 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
     type byte = u8;
     ```
 
+## 0.6.3 -
+
+From this release onwards individual modules may be extracted to separate `back-to-front` compiler
+tools repo, to aid in modularity and code reuse.
+
+### Removed
+
+- Removed `back_end::reg` module, moved to `back-to-front` compiler tools repo
+
 ## 0.6.2 - 2025-02-27
 
 ### Language

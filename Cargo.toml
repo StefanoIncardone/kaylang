@@ -16,6 +16,11 @@ license = "MIT"
 unicode-width = "0.2.0"
 unicode-segmentation = "1.12.0"
 
+[dependencies.back-to-front]
+version = "0.1.0"
+git = "https://github.com/StefanoIncardone/back-to-front"
+rev = "db992b9c30baec8b3b1f138917ce34cd71e3c88b"
+
 [profile.dev]
 debug = "full"
 opt-level = 0
