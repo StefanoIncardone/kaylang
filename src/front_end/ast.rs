@@ -754,6 +754,7 @@ pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
 
 impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'code, 'path> {
     // IDEA(stefano): move into freestanding function
+    #[expect(clippy::missing_errors_doc, reason = "syntax errors cannot be documented in docs")]
     pub fn parse(
         src: &'src SrcCode<'code, 'path>,
         tokens: &'tokens Tokens<'code, 'path>,

@@ -111,7 +111,6 @@ missing_transmute_annotations = "allow"
 arithmetic_side_effects = "allow" # could be changed to "warn"
 unreachable = "allow" # trust me, might be changed to "warn" to encourage better style and soundness
 undocumented_unsafe_blocks = "allow" # trust me
-missing_errors_doc = "allow" # will be changed to "warn" in the future when it comes time to document everything
 as_conversions = "allow" # do as i say please
 cast_lossless = "allow" # do as i say please
 cast_possible_truncation = "allow" # do as i say please

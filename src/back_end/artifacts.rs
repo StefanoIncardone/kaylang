@@ -27,6 +27,7 @@ impl Artifacts {
         };
     }
 
+    #[expect(clippy::missing_errors_doc, reason = "the code is the documentation")]
     pub fn new_with_out_path(src_path: &Path, out_path: &Path) -> Result<Self, Error> {
         if out_path.is_file() {
             return Err(Error::MustBeADirectoryPath(out_path.to_owned()));

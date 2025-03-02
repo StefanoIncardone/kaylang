@@ -29,6 +29,10 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 From this release onwards individual modules may be extracted to separate `back-to-front` compiler
 tools repo, to aid in modularity and code reuse.
 
+### Changed
+
+- `src_file::Span`, `src_file::Position` and `src_file::DisplayPosition` now derive `Hash`
+
 ### Removed
 
 - Removed `back_end::reg` module, moved to `back-to-front` compiler tools repo

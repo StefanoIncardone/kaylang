@@ -8,31 +8,19 @@ use crate::error::CharsWidth as _;
 use core::{fmt::Display, marker::PhantomData};
 use unicode_segmentation::UnicodeSegmentation as _;
 
-#[expect(
-    non_camel_case_types,
-    reason = "behaves like a primitive type, so it should be named like a primitive type"
-)]
+#[expect(non_camel_case_types, reason = "alias to a primitive type")]
 /// kay's equivalent to pointer sized signed integer
 pub(crate) type int = isize;
 
-#[expect(
-    non_camel_case_types,
-    reason = "behaves like a primitive type, so it should be named like a primitive type"
-)]
+#[expect(non_camel_case_types, reason = "alias to a primitive type")]
 /// kay's equivalent to pointer sized unsigned integer
 pub(crate) type uint = usize;
 
-#[expect(
-    non_camel_case_types,
-    reason = "behaves like a primitive type, so it should be named like a primitive type"
-)]
+#[expect(non_camel_case_types, reason = "alias to a primitive type")]
 /// kay's ascii character type
 pub(crate) type ascii = u8;
 
-#[expect(
-    non_camel_case_types,
-    reason = "behaves like a primitive type, so it should be named like a primitive type"
-)]
+#[expect(non_camel_case_types, reason = "alias to a primitive type")]
 /// kay's utf8 character type
 pub(crate) type utf8 = char;
 
@@ -662,6 +650,7 @@ pub struct Tokenizer<'code, 'path: 'code> {
 
 impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
     // IDEA(stefano): move into freestanding function
+    // IDEA(stefano): accept a `Text` object (containing a string not longer that 4GB) instead
     pub fn tokenize(src_file: &'code SrcFile<'path>) -> TokenizedCode<'code, 'path> {
         let mut tokenizer = Tokenizer {
             code: &src_file.code,

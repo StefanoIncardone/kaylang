@@ -3,31 +3,19 @@ use core::fmt::Display;
 use std::{fs::File, io::Read as _, path::Path};
 use unicode_width::UnicodeWidthChar as _;
 
-#[expect(
-    non_camel_case_types,
-    reason = "behaves like a primitive type, so it should be named like a primitive type"
-)]
+#[expect(non_camel_case_types, reason = "alias to a primitive type")]
 pub type offset32 = u32;
 
-#[expect(
-    non_camel_case_types,
-    reason = "behaves like a primitive type, so it should be named like a primitive type"
-)]
+#[expect(non_camel_case_types, reason = "alias to a primitive type")]
 pub type line32 = u32;
 
-#[expect(
-    non_camel_case_types,
-    reason = "behaves like a primitive type, so it should be named like a primitive type"
-)]
+#[expect(non_camel_case_types, reason = "alias to a primitive type")]
 pub type column32 = u32;
 
-#[expect(
-    non_camel_case_types,
-    reason = "behaves like a primitive type, so it should be named like a primitive type"
-)]
+#[expect(non_camel_case_types, reason = "alias to a primitive type")]
 pub type index32 = u32;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct Span {
     /// inclusive
     pub start: offset32,
@@ -38,13 +26,13 @@ pub struct Span {
 
 pub type Line = Span;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct Position {
     pub line: line32,
     pub column: column32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct DisplayPosition {
     pub line: line32,
     pub column: column32,
@@ -59,6 +47,7 @@ pub struct SrcFile<'path> {
 
 impl<'path> SrcFile<'path> {
     // REMOVE(stefano): let the user chose how to obtain the source code
+    #[expect(clippy::missing_errors_doc, reason = "the code is the documentation")]
     pub fn load(path: &'path Path) -> Result<Self, Error<'path>> {
         let mut file = match File::open(path) {
             Ok(file) => file,
@@ -74,11 +63,13 @@ impl<'path> SrcFile<'path> {
             return Err(Error { path, kind: ErrorKind::MustBeAFilePath });
         }
 
-        let Ok(file_len) = offset32::try_from(file_metadata.len()) else {
+        let file_metadata_len = file_metadata.len();
+        if file_metadata_len > offset32::MAX as u64 {
             return Err(Error { path, kind: ErrorKind::FileTooBig { max: offset32::MAX } });
         };
+        let file_len = file_metadata_len as offset32;
 
-        let mut code = String::with_capacity(file_len as usize);
+        let mut code = String::new();
         let bytes_read = match file.read_to_string(&mut code) {
             Ok(bytes_read) => bytes_read as offset32,
             Err(err) => return Err(Error { path, kind: ErrorKind::Io(err) }),
