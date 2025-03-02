@@ -31,6 +31,19 @@ tools repo, to aid in modularity and code reuse.
 
 ### Changed
 
+- Reworked compilation stages:
+    - old:
+        - loading of source code file and line boundaries precalculations
+        - tokenization
+        - abstract syntax tree parsing
+        - compilation of abstract syntax tree
+    - new:
+        - loading of source code file
+        - tokenization and line boundaries calculations
+        - (added) parsing of syntax tree (phantom stage, does not affect other stages for now)
+        - abstract syntax tree parsing
+        - compilation of abstract syntax tree
+        - return the compiled code
 - `src_file::Span`, `src_file::Position` and `src_file::DisplayPosition` now derive `Hash`
 
 ### Removed
@@ -92,19 +105,6 @@ tools repo, to aid in modularity and code reuse.
 #### Changed
 
 - Update rust version to [1.81.0](https://releases.rs/docs/1.81.0/)
-- Reworked compilation stages:
-    - old:
-        - loading of source code file and line boundaries precalculations
-        - tokenization
-        - abstract syntax tree parsing
-        - compilation of abstract syntax tree
-    - new:
-        - loading of source code file
-        - tokenization and line boundaries calculations
-        - (added) parsing of syntax tree (phantom stage, does not affect other stages for now)
-        - abstract syntax tree parsing
-        - compilation of abstract syntax tree
-        - return the compiled code
 - Renamed `syntax` module to `front_end`
 - Introduced `offset32`, `line32`, `column32` and `index32` type aliases for `u32`
 - Errors related to bracket pairs now contain more descriptive `tokenizer::OpenBracket` and
