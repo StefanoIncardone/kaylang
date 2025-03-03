@@ -831,103 +831,94 @@ fn mismatch_index: uint? = array_eq[T: type, N: uint](dst: T[N]*, src: T[N]*) {
 structs are just an aggregation of types, basically named heterogeneous arrays:
 
 ```kay
-struct Rgb {
+# using round brackets instead of curly brackets for ease of use and consistency with function definitions and calls
+struct Rgb(
     r: u8,          # type specific default inizialization, which for u8 is 0
     g: u8 = 255,    # explicit default initialization
     b: u8 = ?,      # intentionally uninitialized member, may contain garbage
             # optional trailing coma
-}
+)
 
-let rgb = Rgb { r = 255, g = 255, b = 255 };
-
-# will have r initialized to 0 and b initialized to possibly garbage values
-let rgb = Rgb { g = 255 };
-
-# or infering the type of the composite type literal from the type annotation
-let rgb: Rgb = { r = 255, g = 255, b = 255 };
+# named arguments, just like functions
+let rgb = Rgb(r = 255, g = 255, b = 255);
 
 # or specifying the arguments in order
-let rgb = Rgb { 255, 255, 255 };
-```
+let rgb = Rgb(255, 255, 255);
 
-### alternative syntax
+# will raise an error, since `r` is not marked as having a default value
+let rgb = Rgb(g = 255);
 
-using round brackets instead of curly brackets for ease of use and consistency with function calls
-
-```kay
-# struct definition
-struct Rgb(r: u8, g: u8, b: u8)
+# `b` initialized to possibly garbage values
+let rgb = Rgb(r = 255, g = 255);
 ```
 
 ### method functions
 
 say we now create a constructor function:
 
-```kay
-# rust-like
-impl Rgb {
-    # associated function or java's "static" method
-    # marked as @constructor to allow modifications to fields that can only be set during construction
-    @constructor fn Self = new(...) { ... }
-}
+- rust-like:
 
-# new ideas (mainly to avoid having an additional indentation coming from the impl block):
+    ```kay
+    impl Rgb {
+        # associated function or java's "static" method
+        # marked as @constructor to allow modifications to fields that can only be set during construction
+        @constructor fn Self = new(...) { ... }
 
-#### impl markers
-impl Rgb; # from this point onwards every function is a function related to Rgb
+        fn self.do_stuff(...) { ... }
+    }
 
-# Rust-like associated function of Rgb
-fn function_of_Rgb(...) { ... }
+- new ideas (mainly to avoid having an additional indentation coming from the impl block):
 
-# method function of Rgb
-fn method_of_Rgb(self: Self, ...) { ... }
+    - impl markers:
 
-impl; # would reset function defintion to being normal functions
+        ```kay
+        impl Rgb; # from this point onwards every function is a function related to Rgb
 
-fn regular_function(...) { ... }
+        # Rust-like associated function of Rgb
+        fn function_of_Rgb(...) { ... }
 
-impl Foo; # from this point onwards every function is a function related to Foo
-...
+        # method function of Rgb
+        fn method_of_Rgb(self: Self, ...) { ... }
 
-impl Rgb; # can reopen implementations
-...
+        impl; # would reset function defintion to being normal functions
 
-impl Bar; # now related to Bar
-...
-####
+        fn regular_function(...) { ... }
 
-#### function markers
-# <Rgb> means it's a method of Rgb
-fn<Rgb> Self = new(...) { ... }
+        impl Foo; # from this point onwards every function is a function related to Foo
+        ...
 
-# or
-Rgb.fn Self = new(...) { ... }
+        impl Rgb; # can reopen implementations
+        ...
 
-# or
-fn Self = Rgb.new(...) { ... }
+        impl Bar; # now related to Bar
+        ...
+        ```
 
-# <Rgb> means it's a method of Rgb
-# first argument is of type Self, meaning this is a method of a variable of type Rgb
-fn<Rgb> do_stuff(self: Self, ...) { ... }
+    - function markers:
 
-# the name of the first parameter could be anything, unlike Rust
-fn<Rgb> do_stuff(rgb: Self, ...) { ... }
-####
+        ```kay
+        fn Self = Rgb.new(...) { ... }
 
-# no need to convert from curly brackets to round brackets, but could need to use the `struct`
-# keyword to avoid colliding with a possible function named `Rgb`
-# "equivalent" constructor function, has no access to fields that can only be set inside the struct constructor
-fn Rgb = Rgb(r: u8, g: u8, b: u8) {
-    return struct Rgb(r, g, b);
-}
+        # first argument is of type Self, meaning this is a method of a variable of type Rgb
+        # the name of the first parameter could be anything, unlike Rust
+        fn Rgb.do_stuff(self, ...) { ... }
 
-let rgb = Rgb(r = 0, g = 0, b = 0);         # this will call a function named `Rgb`
-let rgb = struct Rgb(r = 0, g = 0, b = 0);  # this will call the struct constructor for `Rgb`
-let rgb = Rgb { r = 0, g = 0, b = 0 };      # traditional way of calling the struct constructor for `Rgb`
-let rgb = Rgb.new(r = 0, g = 0, b = 0);     # this will call the function `Rgb.new`
+        fn Rgb.do_stuff(rgb, ...) { ... }
 
-rgb.do_stuff();
-```
+        # no need to convert from curly brackets to round brackets, but could need to use the `struct`
+        # keyword to avoid colliding with a possible function named `Rgb`
+        # "equivalent" constructor function, has no access to fields that can only be set inside the struct constructor
+        fn Rgb = Rgb(r: u8, g: u8, b: u8) {
+            return struct Rgb(r, g, b);
+        }
+
+        let rgb = Rgb(r = 0, g = 0, b = 0);         # this will call a function named `Rgb`
+        let rgb = struct Rgb(r = 0, g = 0, b = 0);  # this will call the struct constructor for `Rgb`
+        let rgb = Rgb { r = 0, g = 0, b = 0 };      # traditional way of calling the struct constructor for `Rgb`
+        let rgb = Rgb.new(r = 0, g = 0, b = 0);     # this will call the function `Rgb.new`
+
+        rgb.do_stuff();
+        ```
 
 #### comparison to rust
 
@@ -1887,6 +1878,34 @@ fn result: int, remainder: int = divmod(dividend: int, divisor: int) {
 # and done!
 ```
 
+### Inline functions
+
+Ability to inline a function at the call site for finer granularity, while still retaining a hint to
+the compiler to inline it when it sees fit:
+
+```kay
+# marked as inline, the rust inspired "!" avoids extra keywords (could find another symbol)
+fn result: int, remainder: int = divmod_inline!(dividend: int, divisor: int) {
+    return result = dividend / divisor, remainder = dividend % divisor;
+}
+
+let result, let remainder = divmod_inline(21, 12); # regular function call would not be allowed, or would emit a warning 
+let result, let remainder = divmod_inline!(21, 12); # inline function call syntax would be mandatory
+let result, let remainder = divmod_inline: { # would be inlined as this as many times as possible, could emit a warning when inlining could be performed
+    let dividend = 21;
+    let divisor = 12;
+    break divmod_inline: result = dividend / divisor, remainder = dividend % divisor;
+}
+
+# not marked as inline
+fn result: int, remainder: int = divmod(dividend: int, divisor: int) {
+    return result = dividend / divisor, remainder = dividend % divisor;
+}
+
+let result, let remainder = divmod(21, 12); # regular function call
+let result, let remainder = divmod!(21, 12); # inlined at the call site
+```
+
 ## Operator overloading
 
 operator overloading should follow the function's philosofy of resembling the shape of the usage of
@@ -1971,6 +1990,17 @@ let int = lhs + rhs;
 
 # 5
 let i = lhs + rhs;
+```
+
+### Named operators
+
+```kay
+op int = lhs: int plus rhs: int {
+    return lhs + rhs;
+}
+
+let twenty_one = 9 plus 10;
+let twenty_one = 9.plus(10); # there would be no "need" for this syntax with ufcs
 ```
 
 ## "unconventional" variable names
