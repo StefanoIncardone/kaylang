@@ -21,8 +21,8 @@ pub(crate) type uint = usize;
 pub(crate) type ascii = u8;
 
 #[expect(non_camel_case_types, reason = "alias to a primitive type")]
-/// kay's utf8 character type
-pub(crate) type utf8 = char;
+/// kay's utf32 character type
+pub(crate) type utf32 = char;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[repr(u8)]
@@ -46,7 +46,7 @@ impl Base {
     }
 
     #[must_use]
-    pub const fn range(self) -> &'static [core::ops::RangeInclusive<utf8>] {
+    pub const fn range(self) -> &'static [core::ops::RangeInclusive<utf32>] {
         return match self {
             Self::Decimal => &['0'..='9'],
             Self::Binary => &['0'..='1'],
@@ -1273,7 +1273,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                     },
                     unrecognized => {
                         tokenizer.errors.push(Error {
-                            kind: ErrorKind::UnrecognizedCharacter(unrecognized as utf8),
+                            kind: ErrorKind::UnrecognizedCharacter(unrecognized as utf32),
                             col: tokenizer.token_start_col,
                             pointers_count: 1,
                         });
@@ -1336,7 +1336,7 @@ impl<'code> Tokenizer<'code, '_> {
     }
 
     // Note: this function is only called when parsing comments, so no special handling of graphemes is required
-    fn next_utf8_char_multiline(&mut self) -> Option<utf8> {
+    fn next_utf8_char_multiline(&mut self) -> Option<utf32> {
         if self.col as usize >= self.code.len() {
             return None;
         }
@@ -1367,7 +1367,7 @@ impl<'code> Tokenizer<'code, '_> {
             }
             ascii_ch @ 0..=b'\x7F' => {
                 self.col += 1;
-                Some(ascii_ch as utf8)
+                Some(ascii_ch as utf32)
             }
             _utf8_ch => {
                 let rest_of_code = &self.code[self.col as usize..];
@@ -1414,14 +1414,14 @@ impl<'code> Tokenizer<'code, '_> {
     }
 
     // Note: this function is only called when parsing operators, so no special handling of graphemes is required
-    fn peek_next_utf8_char(&self) -> Option<utf8> {
+    fn peek_next_utf8_char(&self) -> Option<utf32> {
         if self.col as usize >= self.code.len() {
             return None;
         }
 
         let next = self.code.as_bytes()[self.col as usize];
         return match next {
-            ascii_ch @ 0..=b'\x7F' => Some(ascii_ch as utf8),
+            ascii_ch @ 0..=b'\x7F' => Some(ascii_ch as utf32),
             _utf8_ch => {
                 let rest_of_code = &self.code[self.col as usize..];
                 let Some(utf8_ch) = rest_of_code.chars().next() else {
@@ -1728,7 +1728,7 @@ impl<'code> Tokenizer<'code, '_> {
                 }
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Error {
-                        kind: ErrorKind::ControlCharacterInQuotedLiteral(kind, control as utf8),
+                        kind: ErrorKind::ControlCharacterInQuotedLiteral(kind, control as utf32),
                         col: self.col - 1,
                         pointers_count: 1,
                     });
@@ -1820,7 +1820,7 @@ impl<'code> Tokenizer<'code, '_> {
                         unrecognized => {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnrecognizedEscapeCharacterInQuotedLiteral(
-                                    kind, unrecognized as utf8,
+                                    kind, unrecognized as utf32,
                                 ),
                                 col: self.col - 2,
                                 pointers_count: 2,
@@ -1832,7 +1832,7 @@ impl<'code> Tokenizer<'code, '_> {
                 }
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Error {
-                        kind: ErrorKind::ControlCharacterInQuotedLiteral(kind, control as utf8),
+                        kind: ErrorKind::ControlCharacterInQuotedLiteral(kind, control as utf32),
                         col: self.col - 1,
                         pointers_count: 1,
                     });
@@ -1859,8 +1859,8 @@ pub enum ErrorKind<'code> {
 
     Utf8InQuotedLiteral { grapheme: &'code str, quoted_literal_kind: QuotedLiteralKind },
     UnclosedQuotedLiteral(QuotedLiteralKind),
-    ControlCharacterInQuotedLiteral(QuotedLiteralKind, utf8),
-    UnrecognizedEscapeCharacterInQuotedLiteral(QuotedLiteralKind, utf8),
+    ControlCharacterInQuotedLiteral(QuotedLiteralKind, utf32),
+    UnrecognizedEscapeCharacterInQuotedLiteral(QuotedLiteralKind, utf32),
     EmptyCharacterLiteral,
     MultipleCharactersInCharacterLiteral,
 
@@ -1872,7 +1872,7 @@ pub enum ErrorKind<'code> {
     IdentifierTooLong { max: offset32 },
 
     Utf8Character { grapheme: &'code str },
-    UnrecognizedCharacter(utf8),
+    UnrecognizedCharacter(utf32),
 }
 
 impl IntoErrorInfo for ErrorKind<'_> {
@@ -1926,11 +1926,11 @@ impl IntoErrorInfo for ErrorKind<'_> {
                 "utf8 characters are not allowed".into(),
             ),
             Self::LetterInNumberLiteral(base, letter) => (
-                format!("invalid integer literal letter '{}'", *letter as utf8).into(),
+                format!("invalid integer literal letter '{}'", *letter as utf32).into(),
                 format!("not allowed in a base {} number", *base as u8).into(),
             ),
             Self::DigitOutOfRangeInNumberLiteral(base, digit) => (
-                format!("invalid integer literal digit '{}'", *digit as utf8).into(),
+                format!("invalid integer literal digit '{}'", *digit as utf32).into(),
                 format!("out of the valid range for a base {} number {:?}", *base as u8, base.range()).into(),
             ),
 
