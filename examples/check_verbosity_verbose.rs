@@ -5,8 +5,7 @@ use kaylang::{
         ast::Parser,
         src_file::SrcFile,
         tokenizer::{TokenizedCode, Tokenizer},
-    },
-    Color, Logger, CHECKING, LOADING_SOURCE, PARSING_AST, SUBSTEP_DONE, TOKENIZATION,
+    }, Color, Logger, CHECKING, DONE, LOADING_SOURCE, PARSING_AST, SUBSTEP_DONE, TOKENIZATION
 };
 use std::{path::PathBuf, process::ExitCode};
 
@@ -18,15 +17,15 @@ fn main() -> ExitCode {
     // so we assume this example is run from the root of the crate
     let src_path = PathBuf::from("examples/fizzbuzz.kay");
 
-    let execution_step = Logger::new(None);
+    let execution_step = Logger::new();
 
     Logger::info(&CHECKING, &src_path);
-    let checking_sub_step = Logger::new(None);
+    let checking_sub_step = Logger::new();
 
     let src_file = {
-        let loading_source_sub_step = Logger::new(None);
+        let loading_source_sub_step = Logger::new();
         let source_loading_result = SrcFile::load(&src_path);
-        loading_source_sub_step.sub_step_done(&LOADING_SOURCE);
+        loading_source_sub_step.sub_step(&LOADING_SOURCE, None);
         match source_loading_result {
             Ok(src_file) => src_file,
             Err(err) => {
@@ -37,9 +36,9 @@ fn main() -> ExitCode {
     };
 
     let (src, tokens) = {
-        let tokenization_sub_step = Logger::new(None);
+        let tokenization_sub_step = Logger::new();
         let TokenizedCode { result, src } = Tokenizer::tokenize(&src_file);
-        tokenization_sub_step.sub_step_done(&TOKENIZATION);
+        tokenization_sub_step.sub_step(&TOKENIZATION, None);
         match result {
             Ok(tokens) => (src, tokens),
             Err(errors) => {
@@ -52,9 +51,9 @@ fn main() -> ExitCode {
     };
 
     let _ast = {
-        let building_ast_sub_step = Logger::new(None);
+        let building_ast_sub_step = Logger::new();
         let building_ast_result = Parser::parse(&src, &tokens);
-        building_ast_sub_step.sub_step_done(&PARSING_AST);
+        building_ast_sub_step.sub_step(&PARSING_AST, None);
         match building_ast_result {
             Ok(ast) => ast,
             Err(errors) => {
@@ -66,7 +65,7 @@ fn main() -> ExitCode {
         }
     };
 
-    checking_sub_step.sub_step_done(&SUBSTEP_DONE);
-    execution_step.step_done();
+    checking_sub_step.sub_step(&SUBSTEP_DONE, None);
+    execution_step.step(&DONE, None);
     return ExitCode::SUCCESS;
 }

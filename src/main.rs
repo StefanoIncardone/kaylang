@@ -1,17 +1,11 @@
 #![allow(clippy::print_stdout, clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
-    back_end::{artifacts::Artifacts, Compiler},
-    error,
-    front_end::{
+    back_end::{artifacts::Artifacts, Compiler}, error, front_end::{
         ast::Parser,
         src_file::SrcFile,
         tokenizer::{TokenizedCode, Tokenizer},
-    },
-    Args, Command, Help, Logger, Version, ASSEMBLING, ASSEMBLING_ERROR, CHECKING, COMPILING,
-    COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER,
-    COULD_NOT_WRITE_COMPILED_CODE, GENERATING_ASM, LINKING, LINKING_ERROR, LOADING_SOURCE,
-    PARSING_AST, RUNNING, SUBSTEP_DONE, TOKENIZATION,
+    }, Args, Command, Help, Logger, Version, ASSEMBLING, ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, DONE, GENERATING_ASM, LINKING, LINKING_ERROR, LOADING_SOURCE, PARSING_AST, RUNNING, SUBSTEP_DONE, TOKENIZATION
 };
 use std::{path::PathBuf, process::ExitCode};
 
@@ -46,15 +40,15 @@ fn main() -> ExitCode {
 
     let verbosity = *verbosity_ref;
 
-    let execution_step = Logger::new(None);
+    let execution_step = Logger::new();
 
     Logger::info_with_verbosity(&CHECKING, src_path, verbosity);
-    let checking_sub_step = Logger::new(None);
+    let checking_sub_step = Logger::new();
 
     let src_file = {
-        let loading_source_sub_step = Logger::new(None);
+        let loading_source_sub_step = Logger::new();
         let source_loading_result = SrcFile::load(src_path);
-        loading_source_sub_step.sub_step_done_with_verbosity(&LOADING_SOURCE, verbosity);
+        loading_source_sub_step.sub_step_with_verbosity(&LOADING_SOURCE, None, verbosity);
         match source_loading_result {
             Ok(src_file) => src_file,
             Err(err) => {
@@ -65,9 +59,9 @@ fn main() -> ExitCode {
     };
 
     let (src, tokens) = {
-        let tokenization_sub_step = Logger::new(None);
+        let tokenization_sub_step = Logger::new();
         let TokenizedCode { result, src } = Tokenizer::tokenize(&src_file);
-        tokenization_sub_step.sub_step_done_with_verbosity(&TOKENIZATION, verbosity);
+        tokenization_sub_step.sub_step_with_verbosity(&TOKENIZATION, None, verbosity);
         match result {
             Ok(tokens) => (src, tokens),
             Err(errors) => {
@@ -80,9 +74,9 @@ fn main() -> ExitCode {
     };
 
     let ast = {
-        let building_ast_sub_step = Logger::new(None);
+        let building_ast_sub_step = Logger::new();
         let building_ast_result = Parser::parse(&src, &tokens);
-        building_ast_sub_step.sub_step_done_with_verbosity(&PARSING_AST, verbosity);
+        building_ast_sub_step.sub_step_with_verbosity(&PARSING_AST, None, verbosity);
         match building_ast_result {
             Ok(ast) => ast,
             Err(errors) => {
@@ -94,15 +88,15 @@ fn main() -> ExitCode {
         }
     };
 
-    checking_sub_step.sub_step_done_with_verbosity(&SUBSTEP_DONE, verbosity);
+    checking_sub_step.sub_step_with_verbosity(&SUBSTEP_DONE, None, verbosity);
 
     let (Command::Compile { out_path, .. } | Command::Run { out_path, .. }) = &command else {
-        execution_step.step_done_with_verbosity(verbosity);
+        execution_step.step_with_verbosity(&DONE, None, verbosity);
         return ExitCode::SUCCESS;
     };
 
     Logger::info_with_verbosity(&COMPILING, src_path, verbosity);
-    let compilation_sub_step = Logger::new(None);
+    let compilation_sub_step = Logger::new();
 
     let artifacts = match out_path {
         None => Artifacts::new(src_path),
@@ -116,9 +110,9 @@ fn main() -> ExitCode {
     };
 
     let _compiler_result: () = {
-        let generating_asm_sub_step = Logger::new(Some(&artifacts.asm_path));
+        let generating_asm_sub_step = Logger::new();
         let compiled_code = Compiler::compile(&src, &ast);
-        generating_asm_sub_step.sub_step_done_with_verbosity(&GENERATING_ASM, verbosity);
+        generating_asm_sub_step.sub_step_with_verbosity(&GENERATING_ASM, Some(&artifacts.asm_path), verbosity);
         if let Err(err) = std::fs::write(&artifacts.asm_path, compiled_code) {
             let error = error::Msg { kind: &COULD_NOT_WRITE_COMPILED_CODE, message: &err };
             eprintln!("{error}");
@@ -127,10 +121,10 @@ fn main() -> ExitCode {
     };
 
     let _assembler_status: () = {
-        let assembling_sub_step = Logger::new(Some(&artifacts.obj_path));
+        let assembling_sub_step = Logger::new();
         let mut assembler_command = artifacts.assembler();
         let assembler_result = assembler_command.output();
-        assembling_sub_step.sub_step_done_with_verbosity(&ASSEMBLING, verbosity);
+        assembling_sub_step.sub_step_with_verbosity(&ASSEMBLING, Some(&artifacts.obj_path), verbosity);
         match assembler_result {
             Ok(output) => {
                 if !output.status.success() {
@@ -151,10 +145,10 @@ fn main() -> ExitCode {
     };
 
     let _linker_status: () = {
-        let linking_sub_step = Logger::new(Some(&artifacts.exe_path));
+        let linking_sub_step = Logger::new();
         let mut linker_command = artifacts.linker();
         let linker_result = linker_command.output();
-        linking_sub_step.sub_step_done_with_verbosity(&LINKING, verbosity);
+        linking_sub_step.sub_step_with_verbosity(&LINKING, Some(&artifacts.exe_path), verbosity);
         match linker_result {
             Ok(output) => {
                 if !output.status.success() {
@@ -174,8 +168,8 @@ fn main() -> ExitCode {
         }
     };
 
-    compilation_sub_step.sub_step_done_with_verbosity(&SUBSTEP_DONE, verbosity);
-    execution_step.step_done_with_verbosity(verbosity);
+    compilation_sub_step.sub_step_with_verbosity(&SUBSTEP_DONE, None, verbosity);
+    execution_step.step_with_verbosity(&DONE, None, verbosity);
 
     let Command::Run { .. } = command else {
         return ExitCode::SUCCESS;

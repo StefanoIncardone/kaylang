@@ -1,15 +1,11 @@
 #![allow(clippy::print_stdout, clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
-    back_end::{artifacts::Artifacts, Compiler},
-    front_end::{
+    back_end::{artifacts::Artifacts, Compiler}, front_end::{
         ast::Parser,
         src_file::SrcFile,
         tokenizer::{TokenizedCode, Tokenizer},
-    },
-    Logger, ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER,
-    COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, LINKING_ERROR,
-    RUNNING,
+    }, Logger, ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, DONE, LINKING_ERROR, RUNNING
 };
 use std::{
     path::{Path, PathBuf},
@@ -25,7 +21,7 @@ use std::{
     reason = "it's for testing"
 )]
 pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
-    let execution_step = Logger::new(None);
+    let execution_step = Logger::new();
     Logger::info(&CHECKING, src_path);
 
     let src_file = match SrcFile::load(src_path) {
@@ -103,9 +99,9 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
         }
     };
 
-    execution_step.step_done();
+    execution_step.step(&DONE, None);
 
-    let running_step = Logger::new(None);
+    let running_step = Logger::new();
     let exe_path = PathBuf::from(".").join(&artifacts.exe_path);
     Logger::info(&RUNNING, &exe_path);
 
@@ -117,7 +113,7 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
             return Err(ExitCode::FAILURE);
         }
     };
-    running_step.step_done();
+    running_step.step(&DONE, None);
 
     let stdout = String::from_utf8_lossy(&run_result.stdout);
     let stderr = String::from_utf8_lossy(&run_result.stderr);

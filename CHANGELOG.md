@@ -45,6 +45,7 @@ tools repo, to aid in modularity and code reuse.
         - compilation of abstract syntax tree
         - return the compiled code
 - `src_file::Span`, `src_file::Position` and `src_file::DisplayPosition` now derive `Hash`
+- Improved `Logger` methods consistency
 
 ### Removed
 

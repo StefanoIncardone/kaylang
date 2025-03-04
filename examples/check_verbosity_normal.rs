@@ -6,7 +6,7 @@ use kaylang::{
         src_file::SrcFile,
         tokenizer::{TokenizedCode, Tokenizer},
     },
-    Color, Logger, CHECKING,
+    Color, Logger, CHECKING, DONE,
 };
 use std::{path::PathBuf, process::ExitCode};
 
@@ -18,7 +18,7 @@ fn main() -> ExitCode {
     // so we assume this example is run from the root of the crate
     let src_path = PathBuf::from("examples/fizzbuzz.kay");
 
-    let execution_step = Logger::new(None);
+    let execution_step = Logger::new();
     Logger::info(&CHECKING, &src_path);
 
     let src_file = match SrcFile::load(&src_path) {
@@ -52,6 +52,6 @@ fn main() -> ExitCode {
         }
     };
 
-    execution_step.step_done();
+    execution_step.step(&DONE, None);
     return ExitCode::SUCCESS;
 }

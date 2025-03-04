@@ -103,75 +103,84 @@ const BAR_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 #[rustfmt::skip] pub static LINKING_ERROR:                 Colored<&str> = Colored { text: "Linking Error",                fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 
 #[derive(Debug)]
-pub struct Logger<'path> {
+pub struct Logger {
     pub start: Instant,
-    pub output: Option<&'path Path>,
 }
 
-impl<'path> Logger<'path> {
+impl Logger {
     #[must_use]
-    #[inline]
-    pub fn new(output: Option<&'path Path>) -> Self {
-        return Self { start: Instant::now(), output };
+    #[inline(always)]
+    pub fn new() -> Self {
+        return Self { start: Instant::now() };
     }
 }
 
-// logging without verbosity information, intended for use in specialized cases
+impl Default for Logger {
+    #[must_use]
+    #[inline(always)]
+    fn default() -> Self {
+        return Self::new();
+    }
+}
+
 #[expect(clippy::print_stderr, reason = "it's a logger")]
-impl Logger<'_> {
-    pub fn info(step: &dyn Display, path: &Path) {
+impl Logger {
+    #[inline]
+    pub fn info(text: &dyn Display, path: &Path) {
         eprintln!(
-            "{spaces:STEP_INDENT$}{step:>STEP_PADDING$}: {path}",
+            "{spaces:STEP_INDENT$}{text:>STEP_PADDING$}: {path}",
             spaces = "",
             path = path.display()
         );
     }
 
-    fn done(self, step: &dyn Display, indent: usize, padding: usize) {
+    #[inline]
+    pub fn info_with_verbosity(text: &dyn Display, path: &Path, verbosity: Verbosity) {
+        if let Verbosity::Normal | Verbosity::Verbose = verbosity {
+            Self::info(text, path);
+        }
+    }
+
+    #[inline]
+    pub fn done(self, text: &dyn Display, output: Option<&Path>, padding: usize) {
         let elapsed_time = Colored {
             text: format!("{:.06}s", self.start.elapsed().as_secs_f32()),
             fg: Fg::White,
             ..Default::default()
         };
 
-        if let Some(out) = self.output {
-            eprintln!(
-                "{spaces:indent$}{step:>padding$}: in {elapsed_time} [{out}]",
-                spaces = "",
-                out = out.display()
-            );
+        if let Some(out) = output {
+            eprintln!("{text:>padding$}: in {elapsed_time} [{out}]", out = out.display());
         } else {
-            eprintln!("{spaces:indent$}{step:>padding$}: in {elapsed_time}", spaces = "");
+            eprintln!("{text:>padding$}: in {elapsed_time}");
         }
     }
 
-    pub fn step_done(self) {
-        self.done(&DONE, STEP_INDENT, STEP_PADDING);
-    }
-
-    pub fn sub_step_done(self, sub_step: &dyn Display) {
-        self.done(sub_step, SUBSTEP_INDENT, SUBSTEP_PADDING);
-    }
-}
-
-// logging with verbosity information, intended for use in general cases
-impl Logger<'_> {
-    pub fn info_with_verbosity(step: &dyn Display, path: &Path, verbosity: Verbosity) {
+    #[inline]
+    pub fn done_with_verbosity(self, text: &dyn Display, output: Option<&Path>, padding: usize, verbosity: Verbosity) {
         if let Verbosity::Normal | Verbosity::Verbose = verbosity {
-            Self::info(step, path);
+            self.done(text, output, padding);
         }
     }
 
-    pub fn step_done_with_verbosity(self, verbosity: Verbosity) {
-        if let Verbosity::Normal | Verbosity::Verbose = verbosity {
-            self.done(&DONE, STEP_INDENT, STEP_PADDING);
-        }
+    #[inline(always)]
+    pub fn step(self, text: &dyn Display, output: Option<&Path>) {
+        self.done(text, output, STEP_INDENT + STEP_PADDING);
     }
 
-    pub fn sub_step_done_with_verbosity(self, sub_step: &dyn Display, verbosity: Verbosity) {
-        if let Verbosity::Verbose = verbosity {
-            self.done(sub_step, SUBSTEP_INDENT, SUBSTEP_PADDING);
-        }
+    #[inline(always)]
+    pub fn step_with_verbosity(self, text: &dyn Display, output: Option<&Path>, verbosity: Verbosity) {
+        self.done_with_verbosity(text, output, STEP_INDENT + STEP_PADDING, verbosity);
+    }
+
+    #[inline(always)]
+    pub fn sub_step(self, text: &dyn Display, output: Option<&Path>) {
+        self.done(text, output, SUBSTEP_INDENT + SUBSTEP_PADDING);
+    }
+
+    #[inline(always)]
+    pub fn sub_step_with_verbosity(self, text: &dyn Display, output: Option<&Path>, verbosity: Verbosity) {
+        self.done_with_verbosity(text, output, SUBSTEP_INDENT + SUBSTEP_PADDING, verbosity);
     }
 }
 
