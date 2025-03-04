@@ -121,6 +121,7 @@ impl SizeOf for Type {
     }
 }
 
+#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum UnaryOp {
@@ -853,7 +854,10 @@ impl Parser<'_, '_, '_, '_> {
         return match token.kind {
             TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_, _)
+            | TokenKind::BinaryInteger(_)
+            | TokenKind::OctalInteger(_)
+            | TokenKind::DecimalInteger(_)
+            | TokenKind::HexadecimalInteger(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
@@ -987,7 +991,10 @@ impl Parser<'_, '_, '_, '_> {
                     | TokenKind::Comma
                     | TokenKind::False
                     | TokenKind::True
-                    | TokenKind::Integer(_, _)
+                    | TokenKind::BinaryInteger(_)
+                    | TokenKind::OctalInteger(_)
+                    | TokenKind::DecimalInteger(_)
+                    | TokenKind::HexadecimalInteger(_)
                     | TokenKind::Ascii(_)
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
@@ -1178,7 +1185,10 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Op(_)
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_, _)
+            | TokenKind::BinaryInteger(_)
+            | TokenKind::OctalInteger(_)
+            | TokenKind::DecimalInteger(_)
+            | TokenKind::HexadecimalInteger(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
@@ -1228,7 +1238,10 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Op(_)
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_, _)
+            | TokenKind::BinaryInteger(_)
+            | TokenKind::OctalInteger(_)
+            | TokenKind::DecimalInteger(_)
+            | TokenKind::HexadecimalInteger(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
@@ -1428,147 +1441,235 @@ impl Parser<'_, '_, '_, '_> {
     }
 
     fn primary_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
-        fn parse_positive_int(base: Base, literal: &[ascii]) -> Option<int> {
+        const fn parse_positive_binary_int(literal: &[ascii]) -> Option<int> {
+            const BASE: Base = Base::Binary;
             let mut integer: int = 0;
-            match base {
-                Base::Decimal => {
-                    for ascii_digit in literal {
-                        if *ascii_digit == b'_' {
-                            continue;
-                        }
+            let mut digit_index = 0;
+            digit_index += 1; // leading zero
+            digit_index += 1; // base (b)
 
-                        let digit = *ascii_digit - b'0';
-                        debug_assert!(digit < base as u8, "invalid decimal digit");
-                        integer = integer.checked_mul(base as int)?;
-                        integer = integer.checked_add(digit as int)?;
-                    }
+            while digit_index < literal.len() {
+                let ascii_digit = literal[digit_index];
+                digit_index += 1;
+                if ascii_digit == b'_' {
+                    continue;
                 }
-                Base::Binary => {
-                    let mut digits = literal.iter();
-                    let _leading_zero = digits.next();
-                    let _base = digits.next();
 
-                    for ascii_digit in digits {
-                        if *ascii_digit == b'_' {
-                            continue;
-                        }
-
-                        let digit = *ascii_digit - b'0';
-                        debug_assert!(digit < base as u8, "invalid binary digit");
-                        integer = integer.checked_mul(base as int)?;
-                        integer = integer.checked_add(digit as int)?;
-                    }
-                }
-                Base::Octal => {
-                    let mut digits = literal.iter();
-                    let _leading_zero = digits.next();
-                    let _base = digits.next();
-
-                    for ascii_digit in digits {
-                        if *ascii_digit == b'_' {
-                            continue;
-                        }
-
-                        let digit = *ascii_digit - b'0';
-                        debug_assert!(digit < base as u8, "invalid octal digit");
-                        integer = integer.checked_mul(base as int)?;
-                        integer = integer.checked_add(digit as int)?;
-                    }
-                }
-                Base::Hexadecimal => {
-                    let mut digits = literal.iter();
-                    let _leading_zero = digits.next();
-                    let _base = digits.next();
-
-                    for ascii_digit in digits {
-                        if *ascii_digit == b'_' {
-                            continue;
-                        }
-
-                        let digit = match *ascii_digit {
-                            number @ b'0'..=b'9' => number - b'0',
-                            uppercase_letter @ b'A'..=b'F' => uppercase_letter - b'A' + 10,
-                            lowercase_letter @ b'a'..=b'f' => lowercase_letter - b'a' + 10,
-                            _ => unreachable!("invalid hexadecimal digit"),
-                        };
-                        integer = integer.checked_mul(base as int)?;
-                        integer = integer.checked_add(digit as int)?;
-                    }
-                }
+                let digit = ascii_digit - b'0';
+                debug_assert!(digit < BASE as u8, "invalid binary digit");
+                integer = match integer.checked_mul(BASE as int) {
+                    Some(integer_) => integer_,
+                    None => return None,
+                };
+                integer = match integer.checked_add(digit as int) {
+                    Some(integer_) => integer_,
+                    None => return None,
+                };
             }
-
             return Some(integer);
         }
 
-        fn parse_negative_int(base: Base, literal: &[ascii]) -> Option<int> {
+        const fn parse_positive_octal_int(literal: &[ascii]) -> Option<int> {
+            const BASE: Base = Base::Octal;
             let mut integer: int = 0;
-            match base {
-                Base::Decimal => {
-                    for ascii_digit in literal {
-                        if *ascii_digit == b'_' {
-                            continue;
-                        }
+            let mut digit_index = 0;
+            digit_index += 1; // leading zero
+            digit_index += 1; // base (o)
 
-                        let digit = *ascii_digit - b'0';
-                        debug_assert!(digit < base as u8, "invalid decimal digit");
-                        integer = integer.checked_mul(base as int)?;
-                        integer = integer.checked_sub(digit as int)?;
-                    }
+            while digit_index < literal.len() {
+                let ascii_digit = literal[digit_index];
+                digit_index += 1;
+                if ascii_digit == b'_' {
+                    continue;
                 }
-                Base::Binary => {
-                    let mut digits = literal.iter();
-                    let _leading_zero = digits.next();
-                    let _base = digits.next();
 
-                    for ascii_digit in digits {
-                        if *ascii_digit == b'_' {
-                            continue;
-                        }
-
-                        let digit = *ascii_digit - b'0';
-                        debug_assert!(digit < base as u8, "invalid binary digit");
-                        integer = integer.checked_mul(base as int)?;
-                        integer = integer.checked_sub(digit as int)?;
-                    }
-                }
-                Base::Octal => {
-                    let mut digits = literal.iter();
-                    let _leading_zero = digits.next();
-                    let _base = digits.next();
-
-                    for ascii_digit in digits {
-                        if *ascii_digit == b'_' {
-                            continue;
-                        }
-
-                        let digit = *ascii_digit - b'0';
-                        debug_assert!(digit < base as u8, "invalid octal digit");
-                        integer = integer.checked_mul(base as int)?;
-                        integer = integer.checked_sub(digit as int)?;
-                    }
-                }
-                Base::Hexadecimal => {
-                    let mut digits = literal.iter();
-                    let _leading_zero = digits.next();
-                    let _base = digits.next();
-
-                    for ascii_digit in digits {
-                        if *ascii_digit == b'_' {
-                            continue;
-                        }
-
-                        let digit = match *ascii_digit {
-                            number @ b'0'..=b'9' => number - b'0',
-                            uppercase_letter @ b'A'..=b'F' => uppercase_letter - b'A' + 10,
-                            lowercase_letter @ b'a'..=b'f' => lowercase_letter - b'a' + 10,
-                            _ => unreachable!("invalid hexadecimal digit"),
-                        };
-                        integer = integer.checked_mul(base as int)?;
-                        integer = integer.checked_sub(digit as int)?;
-                    }
-                }
+                let digit = ascii_digit - b'0';
+                debug_assert!(digit < BASE as u8, "invalid octal digit");
+                integer = match integer.checked_mul(BASE as int) {
+                    Some(integer_) => integer_,
+                    None => return None,
+                };
+                integer = match integer.checked_add(digit as int) {
+                    Some(integer_) => integer_,
+                    None => return None,
+                };
             }
+            return Some(integer);
+        }
 
+        const fn parse_positive_decimal_int(literal: &[ascii]) -> Option<int> {
+            const BASE: Base = Base::Decimal;
+            let mut integer: int = 0;
+            let mut digit_index = 0;
+
+            while digit_index < literal.len() {
+                let ascii_digit = literal[digit_index];
+                digit_index += 1;
+                if ascii_digit == b'_' {
+                    continue;
+                }
+
+                let digit = ascii_digit - b'0';
+                debug_assert!(digit < BASE as u8, "invalid decimal digit");
+                integer = match integer.checked_mul(BASE as int) {
+                    Some(integer_) => integer_,
+                    None => return None,
+                };
+                integer = match integer.checked_add(digit as int) {
+                    Some(integer_) => integer_,
+                    None => return None,
+                };
+            }
+            return Some(integer);
+        }
+
+        const fn parse_positive_hexadecimal_int(literal: &[ascii]) -> Option<int> {
+            const BASE: Base = Base::Hexadecimal;
+            let mut integer: int = 0;
+            let mut digit_index = 0;
+            digit_index += 1; // leading zero
+            digit_index += 1; // base (x)
+
+            while digit_index < literal.len() {
+                let ascii_digit = literal[digit_index];
+                digit_index += 1;
+                if ascii_digit == b'_' {
+                    continue;
+                }
+
+                let digit = match ascii_digit {
+                    number @ b'0'..=b'9' => number - b'0',
+                    uppercase_letter @ b'A'..=b'F' => uppercase_letter - b'A' + 10,
+                    lowercase_letter @ b'a'..=b'f' => lowercase_letter - b'a' + 10,
+                    _ => panic!("invalid hexadecimal digit"),
+                };
+                integer = match integer.checked_mul(BASE as int) {
+                    Some(integer_) => integer_,
+                    None => return None,
+                };
+                integer = match integer.checked_add(digit as int) {
+                    Some(integer_) => integer_,
+                    None => return None,
+                };
+            }
+            return Some(integer);
+        }
+
+        #[expect(clippy::single_call_fn, reason = "readability")]
+        const fn parse_negative_binary_int(literal: &[ascii]) -> Option<int> {
+            const BASE: Base = Base::Binary;
+            let mut integer: int = 0;
+            let mut digit_index = 0;
+            digit_index += 1; // leading zero
+            digit_index += 1; // base (b)
+
+            while digit_index < literal.len() {
+                let ascii_digit = literal[digit_index];
+                digit_index += 1;
+                if ascii_digit == b'_' {
+                    continue;
+                }
+
+                let digit = ascii_digit - b'0';
+                debug_assert!(digit < BASE as u8, "invalid binary digit");
+                integer = match integer.checked_mul(BASE as int) {
+                    Some(integer_) => integer_,
+                    None => return None,
+                };
+                integer = match integer.checked_sub(digit as int) {
+                    Some(integer_) => integer_,
+                    None => return None,
+                };
+            }
+            return Some(integer);
+        }
+
+        #[expect(clippy::single_call_fn, reason = "readability")]
+        const fn parse_negative_octal_int(literal: &[ascii]) -> Option<int> {
+            const BASE: Base = Base::Octal;
+            let mut integer: int = 0;
+            let mut digit_index = 0;
+            digit_index += 1; // leading zero
+            digit_index += 1; // base (o)
+
+            while digit_index < literal.len() {
+                let ascii_digit = literal[digit_index];
+                digit_index += 1;
+                if ascii_digit == b'_' {
+                    continue;
+                }
+
+                let digit = ascii_digit - b'0';
+                debug_assert!(digit < BASE as u8, "invalid octal digit");
+                integer = match integer.checked_mul(BASE as int) {
+                    Some(integer_) => integer_,
+                    None => return None,
+                };
+                integer = match integer.checked_sub(digit as int) {
+                    Some(integer_) => integer_,
+                    None => return None,
+                };
+            }
+            return Some(integer);
+        }
+
+        #[expect(clippy::single_call_fn, reason = "readability")]
+        const fn parse_negative_decimal_int(literal: &[ascii]) -> Option<int> {
+            const BASE: Base = Base::Decimal;
+            let mut integer: int = 0;
+            let mut digit_index = 0;
+
+            while digit_index < literal.len() {
+                let ascii_digit = literal[digit_index];
+                digit_index += 1;
+                if ascii_digit == b'_' {
+                    continue;
+                }
+
+                let digit = ascii_digit - b'0';
+                debug_assert!(digit < BASE as u8, "invalid decimal digit");
+                integer = match integer.checked_mul(BASE as int) {
+                    Some(integer_) => integer_,
+                    None => return None,
+                };
+                integer = match integer.checked_sub(digit as int) {
+                    Some(integer_) => integer_,
+                    None => return None,
+                };
+            }
+            return Some(integer);
+        }
+
+        #[expect(clippy::single_call_fn, reason = "readability")]
+        const fn parse_negative_hexadecimal_int(literal: &[ascii]) -> Option<int> {
+            const BASE: Base = Base::Hexadecimal;
+            let mut integer: int = 0;
+            let mut digit_index = 0;
+            digit_index += 1; // leading zero
+            digit_index += 1; // base (x)
+
+            while digit_index < literal.len() {
+                let ascii_digit = literal[digit_index];
+                digit_index += 1;
+                if ascii_digit == b'_' {
+                    continue;
+                }
+
+                let digit = match ascii_digit {
+                    number @ b'0'..=b'9' => number - b'0',
+                    uppercase_letter @ b'A'..=b'F' => uppercase_letter - b'A' + 10,
+                    lowercase_letter @ b'a'..=b'f' => lowercase_letter - b'a' + 10,
+                    _ => panic!("invalid hexadecimal digit"),
+                };
+                integer = match integer.checked_mul(BASE as int) {
+                    Some(integer_) => integer_,
+                    None => return None,
+                };
+                integer = match integer.checked_sub(digit as int) {
+                    Some(integer_) => integer_,
+                    None => return None,
+                };
+            }
             return Some(integer);
         }
 
@@ -1576,12 +1677,45 @@ impl Parser<'_, '_, '_, '_> {
         let expression_result = match current_token.kind {
             TokenKind::False => Ok(Expression::False),
             TokenKind::True => Ok(Expression::True),
-            TokenKind::Integer(base, literal_index) => {
+            TokenKind::BinaryInteger(literal_index) => {
                 let literal = self.tokens.text[literal_index as usize];
-                match parse_positive_int(base, literal.as_bytes()) {
+                match parse_positive_binary_int(literal.as_bytes()) {
                     Some(integer) => Ok(Expression::Int(integer)),
                     None => Err(Error {
-                        kind: ErrorKind::IntegerOverflow(base),
+                        kind: ErrorKind::BinaryIntegerOverflow,
+                        col: current_token.col,
+                        pointers_count: current_token.kind.display_len(self.tokens),
+                    }),
+                }
+            }
+            TokenKind::OctalInteger(literal_index) => {
+                let literal = self.tokens.text[literal_index as usize];
+                match parse_positive_octal_int(literal.as_bytes()) {
+                    Some(integer) => Ok(Expression::Int(integer)),
+                    None => Err(Error {
+                        kind: ErrorKind::OctalIntegerOverflow,
+                        col: current_token.col,
+                        pointers_count: current_token.kind.display_len(self.tokens),
+                    }),
+                }
+            }
+            TokenKind::DecimalInteger(literal_index) => {
+                let literal = self.tokens.text[literal_index as usize];
+                match parse_positive_decimal_int(literal.as_bytes()) {
+                    Some(integer) => Ok(Expression::Int(integer)),
+                    None => Err(Error {
+                        kind: ErrorKind::DecimalIntegerOverflow,
+                        col: current_token.col,
+                        pointers_count: current_token.kind.display_len(self.tokens),
+                    }),
+                }
+            }
+            TokenKind::HexadecimalInteger(literal_index) => {
+                let literal = self.tokens.text[literal_index as usize];
+                match parse_positive_hexadecimal_int(literal.as_bytes()) {
+                    Some(integer) => Ok(Expression::Int(integer)),
+                    None => Err(Error {
+                        kind: ErrorKind::HexadecimalIntegerOverflow,
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(self.tokens),
                     }),
@@ -2016,190 +2150,152 @@ impl Parser<'_, '_, '_, '_> {
                     }),
                 };
             }
-            TokenKind::Op(Op::Minus) => {
+            TokenKind::Op(minus @ (Op::Minus | Op::WrappingMinus | Op::SaturatingMinus)) => {
                 let mut should_be_negated = true;
 
                 // NOTE(stefano): this optimization should be moved to later stages
-                // removing extra "-" symbols
-                while let Some(Token { kind: TokenKind::Op(Op::Minus), .. }) = self.next_token() {
+                // removing extra `-`/`-\`/`-|` symbols
+                while let Some(Token { kind: TokenKind::Op(op), .. }) = self.next_token() {
+                    if op != minus {
+                        break;
+                    }
                     should_be_negated = !should_be_negated;
                 }
 
                 let start_of_expression = self.tokens.tokens[self.token as usize];
-                let TokenKind::Integer(base, literal_index) = start_of_expression.kind else {
-                    let operand = self.primary_expression()?;
-
-                    // returning to avoid the call to tokens.next at the end of the function
-                    return match operand.typ() {
-                        Type::Base(BaseType::Int | BaseType::Ascii) => {
-                            if should_be_negated {
-                                Ok(Expression::Unary {
-                                    op: UnaryOp::Minus,
-                                    op_col: current_token.col,
-                                    operand_index: self.new_expression(operand),
-                                })
-                            } else {
-                                Ok(operand)
+                #[expect(clippy::wildcard_enum_match_arm, reason = "readability")]
+                match start_of_expression.kind {
+                    TokenKind::BinaryInteger(literal_index) => {
+                        let literal = self.tokens.text[literal_index as usize];
+                        if should_be_negated {
+                            match parse_negative_binary_int(literal.as_bytes()) {
+                                Some(0) => Err(Error {
+                                    kind: ErrorKind::MinusZeroInteger,
+                                    col: start_of_expression.col,
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                }),
+                                Some(integer) => Ok(Expression::Int(integer)),
+                                None => Err(Error {
+                                    kind: ErrorKind::BinaryIntegerUnderflow,
+                                    col: start_of_expression.col,
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                }),
+                            }
+                        } else {
+                            match parse_positive_binary_int(literal.as_bytes()) {
+                                Some(integer) => Ok(Expression::Int(integer)),
+                                None => Err(Error {
+                                    kind: ErrorKind::BinaryIntegerOverflow,
+                                    col: start_of_expression.col,
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                }),
                             }
                         }
-                        invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str)
-                        | Type::Array { .. }) => Err(Error {
-                            kind: ErrorKind::CannotNegate(invalid_typ),
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(self.tokens),
-                        }),
-                    };
-                };
-
-                let literal = self.tokens.text[literal_index as usize];
-                if should_be_negated {
-                    match parse_negative_int(base, literal.as_bytes()) {
-                        Some(0) => Err(Error {
-                            kind: ErrorKind::MinusZeroInteger,
-                            col: start_of_expression.col,
-                            pointers_count: start_of_expression.kind.display_len(self.tokens),
-                        }),
-                        Some(integer) => Ok(Expression::Int(integer)),
-                        None => Err(Error {
-                            kind: ErrorKind::IntegerUnderflow(base),
-                            col: start_of_expression.col,
-                            pointers_count: start_of_expression.kind.display_len(self.tokens),
-                        }),
                     }
-                } else {
-                    match parse_positive_int(base, literal.as_bytes()) {
-                        Some(integer) => Ok(Expression::Int(integer)),
-                        None => Err(Error {
-                            kind: ErrorKind::IntegerOverflow(base),
-                            col: start_of_expression.col,
-                            pointers_count: start_of_expression.kind.display_len(self.tokens),
-                        }),
-                    }
-                }
-            }
-            TokenKind::Op(Op::WrappingMinus) => {
-                let mut should_be_negated = true;
-
-                // NOTE(stefano): this optimization should be moved to later stages
-                // removing extra "-\" symbols
-                while let Some(Token { kind: TokenKind::Op(Op::WrappingMinus), .. }) =
-                    self.next_token()
-                {
-                    should_be_negated = !should_be_negated;
-                }
-
-                let start_of_expression = self.tokens.tokens[self.token as usize];
-                let TokenKind::Integer(base, literal_index) = start_of_expression.kind else {
-                    let operand = self.primary_expression()?;
-
-                    // returning to avoid the call to tokens.next at the end of the function
-                    return match operand.typ() {
-                        Type::Base(BaseType::Int | BaseType::Ascii) => {
-                            if should_be_negated {
-                                Ok(Expression::Unary {
-                                    op: UnaryOp::WrappingMinus,
-                                    op_col: current_token.col,
-                                    operand_index: self.new_expression(operand),
-                                })
-                            } else {
-                                Ok(operand)
+                    TokenKind::OctalInteger(literal_index) => {
+                        let literal = self.tokens.text[literal_index as usize];
+                        if should_be_negated {
+                            match parse_negative_octal_int(literal.as_bytes()) {
+                                Some(0) => Err(Error {
+                                    kind: ErrorKind::MinusZeroInteger,
+                                    col: start_of_expression.col,
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                }),
+                                Some(integer) => Ok(Expression::Int(integer)),
+                                None => Err(Error {
+                                    kind: ErrorKind::OctalIntegerUnderflow,
+                                    col: start_of_expression.col,
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                }),
+                            }
+                        } else {
+                            match parse_positive_octal_int(literal.as_bytes()) {
+                                Some(integer) => Ok(Expression::Int(integer)),
+                                None => Err(Error {
+                                    kind: ErrorKind::OctalIntegerOverflow,
+                                    col: start_of_expression.col,
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                }),
                             }
                         }
-                        invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str)
-                        | Type::Array { .. }) => Err(Error {
-                            kind: ErrorKind::CannotNegate(invalid_typ),
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(self.tokens),
-                        }),
-                    };
-                };
-
-                let literal = self.tokens.text[literal_index as usize];
-                if should_be_negated {
-                    match parse_negative_int(base, literal.as_bytes()) {
-                        Some(0) => Err(Error {
-                            kind: ErrorKind::MinusZeroInteger,
-                            col: start_of_expression.col,
-                            pointers_count: start_of_expression.kind.display_len(self.tokens),
-                        }),
-                        Some(integer) => Ok(Expression::Int(integer)),
-                        None => Err(Error {
-                            kind: ErrorKind::IntegerUnderflow(base),
-                            col: start_of_expression.col,
-                            pointers_count: start_of_expression.kind.display_len(self.tokens),
-                        }),
                     }
-                } else {
-                    match parse_positive_int(base, literal.as_bytes()) {
-                        Some(integer) => Ok(Expression::Int(integer)),
-                        None => Err(Error {
-                            kind: ErrorKind::IntegerOverflow(base),
-                            col: start_of_expression.col,
-                            pointers_count: start_of_expression.kind.display_len(self.tokens),
-                        }),
-                    }
-                }
-            }
-            TokenKind::Op(Op::SaturatingMinus) => {
-                let mut should_be_negated = true;
-
-                // NOTE(stefano): this optimization should be moved to later stages
-                // removing extra "-|" symbols
-                while let Some(Token { kind: TokenKind::Op(Op::SaturatingMinus), .. }) =
-                    self.next_token()
-                {
-                    should_be_negated = !should_be_negated;
-                }
-
-                let start_of_expression = self.tokens.tokens[self.token as usize];
-                let TokenKind::Integer(base, literal_index) = start_of_expression.kind else {
-                    let operand = self.primary_expression()?;
-
-                    // returning to avoid the call to tokens.next at the end of the function
-                    return match operand.typ() {
-                        Type::Base(BaseType::Int | BaseType::Ascii) => {
-                            if should_be_negated {
-                                Ok(Expression::Unary {
-                                    op: UnaryOp::SaturatingMinus,
-                                    op_col: current_token.col,
-                                    operand_index: self.new_expression(operand),
-                                })
-                            } else {
-                                Ok(operand)
+                    TokenKind::DecimalInteger(literal_index) => {
+                        let literal = self.tokens.text[literal_index as usize];
+                        if should_be_negated {
+                            match parse_negative_decimal_int(literal.as_bytes()) {
+                                Some(0) => Err(Error {
+                                    kind: ErrorKind::MinusZeroInteger,
+                                    col: start_of_expression.col,
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                }),
+                                Some(integer) => Ok(Expression::Int(integer)),
+                                None => Err(Error {
+                                    kind: ErrorKind::DecimalIntegerUnderflow,
+                                    col: start_of_expression.col,
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                }),
+                            }
+                        } else {
+                            match parse_positive_decimal_int(literal.as_bytes()) {
+                                Some(integer) => Ok(Expression::Int(integer)),
+                                None => Err(Error {
+                                    kind: ErrorKind::DecimalIntegerOverflow,
+                                    col: start_of_expression.col,
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                }),
                             }
                         }
-                        invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str)
-                        | Type::Array { .. }) => Err(Error {
-                            kind: ErrorKind::CannotNegate(invalid_typ),
-                            col: current_token.col,
-                            pointers_count: current_token.kind.display_len(self.tokens),
-                        }),
-                    };
-                };
-
-                let literal = self.tokens.text[literal_index as usize];
-                if should_be_negated {
-                    match parse_negative_int(base, literal.as_bytes()) {
-                        Some(0) => Err(Error {
-                            kind: ErrorKind::MinusZeroInteger,
-                            col: start_of_expression.col,
-                            pointers_count: start_of_expression.kind.display_len(self.tokens),
-                        }),
-                        Some(integer) => Ok(Expression::Int(integer)),
-                        None => Err(Error {
-                            kind: ErrorKind::IntegerUnderflow(base),
-                            col: start_of_expression.col,
-                            pointers_count: start_of_expression.kind.display_len(self.tokens),
-                        }),
                     }
-                } else {
-                    match parse_positive_int(base, literal.as_bytes()) {
-                        Some(integer) => Ok(Expression::Int(integer)),
-                        None => Err(Error {
-                            kind: ErrorKind::IntegerOverflow(base),
-                            col: start_of_expression.col,
-                            pointers_count: start_of_expression.kind.display_len(self.tokens),
-                        }),
+                    TokenKind::HexadecimalInteger(literal_index) => {
+                        let literal = self.tokens.text[literal_index as usize];
+                        if should_be_negated {
+                            match parse_negative_hexadecimal_int(literal.as_bytes()) {
+                                Some(0) => Err(Error {
+                                    kind: ErrorKind::MinusZeroInteger,
+                                    col: start_of_expression.col,
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                }),
+                                Some(integer) => Ok(Expression::Int(integer)),
+                                None => Err(Error {
+                                    kind: ErrorKind::HexadecimalIntegerUnderflow,
+                                    col: start_of_expression.col,
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                }),
+                            }
+                        } else {
+                            match parse_positive_hexadecimal_int(literal.as_bytes()) {
+                                Some(integer) => Ok(Expression::Int(integer)),
+                                None => Err(Error {
+                                    kind: ErrorKind::HexadecimalIntegerOverflow,
+                                    col: start_of_expression.col,
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                }),
+                            }
+                        }
+                    }
+                    _ => {
+                        let operand = self.primary_expression()?;
+
+                        // returning to avoid the call to tokens.next at the end of the function
+                        return match operand.typ() {
+                            Type::Base(BaseType::Int | BaseType::Ascii) => {
+                                if should_be_negated {
+                                    Ok(Expression::Unary {
+                                        op: minus.into(),
+                                        op_col: current_token.col,
+                                        operand_index: self.new_expression(operand),
+                                    })
+                                } else {
+                                    Ok(operand)
+                                }
+                            }
+                            invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str)
+                            | Type::Array { .. }) => Err(Error {
+                                kind: ErrorKind::CannotNegate(invalid_typ),
+                                col: current_token.col,
+                                pointers_count: current_token.kind.display_len(self.tokens),
+                            }),
+                        };
                     }
                 }
             }
@@ -2787,7 +2883,10 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Op(_)
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_, _)
+            | TokenKind::BinaryInteger(_)
+            | TokenKind::OctalInteger(_)
+            | TokenKind::DecimalInteger(_)
+            | TokenKind::HexadecimalInteger(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_) => {
@@ -2836,7 +2935,10 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Comma
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_, _)
+            | TokenKind::BinaryInteger(_)
+            | TokenKind::OctalInteger(_)
+            | TokenKind::DecimalInteger(_)
+            | TokenKind::HexadecimalInteger(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
@@ -3163,7 +3265,10 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::Op(_)
                 | TokenKind::False
                 | TokenKind::True
-                | TokenKind::Integer(_, _)
+                | TokenKind::BinaryInteger(_)
+                | TokenKind::OctalInteger(_)
+                | TokenKind::DecimalInteger(_)
+                | TokenKind::HexadecimalInteger(_)
                 | TokenKind::Ascii(_)
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_)
@@ -3203,7 +3308,10 @@ impl Parser<'_, '_, '_, '_> {
                     | TokenKind::Op(_)
                     | TokenKind::False
                     | TokenKind::True
-                    | TokenKind::Integer(_, _)
+                    | TokenKind::BinaryInteger(_)
+                    | TokenKind::OctalInteger(_)
+                    | TokenKind::DecimalInteger(_)
+                    | TokenKind::HexadecimalInteger(_)
                     | TokenKind::Ascii(_)
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
@@ -3244,7 +3352,10 @@ impl Parser<'_, '_, '_, '_> {
                     | TokenKind::Op(_)
                     | TokenKind::False
                     | TokenKind::True
-                    | TokenKind::Integer(_, _)
+                    | TokenKind::BinaryInteger(_)
+                    | TokenKind::OctalInteger(_)
+                    | TokenKind::DecimalInteger(_)
+                    | TokenKind::HexadecimalInteger(_)
                     | TokenKind::Ascii(_)
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
@@ -3302,7 +3413,10 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Op(_)
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_, _)
+            | TokenKind::BinaryInteger(_)
+            | TokenKind::OctalInteger(_)
+            | TokenKind::DecimalInteger(_)
+            | TokenKind::HexadecimalInteger(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
@@ -3350,7 +3464,10 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Op(_)
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_, _)
+            | TokenKind::BinaryInteger(_)
+            | TokenKind::OctalInteger(_)
+            | TokenKind::DecimalInteger(_)
+            | TokenKind::HexadecimalInteger(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
@@ -3440,8 +3557,16 @@ pub enum ErrorKind {
     PrematureEndOfFile(Expected),
 
     MinusZeroInteger,
-    IntegerOverflow(Base),
-    IntegerUnderflow(Base),
+
+    BinaryIntegerOverflow,
+    OctalIntegerOverflow,
+    DecimalIntegerOverflow,
+    HexadecimalIntegerOverflow,
+
+    BinaryIntegerUnderflow,
+    OctalIntegerUnderflow,
+    DecimalIntegerUnderflow,
+    HexadecimalIntegerUnderflow,
 
     MissingSemicolon,
 
@@ -3518,7 +3643,25 @@ impl IntoErrorInfo for ErrorKind {
                 "invalid integer literal".into(),
                 "-0 is not a valid two's complement integer".into(),
             ),
-            Self::IntegerOverflow(Base::Decimal) => (
+            Self::BinaryIntegerOverflow => (
+                "integer literal overflow".into(),
+                format!(
+                    "overflows a {bits} bit signed integer, over {prefix}{max:0b} ({max})",
+                    bits = int::BITS,
+                    prefix = Base::Binary.prefix(),
+                    max = int::MAX
+                ).into(),
+            ),
+            Self::OctalIntegerOverflow => (
+                "integer literal overflow".into(),
+                format!(
+                    "overflows a {bits} bit signed integer, over {prefix}{max:0o} ({max})",
+                    bits = int::BITS,
+                    prefix = Base::Octal.prefix(),
+                    max = int::MAX
+                ).into(),
+            ),
+            Self::DecimalIntegerOverflow => (
                 "integer literal overflow".into(),
                 format!(
                     "overflows a {bits} bit signed integer, over {max}",
@@ -3526,34 +3669,34 @@ impl IntoErrorInfo for ErrorKind {
                     max = int::MAX
                 ).into(),
             ),
-            Self::IntegerOverflow(base @ Base::Binary) => (
-                "integer literal overflow".into(),
-                format!(
-                    "overflows a {bits} bit signed integer, over {prefix}{max:0b} ({max})",
-                    bits = int::BITS,
-                    prefix = base.prefix(),
-                    max = int::MAX
-                ).into(),
-            ),
-            Self::IntegerOverflow(base @ Base::Octal) => (
-                "integer literal overflow".into(),
-                format!(
-                    "overflows a {bits} bit signed integer, over {prefix}{max:0o} ({max})",
-                    bits = int::BITS,
-                    prefix = base.prefix(),
-                    max = int::MAX
-                ).into(),
-            ),
-            Self::IntegerOverflow(base @ Base::Hexadecimal) => (
+            Self::HexadecimalIntegerOverflow => (
                 "integer literal overflow".into(),
                 format!(
                     "overflows a {bits} bit signed integer, over {prefix}{max:0x} ({max})",
                     bits = int::BITS,
-                    prefix = base.prefix(),
+                    prefix = Base::Hexadecimal.prefix(),
                     max = int::MAX
                 ).into(),
             ),
-            Self::IntegerUnderflow(Base::Decimal) => (
+            Self::BinaryIntegerUnderflow => (
+                "integer literal underflow".into(),
+                format!(
+                    "underflows a {bits} bit signed integer, under {prefix}{min:0b} ({min})",
+                    bits = int::BITS,
+                    prefix = Base::Binary.prefix(),
+                    min = int::MIN
+                ).into(),
+            ),
+            Self::OctalIntegerUnderflow => (
+                "integer literal underflow".into(),
+                format!(
+                    "underflows a {bits} bit signed integer, under {prefix}{min:0o} ({min})",
+                    bits = int::BITS,
+                    prefix = Base::Octal.prefix(),
+                    min = int::MIN
+                ).into(),
+            ),
+            Self::DecimalIntegerUnderflow => (
                 "integer literal underflow".into(),
                 format!(
                     "underflows a {bits} bit signed integer, under {min}",
@@ -3561,30 +3704,12 @@ impl IntoErrorInfo for ErrorKind {
                     min = int::MIN
                 ).into(),
             ),
-            Self::IntegerUnderflow(base @ Base::Binary) => (
-                "integer literal underflow".into(),
-                format!(
-                    "underflows a {bits} bit signed integer, under {prefix}{min:0b} ({min})",
-                    bits = int::BITS,
-                    prefix = base.prefix(),
-                    min = int::MIN
-                ).into(),
-            ),
-            Self::IntegerUnderflow(base @ Base::Octal) => (
-                "integer literal underflow".into(),
-                format!(
-                    "underflows a {bits} bit signed integer, under {prefix}{min:0o} ({min})",
-                    bits = int::BITS,
-                    prefix = base.prefix(),
-                    min = int::MIN
-                ).into(),
-            ),
-            Self::IntegerUnderflow(base @ Base::Hexadecimal) => (
+            Self::HexadecimalIntegerUnderflow => (
                 "integer literal underflow".into(),
                 format!(
                     "underflows a {bits} bit signed integer, under {prefix}{min:0x} ({min})",
                     bits = int::BITS,
-                    prefix = base.prefix(),
+                    prefix = Base::Hexadecimal.prefix(),
                     min = int::MIN
                 ).into(),
             ),

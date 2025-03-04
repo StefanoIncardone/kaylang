@@ -29,7 +29,9 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 From this release onwards individual modules may be extracted to separate `back-to-front` compiler
 tools repo, to aid in modularity and code reuse.
 
-### Changed
+### Compiler
+
+#### Changed
 
 - Reworked compilation stages:
     - old:
@@ -46,8 +48,10 @@ tools repo, to aid in modularity and code reuse.
         - return the compiled code
 - `src_file::Span`, `src_file::Position` and `src_file::DisplayPosition` now derive `Hash`
 - Improved `Logger` methods consistency
+- Expanded `TokenKind::Integer` into its different bases, modified related entities and errors
+    accordingly
 
-### Removed
+#### Removed
 
 - Removed `back_end::reg` module, moved to `back-to-front` compiler tools repo
 

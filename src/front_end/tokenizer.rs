@@ -519,9 +519,11 @@ pub(crate) enum TokenKind {
     // Literal values
     False,
     True,
-    // IDEA(stefano): expand into the different bases, akin to Str and RawStr
     /// integer literals are never empty and always contain valid ascii digits
-    Integer(Base, TextIndex),
+    DecimalInteger(TextIndex),
+    BinaryInteger(TextIndex),
+    OctalInteger(TextIndex),
+    HexadecimalInteger(TextIndex),
     Ascii(ascii),
     Str(StrIndex),
     RawStr(StrIndex),
@@ -570,9 +572,21 @@ impl TokenKind {
             Self::Comma => 1,
             Self::Op(op) => op.display_len(),
 
-            Self::Integer(base, integer) => {
+            Self::DecimalInteger(integer) => {
                 let literal = tokens.text[integer as usize];
-                base.prefix().len() as offset32 + literal.len() as offset32
+                literal.len() as offset32
+            }
+            Self::BinaryInteger(integer) => {
+                let literal = tokens.text[integer as usize];
+                Base::Binary.prefix().len() as offset32 + literal.len() as offset32
+            }
+            Self::OctalInteger(integer) => {
+                let literal = tokens.text[integer as usize];
+                Base::Octal.prefix().len() as offset32 + literal.len() as offset32
+            }
+            Self::HexadecimalInteger(integer) => {
+                let literal = tokens.text[integer as usize];
+                Base::Hexadecimal.prefix().len() as offset32 + literal.len() as offset32
             }
             Self::Ascii(ascii_char) => ascii_char.escape_ascii().len() as offset32 + 2, // + 2 to account for the quotes
             Self::True => 4,
@@ -742,40 +756,56 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                     b'a'..=b'z' | b'A'..=b'Z' | b'_' => tokenizer.identifier(),
                     // IDEA(stefano): debate wether to allow trailing underscores or to emit a warning
                     // IDEA(stefano): emit warning of inconsistent casing of letters, i.e. 0xFFff_fFfF_ffFF_ffFF
-                    b'0' => {
-                        let (base, integer) = match tokenizer.peek_next_utf8_char() {
-                            Some('b') => {
-                                tokenizer.col += 1;
-                                (Base::Binary, tokenizer.integer_binary())
+                    b'0' => match tokenizer.peek_next_utf8_char() {
+                        Some('b') => {
+                            tokenizer.col += 1;
+                            match tokenizer.integer_binary() {
+                                Ok(literal) => {
+                                    tokenizer.tokens.text.push(literal);
+                                    let literal_index = tokenizer.tokens.text.len() as TextIndex - 1;
+                                    Ok(TokenKind::BinaryInteger(literal_index))
+                                }
+                                Err(()) => Err(())
                             }
-                            Some('o') => {
-                                tokenizer.col += 1;
-                                (Base::Octal, tokenizer.integer_octal())
+                        }
+                        Some('o') => {
+                            tokenizer.col += 1;
+                            match tokenizer.integer_octal() {
+                                Ok(literal) => {
+                                    tokenizer.tokens.text.push(literal);
+                                    let literal_index = tokenizer.tokens.text.len() as TextIndex - 1;
+                                    Ok(TokenKind::OctalInteger(literal_index))
+                                }
+                                Err(()) => Err(())
                             }
-                            Some('x') => {
-                                tokenizer.col += 1;
-                                (Base::Hexadecimal, tokenizer.integer_hexadecimal())
+                        }
+                        Some('x') => {
+                            tokenizer.col += 1;
+                            match tokenizer.integer_hexadecimal() {
+                                Ok(literal) => {
+                                    tokenizer.tokens.text.push(literal);
+                                    let literal_index = tokenizer.tokens.text.len() as TextIndex - 1;
+                                    Ok(TokenKind::HexadecimalInteger(literal_index))
+                                }
+                                Err(()) => Err(())
                             }
-                            Some(_) | None => (Base::Decimal, tokenizer.integer_decimal()),
-                        };
-
-                        match integer {
-                            Ok(literal) => {
-                                let literal_str =
-                                    unsafe { core::str::from_utf8_unchecked(literal) };
-                                tokenizer.tokens.text.push(literal_str);
-                                let literal_index = tokenizer.tokens.text.len() as TextIndex - 1;
-                                Ok(TokenKind::Integer(base, literal_index))
+                        }
+                        Some(_) | None => {
+                            match tokenizer.integer_decimal() {
+                                Ok(literal) => {
+                                    tokenizer.tokens.text.push(literal);
+                                    let literal_index = tokenizer.tokens.text.len() as TextIndex - 1;
+                                    Ok(TokenKind::DecimalInteger(literal_index))
+                                }
+                                Err(()) => Err(())
                             }
-                            Err(()) => Err(()),
                         }
                     }
                     b'1'..=b'9' => match tokenizer.integer_decimal() {
                         Ok(literal) => {
-                            let literal_str = unsafe { core::str::from_utf8_unchecked(literal) };
-                            tokenizer.tokens.text.push(literal_str);
+                            tokenizer.tokens.text.push(literal);
                             let literal_index = tokenizer.tokens.text.len() as TextIndex - 1;
-                            Ok(TokenKind::Integer(Base::Decimal, literal_index))
+                            Ok(TokenKind::DecimalInteger(literal_index))
                         }
                         Err(()) => Err(()),
                     },
@@ -1497,7 +1527,7 @@ impl<'code> Tokenizer<'code, '_> {
         return Ok(identifier);
     }
 
-    fn integer_decimal(&mut self) -> Result<&'code [ascii], ()> {
+    fn integer_decimal(&mut self) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1507,7 +1537,7 @@ impl<'code> Tokenizer<'code, '_> {
                 }
                 Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::LetterInNumberLiteral(Base::Decimal, letter),
+                        kind: ErrorKind::LetterInDecimalNumberLiteral(letter),
                         col: self.col,
                         pointers_count: 1,
                     });
@@ -1527,13 +1557,13 @@ impl<'code> Tokenizer<'code, '_> {
 
         return if previous_errors_len == self.errors.len() {
             let digits = &self.code[self.token_start_col as usize..self.col as usize];
-            Ok(digits.as_bytes())
+            Ok(digits)
         } else {
             Err(())
         };
     }
 
-    fn integer_binary(&mut self) -> Result<&'code [ascii], ()> {
+    fn integer_binary(&mut self) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1543,7 +1573,7 @@ impl<'code> Tokenizer<'code, '_> {
                 }
                 Some(Ok(out_of_range @ b'2'..=b'9')) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::DigitOutOfRangeInNumberLiteral(Base::Binary, out_of_range),
+                        kind: ErrorKind::DigitOutOfRangeInBinaryNumberLiteral(out_of_range),
                         col: self.col,
                         pointers_count: 1,
                     });
@@ -1551,7 +1581,7 @@ impl<'code> Tokenizer<'code, '_> {
                 }
                 Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::LetterInNumberLiteral(Base::Binary, letter),
+                        kind: ErrorKind::LetterInBinaryNumberLiteral(letter),
                         col: self.col,
                         pointers_count: 1,
                     });
@@ -1569,15 +1599,15 @@ impl<'code> Tokenizer<'code, '_> {
             }
         }
 
-        if previous_errors_len != self.errors.len() {
-            return Err(());
-        }
-
-        let digits = &self.code[self.token_start_col as usize..self.col as usize];
-        return Ok(digits.as_bytes());
+        return if previous_errors_len == self.errors.len() {
+            let digits = &self.code[self.token_start_col as usize..self.col as usize];
+            Ok(digits)
+        } else {
+            Err(())
+        };
     }
 
-    fn integer_octal(&mut self) -> Result<&'code [ascii], ()> {
+    fn integer_octal(&mut self) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1587,7 +1617,7 @@ impl<'code> Tokenizer<'code, '_> {
                 }
                 Some(Ok(out_of_range @ b'8'..=b'9')) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::DigitOutOfRangeInNumberLiteral(Base::Octal, out_of_range),
+                        kind: ErrorKind::DigitOutOfRangeInOctalNumberLiteral(out_of_range),
                         col: self.col,
                         pointers_count: 1,
                     });
@@ -1595,7 +1625,7 @@ impl<'code> Tokenizer<'code, '_> {
                 }
                 Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::LetterInNumberLiteral(Base::Octal, letter),
+                        kind: ErrorKind::LetterInOctalNumberLiteral(letter),
                         col: self.col,
                         pointers_count: 1,
                     });
@@ -1613,15 +1643,15 @@ impl<'code> Tokenizer<'code, '_> {
             }
         }
 
-        if previous_errors_len != self.errors.len() {
-            return Err(());
-        }
-
-        let digits = &self.code[self.token_start_col as usize..self.col as usize];
-        return Ok(digits.as_bytes());
+        return if previous_errors_len == self.errors.len() {
+            let digits = &self.code[self.token_start_col as usize..self.col as usize];
+            Ok(digits)
+        } else {
+            Err(())
+        };
     }
 
-    fn integer_hexadecimal(&mut self) -> Result<&'code [ascii], ()> {
+    fn integer_hexadecimal(&mut self) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1631,10 +1661,7 @@ impl<'code> Tokenizer<'code, '_> {
                 }
                 Some(Ok(out_of_range @ (b'g'..=b'z' | b'G'..=b'Z'))) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::DigitOutOfRangeInNumberLiteral(
-                            Base::Hexadecimal,
-                            out_of_range,
-                        ),
+                        kind: ErrorKind::DigitOutOfRangeInHexadecimalNumberLiteral(out_of_range),
                         col: self.col,
                         pointers_count: 1,
                     });
@@ -1652,12 +1679,12 @@ impl<'code> Tokenizer<'code, '_> {
             }
         }
 
-        if previous_errors_len != self.errors.len() {
-            return Err(());
-        }
-
-        let digits = &self.code[self.token_start_col as usize..self.col as usize];
-        return Ok(digits.as_bytes());
+        return if previous_errors_len == self.errors.len() {
+            let digits = &self.code[self.token_start_col as usize..self.col as usize];
+            Ok(digits)
+        } else {
+            Err(())
+        };
     }
 
     fn raw_string_literal(&mut self) -> Result<Vec<ascii>, ()> {
@@ -1849,6 +1876,7 @@ impl<'code> Tokenizer<'code, '_> {
     }
 }
 
+// IDEA(stefano): expand QuotedLiteralKind
 #[derive(Debug, Clone)]
 pub enum ErrorKind<'code> {
     UnclosedBlockComment,
@@ -1864,9 +1892,14 @@ pub enum ErrorKind<'code> {
     EmptyCharacterLiteral,
     MultipleCharactersInCharacterLiteral,
 
+    // IDEA(stefano): expand into different bases
     Utf8InNumberLiteral { grapheme: &'code str },
-    LetterInNumberLiteral(Base, ascii),
-    DigitOutOfRangeInNumberLiteral(Base, ascii),
+    LetterInDecimalNumberLiteral(ascii),
+    LetterInBinaryNumberLiteral(ascii),
+    LetterInOctalNumberLiteral(ascii),
+    DigitOutOfRangeInBinaryNumberLiteral(ascii),
+    DigitOutOfRangeInOctalNumberLiteral(ascii),
+    DigitOutOfRangeInHexadecimalNumberLiteral(ascii),
 
     Utf8InIdentifier { grapheme: &'code str },
     IdentifierTooLong { max: offset32 },
@@ -1925,14 +1958,39 @@ impl IntoErrorInfo for ErrorKind<'_> {
                 format!("invalid integer literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
             ),
-            Self::LetterInNumberLiteral(base, letter) => (
+            Self::LetterInDecimalNumberLiteral(letter) => (
                 format!("invalid integer literal letter '{}'", *letter as utf32).into(),
-                format!("not allowed in a base {} number", *base as u8).into(),
+                format!("not allowed in a base {} number", Base::Decimal as u8).into(),
             ),
-            Self::DigitOutOfRangeInNumberLiteral(base, digit) => (
-                format!("invalid integer literal digit '{}'", *digit as utf32).into(),
-                format!("out of the valid range for a base {} number {:?}", *base as u8, base.range()).into(),
+            Self::LetterInBinaryNumberLiteral(letter) => (
+                format!("invalid integer literal letter '{}'", *letter as utf32).into(),
+                format!("not allowed in a base {} number", Base::Binary as u8).into(),
             ),
+            Self::LetterInOctalNumberLiteral(letter) => (
+                format!("invalid integer literal letter '{}'", *letter as utf32).into(),
+                format!("not allowed in a base {} number", Base::Octal as u8).into(),
+            ),
+            Self::DigitOutOfRangeInBinaryNumberLiteral(digit) => {
+                const BASE: Base = Base::Binary;
+                (
+                    format!("invalid integer literal digit '{}'", *digit as utf32).into(),
+                    format!("out of the valid range for a base {} number {:?}", BASE as u8, BASE.range()).into(),
+                )
+            }
+            Self::DigitOutOfRangeInOctalNumberLiteral(digit) => {
+                const BASE: Base = Base::Octal;
+                (
+                    format!("invalid integer literal digit '{}'", *digit as utf32).into(),
+                    format!("out of the valid range for a base {} number {:?}", BASE as u8, BASE.range()).into(),
+                )
+            }
+            Self::DigitOutOfRangeInHexadecimalNumberLiteral(digit) => {
+                const BASE: Base = Base::Hexadecimal;
+                (
+                    format!("invalid integer literal digit '{}'", *digit as utf32).into(),
+                    format!("out of the valid range for a base {} number {:?}", BASE as u8, BASE.range()).into(),
+                )
+            }
 
             Self::Utf8InIdentifier { grapheme } => (
                 format!("invalid identifier character '{grapheme}' {}", grapheme.escape_unicode()).into(),

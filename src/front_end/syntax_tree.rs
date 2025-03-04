@@ -1,7 +1,7 @@
 use super::{
     src_file::{column32, index32, offset32, DisplayPosition, SrcCode},
     tokenizer::{
-        ascii, Base, Bracket, CloseBracket, Op, StrIndex, TextIndex, Token, TokenIndex, TokenKind,
+        ascii, Bracket, CloseBracket, Op, StrIndex, TextIndex, Token, TokenIndex, TokenKind,
         Tokens,
     },
     Error, ErrorDisplay, ErrorInfo, IntoErrorInfo,
@@ -234,8 +234,19 @@ pub(crate) enum Expression {
     True {
         column: column32,
     },
-    Integer {
-        base: Base,
+    DecimalInteger {
+        literal: TextIndex,
+        column: column32,
+    },
+    BinaryInteger {
+        literal: TextIndex,
+        column: column32,
+    },
+    OctalInteger {
+        literal: TextIndex,
+        column: column32,
+    },
+    HexadecimalInteger {
         literal: TextIndex,
         column: column32,
     },
@@ -654,9 +665,21 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
         return match expression {
             Expression::False { column } => writeln!(f, "{:>indent$}False: {column} = false", ""),
             Expression::True { column } => writeln!(f, "{:>indent$}True: {column} = true", ""),
-            Expression::Integer { base: _base, literal, column } => {
+            Expression::DecimalInteger { literal, column } => {
                 let literal_str = self.tokens.text[*literal as usize];
-                writeln!(f, "{:>indent$}Integer: {column} = {literal_str}", "")
+                writeln!(f, "{:>indent$}DecimalInteger: {column} = {literal_str}", "")
+            }
+            Expression::BinaryInteger { literal, column } => {
+                let literal_str = self.tokens.text[*literal as usize];
+                writeln!(f, "{:>indent$}BinaryInteger: {column} = {literal_str}", "")
+            }
+            Expression::OctalInteger { literal, column } => {
+                let literal_str = self.tokens.text[*literal as usize];
+                writeln!(f, "{:>indent$}OctalInteger: {column} = {literal_str}", "")
+            }
+            Expression::HexadecimalInteger { literal, column } => {
+                let literal_str = self.tokens.text[*literal as usize];
+                writeln!(f, "{:>indent$}HexadecimalInteger: {column} = {literal_str}", "")
             }
             Expression::Ascii { character, column } => {
                 let character_escaped = character.escape_ascii();
@@ -884,7 +907,10 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
         return match token.kind {
             TokenKind::True
             | TokenKind::False
-            | TokenKind::Integer(_, _)
+            | TokenKind::DecimalInteger(_)
+            | TokenKind::BinaryInteger(_)
+            | TokenKind::OctalInteger(_)
+            | TokenKind::HexadecimalInteger(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
@@ -997,7 +1023,10 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                     | TokenKind::Comma
                     | TokenKind::False
                     | TokenKind::True
-                    | TokenKind::Integer(_, _)
+                    | TokenKind::DecimalInteger(_)
+                    | TokenKind::BinaryInteger(_)
+                    | TokenKind::OctalInteger(_)
+                    | TokenKind::HexadecimalInteger(_)
                     | TokenKind::Ascii(_)
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
@@ -1306,7 +1335,10 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::Op(_)
                 | TokenKind::False
                 | TokenKind::True
-                | TokenKind::Integer(_, _)
+                | TokenKind::DecimalInteger(_)
+                | TokenKind::BinaryInteger(_)
+                | TokenKind::OctalInteger(_)
+                | TokenKind::HexadecimalInteger(_)
                 | TokenKind::Ascii(_)
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_)
@@ -1378,7 +1410,10 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::Op(_)
                 | TokenKind::False
                 | TokenKind::True
-                | TokenKind::Integer(_, _)
+                | TokenKind::DecimalInteger(_)
+                | TokenKind::BinaryInteger(_)
+                | TokenKind::OctalInteger(_)
+                | TokenKind::HexadecimalInteger(_)
                 | TokenKind::Ascii(_)
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_)
@@ -1432,8 +1467,17 @@ impl Parser<'_, '_, '_, '_> {
         let mut expression = match token.kind {
             TokenKind::False => Expression::False { column: token.col },
             TokenKind::True => Expression::True { column: token.col },
-            TokenKind::Integer(base, literal) => {
-                Expression::Integer { base, literal, column: token.col }
+            TokenKind::DecimalInteger(literal) => {
+                Expression::DecimalInteger { literal, column: token.col }
+            }
+            TokenKind::BinaryInteger(literal) => {
+                Expression::BinaryInteger { literal, column: token.col }
+            }
+            TokenKind::OctalInteger(literal) => {
+                Expression::OctalInteger { literal, column: token.col }
+            }
+            TokenKind::HexadecimalInteger(literal) => {
+                Expression::HexadecimalInteger { literal, column: token.col }
             }
             TokenKind::Ascii(character) => Expression::Ascii { character, column: token.col },
             TokenKind::Str(literal) => Expression::Str { literal, column: token.col },
@@ -1509,7 +1553,10 @@ impl Parser<'_, '_, '_, '_> {
                         | TokenKind::Bracket(_)
                         | TokenKind::False
                         | TokenKind::True
-                        | TokenKind::Integer(_, _)
+                        | TokenKind::DecimalInteger(_)
+                        | TokenKind::BinaryInteger(_)
+                        | TokenKind::OctalInteger(_)
+                        | TokenKind::HexadecimalInteger(_)
                         | TokenKind::Ascii(_)
                         | TokenKind::Str(_)
                         | TokenKind::RawStr(_)
@@ -1874,7 +1921,10 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Op(_)
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_, _)
+            | TokenKind::DecimalInteger(_)
+            | TokenKind::BinaryInteger(_)
+            | TokenKind::OctalInteger(_)
+            | TokenKind::HexadecimalInteger(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_) => {
@@ -1926,7 +1976,10 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::Op(_)
                 | TokenKind::False
                 | TokenKind::True
-                | TokenKind::Integer(_, _)
+                | TokenKind::DecimalInteger(_)
+                | TokenKind::BinaryInteger(_)
+                | TokenKind::OctalInteger(_)
+                | TokenKind::HexadecimalInteger(_)
                 | TokenKind::Ascii(_)
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_) => {
@@ -2040,7 +2093,10 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Op(_)
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::Integer(_, _)
+            | TokenKind::DecimalInteger(_)
+            | TokenKind::BinaryInteger(_)
+            | TokenKind::OctalInteger(_)
+            | TokenKind::HexadecimalInteger(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
@@ -2160,7 +2216,10 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::Bracket(_)
                 | TokenKind::False
                 | TokenKind::True
-                | TokenKind::Integer(_, _)
+                | TokenKind::DecimalInteger(_)
+                | TokenKind::BinaryInteger(_)
+                | TokenKind::OctalInteger(_)
+                | TokenKind::HexadecimalInteger(_)
                 | TokenKind::Ascii(_)
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_)
