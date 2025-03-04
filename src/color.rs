@@ -138,35 +138,30 @@ pub(super) fn print_color(
         return text.fmt(f);
     }
 
-    // IDEA(stefano): make into static mut
-    let mut codes: [u8; CODES_LEN] = [b';'; CODES_LEN];
-    let mut codes_end_pointer = codes.as_mut_ptr().wrapping_add(codes.len());
+    let mut codes = [b';'; CODES_LEN];
+    let mut digit_index = codes.len();
 
     loop {
         let mut code = codes_bytes as u8;
         loop {
-            codes_end_pointer = codes_end_pointer.wrapping_sub(1);
-            unsafe {
-                *codes_end_pointer = (code % 10) + b'0';
-            }
+            digit_index -= 1;
+            codes[digit_index] = (code % 10) + b'0';
+
             code /= 10;
             if code == 0 {
                 break;
             }
         }
-        codes_end_pointer = codes_end_pointer.wrapping_sub(1);
+        digit_index -= 1; // skipping the semicolon
 
         codes_bytes >>= u8::BITS as u64;
         if codes_bytes == 0 {
             break;
         }
     }
+    digit_index += 1; // un-skipping the last semicolon
 
-    // skipping the last semicolon
-    codes_end_pointer = codes_end_pointer.wrapping_add(1);
-    let codes_len = CODES_LEN - (codes_end_pointer as usize - codes.as_ptr() as usize);
-
-    let codes_slice = unsafe { core::slice::from_raw_parts(codes_end_pointer, codes_len) };
+    let codes_slice = &codes[digit_index..];
     let codes_str = unsafe { core::str::from_utf8_unchecked(codes_slice) };
 
     write!(f, "\x1b[{codes_str}m")?;
