@@ -13,7 +13,7 @@ fn main() -> ExitCode {
     // controls how error messages should be colored
     Color::Auto.set(&std::io::stderr());
 
-    // controls how much information about assembly steps are reported to the user
+    // controls how much information about compilation steps are reported to the user
     let verbosity = Verbosity::Verbose;
 
     // cargo sets the working directory to where the `cargo` command was run.
