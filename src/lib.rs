@@ -1,3 +1,4 @@
+// IDEA(stefano): raise an error or warn on missing `-o`/`--output` that will pollute the current directory
 #![warn(clippy::print_stdout, clippy::print_stderr)]
 
 pub mod back_end;
@@ -156,13 +157,6 @@ impl Logger {
         }
     }
 
-    #[inline]
-    pub fn done_with_verbosity(self, text: &dyn Display, output: Option<&Path>, padding: usize, verbosity: Verbosity) {
-        if let Verbosity::Normal | Verbosity::Verbose = verbosity {
-            self.done(text, output, padding);
-        }
-    }
-
     #[inline(always)]
     pub fn step(self, text: &dyn Display, output: Option<&Path>) {
         self.done(text, output, STEP_INDENT + STEP_PADDING);
@@ -170,7 +164,9 @@ impl Logger {
 
     #[inline(always)]
     pub fn step_with_verbosity(self, text: &dyn Display, output: Option<&Path>, verbosity: Verbosity) {
-        self.done_with_verbosity(text, output, STEP_INDENT + STEP_PADDING, verbosity);
+        if let Verbosity::Normal | Verbosity::Verbose = verbosity {
+            self.done(text, output, STEP_INDENT + STEP_PADDING);
+        }
     }
 
     #[inline(always)]
@@ -180,10 +176,13 @@ impl Logger {
 
     #[inline(always)]
     pub fn sub_step_with_verbosity(self, text: &dyn Display, output: Option<&Path>, verbosity: Verbosity) {
-        self.done_with_verbosity(text, output, SUBSTEP_INDENT + SUBSTEP_PADDING, verbosity);
+        if let Verbosity::Verbose = verbosity {
+            self.done(text, output, SUBSTEP_INDENT + SUBSTEP_PADDING);
+        }
     }
 }
 
+// IDEA(stefano): fuse with `Color` and remove `-c` -> `--color-auto` (maybe remove this and have it as the default), `--color-always`, `--color-never`
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColorFlag {
     Short,
@@ -414,20 +413,6 @@ impl TryFrom<Vec<String>> for Args {
     type Error = Error;
 
     fn try_from(args: Vec<String>) -> Result<Self, Self::Error> {
-        #[inline(always)]
-        fn is_verbosity_flag((_verbosity_flag_index, verbosity_flag): &(usize, &String)) -> bool {
-            return matches!(verbosity_flag.as_str(), "-q" | "--quiet" | "-V" | "--verbose");
-        }
-
-        #[expect(
-            clippy::single_call_fn,
-            reason = "is consistent with the `is_verbosity_flag` function"
-        )]
-        #[inline(always)]
-        fn is_out_flag((_out_flag_index, out_flag): &(usize, &String)) -> bool {
-            return matches!(out_flag.as_str(), "-o" | "--output");
-        }
-
         Color::Auto.set(&std::io::stderr());
 
         let mut args_iter = args.iter().enumerate();
@@ -490,7 +475,8 @@ impl TryFrom<Vec<String>> for Args {
 
         let mut command_option: Option<(CommandFlag, Command)> = None;
 
-        // IDEA(stefano): make help and version commands only behave as commands when placed as the first argument
+        // IDEA(stefano): make help and version commands collide with other commands
+        // i.e.: `kay run file.txt help` should raise an error
         let mut other_args = args_iter.clone().peekable();
         while let Some((selected_flag_index, selected_flag)) = other_args.next() {
             match selected_flag.as_str() {
@@ -563,13 +549,17 @@ impl TryFrom<Vec<String>> for Args {
                         });
                     }
 
-                    let verbosity = if let Some((_verbosity_flag_index, verbosity_flag)) =
-                        other_args.next_if(is_verbosity_flag)
-                    {
+                    let verbosity = if let Some((_verbosity_flag_index, verbosity_flag)) = other_args.peek() {
                         match verbosity_flag.as_str() {
-                            "-q" | "--quiet" => Verbosity::Quiet,
-                            "-V" | "--verbose" => Verbosity::Verbose,
-                            _ => unreachable!(),
+                            "-q" | "--quiet" => {
+                                _ = other_args.next();
+                                Verbosity::Quiet
+                            }
+                            "-V" | "--verbose" => {
+                                _ = other_args.next();
+                                Verbosity::Verbose
+                            }
+                            _ => Verbosity::Normal
                         }
                     } else {
                         Verbosity::Normal
@@ -626,12 +616,19 @@ impl TryFrom<Vec<String>> for Args {
                         });
                     }
 
-                    let out_path =
-                        if let Some((out_flag_index, out_flag)) = other_args.next_if(is_out_flag) {
+                    let out_path = 'out_path: {
+                        if let Some((peeked_out_flag_index, out_flag)) = other_args.peek() {
+                            let out_flag_index = *peeked_out_flag_index;
                             let out_option = match out_flag.as_str() {
-                                "-o" => OutputFlag::Short,
-                                "--output" => OutputFlag::Long,
-                                _ => unreachable!(),
+                                "-o" => {
+                                    _ = other_args.next();
+                                    OutputFlag::Short
+                                }
+                                "--output" => {
+                                    _ = other_args.next();
+                                    OutputFlag::Long
+                                }
+                                _ => break 'out_path None,
                             };
 
                             let Some((out_path_index, out_path_string)) = other_args.next() else {
@@ -654,15 +651,20 @@ impl TryFrom<Vec<String>> for Args {
                             Some(out_path_buf)
                         } else {
                             None
-                        };
+                        }
+                    };
 
-                    let verbosity = if let Some((_verbosity_flag_index, verbosity_flag)) =
-                        other_args.next_if(is_verbosity_flag)
-                    {
+                    let verbosity = if let Some((_verbosity_flag_index, verbosity_flag)) = other_args.peek() {
                         match verbosity_flag.as_str() {
-                            "-q" | "--quiet" => Verbosity::Quiet,
-                            "-V" | "--verbose" => Verbosity::Verbose,
-                            _ => unreachable!(),
+                            "-q" | "--quiet" => {
+                                _ = other_args.next();
+                                Verbosity::Quiet
+                            }
+                            "-V" | "--verbose" => {
+                                _ = other_args.next();
+                                Verbosity::Verbose
+                            }
+                            _ => Verbosity::Normal
                         }
                     } else {
                         Verbosity::Normal

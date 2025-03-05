@@ -68,6 +68,7 @@ tools repo, to aid in modularity and code reuse.
 
 - Corrected error message and `tokenizer::ErrorKind` related to UTF8 characters in raw string
     literals
+- Corrected behaviour of verbosity flags introduced in the previous version
 
 ## 0.6.2 - 2025-02-27
 
