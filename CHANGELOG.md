@@ -48,12 +48,19 @@ tools repo, to aid in modularity and code reuse.
         - return the compiled code
 - `src_file::Span`, `src_file::Position` and `src_file::DisplayPosition` now derive `Hash`
 - Improved `Logger` methods consistency
-- Expanded `TokenKind::Integer` into its different bases, modified related entities and errors
-    accordingly
+- Expanded `tokenizer::TokenKind::Integer` into its different bases, modified related entities,
+    errors and `tokenizer::ErrorKind`s accordingly
 
 #### Removed
 
 - Removed `back_end::reg` module, moved to `back-to-front` compiler tools repo
+- Removed `tokenizer::Quote` and `tokenizer::QuotedLiteralKind`, and expanded related
+    `tokenizer::ErrorKind`s
+
+#### Fixed
+
+- Corrected error message and `tokenizer::ErrorKind` related to UTF8 characters in raw string
+    literals
 
 ## 0.6.2 - 2025-02-27
 

@@ -24,6 +24,7 @@ pub(crate) type ascii = u8;
 /// kay's utf32 character type
 pub(crate) type utf32 = char;
 
+// TODO(stefano): make pub(crate)
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Base {
@@ -462,41 +463,6 @@ impl Op {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum Quote {
-    Single = b'\'',
-    Double = b'"',
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum QuotedLiteralKind {
-    Ascii,
-    Str,
-    RawStr,
-}
-
-impl Display for QuotedLiteralKind {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        return match self {
-            Self::Ascii => write!(f, "character"),
-            Self::Str => write!(f, "string"),
-            Self::RawStr => write!(f, "raw string"),
-        };
-    }
-}
-
-impl QuotedLiteralKind {
-    #[must_use]
-    pub const fn quote(self) -> Quote {
-        return match self {
-            Self::Ascii => Quote::Single,
-            Self::Str | Self::RawStr => Quote::Double,
-        };
-    }
-}
-
 pub(crate) type BracketIndex = index32;
 pub(crate) type TextIndex = index32;
 pub(crate) type StrIndex = index32;
@@ -809,7 +775,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                         Err(()) => Err(()),
                     },
-                    b'"' => match tokenizer.quoted_literal(QuotedLiteralKind::Str) {
+                    b'"' => match tokenizer.string_literal() {
                         Ok(literal) => {
                             tokenizer.tokens.strings.push(Str(literal.into_boxed_slice()));
                             let string_index = tokenizer.tokens.strings.len() as StrIndex - 1;
@@ -817,26 +783,8 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                         Err(()) => Err(()),
                     },
-                    b'\'' => match tokenizer.quoted_literal(QuotedLiteralKind::Ascii) {
-                        Ok(literal) => match literal.as_slice() {
-                            [character] => Ok(TokenKind::Ascii(*character)),
-                            [] => {
-                                tokenizer.errors.push(Error {
-                                    kind: ErrorKind::EmptyCharacterLiteral,
-                                    col: tokenizer.token_start_col,
-                                    pointers_count: 2,
-                                });
-                                Err(())
-                            }
-                            [_, ..] => {
-                                tokenizer.errors.push(Error {
-                                    kind: ErrorKind::MultipleCharactersInCharacterLiteral,
-                                    col: tokenizer.token_start_col,
-                                    pointers_count: tokenizer.token_text().chars_width(),
-                                });
-                                Err(())
-                            }
-                        },
+                    b'\'' => match tokenizer.ascii_literal() {
+                        Ok(literal) =>  Ok(TokenKind::Ascii(literal)),
                         Err(()) => Err(()),
                     },
                     b'#' => match tokenizer.peek_next_utf8_char() {
@@ -1687,18 +1635,15 @@ impl<'code> Tokenizer<'code, '_> {
         };
     }
 
-    fn raw_string_literal(&mut self) -> Result<Vec<ascii>, ()> {
+    fn ascii_literal(&mut self) -> Result<ascii, ()> {
         let previous_errors_len = self.errors.len();
 
-        let kind = QuotedLiteralKind::RawStr;
-        let quote = kind.quote();
         let mut literal = Vec::<ascii>::new();
-
         loop {
             let next_character = match self.peek_next_ascii_char() {
                 Some(Ok(b'\n')) | None => {
                     self.errors.push(Error {
-                        kind: ErrorKind::UnclosedQuotedLiteral(kind),
+                        kind: ErrorKind::UnclosedCharacterLiteral,
                         col: self.token_start_col,
                         pointers_count: self.token_text().chars_width(),
                     });
@@ -1710,7 +1655,7 @@ impl<'code> Tokenizer<'code, '_> {
                 }
                 Some(Err(error)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InIdentifier { grapheme: error.grapheme },
+                        kind: ErrorKind::Utf8InQuotedLiteral { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
@@ -1724,95 +1669,7 @@ impl<'code> Tokenizer<'code, '_> {
                     let escape_character = match self.peek_next_ascii_char() {
                         Some(Ok(b'\n')) | None => {
                             self.errors.push(Error {
-                                kind: ErrorKind::UnclosedQuotedLiteral(kind),
-                                col: self.token_start_col,
-                                pointers_count: self.token_text().chars_width(),
-                            });
-                            break;
-                        }
-                        Some(Ok(escape_character)) => escape_character,
-                        Some(Err(error)) => {
-                            self.errors.push(Error {
-                                kind: ErrorKind::Utf8InQuotedLiteral {
-                                    grapheme: error.grapheme,
-                                    quoted_literal_kind: kind,
-                                },
-                                col: error.col,
-                                pointers_count: error.pointers_count,
-                            });
-                            self.col += error.grapheme.len() as offset32;
-                            continue;
-                        }
-                    };
-
-                    match escape_character {
-                        b'"' => {
-                            self.col += 1;
-                            b'"'
-                        }
-                        _ => b'\\',
-                    }
-                }
-                control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                    self.errors.push(Error {
-                        kind: ErrorKind::ControlCharacterInQuotedLiteral(kind, control as utf32),
-                        col: self.col - 1,
-                        pointers_count: 1,
-                    });
-                    control
-                }
-                ch if ch == quote as u8 => break,
-                ch => ch,
-            };
-
-            literal.push(character);
-        }
-
-        return if previous_errors_len == self.errors.len() { Ok(literal) } else { Err(()) };
-    }
-
-    fn quoted_literal(&mut self, kind: QuotedLiteralKind) -> Result<Vec<ascii>, ()> {
-        debug_assert!(kind != QuotedLiteralKind::RawStr, "raw string literals should be tokenized differently than non raw strings and characters");
-
-        let previous_errors_len = self.errors.len();
-
-        let quote = kind.quote();
-        let mut literal = Vec::<ascii>::new();
-
-        loop {
-            let next_character = match self.peek_next_ascii_char() {
-                Some(Ok(b'\n')) | None => {
-                    self.errors.push(Error {
-                        kind: ErrorKind::UnclosedQuotedLiteral(kind),
-                        col: self.token_start_col,
-                        pointers_count: self.token_text().chars_width(),
-                    });
-                    break;
-                }
-                Some(Ok(next_character)) => {
-                    self.col += 1;
-                    next_character
-                }
-                Some(Err(error)) => {
-                    self.errors.push(Error {
-                        kind: ErrorKind::Utf8InQuotedLiteral {
-                            grapheme: error.grapheme,
-                            quoted_literal_kind: kind,
-                        },
-                        col: error.col,
-                        pointers_count: error.pointers_count,
-                    });
-                    self.col += error.grapheme.len() as offset32;
-                    continue;
-                }
-            };
-
-            let character = match next_character {
-                b'\\' => {
-                    let escape_character = match self.peek_next_ascii_char() {
-                        Some(Ok(b'\n')) | None => {
-                            self.errors.push(Error {
-                                kind: ErrorKind::UnclosedQuotedLiteral(kind),
+                                kind: ErrorKind::UnclosedCharacterLiteral,
                                 col: self.token_start_col,
                                 pointers_count: self.token_text().chars_width(),
                             });
@@ -1824,10 +1681,7 @@ impl<'code> Tokenizer<'code, '_> {
                         }
                         Some(Err(error)) => {
                             self.errors.push(Error {
-                                kind: ErrorKind::Utf8InQuotedLiteral {
-                                    grapheme: error.grapheme,
-                                    quoted_literal_kind: kind,
-                                },
+                                kind: ErrorKind::Utf8InQuotedLiteral { grapheme: error.grapheme },
                                 col: error.col,
                                 pointers_count: error.pointers_count,
                             });
@@ -1846,8 +1700,8 @@ impl<'code> Tokenizer<'code, '_> {
                         b'0' => b'\0',
                         unrecognized => {
                             self.errors.push(Error {
-                                kind: ErrorKind::UnrecognizedEscapeCharacterInQuotedLiteral(
-                                    kind, unrecognized as utf32,
+                                kind: ErrorKind::UnrecognizedEscapeCharacterInCharacterLiteral(
+                                    unrecognized as utf32,
                                 ),
                                 col: self.col - 2,
                                 pointers_count: 2,
@@ -1859,13 +1713,211 @@ impl<'code> Tokenizer<'code, '_> {
                 }
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Error {
-                        kind: ErrorKind::ControlCharacterInQuotedLiteral(kind, control as utf32),
+                        kind: ErrorKind::ControlCharacterInCharacterLiteral(control as utf32),
                         col: self.col - 1,
                         pointers_count: 1,
                     });
                     control
                 }
-                ch if ch == quote as u8 => break,
+                b'\'' => break,
+                ch => ch,
+            };
+
+            literal.push(character);
+        }
+
+        return match literal.as_slice() {
+            [character] => {
+                if previous_errors_len == self.errors.len() {
+                    Ok(*character)
+                } else {
+                    Err(())
+                }
+            }
+            [] => {
+                self.errors.push(Error {
+                    kind: ErrorKind::EmptyCharacterLiteral,
+                    col: self.token_start_col,
+                    pointers_count: 2,
+                });
+                Err(())
+            }
+            [_, ..] => {
+                self.errors.push(Error {
+                    kind: ErrorKind::MultipleCharactersInCharacterLiteral,
+                    col: self.token_start_col,
+                    pointers_count: self.token_text().chars_width(),
+                });
+                Err(())
+            }
+        }
+    }
+
+    fn string_literal(&mut self) -> Result<Vec<ascii>, ()> {
+        let previous_errors_len = self.errors.len();
+
+        let mut literal = Vec::<ascii>::new();
+        loop {
+            let next_character = match self.peek_next_ascii_char() {
+                Some(Ok(b'\n')) | None => {
+                    self.errors.push(Error {
+                        kind: ErrorKind::UnclosedStrLiteral,
+                        col: self.token_start_col,
+                        pointers_count: self.token_text().chars_width(),
+                    });
+                    break;
+                }
+                Some(Ok(next_character)) => {
+                    self.col += 1;
+                    next_character
+                }
+                Some(Err(error)) => {
+                    self.errors.push(Error {
+                        kind: ErrorKind::Utf8InQuotedLiteral {
+                            grapheme: error.grapheme,
+                        },
+                        col: error.col,
+                        pointers_count: error.pointers_count,
+                    });
+                    self.col += error.grapheme.len() as offset32;
+                    continue;
+                }
+            };
+
+            let character = match next_character {
+                b'\\' => {
+                    let escape_character = match self.peek_next_ascii_char() {
+                        Some(Ok(b'\n')) | None => {
+                            self.errors.push(Error {
+                                kind: ErrorKind::UnclosedStrLiteral,
+                                col: self.token_start_col,
+                                pointers_count: self.token_text().chars_width(),
+                            });
+                            break;
+                        }
+                        Some(Ok(escape_character)) => {
+                            self.col += 1;
+                            escape_character
+                        }
+                        Some(Err(error)) => {
+                            self.errors.push(Error {
+                                kind: ErrorKind::Utf8InQuotedLiteral { grapheme: error.grapheme },
+                                col: error.col,
+                                pointers_count: error.pointers_count,
+                            });
+                            self.col += error.grapheme.len() as offset32;
+                            continue;
+                        }
+                    };
+
+                    match escape_character {
+                        b'\\' => b'\\',
+                        b'\'' => b'\'',
+                        b'"' => b'"',
+                        b'n' => b'\n',
+                        b'r' => b'\r',
+                        b't' => b'\t',
+                        b'0' => b'\0',
+                        unrecognized => {
+                            self.errors.push(Error {
+                                kind: ErrorKind::UnrecognizedEscapeCharacterInStrLiteral(
+                                    unrecognized as utf32,
+                                ),
+                                col: self.col - 2,
+                                pointers_count: 2,
+                            });
+                            literal.push(b'\\');
+                            unrecognized
+                        }
+                    }
+                }
+                control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
+                    self.errors.push(Error {
+                        kind: ErrorKind::ControlCharacterInStrLiteral(control as utf32),
+                        col: self.col - 1,
+                        pointers_count: 1,
+                    });
+                    control
+                }
+                b'"' => break,
+                ch => ch,
+            };
+
+            literal.push(character);
+        }
+
+        return if previous_errors_len == self.errors.len() { Ok(literal) } else { Err(()) };
+    }
+
+    fn raw_string_literal(&mut self) -> Result<Vec<ascii>, ()> {
+        let previous_errors_len = self.errors.len();
+
+        let mut literal = Vec::<ascii>::new();
+        loop {
+            let next_character = match self.peek_next_ascii_char() {
+                Some(Ok(b'\n')) | None => {
+                    self.errors.push(Error {
+                        kind: ErrorKind::UnclosedRawStrLiteral,
+                        col: self.token_start_col,
+                        pointers_count: self.token_text().chars_width(),
+                    });
+                    break;
+                }
+                Some(Ok(next_character)) => {
+                    self.col += 1;
+                    next_character
+                }
+                Some(Err(error)) => {
+                    self.errors.push(Error {
+                        kind: ErrorKind::Utf8InQuotedLiteral { grapheme: error.grapheme },
+                        col: error.col,
+                        pointers_count: error.pointers_count,
+                    });
+                    self.col += error.grapheme.len() as offset32;
+                    continue;
+                }
+            };
+
+            let character = match next_character {
+                b'\\' => {
+                    let escape_character = match self.peek_next_ascii_char() {
+                        Some(Ok(b'\n')) | None => {
+                            self.errors.push(Error {
+                                kind: ErrorKind::UnclosedRawStrLiteral,
+                                col: self.token_start_col,
+                                pointers_count: self.token_text().chars_width(),
+                            });
+                            break;
+                        }
+                        Some(Ok(escape_character)) => escape_character,
+                        Some(Err(error)) => {
+                            self.errors.push(Error {
+                                kind: ErrorKind::Utf8InQuotedLiteral { grapheme: error.grapheme },
+                                col: error.col,
+                                pointers_count: error.pointers_count,
+                            });
+                            self.col += error.grapheme.len() as offset32;
+                            continue;
+                        }
+                    };
+
+                    match escape_character {
+                        b'"' => {
+                            self.col += 1;
+                            b'"'
+                        }
+                        _ => b'\\',
+                    }
+                }
+                control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
+                    self.errors.push(Error {
+                        kind: ErrorKind::ControlCharacterInRawStrLiteral(control as utf32),
+                        col: self.col - 1,
+                        pointers_count: 1,
+                    });
+                    control
+                }
+                b'"' => break,
                 ch => ch,
             };
 
@@ -1876,7 +1928,6 @@ impl<'code> Tokenizer<'code, '_> {
     }
 }
 
-// IDEA(stefano): expand QuotedLiteralKind
 #[derive(Debug, Clone)]
 pub enum ErrorKind<'code> {
     UnclosedBlockComment,
@@ -1885,10 +1936,17 @@ pub enum ErrorKind<'code> {
     UnopenedBracket(CloseBracket),
     MismatchedBracket { actual: OpenBracket, expected: CloseBracket },
 
-    Utf8InQuotedLiteral { grapheme: &'code str, quoted_literal_kind: QuotedLiteralKind },
-    UnclosedQuotedLiteral(QuotedLiteralKind),
-    ControlCharacterInQuotedLiteral(QuotedLiteralKind, utf32),
-    UnrecognizedEscapeCharacterInQuotedLiteral(QuotedLiteralKind, utf32),
+    // IDEA(stefano): expand into different quoted literals
+    Utf8InQuotedLiteral { grapheme: &'code str },
+    UnclosedCharacterLiteral,
+    UnclosedStrLiteral,
+    UnclosedRawStrLiteral,
+    ControlCharacterInCharacterLiteral(utf32),
+    ControlCharacterInStrLiteral(utf32),
+    ControlCharacterInRawStrLiteral(utf32),
+    UnrecognizedEscapeCharacterInCharacterLiteral(utf32),
+    UnrecognizedEscapeCharacterInStrLiteral(utf32),
+    UnrecognizedEscapeCharacterInRawStrLiteral(utf32),
     EmptyCharacterLiteral,
     MultipleCharactersInCharacterLiteral,
 
@@ -1929,29 +1987,53 @@ impl IntoErrorInfo for ErrorKind<'_> {
                 format!("'{actual}' closes the wrong bracket, expected a '{expected}' instead").into()
             ),
 
-            Self::Utf8InQuotedLiteral { grapheme, quoted_literal_kind } => (
-                format!("invalid {quoted_literal_kind} literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
+            Self::Utf8InQuotedLiteral { grapheme } => (
+                format!("invalid quoted literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
             ),
-            Self::UnclosedQuotedLiteral(kind) => (
-                format!("unclosed {kind} literal").into(),
-                format!("missing closing {} quote", kind.quote() as u8 as char).into()
+            Self::UnclosedCharacterLiteral => (
+                "unclosed character literal".into(),
+                "missing closing ' quote".into()
             ),
-            Self::ControlCharacterInQuotedLiteral(kind, control_character) => (
-                format!("invalid {kind} literal character '{}' {}", control_character.escape_debug(), control_character.escape_unicode()).into(),
+            Self::UnclosedStrLiteral => (
+                "unclosed string literal".into(),
+                "missing closing \" quote".into()
+            ),
+            Self::UnclosedRawStrLiteral => (
+                "unclosed raw string literal".into(),
+                "missing closing \" quote".into()
+            ),
+            Self::ControlCharacterInCharacterLiteral(control_character) => (
+                format!("invalid character literal character '{}' {}", control_character.escape_debug(), control_character.escape_unicode()).into(),
                 "control characters are not allowed".into(),
             ),
-            Self::UnrecognizedEscapeCharacterInQuotedLiteral(kind, unrecognized) => (
-                format!("invalid {kind} literal").into(),
+            Self::ControlCharacterInStrLiteral(control_character) => (
+                format!("invalid string literal character '{}' {}", control_character.escape_debug(), control_character.escape_unicode()).into(),
+                "control characters are not allowed".into(),
+            ),
+            Self::ControlCharacterInRawStrLiteral(control_character) => (
+                format!("invalid raw string literal character '{}' {}", control_character.escape_debug(), control_character.escape_unicode()).into(),
+                "control characters are not allowed".into(),
+            ),
+            Self::UnrecognizedEscapeCharacterInCharacterLiteral(unrecognized) => (
+                "invalid character literal".into(),
+                format!("unrecognized '{unrecognized}' escape character").into(),
+            ),
+            Self::UnrecognizedEscapeCharacterInStrLiteral(unrecognized) => (
+                "invalid string literal".into(),
+                format!("unrecognized '{unrecognized}' escape character").into(),
+            ),
+            Self::UnrecognizedEscapeCharacterInRawStrLiteral(unrecognized) => (
+                "invalid raw string literal".into(),
                 format!("unrecognized '{unrecognized}' escape character").into(),
             ),
             Self::EmptyCharacterLiteral => (
-                format!("empty {} literal", QuotedLiteralKind::Ascii).into(),
+                "empty character literal".into(),
                 "must not be empty".into(),
             ),
             Self::MultipleCharactersInCharacterLiteral => (
-                format!("invalid {} literal", QuotedLiteralKind::Ascii).into(),
-                format!("must not contain more than one character, if you meant to write a string literal try changing the quotes to {}", Quote::Double as u8 as char).into(),
+                "invalid character literal".into(),
+                "must not contain more than one character, if you meant to write a string literal try changing the quotes to \"".into(),
             ),
 
             Self::Utf8InNumberLiteral { grapheme } => (
