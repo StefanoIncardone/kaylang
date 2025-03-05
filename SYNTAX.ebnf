@@ -123,4 +123,8 @@ if =
     ["else", scope]
     ;
 loop  = ["do"], "loop", boolean_expression, scope_in_loop;
-print = ((("print" | "eprint"), expression) | (("println" | "eprintln"), [expression])), ";";
+
+print    = "print", expression, ";";
+eprint   = "eprint", expression, ";";
+println  = "println", [expression], ";";
+eprintln = "eprintln", [expression], ";";
