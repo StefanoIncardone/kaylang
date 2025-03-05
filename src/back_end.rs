@@ -1,5 +1,5 @@
 /* TODO(stefano):
-fix allocation of arrays of 0 or 1 elements when thet will be allowed by either
+fix allocation of arrays of 0 items when thet will be allowed by either
 - allow for zero size values
 - place padding between elements (i.e. disallow zero size values by making them at least 1 byte long)
 */
@@ -678,7 +678,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                 Dst::Reg(_) => unreachable!(),
             },
             Type::Array { len: array_len, .. } => {
-                debug_assert!(array_len >= 2, "arrays of 0 and 1 elements are not allowed");
+                debug_assert!(array_len > 0, "arrays of 0 items are not allowed");
                 match dst {
                     Dst::View { len, ptr } => {
                         _ = writeln!(
@@ -788,8 +788,8 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                     }
                     Type::Array { len: array_len, .. } => {
                         debug_assert!(
-                            *array_len >= 2,
-                            "arrays of 0 and 1 elements are not allowed"
+                            *array_len > 0,
+                            "arrays of 0 items are not allowed"
                         );
                         _ = writeln!(
                             self.asm,
@@ -912,8 +912,8 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                                 }
                                 Type::Array { len, .. } => {
                                     debug_assert!(
-                                        *len >= 2,
-                                        "arrays of 0 and 1 elements are not allowed"
+                                        *len > 0,
+                                        "arrays of 0 items are not allowed"
                                     );
                                     _ = writeln!(self.asm, " mov {reg}, {len}");
                                 }
@@ -1970,8 +1970,8 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                 }
                                 Type::Array { len, .. } => {
                                     debug_assert!(
-                                        *len >= 2,
-                                        "arrays of 0 and 1 elements are not allowed"
+                                        *len > 0,
+                                        "arrays of 0 items are not allowed"
                                     );
                                     _ = writeln!(
                                         self.asm,
@@ -2250,7 +2250,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                         );
                     }
                     Type::Array { base_type: array_typ, len } => {
-                        debug_assert!(*len >= 2, "arrays of 0 and 1 elements are not allowed");
+                        debug_assert!(*len > 0, "arrays of 0 items are not allowed");
                         match *array_typ {
                             BaseType::Int => {
                                 _ = writeln!(
@@ -2427,8 +2427,8 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                             }
                             Type::Array { len: array_len, .. } => {
                                 debug_assert!(
-                                    *array_len >= 2,
-                                    "arrays of 0 and 1 elements are not allowed"
+                                    *array_len > 0,
+                                    "arrays of 0 items are not allowed"
                                 );
                                 self.expression(index_expression, Dst::Reg(Rdi));
                                 _ = writeln!(

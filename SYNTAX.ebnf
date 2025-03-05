@@ -81,7 +81,7 @@ binary_operator =
 assignment_operator = "=" | "**=" | "*=" | "/=" | "%=" | "+=" | "-=" | "<<=" | ">>=" | "&=" | "^=" | "|=" | "&&=" | "||=";
 
 (* expressions must be of the same type *)
-array          = "[", expression, ",", expression, [{(",", expression)}], [","], "]";
+array          = "[", expression, [{",", expression}], [","], "]";
 array_variable = identifier;
 array_index    = array_variable, "[", integer_expression, "]";
 

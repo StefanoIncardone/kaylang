@@ -74,7 +74,7 @@ pub enum Type {
     // TODO(stefano): enforce a max length
     Array {
         base_type: BaseType,
-        /// always greater than 1, i.e: arrays always contain at least 2 items
+        /// always greater than 0, i.e: arrays always contain at least 1 item
         len: uint,
     },
 }
@@ -84,7 +84,7 @@ impl Display for Type {
         return match self {
             Self::Base(typ) => write!(f, "{typ}"),
             Self::Array { base_type, len } => {
-                debug_assert!(*len >= 2, "arrays of 0 and 1 elements are not allowed");
+                debug_assert!(*len > 0, "arrays of 0 items are not allowed");
                 write!(f, "{base_type}[{len}]")
             }
         };
@@ -114,7 +114,7 @@ impl SizeOf for Type {
         return match self {
             Self::Base(typ) => typ.size(),
             Self::Array { base_type, len } => {
-                debug_assert!(*len >= 2, "arrays of 0 and 1 elements are not allowed");
+                debug_assert!(*len > 0, "arrays of 0 items are not allowed");
                 base_type.size() * len
             }
         };
@@ -478,7 +478,7 @@ pub(crate) enum Expression {
     },
     Array {
         base_type: BaseType,
-        /// arrays always contain at least 2 items
+        /// arrays always contain at least 1 item
         items: Vec<Expression>, // TODO(stefano): flatten into a Vec<ExpressionIndex>
     },
 
@@ -538,7 +538,7 @@ impl TypeOf for Expression {
             Self::Ascii(_) => Type::Base(BaseType::Ascii),
             Self::Str { .. } => Type::Base(BaseType::Str),
             Self::Array { base_type, items } => {
-                debug_assert!(items.len() >= 2, "arrays of 0 and 1 elements are not allowed");
+                debug_assert!(items.len() > 0, "arrays of 0 items are not allowed");
                 Type::Array { base_type: *base_type, len: items.len() }
             }
             Self::Parenthesis { typ, .. } => *typ,
@@ -582,12 +582,10 @@ impl<'ast, 'code: 'ast> ExpressionDisplay<'ast, 'code> {
             Expression::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
             Expression::Str { label, .. } => write!(f, "str_{label}"),
             Expression::Array { items, .. } => {
-                debug_assert!(items.len() >= 2, "arrays of 0 and 1 elements are not allowed");
-
                 write!(f, "[")?;
                 let mut items_iter = items.iter();
                 let Some(last_item) = items_iter.next_back() else {
-                    unreachable!("arrays should always contain at least 2 items");
+                    unreachable!("arrays should always contain at least 1 item");
                 };
 
                 for item in items_iter {
@@ -1889,15 +1887,6 @@ impl Parser<'_, '_, '_, '_> {
                         self.next_token_bounded(Expected::ArrayElementOrClosingSquareBracket)?;
                 }
 
-                // REMOVE(stefano): allow arrays of 0 elements
-                if let TokenKind::Bracket(Bracket::CloseSquare) = bracket_or_comma_token.kind {
-                    break 'array Err(Error {
-                        kind: ErrorKind::ArrayOfOneElement,
-                        col: current_token.col,
-                        pointers_count: current_token.kind.display_len(self.tokens),
-                    });
-                }
-
                 let items_type = match first_item.typ() {
                     Type::Base(base_type) => base_type,
                     Type::Array { .. } => {
@@ -1908,8 +1897,11 @@ impl Parser<'_, '_, '_, '_> {
                         })
                     }
                 };
-
                 let mut items = vec![first_item];
+
+                if let TokenKind::Bracket(Bracket::CloseSquare) = bracket_or_comma_token.kind {
+                    break 'array Ok(Expression::Array { base_type: items_type, items });
+                }
 
                 // IDEA(stefano): gather all the items and then check if they are of the correct type
                 loop {
@@ -1949,8 +1941,8 @@ impl Parser<'_, '_, '_, '_> {
 
                     if let TokenKind::Bracket(Bracket::CloseSquare) = bracket_or_comma_token.kind {
                         debug_assert!(
-                            items.len() >= 2,
-                            "arrays of 0 and 1 elements are not allowed"
+                            items.len() > 0,
+                            "arrays of 0 items are not allowed"
                         );
                         break 'array Ok(Expression::Array { base_type: items_type, items });
                     }
@@ -2630,8 +2622,8 @@ impl Parser<'_, '_, '_, '_> {
                     Type::Array { base_type: lhs_base_typ, len: lhs_len },
                     Type::Array { base_type: rhs_base_typ, len: rhs_len },
                 ) => {
-                    debug_assert!(lhs_len >= 2, "arrays of 0 and 1 elements are not allowed");
-                    debug_assert!(rhs_len >= 2, "arrays of 0 and 1 elements are not allowed");
+                    debug_assert!(lhs_len > 0, "arrays of 0 items are not allowed");
+                    debug_assert!(rhs_len > 0, "arrays of 0 items are not allowed");
                     lhs_base_typ == rhs_base_typ && lhs_len == rhs_len
                 }
                 _ => false,
@@ -2822,14 +2814,6 @@ impl Parser<'_, '_, '_, '_> {
                     pointers_count: len_token.kind.display_len(self.tokens),
                 });
             }
-            // REMOVE(stefano): allow arrays of 0 elements
-            1 => {
-                return Err(Error {
-                    kind: ErrorKind::ArrayOfOneElement,
-                    col: len_token.col,
-                    pointers_count: len_token.kind.display_len(self.tokens),
-                });
-            }
             _ => literal_len as uint,
         };
 
@@ -3012,11 +2996,11 @@ impl Parser<'_, '_, '_, '_> {
                     let value = match typ {
                         Type::Base(base_type) => self.expression_from_base_type(base_type),
                         Type::Array { base_type, len } => {
-                            debug_assert!(len >= 2, "arrays of 0 and 1 elements are not allowed");
+                            debug_assert!(len > 0, "arrays of 0 items are not allowed");
                             let items = vec![self.expression_from_base_type(base_type); len];
                             debug_assert!(
-                                items.len() >= 2,
-                                "arrays of 0 and 1 elements are not allowed"
+                                items.len() > 0,
+                                "arrays of 0 items are not allowed"
                             );
                             Expression::Array { base_type, items }
                         }
@@ -3584,7 +3568,6 @@ pub enum ErrorKind {
     UnclosedBracket(OpenBracket),
     ArrayOfNegativeLength,
     ArrayOfZeroElements,
-    ArrayOfOneElement,
     NestedArrayNotSupportedYet,
     ArrayElementTypeMismatch { actual: Type, expected: Type },
     CannotTakeLenOf(Type),
@@ -3781,11 +3764,7 @@ impl IntoErrorInfo for ErrorKind {
             ),
             Self::ArrayOfZeroElements => (
                 "invalid array".into(),
-                "arrays of zero items are not allowed, as they are practically phantom values".into(),
-            ),
-            Self::ArrayOfOneElement => (
-                "invalid array".into(),
-                "arrays of one element are not allowed, as they are practically the same as the value itself".into(),
+                "arrays of zero items are not allowed yet".into(),
             ),
             Self::NestedArrayNotSupportedYet => (
                 "invalid array element".into(),

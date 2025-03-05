@@ -29,6 +29,13 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 From this release onwards individual modules may be extracted to separate `back-to-front` compiler
 tools repo, to aid in modularity and code reuse.
 
+### Language
+
+#### Changed
+
+- Reverted limitation on arrays length, they can now again be of length 1, arrays of length 0 are
+    still not allowed
+
 ### Compiler
 
 #### Changed
