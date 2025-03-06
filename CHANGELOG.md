@@ -40,6 +40,12 @@ tools repo, to aid in modularity and code reuse.
 
 #### Changed
 
+- Added `?`, `-?`, `--?` for help commands
+- Improved printing of help message, now fitting inside 80 columns
+- `src_file::Span`, `src_file::Position` and `src_file::DisplayPosition` now derive `Hash`
+- Improved `Logger` methods consistency
+- Expanded `tokenizer::TokenKind::Integer` into its different bases, modified related entities,
+    errors and `tokenizer::ErrorKind`s accordingly
 - Reworked compilation stages:
     - old:
         - loading of source code file and line boundaries precalculations
@@ -53,10 +59,6 @@ tools repo, to aid in modularity and code reuse.
         - abstract syntax tree parsing
         - compilation of abstract syntax tree
         - return the compiled code
-- `src_file::Span`, `src_file::Position` and `src_file::DisplayPosition` now derive `Hash`
-- Improved `Logger` methods consistency
-- Expanded `tokenizer::TokenKind::Integer` into its different bases, modified related entities,
-    errors and `tokenizer::ErrorKind`s accordingly
 
 #### Removed
 

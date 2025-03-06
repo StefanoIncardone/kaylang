@@ -103,6 +103,7 @@ const BAR_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 #[rustfmt::skip] pub static ASSEMBLING_ERROR:              Colored<&str> = Colored { text: "Assembling Error",             fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 #[rustfmt::skip] pub static LINKING_ERROR:                 Colored<&str> = Colored { text: "Linking Error",                fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 
+// IDEA(stefano): move `Logger` and `Verbosity` to own module
 #[derive(Debug)]
 pub struct Logger {
     pub start: Instant,
@@ -247,6 +248,9 @@ pub enum CommandFlag {
     Help,
     HelpShort,
     HelpLong,
+    HelpQuestion,
+    HelpQuestionShort,
+    HelpQuestionLong,
     Version,
     VersionShort,
     VersionLong,
@@ -261,6 +265,9 @@ impl Display for CommandFlag {
             Self::Help => write!(f, "help"),
             Self::HelpShort => write!(f, "-h"),
             Self::HelpLong => write!(f, "--help"),
+            Self::HelpQuestion => write!(f, "?"),
+            Self::HelpQuestionShort => write!(f, "-?"),
+            Self::HelpQuestionLong => write!(f, "--?"),
             Self::Version => write!(f, "version"),
             Self::VersionShort => write!(f, "-v"),
             Self::VersionLong => write!(f, "--version"),
@@ -356,21 +363,32 @@ impl Display for Help {
 {USAGE}: {executable_name} [{OPTIONS}] [{COMMAND}]
 
 {OPTIONS}:
-    {_c}, {__color} <{MODE}>    Wether to display colored output ({MODE}: {auto} (default), {always}, {never})
+    {_c}, {__color} <{MODE}>
+        Wether to display colored output, with {MODE}:
+        - {auto} (default): only print colored output if supported
+        - {always}: always print colored output, even if not supported
+        - {never}: never print colored output
 
 {COMMAND}s:
-    {help},    {_h}, {__help}                     Display this message (default)
+    {help}, {_h}, {__help}, {hq}, {_hq}, {__hq}            Display this message (default)
     {version}, {_v}, {__version}                  Display the compiler version
-    {check}    <{FILE}>          [{VERBOSITY}]    Check the source code for correctness
-    {compile}  <{FILE}> [{OUTPUT}] [{VERBOSITY}]    Compile the source code down to an executable
-    {run}      <{FILE}> [{OUTPUT}] [{VERBOSITY}]    Compile and run the generated executable
+
+    {check}    <{FILE}>          [{VERBOSITY}]
+        Check the source code for correctness
+
+    {compile}  <{FILE}> [{OUTPUT}] [{VERBOSITY}]
+        Compile the source code down to an executable
+
+    {run}      <{FILE}> [{OUTPUT}] [{VERBOSITY}]
+        Compile and run the generated executable
 
     {VERBOSITY}:
         {_q}, {__quiet}     Don't display any compilation information
         {_V}, {__verbose}   Display extra compilation information
 
     {OUTPUT}:
-        {_o}, {__output} <{PATH}>   Folder to populate with compilation artifacts (default: '.')",
+        {_o}, {__output} <{PATH}>
+            Folder to populate with compilation artifacts (default: '.')",
             Version = Version { color: self.color },
             executable_name = self.executable_name.display(),
 
@@ -383,6 +401,9 @@ impl Display for Help {
             help = CommandFlag::Help,
             _h = CommandFlag::HelpShort,
             __help = CommandFlag::HelpLong,
+            hq = CommandFlag::HelpQuestion,
+            _hq = CommandFlag::HelpQuestionShort,
+            __hq = CommandFlag::HelpQuestionLong,
 
             version = CommandFlag::Version,
             _v = CommandFlag::VersionShort,
@@ -480,11 +501,14 @@ impl TryFrom<Vec<String>> for Args {
         let mut other_args = args_iter.clone().peekable();
         while let Some((selected_flag_index, selected_flag)) = other_args.next() {
             match selected_flag.as_str() {
-                help_command @ ("help" | "-h" | "--help") => {
+                help_command @ ("help" | "-h" | "--help" | "?" | "-?" | "--?") => {
                     let help_flag = match help_command {
                         "help" => CommandFlag::Help,
                         "-h" => CommandFlag::HelpShort,
                         "--help" => CommandFlag::HelpLong,
+                        "?" => CommandFlag::HelpQuestion,
+                        "-?" => CommandFlag::HelpQuestionShort,
+                        "--?" => CommandFlag::HelpQuestionLong,
                         _ => unreachable!(),
                     };
 
@@ -680,6 +704,9 @@ impl TryFrom<Vec<String>> for Args {
                                 CommandFlag::Help
                                 | CommandFlag::HelpShort
                                 | CommandFlag::HelpLong
+                                | CommandFlag::HelpQuestion
+                                | CommandFlag::HelpQuestionShort
+                                | CommandFlag::HelpQuestionLong
                                 | CommandFlag::Version
                                 | CommandFlag::VersionShort
                                 | CommandFlag::VersionLong
