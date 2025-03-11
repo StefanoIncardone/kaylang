@@ -123,6 +123,7 @@ large_stack_frames = "warn"
 zero_prefixed_literal = "allow"
 no_effect_underscore_binding = "warn"
 len_without_is_empty = "allow"
+allow_attributes_without_reason = "allow"
 
 # doesn't solve the problem, i.e.:
 # ```rust
