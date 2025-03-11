@@ -181,7 +181,7 @@ impl FlagSeparator {
 
 ## Reversed help commands
 
-printing the help command in regular order could lead to some usefull information being offscreen,
+printing the help command in regular order could lead to some useful information being offscreen,
 since the more relevant options are usually listed first:
 
 ```shell
