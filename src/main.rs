@@ -1,11 +1,17 @@
 #![allow(clippy::print_stdout, clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
-    back_end::{artifacts::Artifacts, Compiler}, error, front_end::{
+    back_end::{artifacts::Artifacts, Compiler},
+    error,
+    front_end::{
         ast::Parser,
         src_file::SrcFile,
         tokenizer::{TokenizedCode, Tokenizer},
-    }, Args, Command, Help, Logger, Version, ASSEMBLING, ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, DONE, GENERATING_ASM, LINKING, LINKING_ERROR, LOADING_SOURCE, PARSING_AST, RUNNING, SUBSTEP_DONE, TOKENIZATION
+    },
+    Args, Command, Help, Logger, Version, ASSEMBLING, ASSEMBLING_ERROR, CHECKING, COMPILING,
+    COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER,
+    COULD_NOT_WRITE_COMPILED_CODE, DONE, GENERATING_ASM, LINKING, LINKING_ERROR, LOADING_SOURCE,
+    PARSING_AST, RUNNING, SUBSTEP_DONE, TOKENIZATION,
 };
 use std::{path::PathBuf, process::ExitCode};
 
@@ -14,7 +20,7 @@ fn main() -> ExitCode {
     let Args { color, command } = match Args::try_from(std::env::args()) {
         Ok(args) => args,
         Err(err) => {
-            eprintln!("{err}");
+            eprint!("{err}");
             return ExitCode::FAILURE;
         }
     };
@@ -112,7 +118,11 @@ fn main() -> ExitCode {
     let _compiler_result: () = {
         let generating_asm_sub_step = Logger::new();
         let compiled_code = Compiler::compile(&src, &ast);
-        generating_asm_sub_step.sub_step_with_verbosity(&GENERATING_ASM, Some(&artifacts.asm_path), verbosity);
+        generating_asm_sub_step.sub_step_with_verbosity(
+            &GENERATING_ASM,
+            Some(&artifacts.asm_path),
+            verbosity,
+        );
         if let Err(err) = std::fs::write(&artifacts.asm_path, compiled_code) {
             let error = error::Msg { kind: &COULD_NOT_WRITE_COMPILED_CODE, message: &err };
             eprintln!("{error}");
@@ -124,7 +134,11 @@ fn main() -> ExitCode {
         let assembling_sub_step = Logger::new();
         let mut assembler_command = artifacts.assembler();
         let assembler_result = assembler_command.output();
-        assembling_sub_step.sub_step_with_verbosity(&ASSEMBLING, Some(&artifacts.obj_path), verbosity);
+        assembling_sub_step.sub_step_with_verbosity(
+            &ASSEMBLING,
+            Some(&artifacts.obj_path),
+            verbosity,
+        );
         match assembler_result {
             Ok(output) => {
                 if !output.status.success() {

@@ -11,7 +11,9 @@ use core::fmt::{Display, Write as _};
 use error::MsgWithCauseUnderText;
 use front_end::src_file::column32;
 use std::{
-    io::IsTerminal, path::{Path, PathBuf}, time::Instant
+    io::IsTerminal,
+    path::{Path, PathBuf},
+    time::Instant,
 };
 
 const fn max_text_len(texts: &[&str]) -> usize {
@@ -164,7 +166,12 @@ impl Logger {
     }
 
     #[inline(always)]
-    pub fn step_with_verbosity(self, text: &dyn Display, output: Option<&Path>, verbosity: Verbosity) {
+    pub fn step_with_verbosity(
+        self,
+        text: &dyn Display,
+        output: Option<&Path>,
+        verbosity: Verbosity,
+    ) {
         if let Verbosity::Normal | Verbosity::Verbose = verbosity {
             self.done(text, output, STEP_INDENT + STEP_PADDING);
         }
@@ -176,7 +183,12 @@ impl Logger {
     }
 
     #[inline(always)]
-    pub fn sub_step_with_verbosity(self, text: &dyn Display, output: Option<&Path>, verbosity: Verbosity) {
+    pub fn sub_step_with_verbosity(
+        self,
+        text: &dyn Display,
+        output: Option<&Path>,
+        verbosity: Verbosity,
+    ) {
         if let Verbosity::Verbose = verbosity {
             self.done(text, output, SUBSTEP_INDENT + SUBSTEP_PADDING);
         }
@@ -230,6 +242,16 @@ impl Display for Color {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ColorOption {
+    Auto = Color::Auto as u8,
+    Always = Color::Always as u8,
+    Never = Color::Never as u8,
+    Unknown,
+}
+
+// REMOVE(stefano): unbundle the struct
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ColorMode {
     pub flag: ColorFlag,
@@ -438,9 +460,10 @@ impl TryFrom<Vec<String>> for Args {
     fn try_from(args: Vec<String>) -> Result<Self, Self::Error> {
         Color::Auto.set(&std::io::stderr());
 
+        // IDEA(stefano): go back to good ol' index iterators
         let mut args_iter = args.iter().enumerate().peekable();
         let Some((_executable_name_index, executable_name)) = args_iter.next() else {
-            return Err(Error::EmptyArgs)
+            return Err(Error::EmptyArgs);
         };
 
         let mut color_mode: Option<ColorMode> = None;
@@ -462,7 +485,8 @@ impl TryFrom<Vec<String>> for Args {
                     if let Some((previous_help_flag, Command::Help { .. } | Command::Version)) =
                         command_option
                     {
-                        errors.push((ErrorKind::CommandAlreadySelected {
+                        errors.push((
+                            ErrorKind::CommandAlreadySelected {
                                 current: help_flag,
                                 previous: previous_help_flag,
                             },
@@ -487,7 +511,8 @@ impl TryFrom<Vec<String>> for Args {
                     if let Some((previous_version_flag, Command::Help { .. } | Command::Version)) =
                         command_option
                     {
-                        errors.push((ErrorKind::CommandAlreadySelected {
+                        errors.push((
+                            ErrorKind::CommandAlreadySelected {
                                 current: version_flag,
                                 previous: previous_version_flag,
                             },
@@ -506,53 +531,53 @@ impl TryFrom<Vec<String>> for Args {
                             ErrorKind::MustBeFollowedByASourceFilePath(command_flag),
                             selected_flag_index,
                         ));
-                        continue 'args;
+                        break 'args;
                     };
 
                     let src_path = Path::new(src_path_string);
                     if !src_path.is_file() {
                         errors.push((ErrorKind::MustBeAFilePath, src_path_index));
-                        continue 'args;
                     }
 
-                    let verbosity = if let Some((_verbosity_flag_index, verbosity_flag)) = args_iter.peek() {
-                        match verbosity_flag.as_str() {
-                            "-q" | "--quiet" => {
-                                _ = args_iter.next();
-                                Verbosity::Quiet
+                    let verbosity =
+                        if let Some((_verbosity_flag_index, verbosity_flag)) = args_iter.peek() {
+                            match verbosity_flag.as_str() {
+                                "-q" | "--quiet" => {
+                                    _ = args_iter.next();
+                                    Verbosity::Quiet
+                                }
+                                "-V" | "--verbose" => {
+                                    _ = args_iter.next();
+                                    Verbosity::Verbose
+                                }
+                                _ => Verbosity::Normal,
                             }
-                            "-V" | "--verbose" => {
-                                _ = args_iter.next();
-                                Verbosity::Verbose
-                            }
-                            _ => Verbosity::Normal
-                        }
-                    } else {
-                        Verbosity::Normal
-                    };
+                        } else {
+                            Verbosity::Normal
+                        };
 
                     match &command_option {
                         None => {
-                            let mode = Command::Check { src_path: src_path.to_path_buf(), verbosity };
+                            let mode =
+                                Command::Check { src_path: src_path.to_path_buf(), verbosity };
                             command_option = Some((command_flag, mode));
                         }
                         Some((previous_command_flag, previous_command)) => match previous_command {
                             Command::Help { .. } | Command::Version => {
-                                // this is just to make sure that run modes commands are properly
-                                // formatted, so we do nothing in the case where the
-                                // help, -h, --help, version, -v or --version command was already
-                                // selected
+                                // this is just to make sure that commands are properly formatted,
+                                // so we do nothing in the case where help or version commands were
+                                // already selected
                             }
                             Command::Check { .. }
                             | Command::Compile { .. }
                             | Command::Run { .. } => {
-                                errors.push((ErrorKind::CommandAlreadySelected {
+                                errors.push((
+                                    ErrorKind::CommandAlreadySelected {
                                         current: command_flag,
                                         previous: *previous_command_flag,
                                     },
                                     selected_flag_index,
                                 ));
-                                continue 'args;
                             }
                         },
                     }
@@ -565,18 +590,16 @@ impl TryFrom<Vec<String>> for Args {
                     };
 
                     let Some((src_path_index, src_path_string)) = args_iter.next() else {
-                        errors.push((ErrorKind::MustBeFollowedByASourceFilePath(command_flag),
+                        errors.push((
+                            ErrorKind::MustBeFollowedByASourceFilePath(command_flag),
                             selected_flag_index,
                         ));
-                        continue 'args;
+                        break 'args;
                     };
 
                     let src_path = Path::new(src_path_string);
                     if !src_path.is_file() {
-                        errors.push((ErrorKind::MustBeAFilePath,
-                            src_path_index,
-                        ));
-                        continue 'args;
+                        errors.push((ErrorKind::MustBeAFilePath, src_path_index));
                     }
 
                     let out_path = 'out_path: {
@@ -595,18 +618,16 @@ impl TryFrom<Vec<String>> for Args {
                             };
 
                             let Some((out_path_index, out_path_string)) = args_iter.next() else {
-                                errors.push((ErrorKind::MustBeFollowedByDirectoryPath(out_option),
+                                errors.push((
+                                    ErrorKind::MustBeFollowedByDirectoryPath(out_option),
                                     out_flag_index,
                                 ));
-                                continue 'args;
+                                break 'args;
                             };
 
                             let out_path_buf = Path::new(out_path_string);
                             if out_path_buf.is_file() {
-                                errors.push((ErrorKind::MustBeADirectoryPath,
-                                    out_path_index,
-                                ));
-                                continue 'args;
+                                errors.push((ErrorKind::MustBeADirectoryPath, out_path_index));
                             }
 
                             Some(out_path_buf.to_path_buf())
@@ -615,33 +636,35 @@ impl TryFrom<Vec<String>> for Args {
                         }
                     };
 
-                    let verbosity = if let Some((_verbosity_flag_index, verbosity_flag)) = args_iter.peek() {
-                        match verbosity_flag.as_str() {
-                            "-q" | "--quiet" => {
-                                _ = args_iter.next();
-                                Verbosity::Quiet
+                    let verbosity =
+                        if let Some((_verbosity_flag_index, verbosity_flag)) = args_iter.peek() {
+                            match verbosity_flag.as_str() {
+                                "-q" | "--quiet" => {
+                                    _ = args_iter.next();
+                                    Verbosity::Quiet
+                                }
+                                "-V" | "--verbose" => {
+                                    _ = args_iter.next();
+                                    Verbosity::Verbose
+                                }
+                                _ => Verbosity::Normal,
                             }
-                            "-V" | "--verbose" => {
-                                _ = args_iter.next();
-                                Verbosity::Verbose
-                            }
-                            _ => Verbosity::Normal
-                        }
-                    } else {
-                        Verbosity::Normal
-                    };
+                        } else {
+                            Verbosity::Normal
+                        };
 
                     match &command_option {
                         None => {
                             let mode = match command_flag {
                                 CommandFlag::Compile => Command::Compile {
                                     src_path: src_path.to_path_buf(),
-                                    out_path, verbosity
+                                    out_path,
+                                    verbosity,
                                 },
                                 CommandFlag::Run => Command::Run {
                                     src_path: src_path.to_path_buf(),
                                     out_path,
-                                    verbosity
+                                    verbosity,
                                 },
                                 CommandFlag::Help
                                 | CommandFlag::HelpShort
@@ -659,21 +682,20 @@ impl TryFrom<Vec<String>> for Args {
                         }
                         Some((previous_command_flag, previous_command)) => match previous_command {
                             Command::Help { .. } | Command::Version => {
-                                // this is just to make sure that run modes commands are properly
-                                // formatted, so we do nothing in the case where the
-                                // help, -h, --help, version, -v or --version command was already
-                                // selected
+                                // this is just to make sure that commands are properly formatted,
+                                // so we do nothing in the case where help or version commands were
+                                // already selected
                             }
                             Command::Check { .. }
                             | Command::Compile { .. }
                             | Command::Run { .. } => {
-                                errors.push((ErrorKind::CommandAlreadySelected {
+                                errors.push((
+                                    ErrorKind::CommandAlreadySelected {
                                         current: command_flag,
                                         previous: *previous_command_flag,
                                     },
                                     selected_flag_index,
                                 ));
-                                continue 'args;
                             }
                         },
                     }
@@ -686,23 +708,19 @@ impl TryFrom<Vec<String>> for Args {
                     };
 
                     let Some((out_path_index, out_path_string)) = args_iter.next() else {
-                        errors.push((ErrorKind::MustBeFollowedByDirectoryPath(flag),
+                        errors.push((
+                            ErrorKind::MustBeFollowedByDirectoryPath(flag),
                             selected_flag_index,
                         ));
-                        continue 'args;
+                        break 'args;
                     };
 
                     let out_path_buf = Path::new(out_path_string);
                     if !out_path_buf.is_dir() {
-                        errors.push((ErrorKind::MustBeADirectoryPath,
-                            out_path_index,
-                        ));
+                        errors.push((ErrorKind::MustBeADirectoryPath, out_path_index));
                     }
 
-                    errors.push((ErrorKind::StrayOutputDirectoryOption(flag),
-                        selected_flag_index,
-                    ));
-                    continue 'args;
+                    errors.push((ErrorKind::StrayOutputDirectoryOption(flag), selected_flag_index));
                 }
                 verbosity_flag @ ("-q" | "--quiet" | "-V" | "--verbose") => {
                     let flag = match verbosity_flag {
@@ -713,21 +731,9 @@ impl TryFrom<Vec<String>> for Args {
                         _ => unreachable!(),
                     };
 
-                    errors.push((ErrorKind::StrayVerbosityOption(flag),
-                        selected_flag_index,
-                    ));
-                    continue 'args;
+                    errors.push((ErrorKind::StrayVerbosityOption(flag), selected_flag_index));
                 }
                 color_flag @ ("-c" | "--color") => {
-                    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-                    #[repr(u8)]
-                    enum ColorOption {
-                        Auto = Color::Auto as u8,
-                        Always = Color::Always as u8,
-                        Never = Color::Never as u8,
-                        Unknown,
-                    }
-
                     let flag = match color_flag {
                         "-c" => ColorFlag::Short,
                         "--color" => ColorFlag::Long,
@@ -735,10 +741,8 @@ impl TryFrom<Vec<String>> for Args {
                     };
 
                     let Some((selected_color_index, selected_color)) = args_iter.next() else {
-                        errors.push((ErrorKind::MissingColorMode(flag),
-                            selected_flag_index,
-                        ));
-                        continue 'args;
+                        errors.push((ErrorKind::MissingColorMode(flag), selected_flag_index));
+                        break 'args;
                     };
 
                     let color_option = match selected_color.as_str() {
@@ -746,43 +750,35 @@ impl TryFrom<Vec<String>> for Args {
                         "always" => ColorOption::Always,
                         "never" => ColorOption::Never,
                         _ => {
-                            errors.push((ErrorKind::UnrecognizedColorMode,
-                                selected_color_index,
-                            ));
-                            continue 'args;
-                            #[expect(unreachable_code)]
+                            errors.push((ErrorKind::UnrecognizedColorMode, selected_color_index));
                             ColorOption::Unknown
                         }
                     };
 
-                    if let Some(ColorMode { flag: previous_flag, color: previous_color }) = color_mode {
-                        errors.push((ErrorKind::ColorModeAlreadySelected {
+                    if let Some(ColorMode { flag: previous_flag, color: previous_color }) =
+                        color_mode
+                    {
+                        errors.push((
+                            ErrorKind::ColorModeAlreadySelected {
                                 current_flag: flag,
+                                current_color: color_option,
                                 previous_flag,
                                 previous_color,
                             },
                             selected_flag_index,
                         ));
+                    }
+
+                    if let ColorOption::Unknown = color_option {
                         continue 'args;
                     }
 
-                    match color_option {
-                        ColorOption::Auto
-                        | ColorOption::Always
-                        | ColorOption::Never => {
-                            let selected_color_mode = ColorMode { flag, color: unsafe { core::mem::transmute(color_option) } };
-                            color_mode = Some(selected_color_mode);
-                        }
-                        ColorOption::Unknown => {
-                            // don't set the color mode
-                        },
-                    }
+                    let selected_color_mode =
+                        ColorMode { flag, color: unsafe { core::mem::transmute(color_option) } };
+                    color_mode = Some(selected_color_mode);
                 }
                 _ => {
-                    errors.push((ErrorKind::Unrecognized,
-                        selected_flag_index,
-                    ));
-                    continue 'args;
+                    errors.push((ErrorKind::Unrecognized, selected_flag_index));
                 }
             }
         }
@@ -793,15 +789,8 @@ impl TryFrom<Vec<String>> for Args {
         };
         color.set(&std::io::stderr());
 
-        // IDEA(stefano): consider returning all the errors
-        // Note: only returning the first error to make sure that any color flags in the middle are
-        // properly parsed
-        if let Some((kind, erroneous_arg_index)) = errors.first() {
-            return Err(Error::FromArgs {
-                kind: *kind,
-                args, erroneous_arg_index:
-                *erroneous_arg_index
-            });
+        if !errors.is_empty() {
+            return Err(Error::FromArgs { args, errors });
         }
 
         let command = match command_option {
@@ -821,20 +810,21 @@ impl TryFrom<std::env::Args> for Args {
     }
 }
 
-// IDEA(stefano): remove redundant fields or redundant `erroneous_arg_index`
 #[derive(Debug, Clone, Copy)]
 pub enum ErrorKind {
     MissingColorMode(ColorFlag),
     UnrecognizedColorMode,
+    // IDEA(stefano): remove error and select the last provided color, like the `ls` command
     ColorModeAlreadySelected {
         current_flag: ColorFlag,
+        current_color: ColorOption,
         previous_flag: ColorFlag,
         previous_color: Color,
     },
 
     CommandAlreadySelected {
         current: CommandFlag,
-        previous: CommandFlag
+        previous: CommandFlag,
     },
 
     // IDEA(stefano): add checks for existing file paths
@@ -852,143 +842,181 @@ pub enum ErrorKind {
 #[derive(Debug)]
 pub enum Error {
     EmptyArgs,
-    FromArgs {
-        kind: ErrorKind,
-        args: Vec<String>,
-        erroneous_arg_index: usize, // IDEA(stefano): inline into `ErrorKind` with custom names
-    },
+    FromArgs { args: Vec<String>, errors: Vec<(ErrorKind, usize)> },
 }
 
 impl Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut args_text = String::new();
-        let mut pointers_offset = 0;
-        let mut pointers_count = 1;
-        let mut error_message = String::new();
-        let mut error_cause_message = String::new();
 
         match self {
             Self::EmptyArgs => {
-                _ = write!(error_message, "missing executable name");
-                _ = write!(error_cause_message, "executable name should always be present");
+                let pointers_offset = 0;
+                let pointers_count = 1;
+                let error_message = "missing executable name";
+                let error_cause_message = "executable name should always be present";
+
+                let error = MsgWithCauseUnderText {
+                    kind: &ERROR,
+                    message: &error_message,
+                    cause: &error_cause_message,
+                    line_text: &args_text,
+                    pointers_offset: pointers_offset as column32,
+                    pointers_count: pointers_count as column32,
+                };
+                return write!(f, "{error}");
             }
-            Self::FromArgs { args, erroneous_arg_index, kind } => {
-                let executable_name = &args[0];
+            Self::FromArgs { args, errors } => {
+                let mut arg_index = 0;
+                let executable_name = &args[arg_index];
+                arg_index += 1;
                 _ = write!(args_text, "{executable_name}");
 
                 // skipping the executable name
-                for arg in &args[1..] {
+                while arg_index < args.len() {
+                    let arg = &args[arg_index];
+                    arg_index += 1;
                     _ = write!(args_text, " {arg}");
                 }
 
-                for arg in args.iter().take(*erroneous_arg_index) {
-                    pointers_offset += arg.len() + 1; // + 1 to account for the space between args
+                let mut error_message = String::new();
+                let mut error_cause_message = String::new();
+
+                arg_index = 0;
+                let mut pointers_offset = 0;
+                for (kind, erroneous_arg_index) in errors {
+                    if arg_index < *erroneous_arg_index {
+                        while arg_index < *erroneous_arg_index {
+                            let arg = &args[arg_index];
+                            arg_index += 1;
+                            pointers_offset += arg.len() + 1; // + 1 to account for the space between args
+                        }
+                    } else if arg_index > *erroneous_arg_index {
+                        while arg_index > *erroneous_arg_index {
+                            arg_index -= 1;
+                            let arg = &args[arg_index];
+                            pointers_offset -= arg.len() + 1; // + 1 to account for the space between args
+                        }
+                    } else {
+                        // we can keep the previous pointer_offset calculation
+                    }
+
+                    let erroneous_arg = &args[arg_index];
+                    let mut pointers_count = match erroneous_arg.len() {
+                        0 => 1, // empty arguments will at least get one pointer
+                        other => other,
+                    };
+
+                    error_message.clear();
+                    error_cause_message.clear();
+                    match kind {
+                        ErrorKind::MissingColorMode(flag) => {
+                            _ = write!(error_message, "missing color mode for '{flag}'");
+                            _ = write!(
+                                error_cause_message,
+                                "must be followed by '{auto}', '{always}' or '{never}'",
+                                auto = Color::Auto,
+                                always = Color::Always,
+                                never = Color::Never,
+                            );
+                        }
+                        ErrorKind::UnrecognizedColorMode => {
+                            _ = write!(error_message, "unrecognized color mode '{erroneous_arg}'");
+                            _ = write!(
+                                error_cause_message,
+                                "must be one of '{auto}', '{always}' or '{never}'",
+                                auto = Color::Auto,
+                                always = Color::Always,
+                                never = Color::Never,
+                            );
+                        }
+                        ErrorKind::ColorModeAlreadySelected {
+                            current_flag,
+                            current_color: _current_color, // TODO(stefano): use when not `Unknown`
+                            previous_flag,
+                            previous_color,
+                        } => {
+                            // starting the pointers at the flag and extending them up to the color mode
+                            let erroneous_color = &args[*erroneous_arg_index + 1];
+                            pointers_count += erroneous_color.len() + 1; // + 1 to account for the space between args
+
+                            _ = write!(
+                                error_message,
+                                "repeated '{current_flag} {erroneous_color}' color mode"
+                            );
+                            _ = write!(
+                                error_cause_message,
+                                "cannot use '{current_flag} {erroneous_color}' because '{previous_flag} {previous_color}' was already selected"
+                            );
+                        }
+                        ErrorKind::CommandAlreadySelected { current, previous } => {
+                            _ = write!(error_message, "repeated '{current}' command");
+                            _ = write!(
+                                error_cause_message,
+                                "cannot use '{current}' because '{previous}' was already selected"
+                            );
+                        }
+                        ErrorKind::MustBeFollowedByASourceFilePath(command) => {
+                            _ = write!(error_message, "invalid '{command}' command");
+                            _ = write!(
+                                error_cause_message,
+                                "'{command}' must be followed by a file path"
+                            );
+                        }
+                        ErrorKind::MustBeAFilePath => {
+                            _ = write!(error_message, "invalid '{erroneous_arg}' path");
+                            _ = write!(
+                                error_cause_message,
+                                "'{erroneous_arg}' must be a file path"
+                            );
+                        }
+                        ErrorKind::MustBeFollowedByDirectoryPath(option) => {
+                            _ = write!(error_message, "invalid '{option}' option");
+                            _ = write!(
+                                error_cause_message,
+                                "'{option}' must be followed by a directory path"
+                            );
+                        }
+                        ErrorKind::MustBeADirectoryPath => {
+                            _ = write!(error_message, "invalid '{erroneous_arg}' path");
+                            _ = write!(
+                                error_cause_message,
+                                "'{erroneous_arg}' must be a directory path"
+                            );
+                        }
+                        ErrorKind::StrayOutputDirectoryOption(option) => {
+                            _ = write!(error_message, "stray '{option}' option");
+                            _ = write!(
+                                error_cause_message,
+                                "'{option}' can only be used after a 'compile' or 'run' command"
+                            );
+                        }
+                        ErrorKind::StrayVerbosityOption(option) => {
+                            _ = write!(error_message, "stray '{option}' option");
+                            _ = write!(
+                                error_cause_message,
+                                "'{option}' can only be used after a 'check', 'compile' or 'run' command"
+                            );
+                        }
+                        ErrorKind::Unrecognized => {
+                            _ = write!(error_message, "unrecognized '{erroneous_arg}' arg");
+                            _ = write!(error_cause_message, "unrecognized");
+                        }
+                    }
+
+                    let error = MsgWithCauseUnderText {
+                        kind: &ERROR,
+                        message: &error_message,
+                        cause: &error_cause_message,
+                        line_text: &args_text,
+                        pointers_offset: pointers_offset as column32,
+                        pointers_count: pointers_count as column32,
+                    };
+                    writeln!(f, "{error}\n")?;
                 }
-
-                let erroneous_arg = &args[*erroneous_arg_index];
-                pointers_count = match erroneous_arg.len() {
-                    0 => 1, // empty arguments will at least get one pointer
-                    other => other,
-                };
-
-                match kind {
-                    ErrorKind::MissingColorMode(flag) => {
-                        _ = write!(error_message, "missing color mode for '{flag}'");
-                        _ = write!(
-                            error_cause_message,
-                            "must be followed by '{auto}', '{always}' or '{never}'",
-                            auto = Color::Auto,
-                            always = Color::Always,
-                            never = Color::Never,
-                        );
-                    }
-                    ErrorKind::UnrecognizedColorMode => {
-                        _ = write!(error_message, "unrecognized color mode '{erroneous_arg}'");
-                        _ = write!(
-                            error_cause_message,
-                            "must be one of '{auto}', '{always}' or '{never}'",
-                            auto = Color::Auto,
-                            always = Color::Always,
-                            never = Color::Never,
-                        );
-                    }
-                    ErrorKind::ColorModeAlreadySelected {
-                        current_flag,
-                        previous_flag,
-                        previous_color,
-                    } => {
-                        // starting the pointers at the flag and extending them up to the color mode
-                        let erroneous_color = &args[*erroneous_arg_index + 1];
-                        pointers_count += erroneous_color.len() + 1; // + 1 to account for the space between args
-
-                        _ = write!(error_message, "repeated '{current_flag} {erroneous_color}' color mode");
-                        _ = write!(
-                            error_cause_message,
-                            "cannot use '{current_flag} {erroneous_color}' because '{previous_flag} {previous_color}' was already selected"
-                        );
-                    }
-                    ErrorKind::CommandAlreadySelected { current, previous } => {
-                        _ = write!(error_message, "repeated '{current}' command");
-                        _ = write!(
-                            error_cause_message,
-                            "cannot use '{current}' because '{previous}' was already selected"
-                        );
-                    }
-                    ErrorKind::MustBeFollowedByASourceFilePath(command) => {
-                        _ = write!(error_message, "invalid '{command}' command");
-                        _ = write!(
-                            error_cause_message,
-                            "'{command}' must be followed by a file path"
-                        );
-                    }
-                    ErrorKind::MustBeAFilePath => {
-                        let path = &args[*erroneous_arg_index];
-                        _ = write!(error_message, "invalid '{path}' path");
-                        _ = write!(error_cause_message, "'{path}' must be a file path");
-                    }
-                    ErrorKind::MustBeFollowedByDirectoryPath(option) => {
-                        _ = write!(error_message, "invalid '{option}' option");
-                        _ = write!(
-                            error_cause_message,
-                            "'{option}' must be followed by a directory path"
-                        );
-                    }
-                    ErrorKind::MustBeADirectoryPath => {
-                        let path = &args[*erroneous_arg_index];
-                        _ = write!(error_message, "invalid '{path}' path");
-                        _ = write!(error_cause_message, "'{path}' must be a directory path");
-                    }
-                    ErrorKind::StrayOutputDirectoryOption(option) => {
-                        _ = write!(error_message, "stray '{option}' option");
-                        _ = write!(
-                            error_cause_message,
-                            "'{option}' can only be used after a 'compile' or 'run' command"
-                        );
-                    }
-                    ErrorKind::StrayVerbosityOption(option) => {
-                        _ = write!(error_message, "stray '{option}' option");
-                        _ = write!(
-                            error_cause_message,
-                            "'{option}' can only be used after a 'check', 'compile' or 'run' command"
-                        );
-                    }
-                    ErrorKind::Unrecognized => {
-                        _ = write!(error_message, "unrecognized '{erroneous_arg}' arg");
-                        _ = write!(error_cause_message, "unrecognized");
-                    }
-                };
+                return Ok(());
             }
-        };
-
-        let error = MsgWithCauseUnderText {
-            kind: &ERROR,
-            message: &error_message,
-            cause: &error_cause_message,
-            line_text: &args_text,
-            pointers_offset: pointers_offset as column32,
-            pointers_count: pointers_count as column32,
-        };
-        return write!(f, "{error}");
+        }
     }
 }
 

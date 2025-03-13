@@ -42,6 +42,7 @@ tools repo, to aid in modularity and code reuse.
 
 - Added `?`, `-?`, `--?` for help commands
 - Improved printing of help message, now fitting inside 80 columns
+- `Args` now returns multiple cli errors instead of just the first one
 - `src_file::Span`, `src_file::Position` and `src_file::DisplayPosition` now derive `Hash`
 - Improved `Logger` methods consistency
 - Expanded `tokenizer::TokenKind::Integer` into its different bases, modified related entities,
