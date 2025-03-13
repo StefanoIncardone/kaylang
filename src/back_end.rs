@@ -7,7 +7,6 @@ fix allocation of arrays of 0 items when thet will be allowed by either
 pub mod artifacts;
 mod asm;
 
-use back_to_front::back_end::x86_64::reg::Reg64::{self, Rcx, Rdi, Rdx, Rsi};
 use crate::front_end::{
     ast::{
         self, AssignmentOp, Ast, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression,
@@ -16,6 +15,7 @@ use crate::front_end::{
     src_file::{offset32, Position, SrcCode},
     tokenizer::{ascii, uint},
 };
+use back_to_front::back_end::x86_64::reg::Reg64::{self, Rcx, Rdi, Rdx, Rsi};
 use core::fmt::{Display, Write as _};
 extern crate alloc;
 use alloc::borrow::Cow;
@@ -787,10 +787,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                         );
                     }
                     Type::Array { len: array_len, .. } => {
-                        debug_assert!(
-                            *array_len > 0,
-                            "arrays of 0 items are not allowed"
-                        );
+                        debug_assert!(*array_len > 0, "arrays of 0 items are not allowed");
                         _ = writeln!(
                             self.asm,
                             " mov rsi, {array_len}\
@@ -911,10 +908,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                                     _ = writeln!(self.asm, " mov {reg}, [rbp + {var_offset}]");
                                 }
                                 Type::Array { len, .. } => {
-                                    debug_assert!(
-                                        *len > 0,
-                                        "arrays of 0 items are not allowed"
-                                    );
+                                    debug_assert!(*len > 0, "arrays of 0 items are not allowed");
                                     _ = writeln!(self.asm, " mov {reg}, {len}");
                                 }
                                 Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => {
@@ -1969,10 +1963,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                     );
                                 }
                                 Type::Array { len, .. } => {
-                                    debug_assert!(
-                                        *len > 0,
-                                        "arrays of 0 items are not allowed"
-                                    );
+                                    debug_assert!(*len > 0, "arrays of 0 items are not allowed");
                                     _ = writeln!(
                                         self.asm,
                                         " mov qword [{base} + {dst_offset}], {len}\n"
@@ -2426,10 +2417,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                 );
                             }
                             Type::Array { len: array_len, .. } => {
-                                debug_assert!(
-                                    *array_len > 0,
-                                    "arrays of 0 items are not allowed"
-                                );
+                                debug_assert!(*array_len > 0, "arrays of 0 items are not allowed");
                                 self.expression(index_expression, Dst::Reg(Rdi));
                                 _ = writeln!(
                                     self.asm,

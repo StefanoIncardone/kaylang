@@ -1,8 +1,7 @@
 use super::{
     src_file::{column32, index32, offset32, DisplayPosition, SrcCode},
     tokenizer::{
-        ascii, Bracket, CloseBracket, Op, StrIndex, TextIndex, Token, TokenIndex, TokenKind,
-        Tokens,
+        ascii, Bracket, CloseBracket, Op, StrIndex, TextIndex, Token, TokenIndex, TokenKind, Tokens,
     },
     Error, ErrorDisplay, ErrorInfo, IntoErrorInfo,
 };
@@ -506,7 +505,6 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
         node_index: &mut NodeIndex,
         indent: usize,
     ) -> core::fmt::Result {
-
         let node = &self.syntax_tree.nodes[*node_index as usize];
         *node_index += 1;
 
@@ -782,8 +780,13 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
         variable_definition_index: VariableDefinitionIndex,
         indent: usize,
     ) -> core::fmt::Result {
-        let VariableDefinition { name, name_column, type_annotation, initial_value, semicolon_column } =
-            &self.syntax_tree.variable_definitions[variable_definition_index as usize];
+        let VariableDefinition {
+            name,
+            name_column,
+            type_annotation,
+            initial_value,
+            semicolon_column,
+        } = &self.syntax_tree.variable_definitions[variable_definition_index as usize];
         let name_str = self.tokens.text[*name as usize];
         writeln!(f, "{:>indent$}Name: {name_column} = {name_str}", "")?;
 
@@ -821,7 +824,7 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
             self.info_expression(f, *expression, indent)?;
         }
 
-        return Self::info_semicolon(f, indent, *semicolon_column)
+        return Self::info_semicolon(f, indent, *semicolon_column);
     }
 }
 
@@ -932,7 +935,8 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                 let after_expression_token = self.next_expected_token(Expected::Semicolon)?;
                 match after_expression_token.kind {
                     TokenKind::SemiColon => Ok(ParsedNode::Node(Node::Expression {
-                        expression, semicolon_column: after_expression_token.col
+                        expression,
+                        semicolon_column: after_expression_token.col,
                     })),
                     TokenKind::Op(
                         operator @ (Op::Equals
@@ -1059,24 +1063,39 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                 let start_of_argument_token = self.next_expected_token(Expected::Expression)?;
                 let argument = self.expression(start_of_argument_token)?;
                 let semicolon_column = self.semicolon()?;
-                Ok(ParsedNode::Node(Node::Print { print_column: token.col, argument, semicolon_column }))
+                Ok(ParsedNode::Node(Node::Print {
+                    print_column: token.col,
+                    argument,
+                    semicolon_column,
+                }))
             }
             TokenKind::PrintLn => {
                 let start_of_argument_token =
                     self.next_expected_token(Expected::ExpressionOrSemicolon)?;
                 if let TokenKind::SemiColon = start_of_argument_token.kind {
-                    return Ok(ParsedNode::Node(Node::PrintlnNoArg { println_column: token.col, semicolon_column: start_of_argument_token.col }));
+                    return Ok(ParsedNode::Node(Node::PrintlnNoArg {
+                        println_column: token.col,
+                        semicolon_column: start_of_argument_token.col,
+                    }));
                 }
 
                 let argument = self.expression(start_of_argument_token)?;
                 let semicolon_column = self.semicolon()?;
-                Ok(ParsedNode::Node(Node::Println { println_column: token.col, argument, semicolon_column }))
+                Ok(ParsedNode::Node(Node::Println {
+                    println_column: token.col,
+                    argument,
+                    semicolon_column,
+                }))
             }
             TokenKind::Eprint => {
                 let start_of_argument_token = self.next_expected_token(Expected::Expression)?;
                 let argument = self.expression(start_of_argument_token)?;
                 let semicolon_column = self.semicolon()?;
-                Ok(ParsedNode::Node(Node::Eprint { eprint_column: token.col, argument, semicolon_column }))
+                Ok(ParsedNode::Node(Node::Eprint {
+                    eprint_column: token.col,
+                    argument,
+                    semicolon_column,
+                }))
             }
             TokenKind::EprintLn => {
                 let start_of_argument_token =
@@ -1084,13 +1103,17 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                 if let TokenKind::SemiColon = start_of_argument_token.kind {
                     return Ok(ParsedNode::Node(Node::EprintlnNoArg {
                         eprintln_column: token.col,
-                        semicolon_column: start_of_argument_token.col
+                        semicolon_column: start_of_argument_token.col,
                     }));
                 }
 
                 let argument = self.expression(start_of_argument_token)?;
                 let semicolon_column = self.semicolon()?;
-                Ok(ParsedNode::Node(Node::Eprintln { eprintln_column: token.col, argument, semicolon_column }))
+                Ok(ParsedNode::Node(Node::Eprintln {
+                    eprintln_column: token.col,
+                    argument,
+                    semicolon_column,
+                }))
             }
 
             TokenKind::Let => {
@@ -1214,7 +1237,10 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                     });
                 }
 
-                Ok(ParsedNode::Node(Node::Continue { continue_column: token.col, semicolon_column }))
+                Ok(ParsedNode::Node(Node::Continue {
+                    continue_column: token.col,
+                    semicolon_column,
+                }))
             }
 
             TokenKind::Else => Err(Error {

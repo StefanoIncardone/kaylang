@@ -1940,10 +1940,7 @@ impl Parser<'_, '_, '_, '_> {
                     }
 
                     if let TokenKind::Bracket(Bracket::CloseSquare) = bracket_or_comma_token.kind {
-                        debug_assert!(
-                            items.len() > 0,
-                            "arrays of 0 items are not allowed"
-                        );
+                        debug_assert!(items.len() > 0, "arrays of 0 items are not allowed");
                         break 'array Ok(Expression::Array { base_type: items_type, items });
                     }
                 }
@@ -2164,13 +2161,17 @@ impl Parser<'_, '_, '_, '_> {
                                 Some(0) => Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression
+                                        .kind
+                                        .display_len(self.tokens),
                                 }),
                                 Some(integer) => Ok(Expression::Int(integer)),
                                 None => Err(Error {
                                     kind: ErrorKind::BinaryIntegerUnderflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression
+                                        .kind
+                                        .display_len(self.tokens),
                                 }),
                             }
                         } else {
@@ -2179,7 +2180,9 @@ impl Parser<'_, '_, '_, '_> {
                                 None => Err(Error {
                                     kind: ErrorKind::BinaryIntegerOverflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression
+                                        .kind
+                                        .display_len(self.tokens),
                                 }),
                             }
                         }
@@ -2191,13 +2194,17 @@ impl Parser<'_, '_, '_, '_> {
                                 Some(0) => Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression
+                                        .kind
+                                        .display_len(self.tokens),
                                 }),
                                 Some(integer) => Ok(Expression::Int(integer)),
                                 None => Err(Error {
                                     kind: ErrorKind::OctalIntegerUnderflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression
+                                        .kind
+                                        .display_len(self.tokens),
                                 }),
                             }
                         } else {
@@ -2206,7 +2213,9 @@ impl Parser<'_, '_, '_, '_> {
                                 None => Err(Error {
                                     kind: ErrorKind::OctalIntegerOverflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression
+                                        .kind
+                                        .display_len(self.tokens),
                                 }),
                             }
                         }
@@ -2218,13 +2227,17 @@ impl Parser<'_, '_, '_, '_> {
                                 Some(0) => Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression
+                                        .kind
+                                        .display_len(self.tokens),
                                 }),
                                 Some(integer) => Ok(Expression::Int(integer)),
                                 None => Err(Error {
                                     kind: ErrorKind::DecimalIntegerUnderflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression
+                                        .kind
+                                        .display_len(self.tokens),
                                 }),
                             }
                         } else {
@@ -2233,7 +2246,9 @@ impl Parser<'_, '_, '_, '_> {
                                 None => Err(Error {
                                     kind: ErrorKind::DecimalIntegerOverflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression
+                                        .kind
+                                        .display_len(self.tokens),
                                 }),
                             }
                         }
@@ -2245,13 +2260,17 @@ impl Parser<'_, '_, '_, '_> {
                                 Some(0) => Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression
+                                        .kind
+                                        .display_len(self.tokens),
                                 }),
                                 Some(integer) => Ok(Expression::Int(integer)),
                                 None => Err(Error {
                                     kind: ErrorKind::HexadecimalIntegerUnderflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression
+                                        .kind
+                                        .display_len(self.tokens),
                                 }),
                             }
                         } else {
@@ -2260,7 +2279,9 @@ impl Parser<'_, '_, '_, '_> {
                                 None => Err(Error {
                                     kind: ErrorKind::HexadecimalIntegerOverflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression
+                                        .kind
+                                        .display_len(self.tokens),
                                 }),
                             }
                         }
@@ -2998,10 +3019,7 @@ impl Parser<'_, '_, '_, '_> {
                         Type::Array { base_type, len } => {
                             debug_assert!(len > 0, "arrays of 0 items are not allowed");
                             let items = vec![self.expression_from_base_type(base_type); len];
-                            debug_assert!(
-                                items.len() > 0,
-                                "arrays of 0 items are not allowed"
-                            );
+                            debug_assert!(items.len() > 0, "arrays of 0 items are not allowed");
                             Expression::Array { base_type, items }
                         }
                     };

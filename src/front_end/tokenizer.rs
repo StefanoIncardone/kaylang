@@ -598,6 +598,7 @@ pub struct Token {
     pub(crate) col: offset32,
 }
 
+// IDEA(stefano): inline `SrcCode` into here
 #[derive(Debug, Clone)]
 pub struct Tokens<'code, 'path: 'code> {
     pub(crate) tokens: Vec<Token>,
@@ -728,10 +729,11 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             match tokenizer.integer_binary() {
                                 Ok(literal) => {
                                     tokenizer.tokens.text.push(literal);
-                                    let literal_index = tokenizer.tokens.text.len() as TextIndex - 1;
+                                    let literal_index =
+                                        tokenizer.tokens.text.len() as TextIndex - 1;
                                     Ok(TokenKind::BinaryInteger(literal_index))
                                 }
-                                Err(()) => Err(())
+                                Err(()) => Err(()),
                             }
                         }
                         Some('o') => {
@@ -739,10 +741,11 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             match tokenizer.integer_octal() {
                                 Ok(literal) => {
                                     tokenizer.tokens.text.push(literal);
-                                    let literal_index = tokenizer.tokens.text.len() as TextIndex - 1;
+                                    let literal_index =
+                                        tokenizer.tokens.text.len() as TextIndex - 1;
                                     Ok(TokenKind::OctalInteger(literal_index))
                                 }
-                                Err(()) => Err(())
+                                Err(()) => Err(()),
                             }
                         }
                         Some('x') => {
@@ -750,23 +753,22 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             match tokenizer.integer_hexadecimal() {
                                 Ok(literal) => {
                                     tokenizer.tokens.text.push(literal);
-                                    let literal_index = tokenizer.tokens.text.len() as TextIndex - 1;
+                                    let literal_index =
+                                        tokenizer.tokens.text.len() as TextIndex - 1;
                                     Ok(TokenKind::HexadecimalInteger(literal_index))
                                 }
-                                Err(()) => Err(())
+                                Err(()) => Err(()),
                             }
                         }
-                        Some(_) | None => {
-                            match tokenizer.integer_decimal() {
-                                Ok(literal) => {
-                                    tokenizer.tokens.text.push(literal);
-                                    let literal_index = tokenizer.tokens.text.len() as TextIndex - 1;
-                                    Ok(TokenKind::DecimalInteger(literal_index))
-                                }
-                                Err(()) => Err(())
+                        Some(_) | None => match tokenizer.integer_decimal() {
+                            Ok(literal) => {
+                                tokenizer.tokens.text.push(literal);
+                                let literal_index = tokenizer.tokens.text.len() as TextIndex - 1;
+                                Ok(TokenKind::DecimalInteger(literal_index))
                             }
-                        }
-                    }
+                            Err(()) => Err(()),
+                        },
+                    },
                     b'1'..=b'9' => match tokenizer.integer_decimal() {
                         Ok(literal) => {
                             tokenizer.tokens.text.push(literal);
@@ -784,7 +786,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         Err(()) => Err(()),
                     },
                     b'\'' => match tokenizer.ascii_literal() {
-                        Ok(literal) =>  Ok(TokenKind::Ascii(literal)),
+                        Ok(literal) => Ok(TokenKind::Ascii(literal)),
                         Err(()) => Err(()),
                     },
                     b'#' => match tokenizer.peek_next_utf8_char() {
@@ -1274,7 +1276,6 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
             tokenizer.tokens.tokens.push(Token { kind, col: tokenizer.token_start_col });
         }
 
-        // TODO(stefano): handle \r\n
         if let Some(b'\n') = tokenizer.code.as_bytes().last() {
         } else {
             tokenizer.lines.push(Line { start: tokenizer.line_start, end: tokenizer.col });
@@ -1414,7 +1415,6 @@ impl<'code> Tokenizer<'code, '_> {
 
 impl<'code> Tokenizer<'code, '_> {
     fn identifier(&mut self) -> Result<TokenKind, ()> {
-        // NOTE(stefano): why 63 and not 64?
         const MAX_IDENTIFIER_LEN: offset32 = 63;
         let previous_errors_len = self.errors.len();
 
@@ -1750,7 +1750,7 @@ impl<'code> Tokenizer<'code, '_> {
                 });
                 Err(())
             }
-        }
+        };
     }
 
     fn string_literal(&mut self) -> Result<Vec<ascii>, ()> {
@@ -1773,9 +1773,7 @@ impl<'code> Tokenizer<'code, '_> {
                 }
                 Some(Err(error)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InQuotedLiteral {
-                            grapheme: error.grapheme,
-                        },
+                        kind: ErrorKind::Utf8InQuotedLiteral { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });

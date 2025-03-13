@@ -39,6 +39,7 @@ pub struct DisplayPosition {
     pub display_column: column32,
 }
 
+// IDEA(stefano): remove `path` for a simpler api
 #[derive(Debug)]
 pub struct SrcFile<'path> {
     pub(crate) path: &'path Path,
@@ -98,7 +99,7 @@ impl<'path> SrcFile<'path> {
 #[derive(Debug)]
 pub struct SrcCode<'code, 'path: 'code> {
     pub(crate) src_file: &'code SrcFile<'path>,
-    pub(crate) lines: Vec<Line>,
+    pub(crate) lines: Vec<Line>, // IDEA(stefano): revert back to calculating line bounds ahead of time for a simpler api and workflow
 }
 
 impl<'code, 'path: 'code> SrcCode<'code, 'path> {
