@@ -310,10 +310,11 @@ pub(crate) struct ArrayDimension {
 
 #[derive(Debug, Clone)]
 pub(crate) struct TypeAnnotation {
-    colon_column: column32,
+    colon_column: NonZero<column32>,
     type_name: TextIndex,
     type_name_column: column32,
-    array_dimensions: Vec<ArrayDimension>,
+    array_dimensions_start: index32,
+    array_dimensions_len: offset32,
 }
 
 #[derive(Debug, Clone)]
@@ -328,7 +329,6 @@ pub(crate) struct VariableDefinition {
     name_column: column32,
     type_annotation: Option<TypeAnnotation>,
     initial_value: Option<InitialValue>,
-    semicolon_column: column32,
 }
 
 pub(crate) type VariableDefinitionIndex = index32;
@@ -389,10 +389,12 @@ pub(crate) enum Node {
     LetVariableDefinition {
         let_column: column32,
         variable_definition: VariableDefinitionIndex,
+        semicolon_column: column32,
     },
     VarVariableDefinition {
         var_column: column32,
         variable_definition: VariableDefinitionIndex,
+        semicolon_column: column32,
     },
     // IDEA(stefano): maybe move into expressions enum
     Assignment {
@@ -451,10 +453,12 @@ pub struct SyntaxTree<'tokens, 'code: 'tokens, 'path: 'code> {
     pub(crate) nodes: Vec<Node>,
 
     pub(crate) expressions: Vec<Expression>,
+    // IDEA(stefano): fuse items and commas
     pub(crate) array_items: Vec<Vec<ExpressionIndex>>,
     pub(crate) array_commas_columns: Vec<Vec<NonZero<column32>>>,
 
     pub(crate) variable_definitions: Vec<VariableDefinition>,
+    pub(crate) array_dimensions: Vec<ArrayDimension>,
 
     pub(crate) ifs: Vec<If>,
     pub(crate) else_ifs: Vec<Vec<ElseIf>>,
@@ -549,15 +553,17 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
                 Self::info_semicolon(f, indent, *semicolon_column)
             }
 
-            Node::LetVariableDefinition { let_column, variable_definition } => {
+            Node::LetVariableDefinition { let_column, variable_definition, semicolon_column } => {
                 writeln!(f, "{:>indent$}VariableDefinition: {let_column} = let", "")?;
                 let definition_indent = indent + Self::INDENT_INCREMENT;
-                self.info_variable_definition(f, *variable_definition, definition_indent)
+                self.info_variable_definition(f, *variable_definition, definition_indent)?;
+                Self::info_semicolon(f, definition_indent, *semicolon_column)
             }
-            Node::VarVariableDefinition { var_column, variable_definition } => {
+            Node::VarVariableDefinition { var_column, variable_definition, semicolon_column } => {
                 writeln!(f, "{:>indent$}VariableDefinition: {var_column} = var", "")?;
                 let definition_indent = indent + Self::INDENT_INCREMENT;
-                self.info_variable_definition(f, *variable_definition, definition_indent)
+                self.info_variable_definition(f, *variable_definition, definition_indent)?;
+                Self::info_semicolon(f, definition_indent, *semicolon_column)
             }
             Node::Assignment { target, operator, operator_column, new_value, semicolon_column } => {
                 writeln!(f, "{:>indent$}Assignment", "")?;
@@ -780,51 +786,60 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
         variable_definition_index: VariableDefinitionIndex,
         indent: usize,
     ) -> core::fmt::Result {
-        let VariableDefinition {
-            name,
-            name_column,
-            type_annotation,
-            initial_value,
-            semicolon_column,
-        } = &self.syntax_tree.variable_definitions[variable_definition_index as usize];
+        let VariableDefinition { name, name_column, type_annotation, initial_value } =
+            &self.syntax_tree.variable_definitions[variable_definition_index as usize];
         let name_str = self.tokens.text[*name as usize];
         writeln!(f, "{:>indent$}Name: {name_column} = {name_str}", "")?;
 
+        writeln!(f, "{:>indent$}TypeAnnotation", "")?;
+        let annotation_indent = indent + Self::INDENT_INCREMENT;
         if let Some(TypeAnnotation {
             colon_column,
             type_name,
             type_name_column,
-            array_dimensions,
+            array_dimensions_start,
+            array_dimensions_len,
         }) = type_annotation
         {
-            writeln!(f, "{:>indent$}Colon: {colon_column} = :", "")?;
+            writeln!(f, "{:>annotation_indent$}Colon: {colon_column} = :", "")?;
 
             let type_name_str = self.tokens.text[*type_name as usize];
-            writeln!(f, "{:>indent$}TypeName: {type_name_column} = {type_name_str}", "")?;
+            writeln!(
+                f,
+                "{:>annotation_indent$}TypeName: {type_name_column} = {type_name_str}",
+                ""
+            )?;
 
-            let dimension_indent = indent + Self::INDENT_INCREMENT;
+            let dimension_indent = annotation_indent + Self::INDENT_INCREMENT;
+            let array_dimensions_end = array_dimensions_start + array_dimensions_len;
+            let array_dimensions = &self.syntax_tree.array_dimensions
+                [*array_dimensions_start as usize..array_dimensions_end as usize];
             for ArrayDimension {
                 open_square_bracket_column,
                 dimension_expression,
                 close_square_bracket_column,
             } in array_dimensions
             {
-                writeln!(f, "{:>indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
+                writeln!(
+                    f,
+                    "{:>annotation_indent$}OpenSquareBracket: {open_square_bracket_column} = [",
+                    ""
+                )?;
                 self.info_expression(f, *dimension_expression, dimension_indent)?;
                 writeln!(
                     f,
-                    "{:>indent$}CloseSquareBracket: {close_square_bracket_column} = ]",
+                    "{:>annotation_indent$}CloseSquareBracket: {close_square_bracket_column} = ]",
                     ""
                 )?;
             }
         }
 
-        if let Some(InitialValue { equals_column, expression }) = initial_value {
+        return if let Some(InitialValue { equals_column, expression }) = initial_value {
             writeln!(f, "{:>indent$}Equals: {equals_column} = =", "")?;
-            self.info_expression(f, *expression, indent)?;
-        }
-
-        return Self::info_semicolon(f, indent, *semicolon_column);
+            self.info_expression(f, *expression, indent)
+        } else {
+            Ok(())
+        };
     }
 }
 
@@ -876,6 +891,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                 array_commas_columns: Vec::new(),
 
                 variable_definitions: Vec::new(),
+                array_dimensions: Vec::new(),
 
                 ifs: Vec::new(),
                 else_ifs: Vec::new(),
@@ -1117,23 +1133,25 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
             }
 
             TokenKind::Let => {
-                let variable_definition = self.variable_definition(token)?;
+                let (variable_definition, semicolon_column) = self.variable_definition(token)?;
                 self.syntax_tree.variable_definitions.push(variable_definition);
                 Ok(ParsedNode::Node(Node::LetVariableDefinition {
                     let_column: token.col,
                     variable_definition: self.syntax_tree.variable_definitions.len()
                         as VariableDefinitionIndex
                         - 1,
+                    semicolon_column,
                 }))
             }
             TokenKind::Var => {
-                let variable_definition = self.variable_definition(token)?;
+                let (variable_definition, semicolon_column) = self.variable_definition(token)?;
                 self.syntax_tree.variable_definitions.push(variable_definition);
                 Ok(ParsedNode::Node(Node::VarVariableDefinition {
                     var_column: token.col,
                     variable_definition: self.syntax_tree.variable_definitions.len()
                         as VariableDefinitionIndex
                         - 1,
+                    semicolon_column,
                 }))
             }
 
@@ -1393,20 +1411,6 @@ impl Parser<'_, '_, '_, '_> {
 
     fn peek_next_expected_token(&self, expected: Expected) -> Result<Peeked, Error<ErrorKind>> {
         let Some(peeked) = self.peek_next_token() else {
-            /* IDEA(stefano):
-            suggest multiple expected places when encountering block comments:
-
-            ```kay
-            # either
-            let i = 3 ## comment ##
-                     ^ missing semicolon
-
-            # or
-            let i = 3 ## comment ##
-                                   ^ missing semicolon
-            ```
-            */
-
             let previous_token = self.peek_previous_token();
             return Err(Error {
                 kind: ErrorKind::PrematureEndOfFile(expected),
@@ -1673,18 +1677,12 @@ impl Parser<'_, '_, '_, '_> {
             }
         };
 
-        loop {
-            let Some(Peeked {
-                token:
-                    Token {
-                        kind: TokenKind::Bracket(Bracket::OpenSquare),
-                        col: open_square_bracket_column,
-                    },
-                index: open_square_bracket_token_index,
-            }) = self.peek_next_token()
-            else {
-                break;
-            };
+        while let Some(Peeked {
+            token:
+                Token { kind: TokenKind::Bracket(Bracket::OpenSquare), col: open_square_bracket_column },
+            index: open_square_bracket_token_index,
+        }) = self.peek_next_token()
+        {
             self.token_index = open_square_bracket_token_index;
 
             let start_of_index_expression_token = self.next_expected_token(Expected::Expression)?;
@@ -1936,7 +1934,7 @@ impl Parser<'_, '_, '_, '_> {
     fn variable_definition(
         &mut self,
         mutability_token: Token,
-    ) -> Result<VariableDefinition, Error<ErrorKind>> {
+    ) -> Result<(VariableDefinition, column32), Error<ErrorKind>> {
         let variable_name_token = self.next_expected_token(Expected::VariableName)?;
         let variable_name = match variable_name_token.kind {
             TokenKind::Identifier(name) => name,
@@ -2038,24 +2036,16 @@ impl Parser<'_, '_, '_, '_> {
                 }
             };
 
-            let mut array_dimensions = Vec::<ArrayDimension>::new();
-            loop {
-                let Some(Peeked {
-                    token:
-                        Token {
-                            kind: TokenKind::Bracket(Bracket::OpenSquare),
-                            col: open_square_bracket_column,
-                        },
-                    index: open_square_bracket_token_index,
-                }) = self.peek_next_token()
-                else {
-                    break 'type_annotation Some(TypeAnnotation {
-                        colon_column: after_variable_name_token.col,
-                        type_name,
-                        type_name_column: type_name_token.col,
-                        array_dimensions,
-                    });
-                };
+            let array_dimensions_start = self.syntax_tree.array_dimensions.len() as index32;
+            while let Some(Peeked {
+                token:
+                    Token {
+                        kind: TokenKind::Bracket(Bracket::OpenSquare),
+                        col: open_square_bracket_column,
+                    },
+                index: open_square_bracket_token_index,
+            }) = self.peek_next_token()
+            {
                 self.token_index = open_square_bracket_token_index;
 
                 let dimension_expression_token = self.next_expected_token(Expected::Expression)?;
@@ -2078,23 +2068,38 @@ impl Parser<'_, '_, '_, '_> {
                 };
                 self.token_index = close_square_bracket_token_index;
 
-                array_dimensions.push(ArrayDimension {
+                self.syntax_tree.array_dimensions.push(ArrayDimension {
                     open_square_bracket_column,
                     dimension_expression,
                     close_square_bracket_column,
                 });
             }
+
+            let Some(colon_column) = NonZero::new(after_variable_name_token.col) else {
+                unreachable!("valid `:` should have non-zero column");
+            };
+
+            Some(TypeAnnotation {
+                colon_column,
+                type_name,
+                type_name_column: type_name_token.col,
+                array_dimensions_start,
+                array_dimensions_len: self.syntax_tree.array_dimensions.len() as index32
+                    - array_dimensions_start,
+            })
         };
 
         let equals_or_semicolon_token = self.next_expected_token(Expected::EqualsOrSemicolon)?;
         return match equals_or_semicolon_token.kind {
-            TokenKind::SemiColon => Ok(VariableDefinition {
-                name: variable_name,
-                name_column: variable_name_token.col,
-                type_annotation,
-                initial_value: None,
-                semicolon_column: equals_or_semicolon_token.col,
-            }),
+            TokenKind::SemiColon => Ok((
+                VariableDefinition {
+                    name: variable_name,
+                    name_column: variable_name_token.col,
+                    type_annotation,
+                    initial_value: None,
+                },
+                equals_or_semicolon_token.col,
+            )),
             TokenKind::Op(Op::Equals) => {
                 let start_of_initial_value_token =
                     self.next_expected_token(Expected::Expression)?;
@@ -2105,13 +2110,15 @@ impl Parser<'_, '_, '_, '_> {
                     unreachable!("valid `=` should have non-zero column");
                 };
 
-                Ok(VariableDefinition {
-                    name: variable_name,
-                    name_column: variable_name_token.col,
-                    type_annotation,
-                    initial_value: Some(InitialValue { equals_column, expression }),
+                Ok((
+                    VariableDefinition {
+                        name: variable_name,
+                        name_column: variable_name_token.col,
+                        type_annotation,
+                        initial_value: Some(InitialValue { equals_column, expression }),
+                    },
                     semicolon_column,
-                })
+                ))
             }
             TokenKind::Bracket(_)
             | TokenKind::Colon
