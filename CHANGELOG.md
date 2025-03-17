@@ -43,6 +43,7 @@ tools repo, to aid in modularity and code reuse.
 - Added `?`, `-?`, `--?` for help commands
 - Improved printing of help message, now fitting inside 80 columns
 - `Args` now returns multiple cli errors instead of just the first one
+- Allowed cli color mode options `-c` and `--color` to be specified multiple times
 - `src_file::Span`, `src_file::Position` and `src_file::DisplayPosition` now derive `Hash`
 - Improved `Logger` methods consistency
 - Expanded `tokenizer::TokenKind::Integer` into its different bases, modified related entities,
@@ -66,6 +67,7 @@ tools repo, to aid in modularity and code reuse.
 - Removed `back_end::reg` module, moved to `back-to-front` compiler tools repo
 - Removed `tokenizer::Quote` and `tokenizer::QuotedLiteralKind`, and expanded related
     `tokenizer::ErrorKind`s
+- Removed `ColorMode`
 
 #### Fixed
 

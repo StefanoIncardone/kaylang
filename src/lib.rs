@@ -243,28 +243,6 @@ impl Display for Color {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum ColorOption {
-    Auto = Color::Auto as u8,
-    Always = Color::Always as u8,
-    Never = Color::Never as u8,
-    Unknown,
-}
-
-// REMOVE(stefano): unbundle the struct
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ColorMode {
-    pub flag: ColorFlag,
-    pub color: Color,
-}
-
-impl Display for ColorMode {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        return write!(f, "{flag} {mode}", flag = self.flag, mode = self.color);
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandFlag {
     Help,
     HelpShort,
@@ -458,7 +436,8 @@ impl TryFrom<Vec<String>> for Args {
     // IDEA(stefano): make help and version commands collide with other commands
     // i.e.: `kay run file.txt help` should raise an error
     fn try_from(args: Vec<String>) -> Result<Self, Self::Error> {
-        Color::Auto.set(&std::io::stderr());
+        let mut color = Color::Auto;
+        color.set(&std::io::stderr());
 
         // IDEA(stefano): go back to good ol' index iterators
         let mut args_iter = args.iter().enumerate().peekable();
@@ -466,7 +445,6 @@ impl TryFrom<Vec<String>> for Args {
             return Err(Error::EmptyArgs);
         };
 
-        let mut color_mode: Option<ColorMode> = None;
         let mut command_option: Option<(CommandFlag, Command)> = None;
         let mut errors = Vec::<(ErrorKind, usize)>::new();
         'args: while let Some((selected_flag_index, selected_flag)) = args_iter.next() {
@@ -745,48 +723,20 @@ impl TryFrom<Vec<String>> for Args {
                         break 'args;
                     };
 
-                    let color_option = match selected_color.as_str() {
-                        "auto" => ColorOption::Auto,
-                        "always" => ColorOption::Always,
-                        "never" => ColorOption::Never,
+                    color = match selected_color.as_str() {
+                        "auto" => Color::Auto,
+                        "always" => Color::Always,
+                        "never" => Color::Never,
                         _ => {
                             errors.push((ErrorKind::UnrecognizedColorMode, selected_color_index));
-                            ColorOption::Unknown
+                            continue 'args;
                         }
                     };
-
-                    if let Some(ColorMode { flag: previous_flag, color: previous_color }) =
-                        color_mode
-                    {
-                        errors.push((
-                            ErrorKind::ColorModeAlreadySelected {
-                                current_flag: flag,
-                                current_color: color_option,
-                                previous_flag,
-                                previous_color,
-                            },
-                            selected_flag_index,
-                        ));
-                    }
-
-                    if let ColorOption::Unknown = color_option {
-                        continue 'args;
-                    }
-
-                    let selected_color_mode =
-                        ColorMode { flag, color: unsafe { core::mem::transmute(color_option) } };
-                    color_mode = Some(selected_color_mode);
                 }
-                _ => {
-                    errors.push((ErrorKind::Unrecognized, selected_flag_index));
-                }
+                _ => errors.push((ErrorKind::Unrecognized, selected_flag_index)),
             }
         }
 
-        let color = match color_mode {
-            Some(ColorMode { color, .. }) => color,
-            None => Color::Auto,
-        };
         color.set(&std::io::stderr());
 
         if !errors.is_empty() {
@@ -814,18 +764,8 @@ impl TryFrom<std::env::Args> for Args {
 pub enum ErrorKind {
     MissingColorMode(ColorFlag),
     UnrecognizedColorMode,
-    // IDEA(stefano): remove error and select the last provided color, like the `ls` command
-    ColorModeAlreadySelected {
-        current_flag: ColorFlag,
-        current_color: ColorOption,
-        previous_flag: ColorFlag,
-        previous_color: Color,
-    },
 
-    CommandAlreadySelected {
-        current: CommandFlag,
-        previous: CommandFlag,
-    },
+    CommandAlreadySelected { current: CommandFlag, previous: CommandFlag },
 
     // IDEA(stefano): add checks for existing file paths
     MustBeFollowedByASourceFilePath(CommandFlag),
@@ -885,24 +825,20 @@ impl Display for Error {
                 arg_index = 0;
                 let mut pointers_offset = 0;
                 for (kind, erroneous_arg_index) in errors {
-                    if arg_index < *erroneous_arg_index {
-                        while arg_index < *erroneous_arg_index {
-                            let arg = &args[arg_index];
-                            arg_index += 1;
-                            pointers_offset += arg.len() + 1; // + 1 to account for the space between args
-                        }
-                    } else if arg_index > *erroneous_arg_index {
-                        while arg_index > *erroneous_arg_index {
-                            arg_index -= 1;
-                            let arg = &args[arg_index];
-                            pointers_offset -= arg.len() + 1; // + 1 to account for the space between args
-                        }
-                    } else {
-                        // we can keep the previous pointer_offset calculation
+                    // Note: these two loops are mutually exclusive and avoid extra checking
+                    while arg_index < *erroneous_arg_index {
+                        let arg = &args[arg_index];
+                        arg_index += 1;
+                        pointers_offset += arg.len() + 1; // + 1 to account for the space between args
+                    }
+                    while arg_index > *erroneous_arg_index {
+                        arg_index -= 1;
+                        let arg = &args[arg_index];
+                        pointers_offset -= arg.len() + 1; // + 1 to account for the space between args
                     }
 
                     let erroneous_arg = &args[arg_index];
-                    let mut pointers_count = match erroneous_arg.len() {
+                    let pointers_count = match erroneous_arg.len() {
                         0 => 1, // empty arguments will at least get one pointer
                         other => other,
                     };
@@ -930,27 +866,8 @@ impl Display for Error {
                                 never = Color::Never,
                             );
                         }
-                        ErrorKind::ColorModeAlreadySelected {
-                            current_flag,
-                            current_color: _current_color, // TODO(stefano): use when not `Unknown`
-                            previous_flag,
-                            previous_color,
-                        } => {
-                            // starting the pointers at the flag and extending them up to the color mode
-                            let erroneous_color = &args[*erroneous_arg_index + 1];
-                            pointers_count += erroneous_color.len() + 1; // + 1 to account for the space between args
-
-                            _ = write!(
-                                error_message,
-                                "repeated '{current_flag} {erroneous_color}' color mode"
-                            );
-                            _ = write!(
-                                error_cause_message,
-                                "cannot use '{current_flag} {erroneous_color}' because '{previous_flag} {previous_color}' was already selected"
-                            );
-                        }
                         ErrorKind::CommandAlreadySelected { current, previous } => {
-                            _ = write!(error_message, "repeated '{current}' command");
+                            _ = write!(error_message, "invalid '{current}' command");
                             _ = write!(
                                 error_cause_message,
                                 "cannot use '{current}' because '{previous}' was already selected"
@@ -958,44 +875,32 @@ impl Display for Error {
                         }
                         ErrorKind::MustBeFollowedByASourceFilePath(command) => {
                             _ = write!(error_message, "invalid '{command}' command");
-                            _ = write!(
-                                error_cause_message,
-                                "'{command}' must be followed by a file path"
-                            );
+                            _ = write!(error_cause_message, "must be followed by a file path");
                         }
                         ErrorKind::MustBeAFilePath => {
                             _ = write!(error_message, "invalid '{erroneous_arg}' path");
-                            _ = write!(
-                                error_cause_message,
-                                "'{erroneous_arg}' must be a file path"
-                            );
+                            _ = write!(error_cause_message, "must be a file path");
                         }
                         ErrorKind::MustBeFollowedByDirectoryPath(option) => {
                             _ = write!(error_message, "invalid '{option}' option");
-                            _ = write!(
-                                error_cause_message,
-                                "'{option}' must be followed by a directory path"
-                            );
+                            _ = write!(error_cause_message, "must be followed by a directory path");
                         }
                         ErrorKind::MustBeADirectoryPath => {
                             _ = write!(error_message, "invalid '{erroneous_arg}' path");
-                            _ = write!(
-                                error_cause_message,
-                                "'{erroneous_arg}' must be a directory path"
-                            );
+                            _ = write!(error_cause_message, "must be a directory path");
                         }
                         ErrorKind::StrayOutputDirectoryOption(option) => {
                             _ = write!(error_message, "stray '{option}' option");
                             _ = write!(
                                 error_cause_message,
-                                "'{option}' can only be used after a 'compile' or 'run' command"
+                                "can only be used after a 'compile' or 'run' command"
                             );
                         }
                         ErrorKind::StrayVerbosityOption(option) => {
                             _ = write!(error_message, "stray '{option}' option");
                             _ = write!(
                                 error_cause_message,
-                                "'{option}' can only be used after a 'check', 'compile' or 'run' command"
+                                "can only be used after a 'check', 'compile' or 'run' command"
                             );
                         }
                         ErrorKind::Unrecognized => {
