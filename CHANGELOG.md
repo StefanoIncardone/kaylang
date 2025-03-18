@@ -26,8 +26,9 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ## 0.6.3 -
 
-From this release onwards individual modules may be extracted to separate `back-to-front` compiler
-tools repo, to aid in modularity and code reuse.
+> [!NOTE]
+> From this release onwards individual modules may be extracted to separate `back-to-front` compiler
+> tools repo, to aid in modularity and code reuse.
 
 ### Language
 
