@@ -267,7 +267,15 @@ pub(crate) enum Expression {
     },
     Array {
         open_square_bracket_column: column32,
-        array: ArrayItemsIndex,
+        items_start: ArrayItemsIndex,
+        items_len: offset32,
+        close_square_bracket_column: column32,
+    },
+    ArrayTrailingItem {
+        open_square_bracket_column: column32,
+        items_start: ArrayItemsIndex,
+        items_len: offset32,
+        last_item: ExpressionIndex,
         close_square_bracket_column: column32,
     },
 
@@ -299,6 +307,12 @@ pub(crate) enum Expression {
         index_expression: ExpressionIndex,
         close_square_bracket_column: column32,
     },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ArrayItem {
+    item: ExpressionIndex,
+    comma_column: column32,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -407,7 +421,7 @@ pub(crate) enum Node {
 
     Scope {
         open_curly_bracket_column: column32,
-        raw_nodes_in_scope_count: u32,
+        raw_nodes_in_scope_count: offset32,
         close_curly_bracket_column: column32,
     },
 
@@ -453,9 +467,7 @@ pub struct SyntaxTree<'tokens, 'code: 'tokens, 'path: 'code> {
     pub(crate) nodes: Vec<Node>,
 
     pub(crate) expressions: Vec<Expression>,
-    // IDEA(stefano): fuse items and commas
-    pub(crate) array_items: Vec<Vec<ExpressionIndex>>,
-    pub(crate) array_commas_columns: Vec<Vec<NonZero<column32>>>,
+    pub(crate) array_items: Vec<ArrayItem>,
 
     pub(crate) variable_definitions: Vec<VariableDefinition>,
     pub(crate) array_dimensions: Vec<ArrayDimension>,
@@ -705,32 +717,41 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
             },
             Expression::Array {
                 open_square_bracket_column,
-                array,
+                items_start,
+                items_len,
                 close_square_bracket_column
             } => {
                 writeln!(f, "{:>indent$}Array", "")?;
                 writeln!(f, "{:>expression_indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
 
-                let items = &self.syntax_tree.array_items[*array as usize];
-                let commas = &self.syntax_tree.array_commas_columns[*array as usize];
-
-                let mut item_index = 0;
-
                 let items_indent = expression_indent + Self::INDENT_INCREMENT;
-                while item_index < commas.len() {
-                    let item_expression = items[item_index];
-                    let comma_column = commas[item_index].get();
-                    item_index += 1;
-
-                    self.info_expression(f, item_expression, items_indent)?;
+                let items_end = items_start + items_len;
+                let items = &self.syntax_tree.array_items[*items_start as usize..items_end as usize];
+                for ArrayItem { comma_column, item } in items {
+                    self.info_expression(f, *item, items_indent)?;
                     writeln!(f, "{:>items_indent$}Comma: {comma_column} = ,", "")?;
                 }
 
-                if items.len() > commas.len() {
-                    let item_expression = items[item_index];
-                    self.info_expression(f, item_expression, items_indent)?;
-                }
+                writeln!(f, "{:>expression_indent$}CloseSquareBracket: {close_square_bracket_column} = ]", "")
+            },
+            Expression::ArrayTrailingItem {
+                open_square_bracket_column,
+                items_start,
+                items_len,
+                last_item,
+                close_square_bracket_column
+            } => {
+                writeln!(f, "{:>indent$}Array", "")?;
+                writeln!(f, "{:>expression_indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
 
+                let items_indent = expression_indent + Self::INDENT_INCREMENT;
+                let items_end = items_start + items_len;
+                let items = &self.syntax_tree.array_items[*items_start as usize..items_end as usize];
+                for ArrayItem { comma_column, item } in items {
+                    self.info_expression(f, *item, items_indent)?;
+                    writeln!(f, "{:>items_indent$}Comma: {comma_column} = ,", "")?;
+                }
+                self.info_expression(f, *last_item, items_indent)?;
                 writeln!(f, "{:>expression_indent$}CloseSquareBracket: {close_square_bracket_column} = ]", "")
             },
 
@@ -888,7 +909,6 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
 
                 expressions: Vec::new(),
                 array_items: Vec::new(),
-                array_commas_columns: Vec::new(),
 
                 variable_definitions: Vec::new(),
                 array_dimensions: Vec::new(),
@@ -1547,35 +1567,41 @@ impl Parser<'_, '_, '_, '_> {
                     close_round_bracket_column: close_round_bracket_token.col,
                 }
             }
-            TokenKind::Bracket(Bracket::OpenSquare) => {
+            TokenKind::Bracket(Bracket::OpenSquare) => 'array: {
                 let open_square_bracket_token = token;
 
-                let mut items = Vec::<ExpressionIndex>::new();
-                let mut commas_columns = Vec::<NonZero<column32>>::new();
-
-                let close_square_bracket_column = 'items: loop {
+                let items_start = self.syntax_tree.array_items.len() as ArrayItemsIndex;
+                loop {
                     let start_of_item_token =
                         self.next_expected_token(Expected::ArrayItemOrCloseSquareBracket)?;
                     if let TokenKind::Bracket(Bracket::CloseSquare) = start_of_item_token.kind {
-                        break 'items start_of_item_token.col;
+                        break 'array Expression::Array {
+                            open_square_bracket_column: open_square_bracket_token.col,
+                            items_start,
+                            items_len: self.syntax_tree.array_items.len() as ArrayItemsIndex - items_start,
+                            close_square_bracket_column: start_of_item_token.col,
+                        };
                     }
 
                     let item = self.expression(start_of_item_token)?;
-                    items.push(item);
 
                     let comma_or_close_square_bracket_token =
                         self.next_expected_token(Expected::CommaOrCloseSquareBracket)?;
                     match comma_or_close_square_bracket_token.kind {
                         TokenKind::Comma => {
-                            let Some(comma_column) =
-                                NonZero::new(comma_or_close_square_bracket_token.col)
-                            else {
-                                unreachable!("valid `,` should have non-zero column");
-                            };
-                            commas_columns.push(comma_column);
+                            self.syntax_tree.array_items.push(ArrayItem {
+                                item,
+                                comma_column: comma_or_close_square_bracket_token.col,
+                            });
                         }
                         TokenKind::Bracket(Bracket::CloseSquare) => {
-                            break 'items comma_or_close_square_bracket_token.col
+                            break 'array Expression::ArrayTrailingItem {
+                                open_square_bracket_column: open_square_bracket_token.col,
+                                items_start,
+                                items_len: self.syntax_tree.array_items.len() as ArrayItemsIndex - items_start,
+                                last_item: item,
+                                close_square_bracket_column: comma_or_close_square_bracket_token.col,
+                            };
                         }
                         TokenKind::Colon
                         | TokenKind::SemiColon
@@ -1604,7 +1630,7 @@ impl Parser<'_, '_, '_, '_> {
                         | TokenKind::Break
                         | TokenKind::Continue => {
                             return Err(Error {
-                                kind: ErrorKind::ExpectedComma,
+                                kind: ErrorKind::ExpectedCommaOrCloseSquareBracket,
                                 col: comma_or_close_square_bracket_token.col,
                                 pointers_count: comma_or_close_square_bracket_token
                                     .kind
@@ -1615,14 +1641,6 @@ impl Parser<'_, '_, '_, '_> {
                         | TokenKind::Comment(_)
                         | TokenKind::BlockComment(_) => self.should_have_been_skipped(token),
                     }
-                };
-
-                self.syntax_tree.array_items.push(items);
-                self.syntax_tree.array_commas_columns.push(commas_columns);
-                Expression::Array {
-                    open_square_bracket_column: open_square_bracket_token.col,
-                    array: self.syntax_tree.array_items.len() as ArrayItemsIndex - 1,
-                    close_square_bracket_column,
                 }
             }
             TokenKind::Op(
@@ -2373,7 +2391,7 @@ pub enum ErrorKind {
     KeywordInExpression,
     ExpectedOperand,
     ExpectedBracket(CloseBracket),
-    ExpectedComma,
+    ExpectedCommaOrCloseSquareBracket,
     MissingCloseSquareBracketInIndex,
 
     // variables
@@ -2437,9 +2455,9 @@ impl IntoErrorInfo for ErrorKind {
                 "invalid expression".into(),
                 format!("expected '{bracket}' bracket before this token").into(),
             ),
-            Self::ExpectedComma => (
+            Self::ExpectedCommaOrCloseSquareBracket => (
                 "invalid array".into(),
-                "expected ',' before this token".into(),
+                "expected ',' or ']' before this token".into(),
             ),
             Self::MissingCloseSquareBracketInIndex => (
                 "invalid array index".into(),
