@@ -33,6 +33,7 @@ tools repo, to aid in modularity and code reuse.
 
 #### Changed
 
+- Renamed `int` type to `i64`
 - Reverted limitation on arrays length, they can now again be of length 1, arrays of length 0 are
     still not allowed
 
@@ -40,6 +41,8 @@ tools repo, to aid in modularity and code reuse.
 
 #### Changed
 
+- Made the compiler only work on 64bit systems
+- Renamed `ast::BaseType::Int` to `ast::BaseType::I64`
 - Added `?`, `-?`, `--?` for help commands
 - Improved printing of help message, now fitting inside 80 columns
 - `Args` now returns multiple cli errors instead of just the first one

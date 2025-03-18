@@ -1,12 +1,12 @@
 // IDEA(stefano): split into nasm files and include them
 
 pub(crate) static CRASH_ASM: &str = {
-    r"; fn ! = crash(msg: str @rdi:rsi, line: uint @rdx, col: uint @rcx)
+    r"; fn ! = crash(msg: str @rdi:rsi, line: u64 @rdx, col: u64 @rcx)
 crash:
- mov r8, rdi; msg_len: uint
+ mov r8, rdi; msg_len: u64
  mov r9, rsi; msg_ptr: ascii*
- mov r12, rdx; line: uint
- mov r13, rcx; col: uint
+ mov r12, rdx; line: u64
+ mov r13, rcx; col: u64
 
  mov rdi, CRASH_len
  mov rsi, CRASH
@@ -46,14 +46,14 @@ crash:
 
  ; line
  mov rdi, r12
- call int_eprint
+ call i64_eprint
 
  mov dil, ':'
  call ascii_eprint
 
  ; column
  mov rdi, r13
- call int_eprint
+ call i64_eprint
 
  mov dil, newline
  call ascii_eprint
@@ -64,7 +64,7 @@ crash:
 };
 
 pub(crate) static ASSERT_ARRAY_INDEX_IN_RANGE_ASM: &str = {
-    r"; fn !? = assert_array_index_in_range(index: int @rdi, array_len: uint @rsi, line: uint @rdx, col: uint @rcx)
+    r"; fn !? = assert_array_index_in_range(index: i64 @rdi, array_len: u64 @rsi, line: u64 @rdx, col: u64 @rcx)
 assert_array_index_in_range:
  cmp rdi, 0
  jl .underflow
@@ -89,9 +89,9 @@ assert_array_index_in_range:
     dead_code,
     reason = "temporarily disabled, will be reanabled when we introduce the `bits` type"
 )]
-static ASSERT_INT_BIT_INDEX_IN_RANGE_ASM: &str = {
-    r"; fn !? = assert_int_bit_index_in_range(index: int @rdi, bits: uint @rsi, line: uint @rdx, col: uint @rcx)
-assert_int_bit_index_in_range:
+static ASSERT_I64_BIT_INDEX_IN_RANGE_ASM: &str = {
+    r"; fn !? = assert_i64_bit_index_in_range(index: i64 @rdi, bits: u64 @rsi, line: u64 @rdx, col: u64 @rcx)
+assert_i64_bit_index_in_range:
  cmp rdi, 0
  jl .underflow
 
@@ -101,18 +101,18 @@ assert_int_bit_index_in_range:
  ret
 
 .underflow:
- mov rdi, attempt_int_bit_index_underflow_len
- mov rsi, attempt_int_bit_index_underflow
+ mov rdi, attempt_i64_bit_index_underflow_len
+ mov rsi, attempt_i64_bit_index_underflow
  call crash
 
 .overflow:
- mov rdi, attempt_int_bit_index_overflow_len
- mov rsi, attempt_int_bit_index_overflow
+ mov rdi, attempt_i64_bit_index_overflow_len
+ mov rsi, attempt_i64_bit_index_overflow
  call crash"
 };
 
 pub(crate) static ASSERT_STR_INDEX_IN_RANGE_ASM: &str = {
-    r"; fn !? = assert_str_index_in_range(index: int @rdi, str_len: uint @rsi, line: uint @rdx, col: uint @rcx)
+    r"; fn !? = assert_str_index_in_range(index: i64 @rdi, str_len: u64 @rsi, line: u64 @rdx, col: u64 @rcx)
 assert_str_index_in_range:
  cmp rdi, 0
  jl .underflow
@@ -133,11 +133,11 @@ assert_str_index_in_range:
  call crash"
 };
 
-pub(crate) static INT_TO_STR_ASM: &str = {
-    r"; fn str @rax:rdx = int_to_str(self: int @rdi)
-int_to_str:
+pub(crate) static I64_TO_STR_ASM: &str = {
+    r"; fn str @rax:rdx = i64_to_str(self: i64 @rdi)
+i64_to_str:
  mov rsi, 10
- mov rcx, int_str + INT_BITS - 1
+ mov rcx, i64_str + I64_BITS - 1
 
  mov rax, rdi
  cmp rax, 0
@@ -172,16 +172,16 @@ int_to_str:
  mov byte [rcx], '-'
 
 .done:
- mov rdx, int_str + INT_BITS
+ mov rdx, i64_str + I64_BITS
  sub rdx, rcx
 
  mov rax, rcx
  ret"
 };
 
-pub(crate) static INT_SAFE_POW_ASM: &str = {
-    r"; op int @rdi | !? = base: int @rdi ** exponent: uint @rsi [line: uint @rdx, col: uint @rcx]
-int_safe_pow:
+pub(crate) static I64_SAFE_POW_ASM: &str = {
+    r"; op i64 @rdi | !? = base: i64 @rdi ** exponent: u64 @rsi [line: u64 @rdx, col: u64 @rcx]
+i64_safe_pow:
  cmp rsi, 0
  jl .exponent_negative
  jg .exponent_positive
@@ -212,7 +212,7 @@ int_safe_pow:
 
  ; mov rdi, rdi
  mov rsi, rdi
- call int_safe_mul_pow
+ call i64_safe_mul_pow
 
  shr r8, 1
  jmp .next_power
@@ -222,12 +222,12 @@ int_safe_pow:
 
  ; mov rdi, rdi
  mov rsi, r9
- call int_safe_mul_pow
+ call i64_safe_mul_pow
  mov r9, rdi
 
  mov rdi, r10
  mov rsi, rdi
- call int_safe_mul_pow
+ call i64_safe_mul_pow
 
  dec r8
  shr r8, 1
@@ -236,14 +236,14 @@ int_safe_pow:
 .done:
  ; mov rdi, rdi
  mov rsi, r9
- call int_safe_mul_pow
+ call i64_safe_mul_pow
 
  ret"
 };
 
-pub(crate) static INT_WRAPPING_POW_ASM: &str = {
-    r"; op int @rdi | !? = base: int @rdi **\ exponent: uint @rsi [line: uint @rdx, col: uint @rcx]
-int_wrapping_pow:
+pub(crate) static I64_WRAPPING_POW_ASM: &str = {
+    r"; op i64 @rdi | !? = base: i64 @rdi **\ exponent: u64 @rsi [line: u64 @rdx, col: u64 @rcx]
+i64_wrapping_pow:
  cmp rsi, 0
  jl .exponent_negative
  jg .exponent_positive
@@ -289,9 +289,9 @@ int_wrapping_pow:
  ret"
 };
 
-pub(crate) static INT_SATURATING_POW_ASM: &str = {
-    r"; op int @rdi | !? = base: int @rdi **| exponent: uint @rsi [line: uint @rdx, col: uint @rcx]
-int_saturating_pow:
+pub(crate) static I64_SATURATING_POW_ASM: &str = {
+    r"; op i64 @rdi | !? = base: i64 @rdi **| exponent: u64 @rsi [line: u64 @rdx, col: u64 @rcx]
+i64_saturating_pow:
  cmp rsi, 0
  jl .exponent_negative
  jg .exponent_positive
@@ -322,7 +322,7 @@ int_saturating_pow:
 
  ; mov rdi, rdi
  mov rsi, rdi
- call int_saturating_mul
+ call i64_saturating_mul
 
  shr r8, 1
  jmp .next_power
@@ -332,12 +332,12 @@ int_saturating_pow:
 
  ; mov rdi, rdi
  mov rsi, r9
- call int_saturating_mul
+ call i64_saturating_mul
  mov r9, rdi
 
  mov rdi, r10
  mov rsi, rdi
- call int_saturating_mul
+ call i64_saturating_mul
 
  dec r8
  shr r8, 1
@@ -346,14 +346,14 @@ int_saturating_pow:
 .done:
  ; mov rdi, rdi
  mov rsi, r9
- call int_saturating_mul
+ call i64_saturating_mul
 
  ret"
 };
 
-pub(crate) static INT_SAFE_MUL_POW_ASM: &str = {
-    r"; op int @rdi | !? = lhs: int @rdi * rhs: int @rsi [line: uint @rdx, col: uint @rcx]
-int_safe_mul_pow:
+pub(crate) static I64_SAFE_MUL_POW_ASM: &str = {
+    r"; op i64 @rdi | !? = lhs: i64 @rdi * rhs: i64 @rsi [line: u64 @rdx, col: u64 @rcx]
+i64_safe_mul_pow:
  imul rdi, rsi
  jno .no_overflow
  mov rdi, pow_overflow_len
@@ -364,9 +364,9 @@ int_safe_mul_pow:
  ret"
 };
 
-pub(crate) static INT_SAFE_MUL_ASM: &str = {
-    r"; op int @rdi !? = lhs: int @rdi * rhs: int @rsi [line: uint @rdx, col: uint @rcx]
-int_safe_mul:
+pub(crate) static I64_SAFE_MUL_ASM: &str = {
+    r"; op i64 @rdi !? = lhs: i64 @rdi * rhs: i64 @rsi [line: u64 @rdx, col: u64 @rcx]
+i64_safe_mul:
  imul rdi, rsi
  jno .no_overflow
  mov rdi, mul_overflow_len
@@ -377,13 +377,13 @@ int_safe_mul:
  ret"
 };
 
-pub(crate) static INT_SATURATING_MUL_ASM: &str = {
-    r"; op int @rdi = lhs: int @rdi *| rhs: int @rsi
-int_saturating_mul:
+pub(crate) static I64_SATURATING_MUL_ASM: &str = {
+    r"; op i64 @rdi = lhs: i64 @rdi *| rhs: i64 @rsi
+i64_saturating_mul:
  mov rax, rdi
  xor rdi, rsi
  shr rdi, 63
- mov rdx, INT_MAX
+ mov rdx, I64_MAX
  add rdi, rdx
  imul rsi
  cmovc rax, rdi
@@ -391,28 +391,28 @@ int_saturating_mul:
  ret"
 };
 
-pub(crate) static INT_SAFE_DIV_ASM: &str = {
-    r"; op int @rdi | !? = lhs: int @rdi / rhs: int @rsi [line: uint @rdx, col: uint @rcx]
-int_safe_div:
+pub(crate) static I64_SAFE_DIV_ASM: &str = {
+    r"; op i64 @rdi | !? = lhs: i64 @rdi / rhs: i64 @rsi [line: u64 @rdx, col: u64 @rcx]
+i64_safe_div:
  test rsi, rsi
- jnz .check_no_int_min_div_minus_one
+ jnz .check_no_i64_min_div_minus_one
 
  mov rdi, attempt_division_by_zero_len
  mov rsi, attempt_division_by_zero
  call crash
 
-.check_no_int_min_div_minus_one:
- mov rax, INT_MIN
+.check_no_i64_min_div_minus_one:
+ mov rax, I64_MIN
  cmp rdi, rax
- jne .no_int_min_div_minus_one
+ jne .no_i64_min_div_minus_one
  cmp rsi, -1
- jne .no_int_min_div_minus_one
+ jne .no_i64_min_div_minus_one
 
  mov rdi, div_overflow_len
  mov rsi, div_overflow
  call crash
 
-.no_int_min_div_minus_one:
+.no_i64_min_div_minus_one:
  mov rax, rdi
  cqo
  idiv rsi
@@ -420,26 +420,26 @@ int_safe_div:
  ret"
 };
 
-pub(crate) static INT_WRAPPING_DIV_ASM: &str = {
-    r"; op int @rdi | !? = lhs: int @rdi /\ rhs: int @rsi [line: uint @rdx, col: uint @rcx]
-int_wrapping_div:
+pub(crate) static I64_WRAPPING_DIV_ASM: &str = {
+    r"; op i64 @rdi | !? = lhs: i64 @rdi /\ rhs: i64 @rsi [line: u64 @rdx, col: u64 @rcx]
+i64_wrapping_div:
  test rsi, rsi
- jnz .check_no_int_min_div_minus_one
+ jnz .check_no_i64_min_div_minus_one
 
  mov rdi, attempt_division_by_zero_len
  mov rsi, attempt_division_by_zero
  call crash
 
-.check_no_int_min_div_minus_one:; INT_MIX @rdi ^ -1 @rsi == INT_MAX @r8
+.check_no_i64_min_div_minus_one:; I64_MIX @rdi ^ -1 @rsi == I64_MAX @r8
  mov rax, rdi
  xor rax, rsi
- mov r8, INT_MAX
+ mov r8, I64_MAX
  cmp rax, r8
- jne .no_int_min_div_minus_one
+ jne .no_i64_min_div_minus_one
 
- ret; return INT_MIN @rdi
+ ret; return I64_MIN @rdi
 
-.no_int_min_div_minus_one:
+.no_i64_min_div_minus_one:
  mov rax, rdi
  cqo
  idiv rsi
@@ -447,27 +447,27 @@ int_wrapping_div:
  ret"
 };
 
-pub(crate) static INT_SATURATING_DIV_ASM: &str = {
-    r"; op int @rdi | !? = lhs: int @rdi /| rhs: int @rsi [line: uint @rdx, col: uint @rcx]
-int_saturating_div:
+pub(crate) static I64_SATURATING_DIV_ASM: &str = {
+    r"; op i64 @rdi | !? = lhs: i64 @rdi /| rhs: i64 @rsi [line: u64 @rdx, col: u64 @rcx]
+i64_saturating_div:
  test rsi, rsi
- jnz .check_no_int_min_div_minus_one
+ jnz .check_no_i64_min_div_minus_one
 
  mov rdi, attempt_division_by_zero_len
  mov rsi, attempt_division_by_zero
  call crash
 
-.check_no_int_min_div_minus_one:; INT_MIX @rdi ^ -1 @rsi == INT_MAX @r8
+.check_no_i64_min_div_minus_one:; I64_MIX @rdi ^ -1 @rsi == I64_MAX @r8
  mov rax, rdi
  xor rax, rsi
- mov r8, INT_MAX
+ mov r8, I64_MAX
  cmp rax, r8
- jne .no_int_min_div_minus_one
+ jne .no_i64_min_div_minus_one
 
  mov rdi, r8
- ret; return INT_MAX @r8
+ ret; return I64_MAX @r8
 
-.no_int_min_div_minus_one:
+.no_i64_min_div_minus_one:
  mov rax, rdi
  cqo
  idiv rsi
@@ -475,28 +475,28 @@ int_saturating_div:
  ret"
 };
 
-pub(crate) static INT_SAFE_REMAINDER_ASM: &str = {
-    r"; op int @rdi | !? = lhs: int @rdi % rhs: int @rsi [line: uint @rdx, col: uint @rcx]
-int_safe_remainder:
+pub(crate) static I64_SAFE_REMAINDER_ASM: &str = {
+    r"; op i64 @rdi | !? = lhs: i64 @rdi % rhs: i64 @rsi [line: u64 @rdx, col: u64 @rcx]
+i64_safe_remainder:
  test rsi, rsi
- jnz .check_no_int_min_div_minus_one
+ jnz .check_no_i64_min_div_minus_one
 
  mov rdi, attempt_remainder_zero_len
  mov rsi, attempt_remainder_zero
  call crash
 
-.check_no_int_min_div_minus_one:; INT_MIX @rdi ^ -1 @rsi == INT_MAX @r8
+.check_no_i64_min_div_minus_one:; I64_MIX @rdi ^ -1 @rsi == I64_MAX @r8
  mov rax, rdi
  xor rax, rsi
- mov r8, INT_MAX
+ mov r8, I64_MAX
  cmp rax, r8
- jne .no_int_min_div_minus_one
+ jne .no_i64_min_div_minus_one
 
  mov rdi, remainder_overflow_len
  mov rsi, remainder_overflow
  call crash
 
-.no_int_min_div_minus_one:
+.no_i64_min_div_minus_one:
  mov rax, rdi
  cqo
  idiv rsi
@@ -504,9 +504,9 @@ int_safe_remainder:
  ret"
 };
 
-pub(crate) static INT_SAFE_ADD_ASM: &str = {
-    r"; op int @rdi | !? = lhs: int @rdi + rhs: int @rsi [line: uint @rdx, col: uint @rcx]
-int_safe_add:
+pub(crate) static I64_SAFE_ADD_ASM: &str = {
+    r"; op i64 @rdi | !? = lhs: i64 @rdi + rhs: i64 @rsi [line: u64 @rdx, col: u64 @rcx]
+i64_safe_add:
  add rdi, rsi
  jno .no_overflow
  mov rdi, add_overflow_len
@@ -517,24 +517,24 @@ int_safe_add:
  ret"
 };
 
-pub(crate) static INT_SATURATING_ADD_ASM: &str = {
-    r"; op int @rdi = lhs: int @rdi +| rhs: int @rsi
-int_saturating_add:
+pub(crate) static I64_SATURATING_ADD_ASM: &str = {
+    r"; op i64 @rdi = lhs: i64 @rdi +| rhs: i64 @rsi
+i64_saturating_add:
  add rdi, rsi
  jno .no_overflow
- mov rdi, INT_MAX
- mov rsi, INT_MIN
+ mov rdi, I64_MAX
+ mov rsi, I64_MIN
  cmovc rdi, rsi
 
 .no_overflow:
  ret"
 };
 
-pub(crate) static INT_SAFE_ABS_ASM: &str = {
-    r"; op uint @rdi | !? = + lhs: int @rdi [_dummy: int @rsi, line: uint @rdx, col: uint @rcx]
-int_safe_abs:
+pub(crate) static I64_SAFE_ABS_ASM: &str = {
+    r"; op u64 @rdi | !? = + lhs: i64 @rdi [_dummy: i64 @rsi, line: u64 @rdx, col: u64 @rcx]
+i64_safe_abs:
  mov rsi, rdi
- sar rsi, INT_BITS - 1
+ sar rsi, I64_BITS - 1
  xor rdi, rsi
  sub rdi, rsi
  jno .no_overflow
@@ -546,33 +546,33 @@ int_safe_abs:
  ret"
 };
 
-pub(crate) static INT_WRAPPING_ABS_ASM: &str = {
-    r"; op uint @rdi = +\ lhs: int @rdi
-int_wrapping_abs:
+pub(crate) static I64_WRAPPING_ABS_ASM: &str = {
+    r"; op u64 @rdi = +\ lhs: i64 @rdi
+i64_wrapping_abs:
  mov rsi, rdi
- sar rsi, INT_BITS - 1
+ sar rsi, I64_BITS - 1
  xor rdi, rsi
  sub rdi, rsi
  ret"
 };
 
-pub(crate) static INT_SATURATING_ABS_ASM: &str = {
-    r"; op uint @rdi = +| lhs: int @rdi
-int_saturating_abs:
+pub(crate) static I64_SATURATING_ABS_ASM: &str = {
+    r"; op u64 @rdi = +| lhs: i64 @rdi
+i64_saturating_abs:
  mov rsi, rdi
- sar rsi, INT_BITS - 1
+ sar rsi, I64_BITS - 1
  xor rdi, rsi
  sub rdi, rsi
  jno .no_overflow
- mov rdi, INT_MAX
+ mov rdi, I64_MAX
 
 .no_overflow:
  ret"
 };
 
-pub(crate) static INT_SAFE_SUB_ASM: &str = {
-    r"; op int @rdi | !? = lhs: int @rdi - rhs: int @rsi [line: uint @rdx, col: uint @rcx]
-int_safe_sub:
+pub(crate) static I64_SAFE_SUB_ASM: &str = {
+    r"; op i64 @rdi | !? = lhs: i64 @rdi - rhs: i64 @rsi [line: u64 @rdx, col: u64 @rcx]
+i64_safe_sub:
  sub rdi, rsi
  jno .no_overflow
  mov rdi, sub_overflow_len
@@ -583,22 +583,22 @@ int_safe_sub:
  ret"
 };
 
-pub(crate) static INT_SATURATING_SUB_ASM: &str = {
-    r"; op int @rdi = lhs: int @rdi -| rhs: int @rsi
-int_saturating_sub:
+pub(crate) static I64_SATURATING_SUB_ASM: &str = {
+    r"; op i64 @rdi = lhs: i64 @rdi -| rhs: i64 @rsi
+i64_saturating_sub:
  sub rdi, rsi
  jno .no_overflow
- mov rdi, INT_MIN
- mov rsi, INT_MAX
+ mov rdi, I64_MIN
+ mov rsi, I64_MAX
  cmovc rdi, rsi
 
 .no_overflow:
  ret"
 };
 
-pub(crate) static INT_SAFE_NEGATE_ASM: &str = {
-    r"; op int | !? = - lhs: int @rdi [_dummy: int @rsi, line: uint @rdx, col: uint @rcx]
-int_safe_negate:
+pub(crate) static I64_SAFE_NEGATE_ASM: &str = {
+    r"; op i64 | !? = - lhs: i64 @rdi [_dummy: i64 @rsi, line: u64 @rdx, col: u64 @rcx]
+i64_safe_negate:
  neg rdi
  jno .no_overflow
  mov rdi, negate_overflow_len
@@ -609,20 +609,20 @@ int_safe_negate:
  ret"
 };
 
-pub(crate) static INT_SATURATING_NEGATE_ASM: &str = {
-    r"; op int @rdi = -| lhs: int @rdi
-int_saturating_negate:
+pub(crate) static I64_SATURATING_NEGATE_ASM: &str = {
+    r"; op i64 @rdi = -| lhs: i64 @rdi
+i64_saturating_negate:
  neg rdi
  jno .no_overflow
- mov rdi, INT_MAX
+ mov rdi, I64_MAX
 
 .no_overflow:
  ret"
 };
 
-pub(crate) static INT_SAFE_LEFT_SHIFT_ASM: &str = {
-    r"; op int @rdi | !? = lhs: int @rdi << rhs: int @rsi [line: uint @rdx, col: uint @rcx]
-int_safe_left_shift:
+pub(crate) static I64_SAFE_LEFT_SHIFT_ASM: &str = {
+    r"; op i64 @rdi | !? = lhs: i64 @rdi << rhs: i64 @rsi [line: u64 @rdx, col: u64 @rcx]
+i64_safe_left_shift:
  cmp rsi, 0
  jge .no_negative_shift
 
@@ -653,9 +653,9 @@ int_safe_left_shift:
  ret"
 };
 
-pub(crate) static INT_WRAPPING_LEFT_SHIFT_ASM: &str = {
-    r"; op int @ rdi | !? = lhs: int @rdi <<\ rhs: int @rsi [line: uint @rdx, col: uint @rcx]
-int_wrapping_left_shift:
+pub(crate) static I64_WRAPPING_LEFT_SHIFT_ASM: &str = {
+    r"; op i64 @ rdi | !? = lhs: i64 @rdi <<\ rhs: i64 @rsi [line: u64 @rdx, col: u64 @rcx]
+i64_wrapping_left_shift:
  cmp rsi, 0
  jge .no_negative_shift
 
@@ -676,9 +676,9 @@ int_wrapping_left_shift:
  ret"
 };
 
-pub(crate) static INT_SATURATING_LEFT_SHIFT_ASM: &str = {
-    r"; op int @rdi | !? = lhs: int @rdi <<| rhs: int @rsi [line: uint @rdx, col: uint @rcx]
-int_saturating_left_shift:
+pub(crate) static I64_SATURATING_LEFT_SHIFT_ASM: &str = {
+    r"; op i64 @rdi | !? = lhs: i64 @rdi <<| rhs: i64 @rsi [line: u64 @rdx, col: u64 @rcx]
+i64_saturating_left_shift:
  cmp rsi, 0
  jge .no_negative_shift
 
@@ -720,9 +720,9 @@ int_saturating_left_shift:
  ret"
 };
 
-pub(crate) static INT_SAFE_RIGHT_SHIFT_ASM: &str = {
-    r"; op int @rdi | !? = lhs: int @rdi >> rhs: int @rsi [line: uint @rdx, col: uint @rcx]
-int_safe_right_shift:
+pub(crate) static I64_SAFE_RIGHT_SHIFT_ASM: &str = {
+    r"; op i64 @rdi | !? = lhs: i64 @rdi >> rhs: i64 @rsi [line: u64 @rdx, col: u64 @rcx]
+i64_safe_right_shift:
  cmp rsi, 0
  jge .no_negative_shift
 
@@ -743,9 +743,9 @@ int_safe_right_shift:
  ret"
 };
 
-pub(crate) static INT_SAFE_LEFT_ROTATE_ASM: &str = {
-    r"; op int @rdi | !? = lhs: int @rdi <<< rhs: int @rsi [line: uint @rdx, col: uint @rcx]
-int_safe_left_rotate:
+pub(crate) static I64_SAFE_LEFT_ROTATE_ASM: &str = {
+    r"; op i64 @rdi | !? = lhs: i64 @rdi <<< rhs: i64 @rsi [line: u64 @rdx, col: u64 @rcx]
+i64_safe_left_rotate:
  cmp rsi, 0
  jge .no_negative_shift
 
@@ -767,9 +767,9 @@ int_safe_left_rotate:
  ret"
 };
 
-pub(crate) static INT_SAFE_RIGHT_ROTATE_ASM: &str = {
-    r"; op int @rdi | ! = lhs: int @rdi >>> rhs: int @rsi [line: uint @rdx, col: uint @rcx]
-int_safe_right_rotate:
+pub(crate) static I64_SAFE_RIGHT_ROTATE_ASM: &str = {
+    r"; op i64 @rdi | ! = lhs: i64 @rdi >>> rhs: i64 @rsi [line: u64 @rdx, col: u64 @rcx]
+i64_safe_right_rotate:
  cmp rsi, 0
  jge .no_negative_shift
 
@@ -791,10 +791,10 @@ int_safe_right_rotate:
  ret"
 };
 
-pub(crate) static INT_PRINT_ASM: &str = {
-    r"; fn int_print(self: int @rdi)
-int_print:
- call int_to_str
+pub(crate) static I64_PRINT_ASM: &str = {
+    r"; fn i64_print(self: i64 @rdi)
+i64_print:
+ call i64_to_str
  mov rdi, stdout
  mov rsi, rax
  mov rax, SYS_write
@@ -802,10 +802,10 @@ int_print:
  ret"
 };
 
-pub(crate) static INT_EPRINT_ASM: &str = {
-    r"; fn int_eprint(self: int @rdi)
-int_eprint:
- call int_to_str
+pub(crate) static I64_EPRINT_ASM: &str = {
+    r"; fn i64_eprint(self: i64 @rdi)
+i64_eprint:
+ call i64_to_str
  mov rdi, stderr
  mov rsi, rax
  mov rax, SYS_write
@@ -813,11 +813,11 @@ int_eprint:
  ret"
 };
 
-pub(crate) static INT_ARRAY_DEBUG_PRINT_ASM: &str = {
-    r"; fn int_array_debug_print(self: int[]& @rdi:rsi)
-int_array_debug_print:
- mov r8, rdi; len: uint
- mov r9, rsi; array_ptr: int[]*
+pub(crate) static I64_ARRAY_DEBUG_PRINT_ASM: &str = {
+    r"; fn i64_array_debug_print(self: i64[]& @rdi:rsi)
+i64_array_debug_print:
+ mov r8, rdi; len: u64
+ mov r9, rsi; array_ptr: i64[]*
 
  mov dil, '['
  call ascii_print
@@ -830,7 +830,7 @@ int_array_debug_print:
  jz .last
 
  mov rdi, [r9]
- call int_print
+ call i64_print
 
  mov dil, ','
  call ascii_print
@@ -843,7 +843,7 @@ int_array_debug_print:
 
 .last:
  mov rdi, [r9]
- call int_print
+ call i64_print
 
 .done:
  mov dil, ']'
@@ -852,11 +852,11 @@ int_array_debug_print:
  ret"
 };
 
-pub(crate) static INT_ARRAY_DEBUG_EPRINT_ASM: &str = {
-    r"; fn int_array_debug_eprint(self: int[]& @rdi:rsi)
-int_array_debug_eprint:
- mov r8, rdi; len: uint
- mov r9, rsi; array_ptr: int[]*
+pub(crate) static I64_ARRAY_DEBUG_EPRINT_ASM: &str = {
+    r"; fn i64_array_debug_eprint(self: i64[]& @rdi:rsi)
+i64_array_debug_eprint:
+ mov r8, rdi; len: u64
+ mov r9, rsi; array_ptr: i64[]*
 
  mov dil, '['
  call ascii_eprint
@@ -869,7 +869,7 @@ int_array_debug_eprint:
  jz .last
 
  mov rdi, [r9]
- call int_eprint
+ call i64_eprint
 
  mov dil, ','
  call ascii_eprint
@@ -882,7 +882,7 @@ int_array_debug_eprint:
 
 .last:
  mov rdi, [r9]
- call int_eprint
+ call i64_eprint
 
 .done:
  mov dil, ']'
@@ -918,7 +918,7 @@ ascii_eprint:
 pub(crate) static ASCII_ARRAY_DEBUG_PRINT_ASM: &str = {
     r"; fn ascii_array_debug_print(self: ascii[]& @rdi:rsi)
 ascii_array_debug_print:
- mov r8, rdi; len: uint
+ mov r8, rdi; len: u64
  mov r9, rsi; array_ptr: ascii[]*
 
  mov dil, '['
@@ -957,7 +957,7 @@ ascii_array_debug_print:
 pub(crate) static ASCII_ARRAY_DEBUG_EPRINT_ASM: &str = {
     r"; fn ascii_array_debug_eprint(self: ascii[]& @rdi:rsi)
 ascii_array_debug_eprint:
- mov r8, rdi; len: uint
+ mov r8, rdi; len: u64
  mov r9, rsi; array_ptr: ascii[]*
 
  mov dil, '['
@@ -1030,7 +1030,7 @@ bool_eprint:
 pub(crate) static BOOL_ARRAY_DEBUG_PRINT_ASM: &str = {
     r"; fn bool_array_debug_print(self: bool[]& @rdi:rsi)
 bool_array_debug_print:
- mov r8, rdi; len: uint
+ mov r8, rdi; len: u64
  mov r9, rsi; array_ptr: bool[]*
 
  mov dil, '['
@@ -1069,7 +1069,7 @@ bool_array_debug_print:
 pub(crate) static BOOL_ARRAY_DEBUG_EPRINT_ASM: &str = {
     r"; fn bool_array_debug_eprint(self: bool[]& @rdi:rsi)
 bool_array_debug_eprint:
- mov r8, rdi; len: uint
+ mov r8, rdi; len: u64
  mov r9, rsi; array_ptr: bool[]*
 
  mov dil, '['
@@ -1138,7 +1138,7 @@ str_neq:
 };
 
 pub(crate) static STR_CMP_ASM: &str = {
-    r"; op int @rdi = lhs: str @rdi:rsi <=> rhs: @rdx:rcx
+    r"; op i64 @rdi = lhs: str @rdi:rsi <=> rhs: @rdx:rcx
 str_cmp:
  mov rax, rdi
  sub rax, rdx
@@ -1164,11 +1164,11 @@ str_cmp:
 };
 
 pub(crate) static STR_ARRAY_EQ_ASM: &str = {
-    r"; op[N: uint @rdi] bool @dil = lhs: str[N] @rdi:rsi == rhs: str[N] @_rdx:rcx
+    r"; op[N: u64 @rdi] bool @dil = lhs: str[N] @rdi:rsi == rhs: str[N] @_rdx:rcx
 str_array_eq:
  mov r8, rsi; lhs_ptr: str*
  mov r9, rcx; rhs_ptr: str*
- mov r10, rdi; N: uint
+ mov r10, rdi; N: u64
 
 .next:
  mov rdi, [r8]
@@ -1188,11 +1188,11 @@ str_array_eq:
 };
 
 pub(crate) static STR_ARRAY_NEQ_ASM: &str = {
-    r"; op[N: uint @rdi] bool @dil = lhs: str[N] @rdi:rsi != rhs: str[N] @_rdx:rcx
+    r"; op[N: u64 @rdi] bool @dil = lhs: str[N] @rdi:rsi != rhs: str[N] @_rdx:rcx
 str_array_neq:
  mov r8, rsi; lhs_ptr: str*
  mov r9, rcx; rhs_ptr: str*
- mov r10, rdi; N: uint
+ mov r10, rdi; N: u64
 
 .next:
  mov rdi, [r8]
@@ -1212,11 +1212,11 @@ str_array_neq:
 };
 
 pub(crate) static STR_ARRAY_CMP_ASM: &str = {
-    r"; op[N: uint @rdi] int @rdi = lhs: str[N] @rdi:rsi <=> rhs: str[N] @_rdx:rcx)
+    r"; op[N: u64 @rdi] i64 @rdi = lhs: str[N] @rdi:rsi <=> rhs: str[N] @_rdx:rcx)
 str_array_cmp:
  mov r8, rsi; lhs_ptr: str*
  mov r9, rcx; rhs_ptr: str*
- mov r10, rdi; N: uint
+ mov r10, rdi; N: u64
 
 .next:
  mov rdi, [r8]
@@ -1258,7 +1258,7 @@ str_eprint:
 pub(crate) static STR_ARRAY_DEBUG_PRINT_ASM: &str = {
     r"; fn str_array_debug_print(self: str[] @rdi:rsi)
 str_array_debug_print:
- mov r8, rdi; len: uint
+ mov r8, rdi; len: u64
  mov r9, rsi; string: str*
 
  mov dil, '['
@@ -1299,7 +1299,7 @@ str_array_debug_print:
 pub(crate) static STR_ARRAY_DEBUG_EPRINT_ASM: &str = {
     r"; fn str_array_debug_eprint(self: str[] @rdi:rsi)
 str_array_debug_eprint:
- mov r8, rdi; len: uint
+ mov r8, rdi; len: u64
  mov r9, rsi; string: str*
 
  mov dil, '['

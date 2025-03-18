@@ -1,6 +1,9 @@
 // IDEA(stefano): raise an error or warn on missing `-o`/`--output` that will pollute the current directory
 #![warn(clippy::print_stdout, clippy::print_stderr)]
 
+#[cfg(not(target_pointer_width = "64"))]
+panic!("can only compile for 64bit machines for now");
+
 pub mod back_end;
 pub mod color;
 pub mod error;

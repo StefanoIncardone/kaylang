@@ -4,7 +4,7 @@
 use super::{
     src_file::{index32, offset32, Position, SrcCode},
     tokenizer::{
-        ascii, int, uint, Base, Bracket, Mutability, Op, OpenBracket, Str, Token, TokenIndex,
+        ascii, Base, Bracket, Mutability, Op, OpenBracket, Str, Token, TokenIndex,
         TokenKind, Tokens,
     },
     Error, ErrorInfo, IntoErrorInfo,
@@ -25,7 +25,7 @@ pub(crate) trait SizeOf {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BaseType {
-    Int,
+    I64,
     Ascii,
     Bool,
     Str,
@@ -34,7 +34,7 @@ pub enum BaseType {
 impl Display for BaseType {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
-            Self::Int => write!(f, "int"),
+            Self::I64 => write!(f, "i64"),
             Self::Ascii => write!(f, "ascii"),
             Self::Bool => write!(f, "bool"),
             Self::Str => write!(f, "str"),
@@ -60,10 +60,10 @@ impl SizeOf for BaseType {
     #[inline]
     fn size(&self) -> usize {
         return match self {
-            Self::Int => size_of::<int>(),
+            Self::I64 => size_of::<i64>(),
             Self::Ascii => size_of::<ascii>(),
             Self::Bool => size_of::<bool>(),
-            Self::Str => size_of::<uint>() + size_of::<*const ascii>(),
+            Self::Str => size_of::<u64>() + size_of::<*const ascii>(),
         };
     }
 }
@@ -75,7 +75,7 @@ pub enum Type {
     Array {
         base_type: BaseType,
         /// always greater than 0, i.e: arrays always contain at least 1 item
-        len: uint,
+        len: u64,
     },
 }
 
@@ -115,7 +115,7 @@ impl SizeOf for Type {
             Self::Base(typ) => typ.size(),
             Self::Array { base_type, len } => {
                 debug_assert!(*len > 0, "arrays of 0 items are not allowed");
-                base_type.size() * len
+                base_type.size() * *len as usize
             }
         };
     }
@@ -169,7 +169,7 @@ impl TypeOf for UnaryOp {
 impl BaseTypeOf for UnaryOp {
     #[inline(always)]
     fn base_typ(&self) -> BaseType {
-        return BaseType::Int;
+        return BaseType::I64;
     }
 }
 
@@ -287,7 +287,7 @@ impl TypeOf for BinaryOp {
 impl BaseTypeOf for BinaryOp {
     #[inline(always)]
     fn base_typ(&self) -> BaseType {
-        return BaseType::Int;
+        return BaseType::I64;
     }
 }
 
@@ -381,7 +381,7 @@ impl BaseTypeOf for ComparisonOp {
     #[inline]
     fn base_typ(&self) -> BaseType {
         return match self {
-            Self::Compare => BaseType::Int,
+            Self::Compare => BaseType::I64,
             Self::EqualsEquals
             | Self::NotEquals
             | Self::Greater
@@ -471,7 +471,7 @@ pub(crate) type ScopeIndex = index32;
 pub(crate) enum Expression {
     False,
     True,
-    Int(int),
+    I64(i64),
     Ascii(ascii),
     Str {
         label: StringLabel,
@@ -534,12 +534,12 @@ impl TypeOf for Expression {
     fn typ(&self) -> Type {
         return match self {
             Self::False | Self::True => Type::Base(BaseType::Bool),
-            Self::Int(_) => Type::Base(BaseType::Int),
+            Self::I64(_) => Type::Base(BaseType::I64),
             Self::Ascii(_) => Type::Base(BaseType::Ascii),
             Self::Str { .. } => Type::Base(BaseType::Str),
             Self::Array { base_type, items } => {
                 debug_assert!(items.len() > 0, "arrays of 0 items are not allowed");
-                Type::Array { base_type: *base_type, len: items.len() }
+                Type::Array { base_type: *base_type, len: items.len() as u64 }
             }
             Self::Parenthesis { typ, .. } => *typ,
             Self::Temporary { typ, .. } => *typ,
@@ -578,7 +578,7 @@ impl<'ast, 'code: 'ast> ExpressionDisplay<'ast, 'code> {
         return match expr {
             Expression::False => write!(f, "false"),
             Expression::True => write!(f, "true"),
-            Expression::Int(integer) => write!(f, "{integer}"),
+            Expression::I64(integer) => write!(f, "{integer}"),
             Expression::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
             Expression::Str { label, .. } => write!(f, "str_{label}"),
             Expression::Array { items, .. } => {
@@ -795,7 +795,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
             scope: 0,
             scopes: vec![Scope {
                 parent: 0,
-                base_types: vec![BaseType::Int, BaseType::Ascii, BaseType::Bool, BaseType::Str],
+                base_types: vec![BaseType::I64, BaseType::Ascii, BaseType::Bool, BaseType::Str],
                 let_variables: Vec::new(),
                 var_variables: Vec::new(),
             }],
@@ -1439,9 +1439,9 @@ impl Parser<'_, '_, '_, '_> {
     }
 
     fn primary_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
-        const fn parse_positive_binary_int(literal: &[ascii]) -> Option<int> {
+        const fn parse_positive_binary_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Binary;
-            let mut integer: int = 0;
+            let mut integer: i64 = 0;
             let mut digit_index = 0;
             digit_index += 1; // leading zero
             digit_index += 1; // base (b)
@@ -1455,11 +1455,11 @@ impl Parser<'_, '_, '_, '_> {
 
                 let digit = ascii_digit - b'0';
                 debug_assert!(digit < BASE as u8, "invalid binary digit");
-                integer = match integer.checked_mul(BASE as int) {
+                integer = match integer.checked_mul(BASE as i64) {
                     Some(integer_) => integer_,
                     None => return None,
                 };
-                integer = match integer.checked_add(digit as int) {
+                integer = match integer.checked_add(digit as i64) {
                     Some(integer_) => integer_,
                     None => return None,
                 };
@@ -1467,9 +1467,9 @@ impl Parser<'_, '_, '_, '_> {
             return Some(integer);
         }
 
-        const fn parse_positive_octal_int(literal: &[ascii]) -> Option<int> {
+        const fn parse_positive_octal_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Octal;
-            let mut integer: int = 0;
+            let mut integer: i64 = 0;
             let mut digit_index = 0;
             digit_index += 1; // leading zero
             digit_index += 1; // base (o)
@@ -1483,11 +1483,11 @@ impl Parser<'_, '_, '_, '_> {
 
                 let digit = ascii_digit - b'0';
                 debug_assert!(digit < BASE as u8, "invalid octal digit");
-                integer = match integer.checked_mul(BASE as int) {
+                integer = match integer.checked_mul(BASE as i64) {
                     Some(integer_) => integer_,
                     None => return None,
                 };
-                integer = match integer.checked_add(digit as int) {
+                integer = match integer.checked_add(digit as i64) {
                     Some(integer_) => integer_,
                     None => return None,
                 };
@@ -1495,9 +1495,9 @@ impl Parser<'_, '_, '_, '_> {
             return Some(integer);
         }
 
-        const fn parse_positive_decimal_int(literal: &[ascii]) -> Option<int> {
+        const fn parse_positive_decimal_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Decimal;
-            let mut integer: int = 0;
+            let mut integer: i64 = 0;
             let mut digit_index = 0;
 
             while digit_index < literal.len() {
@@ -1509,11 +1509,11 @@ impl Parser<'_, '_, '_, '_> {
 
                 let digit = ascii_digit - b'0';
                 debug_assert!(digit < BASE as u8, "invalid decimal digit");
-                integer = match integer.checked_mul(BASE as int) {
+                integer = match integer.checked_mul(BASE as i64) {
                     Some(integer_) => integer_,
                     None => return None,
                 };
-                integer = match integer.checked_add(digit as int) {
+                integer = match integer.checked_add(digit as i64) {
                     Some(integer_) => integer_,
                     None => return None,
                 };
@@ -1521,9 +1521,9 @@ impl Parser<'_, '_, '_, '_> {
             return Some(integer);
         }
 
-        const fn parse_positive_hexadecimal_int(literal: &[ascii]) -> Option<int> {
+        const fn parse_positive_hexadecimal_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Hexadecimal;
-            let mut integer: int = 0;
+            let mut integer: i64 = 0;
             let mut digit_index = 0;
             digit_index += 1; // leading zero
             digit_index += 1; // base (x)
@@ -1541,11 +1541,11 @@ impl Parser<'_, '_, '_, '_> {
                     lowercase_letter @ b'a'..=b'f' => lowercase_letter - b'a' + 10,
                     _ => panic!("invalid hexadecimal digit"),
                 };
-                integer = match integer.checked_mul(BASE as int) {
+                integer = match integer.checked_mul(BASE as i64) {
                     Some(integer_) => integer_,
                     None => return None,
                 };
-                integer = match integer.checked_add(digit as int) {
+                integer = match integer.checked_add(digit as i64) {
                     Some(integer_) => integer_,
                     None => return None,
                 };
@@ -1554,9 +1554,9 @@ impl Parser<'_, '_, '_, '_> {
         }
 
         #[expect(clippy::single_call_fn, reason = "readability")]
-        const fn parse_negative_binary_int(literal: &[ascii]) -> Option<int> {
+        const fn parse_negative_binary_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Binary;
-            let mut integer: int = 0;
+            let mut integer: i64 = 0;
             let mut digit_index = 0;
             digit_index += 1; // leading zero
             digit_index += 1; // base (b)
@@ -1570,11 +1570,11 @@ impl Parser<'_, '_, '_, '_> {
 
                 let digit = ascii_digit - b'0';
                 debug_assert!(digit < BASE as u8, "invalid binary digit");
-                integer = match integer.checked_mul(BASE as int) {
+                integer = match integer.checked_mul(BASE as i64) {
                     Some(integer_) => integer_,
                     None => return None,
                 };
-                integer = match integer.checked_sub(digit as int) {
+                integer = match integer.checked_sub(digit as i64) {
                     Some(integer_) => integer_,
                     None => return None,
                 };
@@ -1583,9 +1583,9 @@ impl Parser<'_, '_, '_, '_> {
         }
 
         #[expect(clippy::single_call_fn, reason = "readability")]
-        const fn parse_negative_octal_int(literal: &[ascii]) -> Option<int> {
+        const fn parse_negative_octal_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Octal;
-            let mut integer: int = 0;
+            let mut integer: i64 = 0;
             let mut digit_index = 0;
             digit_index += 1; // leading zero
             digit_index += 1; // base (o)
@@ -1599,11 +1599,11 @@ impl Parser<'_, '_, '_, '_> {
 
                 let digit = ascii_digit - b'0';
                 debug_assert!(digit < BASE as u8, "invalid octal digit");
-                integer = match integer.checked_mul(BASE as int) {
+                integer = match integer.checked_mul(BASE as i64) {
                     Some(integer_) => integer_,
                     None => return None,
                 };
-                integer = match integer.checked_sub(digit as int) {
+                integer = match integer.checked_sub(digit as i64) {
                     Some(integer_) => integer_,
                     None => return None,
                 };
@@ -1612,9 +1612,9 @@ impl Parser<'_, '_, '_, '_> {
         }
 
         #[expect(clippy::single_call_fn, reason = "readability")]
-        const fn parse_negative_decimal_int(literal: &[ascii]) -> Option<int> {
+        const fn parse_negative_decimal_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Decimal;
-            let mut integer: int = 0;
+            let mut integer: i64 = 0;
             let mut digit_index = 0;
 
             while digit_index < literal.len() {
@@ -1626,11 +1626,11 @@ impl Parser<'_, '_, '_, '_> {
 
                 let digit = ascii_digit - b'0';
                 debug_assert!(digit < BASE as u8, "invalid decimal digit");
-                integer = match integer.checked_mul(BASE as int) {
+                integer = match integer.checked_mul(BASE as i64) {
                     Some(integer_) => integer_,
                     None => return None,
                 };
-                integer = match integer.checked_sub(digit as int) {
+                integer = match integer.checked_sub(digit as i64) {
                     Some(integer_) => integer_,
                     None => return None,
                 };
@@ -1639,9 +1639,9 @@ impl Parser<'_, '_, '_, '_> {
         }
 
         #[expect(clippy::single_call_fn, reason = "readability")]
-        const fn parse_negative_hexadecimal_int(literal: &[ascii]) -> Option<int> {
+        const fn parse_negative_hexadecimal_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Hexadecimal;
-            let mut integer: int = 0;
+            let mut integer: i64 = 0;
             let mut digit_index = 0;
             digit_index += 1; // leading zero
             digit_index += 1; // base (x)
@@ -1659,11 +1659,11 @@ impl Parser<'_, '_, '_, '_> {
                     lowercase_letter @ b'a'..=b'f' => lowercase_letter - b'a' + 10,
                     _ => panic!("invalid hexadecimal digit"),
                 };
-                integer = match integer.checked_mul(BASE as int) {
+                integer = match integer.checked_mul(BASE as i64) {
                     Some(integer_) => integer_,
                     None => return None,
                 };
-                integer = match integer.checked_sub(digit as int) {
+                integer = match integer.checked_sub(digit as i64) {
                     Some(integer_) => integer_,
                     None => return None,
                 };
@@ -1677,8 +1677,8 @@ impl Parser<'_, '_, '_, '_> {
             TokenKind::True => Ok(Expression::True),
             TokenKind::BinaryInteger(literal_index) => {
                 let literal = self.tokens.text[literal_index as usize];
-                match parse_positive_binary_int(literal.as_bytes()) {
-                    Some(integer) => Ok(Expression::Int(integer)),
+                match parse_positive_binary_i64(literal.as_bytes()) {
+                    Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Error {
                         kind: ErrorKind::BinaryIntegerOverflow,
                         col: current_token.col,
@@ -1688,8 +1688,8 @@ impl Parser<'_, '_, '_, '_> {
             }
             TokenKind::OctalInteger(literal_index) => {
                 let literal = self.tokens.text[literal_index as usize];
-                match parse_positive_octal_int(literal.as_bytes()) {
-                    Some(integer) => Ok(Expression::Int(integer)),
+                match parse_positive_octal_i64(literal.as_bytes()) {
+                    Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Error {
                         kind: ErrorKind::OctalIntegerOverflow,
                         col: current_token.col,
@@ -1699,8 +1699,8 @@ impl Parser<'_, '_, '_, '_> {
             }
             TokenKind::DecimalInteger(literal_index) => {
                 let literal = self.tokens.text[literal_index as usize];
-                match parse_positive_decimal_int(literal.as_bytes()) {
-                    Some(integer) => Ok(Expression::Int(integer)),
+                match parse_positive_decimal_i64(literal.as_bytes()) {
+                    Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Error {
                         kind: ErrorKind::DecimalIntegerOverflow,
                         col: current_token.col,
@@ -1710,8 +1710,8 @@ impl Parser<'_, '_, '_, '_> {
             }
             TokenKind::HexadecimalInteger(literal_index) => {
                 let literal = self.tokens.text[literal_index as usize];
-                match parse_positive_hexadecimal_int(literal.as_bytes()) {
-                    Some(integer) => Ok(Expression::Int(integer)),
+                match parse_positive_hexadecimal_i64(literal.as_bytes()) {
+                    Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Error {
                         kind: ErrorKind::HexadecimalIntegerOverflow,
                         col: current_token.col,
@@ -1954,8 +1954,8 @@ impl Parser<'_, '_, '_, '_> {
                         op_col: current_token.col,
                         operand_index: self.new_expression(operand),
                     }),
-                    Expression::Int(_) => Err(Error {
-                        kind: ErrorKind::CannotTakeLenOf(Type::Base(BaseType::Int)),
+                    Expression::I64(_) => Err(Error {
+                        kind: ErrorKind::CannotTakeLenOf(Type::Base(BaseType::I64)),
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(self.tokens),
                     }),
@@ -1980,7 +1980,7 @@ impl Parser<'_, '_, '_, '_> {
                             op_col: current_token.col,
                             operand_index: self.new_expression(operand),
                         }),
-                        Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => {
+                        Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => {
                             Err(Error {
                                 kind: ErrorKind::CannotTakeLenOf(*typ),
                                 col: current_token.col,
@@ -1994,7 +1994,7 @@ impl Parser<'_, '_, '_, '_> {
                             op_col: current_token.col,
                             operand_index: self.new_expression(operand),
                         }),
-                        BaseType::Int | BaseType::Ascii | BaseType::Bool => Err(Error {
+                        BaseType::I64 | BaseType::Ascii | BaseType::Bool => Err(Error {
                             kind: ErrorKind::CannotTakeLenOf(Type::Base(*base_type)),
                             col: current_token.col,
                             pointers_count: current_token.kind.display_len(self.tokens),
@@ -2048,7 +2048,7 @@ impl Parser<'_, '_, '_, '_> {
 
                 // returning to avoid the call to tokens.next at the end of the function
                 return match operand.typ() {
-                    Type::Base(BaseType::Int) => {
+                    Type::Base(BaseType::I64) => {
                         if should_be_made_positive {
                             Ok(Expression::Unary {
                                 op: UnaryOp::Plus,
@@ -2084,7 +2084,7 @@ impl Parser<'_, '_, '_, '_> {
 
                 // returning to avoid the call to tokens.next at the end of the function
                 return match operand.typ() {
-                    Type::Base(BaseType::Int) => {
+                    Type::Base(BaseType::I64) => {
                         if should_be_made_positive {
                             Ok(Expression::Unary {
                                 op: UnaryOp::WrappingPlus,
@@ -2120,7 +2120,7 @@ impl Parser<'_, '_, '_, '_> {
 
                 // returning to avoid the call to tokens.next at the end of the function
                 return match operand.typ() {
-                    Type::Base(BaseType::Int) => {
+                    Type::Base(BaseType::I64) => {
                         if should_be_made_positive {
                             Ok(Expression::Unary {
                                 op: UnaryOp::SaturatingPlus,
@@ -2157,7 +2157,7 @@ impl Parser<'_, '_, '_, '_> {
                     TokenKind::BinaryInteger(literal_index) => {
                         let literal = self.tokens.text[literal_index as usize];
                         if should_be_negated {
-                            match parse_negative_binary_int(literal.as_bytes()) {
+                            match parse_negative_binary_i64(literal.as_bytes()) {
                                 Some(0) => Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
@@ -2165,7 +2165,7 @@ impl Parser<'_, '_, '_, '_> {
                                         .kind
                                         .display_len(self.tokens),
                                 }),
-                                Some(integer) => Ok(Expression::Int(integer)),
+                                Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Error {
                                     kind: ErrorKind::BinaryIntegerUnderflow,
                                     col: start_of_expression.col,
@@ -2175,8 +2175,8 @@ impl Parser<'_, '_, '_, '_> {
                                 }),
                             }
                         } else {
-                            match parse_positive_binary_int(literal.as_bytes()) {
-                                Some(integer) => Ok(Expression::Int(integer)),
+                            match parse_positive_binary_i64(literal.as_bytes()) {
+                                Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Error {
                                     kind: ErrorKind::BinaryIntegerOverflow,
                                     col: start_of_expression.col,
@@ -2190,7 +2190,7 @@ impl Parser<'_, '_, '_, '_> {
                     TokenKind::OctalInteger(literal_index) => {
                         let literal = self.tokens.text[literal_index as usize];
                         if should_be_negated {
-                            match parse_negative_octal_int(literal.as_bytes()) {
+                            match parse_negative_octal_i64(literal.as_bytes()) {
                                 Some(0) => Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
@@ -2198,7 +2198,7 @@ impl Parser<'_, '_, '_, '_> {
                                         .kind
                                         .display_len(self.tokens),
                                 }),
-                                Some(integer) => Ok(Expression::Int(integer)),
+                                Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Error {
                                     kind: ErrorKind::OctalIntegerUnderflow,
                                     col: start_of_expression.col,
@@ -2208,8 +2208,8 @@ impl Parser<'_, '_, '_, '_> {
                                 }),
                             }
                         } else {
-                            match parse_positive_octal_int(literal.as_bytes()) {
-                                Some(integer) => Ok(Expression::Int(integer)),
+                            match parse_positive_octal_i64(literal.as_bytes()) {
+                                Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Error {
                                     kind: ErrorKind::OctalIntegerOverflow,
                                     col: start_of_expression.col,
@@ -2223,7 +2223,7 @@ impl Parser<'_, '_, '_, '_> {
                     TokenKind::DecimalInteger(literal_index) => {
                         let literal = self.tokens.text[literal_index as usize];
                         if should_be_negated {
-                            match parse_negative_decimal_int(literal.as_bytes()) {
+                            match parse_negative_decimal_i64(literal.as_bytes()) {
                                 Some(0) => Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
@@ -2231,7 +2231,7 @@ impl Parser<'_, '_, '_, '_> {
                                         .kind
                                         .display_len(self.tokens),
                                 }),
-                                Some(integer) => Ok(Expression::Int(integer)),
+                                Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Error {
                                     kind: ErrorKind::DecimalIntegerUnderflow,
                                     col: start_of_expression.col,
@@ -2241,8 +2241,8 @@ impl Parser<'_, '_, '_, '_> {
                                 }),
                             }
                         } else {
-                            match parse_positive_decimal_int(literal.as_bytes()) {
-                                Some(integer) => Ok(Expression::Int(integer)),
+                            match parse_positive_decimal_i64(literal.as_bytes()) {
+                                Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Error {
                                     kind: ErrorKind::DecimalIntegerOverflow,
                                     col: start_of_expression.col,
@@ -2256,7 +2256,7 @@ impl Parser<'_, '_, '_, '_> {
                     TokenKind::HexadecimalInteger(literal_index) => {
                         let literal = self.tokens.text[literal_index as usize];
                         if should_be_negated {
-                            match parse_negative_hexadecimal_int(literal.as_bytes()) {
+                            match parse_negative_hexadecimal_i64(literal.as_bytes()) {
                                 Some(0) => Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
@@ -2264,7 +2264,7 @@ impl Parser<'_, '_, '_, '_> {
                                         .kind
                                         .display_len(self.tokens),
                                 }),
-                                Some(integer) => Ok(Expression::Int(integer)),
+                                Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Error {
                                     kind: ErrorKind::HexadecimalIntegerUnderflow,
                                     col: start_of_expression.col,
@@ -2274,8 +2274,8 @@ impl Parser<'_, '_, '_, '_> {
                                 }),
                             }
                         } else {
-                            match parse_positive_hexadecimal_int(literal.as_bytes()) {
-                                Some(integer) => Ok(Expression::Int(integer)),
+                            match parse_positive_hexadecimal_i64(literal.as_bytes()) {
+                                Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Error {
                                     kind: ErrorKind::HexadecimalIntegerOverflow,
                                     col: start_of_expression.col,
@@ -2291,7 +2291,7 @@ impl Parser<'_, '_, '_, '_> {
 
                         // returning to avoid the call to tokens.next at the end of the function
                         return match operand.typ() {
-                            Type::Base(BaseType::Int | BaseType::Ascii) => {
+                            Type::Base(BaseType::I64 | BaseType::Ascii) => {
                                 if should_be_negated {
                                     Ok(Expression::Unary {
                                         op: minus.into(),
@@ -2325,7 +2325,7 @@ impl Parser<'_, '_, '_, '_> {
 
                 // returning to avoid the call to tokens.next at the end of the function
                 return match operand.typ() {
-                    Type::Base(BaseType::Int | BaseType::Ascii) => {
+                    Type::Base(BaseType::I64 | BaseType::Ascii) => {
                         if should_be_inverted {
                             Ok(Expression::Unary {
                                 op: UnaryOp::Not,
@@ -2390,7 +2390,7 @@ impl Parser<'_, '_, '_, '_> {
         {
             let _start_of_index = self.next_token();
             let index = self.expression()?;
-            let Type::Base(BaseType::Int) = index.typ() else {
+            let Type::Base(BaseType::I64) = index.typ() else {
                 return Err(Error {
                     kind: ErrorKind::ExpectedNumberLiteralInArrayIndex,
                     col: open_bracket_token.col,
@@ -2426,7 +2426,7 @@ impl Parser<'_, '_, '_, '_> {
                         bracket_col: open_bracket_token.col,
                         index_expression_index: self.new_expression(index),
                     },
-                    BaseType::Int | BaseType::Ascii | BaseType::Bool => {
+                    BaseType::I64 | BaseType::Ascii | BaseType::Bool => {
                         return Err(Error {
                             kind: ErrorKind::CannotIndexNonArrayType(expression_type),
                             col: open_bracket_token.col,
@@ -2811,7 +2811,7 @@ impl Parser<'_, '_, '_, '_> {
 
         let len_token = self.next_token_bounded(Expected::ArrayLength)?;
         let len_expression = self.expression()?;
-        let Expression::Int(literal_len) = len_expression else {
+        let Expression::I64(literal_len) = len_expression else {
             return Err(Error {
                 kind: ErrorKind::ExpectedNumberLiteralInArrayType,
                 col: open_square_bracket_token.col,
@@ -2835,7 +2835,7 @@ impl Parser<'_, '_, '_, '_> {
                     pointers_count: len_token.kind.display_len(self.tokens),
                 });
             }
-            _ => literal_len as uint,
+            _ => literal_len as u64,
         };
 
         let close_square_bracket_token = self.current_token(Expected::ClosingSquareBracket)?;
@@ -2852,7 +2852,7 @@ impl Parser<'_, '_, '_, '_> {
 
     fn expression_from_base_type(&mut self, typ: BaseType) -> Expression {
         return match typ {
-            BaseType::Int => Expression::Int(0),
+            BaseType::I64 => Expression::I64(0),
             BaseType::Ascii => Expression::Ascii(b'0'),
             BaseType::Bool => Expression::False,
             BaseType::Str => {
@@ -3018,7 +3018,7 @@ impl Parser<'_, '_, '_, '_> {
                         Type::Base(base_type) => self.expression_from_base_type(base_type),
                         Type::Array { base_type, len } => {
                             debug_assert!(len > 0, "arrays of 0 items are not allowed");
-                            let items = vec![self.expression_from_base_type(base_type); len];
+                            let items = vec![self.expression_from_base_type(base_type); len as usize];
                             debug_assert!(items.len() > 0, "arrays of 0 items are not allowed");
                             Expression::Array { base_type, items }
                         }
@@ -3122,7 +3122,7 @@ impl Parser<'_, '_, '_, '_> {
 
             Expression::False
             | Expression::True
-            | Expression::Int(_)
+            | Expression::I64(_)
             | Expression::Ascii(_)
             | Expression::Str { .. }
             | Expression::Array { .. }
@@ -3185,8 +3185,8 @@ impl Parser<'_, '_, '_, '_> {
             | AssignmentOp::Or
             | AssignmentOp::BitOr => match (target_type, new_value_type) {
                 (
-                    Type::Base(BaseType::Int),
-                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool),
+                    Type::Base(BaseType::I64),
+                    Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool),
                 ) => Ok(Node::Reassignment { target, op, op_col: op_token.col, new_value }),
                 /* IDEA(stefano):
                 allow only certain kinds of *op*=:
@@ -3648,70 +3648,70 @@ impl IntoErrorInfo for ErrorKind {
                 "integer literal overflow".into(),
                 format!(
                     "overflows a {bits} bit signed integer, over {prefix}{max:0b} ({max})",
-                    bits = int::BITS,
+                    bits = i64::BITS,
                     prefix = Base::Binary.prefix(),
-                    max = int::MAX
+                    max = i64::MAX
                 ).into(),
             ),
             Self::OctalIntegerOverflow => (
                 "integer literal overflow".into(),
                 format!(
                     "overflows a {bits} bit signed integer, over {prefix}{max:0o} ({max})",
-                    bits = int::BITS,
+                    bits = i64::BITS,
                     prefix = Base::Octal.prefix(),
-                    max = int::MAX
+                    max = i64::MAX
                 ).into(),
             ),
             Self::DecimalIntegerOverflow => (
                 "integer literal overflow".into(),
                 format!(
                     "overflows a {bits} bit signed integer, over {max}",
-                    bits = int::BITS,
-                    max = int::MAX
+                    bits = i64::BITS,
+                    max = i64::MAX
                 ).into(),
             ),
             Self::HexadecimalIntegerOverflow => (
                 "integer literal overflow".into(),
                 format!(
                     "overflows a {bits} bit signed integer, over {prefix}{max:0x} ({max})",
-                    bits = int::BITS,
+                    bits = i64::BITS,
                     prefix = Base::Hexadecimal.prefix(),
-                    max = int::MAX
+                    max = i64::MAX
                 ).into(),
             ),
             Self::BinaryIntegerUnderflow => (
                 "integer literal underflow".into(),
                 format!(
                     "underflows a {bits} bit signed integer, under {prefix}{min:0b} ({min})",
-                    bits = int::BITS,
+                    bits = i64::BITS,
                     prefix = Base::Binary.prefix(),
-                    min = int::MIN
+                    min = i64::MIN
                 ).into(),
             ),
             Self::OctalIntegerUnderflow => (
                 "integer literal underflow".into(),
                 format!(
                     "underflows a {bits} bit signed integer, under {prefix}{min:0o} ({min})",
-                    bits = int::BITS,
+                    bits = i64::BITS,
                     prefix = Base::Octal.prefix(),
-                    min = int::MIN
+                    min = i64::MIN
                 ).into(),
             ),
             Self::DecimalIntegerUnderflow => (
                 "integer literal underflow".into(),
                 format!(
                     "underflows a {bits} bit signed integer, under {min}",
-                    bits = int::BITS,
-                    min = int::MIN
+                    bits = i64::BITS,
+                    min = i64::MIN
                 ).into(),
             ),
             Self::HexadecimalIntegerUnderflow => (
                 "integer literal underflow".into(),
                 format!(
                     "underflows a {bits} bit signed integer, under {prefix}{min:0x} ({min})",
-                    bits = int::BITS,
+                    bits = i64::BITS,
                     prefix = Base::Hexadecimal.prefix(),
-                    min = int::MIN
+                    min = i64::MIN
                 ).into(),
             ),
 

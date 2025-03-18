@@ -13,7 +13,7 @@ use crate::front_end::{
         IfStatement, Node, ScopeIndex, SizeOf as _, Type, TypeOf as _, UnaryOp,
     },
     src_file::{offset32, Position, SrcCode},
-    tokenizer::{ascii, uint},
+    tokenizer::ascii,
 };
 use back_to_front::back_end::x86_64::reg::Reg64::{self, Rcx, Rdi, Rdx, Rsi};
 use core::fmt::{Display, Write as _};
@@ -29,7 +29,7 @@ enum Dst {
 impl Dst {
     const fn default(typ: &Type) -> Self {
         return match typ {
-            Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => Self::Reg(Rdi),
+            Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => Self::Reg(Rdi),
             Type::Base(BaseType::Str) | Type::Array { .. } => Self::View { len: Rdi, ptr: Rsi },
         };
     }
@@ -87,15 +87,15 @@ impl<'ast, 'src: 'ast, 'path: 'src, 'code: 'src> Compiler<'ast, 'src, 'path, 'co
             ASCII_ARRAY_DEBUG_EPRINT_ASM, ASCII_ARRAY_DEBUG_PRINT_ASM, ASCII_EPRINT_ASM,
             ASCII_PRINT_ASM, ASSERT_ARRAY_INDEX_IN_RANGE_ASM, ASSERT_STR_INDEX_IN_RANGE_ASM,
             BOOL_ARRAY_DEBUG_EPRINT_ASM, BOOL_ARRAY_DEBUG_PRINT_ASM, BOOL_EPRINT_ASM,
-            BOOL_PRINT_ASM, CRASH_ASM, INT_ARRAY_DEBUG_EPRINT_ASM, INT_ARRAY_DEBUG_PRINT_ASM,
-            INT_EPRINT_ASM, INT_PRINT_ASM, INT_SAFE_ABS_ASM, INT_SAFE_ADD_ASM, INT_SAFE_DIV_ASM,
-            INT_SAFE_LEFT_ROTATE_ASM, INT_SAFE_LEFT_SHIFT_ASM, INT_SAFE_MUL_ASM,
-            INT_SAFE_MUL_POW_ASM, INT_SAFE_NEGATE_ASM, INT_SAFE_POW_ASM, INT_SAFE_REMAINDER_ASM,
-            INT_SAFE_RIGHT_ROTATE_ASM, INT_SAFE_RIGHT_SHIFT_ASM, INT_SAFE_SUB_ASM,
-            INT_SATURATING_ABS_ASM, INT_SATURATING_ADD_ASM, INT_SATURATING_DIV_ASM,
-            INT_SATURATING_LEFT_SHIFT_ASM, INT_SATURATING_MUL_ASM, INT_SATURATING_NEGATE_ASM,
-            INT_SATURATING_POW_ASM, INT_SATURATING_SUB_ASM, INT_TO_STR_ASM, INT_WRAPPING_ABS_ASM,
-            INT_WRAPPING_DIV_ASM, INT_WRAPPING_LEFT_SHIFT_ASM, INT_WRAPPING_POW_ASM,
+            BOOL_PRINT_ASM, CRASH_ASM, I64_ARRAY_DEBUG_EPRINT_ASM, I64_ARRAY_DEBUG_PRINT_ASM,
+            I64_EPRINT_ASM, I64_PRINT_ASM, I64_SAFE_ABS_ASM, I64_SAFE_ADD_ASM, I64_SAFE_DIV_ASM,
+            I64_SAFE_LEFT_ROTATE_ASM, I64_SAFE_LEFT_SHIFT_ASM, I64_SAFE_MUL_ASM,
+            I64_SAFE_MUL_POW_ASM, I64_SAFE_NEGATE_ASM, I64_SAFE_POW_ASM, I64_SAFE_REMAINDER_ASM,
+            I64_SAFE_RIGHT_ROTATE_ASM, I64_SAFE_RIGHT_SHIFT_ASM, I64_SAFE_SUB_ASM,
+            I64_SATURATING_ABS_ASM, I64_SATURATING_ADD_ASM, I64_SATURATING_DIV_ASM,
+            I64_SATURATING_LEFT_SHIFT_ASM, I64_SATURATING_MUL_ASM, I64_SATURATING_NEGATE_ASM,
+            I64_SATURATING_POW_ASM, I64_SATURATING_SUB_ASM, I64_TO_STR_ASM, I64_WRAPPING_ABS_ASM,
+            I64_WRAPPING_DIV_ASM, I64_WRAPPING_LEFT_SHIFT_ASM, I64_WRAPPING_POW_ASM,
             STR_ARRAY_CMP_ASM, STR_ARRAY_DEBUG_EPRINT_ASM, STR_ARRAY_DEBUG_PRINT_ASM,
             STR_ARRAY_EQ_ASM, STR_ARRAY_NEQ_ASM, STR_CMP_ASM, STR_EPRINT_ASM, STR_EQ_ASM,
             STR_NEQ_ASM, STR_PRINT_ASM,
@@ -193,65 +193,65 @@ _start:
 
 {ASSERT_STR_INDEX_IN_RANGE_ASM}
 
-{INT_TO_STR_ASM}
+{I64_TO_STR_ASM}
 
-{INT_SAFE_POW_ASM}
+{I64_SAFE_POW_ASM}
 
-{INT_WRAPPING_POW_ASM}
+{I64_WRAPPING_POW_ASM}
 
-{INT_SATURATING_POW_ASM}
+{I64_SATURATING_POW_ASM}
 
-{INT_SAFE_MUL_POW_ASM}
+{I64_SAFE_MUL_POW_ASM}
 
-{INT_SAFE_MUL_ASM}
+{I64_SAFE_MUL_ASM}
 
-{INT_SATURATING_MUL_ASM}
+{I64_SATURATING_MUL_ASM}
 
-{INT_SAFE_DIV_ASM}
+{I64_SAFE_DIV_ASM}
 
-{INT_WRAPPING_DIV_ASM}
+{I64_WRAPPING_DIV_ASM}
 
-{INT_SATURATING_DIV_ASM}
+{I64_SATURATING_DIV_ASM}
 
-{INT_SAFE_REMAINDER_ASM}
+{I64_SAFE_REMAINDER_ASM}
 
-{INT_SAFE_ADD_ASM}
+{I64_SAFE_ADD_ASM}
 
-{INT_SATURATING_ADD_ASM}
+{I64_SATURATING_ADD_ASM}
 
-{INT_SAFE_ABS_ASM}
+{I64_SAFE_ABS_ASM}
 
-{INT_WRAPPING_ABS_ASM}
+{I64_WRAPPING_ABS_ASM}
 
-{INT_SATURATING_ABS_ASM}
+{I64_SATURATING_ABS_ASM}
 
-{INT_SAFE_SUB_ASM}
+{I64_SAFE_SUB_ASM}
 
-{INT_SATURATING_SUB_ASM}
+{I64_SATURATING_SUB_ASM}
 
-{INT_SAFE_NEGATE_ASM}
+{I64_SAFE_NEGATE_ASM}
 
-{INT_SATURATING_NEGATE_ASM}
+{I64_SATURATING_NEGATE_ASM}
 
-{INT_SAFE_LEFT_SHIFT_ASM}
+{I64_SAFE_LEFT_SHIFT_ASM}
 
-{INT_WRAPPING_LEFT_SHIFT_ASM}
+{I64_WRAPPING_LEFT_SHIFT_ASM}
 
-{INT_SATURATING_LEFT_SHIFT_ASM}
+{I64_SATURATING_LEFT_SHIFT_ASM}
 
-{INT_SAFE_RIGHT_SHIFT_ASM}
+{I64_SAFE_RIGHT_SHIFT_ASM}
 
-{INT_SAFE_LEFT_ROTATE_ASM}
+{I64_SAFE_LEFT_ROTATE_ASM}
 
-{INT_SAFE_RIGHT_ROTATE_ASM}
+{I64_SAFE_RIGHT_ROTATE_ASM}
 
-{INT_PRINT_ASM}
+{I64_PRINT_ASM}
 
-{INT_EPRINT_ASM}
+{I64_EPRINT_ASM}
 
-{INT_ARRAY_DEBUG_PRINT_ASM}
+{I64_ARRAY_DEBUG_PRINT_ASM}
 
-{INT_ARRAY_DEBUG_EPRINT_ASM}
+{I64_ARRAY_DEBUG_EPRINT_ASM}
 
 {ASCII_PRINT_ASM}
 
@@ -302,9 +302,9 @@ section .rodata
  EXIT_SUCCESS: equ 0
  EXIT_FAILURE: equ 1
 
- INT_MIN: equ 1 << 63
- INT_MAX: equ ~INT_MIN
- INT_BITS: equ 64
+ I64_MIN: equ 1 << 63
+ I64_MAX: equ ~I64_MIN
+ I64_BITS: equ 64
 
  LESS: equ -1
  EQUAL: equ 0
@@ -348,7 +348,7 @@ section .rodata
  str false_str, "false"
 
 section .bss
- int_str: resb INT_BITS
+ i64_str: resb I64_BITS
  temp: resb {temporary_values_bytes}
 
 section .data
@@ -579,7 +579,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
             // these expressions do not need to save the value of the lhs
             Expression::False
             | Expression::True
-            | Expression::Int(_)
+            | Expression::I64(_)
             | Expression::Ascii(_)
             | Expression::Str { .. }
             | Expression::Unary { op: UnaryOp::Not | UnaryOp::WrappingMinus, .. }
@@ -656,7 +656,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
 
     fn identifier(&mut self, typ: Type, dst: Dst, base: Base, offset: usize) {
         match typ {
-            Type::Base(BaseType::Int) => match dst {
+            Type::Base(BaseType::I64) => match dst {
                 Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, [{base} + {offset}]"),
                 Dst::View { .. } => unreachable!(),
             },
@@ -672,7 +672,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                         self.asm,
                         " mov {len}, [{base} + {offset}]\
                         \n mov {ptr}, [{base} + {offset} + {ptr_offset}]",
-                        ptr_offset = size_of::<uint>()
+                        ptr_offset = size_of::<u64>()
                     );
                 }
                 Dst::Reg(_) => unreachable!(),
@@ -740,7 +740,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                             \n push rdi\n"
                         );
                     }
-                    BaseType::Int | BaseType::Ascii | BaseType::Bool => {
+                    BaseType::I64 | BaseType::Ascii | BaseType::Bool => {
                         unreachable!(
                             "only arrays and strings are allowed in nested index expressions"
                         )
@@ -761,7 +761,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                             \n movzx rdi, byte [rsi + rdi]\n",
                         );
                     }
-                    BaseType::Int | BaseType::Str | BaseType::Bool => {
+                    BaseType::I64 | BaseType::Str | BaseType::Bool => {
                         unreachable!("only ascii are allowed in nested index expressions")
                     }
                 }
@@ -783,7 +783,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                             \n call assert_str_index_in_range\
                             \n mov rsi, [rbp + {var_offset} + {ptr_offset}]\
                             \n movzx rdi, byte [rsi + rdi]\n",
-                            ptr_offset = size_of::<uint>()
+                            ptr_offset = size_of::<u64>()
                         );
                     }
                     Type::Array { len: array_len, .. } => {
@@ -797,7 +797,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                         );
 
                         match base_type {
-                            BaseType::Int => {
+                            BaseType::I64 => {
                                 _ = writeln!(
                                     self.asm,
                                     " mov rdi, [rbp + {var_offset} + rdi * 8]\n"
@@ -816,12 +816,12 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                                     \n mov rsi, [rbp + {var_offset} + rdi + {ptr_offset}]\
                                     \n mov rdi, [rbp + {var_offset} + rdi]\n",
                                     base_type_size = base_type.size(),
-                                    ptr_offset = size_of::<uint>()
+                                    ptr_offset = size_of::<u64>()
                                 );
                             }
                         }
                     }
-                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => {
+                    Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => {
                         unreachable!("only arrays and strings are allowed in index expressions")
                     }
                 }
@@ -829,7 +829,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
 
             Expression::Array { .. }
             | Expression::Temporary { .. }
-            | Expression::Int(_)
+            | Expression::I64(_)
             | Expression::False
             | Expression::True
             | Expression::Ascii(_)
@@ -849,7 +849,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                 let inner = &self.ast.expressions[*expression_index as usize];
                 self.expression(inner, dst);
             }
-            Expression::Int(integer) => match dst {
+            Expression::I64(integer) => match dst {
                 Dst::Reg(reg) => _ = writeln!(self.asm, " mov {reg}, {integer}"),
                 Dst::View { .. } => unreachable!(),
             },
@@ -911,7 +911,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                                     debug_assert!(*len > 0, "arrays of 0 items are not allowed");
                                     _ = writeln!(self.asm, " mov {reg}, {len}");
                                 }
-                                Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => {
+                                Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => {
                                     unreachable!("cannot take the length of numerical types")
                                 }
                             }
@@ -930,7 +930,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                         }
                         Expression::False
                         | Expression::True
-                        | Expression::Int(_)
+                        | Expression::I64(_)
                         | Expression::Ascii(_)
                         | Expression::Unary { .. }
                         | Expression::BooleanUnary { .. }
@@ -945,7 +945,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                     },
                     UnaryOp::Not => {
                         self.expression(operand, dst);
-                        let Type::Base(BaseType::Int) = operand.typ() else {
+                        let Type::Base(BaseType::I64) = operand.typ() else {
                             unreachable!("can only invert integer and ascii values");
                         };
 
@@ -954,13 +954,13 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                     UnaryOp::Plus => {
                         self.expression(operand, dst);
                         match operand.typ() {
-                            Type::Base(BaseType::Int) => {
+                            Type::Base(BaseType::I64) => {
                                 let Position { line, column } = self.src.position(*op_col);
                                 _ = writeln!(
                                     self.asm,
                                     " mov rdx, {line}\
                                     \n mov rcx, {column}\
-                                    \n call int_safe_abs",
+                                    \n call i64_safe_abs",
                                 );
                             }
                             Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
@@ -972,75 +972,75 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                     UnaryOp::WrappingPlus => {
                         self.expression(operand, dst);
                         match operand.typ() {
-                            Type::Base(BaseType::Int) => {
-                                _ = writeln!(self.asm, " call int_wrapping_abs");
+                            Type::Base(BaseType::I64) => {
+                                _ = writeln!(self.asm, " call i64_wrapping_abs");
                             }
                             Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
                             | Type::Array { .. } => {
-                                unreachable!("cannot take absolute value of non int values");
+                                unreachable!("cannot take absolute value of non i64 values");
                             }
                         }
                     }
                     UnaryOp::SaturatingPlus => {
                         self.expression(operand, dst);
                         match operand.typ() {
-                            Type::Base(BaseType::Int) => {
+                            Type::Base(BaseType::I64) => {
                                 let Position { line, column } = self.src.position(*op_col);
                                 _ = writeln!(
                                     self.asm,
                                     " mov rdx, {line}\
                                     \n mov rcx, {column}\
-                                    \n call int_saturating_abs",
+                                    \n call i64_saturating_abs",
                                 );
                             }
                             Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
                             | Type::Array { .. } => {
-                                unreachable!("cannot take absolute value of non int values");
+                                unreachable!("cannot take absolute value of non i64 values");
                             }
                         }
                     }
                     UnaryOp::Minus => {
                         self.expression(operand, dst);
                         match operand.typ() {
-                            Type::Base(BaseType::Int | BaseType::Ascii) => {
+                            Type::Base(BaseType::I64 | BaseType::Ascii) => {
                                 let Position { line, column } = self.src.position(*op_col);
                                 _ = writeln!(
                                     self.asm,
                                     " mov rdx, {line}\
                                     \n mov rcx, {column}\
-                                    \n call int_safe_negate",
+                                    \n call i64_safe_negate",
                                 );
                             }
                             Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
-                                unreachable!("cannot negate non int/ascii values");
+                                unreachable!("cannot negate non i64/ascii values");
                             }
                         }
                     }
                     UnaryOp::WrappingMinus => {
                         self.expression(operand, dst);
                         match operand.typ() {
-                            Type::Base(BaseType::Int | BaseType::Ascii) => {
+                            Type::Base(BaseType::I64 | BaseType::Ascii) => {
                                 _ = writeln!(self.asm, " neg {reg}");
                             }
                             Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
-                                unreachable!("cannot negate non int/ascii values");
+                                unreachable!("cannot negate non i64/ascii values");
                             }
                         }
                     }
                     UnaryOp::SaturatingMinus => {
                         self.expression(operand, dst);
                         match operand.typ() {
-                            Type::Base(BaseType::Int | BaseType::Ascii) => {
+                            Type::Base(BaseType::I64 | BaseType::Ascii) => {
                                 let Position { line, column } = self.src.position(*op_col);
                                 _ = writeln!(
                                     self.asm,
                                     " mov rdx, {line}\
                                     \n mov rcx, {column}\
-                                    \n call int_saturating_negate",
+                                    \n call i64_saturating_negate",
                                 );
                             }
                             Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
-                                unreachable!("cannot negate non int/ascii values");
+                                unreachable!("cannot negate non i64/ascii values");
                             }
                         }
                     }
@@ -1084,7 +1084,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {column}\
-                            \n call int_safe_pow",
+                            \n call i64_safe_pow",
                         )
                         .into()
                     }
@@ -1093,7 +1093,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {column}\
-                            \n call int_wrapping_pow",
+                            \n call i64_wrapping_pow",
                         )
                         .into()
                     }
@@ -1102,7 +1102,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {column}\
-                            \n call int_saturating_pow",
+                            \n call i64_saturating_pow",
                         )
                         .into()
                     }
@@ -1111,18 +1111,18 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {column}\
-                            \n call int_safe_mul",
+                            \n call i64_safe_mul",
                         )
                         .into()
                     }
                     BinaryOp::WrappingTimes => " imul rdi, rsi".into(),
-                    BinaryOp::SaturatingTimes => " call int_saturating_mul".into(),
+                    BinaryOp::SaturatingTimes => " call i64_saturating_mul".into(),
                     BinaryOp::Divide => {
                         let Position { line, column } = self.src.position(*op_col);
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {column}\
-                            \n call int_safe_div",
+                            \n call i64_safe_div",
                         )
                         .into()
                     }
@@ -1131,7 +1131,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {column}\
-                            \n call int_wrapping_div",
+                            \n call i64_wrapping_div",
                         )
                         .into()
                     }
@@ -1140,7 +1140,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {column}\
-                            \n call int_saturating_div",
+                            \n call i64_saturating_div",
                         )
                         .into()
                     }
@@ -1149,7 +1149,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {column}\
-                            \n call int_safe_remainder",
+                            \n call i64_safe_remainder",
                         )
                         .into()
                     }
@@ -1158,23 +1158,23 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {column}\
-                            \n call int_safe_add",
+                            \n call i64_safe_add",
                         )
                         .into()
                     }
                     BinaryOp::WrappingPlus => " add rdi, rsi".into(),
-                    BinaryOp::SaturatingPlus => " call int_saturating_add".into(),
+                    BinaryOp::SaturatingPlus => " call i64_saturating_add".into(),
                     BinaryOp::Minus => {
                         let Position { line, column } = self.src.position(*op_col);
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {column}\
-                            \n call int_safe_sub",
+                            \n call i64_safe_sub",
                         )
                         .into()
                     }
                     BinaryOp::WrappingMinus => " sub rdi, rsi".into(),
-                    BinaryOp::SaturatingMinus => " call int_saturating_sub".into(),
+                    BinaryOp::SaturatingMinus => " call i64_saturating_sub".into(),
                     BinaryOp::BitAnd => " and rdi, rsi".into(),
                     BinaryOp::BitOr => " or rdi, rsi".into(),
                     BinaryOp::BitXor => " xor rdi, rsi".into(),
@@ -1183,7 +1183,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {column}\
-                            \n call int_safe_left_shift",
+                            \n call i64_safe_left_shift",
                         )
                         .into()
                     }
@@ -1192,7 +1192,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {column}\
-                            \n call int_wrapping_left_shift",
+                            \n call i64_wrapping_left_shift",
                         )
                         .into()
                     }
@@ -1201,7 +1201,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {column}\
-                            \n call int_saturating_left_shift",
+                            \n call i64_saturating_left_shift",
                         )
                         .into()
                     }
@@ -1210,7 +1210,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {column}\
-                            \n call int_safe_right_shift",
+                            \n call i64_safe_right_shift",
                         )
                         .into()
                     }
@@ -1219,7 +1219,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {column}\
-                            \n call int_safe_left_rotate",
+                            \n call i64_safe_left_rotate",
                         )
                         .into()
                     }
@@ -1228,7 +1228,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                         format!(
                             " mov rdx, {line}\
                             \n mov rcx, {column}\
-                            \n call int_safe_right_rotate",
+                            \n call i64_safe_right_rotate",
                         )
                         .into()
                     }
@@ -1318,7 +1318,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                             Dst::View { len: Rdx, ptr: Rcx },
                             match op {
                                 ComparisonOp::EqualsEquals => match base_type {
-                                    BaseType::Int => " mov rdi, rcx\
+                                    BaseType::I64 => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsq\
                                         \n mov rdi, false\
@@ -1333,7 +1333,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                                     BaseType::Str => " call str_array_eq".into(),
                                 },
                                 ComparisonOp::NotEquals => match base_type {
-                                    BaseType::Int => " mov rdi, rcx\
+                                    BaseType::I64 => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsq\
                                         \n mov rdi, false\
@@ -1348,7 +1348,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                                     BaseType::Str => " cmp str_array_neq".into(),
                                 },
                                 ComparisonOp::Greater => match base_type {
-                                    BaseType::Int => " mov rdi, rcx\
+                                    BaseType::I64 => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsq\
                                         \n mov rdi, false\
@@ -1367,7 +1367,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                                         .into(),
                                 },
                                 ComparisonOp::GreaterOrEquals => match base_type {
-                                    BaseType::Int => " mov rdi, rcx\
+                                    BaseType::I64 => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsq\
                                         \n mov rdi, false\
@@ -1386,7 +1386,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                                         .into(),
                                 },
                                 ComparisonOp::Less => match base_type {
-                                    BaseType::Int => " mov rdi, rcx\
+                                    BaseType::I64 => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsq\
                                         \n mov rdi, false\
@@ -1405,7 +1405,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                                         .into(),
                                 },
                                 ComparisonOp::LessOrEquals => match base_type {
-                                    BaseType::Int => " mov rdi, rcx\
+                                    BaseType::I64 => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsq\
                                         \n mov rdi, false\
@@ -1424,7 +1424,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                                         .into(),
                                 },
                                 ComparisonOp::Compare => match base_type {
-                                    BaseType::Int => " mov rdi, rcx\
+                                    BaseType::I64 => " mov rdi, rcx\
                                         \n mov rcx, rdx\
                                         \n repe cmpsq\
                                         \n mov rdi, LESS\
@@ -1447,8 +1447,8 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                             },
                         ),
                         (
-                            Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool),
-                            Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool),
+                            Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool),
+                            Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool),
                         ) => (
                             Dst::Reg(Rdi),
                             Dst::Reg(Rsi),
@@ -1556,7 +1556,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                 );
             }
             Expression::Array { .. }
-            | Expression::Int(_)
+            | Expression::I64(_)
             | Expression::Ascii(_)
             | Expression::Str { .. } => {
                 unreachable!("non-boolean expressions not allowed in conditions");
@@ -1581,7 +1581,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
 
                 let lhs_dst = match lhs.typ() {
                     Type::Base(BaseType::Bool) => Dst::Reg(Rdi),
-                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str)
+                    Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Str)
                     | Type::Array { .. } => {
                         unreachable!("non-boolean expressions not allowed in conditions");
                     }
@@ -1589,7 +1589,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
 
                 let rhs_dst = match rhs.typ() {
                     Type::Base(BaseType::Bool) => Dst::Reg(Rsi),
-                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str)
+                    Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Str)
                     | Type::Array { .. } => {
                         unreachable!("non-boolean expressions not allowed in conditions");
                     }
@@ -1619,14 +1619,14 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                 let rhs = &self.ast.expressions[*rhs_index as usize];
 
                 let lhs_dst = match lhs.typ() {
-                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => Dst::Reg(Rdi),
+                    Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => Dst::Reg(Rdi),
                     Type::Base(BaseType::Str) | Type::Array { .. } => {
                         Dst::View { len: Rdi, ptr: Rsi }
                     }
                 };
 
                 let rhs_dst = match rhs.typ() {
-                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => Dst::Reg(Rsi),
+                    Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => Dst::Reg(Rsi),
                     Type::Base(BaseType::Str) | Type::Array { .. } => {
                         Dst::View { len: Rdx, ptr: Rcx }
                     }
@@ -1731,7 +1731,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                 );
             }
             Expression::Array { .. }
-            | Expression::Int(_)
+            | Expression::I64(_)
             | Expression::Ascii(_)
             | Expression::Str { .. } => {
                 unreachable!("non-boolean expressions not allowed in conditions");
@@ -1756,7 +1756,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
 
                 let lhs_dst = match lhs.typ() {
                     Type::Base(BaseType::Bool) => Dst::Reg(Rdi),
-                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str)
+                    Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Str)
                     | Type::Array { .. } => {
                         unreachable!("non-boolean expressions not allowed in conditions");
                     }
@@ -1764,7 +1764,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
 
                 let rhs_dst = match rhs.typ() {
                     Type::Base(BaseType::Bool) => Dst::Reg(Rsi),
-                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str)
+                    Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Str)
                     | Type::Array { .. } => {
                         unreachable!("non-boolean expressions not allowed in conditions");
                     }
@@ -1794,14 +1794,14 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
                 let rhs = &self.ast.expressions[*rhs_index as usize];
 
                 let lhs_dst = match lhs.typ() {
-                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => Dst::Reg(Rdi),
+                    Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => Dst::Reg(Rdi),
                     Type::Base(BaseType::Str) | Type::Array { .. } => {
                         Dst::View { len: Rdi, ptr: Rsi }
                     }
                 };
 
                 let rhs_dst = match rhs.typ() {
-                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => Dst::Reg(Rsi),
+                    Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => Dst::Reg(Rsi),
                     Type::Base(BaseType::Str) | Type::Array { .. } => {
                         Dst::View { len: Rdx, ptr: Rcx }
                     }
@@ -1891,7 +1891,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                 let inner = &self.ast.expressions[*expression_index as usize];
                 self.definition(inner, base, dst_offset);
             }
-            Expression::Int(integer) => {
+            Expression::I64(integer) => {
                 _ = writeln!(
                     self.asm,
                     " mov rdi, {integer}\
@@ -1912,7 +1912,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                     self.asm,
                     " mov qword [{base} + {dst_offset}], str_{label}_len\
                     \n mov qword [{base} + {dst_offset} + {ptr_offset}], str_{label}\n",
-                    ptr_offset = size_of::<uint>()
+                    ptr_offset = size_of::<u64>()
                 );
             }
             Expression::Array { base_type, items } => {
@@ -1969,7 +1969,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                         " mov qword [{base} + {dst_offset}], {len}\n"
                                     );
                                 }
-                                Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => {
+                                Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => {
                                     unreachable!("cannot take the length of numerical types")
                                 }
                             }
@@ -1992,7 +1992,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                         }
                         Expression::False
                         | Expression::True
-                        | Expression::Int(_)
+                        | Expression::I64(_)
                         | Expression::Ascii(_)
                         | Expression::Unary { .. }
                         | Expression::BooleanUnary { .. }
@@ -2007,7 +2007,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                     let operand = &self.ast.expressions[*operand_index as usize];
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
-                        Type::Base(BaseType::Int) => {
+                        Type::Base(BaseType::I64) => {
                             _ = writeln!(
                                 self.asm,
                                 " not rdi\
@@ -2030,13 +2030,13 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                     let operand = &self.ast.expressions[*operand_index as usize];
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
-                        Type::Base(BaseType::Int) => {
+                        Type::Base(BaseType::I64) => {
                             let Position { line, column } = self.src.position(*op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_safe_abs\
+                                \n call i64_safe_abs\
                                 \n mov [{base} + {dst_offset}], rdi\n",
                             );
                         }
@@ -2050,10 +2050,10 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                     let operand = &self.ast.expressions[*operand_index as usize];
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
-                        Type::Base(BaseType::Int) => {
+                        Type::Base(BaseType::I64) => {
                             _ = writeln!(
                                 self.asm,
-                                " call int_wrapping_abs\
+                                " call i64_wrapping_abs\
                                 \n mov [{base} + {dst_offset}], rdi\n"
                             );
                         }
@@ -2067,13 +2067,13 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                     let operand = &self.ast.expressions[*operand_index as usize];
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
-                        Type::Base(BaseType::Int) => {
+                        Type::Base(BaseType::I64) => {
                             let Position { line, column } = self.src.position(*op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_saturating_abs\
+                                \n call i64_saturating_abs\
                                 \n mov [{base} + {dst_offset}], rdi\n",
                             );
                         }
@@ -2087,13 +2087,13 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                     let operand = &self.ast.expressions[*operand_index as usize];
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
-                        Type::Base(BaseType::Int) => {
+                        Type::Base(BaseType::I64) => {
                             let Position { line, column } = self.src.position(*op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_safe_negate\
+                                \n call i64_safe_negate\
                                 \n mov [{base} + {dst_offset}], rdi\n",
                             );
                         }
@@ -2103,12 +2103,12 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_safe_negate\
+                                \n call i64_safe_negate\
                                 \n mov [{base} + {dst_offset}], dil\n",
                             );
                         }
                         Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
-                            unreachable!("cannot negate non int/ascii values");
+                            unreachable!("cannot negate non i64/ascii values");
                         }
                     }
                 }
@@ -2116,7 +2116,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                     let operand = &self.ast.expressions[*operand_index as usize];
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
-                        Type::Base(BaseType::Int) => {
+                        Type::Base(BaseType::I64) => {
                             _ = writeln!(
                                 self.asm,
                                 " neg rdi\
@@ -2131,7 +2131,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                             );
                         }
                         Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
-                            unreachable!("cannot negate non int/ascii values");
+                            unreachable!("cannot negate non i64/ascii values");
                         }
                     }
                 }
@@ -2139,13 +2139,13 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                     let operand = &self.ast.expressions[*operand_index as usize];
                     self.expression(operand, Dst::Reg(Rdi));
                     match operand.typ() {
-                        Type::Base(BaseType::Int) => {
+                        Type::Base(BaseType::I64) => {
                             let Position { line, column } = self.src.position(*op_col);
                             _ = writeln!(
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_saturating_negate\
+                                \n call i64_saturating_negate\
                                 \n mov [{base} + {dst_offset}], rdi\n",
                             );
                         }
@@ -2155,12 +2155,12 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_saturating_negate\
+                                \n call i64_saturating_negate\
                                 \n mov [{base} + {dst_offset}], dil\n",
                             );
                         }
                         Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
-                            unreachable!("cannot negate non int/ascii values");
+                            unreachable!("cannot negate non i64/ascii values");
                         }
                     }
                 }
@@ -2178,7 +2178,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                 self.expression(value, Dst::Reg(Rdi));
 
                 match value.typ() {
-                    Type::Base(BaseType::Int) => {
+                    Type::Base(BaseType::I64) => {
                         _ = writeln!(self.asm, " mov [{base} + {dst_offset}], rdi\n");
                     }
                     Type::Base(BaseType::Ascii) => {
@@ -2196,7 +2196,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                     Type::Base(BaseType::Bool) => {
                         _ = writeln!(self.asm, " mov [{base} + {dst_offset}], dil\n");
                     }
-                    Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Str)
+                    Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Str)
                     | Type::Array { .. } => {
                         unreachable!("cannot appear in boolean expressions");
                     }
@@ -2216,7 +2216,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                 let var = self.resolve(ast_variable.name);
                 let src_offset = var.offset;
                 match identifier_typ {
-                    Type::Base(BaseType::Int) => {
+                    Type::Base(BaseType::I64) => {
                         _ = writeln!(
                             self.asm,
                             " mov rdi, [{base} + {src_offset}]\
@@ -2237,13 +2237,13 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                             \n mov rsi, [{base} + {src_offset} + {ptr_offset}]\
                             \n mov [{base} + {dst_offset}], rdi\
                             \n mov [{base} + {dst_offset} + {ptr_offset}], rsi\n",
-                            ptr_offset = size_of::<uint>()
+                            ptr_offset = size_of::<u64>()
                         );
                     }
                     Type::Array { base_type: array_typ, len } => {
                         debug_assert!(*len > 0, "arrays of 0 items are not allowed");
                         match *array_typ {
-                            BaseType::Int => {
+                            BaseType::I64 => {
                                 _ = writeln!(
                                     self.asm,
                                     " lea rdi, [{base} + {dst_offset}]\
@@ -2278,7 +2278,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                 self.expression(value, Dst::default(&Type::Base(*base_type)));
 
                 match base_type {
-                    BaseType::Int => _ = writeln!(self.asm, " mov [{base} + {dst_offset}], rdi\n"),
+                    BaseType::I64 => _ = writeln!(self.asm, " mov [{base} + {dst_offset}], rdi\n"),
                     BaseType::Ascii | BaseType::Bool => {
                         _ = writeln!(self.asm, " mov [{base} + {dst_offset}], dil\n");
                     }
@@ -2287,7 +2287,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                             self.asm,
                             " mov [{base} + {dst_offset}], rdi\
                             \n mov [{base} + {dst_offset} + {ptr_offset}], rsi\n",
-                            ptr_offset = size_of::<uint>()
+                            ptr_offset = size_of::<u64>()
                         );
                     }
                 }
@@ -2350,7 +2350,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                     \n push rdi\n"
                                 );
                             }
-                            BaseType::Int | BaseType::Ascii | BaseType::Bool => {
+                            BaseType::I64 | BaseType::Ascii | BaseType::Bool => {
                                 unreachable!("only strings are allowed in nested index expressions")
                             }
                         }
@@ -2367,7 +2367,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                     \n push rdi\n",
                                 );
                             }
-                            BaseType::Int | BaseType::Str | BaseType::Bool => {
+                            BaseType::I64 | BaseType::Str | BaseType::Bool => {
                                 unreachable!("only ascii are allowed in nested index expressions")
                             }
                         }
@@ -2413,7 +2413,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                     "\n mov rsi, [rbp + {var_offset} + {ptr_offset}]\
                                     \n pop rdx\
                                     \n mov [rsi + rdx], dil\n",
-                                    ptr_offset = size_of::<uint>()
+                                    ptr_offset = size_of::<u64>()
                                 );
                             }
                             Type::Array { len: array_len, .. } => {
@@ -2430,7 +2430,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
 
                                 if let AssignmentOp::Equals = op {
                                     match base_type {
-                                        BaseType::Int => {
+                                        BaseType::I64 => {
                                             self.expression(new_value, Dst::Reg(Rdi));
                                             _ = writeln!(
                                                 self.asm,
@@ -2458,13 +2458,13 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                                 \n mov [rbp + {var_offset} + rdx], rdi\
                                                 \n mov [rbp + {var_offset} + rdx + {ptr_offset}], rsi\n",
                                                 base_type_size = base_type.size(),
-                                                ptr_offset = size_of::<uint>()
+                                                ptr_offset = size_of::<u64>()
                                             );
                                         }
                                     }
                                 } else {
                                     self.expression(new_value, Dst::Reg(Rdi));
-                                    // Note: *op*= operators can only assign to int variables
+                                    // Note: *op*= operators can only assign to i64 variables
                                     _ = writeln!(
                                         self.asm,
                                         " mov rsi, rdi\
@@ -2480,7 +2480,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                                 self.asm,
                                                 " mov rdx, {line}\
                                                 \n mov rcx, {column}\
-                                                \n call int_safe_pow",
+                                                \n call i64_safe_pow",
                                             );
                                         }
                                         AssignmentOp::WrappingPow => {
@@ -2490,7 +2490,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                                 self.asm,
                                                 " mov rdx, {line}\
                                                 \n mov rcx, {column}\
-                                                \n call int_wrapping_pow",
+                                                \n call i64_wrapping_pow",
                                             );
                                         }
                                         AssignmentOp::SaturatingPow => {
@@ -2500,7 +2500,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                                 self.asm,
                                                 " mov rdx, {line}\
                                                 \n mov rcx, {column}\
-                                                \n call int_saturating_pow",
+                                                \n call i64_saturating_pow",
                                             );
                                         }
                                         AssignmentOp::Times => {
@@ -2510,14 +2510,14 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                                 self.asm,
                                                 " mov rdx, {line}\
                                                 \n mov rcx, {column}\
-                                                \n call int_safe_mul",
+                                                \n call i64_safe_mul",
                                             );
                                         }
                                         AssignmentOp::WrappingTimes => {
                                             _ = writeln!(self.asm, " imul rdi, rsi");
                                         }
                                         AssignmentOp::SaturatingTimes => {
-                                            _ = writeln!(self.asm, " call int_saturating_mul");
+                                            _ = writeln!(self.asm, " call i64_saturating_mul");
                                         }
                                         AssignmentOp::Divide => {
                                             let Position { line, column } =
@@ -2526,7 +2526,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                                 self.asm,
                                                 " mov rdx, {line}\
                                                 \n mov rcx, {column}\
-                                                \n call int_safe_div",
+                                                \n call i64_safe_div",
                                             );
                                         }
                                         AssignmentOp::WrappingDivide => {
@@ -2536,7 +2536,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                                 self.asm,
                                                 " mov rdx, {line}\
                                                 \n mov rcx, {column}\
-                                                \n call int_wrapping_div",
+                                                \n call i64_wrapping_div",
                                             );
                                         }
                                         AssignmentOp::SaturatingDivide => {
@@ -2546,7 +2546,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                                 self.asm,
                                                 " mov rdx, {line}\
                                                 \n mov rcx, {column}\
-                                                \n call int_saturating_div",
+                                                \n call i64_saturating_div",
                                             );
                                         }
                                         AssignmentOp::Remainder => {
@@ -2556,7 +2556,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                                 self.asm,
                                                 " mov rdx, {line}\
                                                 \n mov rcx, {column}\
-                                                \n call int_safe_remainder",
+                                                \n call i64_safe_remainder",
                                             );
                                         }
                                         AssignmentOp::Plus => {
@@ -2566,14 +2566,14 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                                 self.asm,
                                                 " mov rdx, {line}\
                                                 \n mov rcx, {column}\
-                                                \n call int_safe_add",
+                                                \n call i64_safe_add",
                                             );
                                         }
                                         AssignmentOp::WrappingPlus => {
                                             _ = writeln!(self.asm, " add rdi, rsi");
                                         }
                                         AssignmentOp::SaturatingPlus => {
-                                            _ = writeln!(self.asm, " call int_saturating_add");
+                                            _ = writeln!(self.asm, " call i64_saturating_add");
                                         }
                                         AssignmentOp::Minus => {
                                             let Position { line, column } =
@@ -2582,14 +2582,14 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                                 self.asm,
                                                 " mov rdx, {line}\
                                                 \n mov rcx, {column}\
-                                                \n call int_safe_sub",
+                                                \n call i64_safe_sub",
                                             );
                                         }
                                         AssignmentOp::WrappingMinus => {
                                             _ = writeln!(self.asm, " sub rdi, rsi");
                                         }
                                         AssignmentOp::SaturatingMinus => {
-                                            _ = writeln!(self.asm, " call int_saturating_sub");
+                                            _ = writeln!(self.asm, " call i64_saturating_sub");
                                         }
                                         AssignmentOp::And | AssignmentOp::BitAnd => {
                                             _ = writeln!(self.asm, " and rdi, rsi");
@@ -2607,7 +2607,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                                 self.asm,
                                                 " mov rdx, {line}\
                                                 \n mov rcx, {column}\
-                                                \n call int_safe_left_shift",
+                                                \n call i64_safe_left_shift",
                                             );
                                         }
                                         AssignmentOp::WrappingLeftShift => {
@@ -2617,7 +2617,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                                 self.asm,
                                                 " mov rdx, {line}\
                                                 \n mov rcx, {column}\
-                                                \n call int_wrapping_left_shift",
+                                                \n call i64_wrapping_left_shift",
                                             );
                                         }
                                         AssignmentOp::SaturatingLeftShift => {
@@ -2627,7 +2627,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                                 self.asm,
                                                 " mov rdx, {line}\
                                                 \n mov rcx, {column}\
-                                                \n call int_saturating_left_shift",
+                                                \n call i64_saturating_left_shift",
                                             );
                                         }
                                         AssignmentOp::RightShift => {
@@ -2637,7 +2637,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                                 self.asm,
                                                 " mov rdx, {line}\
                                                 \n mov rcx, {column}\
-                                                \n call int_safe_right_shift",
+                                                \n call i64_safe_right_shift",
                                             );
                                         }
                                         AssignmentOp::LeftRotate => {
@@ -2647,7 +2647,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                                 self.asm,
                                                 " mov rdx, {line}\
                                                 \n mov rcx, {column}\
-                                                \n call int_safe_left_rotate",
+                                                \n call i64_safe_left_rotate",
                                             );
                                         }
                                         AssignmentOp::RightRotate => {
@@ -2657,7 +2657,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                                 self.asm,
                                                 " mov rdx, {line}\
                                                 \n mov rcx, {column}\
-                                                \n call int_safe_right_rotate",
+                                                \n call i64_safe_right_rotate",
                                             );
                                         }
                                         AssignmentOp::Equals => {
@@ -2672,7 +2672,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                     );
                                 }
                             }
-                            Type::Base(BaseType::Int | BaseType::Ascii | BaseType::Bool) => {
+                            Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => {
                                 unreachable!(
                                     "only arrays and strings are allowed in index expressions"
                                 )
@@ -2684,7 +2684,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                     | Expression::Str { .. }
                     | Expression::Unary { .. }
                     | Expression::Temporary { .. }
-                    | Expression::Int(_)
+                    | Expression::I64(_)
                     | Expression::False
                     | Expression::Array { .. }
                     | Expression::True
@@ -2711,7 +2711,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                 if let AssignmentOp::Equals = op {
                     self.definition(new_value, Base::Rbp, dst_offset);
                 } else {
-                    // Note: *op*= operators can only assign to int variables
+                    // Note: *op*= operators can only assign to i64 variables
                     self.expression(new_value, Dst::Reg(Rdi));
 
                     _ = writeln!(
@@ -2727,7 +2727,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_safe_pow",
+                                \n call i64_safe_pow",
                             );
                         }
                         AssignmentOp::WrappingPow => {
@@ -2736,7 +2736,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_wrapping_pow",
+                                \n call i64_wrapping_pow",
                             );
                         }
                         AssignmentOp::SaturatingPow => {
@@ -2745,7 +2745,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_saturating_pow",
+                                \n call i64_saturating_pow",
                             );
                         }
                         AssignmentOp::Times => {
@@ -2754,12 +2754,12 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_safe_mul",
+                                \n call i64_safe_mul",
                             );
                         }
                         AssignmentOp::WrappingTimes => _ = writeln!(self.asm, " imul rdi, rsi"),
                         AssignmentOp::SaturatingTimes => {
-                            _ = writeln!(self.asm, " call int_saturating_mul");
+                            _ = writeln!(self.asm, " call i64_saturating_mul");
                         }
                         AssignmentOp::Divide => {
                             let Position { line, column } = self.src.position(op_col);
@@ -2767,7 +2767,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_safe_div",
+                                \n call i64_safe_div",
                             );
                         }
                         AssignmentOp::WrappingDivide => {
@@ -2776,7 +2776,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_wrapping_div",
+                                \n call i64_wrapping_div",
                             );
                         }
                         AssignmentOp::SaturatingDivide => {
@@ -2785,7 +2785,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_saturating_div",
+                                \n call i64_saturating_div",
                             );
                         }
                         AssignmentOp::Remainder => {
@@ -2794,7 +2794,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_safe_remainder",
+                                \n call i64_safe_remainder",
                             );
                         }
                         AssignmentOp::Plus => {
@@ -2803,12 +2803,12 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_safe_add",
+                                \n call i64_safe_add",
                             );
                         }
                         AssignmentOp::WrappingPlus => _ = writeln!(self.asm, " add rdi, rsi"),
                         AssignmentOp::SaturatingPlus => {
-                            _ = writeln!(self.asm, " call int_saturating_add");
+                            _ = writeln!(self.asm, " call i64_saturating_add");
                         }
                         AssignmentOp::Minus => {
                             let Position { line, column } = self.src.position(op_col);
@@ -2816,12 +2816,12 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_safe_sub",
+                                \n call i64_safe_sub",
                             );
                         }
                         AssignmentOp::WrappingMinus => _ = writeln!(self.asm, " sub rdi, rsi"),
                         AssignmentOp::SaturatingMinus => {
-                            _ = writeln!(self.asm, " call int_saturating_sub");
+                            _ = writeln!(self.asm, " call i64_saturating_sub");
                         }
                         AssignmentOp::And | AssignmentOp::BitAnd => {
                             _ = writeln!(self.asm, " and rdi, rsi");
@@ -2836,7 +2836,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_safe_left_shift",
+                                \n call i64_safe_left_shift",
                             );
                         }
                         AssignmentOp::WrappingLeftShift => {
@@ -2845,7 +2845,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_wrapping_left_shift",
+                                \n call i64_wrapping_left_shift",
                             );
                         }
                         AssignmentOp::SaturatingLeftShift => {
@@ -2854,7 +2854,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_saturating_left_shift",
+                                \n call i64_saturating_left_shift",
                             );
                         }
                         AssignmentOp::RightShift => {
@@ -2863,7 +2863,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_safe_right_shift",
+                                \n call i64_safe_right_shift",
                             );
                         }
                         AssignmentOp::LeftRotate => {
@@ -2872,7 +2872,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_safe_left_rotate",
+                                \n call i64_safe_left_rotate",
                             );
                         }
                         AssignmentOp::RightRotate => {
@@ -2881,7 +2881,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                                 self.asm,
                                 " mov rdx, {line}\
                                 \n mov rcx, {column}\
-                                \n call int_safe_right_rotate",
+                                \n call i64_safe_right_rotate",
                             );
                         }
                         AssignmentOp::Equals => unreachable!("handled in the previous branch"),
@@ -2892,7 +2892,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
             }
             Expression::False
             | Expression::True
-            | Expression::Int(_)
+            | Expression::I64(_)
             | Expression::Ascii(_)
             | Expression::Str { .. }
             | Expression::Array { .. }
@@ -2925,12 +2925,12 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
         self.expression(value, Dst::default(&value_type));
 
         match value_type {
-            Type::Base(BaseType::Int) => _ = writeln!(self.asm, " call int_print\n"),
+            Type::Base(BaseType::I64) => _ = writeln!(self.asm, " call i64_print\n"),
             Type::Base(BaseType::Ascii) => _ = writeln!(self.asm, " call ascii_print\n"),
             Type::Base(BaseType::Bool) => _ = writeln!(self.asm, " call bool_print\n"),
             Type::Base(BaseType::Str) => _ = writeln!(self.asm, " call str_print\n"),
             Type::Array { base_type, .. } => match base_type {
-                BaseType::Int => _ = writeln!(self.asm, " call int_array_debug_print\n"),
+                BaseType::I64 => _ = writeln!(self.asm, " call i64_array_debug_print\n"),
                 BaseType::Ascii => _ = writeln!(self.asm, " call ascii_array_debug_print\n"),
                 BaseType::Bool => _ = writeln!(self.asm, " call bool_array_debug_print\n"),
                 BaseType::Str => _ = writeln!(self.asm, " call str_array_debug_print\n"),
@@ -2943,12 +2943,12 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
         self.expression(value, Dst::default(&value_type));
 
         match value_type {
-            Type::Base(BaseType::Int) => _ = writeln!(self.asm, " call int_eprint\n"),
+            Type::Base(BaseType::I64) => _ = writeln!(self.asm, " call i64_eprint\n"),
             Type::Base(BaseType::Ascii) => _ = writeln!(self.asm, " call ascii_eprint\n"),
             Type::Base(BaseType::Bool) => _ = writeln!(self.asm, " call bool_eprint\n"),
             Type::Base(BaseType::Str) => _ = writeln!(self.asm, " call str_eprint\n"),
             Type::Array { base_type: typ, .. } => match typ {
-                BaseType::Int => _ = writeln!(self.asm, " call int_array_debug_eprint\n"),
+                BaseType::I64 => _ = writeln!(self.asm, " call i64_array_debug_eprint\n"),
                 BaseType::Ascii => _ = writeln!(self.asm, " call ascii_array_debug_eprint\n"),
                 BaseType::Bool => _ = writeln!(self.asm, " call bool_array_debug_eprint\n"),
                 BaseType::Str => _ = writeln!(self.asm, " call str_array_debug_eprint\n"),

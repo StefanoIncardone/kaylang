@@ -56,7 +56,7 @@ menù;
 
 ## Integers
 
-Integers, of type `int`, are represented in source code as base 10 numbers, and are represented in
+Integers, of type `i64`, are represented in source code as base 10 numbers, and are represented in
 memory as signed 64 bit values:
 
 ```kay
@@ -156,7 +156,7 @@ Strings can also be indexed with zero-based indexing to gain access to individua
 ## Arrays
 
 Arrays are a collection of **at least 2 values** of the same type under a single variable, so an
-array of three `int` would be of type `int[3]`.
+array of three `i64` would be of type `i64[3]`.
 
 Arrays of 0 elements are not allowed because they are phantom values not even occupying any memory,
 while arrays of 1 element are not allowed becasue they are functionally equivalent to that element
@@ -167,7 +167,7 @@ Arrays are defined as comma-separated lists of items, as follows:
 ```kay
 [];                       # Error: arrays of zero items are not allowed
 [19];                     # Error: arrays of one item are not allowed
-[12, 21];                 # this declares an array of two items, namely `int[2]`
+[12, 21];                 # this declares an array of two items, namely `i64[2]`
 ["Kay", "let's", "go!",]; # trailing commas are allowed, thus the array would be of type `str[3]]
 ```
 
@@ -212,13 +212,13 @@ let 2plus2 = "2 + 2"; # Error: not a valid name, cannot start with a number
 let longlonglonglonglonglonglonglonglonglonglonglonglonglonglonglong; # Error: over the limit of 63 characters
 
 # 3. optional type annotations
-let inferred = 42; # the type will be inferred as `int` by the expression to the right of the `=` sign
-let explicit: int = 42; # with the type annotation the type is specified to be `int
-let mismatched: int = "42"; # Error: annotated type differs from actual value, expected `int` but got `str`
+let inferred = 42; # the type will be inferred as `i64` by the expression to the right of the `=` sign
+let explicit: i64 = 42; # with the type annotation the type is specified to be `i64
+let mismatched: i64 = "42"; # Error: annotated type differs from actual value, expected `i64` but got `str`
 
 # 4. optional variable values
 # when no initial value is specified a default value will be assigned base on the annotated type
-let default_initialized_int: int; # 0 is the default value for `int`
+let default_initialized_i64: i64; # 0 is the default value for `i64`
 let default_initialized_ascii: ascii; # '\0' is the default value for `ascii`
 let default_initialized_bool: bool; # `false` is the default value for `bool`
 let default_initialized_str: str; # "" is the default value for `str`
@@ -234,8 +234,8 @@ let cannot_infer_type; # Error: missing either type annotation or initial value 
 > Here are some usefull definitions to keep in mind
 >
 > ```kay
-> let INT_MIN = -9223372036854775808;
-> let INT_MAX = 9223372036854775807;
+> let I64_MIN = -9223372036854775808;
+> let I64_MAX = 9223372036854775807;
 > ```
 
 >[!NOTE]
@@ -263,13 +263,13 @@ Expressions follow this order of operations (precedence from highest to lowest):
 
         ```kay
         -twelve # -> -12
-        -INT_MIN # -> crash: overflow, -INT_MIN -> INT_MAX + 1
+        -I64_MIN # -> crash: overflow, -I64_MIN -> I64_MAX + 1
         
         -\twelve # -> -12
-        -\INT_MIN # -> INT_MAX + 1 -> INT_MIN
+        -\I64_MIN # -> I64_MAX + 1 -> I64_MIN
 
         -|twelve # -> -12
-        -|INT_MIN # -> INT_MAX + 1 -> INT_MAX
+        -|I64_MIN # -> I64_MAX + 1 -> I64_MAX
         ```
 
     - unary integer absolute value `+`, `+\`, `+|`:
@@ -277,15 +277,15 @@ Expressions follow this order of operations (precedence from highest to lowest):
         ```kay
         +twelve # |12| == +12 -> 12
         +(-twelve) #|-12| == +(-12) -> 12
-        +INT_MIN # -> crash: overflow, +INT_MIN -> INT_MAX + 1
+        +I64_MIN # -> crash: overflow, +I64_MIN -> I64_MAX + 1
 
         +\twelve # -> -12
         +\(-twelve) #|-12| == +\(-12) -> 12
-        +\INT_MIN # -> INT_MAX + 1 -> INT_MAX
+        +\I64_MIN # -> I64_MAX + 1 -> I64_MAX
 
         +|twelve # -> 12
         +|(-twelve) #|-12| == +|(-12) -> 12
-        +|INT_MIN # -> INT_MAX + 1 -> INT_MIN
+        +|I64_MIN # -> I64_MAX + 1 -> I64_MIN
         ```
 
     - unary integer bitwise one's complement and boolean negation `!`:
@@ -300,38 +300,38 @@ Expressions follow this order of operations (precedence from highest to lowest):
 
     ```kay
     3 ** 2 # -> 9
-    INT_MAX ** 2 # -> crash: overflow
+    I64_MAX ** 2 # -> crash: overflow
 
     3 **\ 2 # -> 9
-    INT_MAX **\ 2 # -> 1
+    I64_MAX **\ 2 # -> 1
 
     3 **| 2 # -> 9
-    INT_MAX **| 2 # -> INT_MAX
+    I64_MAX **| 2 # -> I64_MAX
     ```
 
 - binary multiplication `*`, `*\`, `*|`, binary division `/`, `/\`, `/|` and binary remainder `%`:
 
     ```kay
     3 * 2 # -> 6
-    INT_MAX * 2 # -> crash: overlflow
-    INT_MIN * -1 # -> equivalent to -INT_MIN
+    I64_MAX * 2 # -> crash: overlflow
+    I64_MIN * -1 # -> equivalent to -I64_MIN
     
     3 *\ 2 # -> 6
-    INT_MAX *\ 2 # -> -2
-    INT_MIN *\ -1 # equivalent to -\INT_MIN
+    I64_MAX *\ 2 # -> -2
+    I64_MIN *\ -1 # equivalent to -\I64_MIN
     
     3 *| 2 # -> 6
-    INT_MAX *| 2 # -> -2
-    INT_MIN *| -1 # equivalent to -|INT_MIN
+    I64_MAX *| 2 # -> -2
+    I64_MIN *| -1 # equivalent to -|I64_MIN
     
     6 / 2 # -> 3
-    INT_MIN / -1 # -> crash: overflow, equivalent to -INT_MIN
+    I64_MIN / -1 # -> crash: overflow, equivalent to -I64_MIN
 
     6 /\ 2 # -> 3
-    INT_MIN /\ -1 # -> INT_MIN, equivalent to -\INT_MIN
+    I64_MIN /\ -1 # -> I64_MIN, equivalent to -\I64_MIN
 
     6 /| 2 # -> 3
-    INT_MIN /| -1 # -> INT_MAX, equivalent to -|INT_MIN
+    I64_MIN /| -1 # -> I64_MAX, equivalent to -|I64_MIN
     ```
 
 - binary addition `+` and binary subtraction `-`:
@@ -339,7 +339,7 @@ Expressions follow this order of operations (precedence from highest to lowest):
     ```kay
     12 + 21 # -> 33
     42 - 12 # -> 30
-    INT_MAX + 1 # -> error
+    I64_MAX + 1 # -> error
     ```
 
 - binary left shift `<<` and binary right shift `>>`:

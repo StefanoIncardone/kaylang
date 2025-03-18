@@ -86,11 +86,11 @@ array_variable = identifier;
 array_index    = array_variable, "[", integer_expression, "]";
 
 (* from highest precedence to lowest *)
-int_factor       = [unary_operator], (integer_literal | character_literal | identifier | ("(", integer_expression, ")") | array_index);
+i64_factor       = [unary_operator], (integer_literal | character_literal | identifier | ("(", integer_expression, ")") | array_index);
 boolean_factor   = [operator_not], (boolean_literal | identifier | ("(", boolean_expression, ")") | array_index);
 character_factor = character_literal | ((identifier | array_index), "[", integer_expression, "]");
 
-primary_expression        = int_factor | boolean_factor | character_factor | array_index | ("(", expression, ")");
+primary_expression        = i64_factor | boolean_factor | character_factor | array_index | ("(", expression, ")");
 exponentiative_expression = primary_expression, [operator_pow, primary_expression];
 multiplicative_expression = boolean_literal, [(operator_times | operator_divide | operator_remainder), boolean_literal];
 additive_expression       = multiplicative_expression, [(operator_plus | operator_minus), multiplicative_expression];

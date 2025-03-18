@@ -482,7 +482,7 @@ else ...;
 if answer %
 case 19 == 0 ...; # same as answer % 19 == 0
 case 21 == 3 ...; # same as answer % 21 == 3
-case 42 ...; # same as answer > 42 -> error: other branches evaluated to booleans while this evaluated to int
+case 42 ...; # same as answer > 42 -> error: other branches evaluated to booleans while this evaluated to i64
 else ...;
 
 # would be sugar for this
@@ -767,28 +767,28 @@ stack-allocated collection of a compile time known fixed amount of items:
 ```kay
 # initial capacity cannot be specified from variables
 let capacity = 19;
-let code: int[capacity]; # error
+let code: i64[capacity]; # error
 
 # unless we introduce compile-time constants
 const capacity = 19;
-let code: int[capacity]; # works
+let code: i64[capacity]; # works
 
 # initialized arrays could opt not to specify their lengths, it will get inferred where possible
-let codes: int[] = [1, 2, 3]; # will be of length 3
+let codes: i64[] = [1, 2, 3]; # will be of length 3
 
 # or (need to decide wether to keep these syntaxes and only allow to specify the type after the colon)
-let codes = int[1, 2 ,3];                   # array of three items with indexes 0, 1 and 2 initialized to 1, 2, 3
-let codes = int[6: 1, 2, 3];                # array of six items with indexes 0, 1 and 2 initialized to 1, 2, 3
-let codes = int[6: 1 = 1, 3 = 2, 0 = 3];    # array of six items with indexes 1, 3 and 0 initialized to 1, 2, 3
+let codes = i64[1, 2 ,3];                   # array of three items with indexes 0, 1 and 2 initialized to 1, 2, 3
+let codes = i64[6: 1, 2, 3];                # array of six items with indexes 0, 1 and 2 initialized to 1, 2, 3
+let codes = i64[6: 1 = 1, 3 = 2, 0 = 3];    # array of six items with indexes 1, 3 and 0 initialized to 1, 2, 3
 
 # or
-let codes = int[6][1 = 1, 3 = 2, 0 = 3];    # array of six items with indexes 1, 3 and 0 initialized to 1, 2, 3
+let codes = i64[6][1 = 1, 3 = 2, 0 = 3];    # array of six items with indexes 1, 3 and 0 initialized to 1, 2, 3
 ```
 
 will borrow useful features from C like indexed initialization:
 
 ```kay
-let codes: int[19] = [
+let codes: i64[19] = [
     2 = 5, # element at index 2 will contain the value 5
     0 = 9,
     3..18 = 3, # items from index 3 to index 18 will contain the value 3
@@ -861,15 +861,15 @@ heap-allocated collections of a possibly unknown amount of items:
 ```kay
 # the question mark denotes a dynamic array, or a list
 # the initial capacity of the list will be set to some amount (e.g. 4/8/16) for performance
-let codes: int[..];
+let codes: i64[..];
 
 # an optional initial capacity can be specified
-let codes: int[19..]; # for consistency with initializing some members
-let codes: int[19..: 1 = 0, 3 = 5]; # for consistency with initializing some members in arrays
+let codes: i64[19..]; # for consistency with initializing some members
+let codes: i64[19..: 1 = 0, 3 = 5]; # for consistency with initializing some members in arrays
 
 # initial capacity can be specified from variables
 let capacity = 19;
-let code: int[capacity..]
+let code: i64[capacity..]
 ```
 
 they can be manipulated in different ways (syntax yet to be dicided):
@@ -890,17 +890,17 @@ codes.remove(3); # removing at index 3
 ability to create a type with a "tag" discriminating which type is currently active
 
 ```kay
-type int_or_bool = int | bool;
+type i64_or_bool = i64 | bool;
 
-let x: int_or_bool = 1;
+let x: i64_or_bool = 1;
 
-if x is int {
-    # x type is now inferred as int
+if x is i64 {
+    # x type is now inferred as i64
 } else {
     # x type is now inferred as bool
 }
 
-let y: int | bool = true; # type unions can also be implicit
+let y: i64 | bool = true; # type unions can also be implicit
 ```
 
 type unions can be used with if-case expressions:
@@ -919,15 +919,15 @@ let a = ["hello", "from", "stefano"];
 
 if array_eq(a, b)
 case let mismatch: none { println("equals"); } # would not be reached since there was a mismatch
-else let mismatch: uint { println(f"mismatch at index {mismatch}"); } # mismatch would have the value of 2
+else let mismatch: u64 { println(f"mismatch at index {mismatch}"); } # mismatch would have the value of 2
 
 if array_eq(a, b)
 case let mismatch: none { println("equals"); } # would not be reached since there was a mismatch
-case let mismatch: uint { println(f"mismatch at index {mismatch}"); } # mismatch would have the value of 2
+case let mismatch: u64 { println(f"mismatch at index {mismatch}"); } # mismatch would have the value of 2
 else { ... } # unreachable branch: all variants have been matched
 
 
-fn mismatch_index: uint? = array_eq[T: type, N: uint](dst: T[N]*, src: T[N]*) {
+fn mismatch_index: u64? = array_eq[T: type, N: u64](dst: T[N]*, src: T[N]*) {
     loop var i = N; i > 0; i -= 1 {
         if dst* != src* {
             return i;
@@ -1077,9 +1077,9 @@ struct Foo(
     # private write: no
     #
     # only set during construction, never able to be modified again
-    private let x0: int,
-    let x0: int, # implies private
-    x0: int, # implies private let
+    private let x0: i64,
+    let x0: i64, # implies private
+    x0: i64, # implies private let
 
     # public read: no
     # public write: no
@@ -1087,8 +1087,8 @@ struct Foo(
     # private write: yes
     #
     # can be modified inside struct method and functions
-    private var x0: int,
-    var x0: int, # implies private
+    private var x0: i64,
+    var x0: i64, # implies private
 
     # public read: yes
     # public write: no
@@ -1097,9 +1097,9 @@ struct Foo(
     #
     # only set during construction, never able to be modified again
     # can be read from outside
-    public let private let x0: int,
-    public let x0: int, # implies private let
-    public x0: int, # implies public let and private let
+    public let private let x0: i64,
+    public let x0: i64, # implies private let
+    public x0: i64, # implies public let and private let
 
     # public read: yes
     # public write: no
@@ -1107,9 +1107,9 @@ struct Foo(
     # private write: yes
     #
     # can be modified inside struct method and functions, but only read from outside
-    public let private var x0: int,
-    public let x0: int, # implies private let
-    public x0: int, # implies public let and private let
+    public let private var x0: i64,
+    public let x0: i64, # implies private let
+    public x0: i64, # implies public let and private let
 
     # public read: yes
     # public write: yes
@@ -1118,7 +1118,7 @@ struct Foo(
     #
     # disallowed: public var disagrees with private let, makes no sense being able to be modified
     # outside of the struct methods and functions and not inside
-    public var private let x0: int,
+    public var private let x0: i64,
 
     # public read: yes
     # public write: yes
@@ -1126,8 +1126,8 @@ struct Foo(
     # private write: yes
     #
     # can be accessed and modified from everywhere
-    public var private var x0: int,
-    public var x0: int, # implies private var
+    public var private var x0: i64,
+    public var x0: i64, # implies private var
 )
 ```
 
@@ -1148,7 +1148,7 @@ basically structs whith unnamed fields (referred to by index)
 named tuples:
 
 ```kay
-struct Point { int, int };
+struct Point { i64, i64 };
 
 let point = Point { 19, 21 };
 
@@ -1162,7 +1162,7 @@ let y = point.1;
 name-less tuples:
 
 ```kay
-let stefano: { str, int } = { "stefano", 23 };
+let stefano: { str, i64 } = { "stefano", 23 };
 
 # type can be omitted and therefore inferred
 let stefano = { "stefano", 23 };
@@ -1174,7 +1174,7 @@ let age = stefano.1;
 or with explicit struct keyword and named fields:
 
 ```kay
-let range: struct { min: int, max: int } = struct(1, 2);
+let range: struct { min: i64, max: i64 } = struct(1, 2);
 println range.min;
 println range.max;
 ```
@@ -1219,8 +1219,8 @@ struct Rgba {
 
 # but 'using' multiple different struct is
 struct Point {
-    x: int,
-    y: int,
+    x: i64,
+    y: i64,
 }
 
 struct Pixel {
@@ -1247,8 +1247,8 @@ struct Pixel {
     union {
         position: Point,
         struct {
-            x: int,
-            y: int,
+            x: i64,
+            y: i64,
         },
     },
 }
@@ -1374,7 +1374,7 @@ Having a struct such as:
 
 ```kay
 struct Foo {
-    x: int,
+    x: i64,
     y: ascii,
     z: str,
 }
@@ -1386,7 +1386,7 @@ following valid kay code result:
 ```kay
 # size = 32, align = 8
 struct Foo {
-    x: int,   # size = 8,  offset = 0,  align = 8 -> 0:  |#|#|#|#|#|#|#|#|
+    x: i64,   # size = 8,  offset = 0,  align = 8 -> 0:  |#|#|#|#|#|#|#|#|
     y: ascii, # size = 1,  offset = 8,  align = 1 -> 8:  |#| | | | | | | |
     z: str,   # size = 16, offset = 16, align = 8 -> 16: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
 }
@@ -1400,7 +1400,7 @@ could also emit warnings when wasting space, so a struct such as:
 # size = 40, align = 8
 struct Foo {
     a: ascii, # size = 1,  align = 1, offset = 0:  |#| | | | | | | |
-    x: int,   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
+    x: i64,   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
     y: ascii, # size = 1,  align = 1, offset = 16: |#| | | | | | | |
     z: str,   # size = 16, align = 8, offset = 24: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
 }
@@ -1417,7 +1417,7 @@ Warning: struct has unoptimal field layout
 13 |        a: ascii, # size = 1,  align = 1,offset = 0:  |#| | | | | | | |
    |        ^ this field occupies only 1 byte
    |
-14 |        x: int,   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
+14 |        x: i64,   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
 15 |        y: ascii, # size = 1,  align = 1, offset = 16: |#| | | | | | | |
    |        ^ this field also occupies only 1 byte, but is separate from the previous
    |
@@ -1432,7 +1432,7 @@ Help: an optimized layout could look like this
 14 |        y: ascii, # size = 1,  align = 1, offset = 1:  |_|#| | | | | | |
    |        ^ this field is placed next to the previous one, thus not wasting space
    |
-15 |        x: int,   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
+15 |        x: i64,   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
 16 |        z: str,   # size = 16, align = 8, offset = 16: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
 17 | }
    |
@@ -1440,7 +1440,7 @@ Note: a packed layout could look like this
    |
 11 | # size = 26, align = 1
 12 | @packed struct Foo {
-13 |        x: int,   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
+13 |        x: i64,   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
 14 |        z: str,   # size = 16, align = 8, offset = 16: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
 15 |        a: ascii, # size = 1,  align = 1, offset = 24: |#|_|
 16 |        y: ascii, # size = 1,  align = 1, offset = 25: |_|#|
@@ -1458,7 +1458,7 @@ a `___` could be a padding member, meaning retaining the usual padding amount:
 # size = 26, align = 1
 @packed struct Foo {
     a: ascii, # size = 1,  align = 1, offset = 0:  |#|_|_|_|_|_|_|_|_|
-    x: int,   # size = 8,  align = 8, offset = 1:  |_|#|#|#|#|#|#|#|#|
+    x: i64,   # size = 8,  align = 8, offset = 1:  |_|#|#|#|#|#|#|#|#|
     y: ascii, # size = 1,  align = 1, offset = 9:  |#|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|
     z: str,   # size = 16, align = 8, offset = 10: |_|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
 }
@@ -1471,7 +1471,7 @@ could be use as:
 @packed struct Foo {
     a: ascii, # size = 1,  align = 1, offset = 0:  |#|_|_|_|_|_|_|_|
     ___,      # size = 7,  align = 1, offset = 1:  |_|#|#|#|#|#|#|#|
-    x: int,   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
+    x: i64,   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
     y: ascii, # size = 1,  align = 1, offset = 16: |#|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|
     z: str,   # size = 16, align = 8, offset = 17: |_|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
 }
@@ -1484,14 +1484,14 @@ pointers are going to come in different flavours (introducing `none` keyword):
 ```kay
 let answer = 42;
 
-let pointer: int*; # owned pointer, pointing to owned memory (will free the memory it owns when going out of scope or something)
-let reference: int&; # borrowed pointer, pointing to non-owned memory (will possibly support lifetimes)
+let pointer: i64*; # owned pointer, pointing to owned memory (will free the memory it owns when going out of scope or something)
+let reference: i64&; # borrowed pointer, pointing to non-owned memory (will possibly support lifetimes)
 
 # avery pointer type can be created with the same syntax
 pointer = &answer;
 reference = &answer;
 
-let dereferenced: int;
+let dereferenced: i64;
 
 # checking for none is enforced by the compiler
 if reference != none {
@@ -1509,12 +1509,12 @@ dereferenced = ^reference;
 basically just 'type safe' indexes with semantics roughly similar to pointers and borrow checking
 
 ```kay
-# imagine there being different kinds of integers: u8, u16, u32, u64, uint
+# imagine there being different kinds of integers: u8, u16, u32, u64, u64
 
-let some_array: int[3] = [1, 2, 3];
+let some_array: i64[3] = [1, 2, 3];
 # would basically get the value of the index between brackets, syntax is similar to regular pointers
-let index_pointer: int&<u8, some_array ## can specify to what this index refers to ##> = &some_array[0];
-let index_pointer: int&<u8 ## or it can be inferred from the right hand side of the assignment ##> = &some_array[0];
+let index_pointer: i64&<u8, some_array ## can specify to what this index refers to ##> = &some_array[0];
+let index_pointer: i64&<u8 ## or it can be inferred from the right hand side of the assignment ##> = &some_array[0];
 
 # would basically be syntactic sugar for
 let index_pointer: u8 = 0;
@@ -1523,8 +1523,8 @@ let index_pointer: u8 = 0;
 let index_pointer = &<u8>some_array[0];
 
 # if the array has a known length bigger that the index pointer size it would result in an error
-let some_array: int[257] = [...];
-let index_pointer: int&<u8> = &some_array[0]; # Error: index type is too small to index into all array items
+let some_array: i64[257] = [...];
+let index_pointer: i64&<u8> = &some_array[0]; # Error: index type is too small to index into all array items
 
 # would need no bounds checking since bounds checking has already been performed during index pointer definition
 let first_item = some_array[index_pointer];
@@ -1533,14 +1533,14 @@ let first_item = some_array[index_pointer];
 index pointer should be treated differently than regular pointers
 
 ```kay
-let list: int[3..] = [1, 2, 3]; # growable array
+let list: i64[3..] = [1, 2, 3]; # growable array
 # indexes of width smaller that the list's length are allowed since length is not known at compile
 # time, hence its the programmer's responsibility to make sure to have the proper index type,
 # thus this u8 index pointer can only reach the first 255 items of the list
 let list_index_pointer = &<u8>list[0];
 let list_pointer = &list[0];
 
-fn append(list: int[..], item: int) {
+fn append(list: i64[..], item: i64) {
     # append operation only adds items to the end of the list:
     # - does not invalidate previously created indexes
     # - it may invalidate regular pointers if the list were to reallocate
@@ -1548,7 +1548,7 @@ fn append(list: int[..], item: int) {
 }
 
 # could create attributes to signal possible indexs invalidation of the specified list
-fn int = pop(@invalidates_indexes list: &var int[..]) {
+fn i64 = pop(@invalidates_indexes list: &var i64[..]) {
     # pop operation only removes from the end of the list:
     # - may invalidate indexe poitners that pointed to the end of the list
     # - may invalidate regular pointers that pointed to the end of the list
@@ -1559,7 +1559,7 @@ let last_element_index = &<u8>list[len list - 1];
 let last_element = pop(&var list); # Error: cannot pop, it would invalidate index 'last_element_indexe'
 
 # example usage
-fn &int = get(list: &var int[..], index: int&<u8, list>) { ... }
+fn &i64 = get(list: &var i64[..], index: i64&<u8, list>) { ... }
 ```
 
 ## Optional types (nullable pointers)
@@ -1569,15 +1569,15 @@ they are basically tagged unions in the case of non-pointer variables (like Rust
 
 ```kay
 # nullable pointers are just "optional pointers"
-let nullable: int*?;
-let nullable: int&?;
-let nullable: int& | none;
+let nullable: i64*?;
+let nullable: i64&?;
+let nullable: i64& | none;
 
-let option: int? = 42; # this will create a variable that has a value
-let option: int? = none; # this will create a variable that doesn't have a value
-let option: int | none = none; # this will create a variable that doesn't have a value
+let option: i64? = 42; # this will create a variable that has a value
+let option: i64? = none; # this will create a variable that doesn't have a value
+let option: i64 | none = none; # this will create a variable that doesn't have a value
 
-let maybe: int?;
+let maybe: i64?;
 
 # checking for none is enforced by the compiler
 if option != none {
@@ -1598,8 +1598,8 @@ maybe this is not useful, could be implemented as a type union to reduce the lan
 
 ```kay
 # optionals
-let optional_int: int?;
-let optional_int: int | none;
+let optional_i64: i64?;
+let optional_i64: i64 | none;
 
 # or
 type Option<T> = T | none;
@@ -1611,17 +1611,17 @@ enum Option<T> {
 }
 
 # thus
-let optional_int_in_rust: Option<int>;
+let optional_i64_in_rust: Option<i64>;
 
 # errors
-let int_or_error: int!SomeError;
-let int_or_error: int | SomeError;
-let int_or_int_error: int | int; # would need to find a way to express this
+let i64_or_error: i64!SomeError;
+let i64_or_error: i64 | SomeError;
+let i64_or_i64_error: i64 | i64; # would need to find a way to express this
 
-# or "force" the user to find better naming (create a distinct int error type or alias)
-type int_error = int;
-alias int_error = int;
-let int_or_int_error: int | int_error;
+# or "force" the user to find better naming (create a distinct i64 error type or alias)
+type i64_error = i64;
+alias i64_error = i64;
+let i64_or_i64_error: i64 | i64_error;
 
 # or to avoid creating a lot of "new" error types
 enum Result<T, E> {
@@ -1630,12 +1630,12 @@ enum Result<T, E> {
 }
 
 # thus
-let int_or_int_error: Result<int, int>;
+let i64_or_i64_error: Result<i64, i64>;
 
 # or create temporary distinct types (syntax subject to discussion)
 # this could introduce inline type aliases
 # so a function could use them like
-fn result: int as ok | int as err = foo(i: int) {
+fn result: i64 as ok | i64 as err = foo(i: i64) {
     if i
     case 0 { return 1 as err; }
     case 12 { return 21 as err; }
@@ -1646,17 +1646,17 @@ fn result: int as ok | int as err = foo(i: int) {
 let result = foo(i);
 if result
 case let integer: ok {
-    # integer is of type `int`
+    # integer is of type `i64`
 } case let err_code: err {
-    # integer is of type `int` as well
+    # integer is of type `i64` as well
 }
 
 # different syntaxes
-let int_or_int_error: int | err ! int;
-let int_or_int_error: int | int ! err;
-let int_or_int_error: int | err: int;
-let int_or_int_error: int | int alias err;
-let int_or_int_error: int | err alias int;
+let i64_or_i64_error: i64 | err ! i64;
+let i64_or_i64_error: i64 | i64 ! err;
+let i64_or_i64_error: i64 | err: i64;
+let i64_or_i64_error: i64 | i64 alias err;
+let i64_or_i64_error: i64 | err alias i64;
 
 # or a manual implementation, akin to typescript
 type Result<T, E> = {
@@ -1668,7 +1668,7 @@ type Result<T, E> = {
 }
 
 # which would allow for manual optimizations
-type c_like_int_return =
+type c_like_i64_return =
     None {
         error := -1, # or with a special `value as type syntax`
     } | Some {
@@ -1679,14 +1679,14 @@ type c_like_int_return =
 or a `type enum`
 
 ``` kay
-type enum int_or_bool {
-    integer: int,
+type enum i64_or_bool {
+    integer: i64,
     boolean: bool,
 }
 
-type enum int_or_error_code {
-    integer: int,
-    error_code: int,
+type enum i64_or_error_code {
+    integer: i64,
+    error_code: i64,
 }
 
 type enum Option<T> {
@@ -1700,35 +1700,35 @@ type enum Result<T, E> {
 }
 
 # so to match on it would look like this
-let result = int_or_error_code.integer(1);
+let result = i64_or_error_code.integer(1);
 if result
-case let int_or_error_code.integer(integer) {
-    # `integer` is of type `int`
-} case let int_or_error_code.err_code(code) {
-    # `code` is of type `int` as well
+case let i64_or_error_code.integer(integer) {
+    # `integer` is of type `i64`
+} case let i64_or_error_code.err_code(code) {
+    # `code` is of type `i64` as well
 }
 
-let result: Result<int, bool> = Result.Ok(1);
+let result: Result<i64, bool> = Result.Ok(1);
 if result
 case let Result.Ok(integer) {
-    # `integer` is of type `int`
+    # `integer` is of type `i64`
 } case let Result.Err(err) {
     # `err` is of type `bool`
 }
 
 # or
-let result: Result<int, bool> = Result.Ok(1);
+let result: Result<i64, bool> = Result.Ok(1);
 if result
 case let integer: Result.Ok {
-    # `integer` is of type `int`
+    # `integer` is of type `i64`
 } case let err: Result.Err {
     # `err` is of type `bool`
 }
 
 # inline type enum
-let int_or_bool: type enum { file: File, err: ReadFileError };
+let i64_or_bool: type enum { file: File, err: ReadFileError };
 # compared to what was discussed above
-let int_or_bool: File | ReadFileError;
+let i64_or_bool: File | ReadFileError;
 ```
 
 or remove type unions altogether and treat enum as type unions
@@ -1748,13 +1748,13 @@ enum Result<T, E> {
 
 # which would solve type collisions, but would be more verbose
 enum integer_or_error_code {
-    Integer(int),
-    ErrorCode(int),
+    Integer(i64),
+    ErrorCode(i64),
 }
 
 # would solve this
-let int_or_int_error: int | err: int;
-type int_or_int_error = int | err: int;
+let i64_or_i64_error: i64 | err: i64;
+type i64_or_i64_error = i64 | err: i64;
 ```
 
 ## Bit-casts
@@ -1771,7 +1771,7 @@ struct Rgba like u32 {
     a: u8,
 }
 
-# or (would be more consistent with regular as conversions, e.g.: true as int)
+# or (would be more consistent with regular as conversions, e.g.: true as i64)
 struct Rgba as u32 {
     r: u8,
     g: u8,
@@ -1870,7 +1870,7 @@ op SomeOtherStruct = cast(self: SomeStruct, other: SomeOtherStruct) { ...; retur
 const answer = 40 + 2; # would just copy paste the value everytime
 let i = answer; # equivalent to `let i = 40 + 2`
 
-const fn int = answer() { return 42 };
+const fn i64 = answer() { return 42 };
 let i = const answer(); # equivalent to `let i = { return 42 }` -> `let i = 42`
 ```
 
@@ -1892,10 +1892,10 @@ maybe optionally enable true dynamic dispatch on demand with v-tables and stuff
 fn
 
 # return values
-result: int, remainder: int
+result: i64, remainder: i64
 
 # return values' names are optional
-int, int
+i64, i64
 
 # equals sign to make it easey to copy paste this function definition in code
 =
@@ -1904,7 +1904,7 @@ int, int
 divmod
 
 # function arguments
-(dividend: int, divisor: int)
+(dividend: i64, divisor: i64)
 
 # body of the function, can also be in the do single-statement form
 {
@@ -1923,12 +1923,12 @@ putting it all together:
 fn answer() { return 42 };
 
 # with unnamed return values
-fn int, int = divmod(dividend: int, divisor: int) {
+fn i64, i64 = divmod(dividend: i64, divisor: i64) {
     return dividend / divisor, dividend % divisor;
 }
 
 # with named return values (NOTE: naked returns are not going to be allowed)
-fn result: int, remainder: int = divmod(dividend: int, divisor: int) {
+fn result: i64, remainder: i64 = divmod(dividend: i64, divisor: i64) {
     return result = dividend / divisor, remainder = dividend % divisor;
 }
 ```
@@ -1937,24 +1937,24 @@ going from function definition to usage would look like this
 
 ```kay
 # function definition
-fn result: int, remainder: int = divmod(dividend: int, divisor: int) {
+fn result: i64, remainder: i64 = divmod(dividend: i64, divisor: i64) {
     return result = dividend / divisor, remainder = dividend % divisor;
 }
 
 # from here onwards we are pretending that each line is the progression of steps needed to go from function definition to the usage
 
 # copy paste the definition
-fn result: int, remainder: int = divmod(dividend: int, divisor: int)
+fn result: i64, remainder: i64 = divmod(dividend: i64, divisor: i64)
 
 # change 'fn' to 'let'/'var'
 # - explicit mutability qualifiers needed for each variable
-let result: int, var remainder: int = divmod(dividend: int, divisor: int)
+let result: i64, var remainder: i64 = divmod(dividend: i64, divisor: i64)
 
 # add a semicolon at the end
-let result: int, var remainder: int = divmod(dividend: int, divisor: int);
+let result: i64, var remainder: i64 = divmod(dividend: i64, divisor: i64);
 
 # remove the function arguments' type hints and you are done!
-let result: int, var remainder: int = divmod(dividend, divisor);
+let result: i64, var remainder: i64 = divmod(dividend, divisor);
 ```
 
 going from usage to function definition would look like this
@@ -1964,31 +1964,31 @@ let dividend = 3;
 let divisor = 2;
 
 # usage
-let result: int, var remainder: int = dividend / divisor, dividend % divisor;
+let result: i64, var remainder: i64 = dividend / divisor, dividend % divisor;
 
 # from here onwards we are pretending that each line is the progression of steps needed to go from usage to the function definition
 
 # copy paste the usage
-let result: int, var remainder: int = dividend / divisor, dividend % divisor;
+let result: i64, var remainder: i64 = dividend / divisor, dividend % divisor;
 
 # remove 'let'/'var' and add the 'fn' keyword at the start of the line
-fn result: int, remainder: int = dividend / divisor, dividend % divisor;
+fn result: i64, remainder: i64 = dividend / divisor, dividend % divisor;
 
 # add the function name and arguments
-fn result: int, remainder: int = divmod(dividend: int, divisor: int) dividend / divisor, dividend % divisor;
+fn result: i64, remainder: i64 = divmod(dividend: i64, divisor: i64) dividend / divisor, dividend % divisor;
 
 # add the function body, with no named returns
-fn result: int, remainder: int = divmod(dividend: int, divisor: int) {
+fn result: i64, remainder: i64 = divmod(dividend: i64, divisor: i64) {
     return dividend / divisor, dividend % divisor;
 }
 
 # optionally remove named returns
-fn int, int = divmod(dividend: int, divisor: int) {
+fn i64, i64 = divmod(dividend: i64, divisor: i64) {
     return dividend / divisor, dividend % divisor;
 }
 
 # or add them back
-fn result: int, remainder: int = divmod(dividend: int, divisor: int) {
+fn result: i64, remainder: i64 = divmod(dividend: i64, divisor: i64) {
     return result = dividend / divisor, remainder = dividend % divisor;
 }
 
@@ -2002,7 +2002,7 @@ the compiler to inline it when it sees fit:
 
 ```kay
 # marked as inline, the rust inspired "!" avoids extra keywords (could find another symbol)
-fn result: int, remainder: int = divmod_inline!(dividend: int, divisor: int) {
+fn result: i64, remainder: i64 = divmod_inline!(dividend: i64, divisor: i64) {
     return result = dividend / divisor, remainder = dividend % divisor;
 }
 
@@ -2015,7 +2015,7 @@ let result, let remainder = divmod_inline: { # would be inlined as this as many 
 }
 
 # not marked as inline
-fn result: int, remainder: int = divmod(dividend: int, divisor: int) {
+fn result: i64, remainder: i64 = divmod(dividend: i64, divisor: i64) {
     return result = dividend / divisor, remainder = dividend % divisor;
 }
 
@@ -2031,7 +2031,7 @@ the function/operator, so as an example, the definition for the `+` operator mig
 - for a more "traditional" style:
 
     ```kay
-    op int = +(lhs: int, rhs: int) {
+    op i64 = +(lhs: i64, rhs: i64) {
         return lhs + rhs;
     }
     ```
@@ -2039,7 +2039,7 @@ the function/operator, so as an example, the definition for the `+` operator mig
 - for a closer look to it's usage, but still consistent with normal functions declarations:
 
     ```kay
-    op int = (lhs: int) + (rhs: int) {
+    op i64 = (lhs: i64) + (rhs: i64) {
         return lhs + rhs;
     }
     ```
@@ -2047,7 +2047,7 @@ the function/operator, so as an example, the definition for the `+` operator mig
 - for an even closer look to it's usage:
 
     ```kay
-    op int = lhs: int + rhs: int {
+    op i64 = lhs: i64 + rhs: i64 {
         return lhs + rhs;
     }
     ```
@@ -2056,7 +2056,7 @@ might also be able to specify that the function should track the caller's line a
 messages:
 
 ```kay
-@track_caller op int = lhs: int + rhs: int {
+@track_caller op i64 = lhs: i64 + rhs: i64 {
     return lhs + rhs;
 }
 ```
@@ -2074,16 +2074,16 @@ let i = lhs + rhs;
 op i = lhs + rhs;
 
 # 3a
-op i: int = lhs + rhs;
+op i: i64 = lhs + rhs;
 
 # 3b
-op int = lhs + rhs;
+op i64 = lhs + rhs;
 
 # 4
-op int = lhs: int + rhs: int;
+op i64 = lhs: i64 + rhs: i64;
 
 # 5
-op int = lhs: int + rhs: int {
+op i64 = lhs: i64 + rhs: i64 {
     return lhs + rhs;
 }
 ```
@@ -2092,18 +2092,18 @@ and back from function to usage would look like this;
 
 ```kay
 # 1
-op int = lhs: int + rhs: int {
+op i64 = lhs: i64 + rhs: i64 {
     return lhs + rhs;
 }
 
 # 2
-op int = lhs: int + rhs: int;
+op i64 = lhs: i64 + rhs: i64;
 
 # 3
-op int = lhs + rhs;
+op i64 = lhs + rhs;
 
 # 4
-let int = lhs + rhs;
+let i64 = lhs + rhs;
 
 # 5
 let i = lhs + rhs;
@@ -2112,7 +2112,7 @@ let i = lhs + rhs;
 ### Named operators
 
 ```kay
-op int = lhs: int plus rhs: int {
+op i64 = lhs: i64 plus rhs: i64 {
     return lhs + rhs;
 }
 
