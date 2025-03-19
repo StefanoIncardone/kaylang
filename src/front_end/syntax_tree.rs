@@ -812,8 +812,6 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
         let name_str = self.tokens.text[*name as usize];
         writeln!(f, "{:>indent$}Name: {name_column} = {name_str}", "")?;
 
-        writeln!(f, "{:>indent$}TypeAnnotation", "")?;
-        let annotation_indent = indent + Self::INDENT_INCREMENT;
         if let Some(TypeAnnotation {
             colon_column,
             type_name,
@@ -822,6 +820,8 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
             array_dimensions_len,
         }) = type_annotation
         {
+            let annotation_indent = indent + Self::INDENT_INCREMENT;
+            writeln!(f, "{:>indent$}TypeAnnotation", "")?;
             writeln!(f, "{:>annotation_indent$}Colon: {colon_column} = :", "")?;
 
             let type_name_str = self.tokens.text[*type_name as usize];
