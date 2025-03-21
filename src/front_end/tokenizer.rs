@@ -487,6 +487,7 @@ pub(crate) enum TokenKind {
     RawStr(StrIndex),
 
     Identifier(TextIndex),
+    IdentifierStr(TextIndex),
 
     // Keywords
     /// temporary way of printing values to stdout
@@ -513,11 +514,11 @@ impl TokenKind {
         return match self {
             Self::Comment(comment) => {
                 let text = tokens.text[comment as usize];
-                text.chars_width() + 1 // + 1 to account for the `#`
+                text.chars_width() + 1 // + 1 for the `#`
             }
             Self::BlockComment(comment) => {
                 let text = tokens.text[comment as usize];
-                text.chars_width() + 4 // + 4 to account for `##` and `##`
+                text.chars_width() + 2 + 2 // + 2 for the opening `##` and + 2 for the closing `##`
             }
             Self::Unexpected(unexpected) => {
                 let text = tokens.text[unexpected as usize];
@@ -546,12 +547,12 @@ impl TokenKind {
                 let literal = tokens.text[integer as usize];
                 Base::Hexadecimal.prefix().len() as offset32 + literal.len() as offset32
             }
-            Self::Ascii(ascii_char) => ascii_char.escape_ascii().len() as offset32 + 2, // + 2 to account for the quotes
+            Self::Ascii(ascii_char) => ascii_char.escape_ascii().len() as offset32 + 2, // + 2 for the quotes
             Self::True => 4,
             Self::False => 5,
             Self::Str(string) => {
                 let text = &tokens.strings[string as usize];
-                let mut len = 2; // starting at 2 to account for the quotes
+                let mut len = 2; // starting at 2 for the quotes
                 for ascii_char in &*text.0 {
                     len += ascii_char.escape_ascii().len() as offset32;
                 }
@@ -565,6 +566,10 @@ impl TokenKind {
             Self::Identifier(identifier) => {
                 let text = tokens.text[identifier as usize];
                 text.len() as offset32
+            }
+            Self::IdentifierStr(identifier) => {
+                let text = tokens.text[identifier as usize];
+                text.len() as offset32 + 2 // + 2 for the quotes
             }
 
             Self::Print => 5,
@@ -713,6 +718,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         _ => tokenizer.identifier(),
                     },
                     b'a'..=b'z' | b'A'..=b'Z' | b'_' => tokenizer.identifier(),
+                    b'`' => tokenizer.identifier_str(),
                     // IDEA(stefano): debate wether to allow trailing underscores or to emit a warning
                     // IDEA(stefano): emit warning of inconsistent casing of letters, i.e. 0xFFff_fFfF_ffFF_ffFF
                     b'0' => match tokenizer.peek_next_utf8_char() {
@@ -1405,9 +1411,11 @@ impl<'code> Tokenizer<'code, '_> {
     }
 }
 
+// IDEA(stefano): report unclosed escape character, i.e.: "\
 impl<'code> Tokenizer<'code, '_> {
+    const MAX_IDENTIFIER_LEN: offset32 = 63;
+
     fn identifier(&mut self) -> Result<TokenKind, ()> {
-        const MAX_IDENTIFIER_LEN: offset32 = 63;
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1449,9 +1457,9 @@ impl<'code> Tokenizer<'code, '_> {
             "len" => TokenKind::Op(Op::Len),
             identifier => {
                 let identifier_len = identifier.len() as offset32;
-                if identifier_len as offset32 > MAX_IDENTIFIER_LEN {
+                if identifier_len as offset32 > Self::MAX_IDENTIFIER_LEN {
                     self.errors.push(Error {
-                        kind: ErrorKind::IdentifierTooLong { max: MAX_IDENTIFIER_LEN },
+                        kind: ErrorKind::IdentifierTooLong { max: Self::MAX_IDENTIFIER_LEN },
                         col: self.token_start_col,
                         pointers_count: identifier_len,
                     });
@@ -1462,6 +1470,71 @@ impl<'code> Tokenizer<'code, '_> {
                 let identifier_index = self.tokens.text.len() as TextIndex - 1;
                 TokenKind::Identifier(identifier_index)
             }
+        };
+
+        return Ok(identifier);
+    }
+
+    // IDEA(stefano): allow for escaped \`
+    fn identifier_str(&mut self) -> Result<TokenKind, ()> {
+        let previous_errors_len = self.errors.len();
+
+        loop {
+            let next_character = match self.peek_next_ascii_char() {
+                Some(Ok(b'\n')) | None => {
+                    self.errors.push(Error {
+                        kind: ErrorKind::UnclosedIdentifierStr,
+                        col: self.token_start_col,
+                        pointers_count: self.token_text().chars_width(),
+                    });
+                    break;
+                }
+                Some(Ok(next_character)) => next_character,
+                Some(Err(error)) => {
+                    self.errors.push(Error {
+                        kind: ErrorKind::Utf8InIdentifierStr { grapheme: error.grapheme },
+                        col: error.col,
+                        pointers_count: error.pointers_count,
+                    });
+                    self.col += error.grapheme.len() as offset32;
+                    continue;
+                }
+            };
+            self.col += 1;
+
+            let _character = match next_character {
+                control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
+                    self.errors.push(Error {
+                        kind: ErrorKind::ControlCharacterInIdentifierStr(control as utf32),
+                        col: self.col - 1,
+                        pointers_count: 1,
+                    });
+                    control
+                }
+                b'`' => break,
+                ch => ch,
+            };
+        }
+
+        if previous_errors_len != self.errors.len() {
+            return Err(());
+        };
+
+        let identifier_str = &self.code[self.token_start_col as usize..self.col as usize];
+        let identifier = {
+            let identifier_len = identifier_str.len() as offset32;
+            if identifier_len as offset32 > Self::MAX_IDENTIFIER_LEN + 2 { // + 2 for the quotes
+                self.errors.push(Error {
+                    kind: ErrorKind::IdentifierStrTooLong { max: Self::MAX_IDENTIFIER_LEN },
+                    col: self.token_start_col,
+                    pointers_count: identifier_len,
+                });
+                return Err(());
+            }
+
+            self.tokens.text.push(identifier_str);
+            let identifier_index = self.tokens.text.len() as TextIndex - 1;
+            TokenKind::IdentifierStr(identifier_index)
         };
 
         return Ok(identifier);
@@ -1641,10 +1714,7 @@ impl<'code> Tokenizer<'code, '_> {
                     });
                     break;
                 }
-                Some(Ok(next_character)) => {
-                    self.col += 1;
-                    next_character
-                }
+                Some(Ok(next_character)) => next_character,
                 Some(Err(error)) => {
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InQuotedLiteral { grapheme: error.grapheme },
@@ -1655,6 +1725,7 @@ impl<'code> Tokenizer<'code, '_> {
                     continue;
                 }
             };
+            self.col += 1;
 
             let character = match next_character {
                 b'\\' => {
@@ -1667,10 +1738,7 @@ impl<'code> Tokenizer<'code, '_> {
                             });
                             break;
                         }
-                        Some(Ok(escape_character)) => {
-                            self.col += 1;
-                            escape_character
-                        }
+                        Some(Ok(escape_character)) => escape_character,
                         Some(Err(error)) => {
                             self.errors.push(Error {
                                 kind: ErrorKind::Utf8InQuotedLiteral { grapheme: error.grapheme },
@@ -1681,6 +1749,7 @@ impl<'code> Tokenizer<'code, '_> {
                             continue;
                         }
                     };
+                    self.col += 1;
 
                     match escape_character {
                         b'\\' => b'\\',
@@ -1759,10 +1828,7 @@ impl<'code> Tokenizer<'code, '_> {
                     });
                     break;
                 }
-                Some(Ok(next_character)) => {
-                    self.col += 1;
-                    next_character
-                }
+                Some(Ok(next_character)) => next_character,
                 Some(Err(error)) => {
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InQuotedLiteral { grapheme: error.grapheme },
@@ -1773,6 +1839,7 @@ impl<'code> Tokenizer<'code, '_> {
                     continue;
                 }
             };
+            self.col += 1;
 
             let character = match next_character {
                 b'\\' => {
@@ -1785,10 +1852,7 @@ impl<'code> Tokenizer<'code, '_> {
                             });
                             break;
                         }
-                        Some(Ok(escape_character)) => {
-                            self.col += 1;
-                            escape_character
-                        }
+                        Some(Ok(escape_character)) => escape_character,
                         Some(Err(error)) => {
                             self.errors.push(Error {
                                 kind: ErrorKind::Utf8InQuotedLiteral { grapheme: error.grapheme },
@@ -1799,6 +1863,7 @@ impl<'code> Tokenizer<'code, '_> {
                             continue;
                         }
                     };
+                    self.col += 1;
 
                     match escape_character {
                         b'\\' => b'\\',
@@ -1853,10 +1918,7 @@ impl<'code> Tokenizer<'code, '_> {
                     });
                     break;
                 }
-                Some(Ok(next_character)) => {
-                    self.col += 1;
-                    next_character
-                }
+                Some(Ok(next_character)) => next_character,
                 Some(Err(error)) => {
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InQuotedLiteral { grapheme: error.grapheme },
@@ -1867,6 +1929,7 @@ impl<'code> Tokenizer<'code, '_> {
                     continue;
                 }
             };
+            self.col += 1;
 
             let character = match next_character {
                 b'\\' => {
@@ -1950,7 +2013,11 @@ pub enum ErrorKind<'code> {
     DigitOutOfRangeInHexadecimalNumberLiteral(ascii),
 
     Utf8InIdentifier { grapheme: &'code str },
+    Utf8InIdentifierStr { grapheme: &'code str },
     IdentifierTooLong { max: offset32 },
+    IdentifierStrTooLong { max: offset32 },
+    UnclosedIdentifierStr,
+    ControlCharacterInIdentifierStr(utf32),
 
     Utf8Character { grapheme: &'code str },
     UnrecognizedCharacter(utf32),
@@ -2068,9 +2135,25 @@ impl IntoErrorInfo for ErrorKind<'_> {
                 format!("invalid identifier character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
             ),
+            Self::Utf8InIdentifierStr { grapheme } => (
+                format!("invalid identifier string character '{grapheme}' {}", grapheme.escape_unicode()).into(),
+                "utf8 characters are not allowed".into(),
+            ),
             Self::IdentifierTooLong { max } => (
                 "invalid identifier".into(),
                 format!("exceeds the length limit of {max}").into(),
+            ),
+            Self::IdentifierStrTooLong { max } => (
+                "invalid identifier string".into(),
+                format!("exceeds the length limit of {max} characters bewteen quotes").into(),
+            ),
+            Self::UnclosedIdentifierStr => (
+                "unclosed identifier string".into(),
+                "missing closing ` quote".into()
+            ),
+            Self::ControlCharacterInIdentifierStr(control_character) => (
+                format!("invalid identifier string character '{}' {}", control_character.escape_debug(), control_character.escape_unicode()).into(),
+                "control characters are not allowed".into(),
             ),
 
             Self::Utf8Character { grapheme } => (

@@ -187,9 +187,12 @@ rules:
     - `let`: immutable variable, once set cannot be changed later
     - `var`: mutable variable, can be changed at any moment
 2. variable name that can be made of (up to a maximum of **63** characters):
-    - letters
-    - numbers (but not starting with)
-    - underscores
+    - regular identifiers:
+        - letters
+        - numbers (but not starting with)
+        - underscores
+    - identifier strings:
+        - any number of ASCII characters
 3. value:
     - type annotation: `:` followed by the type of the variable
     - variable value: `=` followed by the value we wish the variable to hold
@@ -205,11 +208,15 @@ kay = "let's go!"; # Error: cannot mutate immutable variable
 var one = 1; # mutable variable named `one` with value 1
 one = 2; # `one` will from now on contain the value 2
 
-# 2. variable names
+# 2.0 variable names
 let kay_lets_go = "kay, let's go!"; # can contain underscores
 let two_plus_2 = "two + 2"; # can contain numbers
-let 2plus2 = "2 + 2"; # Error: not a valid name, cannot start with a number
+let 2plus2 = 2 + 2; # Error: not a valid name, cannot start with a number
 let longlonglonglonglonglonglonglonglonglonglonglonglonglonglonglong; # Error: over the limit of 63 characters
+
+# 2.1 identifier strings
+let `2 + 2` = 2 + 2; # identifier strings can contain any amount of ASCII characters, functionally equivalent to strings without escapes
+let `longlonglonglonglonglonglonglonglonglonglonglonglonglonglonglong`; # Error: over the limit of 63 characters
 
 # 3. optional type annotations
 let inferred = 42; # the type will be inferred as `i64` by the expression to the right of the `=` sign

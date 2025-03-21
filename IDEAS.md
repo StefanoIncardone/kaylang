@@ -2120,24 +2120,12 @@ let twenty_one = 9 plus 10;
 let twenty_one = 9.plus(10); # there would be no "need" for this syntax with ufcs
 ```
 
-## "unconventional" variable names
+## identifier strings
 
 ```kay
-# variable name is not valid because it contains spaces
-let this is not a valid variable name = "some value";
-
 # new syntax, repurposing single quotes
 let 'this is not a valid variable name' = c"s"; # character literals would become this, or something else
 
-# or using back ticks
-let `this is not a valid variable name` = "s";
-
 # or like this, where the i string modifier would mean "identifier"
 let i"this is not a valid variable name" = "some value";
-
-# it would allow for the use of keywords as identifiers
-let i"let" = "let";
-
-# or for this
-let i"2" = 2;
 ```

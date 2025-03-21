@@ -265,6 +265,10 @@ pub(crate) enum Expression {
         identifier: TextIndex,
         column: column32,
     },
+    IdentifierStr {
+        identifier: TextIndex,
+        column: column32,
+    },
     Array {
         open_square_bracket_column: column32,
         items_start: ArrayItemsIndex,
@@ -715,6 +719,10 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
                 let identifier_str = self.tokens.text[*identifier as usize];
                 writeln!(f, "{:>indent$}Identifier: {column} = {identifier_str}", "")
             },
+            Expression::IdentifierStr { identifier, column } => {
+                let identifier_str = self.tokens.text[*identifier as usize];
+                writeln!(f, "{:>indent$}IdentifierStr: {column} = {identifier_str}", "")
+            },
             Expression::Array {
                 open_square_bracket_column,
                 items_start,
@@ -954,6 +962,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
+            | TokenKind::IdentifierStr(_)
             | TokenKind::Bracket(Bracket::OpenRound | Bracket::OpenSquare)
             | TokenKind::Op(
                 Op::Len
@@ -1071,6 +1080,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
                     | TokenKind::Identifier(_)
+                    | TokenKind::IdentifierStr(_)
                     | TokenKind::Print
                     | TokenKind::PrintLn
                     | TokenKind::Eprint
@@ -1407,6 +1417,7 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_)
                 | TokenKind::Identifier(_)
+                | TokenKind::IdentifierStr(_)
                 | TokenKind::Print
                 | TokenKind::PrintLn
                 | TokenKind::Eprint
@@ -1468,6 +1479,7 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_)
                 | TokenKind::Identifier(_)
+                | TokenKind::IdentifierStr(_)
                 | TokenKind::Print
                 | TokenKind::PrintLn
                 | TokenKind::Eprint
@@ -1534,6 +1546,9 @@ impl Parser<'_, '_, '_, '_> {
             TokenKind::RawStr(literal) => Expression::RawStr { literal, column: token.col },
             TokenKind::Identifier(identifier) => {
                 Expression::Identifier { identifier, column: token.col }
+            }
+            TokenKind::IdentifierStr(identifier) => {
+                Expression::IdentifierStr { identifier, column: token.col }
             }
             TokenKind::Bracket(Bracket::OpenRound) => 'bracket: {
                 let open_round_bracket_token = token;
@@ -1617,6 +1632,7 @@ impl Parser<'_, '_, '_, '_> {
                         | TokenKind::Str(_)
                         | TokenKind::RawStr(_)
                         | TokenKind::Identifier(_)
+                        | TokenKind::IdentifierStr(_)
                         | TokenKind::Print
                         | TokenKind::PrintLn
                         | TokenKind::Eprint
@@ -1955,7 +1971,7 @@ impl Parser<'_, '_, '_, '_> {
     ) -> Result<(VariableDefinition, column32), Error<ErrorKind>> {
         let variable_name_token = self.next_expected_token(Expected::VariableName)?;
         let variable_name = match variable_name_token.kind {
-            TokenKind::Identifier(name) => name,
+            TokenKind::Identifier(name) | TokenKind::IdentifierStr(name) => name,
             TokenKind::Bracket(_)
             | TokenKind::Colon
             | TokenKind::SemiColon
@@ -2010,7 +2026,7 @@ impl Parser<'_, '_, '_, '_> {
 
             let type_name_token = self.next_expected_token(Expected::TypeName)?;
             let type_name = match type_name_token.kind {
-                TokenKind::Identifier(name) => name,
+                TokenKind::Identifier(name) | TokenKind::IdentifierStr(name) => name,
                 TokenKind::Bracket(_)
                 | TokenKind::Colon
                 | TokenKind::SemiColon
@@ -2152,6 +2168,7 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
+            | TokenKind::IdentifierStr(_)
             | TokenKind::Let
             | TokenKind::Var
             | TokenKind::Print
@@ -2275,6 +2292,7 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_)
                 | TokenKind::Identifier(_)
+                | TokenKind::IdentifierStr(_)
                 | TokenKind::Print
                 | TokenKind::PrintLn
                 | TokenKind::Eprint
@@ -2445,7 +2463,7 @@ impl IntoErrorInfo for ErrorKind {
 
             Self::KeywordInExpression => (
                 "invalid expression".into(),
-                "cannot be a keyword".into(),
+                "cannot be a keyword, if you meant to reference a variable with this name, try wrapping this in `".into(),
             ),
             Self::ExpectedOperand => (
                 "invalid expression".into(),
@@ -2470,7 +2488,7 @@ impl IntoErrorInfo for ErrorKind {
             ),
             Self::KeywordInVariableName => (
                 "invalid variable name".into(),
-                "cannot be a keyword".into(),
+                "cannot be a keyword, if you meant to reference a variable with this name, try wrapping this in `".into(),
             ),
             Self::ExpectedTypeName => (
                 "invalid type annotation".into(),
@@ -2478,7 +2496,7 @@ impl IntoErrorInfo for ErrorKind {
             ),
             Self::KeywordInTypeName => (
                 "invalid type name".into(),
-                "cannot be a keyword".into(),
+                "cannot be a keyword, if you meant to reference a variable with this name, try wrapping this in `".into(),
             ),
             Self::MissingCloseSquareBracketInArrayType => (
                 "invalid type".into(),

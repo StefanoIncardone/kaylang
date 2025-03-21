@@ -12,6 +12,7 @@ pub type line32 = u32;
 #[expect(non_camel_case_types, reason = "alias to a primitive type")]
 pub type column32 = u32;
 
+// IDEA(stefano): remove in favor of `offset32`
 #[expect(non_camel_case_types, reason = "alias to a primitive type")]
 pub type index32 = u32;
 

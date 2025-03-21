@@ -860,6 +860,7 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
+            | TokenKind::IdentifierStr(_)
             | TokenKind::Bracket(Bracket::OpenRound | Bracket::OpenSquare)
             | TokenKind::Op(
                 Op::Len
@@ -997,6 +998,7 @@ impl Parser<'_, '_, '_, '_> {
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
                     | TokenKind::Identifier(_)
+                    | TokenKind::IdentifierStr(_)
                     | TokenKind::Print
                     | TokenKind::PrintLn
                     | TokenKind::Eprint
@@ -1191,6 +1193,7 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
+            | TokenKind::IdentifierStr(_)
             | TokenKind::Print
             | TokenKind::PrintLn
             | TokenKind::Eprint
@@ -1244,6 +1247,7 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
+            | TokenKind::IdentifierStr(_)
             | TokenKind::Let
             | TokenKind::Var
             | TokenKind::Print
@@ -1724,7 +1728,7 @@ impl Parser<'_, '_, '_, '_> {
                 let string = self.tokens.strings[string_index as usize].clone();
                 Ok(Expression::Str { label: self.new_string(string) })
             }
-            TokenKind::Identifier(name_index) => {
+            TokenKind::Identifier(name_index) | TokenKind::IdentifierStr(name_index) => {
                 let name = self.tokens.text[name_index as usize];
                 match self.resolve_type(name.as_bytes()) {
                     None => match self.resolve_variable(name.as_bytes()) {
@@ -2724,6 +2728,7 @@ impl Parser<'_, '_, '_, '_> {
 
 // variables and typesk
 impl Parser<'_, '_, '_, '_> {
+    // NOTE(stefano): why accept a &[ascii] and not &str
     fn resolve_variable(&self, name: &[ascii]) -> Option<(Mutability, VariableIndex)> {
         let mut scope_index = self.scope;
         loop {
@@ -2749,6 +2754,7 @@ impl Parser<'_, '_, '_, '_> {
         }
     }
 
+    // NOTE(stefano): why accept a &[ascii] and not &str
     fn resolve_type(&self, name: &[ascii]) -> Option<BaseType> {
         let mut scope_index = self.scope;
         loop {
@@ -2865,7 +2871,7 @@ impl Parser<'_, '_, '_, '_> {
     fn variable_definition(&mut self, mutability: Mutability) -> Result<Node, Error<ErrorKind>> {
         let name_token = self.next_token_bounded(Expected::Identifier)?;
         let name = match name_token.kind {
-            TokenKind::Identifier(name_index) => {
+            TokenKind::Identifier(name_index) | TokenKind::IdentifierStr(name_index) => {
                 let name = self.tokens.text[name_index as usize];
                 match self.resolve_type(name.as_bytes()) {
                     None => name,
@@ -2948,6 +2954,7 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
+            | TokenKind::IdentifierStr(_)
             | TokenKind::Let
             | TokenKind::Var
             | TokenKind::Print
@@ -3275,6 +3282,7 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_)
                 | TokenKind::Identifier(_)
+                | TokenKind::IdentifierStr(_)
                 | TokenKind::Let
                 | TokenKind::Var
                 | TokenKind::Print
@@ -3318,6 +3326,7 @@ impl Parser<'_, '_, '_, '_> {
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
                     | TokenKind::Identifier(_)
+                    | TokenKind::IdentifierStr(_)
                     | TokenKind::Let
                     | TokenKind::Var
                     | TokenKind::Print
@@ -3362,6 +3371,7 @@ impl Parser<'_, '_, '_, '_> {
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
                     | TokenKind::Identifier(_)
+                    | TokenKind::IdentifierStr(_)
                     | TokenKind::Let
                     | TokenKind::Var
                     | TokenKind::Print
@@ -3423,6 +3433,7 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
+            | TokenKind::IdentifierStr(_)
             | TokenKind::Let
             | TokenKind::Var
             | TokenKind::Print
@@ -3474,6 +3485,7 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
+            | TokenKind::IdentifierStr(_)
             | TokenKind::Let
             | TokenKind::Var
             | TokenKind::Print

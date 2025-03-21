@@ -20,7 +20,9 @@ raw_string_escapes = '\"';
 character_literal  = "'", (ASCII_character | escapes), "'";
 string_literal     = '"', [{ASCII_character | escapes}], '"';
 raw_string_literal = 'r"', [{ASCII_character | raw_string_escapes}], '"';
-identifier         = "_" | "A".."Z" | "a".."z", [{"_" | "A".."Z" | "a".."z" | decimal_digit}];
+identifier_regular = "_" | "A".."Z" | "a".."z", [{"_" | "A".."Z" | "a".."z" | decimal_digit}];
+identifier_str     = "`", [{ASCII_character}], "`";
+identifier         = identifier_regular | identifier_str;
 
 operator_len               = "len";
 operator_equals            = "=";

@@ -32,6 +32,10 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ### Language
 
+#### Added
+
+- Added identifier strings enclosed by `` ` ``, where `` `kay let's go!` `` is a valid identifier
+
 #### Changed
 
 - Renamed `int` type to `i64`
