@@ -1551,7 +1551,7 @@ impl<'code> Tokenizer<'code, '_> {
                 }
                 Some(Err(error)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
+                        kind: ErrorKind::Utf8InDecimalNumberLiteral { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
@@ -1595,7 +1595,7 @@ impl<'code> Tokenizer<'code, '_> {
                 }
                 Some(Err(error)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
+                        kind: ErrorKind::Utf8InBinaryNumberLiteral { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
@@ -1639,7 +1639,7 @@ impl<'code> Tokenizer<'code, '_> {
                 }
                 Some(Err(error)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
+                        kind: ErrorKind::Utf8InOctalNumberLiteral { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
@@ -1675,7 +1675,7 @@ impl<'code> Tokenizer<'code, '_> {
                 }
                 Some(Err(error)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InNumberLiteral { grapheme: error.grapheme },
+                        kind: ErrorKind::Utf8InHexadecimalNumberLiteral { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
@@ -2016,8 +2016,10 @@ pub enum ErrorKind<'code> {
     EmptyCharacterLiteral,
     MultipleCharactersInCharacterLiteral,
 
-    // IDEA(stefano): expand into different bases
-    Utf8InNumberLiteral { grapheme: &'code str },
+    Utf8InDecimalNumberLiteral { grapheme: &'code str },
+    Utf8InBinaryNumberLiteral { grapheme: &'code str },
+    Utf8InOctalNumberLiteral { grapheme: &'code str },
+    Utf8InHexadecimalNumberLiteral { grapheme: &'code str },
     LetterInDecimalNumberLiteral(ascii),
     LetterInBinaryNumberLiteral(ascii),
     LetterInOctalNumberLiteral(ascii),
@@ -2150,8 +2152,20 @@ impl IntoErrorInfo for ErrorKind<'_> {
                 "must not contain more than one character, if you meant to write a string literal try changing the quotes to \"".into(),
             ),
 
-            Self::Utf8InNumberLiteral { grapheme } => (
-                format!("invalid integer literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
+            Self::Utf8InDecimalNumberLiteral { grapheme } => (
+                format!("invalid decimal integer literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
+                "utf8 characters are not allowed".into(),
+            ),
+            Self::Utf8InBinaryNumberLiteral { grapheme } => (
+                format!("invalid binary integer literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
+                "utf8 characters are not allowed".into(),
+            ),
+            Self::Utf8InOctalNumberLiteral { grapheme } => (
+                format!("invalid octal integer literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
+                "utf8 characters are not allowed".into(),
+            ),
+            Self::Utf8InHexadecimalNumberLiteral { grapheme } => (
+                format!("invalid hexadecimal integer literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
             ),
             Self::LetterInDecimalNumberLiteral(letter) => (
