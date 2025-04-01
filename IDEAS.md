@@ -91,9 +91,7 @@ kay notes # Error: no specified tags to look for
 
 allow for:
 
-- more help commands with `?`, `-?`, `--?`
-- short (`-f`), long (`--flag`)
-- arguments with spaces `--arg value`, dashes `--arg-value`, equals `--arg=value` (possibily `--arg = value`)
+- arguments with spaces `--arg value`, dashes `--arg-value`, equals `--arg=value`
 - windows versions (`\f`, `\flag`)
 - easy enums bit representations for easy bitwise operations:
 
@@ -239,9 +237,7 @@ so using the `compile` command with these extra arguments would work like:
 | `test.kay -o out -oa asm -oo obj -oe exe`                  | `out/asm/test.asm` | `out/obj/test.o` | `out/exe/test`        |
 | `test.kay -oa asm -oe exe -ne test_executable -oo out/obj` | `asm/test.asm`     | `out/obj/test.o` | `exe/test_executable` |
 
-## Language version embedded in file extension or in the resulting binary executable
-
-From [Fortran](https://www.cita.utoronto.ca/~merz/intel_f10b/main_for/mergedProjects/bldaps_for/common/bldaps_under_inpext.htm#:~:text=Typical%20Fortran%20source%20files%20have,f.)
+## Language version embedded in the resulting binary executable
 
 ## Amount of crash information
 
@@ -330,6 +326,23 @@ case 19 {
 } case 21 {
     println "you stoopid";
 } case 42 {
+    println "that's the right answer";
+} else {
+    println "too bad";
+}
+
+# switch statement:
+# - 1 level of indentation
+# - no additional keywords, let would become the "pattern matching" keyword
+# - would allow to mix and match patterns and regular comparisons 
+# - same semantics as a regular if statement
+#   - every case is like an `else if` branch
+if answer # note: this code makes no sense, it's just to showcase possible syntaxes
+let Ok(19) {
+    println "lucky";
+} answer >= 21 {
+    println "you stoopid";
+} let 42 {
     println "that's the right answer";
 } else {
     println "too bad";
@@ -722,8 +735,21 @@ let x = 'label: {
 
 ## String and character literals
 
-- multiline strings are prefixed by a `m`:
-- may follow C-style string concatenation
+- multiline strings are prefixed by a `m`
+- may follow C-style string concatenation with some safety modifications:
+    - literal string concatenation would only be allowed with a `+`:
+
+    ```kay
+    let long_string_literal = "long long long"
+        + "long long long"
+        + "long long long"
+        + "long long string";
+
+    let long_string = "long long long"
+        + string_variable
+        + "other literal"; # Error: would not be allowed
+    ```
+
 - lines will have newline characters appended to them unless they end in a `\`, which can be escaped using a `\\`
 - like in Java, whitespace will be preserved (except before the closing quote) and leading whitespace is calculated based on the
     position of the closing quote, or by the text furthest to the left
@@ -801,60 +827,16 @@ let codes: i64[19] = [
 boolean values just need 1 bit to store all possible states (true: 1, false: 0), hence a single
 `bool` (8 bits) wastes 7 bits. A `bool[n]` would waste `7 * n` bits, thus a solution maybe of
 storing arrays of booleans as a `u8[ceil(n / 8)]` and packing the information of 8 booleans into a
-single `u8`, or alternatively with the `bit[n]` type:
+single `u8`, or alternatively with the `bit[n]` -> `bit[8 * n + e]` -> `u8[n + ceil(e / 8)]`, so:
 
 - `bit[7]` -> `u8` and only use 7 out 8 bits
 - `bit[8]` -> `u8` and use 8 bits
 - `bit[9]` -> `u8[2]` and use 8 bits of the first element and only 1 out of 8 of the second
-    - `bit[9]` -> `u16` and use only 9 out of 16 bits
-- `bit[18]` -> `u16[2]` and use 16 bits of the first element and only 2 out of 16 of the second
-- `bit[32]` -> `u32` ...
-- `bit[33]` -> `u32[2]` ...
-- `bit[64]` -> `u64` ...
-- `bit[128]` -> `u64[2]` ...
-- `bit[64 * n]` -> `u64[n]`
-- `bit[64 * n + e]` -> `u64[n + ceil(e / 8)]`
+- `bit[32]` -> `u8[4]` ...
+- `bit[33]` -> `u8[5]` ...
+- `bit[8 * n]` -> `u8[n]`
 
-or just `bit[m = 8 * n + e]` -> `u8[n + ceil(e + 8)]`, so:
-
-- `m = 3` -> `bit[0 * n + 3]` -> `u8`
-- `m = 21` -> `bit[2 * n + 5]` -> `u8[2 + ceil(5 / 8)]` -> `u8[3]`
-
-### References to bits
-
-reference to items in arrays of bits, i.e. `let bits: bit[3]; let second = &bits[1]` or
-`let i = 3; let second = &i[1]` could be stored as fat pointers, containing the reference to the
-corresponding byte that contains that bit and an bit offset, so fat pointer to bit would be
-equivalent to the following struct:
-
-```kay
-struct BitPointer {
-    byte: u8&,
-    bit: u8, # storing the index as a u8 since numbers can only be of 64 bits
-}
-```
-
-and would be accessed like this:
-
-```kay
-let bits: bit[18];
-# equivalent
-let bytes: u8[3];
-
-# so this
-let fourteenth = &bits[13];
-
-# would be equivalent to
-let fourteenth = BitPointer { byte: bytes[2], bit: 13 % mod 8 };
-
-# so this (reading)
-println fourteenth;
-
-# would be equivalent to this
-println fourteenth.byte >> fourteenth.bit;
-```
-
-## Dynamic array (Lists)
+## Dynamic array (Lists) (could just be a "user" defined type, like rust's Vec)
 
 heap-allocated collections of a possibly unknown amount of items:
 
@@ -903,7 +885,7 @@ if x is i64 {
 let y: i64 | bool = true; # type unions can also be implicit
 ```
 
-type unions can be used with if-case expressions:
+type unions can be used with if-let expressions:
 
 ```kay
 let s0 = "franco";
@@ -918,16 +900,16 @@ let b = ["hello", "from", "kay"];
 let a = ["hello", "from", "stefano"];
 
 if array_eq(a, b)
-case let mismatch: none { println("equals"); } # would not be reached since there was a mismatch
-else let mismatch: u64 { println(f"mismatch at index {mismatch}"); } # mismatch would have the value of 2
+let mismatch: none { println("equals"); } # would not be reached since there was a mismatch
+let mismatch: u64 { println(f"mismatch at index {mismatch}"); } # mismatch would have the value of 2
 
 if array_eq(a, b)
 case let mismatch: none { println("equals"); } # would not be reached since there was a mismatch
 case let mismatch: u64 { println(f"mismatch at index {mismatch}"); } # mismatch would have the value of 2
 else { ... } # unreachable branch: all variants have been matched
 
-
-fn mismatch_index: u64? = array_eq[T: type, N: u64](dst: T[N]*, src: T[N]*) {
+# T[*: N] means just the pointer part of the array 
+fn mismatch_index: u64 | none = array_eq[T: type, N: u64](dst: T[*: N], src: T[*: N]) {
     loop var i = N; i > 0; i -= 1 {
         if dst* != src* {
             return i;
@@ -948,11 +930,13 @@ fn mismatch_index: u64? = array_eq[T: type, N: u64](dst: T[N]*, src: T[N]*) {
 structs are just an aggregation of types, basically named heterogeneous arrays:
 
 ```kay
-# using round brackets instead of curly brackets for ease of use and consistency with function definitions and calls
+# using round brackets instead of curly brackets for consistency with function definitions and calls
 struct Rgb(
     r: u8,          # type specific default inizialization, which for u8 is 0
     g: u8 = 255,    # explicit default initialization
     b: u8 = ?,      # intentionally uninitialized member, may contain garbage
+    b: u8 = ...,    # intentionally uninitialized member, may contain garbage
+    b: u8 = ---,    # intentionally uninitialized member, may contain garbage
             # optional trailing coma
 )
 
@@ -1548,7 +1532,7 @@ fn append(list: i64[..], item: i64) {
 }
 
 # could create attributes to signal possible indexs invalidation of the specified list
-fn i64 = pop(@invalidates_indexes list: &var i64[..]) {
+fn i64 = pop(@invalidates_indexes list: i64[..]&var) {
     # pop operation only removes from the end of the list:
     # - may invalidate indexe poitners that pointed to the end of the list
     # - may invalidate regular pointers that pointed to the end of the list
@@ -2118,6 +2102,38 @@ op i64 = lhs: i64 plus rhs: i64 {
 
 let twenty_one = 9 plus 10;
 let twenty_one = 9.plus(10); # there would be no "need" for this syntax with ufcs
+```
+
+### Custom operators
+
+identifier strings would allow for "custom" operators
+
+```kay
+@track_caller inline op division: i64, remainder: i64 = lhs: i64 `/%` rhs: i64 {
+    return lhs / rhs, lhs % rhs;
+}
+
+let division, let remainder = 12 `/%` 21;
+
+op i64 = lhs: Vec2 `.` rhs: Vec2 {
+    return lhs.x * rhs.x + lhs.y * rhs.y;
+}
+
+# or
+op i64 = lhs: Vec2 `.*` rhs: Vec2 {
+    return lhs.x * rhs.x + lhs.y * rhs.y;
+}
+
+# or
+fn i64 = `.*`(lhs: Vec2, rhs: Vec2) {
+    return lhs.x * rhs.x + lhs.y * rhs.y;
+}
+
+let lhs = Vec2(x = 12, y = 21);
+let rhs = Vec2(x = 21, y = 12);
+let dot_product = lhs `.` rhs;
+let dot_product = lhs `.*` rhs;
+let dot_product = lhs.`.*`(rhs);
 ```
 
 ## identifier strings
