@@ -1711,7 +1711,7 @@ impl<'code> Tokenizer<'code, '_> {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(error)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InQuotedLiteral { grapheme: error.grapheme },
+                        kind: ErrorKind::Utf8InCharacterLiteral { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
@@ -1735,7 +1735,7 @@ impl<'code> Tokenizer<'code, '_> {
                         Some(Ok(escape_character)) => escape_character,
                         Some(Err(error)) => {
                             self.errors.push(Error {
-                                kind: ErrorKind::Utf8InQuotedLiteral { grapheme: error.grapheme },
+                                kind: ErrorKind::Utf8InCharacterLiteral { grapheme: error.grapheme },
                                 col: error.col,
                                 pointers_count: error.pointers_count,
                             });
@@ -1824,7 +1824,7 @@ impl<'code> Tokenizer<'code, '_> {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(error)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InQuotedLiteral { grapheme: error.grapheme },
+                        kind: ErrorKind::Utf8InStrLiteral { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
@@ -1848,7 +1848,7 @@ impl<'code> Tokenizer<'code, '_> {
                         Some(Ok(escape_character)) => escape_character,
                         Some(Err(error)) => {
                             self.errors.push(Error {
-                                kind: ErrorKind::Utf8InQuotedLiteral { grapheme: error.grapheme },
+                                kind: ErrorKind::Utf8InStrLiteral { grapheme: error.grapheme },
                                 col: error.col,
                                 pointers_count: error.pointers_count,
                             });
@@ -1918,7 +1918,7 @@ impl<'code> Tokenizer<'code, '_> {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(error)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InQuotedLiteral { grapheme: error.grapheme },
+                        kind: ErrorKind::Utf8InRawStrLiteral { grapheme: error.grapheme },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
@@ -1942,7 +1942,7 @@ impl<'code> Tokenizer<'code, '_> {
                         Some(Ok(escape_character)) => escape_character,
                         Some(Err(error)) => {
                             self.errors.push(Error {
-                                kind: ErrorKind::Utf8InQuotedLiteral { grapheme: error.grapheme },
+                                kind: ErrorKind::Utf8InRawStrLiteral { grapheme: error.grapheme },
                                 col: error.col,
                                 pointers_count: error.pointers_count,
                             });
@@ -2001,8 +2001,9 @@ pub enum ErrorKind<'code> {
     MismatchedCurlyRoundBracket,
     MismatchedCurlySquareBracket,
 
-    // IDEA(stefano): expand into different quoted literals
-    Utf8InQuotedLiteral { grapheme: &'code str },
+    Utf8InCharacterLiteral { grapheme: &'code str },
+    Utf8InStrLiteral { grapheme: &'code str },
+    Utf8InRawStrLiteral { grapheme: &'code str },
     UnclosedCharacterLiteral,
     UnclosedStrLiteral,
     UnclosedRawStrLiteral,
@@ -2092,8 +2093,16 @@ impl IntoErrorInfo for ErrorKind<'_> {
                 "']' closes the wrong bracket, expected a '}' instead".into()
             ),
 
-            Self::Utf8InQuotedLiteral { grapheme } => (
-                format!("invalid quoted literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
+            Self::Utf8InCharacterLiteral { grapheme } => (
+                format!("invalid character literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
+                "utf8 characters are not allowed".into(),
+            ),
+            Self::Utf8InStrLiteral { grapheme } => (
+                format!("invalid string literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
+                "utf8 characters are not allowed".into(),
+            ),
+            Self::Utf8InRawStrLiteral { grapheme } => (
+                format!("invalid raw string literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
             ),
             Self::UnclosedCharacterLiteral => (
