@@ -1,11 +1,11 @@
 // IDEA(stefano): fuse tokenization and parsing, making the tokenizer a generator of tokens
 // TODO(stefano): multidimensional arrays
+// REMOVE(stefano): remove unitialized variables initialized to default values
 
 use super::{
     src_file::{index32, offset32, Position, SrcCode},
     tokenizer::{
-        ascii, Base, Bracket, Mutability, Op, OpenBracket, Str, Token, TokenIndex,
-        TokenKind, Tokens,
+        ascii, Base, Bracket, Mutability, Op, OpenBracket, Token, TokenIndex, TokenKind, Tokens
     },
     Error, ErrorInfo, IntoErrorInfo,
 };
@@ -734,7 +734,8 @@ pub struct Ast<'code> {
     pub(crate) temporaries: Vec<Expression>,
     pub(crate) variables: Vec<Variable<'code>>,
 
-    pub(crate) strings: Vec<Str>,
+    pub(crate) string_labels: Vec<(u32, &'code str)>,
+    pub(crate) raw_string_labels: Vec<(u32, &'code str)>,
 }
 
 #[derive(Debug)]
@@ -746,6 +747,7 @@ pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     tokens: &'tokens Tokens<'code, 'path>,
 
     loop_depth: u32,
+    string_label: u32,
     scope: ScopeIndex,
     scopes: Vec<Scope>,
     ast: Ast<'code>,
@@ -768,7 +770,8 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
             temporaries: Vec::new(),
             variables: Vec::new(),
 
-            strings: Vec::new(),
+            string_labels: Vec::new(),
+            raw_string_labels: Vec::new(),
         };
 
         if tokens.tokens.is_empty() {
@@ -792,6 +795,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
             token,
             tokens,
             loop_depth: 0,
+            string_label: 0,
             scope: 0,
             scopes: vec![Scope {
                 parent: 0,
@@ -1436,12 +1440,6 @@ impl Parser<'_, '_, '_, '_> {
         };
     }
 
-    fn new_string(&mut self, string: Str) -> StringLabel {
-        let label = self.ast.strings.len() as StringLabel;
-        self.ast.strings.push(string);
-        return label;
-    }
-
     fn primary_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         const fn parse_positive_binary_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Binary;
@@ -1724,9 +1722,21 @@ impl Parser<'_, '_, '_, '_> {
                 }
             }
             TokenKind::Ascii(ascii_ch) => Ok(Expression::Ascii(ascii_ch)),
-            TokenKind::Str(string_index) | TokenKind::RawStr(string_index) => {
-                let string = self.tokens.strings[string_index as usize].clone();
-                Ok(Expression::Str { label: self.new_string(string) })
+            TokenKind::Str(string_index) => {
+                let string_label = self.string_label;
+                let string = self.tokens.text[string_index as usize];
+                self.ast.string_labels.push((string_label, &string[1..string.len() - 1]));
+                self.string_label += 1;
+
+                Ok(Expression::Str { label: string_label })
+            }
+            TokenKind::RawStr(string_index) => {
+                let string_label = self.string_label;
+                let string = self.tokens.text[string_index as usize];
+                self.ast.raw_string_labels.push((string_label, &string[2..string.len() - 1]));
+                self.string_label += 1;
+
+                Ok(Expression::Str { label: string_label })
             }
             TokenKind::Identifier(name_index) | TokenKind::IdentifierStr(name_index) => {
                 let name = self.tokens.text[name_index as usize];
@@ -2862,8 +2872,12 @@ impl Parser<'_, '_, '_, '_> {
             BaseType::Ascii => Expression::Ascii(b'0'),
             BaseType::Bool => Expression::False,
             BaseType::Str => {
-                let string = Str(Vec::new().into_boxed_slice());
-                Expression::Str { label: self.new_string(string) }
+                // FIX(stefano): proper empty string handling
+                let string_label = self.string_label;
+                let string = &self.src.code()[0..0];
+                self.ast.string_labels.push((string_label, string));
+                self.string_label += 1;
+                Expression::Str { label: string_label }
             }
         };
     }

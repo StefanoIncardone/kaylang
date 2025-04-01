@@ -81,6 +81,8 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Corrected error message and `tokenizer::ErrorKind` related to UTF8 characters in raw string
     literals
+- Corrected error messages pointers related to number literals, raw string literals and identifier
+    strings
 - Corrected behaviour of verbosity flags introduced in the previous version
 
 ## 0.6.2 - 2025-02-27

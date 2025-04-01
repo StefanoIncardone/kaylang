@@ -128,11 +128,64 @@ impl<'ast, 'src: 'ast, 'path: 'src, 'code: 'src> Compiler<'ast, 'src, 'path, 'co
                 }
             }
 
+            // TODO(stefano): dump raw string/character bytes instead of their "human readable text" form
             // strings
-            for (label, string) in this.ast.strings.iter().enumerate() {
-                let string_str = unsafe { core::str::from_utf8_unchecked(&string.0) };
-                let string_chars = string_str.escape_debug();
-                _ = writeln!(strings, " str str_{label}, `{string_chars}`");
+            for (label, string) in &this.ast.string_labels {
+                // FIX(stefano): proper empty string handling
+                if string.len() == 0 {
+                    _ = writeln!(strings, " str str_{label}, ``");
+                } else {
+                    _ = write!(strings, " str str_{label}, `");
+                    let mut chars_index = 0;
+                    let chars = string.as_bytes();
+                    while chars_index < chars.len() {
+                        let ch = chars[chars_index];
+                        chars_index += 1;
+                        match ch {
+                            b'\\' => {
+                                _ = write!(strings, "\\");
+                                let escape = chars[chars_index];
+                                chars_index += 1;
+                                _ = write!(strings, "{}", escape as char);
+                            }
+                            other => {
+                                _ = write!(strings, "{}", other as char);
+                            }
+                        }
+                    }
+                    _ = writeln!(strings, "`");
+                }
+            }
+
+            for (label, string) in &this.ast.raw_string_labels {
+                // FIX(stefano): proper empty string handling
+                if string.len() == 0 {
+                    _ = writeln!(strings, " str str_{label}, ``");
+                } else {
+                    _ = write!(strings, " str str_{label}, `");
+                    let mut chars_index = 0;
+                    let chars = string.as_bytes();
+                    while chars_index < chars.len() {
+                        let ch = chars[chars_index];
+                        chars_index += 1;
+                        match ch {
+                            b'\\' => {
+                                _ = write!(strings, "\\");
+                                let escape = chars[chars_index];
+                                if escape == b'"' {
+                                    chars_index += 1;
+                                    _ = write!(strings, "\"");
+                                } else {
+                                    _ = write!(strings, "\\");
+                                }
+                            }
+                            other => {
+                                _ = write!(strings, "{}", other as char);
+                            }
+                        }
+                    }
+                    _ = writeln!(strings, "`");
+                }
             }
 
             // variables

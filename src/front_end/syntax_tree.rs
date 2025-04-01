@@ -1,7 +1,7 @@
 use super::{
     src_file::{column32, index32, offset32, DisplayPosition, SrcCode},
     tokenizer::{
-        ascii, Bracket, CloseBracket, Op, StrIndex, TextIndex, Token, TokenIndex, TokenKind, Tokens,
+        ascii, Bracket, CloseBracket, Op, TextIndex, Token, TokenIndex, TokenKind, Tokens,
     },
     Error, ErrorDisplay, ErrorInfo, IntoErrorInfo,
 };
@@ -254,11 +254,11 @@ pub(crate) enum Expression {
         column: column32,
     },
     Str {
-        literal: StrIndex,
+        literal: TextIndex,
         column: column32,
     },
     RawStr {
-        literal: StrIndex,
+        literal: TextIndex,
         column: column32,
     },
     Identifier {
@@ -706,14 +706,12 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
                 writeln!(f, "{:>indent$}Ascii: {column} = '{character_escaped}'", "")
             }
             Expression::Str { literal, column } => {
-                let literal_str = &self.tokens.strings[*literal as usize];
-                let literal_str_escaped = literal_str.0.escape_ascii();
-                writeln!(f, "{:>indent$}Str: {column} = \"{literal_str_escaped}\"", "")
+                let literal_str = &self.tokens.text[*literal as usize];
+                writeln!(f, "{:>indent$}Str: {column} = {literal_str}", "")
             }
             Expression::RawStr { literal, column } => {
-                let literal_str = &self.tokens.strings[*literal as usize];
-                let literal_str_escaped = unsafe { core::str::from_utf8_unchecked(&literal_str.0) };
-                writeln!(f, "{:>indent$}RawStr: {column} = r\"{literal_str_escaped}\"", "")
+                let literal_str = &self.tokens.text[*literal as usize];
+                writeln!(f, "{:>indent$}RawStr: {column} = {literal_str}", "")
             }
             Expression::Identifier { identifier, column } => {
                 let identifier_str = self.tokens.text[*identifier as usize];

@@ -1,4 +1,5 @@
 // TODO(stefano): more escape characters
+// TODO(stefano): implement own escaping
 
 use super::{
     src_file::{index32, offset32, Line, SrcCode, SrcFile},
@@ -48,11 +49,6 @@ impl Base {
         };
     }
 }
-
-// REMOVE(stefano): too much abstraction
-#[derive(Debug, Clone)]
-#[repr(transparent)]
-pub(crate) struct Str(pub(crate) Box<[ascii]>);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -455,9 +451,7 @@ impl Op {
     }
 }
 
-pub(crate) type BracketIndex = index32;
 pub(crate) type TextIndex = index32;
-pub(crate) type StrIndex = index32;
 pub(crate) type TokenIndex = index32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -468,6 +462,7 @@ pub(crate) enum TokenKind {
     Unexpected(TextIndex),
 
     // Symbols
+    // IDEA(stefano): expand into the different brackets
     Bracket(Bracket),
     Colon,
     SemiColon,
@@ -482,9 +477,10 @@ pub(crate) enum TokenKind {
     BinaryInteger(TextIndex),
     OctalInteger(TextIndex),
     HexadecimalInteger(TextIndex),
-    Ascii(ascii),
-    Str(StrIndex),
-    RawStr(StrIndex),
+    Ascii(ascii), // IDEA(stefano): make into `Ascii(TextIndex)`
+
+    Str(TextIndex),
+    RawStr(TextIndex),
 
     Identifier(TextIndex),
     IdentifierStr(TextIndex),
@@ -514,10 +510,12 @@ impl TokenKind {
         return match self {
             Self::Comment(comment) => {
                 let text = tokens.text[comment as usize];
+                // TODO(stefano): remove the `+ 1`
                 text.chars_width() + 1 // + 1 for the `#`
             }
             Self::BlockComment(comment) => {
                 let text = tokens.text[comment as usize];
+                // TODO(stefano): remove the `+ 2 + 2`
                 text.chars_width() + 2 + 2 // + 2 for the opening `##` and + 2 for the closing `##`
             }
             Self::Unexpected(unexpected) => {
@@ -532,35 +530,34 @@ impl TokenKind {
             Self::Op(op) => op.display_len(),
 
             Self::DecimalInteger(integer) => {
-                let literal = tokens.text[integer as usize];
-                literal.len() as offset32
+                let text = tokens.text[integer as usize];
+                text.len() as offset32
             }
             Self::BinaryInteger(integer) => {
-                let literal = tokens.text[integer as usize];
-                Base::Binary.prefix().len() as offset32 + literal.len() as offset32
+                let text = tokens.text[integer as usize];
+                text.len() as offset32
             }
             Self::OctalInteger(integer) => {
-                let literal = tokens.text[integer as usize];
-                Base::Octal.prefix().len() as offset32 + literal.len() as offset32
+                let text = tokens.text[integer as usize];
+                text.len() as offset32
             }
             Self::HexadecimalInteger(integer) => {
-                let literal = tokens.text[integer as usize];
-                Base::Hexadecimal.prefix().len() as offset32 + literal.len() as offset32
+                let text = tokens.text[integer as usize];
+                text.len() as offset32
             }
-            Self::Ascii(ascii_char) => ascii_char.escape_ascii().len() as offset32 + 2, // + 2 for the quotes
+            Self::Ascii(ascii_char) => {
+                // TODO(stefano): remove the `+ 2`
+                ascii_char.escape_ascii().len() as offset32 + 2 // + 2 for the quotes
+            }
             Self::True => 4,
             Self::False => 5,
             Self::Str(string) => {
-                let text = &tokens.strings[string as usize];
-                let mut len = 2; // starting at 2 for the quotes
-                for ascii_char in &*text.0 {
-                    len += ascii_char.escape_ascii().len() as offset32;
-                }
-                len
+                let text = tokens.text[string as usize];
+                text.len() as offset32
             }
             Self::RawStr(string) => {
-                let text = &tokens.strings[string as usize];
-                text.0.len() as offset32 + 3 // + 1 for the `r` prefix, and + 2 for the quotes
+                let text = tokens.text[string as usize];
+                text.len() as offset32
             }
 
             Self::Identifier(identifier) => {
@@ -569,7 +566,7 @@ impl TokenKind {
             }
             Self::IdentifierStr(identifier) => {
                 let text = tokens.text[identifier as usize];
-                text.len() as offset32 + 2 // + 2 for the quotes
+                text.len() as offset32
             }
 
             Self::Print => 5,
@@ -602,7 +599,6 @@ pub struct Tokens<'code, 'path: 'code> {
 
     // IDEA(stefano): store a Range<offset32> instead
     pub(crate) text: Vec<&'code str>,
-    pub(crate) strings: Vec<Str>,
 
     _src: PhantomData<&'code SrcFile<'path>>,
 }
@@ -640,13 +636,12 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
             tokens: Tokens {
                 tokens: Vec::new(),
                 text: Vec::new(),
-                strings: Vec::new(),
                 _src: PhantomData,
             },
 
             errors: Vec::new(),
         };
-        let mut brackets_indicies = Vec::<BracketIndex>::new();
+        let mut brackets_indicies = Vec::<TokenIndex>::new();
 
         'tokenization: while let Some(next_character) = tokenizer.peek_next_ascii_char() {
             let token_kind_result = 'next_token: {
@@ -704,16 +699,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                     b'r' => match tokenizer.peek_next_utf8_char() {
                         Some('"') => {
                             tokenizer.col += 1; // skip the `r` prefix
-
-                            match tokenizer.raw_string_literal() {
-                                Ok(literal) => {
-                                    tokenizer.tokens.strings.push(Str(literal.into_boxed_slice()));
-                                    let string_index =
-                                        tokenizer.tokens.strings.len() as StrIndex - 1;
-                                    Ok(TokenKind::RawStr(string_index))
-                                }
-                                Err(()) => Err(()),
-                            }
+                            tokenizer.raw_string_literal()
                         }
                         _ => tokenizer.identifier(),
                     },
@@ -775,14 +761,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                         Err(()) => Err(()),
                     },
-                    b'"' => match tokenizer.string_literal() {
-                        Ok(literal) => {
-                            tokenizer.tokens.strings.push(Str(literal.into_boxed_slice()));
-                            let string_index = tokenizer.tokens.strings.len() as StrIndex - 1;
-                            Ok(TokenKind::Str(string_index))
-                        }
-                        Err(()) => Err(()),
-                    },
+                    b'"' => tokenizer.string_literal(),
                     b'\'' => match tokenizer.ascii_literal() {
                         Ok(literal) => Ok(TokenKind::Ascii(literal)),
                         Err(()) => Err(()),
@@ -815,6 +794,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                                 }
                             }
 
+                            // TODO(stefano): remove the `+ 2 + 2`
                             // starting at this.token_start_col + 2 to skip the `##`
                             // ending at this.col - 2 to skip the `##`
                             let comment_str = &tokenizer.code[tokenizer.token_start_col as usize + 2
@@ -845,6 +825,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                                 }
                             }
 
+                            // TODO(stefano): remove the `+ 1`
                             let comment_str = &tokenizer.code
                                 [tokenizer.token_start_col as usize + 1..tokenizer.col as usize];
                             tokenizer.tokens.text.push(comment_str);
@@ -1522,8 +1503,8 @@ impl<'code> Tokenizer<'code, '_> {
 
         let identifier_str = &self.code[self.token_start_col as usize..self.col as usize];
         let identifier = {
-            let identifier_len = identifier_str.len() as offset32;
-            if identifier_len as offset32 > Self::MAX_IDENTIFIER_LEN + 2 { // + 2 for the quotes
+            let identifier_len = identifier_str.len() as offset32 - 2; // - 2 for the quotes
+            if identifier_len as offset32 > Self::MAX_IDENTIFIER_LEN {
                 self.errors.push(Error {
                     kind: ErrorKind::IdentifierStrTooLong { max: Self::MAX_IDENTIFIER_LEN },
                     col: self.token_start_col,
@@ -1703,6 +1684,7 @@ impl<'code> Tokenizer<'code, '_> {
     fn ascii_literal(&mut self) -> Result<ascii, ()> {
         let previous_errors_len = self.errors.len();
 
+        // REMOVE(stefano): parse similar to strings
         let mut literal = Vec::<ascii>::new();
         loop {
             let next_character = match self.peek_next_ascii_char() {
@@ -1814,10 +1796,9 @@ impl<'code> Tokenizer<'code, '_> {
         };
     }
 
-    fn string_literal(&mut self) -> Result<Vec<ascii>, ()> {
+    fn string_literal(&mut self) -> Result<TokenKind, ()> {
         let previous_errors_len = self.errors.len();
 
-        let mut literal = Vec::<ascii>::new();
         loop {
             let next_character = match self.peek_next_ascii_char() {
                 Some(Ok(b'\n')) | None => {
@@ -1841,7 +1822,7 @@ impl<'code> Tokenizer<'code, '_> {
             };
             self.col += 1;
 
-            let character = match next_character {
+            let _character = match next_character {
                 b'\\' => {
                     let escape_character = match self.peek_next_ascii_char() {
                         Some(Ok(b'\n')) | None => {
@@ -1881,7 +1862,6 @@ impl<'code> Tokenizer<'code, '_> {
                                 col: self.col - 2,
                                 pointers_count: 2,
                             });
-                            literal.push(b'\\');
                             unrecognized
                         }
                     }
@@ -1897,17 +1877,22 @@ impl<'code> Tokenizer<'code, '_> {
                 b'"' => break,
                 ch => ch,
             };
-
-            literal.push(character);
         }
 
-        return if previous_errors_len == self.errors.len() { Ok(literal) } else { Err(()) };
+        if previous_errors_len != self.errors.len() {
+            return Err(())
+        };
+
+        let raw_string_literal_str = &self.code[self.token_start_col as usize..self.col as usize];
+        self.tokens.text.push(raw_string_literal_str);
+        let raw_string_literal = self.tokens.text.len() as TextIndex - 1;
+        let raw_string = TokenKind::Str(raw_string_literal);
+        return Ok(raw_string);
     }
 
-    fn raw_string_literal(&mut self) -> Result<Vec<ascii>, ()> {
+    fn raw_string_literal(&mut self) -> Result<TokenKind, ()> {
         let previous_errors_len = self.errors.len();
 
-        let mut literal = Vec::<ascii>::new();
         loop {
             let next_character = match self.peek_next_ascii_char() {
                 Some(Ok(b'\n')) | None => {
@@ -1931,7 +1916,7 @@ impl<'code> Tokenizer<'code, '_> {
             };
             self.col += 1;
 
-            let character = match next_character {
+            let _character = match next_character {
                 b'\\' => {
                     let escape_character = match self.peek_next_ascii_char() {
                         Some(Ok(b'\n')) | None => {
@@ -1973,11 +1958,17 @@ impl<'code> Tokenizer<'code, '_> {
                 b'"' => break,
                 ch => ch,
             };
-
-            literal.push(character);
         }
 
-        return if previous_errors_len == self.errors.len() { Ok(literal) } else { Err(()) };
+        if previous_errors_len != self.errors.len() {
+            return Err(());
+        }
+
+        let raw_string_literal_str = &self.code[self.token_start_col as usize..self.col as usize];
+        self.tokens.text.push(raw_string_literal_str);
+        let raw_string_literal = self.tokens.text.len() as TextIndex - 1;
+        let raw_string = TokenKind::RawStr(raw_string_literal);
+        return Ok(raw_string);
     }
 }
 
