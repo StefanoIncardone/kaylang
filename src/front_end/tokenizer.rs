@@ -510,13 +510,11 @@ impl TokenKind {
         return match self {
             Self::Comment(comment) => {
                 let text = tokens.text[comment as usize];
-                // TODO(stefano): remove the `+ 1`
-                text.chars_width() + 1 // + 1 for the `#`
+                text.chars_width()
             }
             Self::BlockComment(comment) => {
                 let text = tokens.text[comment as usize];
-                // TODO(stefano): remove the `+ 2 + 2`
-                text.chars_width() + 2 + 2 // + 2 for the opening `##` and + 2 for the closing `##`
+                text.chars_width()
             }
             Self::Unexpected(unexpected) => {
                 let text = tokens.text[unexpected as usize];
@@ -794,11 +792,8 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                                 }
                             }
 
-                            // TODO(stefano): remove the `+ 2 + 2`
-                            // starting at this.token_start_col + 2 to skip the `##`
-                            // ending at this.col - 2 to skip the `##`
-                            let comment_str = &tokenizer.code[tokenizer.token_start_col as usize + 2
-                                ..tokenizer.col as usize + 2];
+                            let comment_str = &tokenizer.code
+                                [tokenizer.token_start_col as usize..tokenizer.col as usize];
                             tokenizer.tokens.text.push(comment_str);
                             let comment_index = tokenizer.tokens.text.len() as TextIndex - 1;
                             Ok(TokenKind::BlockComment(comment_index))
@@ -825,9 +820,8 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                                 }
                             }
 
-                            // TODO(stefano): remove the `+ 1`
                             let comment_str = &tokenizer.code
-                                [tokenizer.token_start_col as usize + 1..tokenizer.col as usize];
+                                [tokenizer.token_start_col as usize..tokenizer.col as usize];
                             tokenizer.tokens.text.push(comment_str);
                             let comment_index = tokenizer.tokens.text.len() as TextIndex - 1;
                             Ok(TokenKind::Comment(comment_index))
