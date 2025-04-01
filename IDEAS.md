@@ -2145,3 +2145,35 @@ let 'this is not a valid variable name' = c"s"; # character literals would becom
 # or like this, where the i string modifier would mean "identifier"
 let i"this is not a valid variable name" = "some value";
 ```
+
+## Better memory layout
+
+```rust
+pub(crate) union TokenPayload {
+    text: TextIndex,
+    bracket: Bracket,
+    op: Op,
+    ascii: ascii,
+    none: (),
+}
+
+#[repr(u8)]
+pub(crate) enum TokenTag {
+    Foo,
+    Bar,
+    Baz,
+}
+
+// saves 3 bytes of padding per token
+pub(crate) struct TokensNew {
+    tags: Vec<TokenTag>,
+    payload: Vec<TokenPayload>,
+    col: Vec<offset32>,
+}
+
+pub(crate) struct TokenNew {
+    tags: TokenTag,
+    payload: TokenPayload,
+    col: offset32,
+}
+```
