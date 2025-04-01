@@ -54,8 +54,9 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Allowed cli color mode options `-c` and `--color` to be specified multiple times
 - `src_file::Span`, `src_file::Position` and `src_file::DisplayPosition` now derive `Hash`
 - Improved `Logger` methods consistency
-- Expanded `tokenizer::TokenKind::Integer` into its different bases, modified related entities,
-    errors and `tokenizer::ErrorKind`s accordingly
+- Expanded `tokenizer::TokenKind::Integer` into its different bases
+- Expanded `tokenizer::TokenKind::Bracket` into its different variants
+- Expanded error entities such as `tokenizer::ErrorKind`
 - Reworked compilation stages:
     - old:
         - loading of source code file and line boundaries precalculations
@@ -73,16 +74,14 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 #### Removed
 
 - Removed `back_end::reg` module, moved to `back-to-front` compiler tools repo
-- Removed `tokenizer::Quote` and `tokenizer::QuotedLiteralKind`, and expanded related
-    `tokenizer::ErrorKind`s
+- Removed `tokenizer::Quote` and `tokenizer::QuotedLiteralKind`
 - Removed `ColorMode`
 
 #### Fixed
 
-- Corrected error message and `tokenizer::ErrorKind` related to UTF8 characters in raw string
-    literals
-- Corrected error messages pointers related to number literals, raw string literals and identifier
-    strings
+- Corrected error message related to UTF8 characters in raw string literals
+- Corrected error messages related to number literals, raw string literals and identifier strings
+- Corrected mismatched brackets error messages
 - Corrected behaviour of verbosity flags introduced in the previous version
 
 ## 0.6.2 - 2025-02-27

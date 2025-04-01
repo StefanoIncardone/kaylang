@@ -76,6 +76,7 @@ impl Mutability {
     }
 }
 
+// REMOVE(stefano): expand users of this enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Bracket {
@@ -108,6 +109,7 @@ impl Bracket {
     }
 }
 
+// REMOVE(stefano): expand users of this enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum OpenBracket {
@@ -147,6 +149,7 @@ impl OpenBracket {
     }
 }
 
+// REMOVE(stefano): expand users of this enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CloseBracket {
@@ -462,8 +465,13 @@ pub(crate) enum TokenKind {
     Unexpected(TextIndex),
 
     // Symbols
-    // IDEA(stefano): expand into the different brackets
-    Bracket(Bracket),
+    OpenRoundBracket,
+    CloseRoundBracket,
+    OpenSquareBracket,
+    CloseSquareBracket,
+    OpenCurlyBracket,
+    CloseCurlyBracket,
+
     Colon,
     SemiColon,
     Comma,
@@ -521,7 +529,13 @@ impl TokenKind {
                 text.chars_width()
             }
 
-            Self::Bracket(bracket) => bracket.display_len(),
+            Self::OpenRoundBracket
+            | Self::CloseRoundBracket
+            | Self::OpenSquareBracket
+            | Self::CloseSquareBracket
+            | Self::OpenCurlyBracket
+            | Self::CloseCurlyBracket => 1,
+
             Self::Colon => 1,
             Self::SemiColon => 1,
             Self::Comma => 1,
@@ -825,116 +839,119 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                     },
                     b'(' => {
                         brackets_indicies.push(tokenizer.tokens.tokens.len() as TokenIndex);
-                        Ok(TokenKind::Bracket(Bracket::OpenRound))
+                        Ok(TokenKind::OpenRoundBracket)
                     }
                     b')' => 'bracket: {
                         let Some(bracket_index) = brackets_indicies.pop() else {
                             tokenizer.errors.push(Error {
-                                kind: ErrorKind::UnopenedBracket(CloseBracket::Round),
+                                kind: ErrorKind::UnopenedRoundBracket,
                                 col: tokenizer.token_start_col,
                                 pointers_count: 1,
                             });
                             break 'bracket Err(());
                         };
 
-                        let TokenKind::Bracket(bracket) =
-                            &tokenizer.tokens.tokens[bracket_index as usize].kind
-                        else {
-                            unreachable!("incorrect bracket index");
-                        };
-
-                        match *bracket {
-                            Bracket::OpenRound
-                            | Bracket::CloseRound
-                            | Bracket::CloseCurly
-                            | Bracket::CloseSquare => Ok(TokenKind::Bracket(Bracket::CloseRound)),
-                            actual @ (Bracket::OpenCurly | Bracket::OpenSquare) => {
+                        #[expect(clippy::wildcard_enum_match_arm)]
+                        match &tokenizer.tokens.tokens[bracket_index as usize].kind {
+                            TokenKind::OpenRoundBracket
+                            | TokenKind::CloseRoundBracket
+                            | TokenKind::CloseCurlyBracket
+                            | TokenKind::CloseSquareBracket => Ok(TokenKind::CloseRoundBracket),
+                            TokenKind::OpenCurlyBracket => {
                                 tokenizer.errors.push(Error {
-                                    kind: ErrorKind::MismatchedBracket {
-                                        expected: CloseBracket::Round,
-                                        actual: actual.into(),
-                                    },
+                                    kind: ErrorKind::MismatchedCurlyRoundBracket,
                                     col: tokenizer.token_start_col,
                                     pointers_count: 1,
                                 });
                                 Err(())
                             }
+                            TokenKind::OpenSquareBracket => {
+                                tokenizer.errors.push(Error {
+                                    kind: ErrorKind::MismatchedSquareRoundBracket,
+                                    col: tokenizer.token_start_col,
+                                    pointers_count: 1,
+                                });
+                                Err(())
+                            }
+                            _ => unreachable!("incorrect bracket index"),
                         }
                     }
                     b'[' => {
                         brackets_indicies.push(tokenizer.tokens.tokens.len() as TokenIndex);
-                        Ok(TokenKind::Bracket(Bracket::OpenSquare))
+                        Ok(TokenKind::OpenSquareBracket)
                     }
                     b']' => 'bracket: {
                         let Some(bracket_index) = brackets_indicies.pop() else {
                             tokenizer.errors.push(Error {
-                                kind: ErrorKind::UnopenedBracket(CloseBracket::Square),
+                                kind: ErrorKind::UnopenedSquareBracket,
                                 col: tokenizer.token_start_col,
                                 pointers_count: 1,
                             });
                             break 'bracket Err(());
                         };
 
-                        let TokenKind::Bracket(bracket) =
-                            &tokenizer.tokens.tokens[bracket_index as usize].kind
-                        else {
-                            unreachable!("incorrect bracket index");
-                        };
-
-                        match *bracket {
-                            Bracket::OpenSquare
-                            | Bracket::CloseSquare
-                            | Bracket::CloseCurly
-                            | Bracket::CloseRound => Ok(TokenKind::Bracket(Bracket::CloseSquare)),
-                            actual @ (Bracket::OpenCurly | Bracket::OpenRound) => {
+                        #[expect(clippy::wildcard_enum_match_arm)]
+                        match &tokenizer.tokens.tokens[bracket_index as usize].kind {
+                            TokenKind::OpenSquareBracket
+                            | TokenKind::CloseSquareBracket
+                            | TokenKind::CloseCurlyBracket
+                            | TokenKind::CloseRoundBracket => Ok(TokenKind::CloseSquareBracket),
+                            TokenKind::OpenCurlyBracket => {
                                 tokenizer.errors.push(Error {
-                                    kind: ErrorKind::MismatchedBracket {
-                                        expected: CloseBracket::Square,
-                                        actual: actual.into(),
-                                    },
+                                    kind: ErrorKind::MismatchedCurlySquareBracket,
                                     col: tokenizer.token_start_col,
                                     pointers_count: 1,
                                 });
                                 Err(())
                             }
+                            TokenKind::OpenRoundBracket => {
+                                tokenizer.errors.push(Error {
+                                    kind: ErrorKind::MismatchedRoundSquareBracket,
+                                    col: tokenizer.token_start_col,
+                                    pointers_count: 1,
+                                });
+                                Err(())
+                            }
+                            _ => unreachable!("incorrect bracket index"),
                         }
                     }
                     b'{' => {
                         brackets_indicies.push(tokenizer.tokens.tokens.len() as TokenIndex);
-                        Ok(TokenKind::Bracket(Bracket::OpenCurly))
+                        Ok(TokenKind::OpenCurlyBracket)
                     }
                     b'}' => 'bracket: {
                         let Some(bracket_index) = brackets_indicies.pop() else {
                             tokenizer.errors.push(Error {
-                                kind: ErrorKind::UnopenedBracket(CloseBracket::Curly),
+                                kind: ErrorKind::UnopenedCurlyBracket,
                                 col: tokenizer.token_start_col,
                                 pointers_count: 1,
                             });
                             break 'bracket Err(());
                         };
 
-                        let TokenKind::Bracket(bracket) =
-                            &tokenizer.tokens.tokens[bracket_index as usize].kind
-                        else {
-                            unreachable!("incorrect bracket index");
-                        };
-
-                        match *bracket {
-                            Bracket::OpenCurly
-                            | Bracket::CloseCurly
-                            | Bracket::CloseRound
-                            | Bracket::CloseSquare => Ok(TokenKind::Bracket(Bracket::CloseCurly)),
-                            actual @ (Bracket::OpenRound | Bracket::OpenSquare) => {
+                        #[expect(clippy::wildcard_enum_match_arm)]
+                        match &tokenizer.tokens.tokens[bracket_index as usize].kind {
+                            TokenKind::OpenCurlyBracket
+                            | TokenKind::CloseCurlyBracket
+                            | TokenKind::CloseRoundBracket
+                            | TokenKind::CloseSquareBracket => Ok(TokenKind::CloseCurlyBracket),
+                            TokenKind::OpenRoundBracket => {
                                 tokenizer.errors.push(Error {
-                                    kind: ErrorKind::MismatchedBracket {
-                                        expected: CloseBracket::Curly,
-                                        actual: actual.into(),
-                                    },
+                                    kind: ErrorKind::MismatchedRoundCurlyBracket,
                                     col: tokenizer.token_start_col,
                                     pointers_count: 1,
                                 });
                                 Err(())
                             }
+                            TokenKind::OpenSquareBracket => {
+                                tokenizer.errors.push(Error {
+                                    kind: ErrorKind::MismatchedSquareCurlyBracket,
+                                    col: tokenizer.token_start_col,
+                                    pointers_count: 1,
+                                });
+                                Err(())
+                            }
+                            _ => unreachable!("incorrect bracket index"),
                         }
                     }
                     b':' => Ok(TokenKind::Colon),
@@ -1253,12 +1270,17 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
         for bracket_index in brackets_indicies {
             // there can only be open brackets at this point
             let bracket_token = &tokenizer.tokens.tokens[bracket_index as usize];
-            let TokenKind::Bracket(bracket) = bracket_token.kind else {
-                unreachable!("incorrect bracket index");
+
+            #[expect(clippy::wildcard_enum_match_arm)]
+            let error_kind = match bracket_token.kind {
+                TokenKind::OpenRoundBracket => ErrorKind::UnclosedRoundBracket,
+                TokenKind::OpenSquareBracket => ErrorKind::UnclosedSquareBracket,
+                TokenKind::OpenCurlyBracket => ErrorKind::UnclosedCurlyBracket,
+                _ => unreachable!("incorrect bracket index"),
             };
 
             tokenizer.errors.push(Error {
-                kind: ErrorKind::UnclosedBracket((bracket).into()),
+                kind: error_kind,
                 col: bracket_token.col,
                 pointers_count: 1,
             });
@@ -1966,9 +1988,18 @@ impl<'code> Tokenizer<'code, '_> {
 pub enum ErrorKind<'code> {
     UnclosedBlockComment,
 
-    UnclosedBracket(OpenBracket),
-    UnopenedBracket(CloseBracket),
-    MismatchedBracket { actual: OpenBracket, expected: CloseBracket },
+    UnclosedRoundBracket,
+    UnclosedSquareBracket,
+    UnclosedCurlyBracket,
+    UnopenedRoundBracket,
+    UnopenedSquareBracket,
+    UnopenedCurlyBracket,
+    MismatchedRoundCurlyBracket,
+    MismatchedRoundSquareBracket,
+    MismatchedSquareRoundBracket,
+    MismatchedSquareCurlyBracket,
+    MismatchedCurlyRoundBracket,
+    MismatchedCurlySquareBracket,
 
     // IDEA(stefano): expand into different quoted literals
     Utf8InQuotedLiteral { grapheme: &'code str },
@@ -2012,17 +2043,53 @@ impl IntoErrorInfo for ErrorKind<'_> {
                 "missing closing `##`".into(),
             ),
 
-            Self::UnclosedBracket(bracket) => (
-                format!("unclosed '{bracket}' bracket").into(),
+            Self::UnclosedRoundBracket => (
+                "unclosed '(' bracket".into(),
                 "was not closed".into(),
             ),
-            Self::UnopenedBracket(bracket) => (
-                format!("unopened '{bracket}' bracket").into(),
+            Self::UnclosedSquareBracket => (
+                "unclosed '[' bracket".into(),
+                "was not closed".into(),
+            ),
+            Self::UnclosedCurlyBracket => (
+                "unclosed '{' bracket".into(),
+                "was not closed".into(),
+            ),
+            Self::UnopenedRoundBracket => (
+                "unopened ')' bracket".into(),
                 "was not opened before".into(),
             ),
-            Self::MismatchedBracket { actual, expected } => (
+            Self::UnopenedSquareBracket => (
+                "unopened ']' bracket".into(),
+                "was not opened before".into(),
+            ),
+            Self::UnopenedCurlyBracket => (
+                "unopened '}' bracket".into(),
+                "was not opened before".into(),
+            ),
+            Self::MismatchedRoundSquareBracket => (
                 "mismatched bracket".into(),
-                format!("'{actual}' closes the wrong bracket, expected a '{expected}' instead").into()
+                "']' closes the wrong bracket, expected a ')' instead".into()
+            ),
+            Self::MismatchedRoundCurlyBracket => (
+                "mismatched bracket".into(),
+                "'}' closes the wrong bracket, expected a ')' instead".into()
+            ),
+            Self::MismatchedSquareRoundBracket => (
+                "mismatched bracket".into(),
+                "')' closes the wrong bracket, expected a ']' instead".into()
+            ),
+            Self::MismatchedSquareCurlyBracket => (
+                "mismatched bracket".into(),
+                "'}' closes the wrong bracket, expected a ']' instead".into()
+            ),
+            Self::MismatchedCurlyRoundBracket => (
+                "mismatched bracket".into(),
+                "')' closes the wrong bracket, expected a '}' instead".into()
+            ),
+            Self::MismatchedCurlySquareBracket => (
+                "mismatched bracket".into(),
+                "']' closes the wrong bracket, expected a '}' instead".into()
             ),
 
             Self::Utf8InQuotedLiteral { grapheme } => (

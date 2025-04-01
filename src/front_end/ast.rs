@@ -5,7 +5,7 @@
 use super::{
     src_file::{index32, offset32, Position, SrcCode},
     tokenizer::{
-        ascii, Base, Bracket, Mutability, Op, OpenBracket, Token, TokenIndex, TokenKind, Tokens,
+        ascii, Base, Mutability, Op, OpenBracket, Token, TokenIndex, TokenKind, Tokens,
     },
     Error, ErrorInfo, IntoErrorInfo,
 };
@@ -865,7 +865,8 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
             | TokenKind::IdentifierStr(_)
-            | TokenKind::Bracket(Bracket::OpenRound | Bracket::OpenSquare)
+            | TokenKind::OpenRoundBracket
+            | TokenKind::OpenSquareBracket
             | TokenKind::Op(
                 Op::Len
                 | Op::Not
@@ -989,7 +990,12 @@ impl Parser<'_, '_, '_, '_> {
                         })
                     }
 
-                    TokenKind::Bracket(_)
+                    TokenKind::OpenRoundBracket
+                    | TokenKind::CloseRoundBracket
+                    | TokenKind::OpenSquareBracket
+                    | TokenKind::CloseSquareBracket
+                    | TokenKind::OpenCurlyBracket
+                    | TokenKind::CloseCurlyBracket
                     | TokenKind::Colon
                     | TokenKind::Comma
                     | TokenKind::False
@@ -1113,16 +1119,16 @@ impl Parser<'_, '_, '_, '_> {
                 _ = self.next_token();
                 Ok(Node::Semicolon)
             }
-            TokenKind::Bracket(Bracket::OpenCurly) => {
+            TokenKind::OpenCurlyBracket => {
                 let Position { line, column } = self.src.position(token.col);
                 unreachable!(
                     "blocks not allowed in single statements: {file}:{line}:{column}",
                     file = self.src.path().display(),
                 );
             }
-            TokenKind::Bracket(
-                Bracket::CloseCurly | Bracket::CloseSquare | Bracket::CloseRound,
-            ) => {
+            TokenKind::CloseCurlyBracket
+            | TokenKind::CloseSquareBracket
+            | TokenKind::CloseRoundBracket => {
                 let Position { line, column } = self.src.position(token.col);
                 unreachable!(
                     "should have been cought during tokenization: {file}:{line}:{column}",
@@ -1163,7 +1169,7 @@ impl Parser<'_, '_, '_, '_> {
     fn do_statement(&mut self) -> Result<Node, Error<ErrorKind>> {
         let token = self.next_token_bounded(Expected::StatementAfterDo)?;
         return match token.kind {
-            TokenKind::Bracket(Bracket::OpenCurly) => {
+            TokenKind::OpenCurlyBracket => {
                 _ = self.next_token();
                 Err(Error {
                     kind: ErrorKind::BlockInDoStatement,
@@ -1179,7 +1185,11 @@ impl Parser<'_, '_, '_, '_> {
                     pointers_count: token.kind.display_len(self.tokens),
                 })
             }
-            TokenKind::Bracket(_)
+            TokenKind::OpenRoundBracket
+            | TokenKind::CloseRoundBracket
+            | TokenKind::OpenSquareBracket
+            | TokenKind::CloseSquareBracket
+            | TokenKind::CloseCurlyBracket
             | TokenKind::Comment(_)
             | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
@@ -1213,7 +1223,7 @@ impl Parser<'_, '_, '_, '_> {
 
     fn any(&mut self, token: Token) -> Result<Node, Error<ErrorKind>> {
         return match token.kind {
-            TokenKind::Bracket(Bracket::OpenCurly) => {
+            TokenKind::OpenCurlyBracket => {
                 let new_scope_index = self.scopes.len() as ScopeIndex;
                 self.scopes.push(Scope {
                     parent: self.scope,
@@ -1228,12 +1238,15 @@ impl Parser<'_, '_, '_, '_> {
                 self.scope();
                 Ok(Node::Scope { index: new_scope_index })
             }
-            TokenKind::Bracket(Bracket::CloseCurly) => {
+            TokenKind::CloseCurlyBracket => {
                 self.scope = self.scopes[self.scope as usize].parent;
                 _ = self.next_token();
                 Ok(Node::ScopeEnd)
             }
-            TokenKind::Bracket(_)
+            TokenKind::OpenRoundBracket
+            | TokenKind::CloseRoundBracket
+            | TokenKind::OpenSquareBracket
+            | TokenKind::CloseSquareBracket
             | TokenKind::Comment(_)
             | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
@@ -1851,10 +1864,10 @@ impl Parser<'_, '_, '_, '_> {
                     }
                 }
             }
-            TokenKind::Bracket(Bracket::OpenRound) => 'parenthesis: {
+            TokenKind::OpenRoundBracket => 'parenthesis: {
                 let expression_start_token = self.next_token_bounded(Expected::Expression)?;
 
-                if let TokenKind::Bracket(Bracket::CloseRound) = expression_start_token.kind {
+                if let TokenKind::CloseRoundBracket = expression_start_token.kind {
                     break 'parenthesis Err(Error {
                         kind: ErrorKind::EmptyExpression,
                         col: expression_start_token.col,
@@ -1865,7 +1878,7 @@ impl Parser<'_, '_, '_, '_> {
                 let expression = self.expression()?;
                 let close_bracket_token = self.current_token(Expected::ClosingRoundBracket)?;
 
-                let TokenKind::Bracket(Bracket::CloseRound) = close_bracket_token.kind else {
+                let TokenKind::CloseRoundBracket = close_bracket_token.kind else {
                     return Err(Error {
                         kind: ErrorKind::UnclosedBracket(OpenBracket::Round),
                         col: current_token.col,
@@ -1878,12 +1891,12 @@ impl Parser<'_, '_, '_, '_> {
                     expression_index: self.new_expression(expression),
                 })
             }
-            TokenKind::Bracket(Bracket::OpenSquare) => 'array: {
+            TokenKind::OpenSquareBracket => 'array: {
                 let mut bracket_or_comma_token =
                     self.next_token_bounded(Expected::ArrayElementOrClosingSquareBracket)?;
 
                 // REMOVE(stefano): allow arrays of 0 elements
-                if let TokenKind::Bracket(Bracket::CloseSquare) = bracket_or_comma_token.kind {
+                if let TokenKind::CloseSquareBracket = bracket_or_comma_token.kind {
                     break 'array Err(Error {
                         kind: ErrorKind::ArrayOfZeroElements,
                         col: current_token.col,
@@ -1913,7 +1926,7 @@ impl Parser<'_, '_, '_, '_> {
                 };
                 let mut items = vec![first_item];
 
-                if let TokenKind::Bracket(Bracket::CloseSquare) = bracket_or_comma_token.kind {
+                if let TokenKind::CloseSquareBracket = bracket_or_comma_token.kind {
                     break 'array Ok(Expression::Array { base_type: items_type, items });
                 }
 
@@ -1953,7 +1966,7 @@ impl Parser<'_, '_, '_, '_> {
                             self.next_token_bounded(Expected::ArrayElementOrClosingSquareBracket)?;
                     }
 
-                    if let TokenKind::Bracket(Bracket::CloseSquare) = bracket_or_comma_token.kind {
+                    if let TokenKind::CloseSquareBracket = bracket_or_comma_token.kind {
                         debug_assert!(items.len() > 0, "arrays of 0 items are not allowed");
                         break 'array Ok(Expression::Array { base_type: items_type, items });
                     }
@@ -2383,7 +2396,10 @@ impl Parser<'_, '_, '_, '_> {
                 col: current_token.col,
                 pointers_count: current_token.kind.display_len(self.tokens),
             }),
-            TokenKind::Bracket(_)
+            TokenKind::CloseRoundBracket
+            | TokenKind::CloseSquareBracket
+            | TokenKind::OpenCurlyBracket
+            | TokenKind::CloseCurlyBracket
             | TokenKind::Op(_)
             | TokenKind::Comment(_)
             | TokenKind::BlockComment(_)
@@ -2399,7 +2415,7 @@ impl Parser<'_, '_, '_, '_> {
 
         let mut expression = expression_result?;
         while let Some(
-            open_bracket_token @ Token { kind: TokenKind::Bracket(Bracket::OpenSquare), .. },
+            open_bracket_token @ Token { kind: TokenKind::OpenSquareBracket, .. },
         ) = self.next_token()
         {
             let _start_of_index = self.next_token();
@@ -2414,7 +2430,7 @@ impl Parser<'_, '_, '_, '_> {
 
             let after_index_token = self.current_token(Expected::ClosingSquareBracket)?;
 
-            let TokenKind::Bracket(Bracket::CloseSquare) = after_index_token.kind else {
+            let TokenKind::CloseSquareBracket = after_index_token.kind else {
                 let before_index_token = self.peek_previous_token();
                 return Err(Error {
                     kind: ErrorKind::MissingClosingSquareBracketInIndex,
@@ -2819,7 +2835,7 @@ impl Parser<'_, '_, '_, '_> {
             return Ok(Some((type_token, Type::Base(base_type))));
         };
 
-        let TokenKind::Bracket(Bracket::OpenSquare) = open_square_bracket_token.kind else {
+        let TokenKind::OpenSquareBracket = open_square_bracket_token.kind else {
             return Ok(Some((type_token, Type::Base(base_type))));
         };
 
@@ -2855,7 +2871,7 @@ impl Parser<'_, '_, '_, '_> {
         };
 
         let close_square_bracket_token = self.current_token(Expected::ClosingSquareBracket)?;
-        let TokenKind::Bracket(Bracket::CloseSquare) = close_square_bracket_token.kind else {
+        let TokenKind::CloseSquareBracket = close_square_bracket_token.kind else {
             return Err(Error {
                 kind: ErrorKind::MissingClosingSquareBracketInArrayType,
                 col: open_square_bracket_token.col,
@@ -2901,7 +2917,12 @@ impl Parser<'_, '_, '_, '_> {
             TokenKind::Comment(_)
             | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
-            | TokenKind::Bracket(_)
+            | TokenKind::OpenRoundBracket
+            | TokenKind::CloseRoundBracket
+            | TokenKind::OpenSquareBracket
+            | TokenKind::CloseSquareBracket
+            | TokenKind::OpenCurlyBracket
+            | TokenKind::CloseCurlyBracket
             | TokenKind::Colon
             | TokenKind::SemiColon
             | TokenKind::Comma
@@ -2955,7 +2976,12 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Comment(_)
             | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
-            | TokenKind::Bracket(_)
+            | TokenKind::OpenRoundBracket
+            | TokenKind::CloseRoundBracket
+            | TokenKind::OpenSquareBracket
+            | TokenKind::CloseSquareBracket
+            | TokenKind::OpenCurlyBracket
+            | TokenKind::CloseCurlyBracket
             | TokenKind::Colon
             | TokenKind::Comma
             | TokenKind::False
@@ -3271,7 +3297,7 @@ impl Parser<'_, '_, '_, '_> {
 
             let after_condition_token = self.current_token(Expected::DoOrBlock)?;
             let if_statement = match after_condition_token.kind {
-                TokenKind::Bracket(Bracket::OpenCurly) => {
+                TokenKind::OpenCurlyBracket => {
                     let scope = self.any(after_condition_token)?;
                     IfStatement { condition, statement: scope }
                 }
@@ -3279,7 +3305,11 @@ impl Parser<'_, '_, '_, '_> {
                     let statement = self.do_statement()?;
                     IfStatement { condition, statement }
                 }
-                TokenKind::Bracket(_)
+                TokenKind::OpenRoundBracket
+                | TokenKind::CloseRoundBracket
+                | TokenKind::OpenSquareBracket
+                | TokenKind::CloseSquareBracket
+                | TokenKind::CloseCurlyBracket
                 | TokenKind::Comment(_)
                 | TokenKind::BlockComment(_)
                 | TokenKind::Unexpected(_)
@@ -3326,7 +3356,12 @@ impl Parser<'_, '_, '_, '_> {
                     TokenKind::Comment(_)
                     | TokenKind::BlockComment(_)
                     | TokenKind::Unexpected(_)
-                    | TokenKind::Bracket(_)
+                    | TokenKind::OpenRoundBracket
+                    | TokenKind::CloseRoundBracket
+                    | TokenKind::OpenSquareBracket
+                    | TokenKind::CloseSquareBracket
+                    | TokenKind::OpenCurlyBracket
+                    | TokenKind::CloseCurlyBracket
                     | TokenKind::Colon
                     | TokenKind::SemiColon
                     | TokenKind::Comma
@@ -3357,7 +3392,7 @@ impl Parser<'_, '_, '_, '_> {
 
                 // we are now inside an else branch
                 let else_if = match after_else_token.kind {
-                    TokenKind::Bracket(Bracket::OpenCurly) => {
+                    TokenKind::OpenCurlyBracket => {
                         let scope = self.any(after_else_token)?;
                         els = Some(scope);
                         break 'iff;
@@ -3368,7 +3403,11 @@ impl Parser<'_, '_, '_, '_> {
                         break 'iff;
                     }
                     TokenKind::If => break,
-                    TokenKind::Bracket(_)
+                    TokenKind::OpenRoundBracket
+                    | TokenKind::CloseRoundBracket
+                    | TokenKind::OpenSquareBracket
+                    | TokenKind::CloseSquareBracket
+                    | TokenKind::CloseCurlyBracket
                     | TokenKind::Comment(_)
                     | TokenKind::BlockComment(_)
                     | TokenKind::Unexpected(_)
@@ -3433,7 +3472,12 @@ impl Parser<'_, '_, '_, '_> {
             TokenKind::Comment(_)
             | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
-            | TokenKind::Bracket(_)
+            | TokenKind::OpenRoundBracket
+            | TokenKind::CloseRoundBracket
+            | TokenKind::OpenSquareBracket
+            | TokenKind::CloseSquareBracket
+            | TokenKind::OpenCurlyBracket
+            | TokenKind::CloseCurlyBracket
             | TokenKind::Colon
             | TokenKind::SemiColon
             | TokenKind::Comma
@@ -3474,7 +3518,7 @@ impl Parser<'_, '_, '_, '_> {
 
         let after_condition_token = self.current_token(Expected::DoOrBlock)?;
         let statement_result = match after_condition_token.kind {
-            TokenKind::Bracket(Bracket::OpenCurly) => {
+            TokenKind::OpenCurlyBracket => {
                 let scope = self.any(after_condition_token)?;
                 Ok(scope)
             }
@@ -3482,7 +3526,11 @@ impl Parser<'_, '_, '_, '_> {
                 let statement = self.do_statement()?;
                 Ok(statement)
             }
-            TokenKind::Bracket(_)
+            TokenKind::OpenRoundBracket
+            | TokenKind::CloseRoundBracket
+            | TokenKind::OpenSquareBracket
+            | TokenKind::CloseSquareBracket
+            | TokenKind::CloseCurlyBracket
             | TokenKind::Comment(_)
             | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
