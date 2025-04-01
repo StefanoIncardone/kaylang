@@ -1591,7 +1591,8 @@ impl Parser<'_, '_, '_, '_> {
                         break 'array Expression::Array {
                             open_square_bracket_column: open_square_bracket_token.col,
                             items_start,
-                            items_len: self.syntax_tree.array_items.len() as ArrayItemsIndex - items_start,
+                            items_len: self.syntax_tree.array_items.len() as ArrayItemsIndex
+                                - items_start,
                             close_square_bracket_column: start_of_item_token.col,
                         };
                     }
@@ -1611,9 +1612,11 @@ impl Parser<'_, '_, '_, '_> {
                             break 'array Expression::ArrayTrailingItem {
                                 open_square_bracket_column: open_square_bracket_token.col,
                                 items_start,
-                                items_len: self.syntax_tree.array_items.len() as ArrayItemsIndex - items_start,
+                                items_len: self.syntax_tree.array_items.len() as ArrayItemsIndex
+                                    - items_start,
                                 last_item: item,
-                                close_square_bracket_column: comma_or_close_square_bracket_token.col,
+                                close_square_bracket_column: comma_or_close_square_bracket_token
+                                    .col,
                             };
                         }
                         TokenKind::Colon

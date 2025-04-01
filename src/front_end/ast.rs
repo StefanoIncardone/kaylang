@@ -5,7 +5,7 @@
 use super::{
     src_file::{index32, offset32, Position, SrcCode},
     tokenizer::{
-        ascii, Base, Bracket, Mutability, Op, OpenBracket, Token, TokenIndex, TokenKind, Tokens
+        ascii, Base, Bracket, Mutability, Op, OpenBracket, Token, TokenIndex, TokenKind, Tokens,
     },
     Error, ErrorInfo, IntoErrorInfo,
 };
@@ -3039,7 +3039,8 @@ impl Parser<'_, '_, '_, '_> {
                         Type::Base(base_type) => self.expression_from_base_type(base_type),
                         Type::Array { base_type, len } => {
                             debug_assert!(len > 0, "arrays of 0 items are not allowed");
-                            let items = vec![self.expression_from_base_type(base_type); len as usize];
+                            let items =
+                                vec![self.expression_from_base_type(base_type); len as usize];
                             debug_assert!(items.len() > 0, "arrays of 0 items are not allowed");
                             Expression::Array { base_type, items }
                         }

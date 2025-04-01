@@ -631,11 +631,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
 
             col: 0,
             token_start_col: 0,
-            tokens: Tokens {
-                tokens: Vec::new(),
-                text: Vec::new(),
-                _src: PhantomData,
-            },
+            tokens: Tokens { tokens: Vec::new(), text: Vec::new(), _src: PhantomData },
 
             errors: Vec::new(),
         };
@@ -1874,7 +1870,7 @@ impl<'code> Tokenizer<'code, '_> {
         }
 
         if previous_errors_len != self.errors.len() {
-            return Err(())
+            return Err(());
         };
 
         let raw_string_literal_str = &self.code[self.token_start_col as usize..self.col as usize];
