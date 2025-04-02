@@ -130,6 +130,7 @@ impl Default for Logger {
     }
 }
 
+// IDEA(stefano): split function that take options
 #[expect(clippy::print_stderr, reason = "it's a logger")]
 impl Logger {
     #[inline]

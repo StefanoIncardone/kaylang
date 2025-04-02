@@ -1213,7 +1213,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
             },
 
             TokenKind::Do => {
-                let do_column = Some(token.col);
+                let do_column = token.col;
                 let loop_token = self.next_expected_token(Expected::LoopStatement)?;
                 let TokenKind::Loop = loop_token.kind else {
                     return Err(Error {
@@ -1224,7 +1224,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                 };
 
                 self.loop_depth += 1;
-                let loop_result = self.loop_statement(do_column, loop_token.col);
+                let loop_result = self.do_loop_statement(do_column, loop_token.col);
                 self.loop_depth -= 1;
 
                 match loop_result {
@@ -1233,11 +1233,10 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                 }
             }
             TokenKind::Loop => {
-                let do_column = None;
                 let loop_token = token;
 
                 self.loop_depth += 1;
-                let loop_result = self.loop_statement(do_column, loop_token.col);
+                let loop_result = self.loop_statement(loop_token.col);
                 self.loop_depth -= 1;
 
                 match loop_result {
@@ -2342,9 +2341,9 @@ impl Parser<'_, '_, '_, '_> {
         return Ok(());
     }
 
-    fn loop_statement(
+    fn do_loop_statement(
         &mut self,
-        do_column: Option<column32>,
+        do_column: column32,
         loop_column: column32,
     ) -> Result<(), Error<ErrorKind>> {
         let start_of_condition_token = self.next_expected_token(Expected::Expression)?;
@@ -2360,11 +2359,29 @@ impl Parser<'_, '_, '_, '_> {
             });
         };
 
-        let loop_node = match do_column {
-            Some(column) => Node::DoLoop { do_column: column, loop_column, condition },
-            None => Node::Loop { loop_column, condition },
+        self.syntax_tree.nodes.push(Node::DoLoop { do_column, loop_column, condition });
+
+        let ParsedNode::Scope = self.any(after_condition_token)? else {
+            unreachable!();
         };
-        self.syntax_tree.nodes.push(loop_node);
+        return Ok(());
+    }
+
+    fn loop_statement(&mut self, loop_column: column32) -> Result<(), Error<ErrorKind>> {
+        let start_of_condition_token = self.next_expected_token(Expected::Expression)?;
+        let condition = self.expression(start_of_condition_token)?;
+        let end_of_condition_token = self.peek_previous_token();
+
+        let after_condition_token = self.next_expected_token(Expected::OpenCurlyBracket)?;
+        let TokenKind::OpenCurlyBracket = after_condition_token.kind else {
+            return Err(Error {
+                kind: ErrorKind::LoopMustBeFollowedByBlock,
+                col: end_of_condition_token.col,
+                pointers_count: end_of_condition_token.kind.display_len(self.tokens),
+            });
+        };
+
+        self.syntax_tree.nodes.push(Node::Loop { loop_column, condition });
 
         let ParsedNode::Scope = self.any(after_condition_token)? else {
             unreachable!();
