@@ -352,20 +352,6 @@ pub(crate) struct VariableDefinition {
 pub(crate) type VariableDefinitionIndex = index32;
 
 #[derive(Debug, Clone)]
-pub(crate) struct If {
-    pub(crate) if_column: column32,
-    pub(crate) condition: ExpressionIndex,
-}
-
-pub(crate) type IfIndex = index32;
-
-#[derive(Debug, Clone)]
-pub(crate) struct ElseIf {
-    pub(crate) else_column: column32,
-    pub(crate) iff: If,
-}
-
-#[derive(Debug, Clone)]
 pub(crate) enum Node {
     Semicolon {
         column: column32,
@@ -430,11 +416,20 @@ pub(crate) enum Node {
     },
 
     If {
-        if_index: IfIndex,
+        if_column: column32,
+        condition: ExpressionIndex,
+        else_ifs_count: offset32,
     },
     IfElse {
-        if_index: IfIndex,
+        if_column: column32,
+        condition: ExpressionIndex,
+        else_ifs_count: offset32,
         else_column: column32,
+    },
+    ElseIf {
+        else_column: column32,
+        if_column: column32,
+        condition: ExpressionIndex,
     },
 
     Loop {
@@ -476,9 +471,6 @@ pub struct SyntaxTree<'tokens, 'code: 'tokens, 'path: 'code> {
     pub(crate) variable_definitions: Vec<VariableDefinition>,
     pub(crate) array_dimensions: Vec<ArrayDimension>,
 
-    pub(crate) ifs: Vec<If>,
-    pub(crate) else_ifs: Vec<Vec<ElseIf>>,
-
     _tokens: PhantomData<&'tokens Tokens<'code, 'path>>,
 }
 
@@ -517,6 +509,20 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
         column: column32,
     ) -> core::fmt::Result {
         return writeln!(f, "{:>indent$}Semicolon: {column} = ;", "");
+    }
+
+    fn info_if(
+        &self,
+        f: &mut core::fmt::Formatter<'_>,
+        node_index: &mut NodeIndex,
+        indent: usize,
+        if_column: column32,
+        condition: ExpressionIndex,
+    ) -> core::fmt::Result {
+        writeln!(f, "{:>indent$}If: {if_column} = if", "")?;
+        let if_indent = indent + Self::INDENT_INCREMENT;
+        self.info_expression(f, condition, if_indent)?;
+        return self.info_node(f, node_index, if_indent);
     }
 
     fn info_node(
@@ -602,50 +608,27 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
                 writeln!(f, "{:>scope_indent$}CloseCurlyBracket: {close_curly_bracket_column} = }}", "")
             }
 
-            Node::If { if_index } => {
-                let if_indent = indent + Self::INDENT_INCREMENT;
-
-                let If { if_column, condition } = &self.syntax_tree.ifs[*if_index as usize];
-                let else_ifs = &self.syntax_tree.else_ifs[*if_index as usize];
-
-                writeln!(f, "{:>indent$}If: {if_column} = if", "")?;
-                self.info_expression(f, *condition, if_indent)?;
-                self.info_node(f, node_index, if_indent)?;
-
-                for ElseIf {
-                    else_column,
-                    iff: If { if_column: else_if_column, condition: else_if_condition },
-                } in else_ifs {
-                    writeln!(f, "{:>indent$}Else: {else_column} = else", "")?;
-                    writeln!(f, "{:>indent$}If: {else_if_column} = if", "")?;
-                    self.info_expression(f, *else_if_condition, if_indent)?;
-                    self.info_node(f, node_index, if_indent)?;
+            Node::If { if_column, condition, mut else_ifs_count } => {
+                self.info_if(f, node_index, indent, *if_column, *condition)?;
+                while else_ifs_count > 0 {
+                    else_ifs_count -= 1;
+                    self.info_node(f, node_index, indent)?;
                 }
-
                 Ok(())
             }
-            Node::IfElse { if_index, else_column } => {
-                let if_indent = indent + Self::INDENT_INCREMENT;
-
-                let If { if_column, condition } = &self.syntax_tree.ifs[*if_index as usize];
-                let else_ifs = &self.syntax_tree.else_ifs[*if_index as usize];
-
-                writeln!(f, "{:>indent$}If: {if_column} = if", "")?;
-                self.info_expression(f, *condition, if_indent)?;
-                self.info_node(f, node_index, if_indent)?;
-
-                for ElseIf {
-                    else_column: else_in_else_if_column,
-                    iff: If { if_column: else_if_column, condition: else_if_condition },
-                } in else_ifs {
-                    writeln!(f, "{:>indent$}Else: {else_in_else_if_column} = else", "")?;
-                    writeln!(f, "{:>indent$}If: {else_if_column} = if", "")?;
-                    self.info_expression(f, *else_if_condition, if_indent)?;
-                    self.info_node(f, node_index, if_indent)?;
+            Node::IfElse { if_column, condition, mut else_ifs_count, else_column } => {
+                self.info_if(f, node_index, indent, *if_column, *condition)?;
+                while else_ifs_count > 0 {
+                    else_ifs_count -= 1;
+                    self.info_node(f, node_index, indent)?;
                 }
-
+                let else_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}Else: {else_column} = else", "")?;
-                self.info_node(f, node_index, if_indent)
+                self.info_node(f, node_index, else_indent)
+            }
+            Node::ElseIf { if_column, condition, else_column } => {
+                writeln!(f, "{:>indent$}Else: {else_column} = else", "")?;
+                self.info_if(f, node_index, indent, *if_column, *condition)
             }
 
             Node::Loop { loop_column, condition } => {
@@ -918,9 +901,6 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
 
                 variable_definitions: Vec::new(),
                 array_dimensions: Vec::new(),
-
-                ifs: Vec::new(),
-                else_ifs: Vec::new(),
 
                 _tokens: PhantomData,
             },
@@ -2247,12 +2227,9 @@ impl Parser<'_, '_, '_, '_> {
             });
         };
 
-        self.syntax_tree.ifs.push(If { if_column, condition });
-        self.syntax_tree.else_ifs.push(Vec::new());
-        let if_index = self.syntax_tree.ifs.len() as IfIndex - 1;
-
-        self.syntax_tree.nodes.push(Node::If { if_index });
-        let placeholder_if_index = self.syntax_tree.nodes.len() - 1;
+        let mut placeholder_if_else_ifs_count = 0;
+        self.syntax_tree.nodes.push(Node::If { if_column, condition, else_ifs_count: 0 });
+        let placeholder_if_node_index = self.syntax_tree.nodes.len() - 1;
 
         let ParsedNode::Scope = self.any(after_if_condition_token)? else {
             unreachable!();
@@ -2272,8 +2249,13 @@ impl Parser<'_, '_, '_, '_> {
                         unreachable!();
                     };
 
-                    self.syntax_tree.nodes[placeholder_if_index] = Node::IfElse { if_index, else_column };
-                    break;
+                    self.syntax_tree.nodes[placeholder_if_node_index] = Node::IfElse {
+                        if_column,
+                        condition,
+                        else_ifs_count: placeholder_if_else_ifs_count,
+                        else_column,
+                    };
+                    return Ok(());
                 }
                 TokenKind::If => {
                     let start_of_else_if_condition_token = self.next_expected_token(Expected::Expression)?;
@@ -2289,11 +2271,12 @@ impl Parser<'_, '_, '_, '_> {
                         });
                     };
 
-                    let else_if = ElseIf {
+                    placeholder_if_else_ifs_count += 1;
+                    self.syntax_tree.nodes.push(Node::ElseIf {
                         else_column,
-                        iff: If { if_column: after_else_token.col, condition: else_if_condition }
-                    };
-                    self.syntax_tree.else_ifs[if_index as usize].push(else_if);
+                        if_column: after_else_token.col,
+                        condition: else_if_condition,
+                    });
 
                     let ParsedNode::Scope = self.any(after_else_if_condition_token)? else {
                         unreachable!();
@@ -2351,6 +2334,11 @@ impl Parser<'_, '_, '_, '_> {
             }
         }
 
+        self.syntax_tree.nodes[placeholder_if_node_index] = Node::If {
+            if_column,
+            condition,
+            else_ifs_count: placeholder_if_else_ifs_count,
+        };
         return Ok(());
     }
 
