@@ -4,9 +4,7 @@
 
 use super::{
     src_file::{index32, offset32, Position, SrcCode},
-    tokenizer::{
-        ascii, Base, Mutability, Op, OpenBracket, Token, TokenIndex, TokenKind, Tokens,
-    },
+    tokenizer::{ascii, Base, Mutability, Op, OpenBracket, Token, TokenIndex, TokenKind, Tokens},
     Error, ErrorInfo, IntoErrorInfo,
 };
 use core::fmt::{Debug, Display};
@@ -2414,9 +2412,8 @@ impl Parser<'_, '_, '_, '_> {
         };
 
         let mut expression = expression_result?;
-        while let Some(
-            open_bracket_token @ Token { kind: TokenKind::OpenSquareBracket, .. },
-        ) = self.next_token()
+        while let Some(open_bracket_token @ Token { kind: TokenKind::OpenSquareBracket, .. }) =
+            self.next_token()
         {
             let _start_of_index = self.next_token();
             let index = self.expression()?;

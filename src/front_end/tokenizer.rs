@@ -1675,7 +1675,9 @@ impl<'code> Tokenizer<'code, '_> {
                 }
                 Some(Err(error)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InHexadecimalNumberLiteral { grapheme: error.grapheme },
+                        kind: ErrorKind::Utf8InHexadecimalNumberLiteral {
+                            grapheme: error.grapheme,
+                        },
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
@@ -1735,7 +1737,9 @@ impl<'code> Tokenizer<'code, '_> {
                         Some(Ok(escape_character)) => escape_character,
                         Some(Err(error)) => {
                             self.errors.push(Error {
-                                kind: ErrorKind::Utf8InCharacterLiteral { grapheme: error.grapheme },
+                                kind: ErrorKind::Utf8InCharacterLiteral {
+                                    grapheme: error.grapheme,
+                                },
                                 col: error.col,
                                 pointers_count: error.pointers_count,
                             });

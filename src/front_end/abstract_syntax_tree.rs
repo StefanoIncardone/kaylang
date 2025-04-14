@@ -1,8 +1,6 @@
 use super::{
     src_file::{column32, index32, offset32, DisplayPosition, SrcCode},
-    tokenizer::{
-        ascii, CloseBracket, Op, TextIndex, Token, TokenIndex, TokenKind, Tokens,
-    },
+    tokenizer::{ascii, CloseBracket, Op, TextIndex, Token, TokenIndex, TokenKind, Tokens},
     Error, ErrorDisplay, ErrorInfo, IntoErrorInfo,
 };
 use core::{fmt::Display, marker::PhantomData, num::NonZero};
@@ -2093,10 +2091,7 @@ impl Parser<'_, '_, '_, '_> {
 
                 let Some(Peeked {
                     token:
-                        Token {
-                            kind: TokenKind::CloseSquareBracket,
-                            col: close_square_bracket_column,
-                        },
+                        Token { kind: TokenKind::CloseSquareBracket, col: close_square_bracket_column },
                     index: close_square_bracket_token_index,
                 }) = self.peek_next_token()
                 else {
@@ -2333,11 +2328,8 @@ impl Parser<'_, '_, '_, '_> {
             }
         }
 
-        self.syntax_tree.nodes[placeholder_if_node_index] = Node::If {
-            if_column,
-            condition,
-            else_ifs_count: placeholder_if_else_ifs_count,
-        };
+        self.syntax_tree.nodes[placeholder_if_node_index] =
+            Node::If { if_column, condition, else_ifs_count: placeholder_if_else_ifs_count };
         return Ok(());
     }
 
