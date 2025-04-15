@@ -3,6 +3,33 @@
 >[!WARNING]
 > no feature is final, modifications can happen at any moment
 
+## Disallowing optional trailing comma, make it mandatory
+
+```kay
+let i = [1, 2, 3]; # would not be allowed
+let i = [1, 2, 3,]; # trailing comma would be mandatory for consistency
+
+# would allow to move line up and down without running into "missing comma" errors
+let i = [
+    1,
+    2,
+    4 # missing comma because we moved a line up
+    3,
+];
+let i = [
+    1,
+    2,
+    4, # would not be a problem if a trailing comma was mandatory
+    3,
+];
+
+fn sum: i64 = sum(a: i64, b: i64,) {
+    return a + b;
+}
+
+let sum = sum(12, 21,);
+```
+
 ## explicit loop continue/break block
 
 Allow for a loop to specify what should happen when using `continue` and `break`:
