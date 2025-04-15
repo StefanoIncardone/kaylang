@@ -155,20 +155,19 @@ Strings can also be indexed with zero-based indexing to gain access to individua
 
 ## Arrays
 
-Arrays are a collection of **at least 2 values** of the same type under a single variable, so an
+Arrays are a collection of **at least 1 value** of the same type under a single variable, so an
 array of three `i64` would be of type `i64[3]`.
 
-Arrays of 0 elements are not allowed because they are phantom values not even occupying any memory,
-while arrays of 1 element are not allowed becasue they are functionally equivalent to that element
-if it was outside of the array.
+>[!NOTE]
+> Arrays of 0 elements are not yet allowed because they are phantom values not occupying any memory
+> and cannot yet be represented.
 
 Arrays are defined as comma-separated lists of items, as follows:
 
 ```kay
 [];                       # Error: arrays of zero items are not allowed
-[19];                     # Error: arrays of one item are not allowed
 [12, 21];                 # this declares an array of two items, namely `i64[2]`
-["Kay", "let's", "go!",]; # trailing commas are allowed, thus the array would be of type `str[3]]
+["Kay", "let's", "go!"]; # trailing commas are allowed, thus the array would be of type `str[3]]
 ```
 
 Arrays can also be indexed with zero-based indexing, to gain access to individual items:
