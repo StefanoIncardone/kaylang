@@ -1,4 +1,4 @@
-#![allow(clippy::print_stdout, clippy::print_stderr, reason = "it's a cli tool")]
+#![expect(clippy::print_stdout, reason = "it's a cli tool")]
 
 use kaylang::{Color, Help};
 use std::path::PathBuf;

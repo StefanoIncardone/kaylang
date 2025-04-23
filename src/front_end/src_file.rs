@@ -3,12 +3,15 @@ use core::fmt::Display;
 use std::{fs::File, io::Read as _, path::Path};
 use unicode_width::UnicodeWidthChar as _;
 
+// TODO(stefano): move to lib.rs
 #[expect(non_camel_case_types, reason = "alias to a primitive type")]
 pub type offset32 = u32;
 
+// TODO(stefano): move to lib.rs
 #[expect(non_camel_case_types, reason = "alias to a primitive type")]
 pub type line32 = u32;
 
+// TODO(stefano): move to lib.rs
 #[expect(non_camel_case_types, reason = "alias to a primitive type")]
 pub type column32 = u32;
 

@@ -2,7 +2,7 @@
 #![warn(clippy::print_stdout, clippy::print_stderr)]
 
 #[cfg(not(target_pointer_width = "64"))]
-panic!("can only compile for 64bit machines for now");
+compile_error!("can only compile for 64bit machines for now");
 
 pub mod back_end;
 pub mod color;
@@ -53,6 +53,7 @@ const STEP_FG: Fg = Fg::LightGreen;
 const STEP_BG: Bg = Bg::Default;
 const STEP_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 const STEP_INDENT: usize = 0;
+// TODO(stefano): change to const when upgrading rust version
 static STEP_PADDING: usize =
     max_text_len(&[CHECKING.text, COMPILING.text, RUNNING.text, DONE.text]);
 
@@ -66,6 +67,7 @@ const SUBSTEP_FG: Fg = Fg::LightBlue;
 const SUBSTEP_BG: Bg = Bg::Default;
 const SUBSTEP_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 const SUBSTEP_INDENT: usize = STEP_INDENT + 4;
+// TODO(stefano): change to const when upgrading rust version
 static SUBSTEP_PADDING: usize = max_text_len(&[
     LOADING_SOURCE.text,
     TOKENIZATION.text,
@@ -223,15 +225,36 @@ pub enum Color {
 }
 
 impl Color {
+    #[inline]
     pub fn set<I: IsTerminal>(self, sink: &I) {
+        match self {
+            Self::Auto => Self::set_color_auto(sink),
+            Self::Always => Self::set_color_always(),
+            Self::Never => Self::set_color_never(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn set_color_auto<S: IsTerminal>(sink: &S) {
         use crate::color::{print, print_color, print_no_color};
         unsafe {
-            print = match self {
-                Self::Auto if sink.is_terminal() => print_color,
-                Self::Auto => print_no_color,
-                Self::Always => print_color,
-                Self::Never => print_no_color,
-            }
+            print = if sink.is_terminal() { print_color } else { print_no_color };
+        }
+    }
+
+    #[inline(always)]
+    pub fn set_color_always() {
+        use crate::color::{print, print_color};
+        unsafe {
+            print = print_color;
+        }
+    }
+
+    #[inline(always)]
+    pub fn set_color_never() {
+        use crate::color::{print, print_no_color};
+        unsafe {
+            print = print_no_color;
         }
     }
 }
@@ -333,12 +356,14 @@ pub enum Command {
 }
 
 impl Default for Command {
+    #[inline(always)]
     fn default() -> Self {
         return Self::Help { executable_name: PathBuf::from("kay") };
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
 pub struct Version {
     pub color: Color,
 }
@@ -352,8 +377,8 @@ impl Display for Version {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Help {
-    pub executable_name: PathBuf,
     pub color: Color,
+    pub executable_name: PathBuf,
 }
 
 // IDEA(stefano): implement some checks to make sure that help messages don't go over 80 columns

@@ -1,4 +1,4 @@
-#![allow(clippy::print_stdout, clippy::print_stderr, reason = "it's a cli tool")]
+#![expect(clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
     back_end::{artifacts::Artifacts, Compiler},
@@ -16,7 +16,7 @@ use std::{
     process::{Command, ExitCode},
 };
 
-#[allow(clippy::allow_attributes, reason = "unrealiable")]
+#[expect(clippy::allow_attributes, reason = "unrealiable")]
 #[allow(
     clippy::unwrap_used,
     clippy::panic_in_result_fn,

@@ -23,11 +23,32 @@ let i = [
     3,
 ];
 
+# should we do it for function arguments?
 fn sum: i64 = sum(a: i64, b: i64,) {
     return a + b;
 }
 
+# should we do it for function calls?
 let sum = sum(12, 21,);
+
+# should we do it for generics?
+struct Point<I,>(
+    x: I,
+    # should we do it for struct/enum/... fields?
+    y: I,
+)
+
+# should we do it for generics?
+let p = Point<i64,>(x = 12, y = 21,);
+
+if a { println "a"; }
+else if b { println "b" } # could we allow "trailing semicolons" before curly brackets?
+```
+
+might just be a compiler or linter flag
+
+```shell
+kay run ... ... -mandatory-trailing-commas
 ```
 
 ## explicit loop continue/break block

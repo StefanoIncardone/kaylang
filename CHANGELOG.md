@@ -44,6 +44,10 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ### Compiler
 
+#### Added
+
+- `Color` now has `set_color_auto`, `set_color_always` and `set_color_never` methods
+
 #### Changed
 
 - Made the compiler only work on 64bit systems

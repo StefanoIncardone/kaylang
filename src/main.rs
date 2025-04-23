@@ -1,4 +1,4 @@
-#![allow(clippy::print_stdout, clippy::print_stderr, reason = "it's a cli tool")]
+#![expect(clippy::print_stdout, clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
     back_end::{artifacts::Artifacts, Compiler},
@@ -33,7 +33,7 @@ fn main() -> ExitCode {
     }
 
     if let Command::Help { executable_name } = command {
-        println!("{}", Help { executable_name, color });
+        println!("{}", Help { color, executable_name });
         return ExitCode::SUCCESS;
     }
 

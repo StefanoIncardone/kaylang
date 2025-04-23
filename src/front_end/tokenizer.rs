@@ -9,10 +9,12 @@ use crate::error::CharsWidth as _;
 use core::{fmt::Display, marker::PhantomData};
 use unicode_segmentation::UnicodeSegmentation as _;
 
+// TODO(stefano): move to lib.rs
 #[expect(non_camel_case_types, reason = "alias to a primitive type")]
 /// kay's ascii character type
 pub(crate) type ascii = u8;
 
+// TODO(stefano): move to lib.rs
 #[expect(non_camel_case_types, reason = "alias to a primitive type")]
 /// kay's utf32 character type
 pub(crate) type utf32 = char;
