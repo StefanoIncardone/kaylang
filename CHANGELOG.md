@@ -96,9 +96,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Empty binary/octal/hexadecimal numbers literals (`0b`, `0o`, `0x`) are no longer considered syntax
     errors and now mean `0`
-- Made block comments delimited by `##` instead of `#{` and `#}`, this also removes the error
-    related to uclosed block comments:
-
+- Made block comments delimited by `##` instead of `#{` and `#}`:
     - with opening `#{` and closing `}#` or `#}`:
 
         ```text

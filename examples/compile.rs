@@ -108,7 +108,11 @@ fn main() -> ExitCode {
                         message: &String::from_utf8_lossy(&output.stderr),
                     };
                     eprintln!("{error}");
-                    return ExitCode::from(output.status.code().unwrap_or(1) as u8);
+                    return match output.status.code() {
+                        #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                        Some(code) => ExitCode::from(code as u8),
+                        None => ExitCode::FAILURE,
+                    };
                 }
             }
             Err(err) => {
@@ -132,7 +136,11 @@ fn main() -> ExitCode {
                         message: &String::from_utf8_lossy(&output.stderr),
                     };
                     eprintln!("{error}");
-                    return ExitCode::from(output.status.code().unwrap_or(1) as u8);
+                    return match output.status.code() {
+                        #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                        Some(code) => ExitCode::from(code as u8),
+                        None => ExitCode::FAILURE,
+                    };
                 }
             }
             Err(err) => {

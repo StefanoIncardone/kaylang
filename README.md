@@ -19,20 +19,17 @@ executable file, thus it has been tested only on:
 - CPU: Intel i7-8565u
 - GPU: Nvidia MX250
 - RAM: 16 GB
+- [rust](https://www.rust-lang.org/) version [1.81.0](https://releases.rs/docs/1.81.0/)
+    - [cargo](https://doc.rust-lang.org/cargo/) as the build system
+- [nasm](https://www.nasm.us/) assembler version [2.15.05](https://www.nasm.us/doc/nasmdocc.html)
+- [ld](https://ftp.gnu.org/old-gnu/Manuals/ld-2.9.1/html_mono/ld.html) linker verision 2.38
 
 Therefore it will only compile code down to `x86-64` assembly, and it may work on other similar
 machines and combination of components.
 
 ## Getting started
 
-The language is written in [Rust](https://www.rust-lang.org/) version
-[1.81.0](https://releases.rs/docs/1.81.0/) using [cargo](https://doc.rust-lang.org/cargo/) as the
-build system.
-It also uses the [nasm](https://www.nasm.us/) assembler version 2.15.05 and the
-[ld](https://ftp.gnu.org/old-gnu/Manuals/ld-2.9.1/html_mono/ld.html) linker verision 2.38, thus only
-requiring the following steps to get started:
-
-1. Checking if Rust and cargo are installed and up to version 1.81.0:
+1. Checking if Rust and cargo are installed:
 
     ```shell
     cargo --version
@@ -47,12 +44,8 @@ requiring the following steps to get started:
     nasm --version
     ```
 
-    If an error stating that the `nasm` command could not be found occurs, try installing the nasm
-    assembler:
-
-    ```shell
-    sudo apt install nasm
-    ```
+    If an error stating that the `nasm` command could not be found occurs, try
+    [installing](https://www.nasm.us/pub/nasm/releasebuilds/2.15.05/) the nasm assembler.
 
 3. Cloning the repo:
 
@@ -69,8 +62,8 @@ requiring the following steps to get started:
 
 ## Syntax specification
 
-See the [full language reference](LANGUAGE_REFERENCE.md) and the the
-[full language syntax specification](SYNTAX.ebnf)
+See the [language reference](LANGUAGE_REFERENCE.md) and the the
+[language syntax specification](SYNTAX.ebnf)
 
 ## Syntax highlighting
 

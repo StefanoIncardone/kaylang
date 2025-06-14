@@ -113,7 +113,8 @@ impl SizeOf for Type {
             Self::Base(typ) => typ.size(),
             Self::Array { base_type, len } => {
                 debug_assert!(*len > 0, "arrays of 0 items are not allowed");
-                base_type.size() * *len as usize
+                #[expect(clippy::cast_possible_truncation)]
+                { base_type.size() * *len as usize }
             }
         };
     }
@@ -778,6 +779,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
 
         // skipping to the first non-comment token
         let mut token: TokenIndex = 0;
+        #[expect(clippy::cast_possible_truncation)]
         while token < tokens.tokens.len() as TokenIndex {
             let current = tokens.tokens[token as usize];
             let (TokenKind::Comment(_) | TokenKind::BlockComment(_)) = current.kind else {
@@ -843,7 +845,8 @@ impl Parser<'_, '_, '_, '_> {
                     self.errors.push(err);
 
                     // consuming all remaining tokens until the end of the file
-                    self.token = self.tokens.tokens.len() as TokenIndex;
+                    #[expect(clippy::cast_possible_truncation)]
+                    { self.token = self.tokens.tokens.len() as TokenIndex; }
                     break;
                 }
             }
@@ -887,6 +890,7 @@ impl Parser<'_, '_, '_, '_> {
                 match after_expression_token.kind {
                     TokenKind::SemiColon => {
                         if let Expression::Array { .. } = expression {
+                            #[expect(clippy::cast_possible_truncation)]
                             let temporary_value_index =
                                 self.ast.temporaries.len() as ExpressionIndex;
                             let expression_type = expression.typ();
@@ -1222,6 +1226,7 @@ impl Parser<'_, '_, '_, '_> {
     fn any(&mut self, token: Token) -> Result<Node, Error<ErrorKind>> {
         return match token.kind {
             TokenKind::OpenCurlyBracket => {
+                #[expect(clippy::cast_possible_truncation)]
                 let new_scope_index = self.scopes.len() as ScopeIndex;
                 self.scopes.push(Scope {
                     parent: self.scope,
@@ -1297,6 +1302,7 @@ impl Parser<'_, '_, '_, '_> {
 
     fn next_token(&mut self) -> Option<Token> {
         loop {
+            #[expect(clippy::cast_possible_truncation)]
             let tokens_len = self.tokens.tokens.len() as TokenIndex;
             if self.token >= tokens_len - 1 {
                 self.token = tokens_len;
@@ -1313,6 +1319,7 @@ impl Parser<'_, '_, '_, '_> {
 
     fn next_token_bounded(&mut self, expected: Expected) -> Result<Token, Error<ErrorKind>> {
         loop {
+            #[expect(clippy::cast_possible_truncation)]
             let tokens_len = self.tokens.tokens.len() as TokenIndex;
             if self.token >= tokens_len - 1 {
                 let previous = self.tokens.tokens[self.token as usize];
@@ -1335,6 +1342,7 @@ impl Parser<'_, '_, '_, '_> {
     fn peek_next_token(&self) -> Option<Token> {
         let mut current_token = self.token;
         loop {
+            #[expect(clippy::cast_possible_truncation)]
             if current_token >= self.tokens.tokens.len() as TokenIndex - 1 {
                 return None;
             }
@@ -1364,6 +1372,7 @@ impl Parser<'_, '_, '_, '_> {
 // expressions
 impl Parser<'_, '_, '_, '_> {
     fn new_expression(&mut self, expression: Expression) -> ExpressionIndex {
+        #[expect(clippy::cast_possible_truncation)]
         let index = self.ast.expressions.len() as ExpressionIndex;
         self.ast.expressions.push(expression);
         return index;
@@ -2742,8 +2751,6 @@ impl Parser<'_, '_, '_, '_> {
         return Ok(lhs);
     }
 
-    // TODO(stefano): disallow implicit conversions
-    // TODO(stefano): introduce casting operators
     fn expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         return self.or_expression();
     }
@@ -2840,7 +2847,7 @@ impl Parser<'_, '_, '_, '_> {
 
         let len_token = self.next_token_bounded(Expected::ArrayLength)?;
         let len_expression = self.expression()?;
-        let Expression::I64(literal_len) = len_expression else {
+        let Expression::I64(len) = len_expression else {
             return Err(Error {
                 kind: ErrorKind::ExpectedNumberLiteralInArrayType,
                 col: open_square_bracket_token.col,
@@ -2848,24 +2855,24 @@ impl Parser<'_, '_, '_, '_> {
             });
         };
 
-        let len = match literal_len {
-            len if len < 0 => {
-                return Err(Error {
-                    kind: ErrorKind::ArrayOfNegativeLength,
-                    col: len_token.col,
-                    pointers_count: len_token.kind.display_len(self.tokens),
-                });
-            }
-            // REMOVE(stefano): allow arrays of 0 elements
-            0 => {
-                return Err(Error {
-                    kind: ErrorKind::ArrayOfZeroElements,
-                    col: len_token.col,
-                    pointers_count: len_token.kind.display_len(self.tokens),
-                });
-            }
-            _ => literal_len as u64,
-        };
+        if len < 0 {
+            return Err(Error {
+                kind: ErrorKind::ArrayOfNegativeLength,
+                col: len_token.col,
+                pointers_count: len_token.kind.display_len(self.tokens),
+            });
+        }
+
+        // REMOVE(stefano): allow arrays of 0 elements
+        #[expect(clippy::cast_sign_loss, clippy::shadow_reuse)]
+        let len = len as u64;
+        if len == 0 {
+            return Err(Error {
+                kind: ErrorKind::ArrayOfZeroElements,
+                col: len_token.col,
+                pointers_count: len_token.kind.display_len(self.tokens),
+            });
+        }
 
         let close_square_bracket_token = self.current_token(Expected::ClosingSquareBracket)?;
         let TokenKind::CloseSquareBracket = close_square_bracket_token.kind else {
@@ -3050,6 +3057,7 @@ impl Parser<'_, '_, '_, '_> {
                     Mutability::Var => &mut self.scopes[self.scope as usize].var_variables,
                 };
 
+                #[expect(clippy::cast_possible_truncation)]
                 let var_index = self.ast.variables.len() as VariableIndex;
                 scope_variables.push(var_index);
                 self.ast.variables.push(Variable { name: name.as_bytes(), value });
@@ -3062,6 +3070,7 @@ impl Parser<'_, '_, '_, '_> {
                         Type::Base(base_type) => self.expression_from_base_type(base_type),
                         Type::Array { base_type, len } => {
                             debug_assert!(len > 0, "arrays of 0 items are not allowed");
+                            #[expect(clippy::cast_possible_truncation)]
                             let items =
                                 vec![self.expression_from_base_type(base_type); len as usize];
                             debug_assert!(items.len() > 0, "arrays of 0 items are not allowed");
@@ -3074,6 +3083,7 @@ impl Parser<'_, '_, '_, '_> {
                         Mutability::Var => &mut self.scopes[self.scope as usize].var_variables,
                     };
 
+                    #[expect(clippy::cast_possible_truncation)]
                     let var_index = self.ast.variables.len() as VariableIndex;
                     scope_variables.push(var_index);
                     self.ast.variables.push(Variable { name: name.as_bytes(), value });
@@ -3264,6 +3274,7 @@ impl Parser<'_, '_, '_, '_> {
         let _start_of_expression_token = self.next_token_bounded(Expected::Expression)?;
         let argument = self.expression()?;
         if let Expression::Array { .. } = argument {
+            #[expect(clippy::cast_possible_truncation)]
             let temporary_value_index = self.ast.temporaries.len() as ExpressionIndex;
             let argument_type = argument.typ();
             self.ast.temporaries.push(argument);
@@ -3443,6 +3454,7 @@ impl Parser<'_, '_, '_, '_> {
             }
         }
 
+        #[expect(clippy::cast_possible_truncation)]
         let if_index = self.ast.ifs.len() as IfIndex;
         self.ast.ifs.push(If { ifs, els });
         return Ok(Node::If(if_index));
@@ -3567,6 +3579,7 @@ impl Parser<'_, '_, '_, '_> {
         };
 
         let statement = statement_result?;
+        #[expect(clippy::cast_possible_truncation)]
         let loop_index = self.ast.loops.len() as LoopIndex;
         self.ast.loops.push(Loop { condition, statement });
         return if let TokenKind::Do = do_token.kind {

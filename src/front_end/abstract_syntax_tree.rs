@@ -476,6 +476,7 @@ impl SyntaxTree<'_, '_, '_> {
     #[inline]
     fn new_expression(&mut self, expression: Expression) -> ExpressionIndex {
         self.expressions.push(expression);
+        #[expect(clippy::cast_possible_truncation)]
         return self.expressions.len() as ExpressionIndex - 1;
     }
 }
@@ -854,6 +855,7 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
 impl Display for SyntaxTreeDisplay<'_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut node_index = 0;
+        #[expect(clippy::cast_possible_truncation)]
         while node_index < self.syntax_tree.nodes.len() as NodeIndex {
             self.info_node(f, &mut node_index, 0)?;
         }
@@ -915,7 +917,8 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                     parser.errors.push(err);
 
                     // consuming all remaining tokens until the end of the file
-                    parser.token_index = parser.tokens.tokens.len() as TokenIndex;
+                    #[expect(clippy::cast_possible_truncation)]
+                    { parser.token_index = parser.tokens.tokens.len() as TokenIndex; }
                     break;
                 }
             };
@@ -1149,6 +1152,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                 self.syntax_tree.variable_definitions.push(variable_definition);
                 Ok(ParsedNode::Node(Node::LetVariableDefinition {
                     let_column: token.col,
+                    #[expect(clippy::cast_possible_truncation)]
                     variable_definition: self.syntax_tree.variable_definitions.len()
                         as VariableDefinitionIndex
                         - 1,
@@ -1160,6 +1164,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                 self.syntax_tree.variable_definitions.push(variable_definition);
                 Ok(ParsedNode::Node(Node::VarVariableDefinition {
                     var_column: token.col,
+                    #[expect(clippy::cast_possible_truncation)]
                     variable_definition: self.syntax_tree.variable_definitions.len()
                         as VariableDefinitionIndex
                         - 1,
@@ -1174,11 +1179,13 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                     close_curly_bracket_column: 0,
                 };
                 self.syntax_tree.nodes.push(placeholder_scope);
+                #[expect(clippy::cast_possible_truncation)]
                 let placeholder_scope_node_index = self.syntax_tree.nodes.len() as NodeIndex - 1;
 
                 while let Some(peeked) = self.peek_next_token() {
                     self.token_index = peeked.index;
                     if let TokenKind::CloseCurlyBracket = peeked.token.kind {
+                        #[expect(clippy::cast_possible_truncation)]
                         let last_scope_node_index = self.syntax_tree.nodes.len() as NodeIndex - 1;
                         let Node::Scope {
                             raw_nodes_in_scope_count,
@@ -1380,6 +1387,7 @@ struct Peeked {
 
 impl Parser<'_, '_, '_, '_> {
     fn peek_next_token(&self) -> Option<Peeked> {
+        #[expect(clippy::cast_possible_truncation)]
         for next_token_index in self.token_index..self.tokens.tokens.len() as TokenIndex {
             let next_token = self.tokens.tokens[next_token_index as usize];
             match next_token.kind {
@@ -1574,14 +1582,16 @@ impl Parser<'_, '_, '_, '_> {
             TokenKind::OpenSquareBracket => 'array: {
                 let open_square_bracket_token = token;
 
+                #[expect(clippy::cast_possible_truncation)]
                 let items_start = self.syntax_tree.array_items.len() as ArrayItemsIndex;
                 loop {
                     let start_of_item_token =
-                        self.next_expected_token(Expected::ArrayItemOrCloseSquareBracket)?;
+                    self.next_expected_token(Expected::ArrayItemOrCloseSquareBracket)?;
                     if let TokenKind::CloseSquareBracket = start_of_item_token.kind {
                         break 'array Expression::Array {
                             open_square_bracket_column: open_square_bracket_token.col,
                             items_start,
+                            #[expect(clippy::cast_possible_truncation)]
                             items_len: self.syntax_tree.array_items.len() as ArrayItemsIndex
                                 - items_start,
                             close_square_bracket_column: start_of_item_token.col,
@@ -1603,6 +1613,7 @@ impl Parser<'_, '_, '_, '_> {
                             break 'array Expression::ArrayTrailingItem {
                                 open_square_bracket_column: open_square_bracket_token.col,
                                 items_start,
+                                #[expect(clippy::cast_possible_truncation)]
                                 items_len: self.syntax_tree.array_items.len() as ArrayItemsIndex
                                     - items_start,
                                 last_item: item,
@@ -2078,6 +2089,7 @@ impl Parser<'_, '_, '_, '_> {
                 }
             };
 
+            #[expect(clippy::cast_possible_truncation)]
             let array_dimensions_start = self.syntax_tree.array_dimensions.len() as index32;
             while let Some(Peeked {
                 token: Token { kind: TokenKind::OpenSquareBracket, col: open_square_bracket_column },
@@ -2119,6 +2131,7 @@ impl Parser<'_, '_, '_, '_> {
                 type_name,
                 type_name_column: type_name_token.col,
                 array_dimensions_start,
+                #[expect(clippy::cast_possible_truncation)]
                 array_dimensions_len: self.syntax_tree.array_dimensions.len() as index32
                     - array_dimensions_start,
             })

@@ -142,6 +142,7 @@ pub(super) fn print_color(
     let mut digit_index = codes.len();
 
     loop {
+        #[expect(clippy::cast_possible_truncation)]
         let mut code = codes_bytes as u8;
         loop {
             digit_index -= 1;

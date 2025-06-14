@@ -72,10 +72,12 @@ impl<'path> SrcFile<'path> {
         if file_metadata_len > offset32::MAX as u64 {
             return Err(Error { path, kind: ErrorKind::FileTooBig { max: offset32::MAX } });
         };
+        #[expect(clippy::cast_possible_truncation)]
         let file_len = file_metadata_len as offset32;
 
         let mut code = String::new();
         let bytes_read = match file.read_to_string(&mut code) {
+            #[expect(clippy::cast_possible_truncation)]
             Ok(bytes_read) => bytes_read as offset32,
             Err(err) => return Err(Error { path, kind: ErrorKind::Io(err) }),
         };
@@ -128,6 +130,7 @@ impl<'code, 'path: 'code> SrcCode<'code, 'path> {
     #[must_use]
     fn line_index(&self, column: offset32) -> index32 {
         let mut left: index32 = 0;
+        #[expect(clippy::cast_possible_truncation)]
         let mut right = self.lines.len() as index32 - 1;
         while left < right {
             #[expect(clippy::integer_division, reason = "it's intended to lose precision")]
@@ -163,7 +166,8 @@ impl<'code, 'path: 'code> SrcCode<'code, 'path> {
         let mut utf8_column = 1;
         for character in line_text_before_error.chars() {
             let character_utf8_len = character.width_cjk().unwrap_or_default();
-            display_column += character_utf8_len as column32;
+            #[expect(clippy::cast_possible_truncation)]
+            { display_column += character_utf8_len as column32; }
             utf8_column += 1;
         }
 

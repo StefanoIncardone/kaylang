@@ -9,12 +9,12 @@ use crate::error::CharsWidth as _;
 use core::{fmt::Display, marker::PhantomData};
 use unicode_segmentation::UnicodeSegmentation as _;
 
-// TODO(stefano): move to lib.rs
+// TODO(stefano): move to primitives.rs
 #[expect(non_camel_case_types, reason = "alias to a primitive type")]
 /// kay's ascii character type
 pub(crate) type ascii = u8;
 
-// TODO(stefano): move to lib.rs
+// TODO(stefano): move to primitives.rs
 #[expect(non_camel_case_types, reason = "alias to a primitive type")]
 /// kay's utf32 character type
 pub(crate) type utf32 = char;
@@ -480,7 +480,9 @@ pub(crate) enum TokenKind {
     Op(Op),
 
     // Literal values
+    // IDEA(stefano): represent as 0
     False,
+    // IDEA(stefano): represent as non-0 instead of 1
     True,
     /// integer literals are never empty and always contain valid ascii digits
     DecimalInteger(TextIndex),
@@ -517,6 +519,7 @@ pub(crate) enum TokenKind {
 
 impl TokenKind {
     pub(super) fn display_len(self, tokens: &Tokens<'_, '_>) -> offset32 {
+        #[expect(clippy::cast_possible_truncation)]
         return match self {
             Self::Comment(comment) => {
                 let text = tokens.text[comment as usize];
@@ -695,7 +698,8 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                     },
                     Err(error) => {
-                        tokenizer.col += error.grapheme.len() as offset32;
+                        #[expect(clippy::cast_possible_truncation)]
+                        { tokenizer.col += error.grapheme.len() as offset32; }
                         tokenizer.errors.push(Error {
                             kind: ErrorKind::Utf8Character { grapheme: error.grapheme },
                             col: error.col,
@@ -715,7 +719,6 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                     },
                     b'a'..=b'z' | b'A'..=b'Z' | b'_' => tokenizer.identifier(),
                     b'`' => tokenizer.identifier_str(),
-                    // IDEA(stefano): debate wether to allow trailing underscores or to emit a warning
                     // IDEA(stefano): emit warning of inconsistent casing of letters, i.e. 0xFFff_fFfF_ffFF_ffFF
                     b'0' => match tokenizer.peek_next_utf8_char() {
                         Some('b') => {
@@ -723,6 +726,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             match tokenizer.integer_binary() {
                                 Ok(literal) => {
                                     tokenizer.tokens.text.push(literal);
+                                    #[expect(clippy::cast_possible_truncation)]
                                     let literal_index =
                                         tokenizer.tokens.text.len() as TextIndex - 1;
                                     Ok(TokenKind::BinaryInteger(literal_index))
@@ -735,6 +739,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             match tokenizer.integer_octal() {
                                 Ok(literal) => {
                                     tokenizer.tokens.text.push(literal);
+                                    #[expect(clippy::cast_possible_truncation)]
                                     let literal_index =
                                         tokenizer.tokens.text.len() as TextIndex - 1;
                                     Ok(TokenKind::OctalInteger(literal_index))
@@ -747,6 +752,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             match tokenizer.integer_hexadecimal() {
                                 Ok(literal) => {
                                     tokenizer.tokens.text.push(literal);
+                                    #[expect(clippy::cast_possible_truncation)]
                                     let literal_index =
                                         tokenizer.tokens.text.len() as TextIndex - 1;
                                     Ok(TokenKind::HexadecimalInteger(literal_index))
@@ -757,6 +763,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         Some(_) | None => match tokenizer.integer_decimal() {
                             Ok(literal) => {
                                 tokenizer.tokens.text.push(literal);
+                                #[expect(clippy::cast_possible_truncation)]
                                 let literal_index = tokenizer.tokens.text.len() as TextIndex - 1;
                                 Ok(TokenKind::DecimalInteger(literal_index))
                             }
@@ -766,6 +773,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                     b'1'..=b'9' => match tokenizer.integer_decimal() {
                         Ok(literal) => {
                             tokenizer.tokens.text.push(literal);
+                            #[expect(clippy::cast_possible_truncation)]
                             let literal_index = tokenizer.tokens.text.len() as TextIndex - 1;
                             Ok(TokenKind::DecimalInteger(literal_index))
                         }
@@ -807,6 +815,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             let comment_str = &tokenizer.code
                                 [tokenizer.token_start_col as usize..tokenizer.col as usize];
                             tokenizer.tokens.text.push(comment_str);
+                            #[expect(clippy::cast_possible_truncation)]
                             let comment_index = tokenizer.tokens.text.len() as TextIndex - 1;
                             Ok(TokenKind::BlockComment(comment_index))
                         }
@@ -828,6 +837,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
 
                                         tokenizer.col += 1;
                                     }
+                                    #[expect(clippy::cast_possible_truncation)]
                                     Some(other) => tokenizer.col += other.len_utf8() as offset32,
                                 }
                             }
@@ -835,11 +845,13 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             let comment_str = &tokenizer.code
                                 [tokenizer.token_start_col as usize..tokenizer.col as usize];
                             tokenizer.tokens.text.push(comment_str);
+                            #[expect(clippy::cast_possible_truncation)]
                             let comment_index = tokenizer.tokens.text.len() as TextIndex - 1;
                             Ok(TokenKind::Comment(comment_index))
                         }
                     },
                     b'(' => {
+                        #[expect(clippy::cast_possible_truncation)]
                         brackets_indicies.push(tokenizer.tokens.tokens.len() as TokenIndex);
                         Ok(TokenKind::OpenRoundBracket)
                     }
@@ -879,6 +891,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                     }
                     b'[' => {
+                        #[expect(clippy::cast_possible_truncation)]
                         brackets_indicies.push(tokenizer.tokens.tokens.len() as TokenIndex);
                         Ok(TokenKind::OpenSquareBracket)
                     }
@@ -918,6 +931,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                     }
                     b'{' => {
+                        #[expect(clippy::cast_possible_truncation)]
                         brackets_indicies.push(tokenizer.tokens.tokens.len() as TokenIndex);
                         Ok(TokenKind::OpenCurlyBracket)
                     }
@@ -1256,6 +1270,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                     let unexpected_text =
                         &tokenizer.code[tokenizer.token_start_col as usize..tokenizer.col as usize];
                     tokenizer.tokens.text.push(unexpected_text);
+                    #[expect(clippy::cast_possible_truncation)]
                     let unexpected_index = tokenizer.tokens.text.len() as TextIndex - 1;
                     TokenKind::Unexpected(unexpected_index)
                 }
@@ -1346,8 +1361,8 @@ impl<'code> Tokenizer<'code, '_> {
                 let Some(utf8_ch) = rest_of_code.chars().next() else {
                     unreachable!("this branch assured we would have a valid utf8 character");
                 };
-
-                self.col += utf8_ch.len_utf8() as offset32;
+                #[expect(clippy::cast_possible_truncation)]
+                { self.col += utf8_ch.len_utf8() as offset32; }
                 Some(utf8_ch)
             }
         };
@@ -1424,7 +1439,8 @@ impl<'code> Tokenizer<'code, '_> {
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
-                    self.col += error.grapheme.len() as offset32;
+                    #[expect(clippy::cast_possible_truncation)]
+                    { self.col += error.grapheme.len() as offset32; }
                 }
                 Some(Ok(_)) | None => break,
             }
@@ -1451,6 +1467,7 @@ impl<'code> Tokenizer<'code, '_> {
             "continue" => TokenKind::Continue,
             "len" => TokenKind::Op(Op::Len),
             identifier => {
+                #[expect(clippy::cast_possible_truncation)]
                 let identifier_len = identifier.len() as offset32;
                 if identifier_len as offset32 > Self::MAX_IDENTIFIER_LEN {
                     self.errors.push(Error {
@@ -1462,6 +1479,7 @@ impl<'code> Tokenizer<'code, '_> {
                 }
 
                 self.tokens.text.push(identifier);
+                #[expect(clippy::cast_possible_truncation)]
                 let identifier_index = self.tokens.text.len() as TextIndex - 1;
                 TokenKind::Identifier(identifier_index)
             }
@@ -1491,7 +1509,8 @@ impl<'code> Tokenizer<'code, '_> {
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
-                    self.col += error.grapheme.len() as offset32;
+                    #[expect(clippy::cast_possible_truncation)]
+                    { self.col += error.grapheme.len() as offset32; }
                     continue;
                 }
             };
@@ -1517,6 +1536,7 @@ impl<'code> Tokenizer<'code, '_> {
 
         let identifier_str = &self.code[self.token_start_col as usize..self.col as usize];
         let identifier = {
+            #[expect(clippy::cast_possible_truncation)]
             let identifier_len = identifier_str.len() as offset32 - 2; // - 2 for the quotes
             if identifier_len as offset32 > Self::MAX_IDENTIFIER_LEN {
                 self.errors.push(Error {
@@ -1528,6 +1548,7 @@ impl<'code> Tokenizer<'code, '_> {
             }
 
             self.tokens.text.push(identifier_str);
+            #[expect(clippy::cast_possible_truncation)]
             let identifier_index = self.tokens.text.len() as TextIndex - 1;
             TokenKind::IdentifierStr(identifier_index)
         };
@@ -1557,7 +1578,8 @@ impl<'code> Tokenizer<'code, '_> {
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
-                    self.col += error.grapheme.len() as offset32;
+                    #[expect(clippy::cast_possible_truncation)]
+                    { self.col += error.grapheme.len() as offset32; }
                 }
                 Some(Ok(_)) | None => break,
             }
@@ -1601,7 +1623,8 @@ impl<'code> Tokenizer<'code, '_> {
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
-                    self.col += error.grapheme.len() as offset32;
+                    #[expect(clippy::cast_possible_truncation)]
+                    { self.col += error.grapheme.len() as offset32; }
                 }
                 Some(Ok(_)) | None => break,
             }
@@ -1645,7 +1668,8 @@ impl<'code> Tokenizer<'code, '_> {
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
-                    self.col += error.grapheme.len() as offset32;
+                    #[expect(clippy::cast_possible_truncation)]
+                    { self.col += error.grapheme.len() as offset32; }
                 }
                 Some(Ok(_)) | None => break,
             }
@@ -1683,7 +1707,8 @@ impl<'code> Tokenizer<'code, '_> {
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
-                    self.col += error.grapheme.len() as offset32;
+                    #[expect(clippy::cast_possible_truncation)]
+                    { self.col += error.grapheme.len() as offset32; }
                 }
                 Some(Ok(_)) | None => break,
             }
@@ -1719,7 +1744,8 @@ impl<'code> Tokenizer<'code, '_> {
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
-                    self.col += error.grapheme.len() as offset32;
+                    #[expect(clippy::cast_possible_truncation)]
+                    { self.col += error.grapheme.len() as offset32; }
                     continue;
                 }
             };
@@ -1745,7 +1771,8 @@ impl<'code> Tokenizer<'code, '_> {
                                 col: error.col,
                                 pointers_count: error.pointers_count,
                             });
-                            self.col += error.grapheme.len() as offset32;
+                            #[expect(clippy::cast_possible_truncation)]
+                            { self.col += error.grapheme.len() as offset32; }
                             continue;
                         }
                     };
@@ -1834,7 +1861,8 @@ impl<'code> Tokenizer<'code, '_> {
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
-                    self.col += error.grapheme.len() as offset32;
+                    #[expect(clippy::cast_possible_truncation)]
+                    { self.col += error.grapheme.len() as offset32; }
                     continue;
                 }
             };
@@ -1858,7 +1886,8 @@ impl<'code> Tokenizer<'code, '_> {
                                 col: error.col,
                                 pointers_count: error.pointers_count,
                             });
-                            self.col += error.grapheme.len() as offset32;
+                            #[expect(clippy::cast_possible_truncation)]
+                            { self.col += error.grapheme.len() as offset32; }
                             continue;
                         }
                     };
@@ -1903,6 +1932,7 @@ impl<'code> Tokenizer<'code, '_> {
 
         let raw_string_literal_str = &self.code[self.token_start_col as usize..self.col as usize];
         self.tokens.text.push(raw_string_literal_str);
+        #[expect(clippy::cast_possible_truncation)]
         let raw_string_literal = self.tokens.text.len() as TextIndex - 1;
         let raw_string = TokenKind::Str(raw_string_literal);
         return Ok(raw_string);
@@ -1928,7 +1958,8 @@ impl<'code> Tokenizer<'code, '_> {
                         col: error.col,
                         pointers_count: error.pointers_count,
                     });
-                    self.col += error.grapheme.len() as offset32;
+                    #[expect(clippy::cast_possible_truncation)]
+                    { self.col += error.grapheme.len() as offset32; }
                     continue;
                 }
             };
@@ -1952,7 +1983,8 @@ impl<'code> Tokenizer<'code, '_> {
                                 col: error.col,
                                 pointers_count: error.pointers_count,
                             });
-                            self.col += error.grapheme.len() as offset32;
+                            #[expect(clippy::cast_possible_truncation)]
+                            { self.col += error.grapheme.len() as offset32; }
                             continue;
                         }
                     };
@@ -1984,6 +2016,7 @@ impl<'code> Tokenizer<'code, '_> {
 
         let raw_string_literal_str = &self.code[self.token_start_col as usize..self.col as usize];
         self.tokens.text.push(raw_string_literal_str);
+        #[expect(clippy::cast_possible_truncation)]
         let raw_string_literal = self.tokens.text.len() as TextIndex - 1;
         let raw_string = TokenKind::RawStr(raw_string_literal);
         return Ok(raw_string);

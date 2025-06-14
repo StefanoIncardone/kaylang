@@ -820,8 +820,8 @@ impl Display for Error {
 
         match self {
             Self::EmptyArgs => {
-                let pointers_offset = 0;
-                let pointers_count = 1;
+                let pointers_offset = 0_u32;
+                let pointers_count = 1_u32;
                 let error_message = "missing executable name";
                 let error_cause_message = "executable name should always be present";
 
@@ -830,8 +830,8 @@ impl Display for Error {
                     message: &error_message,
                     cause: &error_cause_message,
                     line_text: &args_text,
-                    pointers_offset: pointers_offset as column32,
-                    pointers_count: pointers_count as column32,
+                    pointers_offset,
+                    pointers_count,
                 };
                 return write!(f, "{error}");
             }
@@ -943,7 +943,9 @@ impl Display for Error {
                         message: &error_message,
                         cause: &error_cause_message,
                         line_text: &args_text,
+                        #[expect(clippy::cast_possible_truncation)]
                         pointers_offset: pointers_offset as column32,
+                        #[expect(clippy::cast_possible_truncation)]
                         pointers_count: pointers_count as column32,
                     };
                     writeln!(f, "{error}\n")?;
