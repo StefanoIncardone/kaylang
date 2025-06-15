@@ -1,4 +1,3 @@
-// IDEA(stefano): raise an error or warn on missing `-o`/`--output` that will pollute the current directory
 #![warn(clippy::print_stdout, clippy::print_stderr)]
 
 #[cfg(not(target_pointer_width = "64"))]
@@ -12,7 +11,7 @@ pub mod front_end;
 use color::{ansi_flag, AnsiFlag, Bg, Colored, Fg};
 use core::fmt::{Display, Write as _};
 use error::MsgWithCauseUnderText;
-use front_end::src_file::column32;
+use back_to_front::offset32;
 use std::{
     io::IsTerminal,
     path::{Path, PathBuf},
@@ -304,6 +303,8 @@ impl Display for CommandFlag {
     }
 }
 
+// IDEA(stefano): raise an error or warn on missing `-o`/`--output` that will pollute the current directory
+// IDEA(stefano): make mandatory
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputFlag {
     Short,
@@ -944,9 +945,9 @@ impl Display for Error {
                         cause: &error_cause_message,
                         line_text: &args_text,
                         #[expect(clippy::cast_possible_truncation)]
-                        pointers_offset: pointers_offset as column32,
+                        pointers_offset: pointers_offset as offset32,
                         #[expect(clippy::cast_possible_truncation)]
-                        pointers_count: pointers_count as column32,
+                        pointers_count: pointers_count as offset32,
                     };
                     writeln!(f, "{error}\n")?;
                 }

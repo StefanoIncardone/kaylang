@@ -1,23 +1,8 @@
 use crate::{error::MsgWithCause, ERROR};
 use core::fmt::Display;
 use std::{fs::File, io::Read as _, path::Path};
+use back_to_front::offset32;
 use unicode_width::UnicodeWidthChar as _;
-
-// TODO(stefano): move to lib.rs
-#[expect(non_camel_case_types, reason = "alias to a primitive type")]
-pub type offset32 = u32;
-
-// TODO(stefano): move to lib.rs
-#[expect(non_camel_case_types, reason = "alias to a primitive type")]
-pub type line32 = u32;
-
-// TODO(stefano): move to lib.rs
-#[expect(non_camel_case_types, reason = "alias to a primitive type")]
-pub type column32 = u32;
-
-// IDEA(stefano): remove in favor of `offset32`
-#[expect(non_camel_case_types, reason = "alias to a primitive type")]
-pub type index32 = u32;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct Span {
@@ -32,15 +17,15 @@ pub type Line = Span;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct Position {
-    pub line: line32,
-    pub column: column32,
+    pub line: offset32,
+    pub column: offset32,
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct DisplayPosition {
-    pub line: line32,
-    pub column: column32,
-    pub display_column: column32,
+    pub line: offset32,
+    pub column: offset32,
+    pub display_column: offset32,
 }
 
 // IDEA(stefano): remove `path` for a simpler api
@@ -128,10 +113,10 @@ impl<'code, 'path: 'code> SrcCode<'code, 'path> {
     }
 
     #[must_use]
-    fn line_index(&self, column: offset32) -> index32 {
-        let mut left: index32 = 0;
+    fn line_index(&self, column: offset32) -> offset32 {
+        let mut left: offset32 = 0;
         #[expect(clippy::cast_possible_truncation)]
-        let mut right = self.lines.len() as index32 - 1;
+        let mut right = self.lines.len() as offset32 - 1;
         while left < right {
             #[expect(clippy::integer_division, reason = "it's intended to lose precision")]
             let middle = left + (right - left) / 2;
@@ -167,7 +152,7 @@ impl<'code, 'path: 'code> SrcCode<'code, 'path> {
         for character in line_text_before_error.chars() {
             let character_utf8_len = character.width_cjk().unwrap_or_default();
             #[expect(clippy::cast_possible_truncation)]
-            { display_column += character_utf8_len as column32; }
+            { display_column += character_utf8_len as offset32; }
             utf8_column += 1;
         }
 
@@ -179,7 +164,7 @@ impl<'code, 'path: 'code> SrcCode<'code, 'path> {
 pub enum ErrorKind {
     Io(std::io::Error),
     MustBeAFilePath,
-    FileTooBig { max: column32 },
+    FileTooBig { max: offset32 },
     CouldNotReadEntireFile,
 }
 

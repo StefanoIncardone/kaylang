@@ -4,11 +4,12 @@ pub mod ast;
 pub mod src_file;
 pub mod tokenizer;
 
-use self::src_file::{column32, line32, offset32, DisplayPosition, SrcCode};
+use self::src_file::{DisplayPosition, SrcCode};
 use crate::{error::MsgWithCauseUnderTextWithLocation, ERROR};
 use core::fmt::{Debug, Display};
 extern crate alloc;
 use alloc::borrow::Cow;
+use back_to_front::offset32;
 use std::path::Path;
 
 pub trait IntoErrorInfo: Debug + Clone {
@@ -28,7 +29,7 @@ pub struct Error<K: IntoErrorInfo> {
     pub kind: K,
     /// absolute source code byte position
     pub col: offset32,
-    pub pointers_count: column32,
+    pub pointers_count: offset32,
 }
 
 impl<K: IntoErrorInfo> Error<K> {
@@ -60,12 +61,12 @@ impl<K: IntoErrorInfo> Error<K> {
 pub struct ErrorDisplay<'code, 'path: 'code> {
     pub error_message: Cow<'static, str>,
     pub file: &'path Path,
-    pub line: line32,
-    pub column: column32,
+    pub line: offset32,
+    pub column: offset32,
     pub absolute_column: offset32,
     pub line_text: &'code str,
-    pub pointers_count: column32,
-    pub pointers_offset: column32,
+    pub pointers_count: offset32,
+    pub pointers_offset: offset32,
     pub error_cause_message: Cow<'static, str>,
 }
 

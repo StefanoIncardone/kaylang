@@ -2,8 +2,10 @@
 // TODO(stefano): multidimensional arrays
 // REMOVE(stefano): remove unitialized variables initialized to default values
 
+use back_to_front::offset32;
+
 use super::{
-    src_file::{index32, offset32, Position, SrcCode},
+    src_file::{Position, SrcCode},
     tokenizer::{ascii, Base, Mutability, Op, OpenBracket, Token, TokenIndex, TokenKind, Tokens},
     Error, ErrorInfo, IntoErrorInfo,
 };
@@ -459,12 +461,12 @@ impl Display for AssignmentOp {
     }
 }
 
-type StringLabel = index32;
-type VariableIndex = index32;
-type IfIndex = index32;
-type LoopIndex = index32;
-type ExpressionIndex = index32;
-pub(crate) type ScopeIndex = index32;
+type StringLabel = offset32;
+type VariableIndex = offset32;
+type IfIndex = offset32;
+type LoopIndex = offset32;
+type ExpressionIndex = offset32;
+pub(crate) type ScopeIndex = offset32;
 
 #[derive(Debug, Clone)]
 pub(crate) enum Expression {

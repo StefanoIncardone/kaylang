@@ -10,19 +10,8 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Shortcircuted and/or operators
 - Unsigned integers
-- Casting operator
-- Removal of implicit conversions
-- Type aliases, which are just alternative names to existing types:
-
-    ```kay
-    alias byte = u8;
-    ```
-
-- Distinct types, which are considered entirely different types:
-
-    ```kay
-    type byte = u8;
-    ```
+- Better compiler flags and tooling
+- Reworked multiline comments to allow nesting
 
 ## 0.6.3 -
 
@@ -80,6 +69,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Removed `back_end::reg` module, moved to `back-to-front` compiler tools repo
 - Removed `tokenizer::Quote` and `tokenizer::QuotedLiteralKind`
 - Removed `ColorMode`
+- Removed `index32`, `line32` and `column32`, use `back_to_front::offset32` instead
 
 #### Fixed
 

@@ -12,10 +12,10 @@ use crate::front_end::{
         self, AssignmentOp, Ast, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression,
         IfStatement, Node, ScopeIndex, SizeOf as _, Type, TypeOf as _, UnaryOp,
     },
-    src_file::{offset32, Position, SrcCode},
+    src_file::{Position, SrcCode},
     tokenizer::ascii,
 };
-use back_to_front::back_end::x86_64::reg::Reg64::{self, Rcx, Rdi, Rdx, Rsi};
+use back_to_front::{back_end::x86_64::reg::Reg64::{self, Rcx, Rdi, Rdx, Rsi}, offset32};
 use core::fmt::{Display, Write as _};
 extern crate alloc;
 use alloc::borrow::Cow;

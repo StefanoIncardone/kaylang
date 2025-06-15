@@ -1,11 +1,11 @@
 use crate::{
     color::{ansi_flag, AnsiFlag, Bg, Colored, Fg},
-    front_end::src_file::{column32, line32, offset32},
     AT, BAR, CAUSE,
 };
 use core::fmt::Display;
 use std::path::Path;
 
+use back_to_front::offset32;
 use unicode_width::UnicodeWidthChar as _;
 
 pub(crate) trait CharsWidth {
@@ -62,8 +62,8 @@ pub struct MsgWithCauseUnderText<'kind, 'message, 'cause, 'src> {
     pub message: &'message dyn Display,
     pub cause: &'cause dyn Display,
     pub line_text: &'src dyn Display,
-    pub pointers_count: column32,
-    pub pointers_offset: column32,
+    pub pointers_count: offset32,
+    pub pointers_offset: offset32,
 }
 
 impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
@@ -107,12 +107,12 @@ pub struct MsgWithCauseUnderTextWithLocation<'kind, 'message, 'cause, 'src> {
     pub message: &'message dyn Display,
     pub cause: &'cause dyn Display,
     pub file: &'src Path,
-    pub line: line32,
-    pub column: column32,
+    pub line: offset32,
+    pub column: offset32,
     pub absolute_column: offset32,
     pub line_text: &'src dyn Display,
-    pub pointers_count: column32,
-    pub pointers_offset: column32,
+    pub pointers_count: offset32,
+    pub pointers_offset: offset32,
 }
 
 // IDEA(stefano): add cli flag to control the amount of spaces (default 4) to display when printing tabs

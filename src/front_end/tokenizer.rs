@@ -2,11 +2,12 @@
 // TODO(stefano): implement own escaping
 
 use super::{
-    src_file::{index32, offset32, Line, SrcCode, SrcFile},
+    src_file::{Line, SrcCode, SrcFile},
     Error, ErrorInfo, IntoErrorInfo,
 };
 use crate::error::CharsWidth as _;
 use core::{fmt::Display, marker::PhantomData};
+use back_to_front::offset32;
 use unicode_segmentation::UnicodeSegmentation as _;
 
 // TODO(stefano): move to primitives.rs
@@ -456,8 +457,8 @@ impl Op {
     }
 }
 
-pub(crate) type TextIndex = index32;
-pub(crate) type TokenIndex = index32;
+pub(crate) type TextIndex = offset32;
+pub(crate) type TokenIndex = offset32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TokenKind {
@@ -563,7 +564,6 @@ impl TokenKind {
                 text.len() as offset32
             }
             Self::Ascii(ascii_char) => {
-                // TODO(stefano): remove the `+ 2`
                 ascii_char.escape_ascii().len() as offset32 + 2 // + 2 for the quotes
             }
             Self::True => 4,

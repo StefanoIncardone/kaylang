@@ -5,7 +5,11 @@ version = 3
 [[package]]
 name = "back-to-front"
 version = "0.1.0"
-source = "git+https://github.com/StefanoIncardone/back-to-front?rev=db992b9c30baec8b3b1f138917ce34cd71e3c88b#db992b9c30baec8b3b1f138917ce34cd71e3c88b"
+source = "git+https://github.com/StefanoIncardone/back-to-front?rev=891cc758b87a1f0ea51a262de90e258505379114#891cc758b87a1f0ea51a262de90e258505379114"
+dependencies = [
+ "unicode-segmentation",
+ "unicode-width",
+]
 
 [[package]]
 name = "kaylang"
@@ -24,6 +28,6 @@ checksum = "f6ccf251212114b54433ec949fd6a7841275f9ada20dddd2f29e9ceea4501493"
 
 [[package]]
 name = "unicode-width"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fc81956842c57dac11422a97c3b8195a1ff727f06e85c84ed2e8aa277c9a0fd"
+checksum = "4a1a07cc7db3810833284e8d372ccdc6da29741639ecc70c9ec107df0fa6154c"
