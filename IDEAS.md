@@ -61,6 +61,11 @@ and all of the previous commands will produce the same final executable
     ##* documentation block comment *##
     ```
 
+maybe experiment with deprecation periods:
+
+- support both old and new comment styles and emit a warning/error when encountering the old style:
+    - would need to develop a proper log with warning/error/note/hint system
+
 ## ?.?.? - Disallowing optional trailing comma, make it mandatory
 
 ```kay
@@ -165,15 +170,35 @@ break { println "done"; } {
 # or
 loop i < 10 {
     if i & 1 == 0 {
-        continue; # goes inside the continue block previously declared
+        continue; # goes inside the continue block
     } else if i == 3 {
-        break; # goes inside the break block previously declared
+        break; # goes inside the break block declared
     }
     # each block except the first will start executing from the continue block
 } continue {
     i += 1;
 } break {
     println "done";
+}
+
+# could just be
+loop i < 10 {
+    :break_label {
+        :continue_label {
+            if condition {
+                break:break_label;
+            }
+            if other_condition {
+                continue:continue_label;
+            }
+        }
+
+        # continue logic
+        continue;
+    }
+
+    # break logic
+    break;
 }
 ```
 
@@ -883,26 +908,60 @@ let ok = match answer {
 
 ```kay
 # possible label syntax
-loop: label ... {
+let x = loop:loop_label {
     loop {
         break;
     }
     loop {
-        loop {
-            break: label;
+        let i = if:if_label condition {
+            # forcing breaks to "return" values from blocks and loops
+            break:if_label 12;
+        } else {
+            break:if_label 21;
         }
+
+        let x = :scope_label {
+            break:scope_label 12;
+        }
+        
+        # specialized syntax
+        let i = if condition {
+            # forcing breaks to "return" values from blocks and loops
+            break:if 12;
+        } else {
+            break:if 21;
+        }
+
+        let x = loop {
+            if condition {
+                break:loop i; # breaks from direct loop parent
+                break:if i; # breaks from direct if parent
+            }
+        }
+        break:loop_label x;
     }
-    ...
+}
+```
+
+```kay
+# no semicolon required when assigning the result of a block to a variable
+let i = {
+    ... # other computation
+    break 21;
 }
 
-let x = loop: label ... {
-    ...
-    break: label 12;
+# i know why the semicolon is required, but i find that annoying in rust
+var i = ...;
+... # other computation
+{
+    i = 21;
 }
-let x =: label {
-    ...
-    break: label 21;
-}
+
+# i go to refactor
+let i = {
+    ... # other computation
+    break 21;
+} # if the block is long i don't like having to go to the end of the block to add a semicolon
 ```
 
 compared to rust:
@@ -1024,23 +1083,19 @@ let code: i64[capacity]; # works
 let codes: i64[] = [1, 2, 3]; # will be of length 3
 
 # or (need to decide wether to keep these syntaxes and only allow to specify the type after the colon)
-let codes = i64[1, 2 ,3];                   # array of three items with indexes 0, 1 and 2 initialized to 1, 2, 3
-let codes = i64[6: 1, 2, 3];                # array of six items with indexes 0, 1 and 2 initialized to 1, 2, 3
-let codes = i64[6: 1 = 1, 3 = 2, 0 = 3];    # array of six items with indexes 1, 3 and 0 initialized to 1, 2, 3
-
-# or
-let codes = i64[6][1 = 1, 3 = 2, 0 = 3];    # array of six items with indexes 1, 3 and 0 initialized to 1, 2, 3
-```
-
-will borrow useful features from C like indexed initialization:
-
-```kay
+let codes = i64[1, 2 ,3];                   # array of 3 items with indexes 0, 1 and 2 initialized to 1, 2, 3
+let codes = i64[3: 1, 2, 3];                # array of 6 items with indexes 0, 1 and 2 initialized to 1, 2, 3
+# will borrow useful features from C like indexed initialization:
 let codes: i64[19] = [
     2 = 5, # element at index 2 will contain the value 5
     0 = 9,
+    4, # Error: cannot specify positional element after index element
     3..18 = 3, # items from index 3 to index 18 will contain the value 3
-    42 = 7, # error, out of bounds
+    42 = 7, # Error: out of bounds
 ];
+let codes = i64[6: 1 = 1, 3 = 2, 0 = 3, .. = 12];    # array of 6 items with indexes 1, 3 and 0 initialized to 1, 2, 3 and everything else initialized to 12
+let codes = i64[6: 1 = 1, 3 = 2, 0 = 3, .. = ---];    # array of 6 items with indexes 1, 3 and 0 initialized to 1, 2, 3 and everything left uninitialized
+
 ```
 
 ### Arrays of bits
@@ -2594,4 +2649,88 @@ let b: ascii = b; # fine, since ascii is just an other name for u8
 type ascii = u8; # ascii is a different type from u8
 let a: u8 = 12;
 let b: ascii = a; # Error: ascii is a different type from u8
+```
+
+## ?.?.? - Capturing scopes
+
+Ability to capture only specific variables from the surrounding environment:
+
+```kay
+let outer_0 = ...;
+let outer_1 = ...;
+{
+    let inner_0 = outer_0; # can see outer_0
+    let inner_1 = outer_1; # can see outer_1
+}
+```
+
+```kay
+# restrict capturing to only specific entities
+let outer_0 = ...;
+let outer_1 = ...;
+
+# syntax subject to change
+@capture(outer_0) ## only capture outer_0 ## {
+    let inner_0 = outer_0; # can see outer_0
+    let inner_1 = outer_1; # Error: cannot see outer_1, not specified in the capturing group
+}
+@capture(outer_0, outer_1) ## only capture outer_0 and outer_1 ## {
+    let inner_0 = outer_0; # can see outer_0
+    let inner_1 = outer_1; # can see outer_1
+}
+
+@capture(!outer_0) ## capture everyting except outer_0 ## {
+    let inner_0 = outer_0; # Error: cannot see outer_0, not specified in the capturing group
+    let inner_1 = outer_1; # can see outer_1
+}
+@capture() ## capture nothing ## {
+    let inner_0 = outer_0; # Error: cannot see outer_0, not specified in the capturing group
+    let inner_1 = outer_1; # Error: cannot see outer_1, not specified in the capturing group
+}
+
+# need to implement other ways to specify what to capture
+```
+
+could be applied to functions as well (when global variables will be implemented):
+
+```kay
+let global_0 = ...;
+let global_1 = ...;
+fn foo(...) @capture(global_0) {
+    let inner_0 = global_0; # can see global_0
+    let inner_1 = global_1; # Error: cannot see global_1, not specified in the capturing group
+}
+```
+
+## ?.?.? - Non-lexical scopes `no_scope`
+
+Would create a distinction between a `scope` and a `no_scope`:
+
+`scope`: every local definition belongs to that scope and is only accessible within it
+
+```kay
+let a = ...;
+{
+    let b = a;
+}
+let c = b; # Error: not in scope
+```
+
+`no_scope`: basically just a way to group statements with no scoping rules
+
+```kay
+@no_scope {
+    let b = a;
+}
+# valid, in scope, as the @no_scope directive specifies that the block should not have scoping
+# rules applied
+let c = b;
+```
+
+Would only work on stand alone blocks, control flow and functions cannot be marked as `no_scope`:
+
+```kay
+if condition @no_scope { # Error: @no_scope directive cannot be applied to if blocks
+    ...
+}
 ```
