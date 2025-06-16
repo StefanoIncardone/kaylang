@@ -55,32 +55,6 @@ impl Base {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
-pub(crate) enum Mutability {
-    Let,
-    Var,
-}
-
-impl Display for Mutability {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        return match self {
-            Self::Let => write!(f, "let"),
-            Self::Var => write!(f, "var"),
-        };
-    }
-}
-
-impl Mutability {
-    #[expect(dead_code, reason = "kept for consistency")]
-    #[inline(always)]
-    pub(super) const fn display_len(self) -> offset32 {
-        return match self {
-            Self::Let | Self::Var => 3,
-        };
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
 pub enum Op {
     Equals,
 

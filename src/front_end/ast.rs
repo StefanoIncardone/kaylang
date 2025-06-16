@@ -6,7 +6,7 @@ use back_to_front::offset32;
 
 use super::{
     src_file::{Position, SrcCode},
-    tokenizer::{ascii, Base, Mutability, Op, Token, TokenIndex, TokenKind, Tokens},
+    tokenizer::{ascii, Base, Op, Token, TokenIndex, TokenKind, Tokens},
     Error, ErrorInfo, IntoErrorInfo,
 };
 use core::fmt::{Debug, Display};
@@ -1039,14 +1039,22 @@ impl Parser<'_, '_, '_, '_> {
                 }
             }
             TokenKind::Let => {
-                let definition = self.variable_definition(Mutability::Let)?;
-                self.semicolon()?;
-                Ok(definition)
+                let variable = self.variable_definition()?;
+
+                #[expect(clippy::cast_possible_truncation)]
+                let var_index = self.ast.variables.len() as VariableIndex;
+                self.scopes[self.scope as usize].let_variables.push(var_index);
+                self.ast.variables.push(variable);
+                Ok(Node::Definition { var_index })
             }
             TokenKind::Var => {
-                let definition = self.variable_definition(Mutability::Var)?;
-                self.semicolon()?;
-                Ok(definition)
+                let variable = self.variable_definition()?;
+
+                #[expect(clippy::cast_possible_truncation)]
+                let var_index = self.ast.variables.len() as VariableIndex;
+                self.scopes[self.scope as usize].var_variables.push(var_index);
+                self.ast.variables.push(variable);
+                Ok(Node::Definition { var_index })
             }
             TokenKind::Print => {
                 let arg = self.print_arg()?;
@@ -1764,7 +1772,7 @@ impl Parser<'_, '_, '_, '_> {
                 let name = self.tokens.text[name_index as usize];
                 match self.resolve_type(name.as_bytes()) {
                     None => match self.resolve_variable(name.as_bytes()) {
-                        Some((_, variable_index)) => {
+                        Some(variable_index) => {
                             let var = &self.ast.variables[variable_index as usize];
                             Ok(Expression::Variable { typ: var.value.typ(), variable_index })
                         }
@@ -2759,23 +2767,41 @@ impl Parser<'_, '_, '_, '_> {
 }
 
 // variables and typesk
-impl Parser<'_, '_, '_, '_> {
-    // NOTE(stefano): why accept a &[ascii] and not &str
-    fn resolve_variable(&self, name: &[ascii]) -> Option<(Mutability, VariableIndex)> {
+impl<'code> Parser<'_, '_, 'code, '_> {
+    fn resolve_variable(&self, name: &[ascii]) -> Option<VariableIndex> {
+        if let Some(variable) = self.resolve_let_variable(name) {
+            return Some(variable);
+        }
+
+        return self.resolve_var_variable(name);
+    }
+
+    fn resolve_let_variable(&self, name: &[ascii]) -> Option<VariableIndex> {
         let mut scope_index = self.scope;
         loop {
             let scope = &self.scopes[scope_index as usize];
             for var_index in &scope.let_variables {
                 let var = &self.ast.variables[*var_index as usize];
                 if var.name == name {
-                    return Some((Mutability::Let, *var_index));
+                    return Some(*var_index);
                 }
             }
 
+            scope_index = match scope_index {
+                0 => return None,
+                _ => scope.parent,
+            };
+        }
+    }
+
+    fn resolve_var_variable(&self, name: &[ascii]) -> Option<VariableIndex> {
+        let mut scope_index = self.scope;
+        loop {
+            let scope = &self.scopes[scope_index as usize];
             for var_index in &scope.var_variables {
                 let var = &self.ast.variables[*var_index as usize];
                 if var.name == name {
-                    return Some((Mutability::Var, *var_index));
+                    return Some(*var_index);
                 }
             }
 
@@ -2825,7 +2851,7 @@ impl Parser<'_, '_, '_, '_> {
         let Some(base_type) = self.resolve_type(type_name.as_bytes()) else {
             // REMOVE(stefano): remove possibility of emulating `typeof` using other variables as type annotation
             return match self.resolve_variable(type_name.as_bytes()) {
-                Some((_, var_index)) => {
+                Some(var_index) => {
                     let var = &self.ast.variables[var_index as usize];
                     Ok(Some((type_token, var.value.typ())))
                 }
@@ -2904,7 +2930,7 @@ impl Parser<'_, '_, '_, '_> {
         };
     }
 
-    fn variable_definition(&mut self, mutability: Mutability) -> Result<Node, Error<ErrorKind>> {
+    fn variable_definition(&mut self) -> Result<Variable<'code>, Error<ErrorKind>> {
         let name_token = self.next_token_bounded(Expected::Identifier)?;
         let name = match name_token.kind {
             TokenKind::Identifier(name_index) | TokenKind::IdentifierStr(name_index) => {
@@ -3053,18 +3079,8 @@ impl Parser<'_, '_, '_, '_> {
                         });
                     }
                 }
-
-                let scope_variables = match mutability {
-                    Mutability::Let => &mut self.scopes[self.scope as usize].let_variables,
-                    Mutability::Var => &mut self.scopes[self.scope as usize].var_variables,
-                };
-
-                #[expect(clippy::cast_possible_truncation)]
-                let var_index = self.ast.variables.len() as VariableIndex;
-                scope_variables.push(var_index);
-                self.ast.variables.push(Variable { name: name.as_bytes(), value });
-
-                Ok(Node::Definition { var_index })
+                self.semicolon()?;
+                Ok(Variable { name: name.as_bytes(), value })
             }
             None => match annotation {
                 Some((_, typ)) => {
@@ -3079,18 +3095,8 @@ impl Parser<'_, '_, '_, '_> {
                             Expression::Array { base_type, items }
                         }
                     };
-
-                    let scope_variables = match mutability {
-                        Mutability::Let => &mut self.scopes[self.scope as usize].let_variables,
-                        Mutability::Var => &mut self.scopes[self.scope as usize].var_variables,
-                    };
-
-                    #[expect(clippy::cast_possible_truncation)]
-                    let var_index = self.ast.variables.len() as VariableIndex;
-                    scope_variables.push(var_index);
-                    self.ast.variables.push(Variable { name: name.as_bytes(), value });
-
-                    Ok(Node::Definition { var_index })
+                    self.semicolon()?;
+                    Ok(Variable { name: name.as_bytes(), value })
                 }
                 None => Err(Error {
                     kind: ErrorKind::CannotInferTypeOfVariable,
@@ -3131,17 +3137,13 @@ impl Parser<'_, '_, '_, '_> {
 
                 let error_token = if let TokenKind::Identifier(name_index) = target_token.kind {
                     let name = self.tokens.text[name_index as usize];
-                    let Some((mutability, _)) = self.resolve_variable(name.as_bytes()) else {
-                        unreachable!("should have been checked during lhs parsing");
-                    };
-
-                    let Mutability::Var = mutability else {
+                    if let Some(_) = self.resolve_let_variable(name.as_bytes()) {
                         return Err(Error {
                             kind: ErrorKind::CannotMutateVariable,
                             col: target_token.col,
                             pointers_count: target_token.kind.display_len(self.tokens),
                         });
-                    };
+                    }
 
                     if let BaseType::Str = typ.base_typ() {
                         if let BaseType::Ascii = base_type {
@@ -3162,17 +3164,13 @@ impl Parser<'_, '_, '_, '_> {
             }
             Expression::Variable { typ, variable_index } => {
                 let var = &self.ast.variables[*variable_index as usize];
-                let Some((mutability, _)) = self.resolve_variable(var.name) else {
-                    unreachable!("should have been checked during lhs parsing");
-                };
-
-                let Mutability::Var = mutability else {
+                if let Some(_) = self.resolve_let_variable(var.name) {
                     return Err(Error {
                         kind: ErrorKind::CannotMutateVariable,
                         col: target_token.col,
                         pointers_count: target_token.kind.display_len(self.tokens),
                     });
-                };
+                }
 
                 (target_token, *typ)
             }
