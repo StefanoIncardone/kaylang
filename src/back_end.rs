@@ -15,7 +15,11 @@ use crate::front_end::{
     src_file::{Position, SrcCode},
     tokenizer::ascii,
 };
-use back_to_front::{back_end::x86_64::reg::Reg64::{self, Rcx, Rdi, Rdx, Rsi}, offset32};
+use back_to_front::offset32;
+#[expect(clippy::useless_attribute, reason = "false positive")]
+#[expect(clippy::pub_use)]
+pub use back_to_front::back_end::x86_64::reg::Reg64;
+use Reg64::{Rcx, Rdi, Rdx, Rsi};
 use core::fmt::{Display, Write as _};
 extern crate alloc;
 use alloc::borrow::Cow;

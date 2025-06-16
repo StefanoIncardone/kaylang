@@ -17,7 +17,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 > [!NOTE]
 > From this release onwards individual modules may be extracted to separate `back-to-front` compiler
-> tools repo, to aid in modularity and code reuse.
+> tools repo, to aid in modularity and code reuse. Will be re-exported for convenience.
 
 ### Language
 

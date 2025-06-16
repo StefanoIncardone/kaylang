@@ -1,8 +1,11 @@
 use crate::{error::MsgWithCause, ERROR};
 use core::fmt::Display;
 use std::{fs::File, io::Read as _, path::Path};
-use back_to_front::offset32;
 use unicode_width::UnicodeWidthChar as _;
+
+#[expect(clippy::useless_attribute, reason = "false positive")]
+#[expect(clippy::pub_use)]
+pub use back_to_front::offset32;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct Span {
