@@ -53,19 +53,6 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Expanded error entities such as `tokenizer::ErrorKind`
 - `tokenizer::ErrorKind` variants related to unrecognized and control characters now contain `ascii`
     instead of `utf32`
-- Reworked compilation stages:
-    - old:
-        - loading of source code file and line boundaries precalculations
-        - tokenization
-        - abstract syntax tree parsing
-        - compilation of abstract syntax tree
-    - new:
-        - loading of source code file
-        - tokenization and line boundaries calculations
-        - (added) parsing of syntax tree (phantom stage, does not affect other stages for now)
-        - abstract syntax tree parsing
-        - compilation of abstract syntax tree
-        - return the compiled code
 
 #### Removed
 
