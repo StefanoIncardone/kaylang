@@ -41,6 +41,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Made the compiler only work on 64bit systems
 - Renamed `ast::BaseType::Int` to `ast::BaseType::I64`
+- `tokenizer::TokenKing::Ascii` now behaves like a string token
 - Added `?`, `-?`, `--?` for help commands
 - Improved printing of help message, now fitting inside 80 columns
 - `Args` now returns multiple cli errors instead of just the first one
@@ -50,6 +51,8 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Expanded `tokenizer::TokenKind::Integer` into its different bases
 - Expanded `tokenizer::TokenKind::Bracket` into its different variants
 - Expanded error entities such as `tokenizer::ErrorKind`
+- `tokenizer::ErrorKind` variants related to unrecognized and control characters now contain `ascii`
+    instead of `utf32`
 - Reworked compilation stages:
     - old:
         - loading of source code file and line boundaries precalculations
@@ -69,8 +72,10 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Removed `back_end::reg` module, moved to `back-to-front` compiler tools repo
 - Removed `tokenizer::Quote` and `tokenizer::QuotedLiteralKind`
 - Removed `ColorMode`
-- Removed `index32`, `line32` and `column32`, use `back_to_front::offset32` instead
-- Removed `Mutability`, `Bracket`, `OpenBracket` and `CloseBracket`
+- Removed `src_file::index32`, `src_file::line32` and `src_file::column32`, use
+    `back_to_front::offset32` instead
+- Removed `tokenizer::Mutability`, `tokenizer::Bracket`, `tokenizer::OpenBracket` and
+    `tokenizer::CloseBracket`
 
 #### Fixed
 

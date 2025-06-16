@@ -20,39 +20,6 @@ pub(crate) type ascii = u8;
 /// kay's utf32 character type
 pub(crate) type utf32 = char;
 
-// TODO(stefano): make pub(crate)
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-#[repr(u8)]
-pub enum Base {
-    #[default]
-    Decimal = 10,
-    Binary = 0b10,
-    Octal = 0o10,
-    Hexadecimal = 0x10,
-}
-
-impl Base {
-    #[must_use]
-    pub const fn prefix(self) -> &'static str {
-        return match self {
-            Self::Decimal => "",
-            Self::Binary => "0b",
-            Self::Octal => "0o",
-            Self::Hexadecimal => "0x",
-        };
-    }
-
-    #[must_use]
-    pub const fn range(self) -> &'static [core::ops::RangeInclusive<utf32>] {
-        return match self {
-            Self::Decimal => &['0'..='9'],
-            Self::Binary => &['0'..='1'],
-            Self::Octal => &['0'..='7'],
-            Self::Hexadecimal => &['0'..='9', 'A'..='F', 'a'..='f'],
-        };
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Op {
@@ -346,18 +313,19 @@ pub(crate) enum TokenKind {
     False,
     // IDEA(stefano): represent as non-0 instead of 1
     True,
+
     /// integer literals are never empty and always contain valid ascii digits
     DecimalInteger(TextIndex),
     BinaryInteger(TextIndex),
     OctalInteger(TextIndex),
     HexadecimalInteger(TextIndex),
-    Ascii(ascii), // IDEA(stefano): make into `Ascii(TextIndex)`
 
+    Ascii(TextIndex),
     Str(TextIndex),
     RawStr(TextIndex),
+    IdentifierStr(TextIndex),
 
     Identifier(TextIndex),
-    IdentifierStr(TextIndex),
 
     // Keywords
     /// temporary way of printing values to stdout
@@ -408,6 +376,9 @@ impl TokenKind {
             Self::Comma => 1,
             Self::Op(op) => op.display_len(),
 
+            Self::True => 4,
+            Self::False => 5,
+
             Self::DecimalInteger(integer) => {
                 let text = tokens.text[integer as usize];
                 text.len() as offset32
@@ -424,11 +395,11 @@ impl TokenKind {
                 let text = tokens.text[integer as usize];
                 text.len() as offset32
             }
+
             Self::Ascii(ascii_char) => {
-                ascii_char.escape_ascii().len() as offset32 + 2 // + 2 for the quotes
+                let text = tokens.text[ascii_char as usize];
+                text.len() as offset32
             }
-            Self::True => 4,
-            Self::False => 5,
             Self::Str(string) => {
                 let text = tokens.text[string as usize];
                 text.len() as offset32
@@ -437,12 +408,12 @@ impl TokenKind {
                 let text = tokens.text[string as usize];
                 text.len() as offset32
             }
-
-            Self::Identifier(identifier) => {
+            Self::IdentifierStr(identifier) => {
                 let text = tokens.text[identifier as usize];
                 text.len() as offset32
             }
-            Self::IdentifierStr(identifier) => {
+
+            Self::Identifier(identifier) => {
                 let text = tokens.text[identifier as usize];
                 text.len() as offset32
             }
@@ -579,7 +550,6 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         _ => tokenizer.identifier(),
                     },
                     b'a'..=b'z' | b'A'..=b'Z' | b'_' => tokenizer.identifier(),
-                    b'`' => tokenizer.identifier_str(),
                     // IDEA(stefano): emit warning of inconsistent casing of letters, i.e. 0xFFff_fFfF_ffFF_ffFF
                     b'0' => match tokenizer.peek_next_utf8_char() {
                         Some('b') => {
@@ -640,11 +610,9 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                         Err(()) => Err(()),
                     },
+                    b'\'' => tokenizer.ascii_literal(),
                     b'"' => tokenizer.string_literal(),
-                    b'\'' => match tokenizer.ascii_literal() {
-                        Ok(literal) => Ok(TokenKind::Ascii(literal)),
-                        Err(()) => Err(()),
-                    },
+                    b'`' => tokenizer.identifier_str(),
                     b'#' => match tokenizer.peek_next_utf8_char() {
                         Some('#') => 'comment: {
                             'next_character: loop {
@@ -1116,7 +1084,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                     },
                     unrecognized => {
                         tokenizer.errors.push(Error {
-                            kind: ErrorKind::UnrecognizedCharacter(unrecognized as utf32),
+                            kind: ErrorKind::UnrecognizedCharacter(unrecognized),
                             col: tokenizer.token_start_col,
                             pointers_count: 1,
                         });
@@ -1286,137 +1254,6 @@ impl<'code> Tokenizer<'code, '_> {
 impl<'code> Tokenizer<'code, '_> {
     const MAX_IDENTIFIER_LEN: offset32 = 63;
 
-    fn identifier(&mut self) -> Result<TokenKind, ()> {
-        let previous_errors_len = self.errors.len();
-
-        loop {
-            match self.peek_next_ascii_char() {
-                Some(Ok(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {
-                    self.col += 1;
-                }
-                Some(Err(error)) => {
-                    self.errors.push(Error {
-                        kind: ErrorKind::Utf8InIdentifier { grapheme: error.grapheme },
-                        col: error.col,
-                        pointers_count: error.pointers_count,
-                    });
-                    #[expect(clippy::cast_possible_truncation)]
-                    { self.col += error.grapheme.len() as offset32; }
-                }
-                Some(Ok(_)) | None => break,
-            }
-        }
-
-        if previous_errors_len != self.errors.len() {
-            return Err(());
-        };
-
-        let identifier = match &self.code[self.token_start_col as usize..self.col as usize] {
-            "let" => TokenKind::Let,
-            "var" => TokenKind::Var,
-            "print" => TokenKind::Print,
-            "println" => TokenKind::PrintLn,
-            "eprint" => TokenKind::Eprint,
-            "eprintln" => TokenKind::EprintLn,
-            "true" => TokenKind::True,
-            "false" => TokenKind::False,
-            "do" => TokenKind::Do,
-            "if" => TokenKind::If,
-            "else" => TokenKind::Else,
-            "loop" => TokenKind::Loop,
-            "break" => TokenKind::Break,
-            "continue" => TokenKind::Continue,
-            "len" => TokenKind::Op(Op::Len),
-            identifier => {
-                #[expect(clippy::cast_possible_truncation)]
-                let identifier_len = identifier.len() as offset32;
-                if identifier_len as offset32 > Self::MAX_IDENTIFIER_LEN {
-                    self.errors.push(Error {
-                        kind: ErrorKind::IdentifierTooLong { max: Self::MAX_IDENTIFIER_LEN },
-                        col: self.token_start_col,
-                        pointers_count: identifier_len,
-                    });
-                    return Err(());
-                }
-
-                self.tokens.text.push(identifier);
-                #[expect(clippy::cast_possible_truncation)]
-                let identifier_index = self.tokens.text.len() as TextIndex - 1;
-                TokenKind::Identifier(identifier_index)
-            }
-        };
-
-        return Ok(identifier);
-    }
-
-    // IDEA(stefano): allow for escaped \`
-    fn identifier_str(&mut self) -> Result<TokenKind, ()> {
-        let previous_errors_len = self.errors.len();
-
-        loop {
-            let next_character = match self.peek_next_ascii_char() {
-                Some(Ok(b'\n')) | None => {
-                    self.errors.push(Error {
-                        kind: ErrorKind::UnclosedIdentifierStr,
-                        col: self.token_start_col,
-                        pointers_count: self.token_text().chars_width(),
-                    });
-                    break;
-                }
-                Some(Ok(next_character)) => next_character,
-                Some(Err(error)) => {
-                    self.errors.push(Error {
-                        kind: ErrorKind::Utf8InIdentifierStr { grapheme: error.grapheme },
-                        col: error.col,
-                        pointers_count: error.pointers_count,
-                    });
-                    #[expect(clippy::cast_possible_truncation)]
-                    { self.col += error.grapheme.len() as offset32; }
-                    continue;
-                }
-            };
-            self.col += 1;
-
-            let _character = match next_character {
-                control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                    self.errors.push(Error {
-                        kind: ErrorKind::ControlCharacterInIdentifierStr(control as utf32),
-                        col: self.col - 1,
-                        pointers_count: 1,
-                    });
-                    control
-                }
-                b'`' => break,
-                ch => ch,
-            };
-        }
-
-        if previous_errors_len != self.errors.len() {
-            return Err(());
-        };
-
-        let identifier_str = &self.code[self.token_start_col as usize..self.col as usize];
-        let identifier = {
-            #[expect(clippy::cast_possible_truncation)]
-            let identifier_len = identifier_str.len() as offset32 - 2; // - 2 for the quotes
-            if identifier_len as offset32 > Self::MAX_IDENTIFIER_LEN {
-                self.errors.push(Error {
-                    kind: ErrorKind::IdentifierStrTooLong { max: Self::MAX_IDENTIFIER_LEN },
-                    col: self.token_start_col,
-                    pointers_count: identifier_len,
-                });
-                return Err(());
-            }
-
-            self.tokens.text.push(identifier_str);
-            #[expect(clippy::cast_possible_truncation)]
-            let identifier_index = self.tokens.text.len() as TextIndex - 1;
-            TokenKind::IdentifierStr(identifier_index)
-        };
-
-        return Ok(identifier);
-    }
-
     fn integer_decimal(&mut self) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
 
@@ -1583,11 +1420,10 @@ impl<'code> Tokenizer<'code, '_> {
         };
     }
 
-    fn ascii_literal(&mut self) -> Result<ascii, ()> {
+    fn ascii_literal(&mut self) -> Result<TokenKind, ()> {
         let previous_errors_len = self.errors.len();
 
-        // REMOVE(stefano): parse similar to strings
-        let mut literal = Vec::<ascii>::new();
+        let mut logical_characters_count = 0;
         loop {
             let next_character = match self.peek_next_ascii_char() {
                 Some(Ok(b'\n')) | None => {
@@ -1612,7 +1448,7 @@ impl<'code> Tokenizer<'code, '_> {
             };
             self.col += 1;
 
-            let character = match next_character {
+            match next_character {
                 b'\\' => {
                     let escape_character = match self.peek_next_ascii_char() {
                         Some(Ok(b'\n')) | None => {
@@ -1640,66 +1476,59 @@ impl<'code> Tokenizer<'code, '_> {
                     self.col += 1;
 
                     match escape_character {
-                        b'\\' => b'\\',
-                        b'\'' => b'\'',
-                        b'"' => b'"',
-                        b'n' => b'\n',
-                        b'r' => b'\r',
-                        b't' => b'\t',
-                        b'0' => b'\0',
+                        b'\\' | b'\'' | b'"' | b'n' | b'r' | b't' | b'0' => {}
                         unrecognized => {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnrecognizedEscapeCharacterInCharacterLiteral(
-                                    unrecognized as utf32,
+                                    unrecognized,
                                 ),
                                 col: self.col - 2,
                                 pointers_count: 2,
                             });
-                            literal.push(b'\\');
-                            unrecognized
                         }
                     }
                 }
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Error {
-                        kind: ErrorKind::ControlCharacterInCharacterLiteral(control as utf32),
+                        kind: ErrorKind::ControlCharacterInCharacterLiteral(control),
                         col: self.col - 1,
                         pointers_count: 1,
                     });
-                    control
                 }
                 b'\'' => break,
-                ch => ch,
-            };
+                _ => {},
+            }
 
-            literal.push(character);
+            logical_characters_count += 1;
         }
 
-        return match literal.as_slice() {
-            [character] => {
-                if previous_errors_len == self.errors.len() {
-                    Ok(*character)
-                } else {
-                    Err(())
-                }
-            }
-            [] => {
-                self.errors.push(Error {
-                    kind: ErrorKind::EmptyCharacterLiteral,
-                    col: self.token_start_col,
-                    pointers_count: 2,
-                });
-                Err(())
-            }
-            [_, ..] => {
-                self.errors.push(Error {
-                    kind: ErrorKind::MultipleCharactersInCharacterLiteral,
-                    col: self.token_start_col,
-                    pointers_count: self.token_text().chars_width(),
-                });
-                Err(())
-            }
-        };
+        if previous_errors_len != self.errors.len() {
+            return Err(());
+        }
+
+        let raw_ascii_literal_str = &self.code[self.token_start_col as usize..self.col as usize];
+        if logical_characters_count == 0 {
+            self.errors.push(Error {
+                kind: ErrorKind::EmptyCharacterLiteral,
+                col: self.token_start_col,
+                pointers_count: 2,
+            });
+            return Err(());
+        }
+        if logical_characters_count > 1 {
+            self.errors.push(Error {
+                kind: ErrorKind::MultipleCharactersInCharacterLiteral,
+                col: self.token_start_col,
+                pointers_count: self.token_text().chars_width(),
+            });
+            return Err(());
+        }
+
+        self.tokens.text.push(raw_ascii_literal_str);
+        #[expect(clippy::cast_possible_truncation)]
+        let raw_ascii_literal = self.tokens.text.len() as TextIndex - 1;
+        let raw_ascii = TokenKind::Ascii(raw_ascii_literal);
+        return Ok(raw_ascii);
     }
 
     fn string_literal(&mut self) -> Result<TokenKind, ()> {
@@ -1729,7 +1558,7 @@ impl<'code> Tokenizer<'code, '_> {
             };
             self.col += 1;
 
-            let _character = match next_character {
+            match next_character {
                 b'\\' => {
                     let escape_character = match self.peek_next_ascii_char() {
                         Some(Ok(b'\n')) | None => {
@@ -1755,35 +1584,27 @@ impl<'code> Tokenizer<'code, '_> {
                     self.col += 1;
 
                     match escape_character {
-                        b'\\' => b'\\',
-                        b'\'' => b'\'',
-                        b'"' => b'"',
-                        b'n' => b'\n',
-                        b'r' => b'\r',
-                        b't' => b'\t',
-                        b'0' => b'\0',
+                        b'\\' | b'\'' | b'"' | b'n' | b'r' | b't' | b'0' => {}
                         unrecognized => {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnrecognizedEscapeCharacterInStrLiteral(
-                                    unrecognized as utf32,
+                                    unrecognized,
                                 ),
                                 col: self.col - 2,
                                 pointers_count: 2,
                             });
-                            unrecognized
                         }
                     }
                 }
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Error {
-                        kind: ErrorKind::ControlCharacterInStrLiteral(control as utf32),
+                        kind: ErrorKind::ControlCharacterInStrLiteral(control),
                         col: self.col - 1,
                         pointers_count: 1,
                     });
-                    control
                 }
                 b'"' => break,
-                ch => ch,
+                _ => {},
             };
         }
 
@@ -1826,7 +1647,7 @@ impl<'code> Tokenizer<'code, '_> {
             };
             self.col += 1;
 
-            let _character = match next_character {
+            match next_character {
                 b'\\' => {
                     let escape_character = match self.peek_next_ascii_char() {
                         Some(Ok(b'\n')) | None => {
@@ -1850,24 +1671,19 @@ impl<'code> Tokenizer<'code, '_> {
                         }
                     };
 
-                    match escape_character {
-                        b'"' => {
-                            self.col += 1;
-                            b'"'
-                        }
-                        _ => b'\\',
+                    if escape_character == b'"' {
+                        self.col += 1;
                     }
                 }
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Error {
-                        kind: ErrorKind::ControlCharacterInRawStrLiteral(control as utf32),
+                        kind: ErrorKind::ControlCharacterInRawStrLiteral(control),
                         col: self.col - 1,
                         pointers_count: 1,
                     });
-                    control
                 }
                 b'"' => break,
-                ch => ch,
+                _ => {},
             };
         }
 
@@ -1881,6 +1697,167 @@ impl<'code> Tokenizer<'code, '_> {
         let raw_string_literal = self.tokens.text.len() as TextIndex - 1;
         let raw_string = TokenKind::RawStr(raw_string_literal);
         return Ok(raw_string);
+    }
+
+    // IDEA(stefano): allow for escaped \`
+    fn identifier_str(&mut self) -> Result<TokenKind, ()> {
+        let previous_errors_len = self.errors.len();
+
+        loop {
+            let next_character = match self.peek_next_ascii_char() {
+                Some(Ok(b'\n')) | None => {
+                    self.errors.push(Error {
+                        kind: ErrorKind::UnclosedIdentifierStr,
+                        col: self.token_start_col,
+                        pointers_count: self.token_text().chars_width(),
+                    });
+                    break;
+                }
+                Some(Ok(next_character)) => next_character,
+                Some(Err(error)) => {
+                    self.errors.push(Error {
+                        kind: ErrorKind::Utf8InIdentifierStr { grapheme: error.grapheme },
+                        col: error.col,
+                        pointers_count: error.pointers_count,
+                    });
+                    #[expect(clippy::cast_possible_truncation)]
+                    { self.col += error.grapheme.len() as offset32; }
+                    continue;
+                }
+            };
+            self.col += 1;
+
+            match next_character {
+                control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
+                    self.errors.push(Error {
+                        kind: ErrorKind::ControlCharacterInIdentifierStr(control),
+                        col: self.col - 1,
+                        pointers_count: 1,
+                    });
+                }
+                b'`' => break,
+                _ => {},
+            };
+        }
+
+        if previous_errors_len != self.errors.len() {
+            return Err(());
+        }
+
+        let identifier_str = &self.code[self.token_start_col as usize..self.col as usize];
+        #[expect(clippy::cast_possible_truncation)]
+        let identifier_len = identifier_str.len() as offset32 - 2; // - 2 for the quotes
+        if identifier_len as offset32 > Self::MAX_IDENTIFIER_LEN {
+            self.errors.push(Error {
+                kind: ErrorKind::IdentifierStrTooLong { max: Self::MAX_IDENTIFIER_LEN },
+                col: self.token_start_col,
+                pointers_count: identifier_len,
+            });
+            return Err(());
+        }
+
+        self.tokens.text.push(identifier_str);
+        #[expect(clippy::cast_possible_truncation)]
+        let identifier_index = self.tokens.text.len() as TextIndex - 1;
+        let identifier = TokenKind::IdentifierStr(identifier_index);
+        return Ok(identifier);
+    }
+
+    fn identifier(&mut self) -> Result<TokenKind, ()> {
+        let previous_errors_len = self.errors.len();
+
+        loop {
+            match self.peek_next_ascii_char() {
+                Some(Ok(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {
+                    self.col += 1;
+                }
+                Some(Err(error)) => {
+                    self.errors.push(Error {
+                        kind: ErrorKind::Utf8InIdentifier { grapheme: error.grapheme },
+                        col: error.col,
+                        pointers_count: error.pointers_count,
+                    });
+                    #[expect(clippy::cast_possible_truncation)]
+                    { self.col += error.grapheme.len() as offset32; }
+                }
+                Some(Ok(_)) | None => break,
+            }
+        }
+
+        if previous_errors_len != self.errors.len() {
+            return Err(());
+        };
+
+        let identifier = match &self.code[self.token_start_col as usize..self.col as usize] {
+            "let" => TokenKind::Let,
+            "var" => TokenKind::Var,
+            "print" => TokenKind::Print,
+            "println" => TokenKind::PrintLn,
+            "eprint" => TokenKind::Eprint,
+            "eprintln" => TokenKind::EprintLn,
+            "true" => TokenKind::True,
+            "false" => TokenKind::False,
+            "do" => TokenKind::Do,
+            "if" => TokenKind::If,
+            "else" => TokenKind::Else,
+            "loop" => TokenKind::Loop,
+            "break" => TokenKind::Break,
+            "continue" => TokenKind::Continue,
+            "len" => TokenKind::Op(Op::Len),
+            identifier => {
+                #[expect(clippy::cast_possible_truncation)]
+                let identifier_len = identifier.len() as offset32;
+                if identifier_len as offset32 > Self::MAX_IDENTIFIER_LEN {
+                    self.errors.push(Error {
+                        kind: ErrorKind::IdentifierTooLong { max: Self::MAX_IDENTIFIER_LEN },
+                        col: self.token_start_col,
+                        pointers_count: identifier_len,
+                    });
+                    return Err(());
+                }
+
+                self.tokens.text.push(identifier);
+                #[expect(clippy::cast_possible_truncation)]
+                let identifier_index = self.tokens.text.len() as TextIndex - 1;
+                TokenKind::Identifier(identifier_index)
+            }
+        };
+
+        return Ok(identifier);
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Base {
+    #[default]
+    Decimal = 10,
+    Binary = 0b10,
+    Octal = 0o10,
+    Hexadecimal = 0x10,
+}
+
+impl Base {
+    #[must_use]
+    #[inline]
+    pub const fn prefix(self) -> &'static str {
+        return match self {
+            Self::Decimal => "",
+            Self::Binary => "0b",
+            Self::Octal => "0o",
+            Self::Hexadecimal => "0x",
+        };
+    }
+
+    #[must_use]
+    #[inline]
+    pub const fn range(self) -> &'static [core::ops::RangeInclusive<utf32>] {
+        return match self {
+            Self::Decimal => &['0'..='9'],
+            Self::Binary => &['0'..='1'],
+            Self::Octal => &['0'..='7'],
+            Self::Hexadecimal => &['0'..='9', 'A'..='F', 'a'..='f'],
+        };
     }
 }
 
@@ -1901,41 +1878,47 @@ pub enum ErrorKind<'code> {
     MismatchedCurlyRoundBracket,
     MismatchedCurlySquareBracket,
 
+    Utf8InDecimalNumberLiteral { grapheme: &'code str },
+    LetterInDecimalNumberLiteral(ascii),
+
+    Utf8InBinaryNumberLiteral { grapheme: &'code str },
+    LetterInBinaryNumberLiteral(ascii),
+    DigitOutOfRangeInBinaryNumberLiteral(ascii),
+
+    Utf8InOctalNumberLiteral { grapheme: &'code str },
+    LetterInOctalNumberLiteral(ascii),
+    DigitOutOfRangeInOctalNumberLiteral(ascii),
+
+    Utf8InHexadecimalNumberLiteral { grapheme: &'code str },
+    DigitOutOfRangeInHexadecimalNumberLiteral(ascii),
+
     Utf8InCharacterLiteral { grapheme: &'code str },
-    Utf8InStrLiteral { grapheme: &'code str },
-    Utf8InRawStrLiteral { grapheme: &'code str },
+    UnrecognizedEscapeCharacterInCharacterLiteral(ascii),
+    ControlCharacterInCharacterLiteral(ascii),
     UnclosedCharacterLiteral,
-    UnclosedStrLiteral,
-    UnclosedRawStrLiteral,
-    ControlCharacterInCharacterLiteral(utf32),
-    ControlCharacterInStrLiteral(utf32),
-    ControlCharacterInRawStrLiteral(utf32),
-    UnrecognizedEscapeCharacterInCharacterLiteral(utf32),
-    UnrecognizedEscapeCharacterInStrLiteral(utf32),
-    UnrecognizedEscapeCharacterInRawStrLiteral(utf32),
     EmptyCharacterLiteral,
     MultipleCharactersInCharacterLiteral,
 
-    Utf8InDecimalNumberLiteral { grapheme: &'code str },
-    Utf8InBinaryNumberLiteral { grapheme: &'code str },
-    Utf8InOctalNumberLiteral { grapheme: &'code str },
-    Utf8InHexadecimalNumberLiteral { grapheme: &'code str },
-    LetterInDecimalNumberLiteral(ascii),
-    LetterInBinaryNumberLiteral(ascii),
-    LetterInOctalNumberLiteral(ascii),
-    DigitOutOfRangeInBinaryNumberLiteral(ascii),
-    DigitOutOfRangeInOctalNumberLiteral(ascii),
-    DigitOutOfRangeInHexadecimalNumberLiteral(ascii),
+    Utf8InStrLiteral { grapheme: &'code str },
+    UnrecognizedEscapeCharacterInStrLiteral(ascii),
+    ControlCharacterInStrLiteral(ascii),
+    UnclosedStrLiteral,
+
+    Utf8InRawStrLiteral { grapheme: &'code str },
+    UnrecognizedEscapeCharacterInRawStrLiteral(ascii),
+    ControlCharacterInRawStrLiteral(ascii),
+    UnclosedRawStrLiteral,
+
+    Utf8InIdentifierStr { grapheme: &'code str },
+    ControlCharacterInIdentifierStr(ascii),
+    UnclosedIdentifierStr,
+    IdentifierStrTooLong { max: offset32 },
 
     Utf8InIdentifier { grapheme: &'code str },
-    Utf8InIdentifierStr { grapheme: &'code str },
     IdentifierTooLong { max: offset32 },
-    IdentifierStrTooLong { max: offset32 },
-    UnclosedIdentifierStr,
-    ControlCharacterInIdentifierStr(utf32),
 
     Utf8Character { grapheme: &'code str },
-    UnrecognizedCharacter(utf32),
+    UnrecognizedCharacter(ascii),
 }
 
 impl IntoErrorInfo for ErrorKind<'_> {
@@ -1995,53 +1978,78 @@ impl IntoErrorInfo for ErrorKind<'_> {
                 "']' closes the wrong bracket, expected a '}' instead".into()
             ),
 
+            Self::Utf8InDecimalNumberLiteral { grapheme } => (
+                format!("invalid decimal integer literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
+                "utf8 characters are not allowed".into(),
+            ),
+            Self::LetterInDecimalNumberLiteral(letter) => (
+                format!("invalid integer literal letter '{}'", *letter as utf32).into(),
+                format!("not allowed in a base {} number", Base::Decimal as u8).into(),
+            ),
+
+            Self::Utf8InBinaryNumberLiteral { grapheme } => (
+                format!("invalid binary integer literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
+                "utf8 characters are not allowed".into(),
+            ),
+            Self::LetterInBinaryNumberLiteral(letter) => (
+                format!("invalid integer literal letter '{}'", *letter as utf32).into(),
+                format!("not allowed in a base {} number", Base::Binary as u8).into(),
+            ),
+            Self::DigitOutOfRangeInBinaryNumberLiteral(digit) => {
+                const BASE: Base = Base::Binary;
+                (
+                    format!("invalid integer literal digit '{}'", *digit as utf32).into(),
+                    format!("out of the valid range for a base {} number {:?}", BASE as u8, BASE.range()).into(),
+                )
+            }
+
+            Self::Utf8InOctalNumberLiteral { grapheme } => (
+                format!("invalid octal integer literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
+                "utf8 characters are not allowed".into(),
+            ),
+            Self::LetterInOctalNumberLiteral(letter) => (
+                format!("invalid integer literal letter '{}'", *letter as utf32).into(),
+                format!("not allowed in a base {} number", Base::Octal as u8).into(),
+            ),
+            Self::DigitOutOfRangeInOctalNumberLiteral(digit) => {
+                const BASE: Base = Base::Octal;
+                (
+                    format!("invalid integer literal digit '{}'", *digit as utf32).into(),
+                    format!("out of the valid range for a base {} number {:?}", BASE as u8, BASE.range()).into(),
+                )
+            }
+
+            Self::Utf8InHexadecimalNumberLiteral { grapheme } => (
+                format!("invalid hexadecimal integer literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
+                "utf8 characters are not allowed".into(),
+            ),
+            Self::DigitOutOfRangeInHexadecimalNumberLiteral(digit) => {
+                const BASE: Base = Base::Hexadecimal;
+                (
+                    format!("invalid integer literal digit '{}'", *digit as utf32).into(),
+                    format!("out of the valid range for a base {} number {:?}", BASE as u8, BASE.range()).into(),
+                )
+            }
+
             Self::Utf8InCharacterLiteral { grapheme } => (
                 format!("invalid character literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
-            ),
-            Self::Utf8InStrLiteral { grapheme } => (
-                format!("invalid string literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
-                "utf8 characters are not allowed".into(),
-            ),
-            Self::Utf8InRawStrLiteral { grapheme } => (
-                format!("invalid raw string literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
-                "utf8 characters are not allowed".into(),
-            ),
-            Self::UnclosedCharacterLiteral => (
-                "unclosed character literal".into(),
-                "missing closing ' quote".into()
-            ),
-            Self::UnclosedStrLiteral => (
-                "unclosed string literal".into(),
-                "missing closing \" quote".into()
-            ),
-            Self::UnclosedRawStrLiteral => (
-                "unclosed raw string literal".into(),
-                "missing closing \" quote".into()
-            ),
-            Self::ControlCharacterInCharacterLiteral(control_character) => (
-                format!("invalid character literal character '{}' {}", control_character.escape_debug(), control_character.escape_unicode()).into(),
-                "control characters are not allowed".into(),
-            ),
-            Self::ControlCharacterInStrLiteral(control_character) => (
-                format!("invalid string literal character '{}' {}", control_character.escape_debug(), control_character.escape_unicode()).into(),
-                "control characters are not allowed".into(),
-            ),
-            Self::ControlCharacterInRawStrLiteral(control_character) => (
-                format!("invalid raw string literal character '{}' {}", control_character.escape_debug(), control_character.escape_unicode()).into(),
-                "control characters are not allowed".into(),
             ),
             Self::UnrecognizedEscapeCharacterInCharacterLiteral(unrecognized) => (
                 "invalid character literal".into(),
                 format!("unrecognized '{unrecognized}' escape character").into(),
             ),
-            Self::UnrecognizedEscapeCharacterInStrLiteral(unrecognized) => (
-                "invalid string literal".into(),
-                format!("unrecognized '{unrecognized}' escape character").into(),
+            Self::ControlCharacterInCharacterLiteral(control_character) => (
+                format!(
+                    "invalid character literal character '{}' {}",
+                    control_character.escape_ascii(),
+                    (*control_character as utf32).escape_unicode()
+                ).into(),
+                "control characters are not allowed".into(),
             ),
-            Self::UnrecognizedEscapeCharacterInRawStrLiteral(unrecognized) => (
-                "invalid raw string literal".into(),
-                format!("unrecognized '{unrecognized}' escape character").into(),
+            Self::UnclosedCharacterLiteral => (
+                "unclosed character literal".into(),
+                "missing closing ' quote".into()
             ),
             Self::EmptyCharacterLiteral => (
                 "empty character literal".into(),
@@ -2052,79 +2060,76 @@ impl IntoErrorInfo for ErrorKind<'_> {
                 "must not contain more than one character, if you meant to write a string literal try changing the quotes to \"".into(),
             ),
 
-            Self::Utf8InDecimalNumberLiteral { grapheme } => (
-                format!("invalid decimal integer literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
+            Self::Utf8InStrLiteral { grapheme } => (
+                format!("invalid string literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
             ),
-            Self::Utf8InBinaryNumberLiteral { grapheme } => (
-                format!("invalid binary integer literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
-                "utf8 characters are not allowed".into(),
+            Self::UnrecognizedEscapeCharacterInStrLiteral(unrecognized) => (
+                "invalid string literal".into(),
+                format!("unrecognized '{unrecognized}' escape character").into(),
             ),
-            Self::Utf8InOctalNumberLiteral { grapheme } => (
-                format!("invalid octal integer literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
-                "utf8 characters are not allowed".into(),
+            Self::ControlCharacterInStrLiteral(control_character) => (
+                format!(
+                    "invalid string literal character '{}' {}",
+                    control_character.escape_ascii(),
+                    (*control_character as utf32).escape_unicode()
+                ).into(),
+                "control characters are not allowed".into(),
             ),
-            Self::Utf8InHexadecimalNumberLiteral { grapheme } => (
-                format!("invalid hexadecimal integer literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
-                "utf8 characters are not allowed".into(),
+            Self::UnclosedStrLiteral => (
+                "unclosed string literal".into(),
+                "missing closing \" quote".into()
             ),
-            Self::LetterInDecimalNumberLiteral(letter) => (
-                format!("invalid integer literal letter '{}'", *letter as utf32).into(),
-                format!("not allowed in a base {} number", Base::Decimal as u8).into(),
-            ),
-            Self::LetterInBinaryNumberLiteral(letter) => (
-                format!("invalid integer literal letter '{}'", *letter as utf32).into(),
-                format!("not allowed in a base {} number", Base::Binary as u8).into(),
-            ),
-            Self::LetterInOctalNumberLiteral(letter) => (
-                format!("invalid integer literal letter '{}'", *letter as utf32).into(),
-                format!("not allowed in a base {} number", Base::Octal as u8).into(),
-            ),
-            Self::DigitOutOfRangeInBinaryNumberLiteral(digit) => {
-                const BASE: Base = Base::Binary;
-                (
-                    format!("invalid integer literal digit '{}'", *digit as utf32).into(),
-                    format!("out of the valid range for a base {} number {:?}", BASE as u8, BASE.range()).into(),
-                )
-            }
-            Self::DigitOutOfRangeInOctalNumberLiteral(digit) => {
-                const BASE: Base = Base::Octal;
-                (
-                    format!("invalid integer literal digit '{}'", *digit as utf32).into(),
-                    format!("out of the valid range for a base {} number {:?}", BASE as u8, BASE.range()).into(),
-                )
-            }
-            Self::DigitOutOfRangeInHexadecimalNumberLiteral(digit) => {
-                const BASE: Base = Base::Hexadecimal;
-                (
-                    format!("invalid integer literal digit '{}'", *digit as utf32).into(),
-                    format!("out of the valid range for a base {} number {:?}", BASE as u8, BASE.range()).into(),
-                )
-            }
 
-            Self::Utf8InIdentifier { grapheme } => (
-                format!("invalid identifier character '{grapheme}' {}", grapheme.escape_unicode()).into(),
+            Self::Utf8InRawStrLiteral { grapheme } => (
+                format!("invalid raw string literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
             ),
+            Self::UnrecognizedEscapeCharacterInRawStrLiteral(unrecognized) => (
+                "invalid raw string literal".into(),
+                format!("unrecognized '{unrecognized}' escape character").into(),
+            ),
+            Self::ControlCharacterInRawStrLiteral(control_character) => (
+                format!(
+                    "invalid raw string literal character '{}' {}",
+                    control_character.escape_ascii(),
+                    (*control_character as utf32).escape_unicode()
+                ).into(),
+                "control characters are not allowed".into(),
+            ),
+            Self::UnclosedRawStrLiteral => (
+                "unclosed raw string literal".into(),
+                "missing closing \" quote".into()
+            ),
+
             Self::Utf8InIdentifierStr { grapheme } => (
                 format!("invalid identifier string character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
             ),
-            Self::IdentifierTooLong { max } => (
-                "invalid identifier".into(),
-                format!("exceeds the length limit of {max}").into(),
-            ),
-            Self::IdentifierStrTooLong { max } => (
-                "invalid identifier string".into(),
-                format!("exceeds the length limit of {max} characters bewteen quotes").into(),
+            Self::ControlCharacterInIdentifierStr(control_character) => (
+                format!(
+                    "invalid identifier string character '{}' {}",
+                    control_character.escape_ascii(),
+                    (*control_character as utf32).escape_unicode()
+                ).into(),
+                "control characters are not allowed".into(),
             ),
             Self::UnclosedIdentifierStr => (
                 "unclosed identifier string".into(),
                 "missing closing ` quote".into()
             ),
-            Self::ControlCharacterInIdentifierStr(control_character) => (
-                format!("invalid identifier string character '{}' {}", control_character.escape_debug(), control_character.escape_unicode()).into(),
-                "control characters are not allowed".into(),
+            Self::IdentifierStrTooLong { max } => (
+                "invalid identifier string".into(),
+                format!("exceeds the length limit of {max} characters bewteen quotes").into(),
+            ),
+
+            Self::Utf8InIdentifier { grapheme } => (
+                format!("invalid identifier character '{grapheme}' {}", grapheme.escape_unicode()).into(),
+                "utf8 characters are not allowed".into(),
+            ),
+            Self::IdentifierTooLong { max } => (
+                "invalid identifier".into(),
+                format!("exceeds the length limit of {max}").into(),
             ),
 
             Self::Utf8Character { grapheme } => (
@@ -2132,7 +2137,7 @@ impl IntoErrorInfo for ErrorKind<'_> {
                 "utf8 characters are not allowed".into()
             ),
             Self::UnrecognizedCharacter(unrecognized) => (
-                format!("invalid character '{unrecognized}' {}", unrecognized.escape_unicode()).into(),
+                format!("invalid character '{unrecognized}' {}", unrecognized.escape_ascii()).into(),
                 "unrecognized".into(),
             ),
         };

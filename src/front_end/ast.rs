@@ -1470,6 +1470,7 @@ impl Parser<'_, '_, '_, '_> {
         };
     }
 
+    #[expect(clippy::panic, clippy::panic_in_result_fn)]
     fn primary_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
         const fn parse_positive_binary_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Binary;
@@ -1751,7 +1752,14 @@ impl Parser<'_, '_, '_, '_> {
                     }),
                 }
             }
-            TokenKind::Ascii(ascii_ch) => Ok(Expression::Ascii(ascii_ch)),
+            TokenKind::Ascii(literal_index) => {
+                let string = self.tokens.text[literal_index as usize];
+                let string_contents = &string[1..string.len() - 1];
+                let Ok(literal) = string_contents.parse::<u8>() else {
+                    panic!("wrong parsing of ascii literals");
+                };
+                Ok(Expression::Ascii(literal))
+            }
             TokenKind::Str(string_index) => {
                 let string_label = self.string_label;
                 let string = self.tokens.text[string_index as usize];

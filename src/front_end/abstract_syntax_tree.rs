@@ -1,6 +1,6 @@
 use super::{
     src_file::{DisplayPosition, SrcCode},
-    tokenizer::{ascii, Op, TextIndex, Token, TokenIndex, TokenKind, Tokens},
+    tokenizer::{Op, TextIndex, Token, TokenIndex, TokenKind, Tokens},
     Error, ErrorDisplay, ErrorInfo, IntoErrorInfo,
 };
 use core::{fmt::Display, marker::PhantomData, num::NonZero};
@@ -249,7 +249,7 @@ pub(crate) enum Expression {
         column: offset32,
     },
     Ascii {
-        character: ascii,
+        literal: TextIndex,
         column: offset32,
     },
     Str {
@@ -684,9 +684,9 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
                 let literal_str = self.tokens.text[*literal as usize];
                 writeln!(f, "{:>indent$}HexadecimalInteger: {column} = {literal_str}", "")
             }
-            Expression::Ascii { character, column } => {
-                let character_escaped = character.escape_ascii();
-                writeln!(f, "{:>indent$}Ascii: {column} = '{character_escaped}'", "")
+            Expression::Ascii { literal, column } => {
+                let literal_str = &self.tokens.text[*literal as usize];
+                writeln!(f, "{:>indent$}Ascii: {column} = {literal_str}", "")
             }
             Expression::Str { literal, column } => {
                 let literal_str = &self.tokens.text[*literal as usize];
@@ -1541,7 +1541,7 @@ impl Parser<'_, '_, '_, '_> {
             TokenKind::HexadecimalInteger(literal) => {
                 Expression::HexadecimalInteger { literal, column: token.col }
             }
-            TokenKind::Ascii(character) => Expression::Ascii { character, column: token.col },
+            TokenKind::Ascii(literal) => Expression::Ascii { literal, column: token.col },
             TokenKind::Str(literal) => Expression::Str { literal, column: token.col },
             TokenKind::RawStr(literal) => Expression::RawStr { literal, column: token.col },
             TokenKind::Identifier(identifier) => {
