@@ -16,6 +16,54 @@ use std::{
     process::{Command, ExitCode},
 };
 
+
+#[expect(clippy::allow_attributes, reason = "unrealiable")]
+#[allow(
+    clippy::unwrap_used,
+    clippy::panic_in_result_fn,
+    dead_code,
+    clippy::single_call_fn,
+    reason = "it's for testing"
+)]
+pub(crate) fn check(src_path: &Path) -> Result<(), ExitCode> {
+    let execution_step = Logger::new();
+    Logger::info(&CHECKING, src_path);
+
+    let src_file = match SrcFile::load(src_path) {
+        Ok(src_file) => src_file,
+        Err(err) => {
+            eprintln!("{err}");
+            return Err(ExitCode::FAILURE);
+        }
+    };
+
+    let (src, tokens) = {
+        let TokenizedCode { result, src } = Tokenizer::tokenize(&src_file);
+        match result {
+            Ok(tokens) => (src, tokens),
+            Err(errors) => {
+                for error in errors {
+                    eprintln!("{}\n", error.display(&src));
+                }
+                return Err(ExitCode::FAILURE);
+            }
+        }
+    };
+
+    let _ast = match Parser::parse(&src, &tokens) {
+        Ok(ast) => ast,
+        Err(errors) => {
+            for error in errors {
+                eprintln!("{}\n", error.display(&src));
+            }
+            return Err(ExitCode::FAILURE);
+        }
+    };
+
+    execution_step.step(&DONE, None);
+    return Ok(());
+}
+
 #[expect(clippy::allow_attributes, reason = "unrealiable")]
 #[allow(
     clippy::unwrap_used,
