@@ -1,6 +1,6 @@
 use super::{
     src_file::{DisplayPosition, SrcCode},
-    tokenizer::{ascii, CloseBracket, Op, TextIndex, Token, TokenIndex, TokenKind, Tokens},
+    tokenizer::{ascii, Op, TextIndex, Token, TokenIndex, TokenKind, Tokens},
     Error, ErrorDisplay, ErrorInfo, IntoErrorInfo,
 };
 use core::{fmt::Display, marker::PhantomData, num::NonZero};
@@ -1568,7 +1568,7 @@ impl Parser<'_, '_, '_, '_> {
                     self.next_expected_token(Expected::CloseRoundBracket)?;
                 let TokenKind::CloseRoundBracket = close_round_bracket_token.kind else {
                     return Err(Error {
-                        kind: ErrorKind::ExpectedBracket(CloseBracket::Round),
+                        kind: ErrorKind::ExpectedCloseRoundBracket,
                         col: close_round_bracket_token.col,
                         pointers_count: close_round_bracket_token.kind.display_len(self.tokens),
                     });
@@ -2455,7 +2455,7 @@ pub enum ErrorKind {
     // expressions
     KeywordInExpression,
     ExpectedOperand,
-    ExpectedBracket(CloseBracket),
+    ExpectedCloseRoundBracket,
     ExpectedCommaOrCloseSquareBracket,
     MissingCloseSquareBracketInIndex,
 
@@ -2516,9 +2516,9 @@ impl IntoErrorInfo for ErrorKind {
                 "invalid expression".into(),
                 "expected operand before this token".into(),
             ),
-            Self::ExpectedBracket(bracket) => (
+            Self::ExpectedCloseRoundBracket => (
                 "invalid expression".into(),
-                format!("expected '{bracket}' bracket before this token").into(),
+                "expected ')' bracket before this token".into(),
             ),
             Self::ExpectedCommaOrCloseSquareBracket => (
                 "invalid array".into(),

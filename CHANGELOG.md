@@ -70,6 +70,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Removed `tokenizer::Quote` and `tokenizer::QuotedLiteralKind`
 - Removed `ColorMode`
 - Removed `index32`, `line32` and `column32`, use `back_to_front::offset32` instead
+- Removed `Bracket`, `OpenBracket` and `CloseBracket`
 
 #### Fixed
 

@@ -6,7 +6,7 @@ use back_to_front::offset32;
 
 use super::{
     src_file::{Position, SrcCode},
-    tokenizer::{ascii, Base, Mutability, Op, OpenBracket, Token, TokenIndex, TokenKind, Tokens},
+    tokenizer::{ascii, Base, Mutability, Op, Token, TokenIndex, TokenKind, Tokens},
     Error, ErrorInfo, IntoErrorInfo,
 };
 use core::fmt::{Debug, Display};
@@ -1889,7 +1889,7 @@ impl Parser<'_, '_, '_, '_> {
 
                 let TokenKind::CloseRoundBracket = close_bracket_token.kind else {
                     return Err(Error {
-                        kind: ErrorKind::UnclosedBracket(OpenBracket::Round),
+                        kind: ErrorKind::UnclosedRoundBracket,
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(self.tokens),
                     });
@@ -3670,7 +3670,7 @@ pub enum ErrorKind {
     CannotIndexIntoExpression,
     TypeInExpression,
     EmptyExpression,
-    UnclosedBracket(OpenBracket),
+    UnclosedRoundBracket,
     ArrayOfNegativeLength,
     ArrayOfZeroElements,
     NestedArrayNotSupportedYet,
@@ -3859,9 +3859,9 @@ impl IntoErrorInfo for ErrorKind {
                 "invalid expression".into(),
                 "empty expressions are not allowed".into(),
             ),
-            Self::UnclosedBracket(bracket) => (
+            Self::UnclosedRoundBracket => (
                 "invalid expression".into(),
-                format!("'{bracket}' bracket was not closed").into(),
+                "'(' bracket was not closed".into(),
             ),
             Self::ArrayOfNegativeLength => (
                 "invalid array length".into(),
