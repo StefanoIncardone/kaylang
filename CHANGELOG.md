@@ -39,13 +39,15 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 #### Changed
 
+- Added `?`, `-?`, `--?` for help commands
+- Allowed cli color mode options `-c` and `--color` to be specified multiple times
+- Improved printing of help message, now fitting inside 80 columns
+- `Args` now returns multiple cli errors instead of just the first one, thus displaying all errors
+<!--  -->
 - Made the compiler only work on 64bit systems
+<!--  -->
 - Renamed `ast::BaseType::Int` to `ast::BaseType::I64`
 - `tokenizer::TokenKing::Ascii` now behaves like a string token
-- Added `?`, `-?`, `--?` for help commands
-- Improved printing of help message, now fitting inside 80 columns
-- `Args` now returns multiple cli errors instead of just the first one
-- Allowed cli color mode options `-c` and `--color` to be specified multiple times
 - `src_file::Span`, `src_file::Position` and `src_file::DisplayPosition` now derive `Hash`
 - Improved `Logger` methods consistency
 - Expanded `tokenizer::TokenKind::Integer` into its different bases
@@ -66,10 +68,11 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 #### Fixed
 
+- Corrected behaviour of verbosity flags introduced in the previous version
+<!--  -->
 - Corrected error message related to UTF8 characters in raw string literals
 - Corrected error messages related to number literals, raw string literals and identifier strings
 - Corrected mismatched brackets error messages
-- Corrected behaviour of verbosity flags introduced in the previous version
 
 ## 0.6.2 - 2025-02-27
 

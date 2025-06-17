@@ -31,6 +31,7 @@ pub struct DisplayPosition {
     pub display_column: offset32,
 }
 
+// IDEA(stefano): let the user chose how to obtain the source code and just store a reference to it
 #[derive(Debug)]
 pub struct SrcFile<'path> {
     pub(crate) path: &'path Path,
@@ -38,7 +39,6 @@ pub struct SrcFile<'path> {
 }
 
 impl<'path> SrcFile<'path> {
-    // REMOVE(stefano): let the user chose how to obtain the source code
     #[expect(clippy::missing_errors_doc, reason = "the code is the documentation")]
     pub fn load(path: &'path Path) -> Result<Self, Error<'path>> {
         let mut file = match File::open(path) {
@@ -154,7 +154,9 @@ impl<'code, 'path: 'code> SrcCode<'code, 'path> {
         for character in line_text_before_error.chars() {
             let character_utf8_len = character.width_cjk().unwrap_or_default();
             #[expect(clippy::cast_possible_truncation)]
-            { display_column += character_utf8_len as offset32; }
+            {
+                display_column += character_utf8_len as offset32;
+            }
             utf8_column += 1;
         }
 

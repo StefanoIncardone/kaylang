@@ -919,7 +919,9 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
 
                     // consuming all remaining tokens until the end of the file
                     #[expect(clippy::cast_possible_truncation)]
-                    { parser.token_index = parser.tokens.tokens.len() as TokenIndex; }
+                    {
+                        parser.token_index = parser.tokens.tokens.len() as TokenIndex;
+                    }
                     break;
                 }
             };
@@ -1587,7 +1589,7 @@ impl Parser<'_, '_, '_, '_> {
                 let items_start = self.syntax_tree.array_items.len() as ArrayItemsIndex;
                 loop {
                     let start_of_item_token =
-                    self.next_expected_token(Expected::ArrayItemOrCloseSquareBracket)?;
+                        self.next_expected_token(Expected::ArrayItemOrCloseSquareBracket)?;
                     if let TokenKind::CloseSquareBracket = start_of_item_token.kind {
                         break 'array Expression::Array {
                             open_square_bracket_column: open_square_bracket_token.col,

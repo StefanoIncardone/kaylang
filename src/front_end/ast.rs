@@ -116,7 +116,9 @@ impl SizeOf for Type {
             Self::Array { base_type, len } => {
                 debug_assert!(*len > 0, "arrays of 0 items are not allowed");
                 #[expect(clippy::cast_possible_truncation)]
-                { base_type.size() * *len as usize }
+                {
+                    base_type.size() * *len as usize
+                }
             }
         };
     }
@@ -848,7 +850,9 @@ impl Parser<'_, '_, '_, '_> {
 
                     // consuming all remaining tokens until the end of the file
                     #[expect(clippy::cast_possible_truncation)]
-                    { self.token = self.tokens.tokens.len() as TokenIndex; }
+                    {
+                        self.token = self.tokens.tokens.len() as TokenIndex;
+                    }
                     break;
                 }
             }

@@ -982,11 +982,11 @@ compared to rust:
 let x = 'label: loop ... {
     ...
     break 'label 12;
-}
+};
 let x = 'label: {
     ...
     break 'label 21;
-}
+};
 ```
 
 ## ?.?.? - String and character literals

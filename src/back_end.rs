@@ -15,12 +15,12 @@ use crate::front_end::{
     src_file::{Position, SrcCode},
     tokenizer::ascii,
 };
-use back_to_front::offset32;
 #[expect(clippy::useless_attribute, reason = "false positive")]
 #[expect(clippy::pub_use)]
 pub use back_to_front::back_end::x86_64::reg::Reg64;
-use Reg64::{Rcx, Rdi, Rdx, Rsi};
+use back_to_front::offset32;
 use core::fmt::{Display, Write as _};
+use Reg64::{Rcx, Rdi, Rdx, Rsi};
 extern crate alloc;
 use alloc::borrow::Cow;
 
@@ -132,10 +132,11 @@ impl<'ast, 'src: 'ast, 'path: 'src, 'code: 'src> Compiler<'ast, 'src, 'path, 'co
                 }
             }
 
-            // TODO(stefano): dump raw string/character bytes instead of their "human readable text" form
-            // strings
+            // TODO(stefano): dump raw string/character bytes instead of their "human readable text"
+            // form strings
             for (label, string) in &this.ast.string_labels {
-                // FIX(stefano): proper empty string handling
+                // FIX(stefano): proper empty string handling, consecutive empty strings have the
+                // same memory address
                 if string.len() == 0 {
                     _ = writeln!(strings, " str str_{label}, ``");
                 } else {

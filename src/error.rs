@@ -18,7 +18,9 @@ impl CharsWidth for str {
         for character in self.chars() {
             let character_utf8_len = character.width_cjk().unwrap_or_default();
             #[expect(clippy::cast_possible_truncation)]
-            { len += character_utf8_len as offset32; }
+            {
+                len += character_utf8_len as offset32;
+            }
         }
         return len;
     }

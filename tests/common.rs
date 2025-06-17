@@ -16,7 +16,6 @@ use std::{
     process::{Command, ExitCode},
 };
 
-
 #[expect(clippy::allow_attributes, reason = "unrealiable")]
 #[allow(
     clippy::unwrap_used,

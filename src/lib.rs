@@ -8,10 +8,10 @@ pub mod color;
 pub mod error;
 pub mod front_end;
 
+use back_to_front::offset32;
 use color::{ansi_flag, AnsiFlag, Bg, Colored, Fg};
 use core::fmt::{Display, Write as _};
 use error::MsgWithCauseUnderText;
-use back_to_front::offset32;
 use std::{
     io::IsTerminal,
     path::{Path, PathBuf},
