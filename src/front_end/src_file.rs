@@ -122,7 +122,7 @@ impl<'code, 'path: 'code> SrcCode<'code, 'path> {
         while left < right {
             #[expect(clippy::integer_division, reason = "it's intended to lose precision")]
             let middle = left + (right - left) / 2;
-            if column < self.lines[middle as usize].end {
+            if column <= self.lines[middle as usize].end {
                 right = middle;
             } else {
                 left = middle + 1;

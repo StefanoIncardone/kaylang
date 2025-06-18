@@ -1,5 +1,7 @@
 // TODO(stefano): more escape characters
 // TODO(stefano): implement own escaping
+// FIX(stefano): change `col` in lines ending in `\r` from `.line_start` to `.col` when pointers in
+    // errors are allowed to go past the end of the line, and make `pointers_count: 1`
 
 use super::{
     src_file::{Line, SrcCode, SrcFile},
@@ -470,6 +472,14 @@ pub struct Tokenizer<'code, 'path: 'code> {
 
 impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
     pub fn tokenize(src_file: &'code SrcFile<'path>) -> TokenizedCode<'code, 'path> {
+        let tokens = Tokens { tokens: Vec::new(), text: Vec::new(), _src: PhantomData };
+        if src_file.code.len() == 0 {
+            return TokenizedCode {
+                result: Ok(tokens),
+                src: SrcCode { src_file, lines: Vec::new() }
+            };
+        }
+
         let mut tokenizer = Tokenizer {
             code: &src_file.code,
             lines: Vec::new(),
@@ -477,13 +487,13 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
 
             col: 0,
             token_start_col: 0,
-            tokens: Tokens { tokens: Vec::new(), text: Vec::new(), _src: PhantomData },
+            tokens,
 
             errors: Vec::new(),
         };
         let mut brackets_indicies = Vec::<TokenIndex>::new();
 
-        'tokenization: while let Some(next_character) = tokenizer.peek_next_ascii_char() {
+        'tokenization: while let Some(next_character) = tokenizer.peek_ascii() {
             let token_kind_result = 'next_token: {
                 let next = match next_character {
                     Ok(next) => match next {
@@ -495,18 +505,24 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
 
                         // we reached the end of the line on a LF (\n)
                         b'\n' => {
-                            tokenizer.next_line();
+                            tokenizer.new_line(LineEnd::LF);
                             continue 'tokenization;
                         }
                         b'\r' => {
-                            tokenizer.col += 1;
                             if let Some(b'\n') =
-                                tokenizer.code.as_bytes().get(tokenizer.col as usize)
+                                tokenizer.code.as_bytes().get(tokenizer.col as usize + 1)
                             {
-                                tokenizer.next_line();
+                                tokenizer.new_line(LineEnd::CRLF);
+                                continue 'tokenization;
                             }
 
-                            continue 'tokenization;
+                            // tokenizer.errors.push(Error {
+                            //     kind: ErrorKind::StrayCarriageReturn,
+                            //     col: tokenizer.line_start,
+                            //     pointers_count: 0,
+                            // });
+                            tokenizer.new_line(LineEnd::CR);
+                            break 'next_token Err(());
                         }
                         other => {
                             tokenizer.token_start_col = tokenizer.col;
@@ -529,15 +545,15 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                 };
 
                 match next {
-                    b'r' => match tokenizer.peek_next_utf8_char() {
+                    b'r' => match tokenizer.peek_utf8_any() {
                         Some('"') => {
                             tokenizer.col += 1; // skip the `r` prefix
-                            tokenizer.raw_string_literal()
+                            tokenizer.raw_str_literal()
                         }
                         _ => tokenizer.identifier(),
                     },
                     b'a'..=b'z' | b'A'..=b'Z' | b'_' => tokenizer.identifier(),
-                    b'0' => match tokenizer.peek_next_utf8_char() {
+                    b'0' => match tokenizer.peek_utf8_any() {
                         Some('b') => {
                             tokenizer.col += 1;
                             tokenizer.integer_binary()
@@ -554,14 +570,14 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                     },
                     b'1'..=b'9' => tokenizer.integer_decimal(),
                     b'\'' => tokenizer.ascii_literal(),
-                    b'"' => tokenizer.string_literal(),
+                    b'"' => tokenizer.str_literal(),
                     b'`' => tokenizer.identifier_str(),
-                    b'#' => match tokenizer.peek_next_utf8_char() {
+                    b'#' => match tokenizer.peek_utf8_any() {
                         Some('#') => 'comment: {
                             'next_character: loop {
-                                match tokenizer.next_utf8_char_multiline() {
-                                    Some('#') => match tokenizer.next_utf8_char_multiline() {
-                                        Some('#') => break 'next_character,
+                                match tokenizer.next_ascii_multiline() {
+                                    Some(b'#') => match tokenizer.next_ascii_multiline() {
+                                        Some(b'#') => break 'next_character,
                                         Some(_) => {}
                                         None => {
                                             tokenizer.errors.push(Error {
@@ -588,24 +604,31 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             Ok(TokenKind::BlockComment(comment_index))
                         }
                         Some(_) | None => {
-                            loop {
-                                match tokenizer.peek_next_utf8_char() {
-                                    Some('\n') | None => break,
-                                    Some('\r') => {
-                                        tokenizer.col += 1;
-                                        if let Some(b'\n') =
-                                            tokenizer.code.as_bytes().get(tokenizer.col as usize)
-                                        {
-                                            tokenizer.next_line();
-                                            break;
-                                        }
-                                    }
-                                    #[expect(clippy::cast_possible_truncation)]
-                                    Some(other) => tokenizer.col += other.len_utf8() as offset32,
-                                }
-                            }
+                            let comment_index = loop {
+                                match tokenizer.peek_ascii_any() {
+                                    Some(b'\n') | None => break tokenizer.new_token_text(),
+                                    Some(b'\r') => {
+                                        let comment_index = tokenizer.new_token_text();
 
-                            let comment_index = tokenizer.new_token_text();
+                                        if let Some(b'\n') =
+                                        tokenizer.code.as_bytes().get(tokenizer.col as usize + 1)
+                                        {
+                                            tokenizer.new_line(LineEnd::CRLF);
+                                            break comment_index;
+                                        }
+
+                                        // tokenizer.errors.push(Error {
+                                        //     kind: ErrorKind::StrayCarriageReturn,
+                                        //     col: tokenizer.line_start,
+                                        //     pointers_count: 0,
+                                        // });
+                                        tokenizer.new_line(LineEnd::CR);
+                                        break comment_index;
+                                    }
+                                    Some(_) => tokenizer.col += 1,
+                                }
+                            };
+
                             Ok(TokenKind::Comment(comment_index))
                         }
                     },
@@ -732,24 +755,24 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                     b':' => Ok(TokenKind::Colon),
                     b';' => Ok(TokenKind::SemiColon),
                     b',' => Ok(TokenKind::Comma),
-                    b'!' => match tokenizer.peek_next_utf8_char() {
+                    b'!' => match tokenizer.peek_utf8_any() {
                         Some('=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::NotEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::Not)),
                     },
-                    b'*' => match tokenizer.peek_next_utf8_char() {
+                    b'*' => match tokenizer.peek_utf8_any() {
                         Some('*') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_next_utf8_char() {
+                            match tokenizer.peek_utf8_any() {
                                 Some('=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::PowEquals))
                                 }
                                 Some('\\') => {
                                     tokenizer.col += 1;
-                                    match tokenizer.peek_next_utf8_char() {
+                                    match tokenizer.peek_utf8_any() {
                                         Some('=') => {
                                             tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::WrappingPowEquals))
@@ -759,7 +782,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                                 }
                                 Some('|') => {
                                     tokenizer.col += 1;
-                                    match tokenizer.peek_next_utf8_char() {
+                                    match tokenizer.peek_utf8_any() {
                                         Some('=') => {
                                             tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::SaturatingPowEquals))
@@ -776,7 +799,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                         Some('\\') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_next_utf8_char() {
+                            match tokenizer.peek_utf8_any() {
                                 Some('=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::WrappingTimesEquals))
@@ -786,7 +809,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                         Some('|') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_next_utf8_char() {
+                            match tokenizer.peek_utf8_any() {
                                 Some('=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::SaturatingTimesEquals))
@@ -796,14 +819,14 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                         _ => Ok(TokenKind::Op(Op::Times)),
                     },
-                    b'/' => match tokenizer.peek_next_utf8_char() {
+                    b'/' => match tokenizer.peek_utf8_any() {
                         Some('=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::DivideEquals))
                         }
                         Some('\\') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_next_utf8_char() {
+                            match tokenizer.peek_utf8_any() {
                                 Some('=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::WrappingDivideEquals))
@@ -813,7 +836,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                         Some('|') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_next_utf8_char() {
+                            match tokenizer.peek_utf8_any() {
                                 Some('=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::SaturatingDivideEquals))
@@ -823,21 +846,21 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                         _ => Ok(TokenKind::Op(Op::Divide)),
                     },
-                    b'%' => match tokenizer.peek_next_utf8_char() {
+                    b'%' => match tokenizer.peek_utf8_any() {
                         Some('=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::RemainderEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::Remainder)),
                     },
-                    b'+' => match tokenizer.peek_next_utf8_char() {
+                    b'+' => match tokenizer.peek_utf8_any() {
                         Some('=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::PlusEquals))
                         }
                         Some('\\') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_next_utf8_char() {
+                            match tokenizer.peek_utf8_any() {
                                 Some('=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::WrappingPlusEquals))
@@ -847,7 +870,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                         Some('|') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_next_utf8_char() {
+                            match tokenizer.peek_utf8_any() {
                                 Some('=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::SaturatingPlusEquals))
@@ -857,14 +880,14 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                         _ => Ok(TokenKind::Op(Op::Plus)),
                     },
-                    b'-' => match tokenizer.peek_next_utf8_char() {
+                    b'-' => match tokenizer.peek_utf8_any() {
                         Some('=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::MinusEquals))
                         }
                         Some('\\') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_next_utf8_char() {
+                            match tokenizer.peek_utf8_any() {
                                 Some('=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::WrappingMinusEquals))
@@ -874,7 +897,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                         Some('|') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_next_utf8_char() {
+                            match tokenizer.peek_utf8_any() {
                                 Some('=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::SaturatingMinusEquals))
@@ -884,10 +907,10 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                         _ => Ok(TokenKind::Op(Op::Minus)),
                     },
-                    b'&' => match tokenizer.peek_next_utf8_char() {
+                    b'&' => match tokenizer.peek_utf8_any() {
                         Some('&') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_next_utf8_char() {
+                            match tokenizer.peek_utf8_any() {
                                 Some('=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::AndEquals))
@@ -901,17 +924,17 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                         _ => Ok(TokenKind::Op(Op::BitAnd)),
                     },
-                    b'^' => match tokenizer.peek_next_utf8_char() {
+                    b'^' => match tokenizer.peek_utf8_any() {
                         Some('=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::BitXorEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::BitXor)),
                     },
-                    b'|' => match tokenizer.peek_next_utf8_char() {
+                    b'|' => match tokenizer.peek_utf8_any() {
                         Some('|') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_next_utf8_char() {
+                            match tokenizer.peek_utf8_any() {
                                 Some('=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::OrEquals))
@@ -925,20 +948,20 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                         _ => Ok(TokenKind::Op(Op::BitOr)),
                     },
-                    b'=' => match tokenizer.peek_next_utf8_char() {
+                    b'=' => match tokenizer.peek_utf8_any() {
                         Some('=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::EqualsEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::Equals)),
                     },
-                    b'>' => match tokenizer.peek_next_utf8_char() {
+                    b'>' => match tokenizer.peek_utf8_any() {
                         Some('>') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_next_utf8_char() {
+                            match tokenizer.peek_utf8_any() {
                                 Some('>') => {
                                     tokenizer.col += 1;
-                                    match tokenizer.peek_next_utf8_char() {
+                                    match tokenizer.peek_utf8_any() {
                                         Some('=') => {
                                             tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::RightRotateEquals))
@@ -959,13 +982,13 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                         _ => Ok(TokenKind::Op(Op::Greater)),
                     },
-                    b'<' => match tokenizer.peek_next_utf8_char() {
+                    b'<' => match tokenizer.peek_utf8_any() {
                         Some('<') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_next_utf8_char() {
+                            match tokenizer.peek_utf8_any() {
                                 Some('<') => {
                                     tokenizer.col += 1;
-                                    match tokenizer.peek_next_utf8_char() {
+                                    match tokenizer.peek_utf8_any() {
                                         Some('=') => {
                                             tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::LeftRotateEquals))
@@ -979,7 +1002,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                                 }
                                 Some('\\') => {
                                     tokenizer.col += 1;
-                                    match tokenizer.peek_next_utf8_char() {
+                                    match tokenizer.peek_utf8_any() {
                                         Some('=') => {
                                             tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::WrappingLeftShiftEquals))
@@ -989,7 +1012,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                                 }
                                 Some('|') => {
                                     tokenizer.col += 1;
-                                    match tokenizer.peek_next_utf8_char() {
+                                    match tokenizer.peek_utf8_any() {
                                         Some('=') => {
                                             tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::SaturatingLeftShiftEquals))
@@ -1002,7 +1025,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                         }
                         Some('=') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_next_utf8_char() {
+                            match tokenizer.peek_utf8_any() {
                                 Some('>') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::Compare))
@@ -1034,9 +1057,10 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
             tokenizer.tokens.tokens.push(Token { kind, col: tokenizer.token_start_col });
         }
 
-        if let Some(b'\n') = tokenizer.code.as_bytes().last() {
-        } else {
-            tokenizer.next_line();
+        if tokenizer.line_start != tokenizer.col {
+            // file ended without a newline
+            let line = Line { start: tokenizer.line_start, end: tokenizer.col };
+            tokenizer.lines.push(line);
         }
 
         for bracket_index in brackets_indicies {
@@ -1064,14 +1088,25 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
     }
 }
 
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+enum LineEnd {
+    LF = 1,
+    #[expect(clippy::upper_case_acronyms)]
+    CRLF = 2,
+}
+
+impl LineEnd {
+    const CR: Self = Self::LF;
+}
+
 // iteration of characters
 impl<'code> Tokenizer<'code, '_> {
     #[inline]
-    fn next_line(&mut self) {
+    fn new_line(&mut self, line_end: LineEnd) {
         let line = Line { start: self.line_start, end: self.col };
-        self.lines.push(line);
-        self.col += 1;
+        self.col += line_end as offset32;
         self.line_start = self.col;
+        self.lines.push(line);
     }
 
     #[must_use]
@@ -1089,46 +1124,23 @@ impl<'code> Tokenizer<'code, '_> {
         return &self.code[self.token_start_col as usize..self.col as usize];
     }
 
-    // Note: this function is only called when parsing comments, so no special handling of graphemes is required
-    fn next_utf8_char_multiline(&mut self) -> Option<utf32> {
-        if self.col as usize >= self.code.len() {
-            return None;
-        }
-
-        let next = self.code.as_bytes()[self.col as usize];
-        return match next {
-            b'\n' => {
-                self.next_line();
-                Some('\n')
-            }
-            b'\r' => {
-                self.col += 1;
-                if let Some(b'\n') = self.code.as_bytes().get(self.col as usize) {
-                    self.next_line();
-                    return Some('\n');
-                }
-
-                Some('\r')
-            }
-            ascii_ch @ 0..=b'\x7F' => {
-                self.col += 1;
-                Some(ascii_ch as utf32)
-            }
-            _utf8_ch => {
-                let rest_of_code = &self.code[self.col as usize..];
-                let Some(utf8_ch) = rest_of_code.chars().next() else {
-                    unreachable!("this branch assured we would have a valid utf8 character");
-                };
-                #[expect(clippy::cast_possible_truncation)]
-                {
-                    self.col += utf8_ch.len_utf8() as offset32;
-                }
-                Some(utf8_ch)
-            }
-        };
+    #[must_use]
+    #[inline(always)]
+    fn remaining_line_text(&self) -> &'code str {
+        return &self.code[self.col as usize..];
     }
 
-    fn peek_next_ascii_char(&self) -> Option<Result<ascii, &'code str>> {
+    #[inline(always)]
+    fn peek_ascii_any(&self) -> Option<ascii> {
+        return self.remaining_line_text().bytes().next();
+    }
+
+    #[inline(always)]
+    fn peek_utf8_any(&self) -> Option<utf32> {
+        return self.remaining_line_text().chars().next();
+    }
+
+    fn peek_ascii(&self) -> Option<Result<ascii, &'code str>> {
         if self.col as usize >= self.code.len() {
             return None;
         }
@@ -1148,22 +1160,34 @@ impl<'code> Tokenizer<'code, '_> {
         };
     }
 
-    // Note: this function is only called when parsing operators, so no special handling of graphemes is required
-    fn peek_next_utf8_char(&self) -> Option<utf32> {
+    fn next_ascii_multiline(&mut self) -> Option<ascii> {
         if self.col as usize >= self.code.len() {
             return None;
         }
 
         let next = self.code.as_bytes()[self.col as usize];
         return match next {
-            ascii_ch @ 0..=b'\x7F' => Some(ascii_ch as utf32),
-            _utf8_ch => {
-                let rest_of_code = &self.code[self.col as usize..];
-                let Some(utf8_ch) = rest_of_code.chars().next() else {
-                    unreachable!("this branch assured we would have a valid utf8 character");
-                };
+            b'\n' => {
+                self.new_line(LineEnd::LF);
+                Some(b'\n')
+            }
+            b'\r' => {
+                if let Some(b'\n') = self.code.as_bytes().get(self.col as usize + 1) {
+                    self.new_line(LineEnd::CRLF);
+                    return Some(b'\n');
+                }
 
-                Some(utf8_ch)
+                // self.errors.push(Error {
+                //     kind: ErrorKind::StrayCarriageReturn,
+                //     col: self.line_start,
+                //     pointers_count: 0,
+                // });
+                self.new_line(LineEnd::CR);
+                Some(b'\n')
+            }
+            other => {
+                self.col += 1;
+                Some(other)
             }
         };
     }
@@ -1179,7 +1203,7 @@ impl Tokenizer<'_, '_> {
         let previous_errors_len = self.errors.len();
 
         loop {
-            match self.peek_next_ascii_char() {
+            match self.peek_ascii() {
                 Some(Ok(b'0'..=b'9' | b'_')) => {
                     self.col += 1;
                 }
@@ -1218,7 +1242,7 @@ impl Tokenizer<'_, '_> {
         let previous_errors_len = self.errors.len();
 
         loop {
-            match self.peek_next_ascii_char() {
+            match self.peek_ascii() {
                 Some(Ok(b'0'..=b'1' | b'_')) => {
                     self.col += 1;
                 }
@@ -1265,7 +1289,7 @@ impl Tokenizer<'_, '_> {
         let previous_errors_len = self.errors.len();
 
         loop {
-            match self.peek_next_ascii_char() {
+            match self.peek_ascii() {
                 Some(Ok(b'0'..=b'7' | b'_')) => {
                     self.col += 1;
                 }
@@ -1312,7 +1336,7 @@ impl Tokenizer<'_, '_> {
         let previous_errors_len = self.errors.len();
 
         loop {
-            match self.peek_next_ascii_char() {
+            match self.peek_ascii() {
                 Some(Ok(b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F' | b'_')) => {
                     self.col += 1;
                 }
@@ -1352,7 +1376,7 @@ impl Tokenizer<'_, '_> {
 
         let mut logical_characters_count = 0;
         loop {
-            let next_character = match self.peek_next_ascii_char() {
+            let next_character = match self.peek_ascii() {
                 Some(Ok(b'\n')) | None => {
                     self.errors.push(Error {
                         kind: ErrorKind::UnclosedCharacterLiteral,
@@ -1379,7 +1403,7 @@ impl Tokenizer<'_, '_> {
 
             match next_character {
                 b'\\' => {
-                    let escape_character = match self.peek_next_ascii_char() {
+                    let escape_character = match self.peek_ascii() {
                         Some(Ok(b'\n')) | None => {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnclosedCharacterLiteral,
@@ -1456,11 +1480,11 @@ impl Tokenizer<'_, '_> {
         return Ok(TokenKind::Ascii(literal_index));
     }
 
-    fn string_literal(&mut self) -> Result<TokenKind, ()> {
+    fn str_literal(&mut self) -> Result<TokenKind, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
-            let next_character = match self.peek_next_ascii_char() {
+            let next_character = match self.peek_ascii() {
                 Some(Ok(b'\n')) | None => {
                     self.errors.push(Error {
                         kind: ErrorKind::UnclosedStrLiteral,
@@ -1487,7 +1511,7 @@ impl Tokenizer<'_, '_> {
 
             match next_character {
                 b'\\' => {
-                    let escape_character = match self.peek_next_ascii_char() {
+                    let escape_character = match self.peek_ascii() {
                         Some(Ok(b'\n')) | None => {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnclosedStrLiteral,
@@ -1545,11 +1569,11 @@ impl Tokenizer<'_, '_> {
         return Ok(TokenKind::Str(literal_index));
     }
 
-    fn raw_string_literal(&mut self) -> Result<TokenKind, ()> {
+    fn raw_str_literal(&mut self) -> Result<TokenKind, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
-            let next_character = match self.peek_next_ascii_char() {
+            let next_character = match self.peek_ascii() {
                 Some(Ok(b'\n')) | None => {
                     self.errors.push(Error {
                         kind: ErrorKind::UnclosedRawStrLiteral,
@@ -1576,7 +1600,7 @@ impl Tokenizer<'_, '_> {
 
             match next_character {
                 b'\\' => {
-                    let escape_character = match self.peek_next_ascii_char() {
+                    let escape_character = match self.peek_ascii() {
                         Some(Ok(b'\n')) | None => {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnclosedRawStrLiteral,
@@ -1629,7 +1653,7 @@ impl Tokenizer<'_, '_> {
         let previous_errors_len = self.errors.len();
 
         loop {
-            let next_character = match self.peek_next_ascii_char() {
+            let next_character = match self.peek_ascii() {
                 Some(Ok(b'\n')) | None => {
                     self.errors.push(Error {
                         kind: ErrorKind::UnclosedIdentifierStr,
@@ -1693,7 +1717,7 @@ impl Tokenizer<'_, '_> {
         let previous_errors_len = self.errors.len();
 
         loop {
-            match self.peek_next_ascii_char() {
+            match self.peek_ascii() {
                 Some(Ok(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {
                     self.col += 1;
                 }
@@ -1847,6 +1871,8 @@ pub enum ErrorKind<'code> {
 
     Utf8Character { grapheme: &'code str },
     UnrecognizedCharacter(ascii),
+    // IDEA(stefano): report this as a warning instead of an error
+    // StrayCarriageReturn,
 }
 
 impl IntoErrorInfo for ErrorKind<'_> {
@@ -2068,6 +2094,10 @@ impl IntoErrorInfo for ErrorKind<'_> {
                 format!("invalid character '{unrecognized}' {}", unrecognized.escape_ascii()).into(),
                 "unrecognized".into(),
             ),
+            // Self::StrayCarriageReturn => (
+            //     "invalid line ending".into(),
+            //     "line ends in '\\r' without the following '\\n'".into()
+            // )
         };
 
         return ErrorInfo { error_message, error_cause_message };

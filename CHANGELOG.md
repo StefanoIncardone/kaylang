@@ -73,6 +73,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Corrected error message related to UTF8 characters in raw string literals
 - Corrected error messages related to number literals, raw string literals and identifier strings
 - Corrected mismatched brackets error messages
+- Corrected handling of new lines during tokenization
 
 ## 0.6.2 - 2025-02-27
 
