@@ -550,7 +550,6 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             tokenizer.col += 1;
                             tokenizer.integer_hexadecimal()
                         }
-                        // IDEA(stefano): when None we could just return 0
                         Some(_) | None => tokenizer.integer_decimal(),
                     },
                     b'1'..=b'9' => tokenizer.integer_decimal(),
@@ -1172,7 +1171,7 @@ impl<'code> Tokenizer<'code, '_> {
 
 // tokenization of numbers, strings and identifiers
 // IDEA(stefano): keep track of the tokenized display length instead of recalculating it everytime
-// with `self.token_text().display_width()`
+// with `self.token_text().display_len()`
 impl Tokenizer<'_, '_> {
     const MAX_IDENTIFIER_LEN: offset32 = 63;
 
