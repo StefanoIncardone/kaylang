@@ -8,12 +8,12 @@ use std::path::Path;
 use back_to_front::offset32;
 use unicode_width::UnicodeWidthChar as _;
 
-pub(crate) trait CharsWidth {
-    fn chars_width(&self) -> offset32;
+pub(crate) trait DisplayLen {
+    fn display_len(&self) -> offset32;
 }
 
-impl CharsWidth for str {
-    fn chars_width(&self) -> offset32 {
+impl DisplayLen for str {
+    fn display_len(&self) -> offset32 {
         let mut len = 0;
         for character in self.chars() {
             let character_utf8_len = character.width_cjk().unwrap_or_default();
@@ -21,6 +21,9 @@ impl CharsWidth for str {
             {
                 len += character_utf8_len as offset32;
             }
+        }
+        if len == 0 {
+            len = 1;
         }
         return len;
     }

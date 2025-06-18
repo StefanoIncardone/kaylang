@@ -28,6 +28,7 @@ pub struct Error<K: IntoErrorInfo> {
     pub kind: K,
     /// absolute source code byte position
     pub col: offset32,
+    // IDEA(stefano): rename to `display_len`
     pub pointers_count: offset32,
 }
 

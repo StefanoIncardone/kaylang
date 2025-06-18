@@ -5,7 +5,7 @@ use super::{
     src_file::{Line, SrcCode, SrcFile},
     Error, ErrorInfo, IntoErrorInfo,
 };
-use crate::error::CharsWidth as _;
+use crate::error::DisplayLen as _;
 use back_to_front::offset32;
 use core::{fmt::Display, marker::PhantomData};
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -290,9 +290,9 @@ pub(crate) type TokenIndex = offset32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TokenKind {
-    // IDEA(stefano): remove from the returned tokens, to avoid encountering them during the parsing stage
     Comment(TextIndex),
     BlockComment(TextIndex),
+    // IDEA(stefano): remove from the returned tokens, to avoid encountering them during the parsing stage
     Unexpected(TextIndex),
 
     // Symbols
@@ -309,9 +309,7 @@ pub(crate) enum TokenKind {
     Op(Op),
 
     // Literal values
-    // IDEA(stefano): represent as 0
     False,
-    // IDEA(stefano): represent as non-0 instead of 1
     True,
 
     /// integer literals are never empty and always contain valid ascii digits
@@ -353,15 +351,15 @@ impl TokenKind {
         return match self {
             Self::Comment(comment) => {
                 let text = tokens.text[comment as usize];
-                text.chars_width()
+                text.display_len()
             }
             Self::BlockComment(comment) => {
                 let text = tokens.text[comment as usize];
-                text.chars_width()
+                text.display_len()
             }
             Self::Unexpected(unexpected) => {
                 let text = tokens.text[unexpected as usize];
-                text.chars_width()
+                text.display_len()
             }
 
             Self::OpenRoundBracket
@@ -516,16 +514,16 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             other
                         }
                     },
-                    Err(error) => {
+                    Err(grapheme) => {
+                        tokenizer.errors.push(Error {
+                            kind: ErrorKind::Utf8Character { grapheme },
+                            col: tokenizer.col,
+                            pointers_count: grapheme.display_len(),
+                        });
                         #[expect(clippy::cast_possible_truncation)]
                         {
-                            tokenizer.col += error.grapheme.len() as offset32;
+                            tokenizer.col += grapheme.len() as offset32;
                         }
-                        tokenizer.errors.push(Error {
-                            kind: ErrorKind::Utf8Character { grapheme: error.grapheme },
-                            col: error.col,
-                            pointers_count: error.pointers_count,
-                        });
                         break 'next_token Err(());
                     }
                 };
@@ -552,6 +550,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                             tokenizer.col += 1;
                             tokenizer.integer_hexadecimal()
                         }
+                        // IDEA(stefano): when None we could just return 0
                         Some(_) | None => tokenizer.integer_decimal(),
                     },
                     b'1'..=b'9' => tokenizer.integer_decimal(),
@@ -1066,13 +1065,6 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Utf8Error<'code> {
-    grapheme: &'code str,
-    col: offset32,
-    pointers_count: offset32,
-}
-
 // iteration of characters
 impl<'code> Tokenizer<'code, '_> {
     #[inline]
@@ -1137,7 +1129,7 @@ impl<'code> Tokenizer<'code, '_> {
         };
     }
 
-    fn peek_next_ascii_char(&self) -> Option<Result<ascii, Utf8Error<'code>>> {
+    fn peek_next_ascii_char(&self) -> Option<Result<ascii, &'code str>> {
         if self.col as usize >= self.code.len() {
             return None;
         }
@@ -1152,12 +1144,7 @@ impl<'code> Tokenizer<'code, '_> {
                     unreachable!("this branch assured we would have a valid grapheme");
                 };
 
-                let pointers_count = match grapheme.chars_width() {
-                    0 => 1,
-                    pointers_count => pointers_count,
-                };
-
-                Some(Err(Utf8Error { grapheme, col: self.col, pointers_count }))
+                Some(Err(grapheme))
             }
         };
     }
@@ -1183,6 +1170,9 @@ impl<'code> Tokenizer<'code, '_> {
     }
 }
 
+// tokenization of numbers, strings and identifiers
+// IDEA(stefano): keep track of the tokenized display length instead of recalculating it everytime
+// with `self.token_text().display_width()`
 impl Tokenizer<'_, '_> {
     const MAX_IDENTIFIER_LEN: offset32 = 63;
 
@@ -1202,15 +1192,15 @@ impl Tokenizer<'_, '_> {
                     });
                     self.col += 1;
                 }
-                Some(Err(error)) => {
+                Some(Err(grapheme)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InDecimalNumberLiteral { grapheme: error.grapheme },
-                        col: error.col,
-                        pointers_count: error.pointers_count,
+                        kind: ErrorKind::Utf8InDecimalNumberLiteral { grapheme },
+                        col: self.col,
+                        pointers_count: grapheme.display_len(),
                     });
                     #[expect(clippy::cast_possible_truncation)]
                     {
-                        self.col += error.grapheme.len() as offset32;
+                        self.col += grapheme.len() as offset32;
                     }
                 }
                 Some(Ok(_)) | None => break,
@@ -1249,15 +1239,15 @@ impl Tokenizer<'_, '_> {
                     });
                     self.col += 1;
                 }
-                Some(Err(error)) => {
+                Some(Err(grapheme)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InBinaryNumberLiteral { grapheme: error.grapheme },
-                        col: error.col,
-                        pointers_count: error.pointers_count,
+                        kind: ErrorKind::Utf8InBinaryNumberLiteral { grapheme },
+                        col: self.col,
+                        pointers_count: grapheme.display_len(),
                     });
                     #[expect(clippy::cast_possible_truncation)]
                     {
-                        self.col += error.grapheme.len() as offset32;
+                        self.col += grapheme.len() as offset32;
                     }
                 }
                 Some(Ok(_)) | None => break,
@@ -1296,15 +1286,15 @@ impl Tokenizer<'_, '_> {
                     });
                     self.col += 1;
                 }
-                Some(Err(error)) => {
+                Some(Err(grapheme)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InOctalNumberLiteral { grapheme: error.grapheme },
-                        col: error.col,
-                        pointers_count: error.pointers_count,
+                        kind: ErrorKind::Utf8InOctalNumberLiteral { grapheme },
+                        col: self.col,
+                        pointers_count: grapheme.display_len(),
                     });
                     #[expect(clippy::cast_possible_truncation)]
                     {
-                        self.col += error.grapheme.len() as offset32;
+                        self.col += grapheme.len() as offset32;
                     }
                 }
                 Some(Ok(_)) | None => break,
@@ -1335,17 +1325,15 @@ impl Tokenizer<'_, '_> {
                     });
                     self.col += 1;
                 }
-                Some(Err(error)) => {
+                Some(Err(grapheme)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InHexadecimalNumberLiteral {
-                            grapheme: error.grapheme,
-                        },
-                        col: error.col,
-                        pointers_count: error.pointers_count,
+                        kind: ErrorKind::Utf8InHexadecimalNumberLiteral { grapheme },
+                        col: self.col,
+                        pointers_count: grapheme.display_len(),
                     });
                     #[expect(clippy::cast_possible_truncation)]
                     {
-                        self.col += error.grapheme.len() as offset32;
+                        self.col += grapheme.len() as offset32;
                     }
                 }
                 Some(Ok(_)) | None => break,
@@ -1370,20 +1358,20 @@ impl Tokenizer<'_, '_> {
                     self.errors.push(Error {
                         kind: ErrorKind::UnclosedCharacterLiteral,
                         col: self.token_start_col,
-                        pointers_count: self.token_text().chars_width(),
+                        pointers_count: self.token_text().display_len(),
                     });
                     break;
                 }
                 Some(Ok(next_character)) => next_character,
-                Some(Err(error)) => {
+                Some(Err(grapheme)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InCharacterLiteral { grapheme: error.grapheme },
-                        col: error.col,
-                        pointers_count: error.pointers_count,
+                        kind: ErrorKind::Utf8InCharacterLiteral { grapheme },
+                        col: self.col,
+                        pointers_count: grapheme.display_len(),
                     });
                     #[expect(clippy::cast_possible_truncation)]
                     {
-                        self.col += error.grapheme.len() as offset32;
+                        self.col += grapheme.len() as offset32;
                     }
                     continue;
                 }
@@ -1397,22 +1385,20 @@ impl Tokenizer<'_, '_> {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnclosedCharacterLiteral,
                                 col: self.token_start_col,
-                                pointers_count: self.token_text().chars_width(),
+                                pointers_count: self.token_text().display_len(),
                             });
                             break;
                         }
                         Some(Ok(escape_character)) => escape_character,
-                        Some(Err(error)) => {
+                        Some(Err(grapheme)) => {
                             self.errors.push(Error {
-                                kind: ErrorKind::Utf8InCharacterLiteral {
-                                    grapheme: error.grapheme,
-                                },
-                                col: error.col,
-                                pointers_count: error.pointers_count,
+                                kind: ErrorKind::Utf8InCharacterLiteral { grapheme },
+                                col: self.col,
+                                pointers_count: grapheme.display_len(),
                             });
                             #[expect(clippy::cast_possible_truncation)]
                             {
-                                self.col += error.grapheme.len() as offset32;
+                                self.col += grapheme.len() as offset32;
                             }
                             continue;
                         }
@@ -1462,7 +1448,7 @@ impl Tokenizer<'_, '_> {
             self.errors.push(Error {
                 kind: ErrorKind::MultipleCharactersInCharacterLiteral,
                 col: self.token_start_col,
-                pointers_count: self.token_text().chars_width(),
+                pointers_count: self.token_text().display_len(),
             });
             return Err(());
         }
@@ -1480,20 +1466,20 @@ impl Tokenizer<'_, '_> {
                     self.errors.push(Error {
                         kind: ErrorKind::UnclosedStrLiteral,
                         col: self.token_start_col,
-                        pointers_count: self.token_text().chars_width(),
+                        pointers_count: self.token_text().display_len(),
                     });
                     break;
                 }
                 Some(Ok(next_character)) => next_character,
-                Some(Err(error)) => {
+                Some(Err(grapheme)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InStrLiteral { grapheme: error.grapheme },
-                        col: error.col,
-                        pointers_count: error.pointers_count,
+                        kind: ErrorKind::Utf8InStrLiteral { grapheme },
+                        col: self.col,
+                        pointers_count: grapheme.display_len(),
                     });
                     #[expect(clippy::cast_possible_truncation)]
                     {
-                        self.col += error.grapheme.len() as offset32;
+                        self.col += grapheme.len() as offset32;
                     }
                     continue;
                 }
@@ -1507,20 +1493,20 @@ impl Tokenizer<'_, '_> {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnclosedStrLiteral,
                                 col: self.token_start_col,
-                                pointers_count: self.token_text().chars_width(),
+                                pointers_count: self.token_text().display_len(),
                             });
                             break;
                         }
                         Some(Ok(escape_character)) => escape_character,
-                        Some(Err(error)) => {
+                        Some(Err(grapheme)) => {
                             self.errors.push(Error {
-                                kind: ErrorKind::Utf8InStrLiteral { grapheme: error.grapheme },
-                                col: error.col,
-                                pointers_count: error.pointers_count,
+                                kind: ErrorKind::Utf8InStrLiteral { grapheme },
+                                col: self.col,
+                                pointers_count: grapheme.display_len(),
                             });
                             #[expect(clippy::cast_possible_truncation)]
                             {
-                                self.col += error.grapheme.len() as offset32;
+                                self.col += grapheme.len() as offset32;
                             }
                             continue;
                         }
@@ -1549,7 +1535,7 @@ impl Tokenizer<'_, '_> {
                 }
                 b'"' => break,
                 _ => {}
-            };
+            }
         }
 
         if previous_errors_len != self.errors.len() {
@@ -1569,20 +1555,20 @@ impl Tokenizer<'_, '_> {
                     self.errors.push(Error {
                         kind: ErrorKind::UnclosedRawStrLiteral,
                         col: self.token_start_col,
-                        pointers_count: self.token_text().chars_width(),
+                        pointers_count: self.token_text().display_len(),
                     });
                     break;
                 }
                 Some(Ok(next_character)) => next_character,
-                Some(Err(error)) => {
+                Some(Err(grapheme)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InRawStrLiteral { grapheme: error.grapheme },
-                        col: error.col,
-                        pointers_count: error.pointers_count,
+                        kind: ErrorKind::Utf8InRawStrLiteral { grapheme },
+                        col: self.col,
+                        pointers_count: grapheme.display_len(),
                     });
                     #[expect(clippy::cast_possible_truncation)]
                     {
-                        self.col += error.grapheme.len() as offset32;
+                        self.col += grapheme.len() as offset32;
                     }
                     continue;
                 }
@@ -1596,20 +1582,20 @@ impl Tokenizer<'_, '_> {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnclosedRawStrLiteral,
                                 col: self.token_start_col,
-                                pointers_count: self.token_text().chars_width(),
+                                pointers_count: self.token_text().display_len(),
                             });
                             break;
                         }
                         Some(Ok(escape_character)) => escape_character,
-                        Some(Err(error)) => {
+                        Some(Err(grapheme)) => {
                             self.errors.push(Error {
-                                kind: ErrorKind::Utf8InRawStrLiteral { grapheme: error.grapheme },
-                                col: error.col,
-                                pointers_count: error.pointers_count,
+                                kind: ErrorKind::Utf8InRawStrLiteral { grapheme },
+                                col: self.col,
+                                pointers_count: grapheme.display_len(),
                             });
                             #[expect(clippy::cast_possible_truncation)]
                             {
-                                self.col += error.grapheme.len() as offset32;
+                                self.col += grapheme.len() as offset32;
                             }
                             continue;
                         }
@@ -1628,7 +1614,7 @@ impl Tokenizer<'_, '_> {
                 }
                 b'"' => break,
                 _ => {}
-            };
+            }
         }
 
         if previous_errors_len != self.errors.len() {
@@ -1649,20 +1635,20 @@ impl Tokenizer<'_, '_> {
                     self.errors.push(Error {
                         kind: ErrorKind::UnclosedIdentifierStr,
                         col: self.token_start_col,
-                        pointers_count: self.token_text().chars_width(),
+                        pointers_count: self.token_text().display_len(),
                     });
                     break;
                 }
                 Some(Ok(next_character)) => next_character,
-                Some(Err(error)) => {
+                Some(Err(grapheme)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InIdentifierStr { grapheme: error.grapheme },
-                        col: error.col,
-                        pointers_count: error.pointers_count,
+                        kind: ErrorKind::Utf8InIdentifierStr { grapheme },
+                        col: self.col,
+                        pointers_count: grapheme.display_len(),
                     });
                     #[expect(clippy::cast_possible_truncation)]
                     {
-                        self.col += error.grapheme.len() as offset32;
+                        self.col += grapheme.len() as offset32;
                     }
                     continue;
                 }
@@ -1679,7 +1665,7 @@ impl Tokenizer<'_, '_> {
                 }
                 b'`' => break,
                 _ => {}
-            };
+            }
         }
 
         if previous_errors_len != self.errors.len() {
@@ -1712,15 +1698,15 @@ impl Tokenizer<'_, '_> {
                 Some(Ok(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {
                     self.col += 1;
                 }
-                Some(Err(error)) => {
+                Some(Err(grapheme)) => {
                     self.errors.push(Error {
-                        kind: ErrorKind::Utf8InIdentifier { grapheme: error.grapheme },
-                        col: error.col,
-                        pointers_count: error.pointers_count,
+                        kind: ErrorKind::Utf8InIdentifier { grapheme },
+                        col: self.col,
+                        pointers_count: grapheme.display_len(),
                     });
                     #[expect(clippy::cast_possible_truncation)]
                     {
-                        self.col += error.grapheme.len() as offset32;
+                        self.col += grapheme.len() as offset32;
                     }
                 }
                 Some(Ok(_)) | None => break,
@@ -1729,7 +1715,7 @@ impl Tokenizer<'_, '_> {
 
         if previous_errors_len != self.errors.len() {
             return Err(());
-        };
+        }
 
         let identifier = match self.token_text() {
             "let" => TokenKind::Let,
