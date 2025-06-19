@@ -12,7 +12,7 @@ use kaylang::{
     LINKING_ERROR, RUNNING,
 };
 use std::{
-    path::{Path, PathBuf},
+    path::Path,
     process::{Command, ExitCode},
 };
 
@@ -161,7 +161,7 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
     execution_step.step(&DONE, None);
 
     let running_step = Logger::new();
-    let exe_path = PathBuf::from(".").join(&artifacts.exe_path);
+    let exe_path = Path::new(".").join(&artifacts.exe_path);
     Logger::info(&RUNNING, &exe_path);
 
     let mut run_command = Command::new(exe_path);

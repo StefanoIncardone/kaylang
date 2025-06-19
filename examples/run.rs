@@ -14,7 +14,7 @@ use kaylang::{
     TOKENIZATION,
 };
 use std::{
-    path::PathBuf,
+    path::Path,
     process::{Command, ExitCode},
 };
 
@@ -24,16 +24,16 @@ fn main() -> ExitCode {
 
     // cargo sets the working directory to where the `cargo` command was run.
     // so we assume this example is run from the root of the crate
-    let src_path = PathBuf::from("examples/fizzbuzz.kay");
+    let src_path = Path::new("examples/fizzbuzz.kay");
 
     let execution_step = Logger::new();
 
-    Logger::info(&CHECKING, &src_path);
+    Logger::info(&CHECKING, src_path);
     let checking_sub_step = Logger::new();
 
     let src_file = {
         let loading_source_sub_step = Logger::new();
-        let source_loading_result = SrcFile::load(&src_path);
+        let source_loading_result = SrcFile::load(src_path);
         loading_source_sub_step.sub_step(&LOADING_SOURCE, None);
         match source_loading_result {
             Ok(src_file) => src_file,
@@ -76,8 +76,7 @@ fn main() -> ExitCode {
 
     checking_sub_step.sub_step(&SUBSTEP_DONE, None);
 
-    let out_path = PathBuf::from("out");
-    let artifacts = match Artifacts::new_with_out_path(&src_path, &out_path) {
+    let artifacts = match Artifacts::new_with_out_path(src_path, Path::new("out")) {
         Ok(artifacts) => artifacts,
         Err(err) => {
             eprintln!("{err}");
@@ -158,7 +157,7 @@ fn main() -> ExitCode {
     compilation_sub_step.sub_step(&SUBSTEP_DONE, None);
     execution_step.step(&DONE, None);
 
-    let exe_path = PathBuf::from(".").join(&artifacts.exe_path);
+    let exe_path = Path::new(".").join(&artifacts.exe_path);
     Logger::info(&RUNNING, &exe_path);
 
     let mut run_command = Command::new(exe_path);

@@ -13,7 +13,7 @@ use kaylang::{
     COULD_NOT_WRITE_COMPILED_CODE, DONE, GENERATING_ASM, LINKING, LINKING_ERROR, LOADING_SOURCE,
     PARSING_AST, RUNNING, SUBSTEP_DONE, TOKENIZATION,
 };
-use std::{path::PathBuf, process::ExitCode};
+use std::{path::Path, process::ExitCode};
 
 // Note: this is aslo an example of how it's possible to create cli tools based on this compiler
 fn main() -> ExitCode {
@@ -197,7 +197,7 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     };
 
-    let exe_path = PathBuf::from(".").join(&artifacts.exe_path);
+    let exe_path = Path::new(".").join(&artifacts.exe_path);
     Logger::info_with_verbosity(&RUNNING, &exe_path, verbosity);
 
     let mut run_command = std::process::Command::new(exe_path);

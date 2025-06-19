@@ -9,7 +9,7 @@ use kaylang::{
     Color, Logger, Verbosity, CHECKING, DONE, LOADING_SOURCE, PARSING_AST, SUBSTEP_DONE,
     TOKENIZATION,
 };
-use std::{path::PathBuf, process::ExitCode};
+use std::{path::Path, process::ExitCode};
 
 fn main() -> ExitCode {
     // controls how error messages should be colored
@@ -20,16 +20,16 @@ fn main() -> ExitCode {
 
     // cargo sets the working directory to where the `cargo` command was run.
     // so we assume this example is run from the root of the crate
-    let src_path = PathBuf::from("examples/fizzbuzz.kay");
+    let src_path = Path::new("examples/fizzbuzz.kay");
 
     let execution_step = Logger::new();
 
-    Logger::info_with_verbosity(&CHECKING, &src_path, verbosity);
+    Logger::info_with_verbosity(&CHECKING, src_path, verbosity);
     let checking_sub_step = Logger::new();
 
     let src_file = {
         let loading_source_sub_step = Logger::new();
-        let source_loading_result = SrcFile::load(&src_path);
+        let source_loading_result = SrcFile::load(src_path);
         loading_source_sub_step.sub_step_with_verbosity(&LOADING_SOURCE, None, verbosity);
         match source_loading_result {
             Ok(src_file) => src_file,

@@ -4,7 +4,7 @@ mod common;
 
 use common::run;
 use kaylang::Color;
-use std::{path::PathBuf, process::ExitCode};
+use std::{path::Path, process::ExitCode};
 
 use crate::common::check;
 
@@ -47,7 +47,7 @@ fn run_project_euler() -> Result<(), ExitCode> {
     color.set(&std::io::stderr());
     color.set(&std::io::stdout());
 
-    let out_path = PathBuf::from("out");
+    let out_path = Path::new("out");
     let src_files = match std::fs::read_dir("examples/project_euler") {
         Ok(files) => files,
         Err(err) => panic!("could not read project_euler folder: {err}"),
@@ -67,7 +67,7 @@ fn run_project_euler() -> Result<(), ExitCode> {
             continue;
         }
 
-        run(&src_path, &out_path)?;
+        run(&src_path, out_path)?;
     }
 
     return Ok(());

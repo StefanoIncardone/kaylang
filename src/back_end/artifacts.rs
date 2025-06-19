@@ -16,14 +16,14 @@ impl Artifacts {
     #[must_use]
     pub fn new(src_path: &Path) -> Self {
         let src_path_stem = match src_path.file_stem() {
-            Some(path_name) => PathBuf::from(path_name),
+            Some(path_name) => Path::new(path_name),
             None => unreachable!("file stem should always be present"),
         };
 
         return Self {
             asm_path: src_path_stem.with_extension("asm"),
             obj_path: src_path_stem.with_extension("o"),
-            exe_path: src_path_stem,
+            exe_path: src_path_stem.to_owned(),
         };
     }
 
@@ -42,13 +42,13 @@ impl Artifacts {
         }
 
         let src_path_stem = match src_path.file_stem() {
-            Some(path_name) => PathBuf::from(path_name),
+            Some(path_name) => Path::new(path_name),
             None => unreachable!("file stem should always be present"),
         };
 
         return Ok(Self {
-            asm_path: out_path.join(&src_path_stem).with_extension("asm"),
-            obj_path: out_path.join(&src_path_stem).with_extension("o"),
+            asm_path: out_path.join(src_path_stem).with_extension("asm"),
+            obj_path: out_path.join(src_path_stem).with_extension("o"),
             exe_path: out_path.join(src_path_stem),
         });
     }

@@ -8,7 +8,7 @@ use kaylang::{
     },
     Color,
 };
-use std::{path::PathBuf, process::ExitCode};
+use std::{path::Path, process::ExitCode};
 
 fn main() -> ExitCode {
     // controls how error messages should be colored
@@ -16,9 +16,9 @@ fn main() -> ExitCode {
 
     // cargo sets the working directory to where the `cargo` command was run.
     // so we assume this example is run from the root of the crate
-    let src_path = PathBuf::from("examples/fizzbuzz.kay");
+    let src_path = Path::new("examples/fizzbuzz.kay");
 
-    let src_file = match SrcFile::load(&src_path) {
+    let src_file = match SrcFile::load(src_path) {
         Ok(src_file) => src_file,
         Err(err) => {
             eprintln!("{err}");
