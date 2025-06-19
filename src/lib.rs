@@ -471,14 +471,15 @@ impl Display for Help {
 
 {USAGE}: {executable_name} [{OPTIONS}] [{COMMAND}]
 
-{OPTIONS}:
+[{OPTIONS}]:
     {__color}, {scolor}, {_c}, {sc} <{MODE}>
-        Wether to display colored output, with <{MODE}>:
-        - {auto} (default): only print colored output if supported
-        - {always}: always print colored output, even if not supported
-        - {never}: never print colored output
 
-{COMMAND}s:
+    <{MODE}>:
+        {auto} (default)    only print colored output if supported
+        {always}            always print colored output, even if not supported
+        {never}             never print colored output
+
+[{COMMAND}]s:
     {help},    {__help},    {shelp},    {_h}, {sh}, {hq}, {__hq}, {_hq}, {shq}
         Display this message (default)
 
@@ -494,11 +495,12 @@ impl Display for Help {
     {run}      <{FILE}> [{OUTPUT}] [{VERBOSITY}]
         Compile and run the generated executable
 
-    {OUTPUT}:
+    [{OUTPUT}]:
         {__output}, {soutput}, {_o}, {so} <{PATH}>
-            Folder to populate with compilation artifacts (default: '.')
 
-    {VERBOSITY}:
+        <{PATH}>: Folder to populate with compilation artifacts (default: '.')
+
+    [{VERBOSITY}]:
         {__quiet},   {squiet},   {_q}, {sq}
             Don't display any compilation information
 
