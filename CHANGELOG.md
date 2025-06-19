@@ -35,13 +35,15 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 #### Added
 
+- Added `?` for help commands
+- Added `/` cli flags and commands variations: `-h` or `/h`
+- Added more flexible cli color mode options variations: `-c <mode>`, `-c-<mode>`, `-c=<mode>`
+<!--  -->
 - `Color` now has `set_color_auto`, `set_color_always` and `set_color_never` methods
 - `FlagPrefix` and `FlagLen`
 
 #### Changed
 
-- Added `?` for help commands
-- Added `/` cli flags and commands variations: `-h` or `/h`
 - Renamed `--verbose` and `/verbose` flags to `--Verbose` and `/Verbose`
 - Allowed cli color mode options to be specified multiple times
 - Improved printing of help message, now fitting inside 80 columns

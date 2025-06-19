@@ -241,19 +241,6 @@ kay tags -n TODO -n IDEA -n NOTE # would recognize TODO, IDEA and NOTE
 kay tags # Error: no specified tags to look for
 ```
 
-## 0.6.3 - More flexible command line arguments
-
-allow for arguments with spaces `--arg value`, dashes `--arg-value`, equals `--arg=value`:
-
-```rust
-/// - color -> mask 0b1100_0000
-/// - separator -> mask 0b0000_0011
-///     - 0b00 -> dash `--color-always`
-///     - 0b01 -> equals `--color=always`
-///     - 0b10 -> spaces `--color always`
-///     - 0b11 -> defaul value `--color` (default for always)
-```
-
 ## ?.?.? - Reversed help commands
 
 printing the help command in regular order could lead to some useful information being offscreen,

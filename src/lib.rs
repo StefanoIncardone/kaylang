@@ -236,9 +236,9 @@ impl Display for ColorFlag {
 #[repr(u8)]
 pub enum Color {
     #[default]
-    Auto,
-    Always,
-    Never,
+    Auto   = 0b0000_0000,
+    Always = 0b0000_0001,
+    Never  = 0b0000_0010,
 }
 
 impl Display for Color {
@@ -472,18 +472,18 @@ impl Display for Help {
 {USAGE}: {executable_name} [{OPTIONS}] [{COMMAND}]
 
 [{OPTIONS}]:
-    {__color}, {scolor}, {_c}, {sc} <{MODE}>
+    {__color}, {Scolor}, {_c}, {Sc} <{MODE}>
 
-    <{MODE}>:
+    <{MODE}> (supports '* {MODE}', '*-{MODE}' and '*={MODE}' variations):
         {auto} (default)    only print colored output if supported
         {always}            always print colored output, even if not supported
         {never}             never print colored output
 
 [{COMMAND}]s:
-    {help},    {__help},    {shelp},    {_h}, {sh}, {hq}, {__hq}, {_hq}, {shq}
+    {help},    {__help},    {Shelp},    {_h}, {Sh}, {hq}, {__hq}, {_hq}, {Shq}
         Display this message (default)
 
-    {version}, {__version}, {sversion}, {_v}, {sv}
+    {version}, {__version}, {Sversion}, {_v}, {Sv}
         Display the compiler version
 
     {check}    <{FILE}>          [{VERBOSITY}]
@@ -496,61 +496,61 @@ impl Display for Help {
         Compile and run the generated executable
 
     [{OUTPUT}]:
-        {__output}, {soutput}, {_o}, {so} <{PATH}>
+        {__output}, {Soutput}, {_o}, {So} <{PATH}>
 
         <{PATH}>: Folder to populate with compilation artifacts (default: '.')
 
     [{VERBOSITY}]:
-        {__quiet},   {squiet},   {_q}, {sq}
+        {__quiet},   {Squiet},   {_q}, {Sq}
             Don't display any compilation information
 
-        {__Verbose}, {sVerbose}, {_V}, {sV}
+        {__Verbose}, {SVerbose}, {_V}, {SV}
             Display extra compilation information",
 
             Version = Version { color: self.color },
             executable_name = self.executable_name.display(),
 
             __color = ColorFlag::Long,
-            scolor = ColorFlag::LongSlash,
+            Scolor = ColorFlag::LongSlash,
             _c = ColorFlag::Short,
-            sc = ColorFlag::ShortSlash,
+            Sc = ColorFlag::ShortSlash,
             auto = Color::Auto,
             always = Color::Always,
             never = Color::Never,
 
             help = CommandFlag::Help,
             __help = CommandFlag::HelpLong,
-            shelp = CommandFlag::HelpLongSlash,
+            Shelp = CommandFlag::HelpLongSlash,
             _h = CommandFlag::HelpShort,
-            sh = CommandFlag::HelpShortSlash,
+            Sh = CommandFlag::HelpShortSlash,
             hq = CommandFlag::HelpQuestion,
             __hq = CommandFlag::HelpQuestionLong,
             _hq = CommandFlag::HelpQuestionShort,
-            shq = CommandFlag::HelpQuestionShortSlash,
+            Shq = CommandFlag::HelpQuestionShortSlash,
 
             version = CommandFlag::Version,
             __version = CommandFlag::VersionLong,
-            sversion = CommandFlag::VersionLongSlash,
+            Sversion = CommandFlag::VersionLongSlash,
             _v = CommandFlag::VersionShort,
-            sv = CommandFlag::VersionShortSlash,
+            Sv = CommandFlag::VersionShortSlash,
 
             check = CommandFlag::Check,
             compile = CommandFlag::Compile,
             run = CommandFlag::Run,
 
             __output = OutputFlag::Long,
-            soutput = OutputFlag::LongSlash,
+            Soutput = OutputFlag::LongSlash,
             _o = OutputFlag::Short,
-            so = OutputFlag::ShortSlash,
+            So = OutputFlag::ShortSlash,
 
             __quiet = VerbosityFlag::QuietLong,
-            squiet = VerbosityFlag::QuietLongSlash,
+            Squiet = VerbosityFlag::QuietLongSlash,
             _q = VerbosityFlag::QuietShort,
-            sq = VerbosityFlag::QuietShortSlash,
+            Sq = VerbosityFlag::QuietShortSlash,
             __Verbose = VerbosityFlag::VerboseLong,
-            sVerbose = VerbosityFlag::VerboseLongSlash,
+            SVerbose = VerbosityFlag::VerboseLongSlash,
             _V = VerbosityFlag::VerboseShort,
-            sV = VerbosityFlag::VerboseShortSlash,
+            SV = VerbosityFlag::VerboseShortSlash,
         );
     }
 }
@@ -594,10 +594,10 @@ impl TryFrom<Vec<String>> for Args {
                 ) => {
                     let help_flag = match help_command {
                         "help" => CommandFlag::Help,
-                        "-h" => CommandFlag::HelpShort,
-                        "/h" => CommandFlag::HelpShortSlash,
                         "--help" => CommandFlag::HelpLong,
                         "/help" => CommandFlag::HelpLongSlash,
+                        "-h" => CommandFlag::HelpShort,
+                        "/h" => CommandFlag::HelpShortSlash,
 
                         "?" => CommandFlag::HelpQuestion,
                         "--?" => CommandFlag::HelpQuestionLong,
@@ -674,7 +674,7 @@ impl TryFrom<Vec<String>> for Args {
                     let verbosity =
                         if let Some((_verbosity_flag_index, verbosity_flag)) = args_iter.peek() {
                             match verbosity_flag.as_str() {
-                                "--quiet" | "/output" | "-q" | "/q"  => {
+                                "--quiet" | "/quiet" | "-q" | "/q"  => {
                                     _ = args_iter.next();
                                     Verbosity::Quiet
                                 }
@@ -771,7 +771,7 @@ impl TryFrom<Vec<String>> for Args {
                     let verbosity =
                         if let Some((_verbosity_flag_index, verbosity_flag)) = args_iter.peek() {
                             match verbosity_flag.as_str() {
-                                "--quiet" | "/quit" | "-q" | "/q" => {
+                                "--quiet" | "/quiet" | "-q" | "/q" => {
                                     _ = args_iter.next();
                                     Verbosity::Quiet
                                 }
@@ -886,6 +886,34 @@ impl TryFrom<Vec<String>> for Args {
 
                     errors.push((ErrorKind::StrayVerbosityOption(flag), selected_flag_index));
                 }
+
+                "--color-auto"
+                | "--color=auto"
+                | "/color-auto"
+                | "/color=auto"
+                | "-c-auto"
+                | "-c=auto"
+                | "/c-auto"
+                | "/c=auto" => color = Color::Auto,
+
+                "--color-always"
+                | "--color=always"
+                | "/color-always"
+                | "/color=always"
+                | "-c-always"
+                | "-c=always"
+                | "/c-always"
+                | "/c=always" => color = Color::Always,
+
+                "--color-never"
+                | "--color=never"
+                | "/color-never"
+                | "/color=never"
+                | "-c-never"
+                | "-c=never"
+                | "/c-never"
+                | "/c=never" => color = Color::Never,
+
                 color_flag @ ("--color" | "/color" | "-c" | "/c") => {
                     let flag = match color_flag {
                         "--color" => ColorFlag::Long,
