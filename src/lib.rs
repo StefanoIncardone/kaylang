@@ -32,21 +32,6 @@ const fn max_text_len(texts: &[&str]) -> usize {
     return max_len;
 }
 
-// help and version messages
-const HELP_FG: Fg = Fg::White;
-const HELP_BG: Bg = Bg::Default;
-const HELP_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
-
-#[rustfmt::skip] pub(crate) static VERSION:   Colored<&str> = Colored { text: env!("CARGO_PKG_VERSION"), fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static USAGE:     Colored<&str> = Colored { text: "Usage",                   fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static OPTIONS:   Colored<&str> = Colored { text: "Options",                 fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static COMMAND:   Colored<&str> = Colored { text: "Command",                 fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static MODE:      Colored<&str> = Colored { text: "mode",                    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static FILE:      Colored<&str> = Colored { text: "file",                    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static PATH:      Colored<&str> = Colored { text: "path",                    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static OUTPUT:    Colored<&str> = Colored { text: "Output",                  fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-#[rustfmt::skip] pub(crate) static VERBOSITY: Colored<&str> = Colored { text: "Verbosity",               fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-
 // main compilation steps (displayed when verbosity level is normal or verbose)
 const STEP_FG: Fg = Fg::LightGreen;
 const STEP_BG: Bg = Bg::Default;
@@ -197,27 +182,74 @@ impl Logger {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[rustfmt::skip]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[repr(u8)]
+pub enum FlagPrefix {
+    Empty    = 0b0000_0000,
+    Dash     = 0b0100_0000,
+    DashDash = 0b1000_0000,
+    Slash    = 0b1100_0000,
+}
+
+impl FlagPrefix {
+    pub const MASK: u8 = 0b1100_0000;
+}
+
+#[rustfmt::skip]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[repr(u8)]
+pub enum FlagLen {
+    Long  = 0b0000_0000,
+    Short = 0b0010_0000,
+}
+
+impl FlagLen {
+    pub const MASK: u8 = 0b0010_0000;
+}
+
+#[rustfmt::skip]
+#[expect(clippy::identity_op)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
 pub enum ColorFlag {
-    Short,
-    Long,
+    Long       = 0b0000_0000 | FlagPrefix::DashDash as u8 | FlagLen::Long as u8,
+    LongSlash  = 0b0000_0000 | FlagPrefix::Slash as u8    | FlagLen::Long as u8,
+    Short      = 0b0000_0000 | FlagPrefix::Dash as u8     | FlagLen::Short as u8,
+    ShortSlash = 0b0000_0000 | FlagPrefix::Slash as u8    | FlagLen::Short as u8,
 }
 
 impl Display for ColorFlag {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
-            Self::Short => write!(f, "-c"),
-            Self::Long => write!(f, "--color"),
+            Self::Long       => write!(f, "--color"),
+            Self::LongSlash  => write!(f, "/color"),
+            Self::Short      => write!(f, "-c"),
+            Self::ShortSlash => write!(f, "/c"),
         };
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[rustfmt::skip]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u8)]
 pub enum Color {
     #[default]
     Auto,
     Always,
     Never,
+}
+
+impl Display for Color {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
+        return match self {
+            Self::Auto   => write!(f, "auto"),
+            Self::Always => write!(f, "always"),
+            Self::Never  => write!(f, "never"),
+        };
+    }
 }
 
 impl Color {
@@ -255,87 +287,122 @@ impl Color {
     }
 }
 
-impl Display for Color {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        return match self {
-            Self::Auto => write!(f, "auto"),
-            Self::Always => write!(f, "always"),
-            Self::Never => write!(f, "never"),
-        };
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[rustfmt::skip]
+#[expect(clippy::identity_op)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
 pub enum CommandFlag {
-    Help,
-    HelpShort,
-    HelpLong,
-    HelpQuestion,
-    HelpQuestionShort,
-    HelpQuestionLong,
-    Version,
-    VersionShort,
-    VersionLong,
-    Check,
-    Compile,
-    Run,
+    Help                   = 0b0000_0000 | FlagPrefix::Empty as u8    | FlagLen::Long as u8,
+    HelpLong               = 0b0000_0000 | FlagPrefix::DashDash as u8 | FlagLen::Long as u8,
+    HelpLongSlash          = 0b0000_0000 | FlagPrefix::Slash as u8    | FlagLen::Long as u8,
+    HelpShort              = 0b0000_0000 | FlagPrefix::Dash as u8     | FlagLen::Short as u8,
+    HelpShortSlash         = 0b0000_0000 | FlagPrefix::Slash as u8    | FlagLen::Short as u8,
+
+    HelpQuestion           = 0b0000_0001 | FlagPrefix::Empty as u8    | FlagLen::Long as u8,
+    HelpQuestionLong       = 0b0000_0001 | FlagPrefix::DashDash as u8 | FlagLen::Long as u8,
+    HelpQuestionShort      = 0b0000_0001 | FlagPrefix::Dash as u8     | FlagLen::Short as u8,
+    HelpQuestionShortSlash = 0b0000_0001 | FlagPrefix::Slash as u8    | FlagLen::Short as u8,
+
+    Version                = 0b0000_0010 | FlagPrefix::Empty as u8    | FlagLen::Long as u8,
+    VersionLong            = 0b0000_0010 | FlagPrefix::DashDash as u8 | FlagLen::Long as u8,
+    VersionLongSlash       = 0b0000_0010 | FlagPrefix::Slash as u8    | FlagLen::Long as u8,
+    VersionShort           = 0b0000_0010 | FlagPrefix::Dash as u8     | FlagLen::Short as u8,
+    VersionShortSlash      = 0b0000_0010 | FlagPrefix::Slash as u8    | FlagLen::Short as u8,
+
+    Check                  = 0b0000_0100 | FlagPrefix::Empty as u8    | FlagLen::Long as u8,
+    Compile                = 0b0000_0101 | FlagPrefix::Empty as u8    | FlagLen::Long as u8,
+    Run                    = 0b0000_0110 | FlagPrefix::Empty as u8    | FlagLen::Long as u8,
 }
 
 impl Display for CommandFlag {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
-            Self::Help => write!(f, "help"),
-            Self::HelpShort => write!(f, "-h"),
-            Self::HelpLong => write!(f, "--help"),
-            Self::HelpQuestion => write!(f, "?"),
-            Self::HelpQuestionShort => write!(f, "-?"),
-            Self::HelpQuestionLong => write!(f, "--?"),
-            Self::Version => write!(f, "version"),
-            Self::VersionShort => write!(f, "-v"),
-            Self::VersionLong => write!(f, "--version"),
-            Self::Check => write!(f, "check"),
-            Self::Compile => write!(f, "compile"),
-            Self::Run => write!(f, "run"),
+            Self::Help                   => write!(f, "help"),
+            Self::HelpLong               => write!(f, "--help"),
+            Self::HelpLongSlash          => write!(f, "/help"),
+            Self::HelpShort              => write!(f, "-h"),
+            Self::HelpShortSlash         => write!(f, "/h"),
+
+            Self::HelpQuestion           => write!(f, "?"),
+            Self::HelpQuestionLong       => write!(f, "--?"),
+            Self::HelpQuestionShort      => write!(f, "-?"),
+            Self::HelpQuestionShortSlash => write!(f, "/?"),
+
+            Self::Version                => write!(f, "version"),
+            Self::VersionLong            => write!(f, "--version"),
+            Self::VersionLongSlash       => write!(f, "/version"),
+            Self::VersionShort           => write!(f, "-v"),
+            Self::VersionShortSlash      => write!(f, "/v"),
+
+            Self::Check                  => write!(f, "check"),
+            Self::Compile                => write!(f, "compile"),
+            Self::Run                    => write!(f, "run"),
         };
     }
 }
 
 // IDEA(stefano): make mandatory
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[rustfmt::skip]
+#[expect(clippy::identity_op)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
 pub enum OutputFlag {
-    Short,
-    Long,
+    Long       = 0b0000_0000 | FlagPrefix::DashDash as u8 | FlagLen::Long as u8,
+    LongSlash  = 0b0000_0000 | FlagPrefix::Slash as u8    | FlagLen::Long as u8,
+    Short      = 0b0000_0000 | FlagPrefix::Dash as u8     | FlagLen::Short as u8,
+    ShortSlash = 0b0000_0000 | FlagPrefix::Slash as u8    | FlagLen::Short as u8,
 }
 
 impl Display for OutputFlag {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
-            Self::Short => write!(f, "-o"),
-            Self::Long => write!(f, "--output"),
+            Self::Long       => write!(f, "--output"),
+            Self::LongSlash  => write!(f, "/output"),
+            Self::Short      => write!(f, "-o"),
+            Self::ShortSlash => write!(f, "/o"),
         };
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[rustfmt::skip]
+#[expect(clippy::identity_op)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
 pub enum VerbosityFlag {
-    QuietShort,
-    QuietLong,
-    VerboseShort,
-    VerboseLong,
+    QuietLong         = 0b0000_0000 | FlagPrefix::DashDash as u8 | FlagLen::Long as u8,
+    QuietLongSlash    = 0b0000_0000 | FlagPrefix::Slash as u8    | FlagLen::Long as u8,
+    QuietShort        = 0b0000_0000 | FlagPrefix::Dash as u8     | FlagLen::Short as u8,
+    QuietShortSlash   = 0b0000_0000 | FlagPrefix::Slash as u8    | FlagLen::Short as u8,
+
+    VerboseLong       = 0b0000_0001 | FlagPrefix::DashDash as u8 | FlagLen::Long as u8,
+    VerboseLongSlash  = 0b0000_0001 | FlagPrefix::Slash as u8    | FlagLen::Long as u8,
+    VerboseShort      = 0b0000_0001 | FlagPrefix::Dash as u8     | FlagLen::Short as u8,
+    VerboseShortSlash = 0b0000_0001 | FlagPrefix::Slash as u8    | FlagLen::Short as u8,
 }
 
 impl Display for VerbosityFlag {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
         return match self {
-            Self::QuietShort => write!(f, "-q"),
-            Self::QuietLong => write!(f, "--quiet"),
-            Self::VerboseShort => write!(f, "-V"),
-            Self::VerboseLong => write!(f, "--verbose"),
+            Self::QuietLong         => write!(f, "--quiet"),
+            Self::QuietLongSlash    => write!(f, "/quiet"),
+            Self::QuietShort        => write!(f, "-q"),
+            Self::QuietShortSlash   => write!(f, "/q"),
+
+            // TODO(stefano): rename to "Verbose" for consistency
+            Self::VerboseLong       => write!(f, "--verbose"),
+            Self::VerboseLongSlash  => write!(f, "/verbose"),
+            Self::VerboseShort      => write!(f, "-V"),
+            Self::VerboseShortSlash => write!(f, "/V"),
         };
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[rustfmt::skip]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u8)]
 pub enum Verbosity {
     #[default]
     Normal,
@@ -346,6 +413,7 @@ pub enum Verbosity {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Version,
+    // TODO(stefano): move before Version
     Help { executable_name: PathBuf },
     Check { src_path: PathBuf, verbosity: Verbosity },
     Compile { src_path: PathBuf, out_path: Option<PathBuf>, verbosity: Verbosity },
@@ -367,6 +435,11 @@ pub struct Version {
 
 impl Display for Version {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        const VERSION_FG: Fg = Fg::White;
+        const VERSION_BG: Bg = Bg::Default;
+        const VERSION_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
+        #[rustfmt::skip] static VERSION:   Colored<&str> = Colored { text: env!("CARGO_PKG_VERSION"), fg: VERSION_FG, bg: VERSION_BG, flags: VERSION_FLAGS };
+
         self.color.set(&std::io::stdout());
         return write!(f, "Kaylang compiler, version {VERSION}");
     }
@@ -378,9 +451,20 @@ pub struct Help {
     pub executable_name: PathBuf,
 }
 
-// IDEA(stefano): implement some checks to make sure that help messages don't go over 80 columns
 impl Display for Help {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        const HELP_FG: Fg = Fg::White;
+        const HELP_BG: Bg = Bg::Default;
+        const HELP_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
+        #[rustfmt::skip] static USAGE:     Colored<&str> = Colored { text: "Usage",     fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+        #[rustfmt::skip] static OPTIONS:   Colored<&str> = Colored { text: "Options",   fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+        #[rustfmt::skip] static COMMAND:   Colored<&str> = Colored { text: "Command",   fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+        #[rustfmt::skip] static MODE:      Colored<&str> = Colored { text: "mode",      fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+        #[rustfmt::skip] static FILE:      Colored<&str> = Colored { text: "file",      fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+        #[rustfmt::skip] static PATH:      Colored<&str> = Colored { text: "path",      fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+        #[rustfmt::skip] static OUTPUT:    Colored<&str> = Colored { text: "Output",    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+        #[rustfmt::skip] static VERBOSITY: Colored<&str> = Colored { text: "Verbosity", fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+
         #[rustfmt::skip]
         return write!(
             f,
@@ -389,15 +473,18 @@ impl Display for Help {
 {USAGE}: {executable_name} [{OPTIONS}] [{COMMAND}]
 
 {OPTIONS}:
-    {_c}, {__color} <{MODE}>
+    {__color}, {scolor}, {_c}, {sc} <{MODE}>
         Wether to display colored output, with <{MODE}>:
         - {auto} (default): only print colored output if supported
         - {always}: always print colored output, even if not supported
         - {never}: never print colored output
 
 {COMMAND}s:
-    {help}, {_h}, {__help}, {hq}, {_hq}, {__hq}            Display this message (default)
-    {version}, {_v}, {__version}                  Display the compiler version
+    {help},    {__help},    {shelp},    {_h}, {sh}, {hq}, {__hq}, {_hq}, {shq}
+        Display this message (default)
+
+    {version}, {__version}, {sversion}, {_v}, {sv}
+        Display the compiler version
 
     {check}    <{FILE}>          [{VERBOSITY}]
         Check the source code for correctness
@@ -408,44 +495,61 @@ impl Display for Help {
     {run}      <{FILE}> [{OUTPUT}] [{VERBOSITY}]
         Compile and run the generated executable
 
-    {VERBOSITY}:
-        {_q}, {__quiet}     Don't display any compilation information
-        {_V}, {__verbose}   Display extra compilation information
-
     {OUTPUT}:
-        {_o}, {__output} <{PATH}>
-            Folder to populate with compilation artifacts (default: '.')",
+        {__output}, {soutput}, {_o}, {so} <{PATH}>
+            Folder to populate with compilation artifacts (default: '.')
+
+    {VERBOSITY}:
+        {__quiet},   {squiet},   {_q}, {sq}
+            Don't display any compilation information
+
+        {__verbose}, {sverbose}, {_V}, {sV}
+            Display extra compilation information",
+
             Version = Version { color: self.color },
             executable_name = self.executable_name.display(),
 
-            _c = ColorFlag::Short,
             __color = ColorFlag::Long,
+            scolor = ColorFlag::LongSlash,
+            _c = ColorFlag::Short,
+            sc = ColorFlag::ShortSlash,
             auto = Color::Auto,
             always = Color::Always,
             never = Color::Never,
 
             help = CommandFlag::Help,
-            _h = CommandFlag::HelpShort,
             __help = CommandFlag::HelpLong,
+            shelp = CommandFlag::HelpLongSlash,
+            _h = CommandFlag::HelpShort,
+            sh = CommandFlag::HelpShortSlash,
             hq = CommandFlag::HelpQuestion,
-            _hq = CommandFlag::HelpQuestionShort,
             __hq = CommandFlag::HelpQuestionLong,
+            _hq = CommandFlag::HelpQuestionShort,
+            shq = CommandFlag::HelpQuestionShortSlash,
 
             version = CommandFlag::Version,
-            _v = CommandFlag::VersionShort,
             __version = CommandFlag::VersionLong,
+            sversion = CommandFlag::VersionLongSlash,
+            _v = CommandFlag::VersionShort,
+            sv = CommandFlag::VersionShortSlash,
 
             check = CommandFlag::Check,
             compile = CommandFlag::Compile,
             run = CommandFlag::Run,
 
-            _o = OutputFlag::Short,
             __output = OutputFlag::Long,
+            soutput = OutputFlag::LongSlash,
+            _o = OutputFlag::Short,
+            so = OutputFlag::ShortSlash,
 
-            _q = VerbosityFlag::QuietShort,
             __quiet = VerbosityFlag::QuietLong,
-            _V = VerbosityFlag::VerboseShort,
+            squiet = VerbosityFlag::QuietLongSlash,
+            _q = VerbosityFlag::QuietShort,
+            sq = VerbosityFlag::QuietShortSlash,
             __verbose = VerbosityFlag::VerboseLong,
+            sverbose = VerbosityFlag::VerboseLongSlash,
+            _V = VerbosityFlag::VerboseShort,
+            sV = VerbosityFlag::VerboseShortSlash,
         );
     }
 }
@@ -475,14 +579,29 @@ impl TryFrom<Vec<String>> for Args {
         let mut errors = Vec::<(ErrorKind, usize)>::new();
         'args: while let Some((selected_flag_index, selected_flag)) = args_iter.next() {
             match selected_flag.as_str() {
-                help_command @ ("help" | "-h" | "--help" | "?" | "-?" | "--?") => {
+                help_command @ (
+                    "help"
+                    | "--help"
+                    | "/help"
+                    | "-h"
+                    | "/h"
+
+                    | "?"
+                    | "--?"
+                    | "-?"
+                    | "/?"
+                ) => {
                     let help_flag = match help_command {
                         "help" => CommandFlag::Help,
                         "-h" => CommandFlag::HelpShort,
+                        "/h" => CommandFlag::HelpShortSlash,
                         "--help" => CommandFlag::HelpLong,
+                        "/help" => CommandFlag::HelpLongSlash,
+
                         "?" => CommandFlag::HelpQuestion,
-                        "-?" => CommandFlag::HelpQuestionShort,
                         "--?" => CommandFlag::HelpQuestionLong,
+                        "-?" => CommandFlag::HelpQuestionShort,
+                        "/?" => CommandFlag::HelpQuestionShortSlash,
                         _ => unreachable!(),
                     };
 
@@ -504,11 +623,19 @@ impl TryFrom<Vec<String>> for Args {
                         Command::Help { executable_name: PathBuf::from(executable_name) },
                     ));
                 }
-                version_command @ ("version" | "-v" | "--version") => {
+                version_command @ (
+                    "version"
+                    | "--version"
+                    | "/version"
+                    | "-v"
+                    | "/v"
+                ) => {
                     let version_flag = match version_command {
                         "version" => CommandFlag::Version,
-                        "-v" => CommandFlag::VersionShort,
                         "--version" => CommandFlag::VersionLong,
+                        "/version" => CommandFlag::VersionLongSlash,
+                        "-v" => CommandFlag::VersionShort,
+                        "/v" => CommandFlag::VersionShortSlash,
                         _ => unreachable!(),
                     };
 
@@ -546,11 +673,11 @@ impl TryFrom<Vec<String>> for Args {
                     let verbosity =
                         if let Some((_verbosity_flag_index, verbosity_flag)) = args_iter.peek() {
                             match verbosity_flag.as_str() {
-                                "-q" | "--quiet" => {
+                                "--quiet" | "/output" | "-q" | "/q"  => {
                                     _ = args_iter.next();
                                     Verbosity::Quiet
                                 }
-                                "-V" | "--verbose" => {
+                                "--verbose" | "/verbose" | "-V" | "/V" => {
                                     _ = args_iter.next();
                                     Verbosity::Verbose
                                 }
@@ -610,13 +737,13 @@ impl TryFrom<Vec<String>> for Args {
                         if let Some((peeked_out_flag_index, out_flag)) = args_iter.peek() {
                             let out_flag_index = *peeked_out_flag_index;
                             let out_option = match out_flag.as_str() {
-                                "-o" => {
-                                    _ = args_iter.next();
-                                    OutputFlag::Short
-                                }
-                                "--output" => {
+                                "--output" | "/output" => {
                                     _ = args_iter.next();
                                     OutputFlag::Long
+                                }
+                                "-o" | "/o" => {
+                                    _ = args_iter.next();
+                                    OutputFlag::Short
                                 }
                                 _ => break 'out_path None,
                             };
@@ -643,11 +770,11 @@ impl TryFrom<Vec<String>> for Args {
                     let verbosity =
                         if let Some((_verbosity_flag_index, verbosity_flag)) = args_iter.peek() {
                             match verbosity_flag.as_str() {
-                                "-q" | "--quiet" => {
+                                "--quiet" | "/quit" | "-q" | "/q" => {
                                     _ = args_iter.next();
                                     Verbosity::Quiet
                                 }
-                                "-V" | "--verbose" => {
+                                "--verbose" | "/verbose" | "-V" | "/V" => {
                                     _ = args_iter.next();
                                     Verbosity::Verbose
                                 }
@@ -671,14 +798,19 @@ impl TryFrom<Vec<String>> for Args {
                                     verbosity,
                                 },
                                 CommandFlag::Help
-                                | CommandFlag::HelpShort
                                 | CommandFlag::HelpLong
+                                | CommandFlag::HelpLongSlash
+                                | CommandFlag::HelpShort
+                                | CommandFlag::HelpShortSlash
                                 | CommandFlag::HelpQuestion
-                                | CommandFlag::HelpQuestionShort
                                 | CommandFlag::HelpQuestionLong
+                                | CommandFlag::HelpQuestionShort
+                                | CommandFlag::HelpQuestionShortSlash
                                 | CommandFlag::Version
-                                | CommandFlag::VersionShort
                                 | CommandFlag::VersionLong
+                                | CommandFlag::VersionLongSlash
+                                | CommandFlag::VersionShort
+                                | CommandFlag::VersionShortSlash
                                 | CommandFlag::Check => unreachable!(),
                             };
 
@@ -704,10 +836,12 @@ impl TryFrom<Vec<String>> for Args {
                         },
                     }
                 }
-                out_flag @ ("-o" | "--output") => {
+                out_flag @ ("--output" | "/output" | "-o" | "/o") => {
                     let flag = match out_flag {
-                        "-o" => OutputFlag::Short,
                         "--output" => OutputFlag::Long,
+                        "/output" => OutputFlag::LongSlash,
+                        "-o" => OutputFlag::Short,
+                        "/o" => OutputFlag::ShortSlash,
                         _ => unreachable!(),
                     };
 
@@ -726,21 +860,37 @@ impl TryFrom<Vec<String>> for Args {
 
                     errors.push((ErrorKind::StrayOutputDirectoryOption(flag), selected_flag_index));
                 }
-                verbosity_flag @ ("-q" | "--quiet" | "-V" | "--verbose") => {
+                verbosity_flag @ (
+                    "--quiet"
+                    | "/quiet"
+                    | "-q"
+                    | "/q"
+
+                    | "--verbose"
+                    | "/verbose"
+                    | "-V"
+                    | "/V"
+                ) => {
                     let flag = match verbosity_flag {
-                        "-q" => VerbosityFlag::QuietShort,
                         "--quiet" => VerbosityFlag::QuietLong,
-                        "-V" => VerbosityFlag::VerboseShort,
+                        "/quiet" => VerbosityFlag::QuietLongSlash,
+                        "-q" => VerbosityFlag::QuietShort,
+                        "/q" => VerbosityFlag::QuietShortSlash,
                         "--verbose" => VerbosityFlag::VerboseLong,
+                        "/verbose" => VerbosityFlag::VerboseLongSlash,
+                        "-V" => VerbosityFlag::VerboseShort,
+                        "/V" => VerbosityFlag::VerboseShortSlash,
                         _ => unreachable!(),
                     };
 
                     errors.push((ErrorKind::StrayVerbosityOption(flag), selected_flag_index));
                 }
-                color_flag @ ("-c" | "--color") => {
+                color_flag @ ("--color" | "/color" | "-c" | "/c") => {
                     let flag = match color_flag {
-                        "-c" => ColorFlag::Short,
                         "--color" => ColorFlag::Long,
+                        "/color" => ColorFlag::LongSlash,
+                        "-c" => ColorFlag::Short,
+                        "/c" => ColorFlag::ShortSlash,
                         _ => unreachable!(),
                     };
 
@@ -919,14 +1069,19 @@ impl Display for Error {
                             _ = write!(error_message, "stray '{option}' option");
                             _ = write!(
                                 error_cause_message,
-                                "can only be used after a 'compile' or 'run' command"
+                                "can only be used after a '{compile}' or '{run}' command",
+                                compile = CommandFlag::Compile,
+                                run = CommandFlag::Run,
                             );
                         }
                         ErrorKind::StrayVerbosityOption(option) => {
                             _ = write!(error_message, "stray '{option}' option");
                             _ = write!(
                                 error_cause_message,
-                                "can only be used after a 'check', 'compile' or 'run' command"
+                                "can only be used after a '{check}', '{compile}' or '{run}' command",
+                                check = CommandFlag::Check,
+                                compile = CommandFlag::Compile,
+                                run = CommandFlag::Run,
                             );
                         }
                         ErrorKind::Unrecognized => {

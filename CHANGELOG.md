@@ -36,11 +36,13 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 #### Added
 
 - `Color` now has `set_color_auto`, `set_color_always` and `set_color_never` methods
+- `FlagPrefix` and `FlagLen`
 
 #### Changed
 
-- Added `?`, `-?`, `--?` for help commands
-- Allowed cli color mode options `-c` and `--color` to be specified multiple times
+- Added `?` for help commands
+- Added `/` cli flags and commands variations: `-h` or `/h`
+- Allowed cli color mode options to be specified multiple times
 - Improved printing of help message, now fitting inside 80 columns
 - `Args` now returns multiple cli errors instead of just the first one, thus displaying all errors
 <!--  -->

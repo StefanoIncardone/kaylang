@@ -3,7 +3,7 @@
 >[!WARNING]
 > no feature is final, modifications can happen at any moment
 
-## 0.6.4 - "Compiling" from .asm/.o
+## 0.6.3 - "Compiling" from .asm/.o
 
 Ability to compile both from .kay files as well as from .asm and .o files, as if we resumed the
 compilation process from those stages, basically turning the compile into an assembler/linker
@@ -241,94 +241,17 @@ kay tags -n TODO -n IDEA -n NOTE # would recognize TODO, IDEA and NOTE
 kay tags # Error: no specified tags to look for
 ```
 
-## 0.6.4 - More flexible command line arguments
+## 0.6.3 - More flexible command line arguments
 
-allow for:
-
-- arguments with spaces `--arg value`, dashes `--arg-value`, equals `--arg=value`
-- windows versions (`\f`, `\flag`)
-- easy enums bit representations for easy bitwise operations:
-
-    ```rust
-    /// - color -> mask 0b1100_0000
-    /// - separator -> mask 0b0000_0011
-    ///     - 0b00 -> dash `--color-always`
-    ///     - 0b01 -> equals `--color=always`
-    ///     - 0b10 -> spaces `--color always`
-    ///     - 0b11 -> defaul value `--color` (default for always)
-    /// - prefix -> mask 0b0000_1100
-    ///     - 0b00 -> single dash, short form `-c-always`
-    ///     - 0b01 -> double dash, long form `--color-always`
-    ///     - 0b10 -> forward slash, windows convention `/color-always`
-    ///     - 0b11 -> defaul value `--color` (default for always)
-    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-    #[rustfmt::skip]
-    pub enum ColorFlag {
-        #[default]
-        ShortDashAuto     = 0b0000_0000,
-        ShortDashAlways   = 0b0000_0001,
-        ShortDashNever    = 0b0000_0010,
-
-        ShortEqualsAuto   = 0b0001_0000,
-        ShortEqualsAlways = 0b0001_0001,
-        ShortEqualsNever  = 0b0001_0010,
-
-        ShortAuto         = 0b0010_0000,
-        ShortAlways       = 0b0010_0001,
-        ShortNever        = 0b0010_0010,
-        ShortEmpty        = 0b0011_0010,
-
-        LongDashAuto      = 0b0100_0000,
-        LongDashAlways    = 0b0100_0001,
-        LongDashNever     = 0b0100_0010,
-
-        LongEqualsAuto    = 0b0101_0000,
-        LongEqualsAlways  = 0b0101_0001,
-        LongEqualsNever   = 0b0101_0010,
-
-        LongAuto          = 0b0110_0000,
-        LongAlways        = 0b0110_0001,
-        LongNever         = 0b0110_0010,
-        LongEmpty         = 0b0111_0010,
-    }
-    ```
-
-have flags be composable:
+allow for arguments with spaces `--arg value`, dashes `--arg-value`, equals `--arg=value`:
 
 ```rust
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
-pub enum FlagConciseness {
-    Short = 0b0000_0000,
-    Long = 0b0000_0001,
-}
-
-impl FlagConciseness {
-    const MASK: u8 = 0b0000_0001;
-}
-
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
-pub enum FlagPrefix {
-    Dash = 0b0000_0000,
-    Slash = 0b0000_0001,
-}
-
-impl FlagPrefix {
-    const MASK: u8 = 0b0000_0001;
-}
-
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
-pub enum FlagSeparator {
-    Dash = 0b0000_0000,
-    Equals = 0b0000_0001,
-    Spaces = 0b0000_0010,
-}
-
-impl FlagSeparator {
-    const MASK: u8 = 0b0000_0011;
-}
+/// - color -> mask 0b1100_0000
+/// - separator -> mask 0b0000_0011
+///     - 0b00 -> dash `--color-always`
+///     - 0b01 -> equals `--color=always`
+///     - 0b10 -> spaces `--color always`
+///     - 0b11 -> defaul value `--color` (default for always)
 ```
 
 ## ?.?.? - Reversed help commands
