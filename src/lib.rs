@@ -101,7 +101,6 @@ const BAR_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 #[rustfmt::skip] pub(crate) static AT:    Colored<&str> = Colored { text: "at",     fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 #[rustfmt::skip] pub(crate) static BAR:   Colored<&str> = Colored { text: "|",      fg: BAR_FG, bg: BAR_BG, flags: BAR_FLAGS };
 
-// REMOVE(stefano): they should not be part of the library, as they should be provided by the users of the compiler
 #[rustfmt::skip] pub static COULD_NOT_WRITE_COMPILED_CODE: Colored<&str> = Colored { text: "Could not write compile code", fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 #[rustfmt::skip] pub static COULD_NOT_RUN_ASSEMBLER:       Colored<&str> = Colored { text: "Could not run assembler",      fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 #[rustfmt::skip] pub static COULD_NOT_RUN_LINKER:          Colored<&str> = Colored { text: "Could not run linker",         fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
@@ -109,7 +108,6 @@ const BAR_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 #[rustfmt::skip] pub static ASSEMBLING_ERROR:              Colored<&str> = Colored { text: "Assembling Error",             fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 #[rustfmt::skip] pub static LINKING_ERROR:                 Colored<&str> = Colored { text: "Linking Error",                fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 
-// IDEA(stefano): move `Logger` and `Verbosity` to own module
 #[derive(Debug)]
 pub struct Logger {
     pub start: Instant,
@@ -131,7 +129,6 @@ impl Default for Logger {
     }
 }
 
-// IDEA(stefano): split function that take options
 #[expect(clippy::print_stderr, reason = "it's a logger")]
 impl Logger {
     #[inline]
@@ -303,7 +300,6 @@ impl Display for CommandFlag {
     }
 }
 
-// IDEA(stefano): raise an error or warn on missing `-o`/`--output` that will pollute the current directory
 // IDEA(stefano): make mandatory
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputFlag {

@@ -1,4 +1,3 @@
-// TODO(stefano): move everything in this file to `error.rs`
 pub mod abstract_syntax_tree;
 pub mod ast;
 pub mod src_file;
@@ -12,7 +11,7 @@ use alloc::borrow::Cow;
 use back_to_front::offset32;
 use std::path::Path;
 
-pub trait IntoErrorInfo: Debug + Clone {
+pub trait IntoErrorInfo {
     fn info(&self) -> ErrorInfo;
 }
 
@@ -22,13 +21,12 @@ pub struct ErrorInfo {
     pub error_cause_message: Cow<'static, str>,
 }
 
-// IDEA(stefano): introduce a pointers_col field, allow pointers to start past the end of the line
+// IDEA(stefano): allow pointers to start past the end of the line
 #[derive(Debug, Clone)]
 pub struct Error<K: IntoErrorInfo> {
     pub kind: K,
     /// absolute source code byte position
     pub col: offset32,
-    // IDEA(stefano): rename to `display_len`
     pub pointers_count: offset32,
 }
 

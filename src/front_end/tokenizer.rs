@@ -1,7 +1,5 @@
 // TODO(stefano): more escape characters
 // TODO(stefano): implement own escaping
-// FIX(stefano): change `col` in lines ending in `\r` from `.line_start` to `.col` when pointers in
-    // errors are allowed to go past the end of the line, and make `pointers_count: 1`
 
 use super::{
     src_file::{Line, SrcCode, SrcFile},
@@ -476,7 +474,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
         if src_file.code.len() == 0 {
             return TokenizedCode {
                 result: Ok(tokens),
-                src: SrcCode { src_file, lines: Vec::new() }
+                src: SrcCode { src_file, lines: Vec::new() },
             };
         }
 
@@ -1203,8 +1201,6 @@ impl<'code> Tokenizer<'code, '_> {
 }
 
 // tokenization of numbers, strings and identifiers
-// IDEA(stefano): keep track of the tokenized display length instead of recalculating it everytime
-// with `self.token_text().display_len()`
 impl Tokenizer<'_, '_> {
     const MAX_IDENTIFIER_LEN: offset32 = 63;
 
@@ -1707,7 +1703,7 @@ impl Tokenizer<'_, '_> {
         let identifier = self.token_text();
         #[expect(clippy::cast_possible_truncation)]
         let identifier_len = identifier.len() as offset32 - 2; // - 2 for the quotes
-        if identifier_len as offset32 > Self::MAX_IDENTIFIER_LEN {
+        if identifier_len > Self::MAX_IDENTIFIER_LEN {
             self.errors.push(Error {
                 kind: ErrorKind::IdentifierStrTooLong { max: Self::MAX_IDENTIFIER_LEN },
                 col: self.token_start_col,
@@ -1768,7 +1764,7 @@ impl Tokenizer<'_, '_> {
             identifier => {
                 #[expect(clippy::cast_possible_truncation)]
                 let identifier_len = identifier.len() as offset32;
-                if identifier_len as offset32 > Self::MAX_IDENTIFIER_LEN {
+                if identifier_len > Self::MAX_IDENTIFIER_LEN {
                     self.errors.push(Error {
                         kind: ErrorKind::IdentifierTooLong { max: Self::MAX_IDENTIFIER_LEN },
                         col: self.token_start_col,
@@ -1881,6 +1877,8 @@ pub enum ErrorKind<'code> {
     Utf8Character { grapheme: &'code str },
     UnrecognizedCharacter(ascii),
     // IDEA(stefano): report this as a warning instead of an error
+    // FIX(stefano): change `col` in lines ending in `\r` from `.line_start` to `.col` when pointers
+    // in errors are allowed to go past the end of the line, and make `pointers_count: 1`
     // StrayCarriageReturn,
 }
 

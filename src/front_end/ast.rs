@@ -1,6 +1,6 @@
 // IDEA(stefano): fuse tokenization and parsing, making the tokenizer a generator of tokens
 // TODO(stefano): multidimensional arrays
-// REMOVE(stefano): remove unitialized variables initialized to default values
+// REMOVE(stefano, 0.7.0): remove unitialized variables initialized to default values
 
 use back_to_front::offset32;
 
