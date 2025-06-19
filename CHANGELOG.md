@@ -42,6 +42,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Added `?` for help commands
 - Added `/` cli flags and commands variations: `-h` or `/h`
+- Renamed `--verbose` and `/verbose` flags to `--Verbose` and `/Verbose`
 - Allowed cli color mode options to be specified multiple times
 - Improved printing of help message, now fitting inside 80 columns
 - `Args` now returns multiple cli errors instead of just the first one, thus displaying all errors

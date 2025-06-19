@@ -391,9 +391,8 @@ impl Display for VerbosityFlag {
             Self::QuietShort        => write!(f, "-q"),
             Self::QuietShortSlash   => write!(f, "/q"),
 
-            // TODO(stefano): rename to "Verbose" for consistency
-            Self::VerboseLong       => write!(f, "--verbose"),
-            Self::VerboseLongSlash  => write!(f, "/verbose"),
+            Self::VerboseLong       => write!(f, "--Verbose"),
+            Self::VerboseLongSlash  => write!(f, "/Verbose"),
             Self::VerboseShort      => write!(f, "-V"),
             Self::VerboseShortSlash => write!(f, "/V"),
         };
@@ -503,7 +502,7 @@ impl Display for Help {
         {__quiet},   {squiet},   {_q}, {sq}
             Don't display any compilation information
 
-        {__verbose}, {sverbose}, {_V}, {sV}
+        {__Verbose}, {sVerbose}, {_V}, {sV}
             Display extra compilation information",
 
             Version = Version { color: self.color },
@@ -546,8 +545,8 @@ impl Display for Help {
             squiet = VerbosityFlag::QuietLongSlash,
             _q = VerbosityFlag::QuietShort,
             sq = VerbosityFlag::QuietShortSlash,
-            __verbose = VerbosityFlag::VerboseLong,
-            sverbose = VerbosityFlag::VerboseLongSlash,
+            __Verbose = VerbosityFlag::VerboseLong,
+            sVerbose = VerbosityFlag::VerboseLongSlash,
             _V = VerbosityFlag::VerboseShort,
             sV = VerbosityFlag::VerboseShortSlash,
         );
@@ -677,7 +676,7 @@ impl TryFrom<Vec<String>> for Args {
                                     _ = args_iter.next();
                                     Verbosity::Quiet
                                 }
-                                "--verbose" | "/verbose" | "-V" | "/V" => {
+                                "--Verbose" | "/Verbose" | "-V" | "/V" => {
                                     _ = args_iter.next();
                                     Verbosity::Verbose
                                 }
@@ -774,7 +773,7 @@ impl TryFrom<Vec<String>> for Args {
                                     _ = args_iter.next();
                                     Verbosity::Quiet
                                 }
-                                "--verbose" | "/verbose" | "-V" | "/V" => {
+                                "--Verbose" | "/Verbose" | "-V" | "/V" => {
                                     _ = args_iter.next();
                                     Verbosity::Verbose
                                 }
@@ -866,8 +865,8 @@ impl TryFrom<Vec<String>> for Args {
                     | "-q"
                     | "/q"
 
-                    | "--verbose"
-                    | "/verbose"
+                    | "--Verbose"
+                    | "/Verbose"
                     | "-V"
                     | "/V"
                 ) => {
@@ -876,8 +875,8 @@ impl TryFrom<Vec<String>> for Args {
                         "/quiet" => VerbosityFlag::QuietLongSlash,
                         "-q" => VerbosityFlag::QuietShort,
                         "/q" => VerbosityFlag::QuietShortSlash,
-                        "--verbose" => VerbosityFlag::VerboseLong,
-                        "/verbose" => VerbosityFlag::VerboseLongSlash,
+                        "--Verbose" => VerbosityFlag::VerboseLong,
+                        "/Verbose" => VerbosityFlag::VerboseLongSlash,
                         "-V" => VerbosityFlag::VerboseShort,
                         "/V" => VerbosityFlag::VerboseShortSlash,
                         _ => unreachable!(),
