@@ -91,6 +91,7 @@ impl<'path> SrcFile<'path> {
 
 #[derive(Debug)]
 pub struct SrcCode<'code, 'path: 'code> {
+    // REMOVE(stefano): the user can just use the one it passed in `tokenize`
     pub(crate) src_file: &'code SrcFile<'path>,
     pub(crate) lines: Vec<Line>,
 }

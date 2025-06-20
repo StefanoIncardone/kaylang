@@ -208,15 +208,20 @@ impl FlagLen {
     pub const MASK: u8 = 0b0010_0000;
 }
 
+macro_rules! flag {
+    ($base:expr, $prefix:ident, $len:ident) => {
+        $base | FlagPrefix::$prefix as u8 | FlagLen::$len as u8
+    }
+}
+
 #[rustfmt::skip]
-#[expect(clippy::identity_op)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ColorFlag {
-    Long       = 0b0000_0000 | FlagPrefix::DashDash as u8 | FlagLen::Long as u8,
-    LongSlash  = 0b0000_0000 | FlagPrefix::Slash as u8    | FlagLen::Long as u8,
-    Short      = 0b0000_0000 | FlagPrefix::Dash as u8     | FlagLen::Short as u8,
-    ShortSlash = 0b0000_0000 | FlagPrefix::Slash as u8    | FlagLen::Short as u8,
+    Long       = flag!(0b0000_0000, DashDash, Long),
+    LongSlash  = flag!(0b0000_0000, Slash,    Long),
+    Short      = flag!(0b0000_0000, Dash,     Short),
+    ShortSlash = flag!(0b0000_0000, Slash,    Short),
 }
 
 impl Display for ColorFlag {
@@ -288,30 +293,29 @@ impl Color {
 }
 
 #[rustfmt::skip]
-#[expect(clippy::identity_op)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CommandFlag {
-    Help                   = 0b0000_0000 | FlagPrefix::Empty as u8    | FlagLen::Long as u8,
-    HelpLong               = 0b0000_0000 | FlagPrefix::DashDash as u8 | FlagLen::Long as u8,
-    HelpLongSlash          = 0b0000_0000 | FlagPrefix::Slash as u8    | FlagLen::Long as u8,
-    HelpShort              = 0b0000_0000 | FlagPrefix::Dash as u8     | FlagLen::Short as u8,
-    HelpShortSlash         = 0b0000_0000 | FlagPrefix::Slash as u8    | FlagLen::Short as u8,
+    Help                   = flag!(0b0000_0000, Empty,    Long),
+    HelpLong               = flag!(0b0000_0000, DashDash, Long),
+    HelpLongSlash          = flag!(0b0000_0000, Slash,    Long),
+    HelpShort              = flag!(0b0000_0000, Dash,     Short),
+    HelpShortSlash         = flag!(0b0000_0000, Slash,    Short),
 
-    HelpQuestion           = 0b0000_0001 | FlagPrefix::Empty as u8    | FlagLen::Long as u8,
-    HelpQuestionLong       = 0b0000_0001 | FlagPrefix::DashDash as u8 | FlagLen::Long as u8,
-    HelpQuestionShort      = 0b0000_0001 | FlagPrefix::Dash as u8     | FlagLen::Short as u8,
-    HelpQuestionShortSlash = 0b0000_0001 | FlagPrefix::Slash as u8    | FlagLen::Short as u8,
+    HelpQuestion           = flag!(0b0000_0001, Empty,    Long),
+    HelpQuestionLong       = flag!(0b0000_0001, DashDash, Long),
+    HelpQuestionShort      = flag!(0b0000_0001, Dash,     Short),
+    HelpQuestionShortSlash = flag!(0b0000_0001, Slash,    Short),
 
-    Version                = 0b0000_0010 | FlagPrefix::Empty as u8    | FlagLen::Long as u8,
-    VersionLong            = 0b0000_0010 | FlagPrefix::DashDash as u8 | FlagLen::Long as u8,
-    VersionLongSlash       = 0b0000_0010 | FlagPrefix::Slash as u8    | FlagLen::Long as u8,
-    VersionShort           = 0b0000_0010 | FlagPrefix::Dash as u8     | FlagLen::Short as u8,
-    VersionShortSlash      = 0b0000_0010 | FlagPrefix::Slash as u8    | FlagLen::Short as u8,
+    Version                = flag!(0b0000_0010, Empty,    Long),
+    VersionLong            = flag!(0b0000_0010, DashDash, Long),
+    VersionLongSlash       = flag!(0b0000_0010, Slash,    Long),
+    VersionShort           = flag!(0b0000_0010, Dash,     Short),
+    VersionShortSlash      = flag!(0b0000_0010, Slash,    Short),
 
-    Check                  = 0b0000_0100 | FlagPrefix::Empty as u8    | FlagLen::Long as u8,
-    Compile                = 0b0000_0101 | FlagPrefix::Empty as u8    | FlagLen::Long as u8,
-    Run                    = 0b0000_0110 | FlagPrefix::Empty as u8    | FlagLen::Long as u8,
+    Check                  = flag!(0b0000_0100, Empty,    Long),
+    Compile                = flag!(0b0000_0101, Empty,    Long),
+    Run                    = flag!(0b0000_0110, Empty,    Long),
 }
 
 impl Display for CommandFlag {
@@ -342,16 +346,62 @@ impl Display for CommandFlag {
     }
 }
 
+#[rustfmt::skip]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum LanguageFlag {
+    Kay      = flag!(0b0000_0000, DashDash, Long),
+    KaySlash = flag!(0b0000_0000, Slash,    Long),
+    Asm      = flag!(0b0000_0001, DashDash, Long),
+    AsmSlash = flag!(0b0000_0001, Slash,    Long),
+    Obj      = flag!(0b0000_0010, Dash,     Long),
+    ObjSlash = flag!(0b0000_0010, Slash,    Long),
+}
+
+impl Display for LanguageFlag {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
+        return match self {
+            Self::Kay       => write!(f, "--kay"),
+            Self::KaySlash  => write!(f, "/kay"),
+            Self::Asm       => write!(f, "--asm"),
+            Self::AsmSlash  => write!(f, "/asm"),
+            Self::Obj       => write!(f, "--obj"),
+            Self::ObjSlash  => write!(f, "/obj"),
+        };
+    }
+}
+
+#[rustfmt::skip]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Language {
+    #[default]
+    Kay = 0b0000_0000,
+    Asm = 0b0000_0001,
+    Obj = 0b0000_0010,
+}
+
+impl Display for Language {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[rustfmt::skip]
+        return match self {
+            Self::Kay       => write!(f, "kay"),
+            Self::Asm       => write!(f, "asm"),
+            Self::Obj       => write!(f, "obj"),
+        };
+    }
+}
+
 // IDEA(stefano): make mandatory
 #[rustfmt::skip]
-#[expect(clippy::identity_op)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum OutputFlag {
-    Long       = 0b0000_0000 | FlagPrefix::DashDash as u8 | FlagLen::Long as u8,
-    LongSlash  = 0b0000_0000 | FlagPrefix::Slash as u8    | FlagLen::Long as u8,
-    Short      = 0b0000_0000 | FlagPrefix::Dash as u8     | FlagLen::Short as u8,
-    ShortSlash = 0b0000_0000 | FlagPrefix::Slash as u8    | FlagLen::Short as u8,
+    Long       = flag!(0b0000_0000, DashDash, Long),
+    LongSlash  = flag!(0b0000_0000, Slash,    Long),
+    Short      = flag!(0b0000_0000, Dash,     Short),
+    ShortSlash = flag!(0b0000_0000, Slash,    Short),
 }
 
 impl Display for OutputFlag {
@@ -367,19 +417,18 @@ impl Display for OutputFlag {
 }
 
 #[rustfmt::skip]
-#[expect(clippy::identity_op)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum VerbosityFlag {
-    QuietLong         = 0b0000_0000 | FlagPrefix::DashDash as u8 | FlagLen::Long as u8,
-    QuietLongSlash    = 0b0000_0000 | FlagPrefix::Slash as u8    | FlagLen::Long as u8,
-    QuietShort        = 0b0000_0000 | FlagPrefix::Dash as u8     | FlagLen::Short as u8,
-    QuietShortSlash   = 0b0000_0000 | FlagPrefix::Slash as u8    | FlagLen::Short as u8,
+    QuietLong         = flag!(0b0000_0000, DashDash, Long),
+    QuietLongSlash    = flag!(0b0000_0000, Slash,    Long),
+    QuietShort        = flag!(0b0000_0000, Dash,     Short),
+    QuietShortSlash   = flag!(0b0000_0000, Slash,    Short),
 
-    VerboseLong       = 0b0000_0001 | FlagPrefix::DashDash as u8 | FlagLen::Long as u8,
-    VerboseLongSlash  = 0b0000_0001 | FlagPrefix::Slash as u8    | FlagLen::Long as u8,
-    VerboseShort      = 0b0000_0001 | FlagPrefix::Dash as u8     | FlagLen::Short as u8,
-    VerboseShortSlash = 0b0000_0001 | FlagPrefix::Slash as u8    | FlagLen::Short as u8,
+    VerboseLong       = flag!(0b0000_0001, DashDash, Long),
+    VerboseLongSlash  = flag!(0b0000_0001, Slash,    Long),
+    VerboseShort      = flag!(0b0000_0001, Dash,     Short),
+    VerboseShortSlash = flag!(0b0000_0001, Slash,    Short),
 }
 
 impl Display for VerbosityFlag {
@@ -404,19 +453,18 @@ impl Display for VerbosityFlag {
 #[repr(u8)]
 pub enum Verbosity {
     #[default]
-    Normal,
-    Quiet,
-    Verbose,
+    Normal  = 0b0000_0000,
+    Quiet   = 0b0000_0001,
+    Verbose = 0b0000_0010,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
-    Version,
-    // TODO(stefano): move before Version
     Help { executable_name: PathBuf },
+    Version,
     Check { src_path: PathBuf, verbosity: Verbosity },
-    Compile { src_path: PathBuf, out_path: Option<PathBuf>, verbosity: Verbosity },
-    Run { src_path: PathBuf, out_path: Option<PathBuf>, verbosity: Verbosity },
+    Compile { language: Language, src_path: PathBuf, out_path: Option<PathBuf>, verbosity: Verbosity },
+    Run { language: Language, src_path: PathBuf, out_path: Option<PathBuf>, verbosity: Verbosity },
 }
 
 impl Default for Command {
@@ -433,11 +481,13 @@ pub struct Version {
 }
 
 impl Display for Version {
+    #[expect(non_upper_case_globals)]
+    #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        const VERSION_FG: Fg = Fg::White;
-        const VERSION_BG: Bg = Bg::Default;
-        const VERSION_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
-        #[rustfmt::skip] static VERSION:   Colored<&str> = Colored { text: env!("CARGO_PKG_VERSION"), fg: VERSION_FG, bg: VERSION_BG, flags: VERSION_FLAGS };
+        const fg: Fg = Fg::White;
+        const bg: Bg = Bg::Default;
+        const flags: ansi_flag = AnsiFlag::Bold as ansi_flag;
+        static VERSION: Colored<&str> = Colored { text: env!("CARGO_PKG_VERSION"), fg, bg, flags };
 
         self.color.set(&std::io::stdout());
         return write!(f, "Kaylang compiler, version {VERSION}");
@@ -451,20 +501,22 @@ pub struct Help {
 }
 
 impl Display for Help {
+    #[expect(non_upper_case_globals)]
+    #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        const HELP_FG: Fg = Fg::White;
-        const HELP_BG: Bg = Bg::Default;
-        const HELP_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
-        #[rustfmt::skip] static USAGE:     Colored<&str> = Colored { text: "Usage",     fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-        #[rustfmt::skip] static OPTIONS:   Colored<&str> = Colored { text: "Options",   fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-        #[rustfmt::skip] static COMMAND:   Colored<&str> = Colored { text: "Command",   fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-        #[rustfmt::skip] static MODE:      Colored<&str> = Colored { text: "mode",      fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-        #[rustfmt::skip] static FILE:      Colored<&str> = Colored { text: "file",      fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-        #[rustfmt::skip] static PATH:      Colored<&str> = Colored { text: "path",      fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-        #[rustfmt::skip] static OUTPUT:    Colored<&str> = Colored { text: "Output",    fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
-        #[rustfmt::skip] static VERBOSITY: Colored<&str> = Colored { text: "Verbosity", fg: HELP_FG, bg: HELP_BG, flags: HELP_FLAGS };
+        const fg: Fg = Fg::White;
+        const bg: Bg = Bg::Default;
+        const flags: ansi_flag = AnsiFlag::Bold as ansi_flag;
+        static USAGE:     Colored<&str> = Colored { text: "Usage",     fg, bg, flags };
+        static OPTIONS:   Colored<&str> = Colored { text: "Options",   fg, bg, flags };
+        static COMMAND:   Colored<&str> = Colored { text: "Command",   fg, bg, flags };
+        static MODE:      Colored<&str> = Colored { text: "mode",      fg, bg, flags };
+        static LANGUAGE:  Colored<&str> = Colored { text: "Language",  fg, bg, flags };
+        static FILE:      Colored<&str> = Colored { text: "file",      fg, bg, flags };
+        static PATH:      Colored<&str> = Colored { text: "path",      fg, bg, flags };
+        static OUTPUT:    Colored<&str> = Colored { text: "Output",    fg, bg, flags };
+        static VERBOSITY: Colored<&str> = Colored { text: "Verbosity", fg, bg, flags };
 
-        #[rustfmt::skip]
         return write!(
             f,
             r"{Version}
@@ -474,7 +526,7 @@ impl Display for Help {
 [{OPTIONS}]:
     {__color}, {Scolor}, {_c}, {Sc} <{MODE}>
 
-    <{MODE}> (supports '* {MODE}', '*-{MODE}' and '*={MODE}' variations):
+    <{MODE}> (supports '* {MODE}', '*-{MODE}' and '*={MODE}' variations, eg: '-c=auto'):
         {auto} (default)    only print colored output if supported
         {always}            always print colored output, even if not supported
         {never}             never print colored output
@@ -486,14 +538,19 @@ impl Display for Help {
     {version}, {__version}, {Sversion}, {_v}, {Sv}
         Display the compiler version
 
-    {check}    <{FILE}>          [{VERBOSITY}]
+    {check}              <{FILE}>          [{VERBOSITY}]
         Check the source code for correctness
 
-    {compile}  <{FILE}> [{OUTPUT}] [{VERBOSITY}]
+    {compile} [{LANGUAGE}] <{FILE}> [{OUTPUT}] [{VERBOSITY}]
         Compile the source code down to an executable
 
-    {run}      <{FILE}> [{OUTPUT}] [{VERBOSITY}]
+    {run}     [{LANGUAGE}] <{FILE}> [{OUTPUT}] [{VERBOSITY}]
         Compile and run the generated executable
+
+    [{LANGUAGE}]:
+        {__kay}, {Skay} (default)   Compile <{FILE}> as a kay file
+        {__asm}, {Sasm}             Compile <{FILE}> as an assembly file
+        {__obj}, {Sobj}             Compile <{FILE}> as an object file
 
     [{OUTPUT}]:
         {__output}, {Soutput}, {_o}, {So} <{PATH}>
@@ -537,6 +594,13 @@ impl Display for Help {
             check = CommandFlag::Check,
             compile = CommandFlag::Compile,
             run = CommandFlag::Run,
+
+            __kay = LanguageFlag::Kay,
+            Skay = LanguageFlag::KaySlash,
+            __asm = LanguageFlag::Asm,
+            Sasm = LanguageFlag::AsmSlash,
+            __obj = LanguageFlag::Obj,
+            Sobj = LanguageFlag::ObjSlash,
 
             __output = OutputFlag::Long,
             Soutput = OutputFlag::LongSlash,
@@ -691,7 +755,7 @@ impl TryFrom<Vec<String>> for Args {
                     match &command_option {
                         None => {
                             let mode =
-                                Command::Check { src_path: src_path.to_path_buf(), verbosity };
+                                Command::Check { src_path: src_path.to_owned(), verbosity };
                             command_option = Some((command_flag, mode));
                         }
                         Some((previous_command_flag, previous_command)) => match previous_command {
@@ -719,6 +783,26 @@ impl TryFrom<Vec<String>> for Args {
                         "compile" => CommandFlag::Compile,
                         "run" => CommandFlag::Run,
                         _ => unreachable!(),
+                    };
+
+                    let language = if let Some((_, language_flag)) = args_iter.peek() {
+                        match language_flag.as_str() {
+                            "--kay" | "/kay" => {
+                                _ = args_iter.next();
+                                Language::Kay
+                            }
+                            "--asm" | "/asm" => {
+                                _ = args_iter.next();
+                                Language::Asm
+                            }
+                            "--obj" | "/obj" => {
+                                _ = args_iter.next();
+                                Language::Obj
+                            }
+                            _ => Language::Kay,
+                        }
+                    } else {
+                        Language::Kay
                     };
 
                     let Some((src_path_index, src_path_string)) = args_iter.next() else {
@@ -757,12 +841,12 @@ impl TryFrom<Vec<String>> for Args {
                                 break 'args;
                             };
 
-                            let out_path_buf = Path::new(out_path_string);
-                            if out_path_buf.is_file() {
+                            let out_path = Path::new(out_path_string);
+                            if out_path.is_file() {
                                 errors.push((ErrorKind::MustBeADirectoryPath, out_path_index));
                             }
 
-                            Some(out_path_buf.to_path_buf())
+                            Some(out_path.to_owned())
                         } else {
                             None
                         }
@@ -789,12 +873,14 @@ impl TryFrom<Vec<String>> for Args {
                         None => {
                             let mode = match command_flag {
                                 CommandFlag::Compile => Command::Compile {
-                                    src_path: src_path.to_path_buf(),
+                                    language,
+                                    src_path: src_path.to_owned(),
                                     out_path,
                                     verbosity,
                                 },
                                 CommandFlag::Run => Command::Run {
-                                    src_path: src_path.to_path_buf(),
+                                    language,
+                                    src_path: src_path.to_owned(),
                                     out_path,
                                     verbosity,
                                 },
@@ -854,8 +940,8 @@ impl TryFrom<Vec<String>> for Args {
                         break 'args;
                     };
 
-                    let out_path_buf = Path::new(out_path_string);
-                    if !out_path_buf.is_dir() {
+                    let out_path = Path::new(out_path_string);
+                    if !out_path.is_dir() {
                         errors.push((ErrorKind::MustBeADirectoryPath, out_path_index));
                     }
 
@@ -972,7 +1058,6 @@ pub enum ErrorKind {
 
     CommandAlreadySelected { current: CommandFlag, previous: CommandFlag },
 
-    // IDEA(stefano): add checks for existing file paths
     MustBeFollowedByASourceFilePath(CommandFlag),
     MustBeAFilePath,
     MustBeFollowedByDirectoryPath(OutputFlag),

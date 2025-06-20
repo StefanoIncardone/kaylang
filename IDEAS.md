@@ -3,21 +3,23 @@
 >[!WARNING]
 > no feature is final, modifications can happen at any moment
 
-## 0.6.3 - "Compiling" from .asm/.o
+## 0.6.3/?.?.? - invoking internal tools
 
-Ability to compile both from .kay files as well as from .asm and .o files, as if we resumed the
-compilation process from those stages, basically turning the compile into an assembler/linker
-frontend:
+Ability to invoke internal tools such as assembler and linkers, basically turning the compiler into
+an assembler/linker frontend/wrapper:
 
 ```shell
-kay run main.kay # regular compilation
-kay run --from-asm main.asm # compilation from .asm
-kay run --from-obj main.o # compilation from .o
-kay run --asm main.asm # compilation from .asm
-kay run --obj main.o # compilation from .o
-kay run main.asm --asm # compilation from .asm
-kay run main.o --obj # compilation from .o
-kay run main.kay --kay # for consistency, implicit
+# any argument after the --assembler flag gets sent to the assembler
+kay compile --assembler main.asm # invoke the assembler
+
+# any argument after the assemble command gets sent to the assembler
+kay assemble main.asm # invoke the assembler
+
+# any argument after the --linker flag gets sent to the linker
+kay compile --linker main.o # invoke the linker
+
+# any argument after the link command gets sent to the assembler
+kay link main.o # invoke the linker
 ```
 
 and all of the previous commands will produce the same final executable
@@ -292,15 +294,15 @@ could introduce flags to customize individual file output directories and file n
 | file kind   | output directory flag        | output file path flag      |
 | :---------- | :--------------------------- | :------------------------- |
 | general     | `-o`, `--output`             | `-n`, `--name`             |
-| assembly    | `-oa`, `--output-assembly`   | `-na`, `--name-assembly`   |
-| object file | `-oo`, `--output-object`     | `-no`, `--name-object`     |
-| executable  | `-oe`, `--output-exectuable` | `-ne`, `--name-exectuable` |
+| assembly    | `-oa`, `--output_assembly`   | `-na`, `--name_assembly`   |
+| object file | `-oo`, `--output_object`     | `-no`, `--name_object`     |
+| executable  | `-oe`, `--output_exectuable` | `-ne`, `--name_exectuable` |
 
 or combined:
 
-- assembly output name and directory: `-oa .. -n ..`, `--output-assembly .. --name ..`
-- object output name and directory: `-oo .. -n ..`, `--output-object .. --name ..`
-- executable output name and directory: `-oe .. -n ..`, `--output-exectuable .. --name ..`
+- assembly output name and directory: `-oa .. -n ..`, `--output_assembly .. --name ..`
+- object output name and directory: `-oo .. -n ..`, `--output_object .. --name ..`
+- executable output name and directory: `-oe .. -n ..`, `--output_exectuable .. --name ..`
 
 so using the `compile` command with these extra arguments would work like (probably too specific,
 the user could just wrap this in a shell script to obtain the same behavior):
@@ -318,8 +320,8 @@ the user could just wrap this in a shell script to obtain the same behavior):
 Ability to customize the artifacts creation behaviour:
 
 ```shell
-kay run main.kay --clean-artifacts # clean artifacts after succesfull build, implies keep by default
-kay run main.kay --keep-artifacts # keep artifacts after build, implies clean by default
+kay run main.kay --clean_artifacts # clean artifacts after succesfull build, implies keep by default
+kay run main.kay --keep_artifacts # keep artifacts after build, implies clean by default
 ```
 
 maybe make the compiler clean the artifacts by default
@@ -329,13 +331,13 @@ maybe repurpose the `-o` flag:
 ```shell
 kay run main.kay # clean artifacts after succesfull build
 kay run main.kay -o foo/ # artifacts in foo/
-kay run main.kay -o-asm foo/ # only main.asm in foo/
-kay run main.kay -o-obj foo/ # only main.obj in foo/
-kay run main.kay -o-obj foo/ -o-asm bar/ # main.obj in foo/, main.asm in bar/
-kay run main.kay -o-obj foo/ -o-asm bar/ # main.obj in foo/, main.asm in bar/
-kay run main.kay -o-obj foo/ -n-obj foo -o-asm bar/ -n-asm bar # foo.obj in foo/, bar.asm in bar/
-kay run main.kay -n-obj foo -o-asm bar/ -n-asm bar -n-exe baz # foo.obj in ./, bar.asm in bar/, baz.exe or baz in ./
-kay run main.kay -n-obj foo -o-asm bar/ -n-asm bar -n-exe baz # foo.obj in ./, bar.asm in bar/, baz.exe or baz in ./
+kay run main.kay -o_asm foo/ # only main.asm in foo/
+kay run main.kay -o_obj foo/ # only main.obj in foo/
+kay run main.kay -o_obj foo/ -o_asm bar/ # main.obj in foo/, main.asm in bar/
+kay run main.kay -o_obj foo/ -o_asm bar/ # main.obj in foo/, main.asm in bar/
+kay run main.kay -o_obj foo/ -n_obj foo -o_asm bar/ -n_asm bar # foo.obj in foo/, bar.asm in bar/
+kay run main.kay -n_obj foo -o_asm bar/ -n_asm bar -n_exe baz # foo.obj in ./, bar.asm in bar/, baz.exe or baz in ./
+kay run main.kay -n_obj foo -o_asm bar/ -n_asm bar -n_exe baz # foo.obj in ./, bar.asm in bar/, baz.exe or baz in ./
 ```
 
 ## 0.7.0 - Configuration files

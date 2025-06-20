@@ -10,8 +10,11 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Shortcircuted and/or operators
 - Unsigned integers
-- Better compiler flags and tooling
 - Reworked multiline comments to allow nesting
+
+## Known issues
+
+- Lack of path windows/unix normalization in log messages
 
 ## 0.6.3 -
 
@@ -37,6 +40,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Added `?` for help commands
 - Added `/` cli flags and commands variations: `-h` or `/h`
+- Added language selection flags `--kay`, `--asm`, `--obj` for language specific compilation
 - Added more flexible cli color mode options variations: `-c <mode>`, `-c-<mode>`, `-c=<mode>`
 <!--  -->
 - `Color` now has `set_color_auto`, `set_color_always` and `set_color_never` methods
@@ -74,6 +78,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 #### Fixed
 
 - Corrected behaviour of verbosity flags introduced in the previous version
+- Corrected compilation steps names consistency
 <!--  -->
 - Corrected error message related to UTF8 characters in raw string literals
 - Corrected error messages related to number literals, raw string literals and identifier strings

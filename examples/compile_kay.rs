@@ -9,14 +9,10 @@ use kaylang::{
         tokenizer::{TokenizedCode, Tokenizer},
     },
     Color, Logger, ASSEMBLING, ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER,
-    COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, DONE,
-    GENERATING_ASM, LINKING, LINKING_ERROR, LOADING_SOURCE, PARSING_AST, RUNNING, SUBSTEP_DONE,
-    TOKENIZATION,
+    COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, DONE, GENERATING_ASM, LINKING,
+    LINKING_ERROR, LOADING_SOURCE, PARSING_AST, SUBSTEP_DONE, TOKENIZATION,
 };
-use std::{
-    path::Path,
-    process::{Command, ExitCode},
-};
+use std::{path::Path, process::ExitCode};
 
 fn main() -> ExitCode {
     // controls how error messages should be colored
@@ -157,27 +153,6 @@ fn main() -> ExitCode {
 
     compilation_sub_step.sub_step(&SUBSTEP_DONE, None);
     execution_step.step(&DONE, None);
-
-    let exe_path = Path::new(".").join(&artifacts.exe_path);
-    Logger::info(&RUNNING, &exe_path);
-
-    let mut run_command = Command::new(exe_path);
-    match run_command.status() {
-        Ok(status) => {
-            if !status.success() {
-                return match status.code() {
-                    #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                    Some(code) => ExitCode::from(code as u8),
-                    None => ExitCode::FAILURE,
-                };
-            }
-        }
-        Err(err) => {
-            let error = error::Msg { kind: &COULD_NOT_RUN_EXECUTABLE, message: &err };
-            eprintln!("{error}");
-            return ExitCode::FAILURE;
-        }
-    }
 
     return ExitCode::SUCCESS;
 }
