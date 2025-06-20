@@ -24,7 +24,7 @@ kay link main.o # invoke the linker
 
 and all of the previous commands will produce the same final executable
 
-## 0.6.4 - Revised comments (support both for a testing period)
+## 0.6.4 - Revised comments
 
 - i like the `#` for compiler directives instead of say `@`
 - could treat `#` as a compile directive:
@@ -113,7 +113,7 @@ else if b { println "b" } # could we allow "trailing semicolons" before curly br
 might just be a compiler or linter flag
 
 ```shell
-kay run ... ... -mandatory-trailing-commas
+kay run ... ... --mandatory-trailing-commas
 ```
 
 or maybe make the trailing comma optional for single line statements and mandatory for multiline:
@@ -273,15 +273,15 @@ could introduce flags to customize individual file output directories and file n
 | file kind   | output directory flag        | output file path flag      |
 | :---------- | :--------------------------- | :------------------------- |
 | general     | `-o`, `--output`             | `-n`, `--name`             |
-| assembly    | `-oa`, `--output_assembly`   | `-na`, `--name_assembly`   |
-| object file | `-oo`, `--output_object`     | `-no`, `--name_object`     |
-| executable  | `-oe`, `--output_exectuable` | `-ne`, `--name_exectuable` |
+| assembly    | `-oa`, `--output-assembly`   | `-na`, `--name-assembly`   |
+| object file | `-oo`, `--output-object`     | `-no`, `--name-object`     |
+| executable  | `-oe`, `--output-exectuable` | `-ne`, `--name-exectuable` |
 
 or combined:
 
-- assembly output name and directory: `-oa .. -n ..`, `--output_assembly .. --name ..`
-- object output name and directory: `-oo .. -n ..`, `--output_object .. --name ..`
-- executable output name and directory: `-oe .. -n ..`, `--output_exectuable .. --name ..`
+- assembly output name and directory: `-oa .. -n ..`, `--output-assembly .. --name ..`
+- object output name and directory: `-oo .. -n ..`, `--output-object .. --name ..`
+- executable output name and directory: `-oe .. -n ..`, `--output-exectuable .. --name ..`
 
 so using the `compile` command with these extra arguments would work like (probably too specific,
 the user could just wrap this in a shell script to obtain the same behavior):
@@ -299,8 +299,8 @@ the user could just wrap this in a shell script to obtain the same behavior):
 Ability to customize the artifacts creation behaviour:
 
 ```shell
-kay run main.kay --clean_artifacts # clean artifacts after succesfull build, implies keep by default
-kay run main.kay --keep_artifacts # keep artifacts after build, implies clean by default
+kay run main.kay --clean-artifacts # clean artifacts after succesfull build, implies keep by default
+kay run main.kay --keep-artifacts # keep artifacts after build, implies clean by default
 ```
 
 maybe make the compiler clean the artifacts by default
@@ -310,13 +310,13 @@ maybe repurpose the `-o` flag:
 ```shell
 kay run main.kay # clean artifacts after succesfull build
 kay run main.kay -o foo/ # artifacts in foo/
-kay run main.kay -o_asm foo/ # only main.asm in foo/
-kay run main.kay -o_obj foo/ # only main.obj in foo/
-kay run main.kay -o_obj foo/ -o_asm bar/ # main.obj in foo/, main.asm in bar/
-kay run main.kay -o_obj foo/ -o_asm bar/ # main.obj in foo/, main.asm in bar/
-kay run main.kay -o_obj foo/ -n_obj foo -o_asm bar/ -n_asm bar # foo.obj in foo/, bar.asm in bar/
-kay run main.kay -n_obj foo -o_asm bar/ -n_asm bar -n_exe baz # foo.obj in ./, bar.asm in bar/, baz.exe or baz in ./
-kay run main.kay -n_obj foo -o_asm bar/ -n_asm bar -n_exe baz # foo.obj in ./, bar.asm in bar/, baz.exe or baz in ./
+kay run main.kay -o-asm foo/ # only main.asm in foo/
+kay run main.kay -o-obj foo/ # only main.obj in foo/
+kay run main.kay -o-obj foo/ -o-asm bar/ # main.obj in foo/, main.asm in bar/
+kay run main.kay -o-obj foo/ -o-asm bar/ # main.obj in foo/, main.asm in bar/
+kay run main.kay -o-obj foo/ -n-obj foo -o-asm bar/ -n-asm bar # foo.obj in foo/, bar.asm in bar/
+kay run main.kay -n-obj foo -o-asm bar/ -n-asm bar -n-exe baz # foo.obj in ./, bar.asm in bar/, baz.exe or baz in ./
+kay run main.kay -n-obj foo -o-asm bar/ -n-asm bar -n-exe baz # foo.obj in ./, bar.asm in bar/, baz.exe or baz in ./
 ```
 
 ## 0.7.0 - Configuration files
@@ -2289,7 +2289,31 @@ let f = foo("21", 12, 19.10);
 let f alias g = foo("21", 12, 19.10);
 ```
 
-### Named arguments
+### Named arguments (inspired by swift)
+
+```kay
+# dividend and divisor would be user facing named arguments
+fn result: i64, remainder: i64 = divmod(dividend: i64, divisor: i64) {
+    return result = dividend / divisor, remainder = dividend % divisor;
+}
+
+fn result: i64, remainder: i64 = divmod(dividend: i64, divisor: i64) {
+let result: i64, remainder: i64 = divmod(dividend: i64, divisor: i64) {
+let result, remainder = divmod(dividend: i64, divisor: i64) {
+let result, remainder = divmod(dividend = 12, divisor = 21) {
+let result, remainder = divmod(dividend = 12, divisor = 21);
+
+# a and b would be user facing named arguments
+fn result: i64, remainder: i64 = divmod(a = dividend: i64, b = divisor: i64) {
+    return result = dividend / divisor, remainder = dividend % divisor;
+}
+
+fn result: i64, remainder: i64 = divmod(a = dividend: i64, b = divisor: i64) {
+let result: i64, remainder: i64 = divmod(a = dividend: i64, b = divisor: i64) {
+let result, remainder = divmod(a = dividend: i64, b = divisor: i64) {
+let result, remainder = divmod(a = 12, b = 21) {
+let result, remainder = divmod(a = 12, b = 21);
+```
 
 ### Operator overloading
 
