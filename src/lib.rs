@@ -393,7 +393,6 @@ impl Display for Language {
     }
 }
 
-// IDEA(stefano): make mandatory
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -463,8 +462,8 @@ pub enum Command {
     Help { executable_name: PathBuf },
     Version,
     Check { src_path: PathBuf, verbosity: Verbosity },
-    Compile { language: Language, src_path: PathBuf, out_path: Option<PathBuf>, verbosity: Verbosity },
-    Run { language: Language, src_path: PathBuf, out_path: Option<PathBuf>, verbosity: Verbosity },
+    Compile { language: Language, src_path: PathBuf, out_path: PathBuf, verbosity: Verbosity },
+    Run { language: Language, src_path: PathBuf, out_path: PathBuf, verbosity: Verbosity },
 }
 
 impl Default for Command {
@@ -541,10 +540,10 @@ impl Display for Help {
     {check}              <{FILE}>          [{VERBOSITY}]
         Check the source code for correctness
 
-    {compile} [{LANGUAGE}] <{FILE}> [{OUTPUT}] [{VERBOSITY}]
+    {compile} [{LANGUAGE}] <{FILE}> <{OUTPUT}> [{VERBOSITY}]
         Compile the source code down to an executable
 
-    {run}     [{LANGUAGE}] <{FILE}> [{OUTPUT}] [{VERBOSITY}]
+    {run}     [{LANGUAGE}] <{FILE}> <{OUTPUT}> [{VERBOSITY}]
         Compile and run the generated executable
 
     [{LANGUAGE}]:
@@ -552,7 +551,7 @@ impl Display for Help {
         {__asm}, {Sasm}             Compile <{FILE}> as an assembly file
         {__obj}, {Sobj}             Compile <{FILE}> as an object file
 
-    [{OUTPUT}]:
+    <{OUTPUT}>:
         {__output}, {Soutput}, {_o}, {So} <{PATH}>
 
         <{PATH}>: Folder to populate with compilation artifacts (default: '.')
@@ -818,42 +817,49 @@ impl TryFrom<Vec<String>> for Args {
                         errors.push((ErrorKind::MustBeAFilePath, src_path_index));
                     }
 
-                    let out_path = 'out_path: {
-                        if let Some((peeked_out_flag_index, out_flag)) = args_iter.peek() {
-                            let out_flag_index = *peeked_out_flag_index;
-                            let out_option = match out_flag.as_str() {
-                                "--output" | "/output" => {
-                                    _ = args_iter.next();
-                                    OutputFlag::Long
-                                }
-                                "-o" | "/o" => {
-                                    _ = args_iter.next();
-                                    OutputFlag::Short
-                                }
-                                _ => break 'out_path None,
-                            };
-
-                            let Some((out_path_index, out_path_string)) = args_iter.next() else {
+                    let out_path = if let Some((peeked_out_flag_index, out_flag)) = args_iter.peek() {
+                        let out_flag_index = *peeked_out_flag_index;
+                        let out_option = match out_flag.as_str() {
+                            "--output" | "/output" => {
+                                _ = args_iter.next();
+                                OutputFlag::Long
+                            }
+                            "-o" | "/o" => {
+                                _ = args_iter.next();
+                                OutputFlag::Short
+                            }
+                            _ => {
                                 errors.push((
-                                    ErrorKind::MustBeFollowedByDirectoryPath(out_option),
-                                    out_flag_index,
+                                    ErrorKind::MustBeFollowedByOutputFlag(command_flag),
+                                    src_path_index,
                                 ));
                                 break 'args;
-                            };
-
-                            let out_path = Path::new(out_path_string);
-                            if out_path.is_file() {
-                                errors.push((ErrorKind::MustBeADirectoryPath, out_path_index));
                             }
+                        };
 
-                            Some(out_path.to_owned())
-                        } else {
-                            None
+                        let Some((out_path_index, out_path_string)) = args_iter.next() else {
+                            errors.push((
+                                ErrorKind::MustBeFollowedByDirectoryPath(out_option),
+                                out_flag_index,
+                            ));
+                            break 'args;
+                        };
+
+                        let out_path = Path::new(out_path_string);
+                        if out_path.is_file() {
+                            errors.push((ErrorKind::MustBeADirectoryPath, out_path_index));
                         }
+
+                        out_path
+                    } else {
+                        errors.push((
+                            ErrorKind::MustBeFollowedByOutputFlag(command_flag),
+                            src_path_index,
+                        ));
+                        break 'args;
                     };
 
-                    let verbosity =
-                        if let Some((_verbosity_flag_index, verbosity_flag)) = args_iter.peek() {
+                    let verbosity = if let Some((_, verbosity_flag)) = args_iter.peek() {
                             match verbosity_flag.as_str() {
                                 "--quiet" | "/quiet" | "-q" | "/q" => {
                                     _ = args_iter.next();
@@ -875,13 +881,13 @@ impl TryFrom<Vec<String>> for Args {
                                 CommandFlag::Compile => Command::Compile {
                                     language,
                                     src_path: src_path.to_owned(),
-                                    out_path,
+                                    out_path: out_path.to_owned(),
                                     verbosity,
                                 },
                                 CommandFlag::Run => Command::Run {
                                     language,
                                     src_path: src_path.to_owned(),
-                                    out_path,
+                                    out_path: out_path.to_owned(),
                                     verbosity,
                                 },
                                 CommandFlag::Help
@@ -1060,6 +1066,7 @@ pub enum ErrorKind {
 
     MustBeFollowedByASourceFilePath(CommandFlag),
     MustBeAFilePath,
+    MustBeFollowedByOutputFlag(CommandFlag),
     MustBeFollowedByDirectoryPath(OutputFlag),
     MustBeADirectoryPath,
 
@@ -1170,6 +1177,15 @@ impl Display for Error {
                         ErrorKind::MustBeAFilePath => {
                             _ = write!(error_message, "invalid '{erroneous_arg}' path");
                             _ = write!(error_cause_message, "must be a file path");
+                        }
+                        ErrorKind::MustBeFollowedByOutputFlag(command) => {
+                            _ = write!(error_message, "invalid '{command}' command");
+                            _ = write!(
+                                error_cause_message,
+                                "must be followed by '{_o}' or '{__output}'",
+                                _o = OutputFlag::Short,
+                                __output = OutputFlag::Long,
+                            );
                         }
                         ErrorKind::MustBeFollowedByDirectoryPath(option) => {
                             _ = write!(error_message, "invalid '{option}' option");

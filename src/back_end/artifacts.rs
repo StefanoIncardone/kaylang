@@ -5,6 +5,10 @@ use std::{
     process::Command,
 };
 
+const ASM_EXTENSION: &str = "asm";
+const OBJ_EXTENSION: &str = "o";
+const EXE_EXTENSION: &str = "";
+
 #[derive(Debug)]
 pub struct Artifacts {
     pub asm_path: PathBuf,
@@ -13,44 +17,45 @@ pub struct Artifacts {
 }
 
 impl Artifacts {
-    #[must_use]
-    pub fn new(src_path: &Path) -> Self {
+    #[expect(clippy::missing_errors_doc, reason = "the code is the documentation")]
+    pub fn new(src_path: &Path, out_path: &Path) -> Result<Self, Error> {
+        if src_path.is_dir() {
+            return Err(Error::MustBeAFilePath(src_path.to_owned()));
+        }
+
         let src_path_stem = match src_path.file_stem() {
             Some(path_name) => Path::new(path_name),
-            None => unreachable!("file stem should always be present"),
+            None => return Err(Error::SrcPathCannotBeEmpty),
         };
 
-        return Self {
-            asm_path: src_path_stem.with_extension("asm"),
-            obj_path: src_path_stem.with_extension("o"),
-            exe_path: src_path_stem.to_owned(),
-        };
-    }
-
-    #[expect(clippy::missing_errors_doc, reason = "the code is the documentation")]
-    pub fn new_with_out_path(src_path: &Path, out_path: &Path) -> Result<Self, Error> {
         if out_path.is_file() {
             return Err(Error::MustBeADirectoryPath(out_path.to_owned()));
         }
 
-        match std::fs::create_dir_all(out_path) {
-            Ok(()) => {}
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(err) => {
-                return Err(Error::CouldNotCreateOutputDirectory { path: out_path.to_owned(), err })
+        let artifacts = if out_path == Path::new("") || out_path == Path::new(".") {
+            Self {
+                asm_path: src_path_stem.with_extension(ASM_EXTENSION),
+                obj_path: src_path_stem.with_extension(OBJ_EXTENSION),
+                exe_path: src_path_stem.with_extension(EXE_EXTENSION),
             }
-        }
+        } else {
+            if let Err(err) = std::fs::create_dir_all(out_path) {
+                if err.kind() != std::io::ErrorKind::AlreadyExists {
+                    return Err(Error::CouldNotCreateOutputDirectory {
+                        path: out_path.to_owned(),
+                        err,
+                    });
+                }
+            }
 
-        let src_path_stem = match src_path.file_stem() {
-            Some(path_name) => Path::new(path_name),
-            None => unreachable!("file stem should always be present"),
+            Self {
+                asm_path: out_path.join(src_path_stem.with_extension(ASM_EXTENSION)),
+                obj_path: out_path.join(src_path_stem.with_extension(OBJ_EXTENSION)),
+                exe_path: out_path.join(src_path_stem.with_extension(EXE_EXTENSION)),
+            }
         };
 
-        return Ok(Self {
-            asm_path: out_path.join(src_path_stem).with_extension("asm"),
-            obj_path: out_path.join(src_path_stem).with_extension("o"),
-            exe_path: out_path.join(src_path_stem),
-        });
+        return Ok(artifacts);
     }
 
     #[must_use]
@@ -71,15 +76,21 @@ impl Artifacts {
     #[must_use]
     pub fn linker(&self) -> Command {
         let mut linker_command = Command::new("ld");
-        _ = linker_command.arg(self.obj_path.as_os_str()).arg("-o").arg(self.exe_path.as_os_str());
+        _ = linker_command
+            .arg(self.obj_path.as_os_str())
+            .arg("-o")
+            .arg(self.exe_path.as_os_str());
         return linker_command;
     }
 }
 
 #[derive(Debug)]
 pub enum Error {
-    CouldNotCreateOutputDirectory { path: PathBuf, err: std::io::Error },
+    MustBeAFilePath(PathBuf),
+    SrcPathCannotBeEmpty,
+
     MustBeADirectoryPath(PathBuf),
+    CouldNotCreateOutputDirectory { path: PathBuf, err: std::io::Error },
 }
 
 impl Display for Error {
@@ -87,13 +98,21 @@ impl Display for Error {
         let mut message = String::new();
         let mut cause = String::new();
         match self {
-            Self::CouldNotCreateOutputDirectory { path, err } => {
-                _ = write!(message, "could not create output directory '{}", path.display());
-                _ = write!(cause, "{err} ({})", err.kind());
+            Self::MustBeAFilePath(path) => {
+                _ = write!(message, "invalid '{}' path", path.display());
+                _ = write!(cause, "'{}' must be a file path", path.display());
+            }
+            Self::SrcPathCannotBeEmpty => {
+                _ = write!(message, "invalid src path");
+                _ = write!(cause, "cannot be empty");
             }
             Self::MustBeADirectoryPath(path) => {
                 _ = write!(message, "invalid '{}' path", path.display());
                 _ = write!(cause, "'{}' must be a directory path", path.display());
+            }
+            Self::CouldNotCreateOutputDirectory { path, err } => {
+                _ = write!(message, "could not create output directory '{}", path.display());
+                _ = write!(cause, "{err} ({})", err.kind());
             }
         }
 

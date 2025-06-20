@@ -24,7 +24,7 @@ kay link main.o # invoke the linker
 
 and all of the previous commands will produce the same final executable
 
-## 0.6.4 - Revised comments
+## 0.6.4 - Revised comments (support both for a testing period)
 
 - i like the `#` for compiler directives instead of say `@`
 - could treat `#` as a compile directive:
@@ -67,6 +67,91 @@ maybe experiment with deprecation periods:
 
 - support both old and new comment styles and emit a warning/error when encountering the old style:
     - would need to develop a proper log with warning/error/note/hint system
+
+## 0.6.4 - Use semicolons instead of commas (support both for a testing period)
+
+improving consistency by using semicolons instead of commas
+
+```kay
+let i = [1; 2; 3;];
+let i = foo(1; 2; 3);
+```
+
+I had this happen in rust:
+
+```rust
+let asm_path: PathBuf;
+let obj_path: PathBuf;
+let exe_path: PathBuf;
+...
+asm_path = src_path_stem.with_extension(ASM_EXTENSION);
+obj_path = src_path_stem.with_extension(OBJ_EXTENSION);
+exe_path = src_path_stem.with_extension(EXE_EXTENSION);
+
+// I went to refactor and put them in an Artifacts struct, so I copy pasted the code
+Self {
+    asm_path = src_path_stem.with_extension(ASM_EXTENSION);
+    obj_path = src_path_stem.with_extension(OBJ_EXTENSION);
+    exe_path = src_path_stem.with_extension(EXE_EXTENSION);
+}
+
+// oh no! structs require colons instead of equals
+Self {
+    asm_path: src_path_stem.with_extension(ASM_EXTENSION);
+    obj_path: src_path_stem.with_extension(OBJ_EXTENSION);
+    exe_path: src_path_stem.with_extension(EXE_EXTENSION);
+}
+
+// oh no! structs require commas instead of semicolons
+Self {
+    asm_path: src_path_stem.with_extension(ASM_EXTENSION),
+    obj_path: src_path_stem.with_extension(OBJ_EXTENSION),
+    exe_path: src_path_stem.with_extension(EXE_EXTENSION),
+}
+```
+
+if we had semicolons instead of commas and equals instead of colons it would eliminate the last
+steps:
+
+```kay
+let asm_path: PathBuf;
+let obj_path: PathBuf;
+let exe_path: PathBuf;
+...
+asm_path = src_path_stem.with_extension(ASM_EXTENSION);
+obj_path = src_path_stem.with_extension(OBJ_EXTENSION);
+exe_path = src_path_stem.with_extension(EXE_EXTENSION);
+
+# I go to refactor and put them in an Artifacts struct so I copy pasted the code, and done
+Self(
+    asm_path = src_path_stem.with_extension(ASM_EXTENSION);
+    obj_path = src_path_stem.with_extension(OBJ_EXTENSION);
+    exe_path = src_path_stem.with_extension(EXE_EXTENSION);
+)
+
+# the same could happen for arrays
+let artifacts = [
+    asm_path = src_path_stem.with_extension(ASM_EXTENSION);
+    obj_path = src_path_stem.with_extension(OBJ_EXTENSION);
+    exe_path = src_path_stem.with_extension(EXE_EXTENSION);
+];
+
+# would need to just remove the assignments
+let artifacts = [
+    src_path_stem.with_extension(ASM_EXTENSION);
+    src_path_stem.with_extension(OBJ_EXTENSION);
+    src_path_stem.with_extension(EXE_EXTENSION);
+];
+
+# the same could happen for functions
+fn Artifacts = artifacts_new(asm_path: PathBuf, obj_path: PathBuf, exe_path: PathBuf) { ... }
+
+let artifacts = artifacts_new(
+    asm_path = src_path_stem.with_extension(ASM_EXTENSION);
+    obj_path = src_path_stem.with_extension(OBJ_EXTENSION);
+    exe_path = src_path_stem.with_extension(EXE_EXTENSION);
+);
+```
 
 ## ?.?.? - Disallowing optional trailing comma, make it mandatory
 
@@ -243,32 +328,11 @@ kay tags -n TODO -n IDEA -n NOTE # would recognize TODO, IDEA and NOTE
 kay tags # Error: no specified tags to look for
 ```
 
-## ?.?.? - Reversed help commands
+## 0.6.3/0.6.4 - Sub-menu help commands
 
-printing the help command in regular order could lead to some useful information being offscreen,
-since the more relevant options are usually listed first:
-
-```shell
-kay help
-
-1: ... # important information is offscreen
-2: ... # important information is offscreen
-3: ...
-4: ...
-```
-
-printing the help command in reverse order to improve usability and readability, using the `-r` flag:
-
-```shell
-kay help -r
-
-4: ... # less important information is offscreen
-3: ... # less important information is offscreen
-2: ... # important information is visible first
-1: ... # important information is visible first
-```
-
-could just as well only print some information and provide some sort of "sub-menu" system:
+printing the help message could lead to some useful information being offscreen, since the more
+relevant options are usually listed first, could only print some information and provide some sort
+of "sub-menu" system:
 
 ```shell
 kay help
@@ -279,7 +343,7 @@ kay help
 Note: use `kay help *specific command*` for further explanation
 ```
 
-## 0.6.4 - More output file names flags
+## 0.6.3/0.6.4 - More output file names flags
 
 currently only the output path (`-o`, `--output`) can be specified and the names of the generated artifacts is
 generated from the source file name, i.e:

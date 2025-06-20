@@ -15,6 +15,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 ## Known issues
 
 - Lack of path windows/unix normalization in log messages
+- Cli arguments such as output and verbosity cannot be placed in arbitrary order
 
 ## 0.6.3 -
 
@@ -48,8 +49,9 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 #### Changed
 
-- Renamed `--verbose` and `/verbose` flags to `--Verbose` and `/Verbose`
+- Renamed `--verbose`/`/verbose` flags to `--Verbose`/`/Verbose`
 - Allowed cli color mode options to be specified multiple times
+- Made `-o`/`--output` mandatory:
 - Improved printing of help message, now fitting inside 80 columns
 - `Args` now returns multiple cli errors instead of just the first one, thus displaying all errors
 <!--  -->
@@ -64,6 +66,8 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Expanded error entities such as `tokenizer::ErrorKind`
 - `tokenizer::ErrorKind` variants related to unrecognized and control characters now contain `ascii`
     instead of `utf32`
+- `back_end::Artifacts::new` now takes a mandatory output path argument and behaves like the now
+    removed `back_end::Artifacts::new_with_out_path`
 
 #### Removed
 
@@ -74,11 +78,15 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
     `back_to_front::offset32` instead
 - Removed `tokenizer::Mutability`, `tokenizer::Bracket`, `tokenizer::OpenBracket` and
     `tokenizer::CloseBracket`
+- Removed `back_end::Artifacts::new_with_out_path` in favour of `back_end::Artifacts::new` with
+    mandatory output path
 
 #### Fixed
 
 - Corrected behaviour of verbosity flags introduced in the previous version
 - Corrected compilation steps names consistency
+- `back_end::Artifacts::new` now returns an error when source path is a directory
+- `back_end::Artifacts::new` now returns an error instead of panicking with empty source paths
 <!--  -->
 - Corrected error message related to UTF8 characters in raw string literals
 - Corrected error messages related to number literals, raw string literals and identifier strings

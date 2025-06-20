@@ -20,8 +20,8 @@ fn main() -> ExitCode {
 
     let execution_step = Logger::new();
 
-    let artifacts = match Artifacts::new_with_out_path(src_path, out_path) {
-        Ok(artifacts) => artifacts,
+    let artifacts = match Artifacts::new(src_path, out_path) {
+        Ok(new_artifacts) => new_artifacts,
         Err(err) => {
             eprintln!("{err}");
             return ExitCode::FAILURE;
