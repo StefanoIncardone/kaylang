@@ -177,6 +177,9 @@ Arrays can also be indexed with zero-based indexing, to gain access to individua
 ["01234", "56789"][0][3]; # will return the string "01234", and access the character '3'
 ```
 
+>[!NOTE]
+> As a usability experiment `;` are also allowed as items separator like `[1; 2; 3;]`
+
 ## Variables
 
 Variables are **typed** containers, that hold values for later use, and follow these definition
@@ -214,7 +217,7 @@ let 2plus2 = 2 + 2; # Error: not a valid name, cannot start with a number
 let longlonglonglonglonglonglonglonglonglonglonglonglonglonglonglong; # Error: over the limit of 63 characters
 
 # 2.1 identifier strings
-let `2 + 2` = 2 + 2; # identifier strings can contain any amount of ASCII characters, functionally equivalent to strings without escapes
+let `2 + 2` = 2 + 2; # identifier strings can contain any ASCII characters, functionally equivalent to strings without escapes
 let `longlonglonglonglonglonglonglonglonglonglonglonglonglonglonglong`; # Error: over the limit of 63 characters
 
 # 3. optional type annotations

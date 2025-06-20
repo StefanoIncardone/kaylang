@@ -1936,9 +1936,9 @@ impl Parser<'_, '_, '_, '_> {
                 let first_item = self.expression()?;
 
                 bracket_or_comma_token =
-                    self.current_token(Expected::CommaOrClosingSquareBracket)?;
+                    self.current_token(Expected::CommaOrSemicolonOrClosingSquareBracket)?;
 
-                if let TokenKind::Comma = bracket_or_comma_token.kind {
+                if let TokenKind::Comma | TokenKind::SemiColon = bracket_or_comma_token.kind {
                     bracket_or_comma_token =
                         self.next_token_bounded(Expected::ArrayElementOrClosingSquareBracket)?;
                 }
@@ -1988,9 +1988,9 @@ impl Parser<'_, '_, '_, '_> {
                     items.push(item);
 
                     bracket_or_comma_token =
-                        self.current_token(Expected::CommaOrClosingSquareBracket)?;
+                        self.current_token(Expected::CommaOrSemicolonOrClosingSquareBracket)?;
 
-                    if let TokenKind::Comma = bracket_or_comma_token.kind {
+                    if let TokenKind::Comma | TokenKind::SemiColon = bracket_or_comma_token.kind {
                         bracket_or_comma_token =
                             self.next_token_bounded(Expected::ArrayElementOrClosingSquareBracket)?;
                     }
@@ -3612,7 +3612,7 @@ pub enum Expected {
     ClosingSquareBracket,
     ClosingRoundBracket,
     ArrayElementOrClosingSquareBracket,
-    CommaOrClosingSquareBracket,
+    CommaOrSemicolonOrClosingSquareBracket,
     TypeAnnotationOrVariableDefinition,
     TypeAnnotation,
     ArrayLength,
@@ -3636,7 +3636,7 @@ impl Display for Expected {
             Self::ArrayElementOrClosingSquareBracket => {
                 write!(f, "array item or closing square bracket")
             }
-            Self::CommaOrClosingSquareBracket => write!(f, "comma or closing square bracket"),
+            Self::CommaOrSemicolonOrClosingSquareBracket => write!(f, "comma, semicolon or closing square bracket"),
             Self::TypeAnnotationOrVariableDefinition => {
                 write!(f, "type annotation or variable definition")
             }

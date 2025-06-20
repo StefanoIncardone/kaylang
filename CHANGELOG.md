@@ -28,6 +28,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 #### Added
 
 - Added identifier strings enclosed by `` ` ``, where `` `kay let's go!` `` is a valid identifier
+- Added support for both `,` and `;` as array items separator
 
 #### Changed
 
