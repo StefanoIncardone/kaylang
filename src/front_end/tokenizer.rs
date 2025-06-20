@@ -7,7 +7,7 @@ use super::{
 };
 use crate::error::DisplayLen as _;
 use back_to_front::offset32;
-use core::{fmt::Display, marker::PhantomData};
+use core::fmt::Display;
 use unicode_segmentation::UnicodeSegmentation as _;
 
 // TODO(stefano): move to primitives.rs
@@ -346,7 +346,7 @@ pub(crate) enum TokenKind {
 }
 
 impl TokenKind {
-    pub(super) fn display_len(self, tokens: &Tokens<'_, '_>) -> offset32 {
+    pub(super) fn display_len(self, tokens: &Tokens<'_>) -> offset32 {
         #[expect(clippy::cast_possible_truncation)]
         return match self {
             Self::Comment(comment) => {
@@ -440,37 +440,35 @@ pub struct Token {
 }
 
 #[derive(Debug, Clone)]
-pub struct Tokens<'code, 'path: 'code> {
+pub struct Tokens<'code> {
     pub(crate) tokens: Vec<Token>,
 
     // IDEA(stefano): store a Range<offset32> instead
     pub(crate) text: Vec<&'code str>,
-
-    _src: PhantomData<&'code SrcFile<'path>>,
 }
 
 #[must_use = "this is similar to a `Result`, which should be handled"]
 pub struct TokenizedCode<'code, 'path: 'code> {
-    pub result: Result<Tokens<'code, 'path>, Vec<Error<ErrorKind<'code>>>>,
+    pub result: Result<Tokens<'code>, Vec<Error<ErrorKind<'code>>>>,
     pub src: SrcCode<'code, 'path>,
 }
 
 #[derive(Debug)]
-pub struct Tokenizer<'code, 'path: 'code> {
+pub struct Tokenizer<'code> {
     code: &'code str,
     lines: Vec<Line>,
     line_start: offset32,
 
     col: offset32,
     token_start_col: offset32,
-    tokens: Tokens<'code, 'path>,
+    tokens: Tokens<'code>,
 
     errors: Vec<Error<ErrorKind<'code>>>,
 }
 
-impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
+impl<'code, 'path: 'code> Tokenizer<'code> {
     pub fn tokenize(src_file: &'code SrcFile<'path>) -> TokenizedCode<'code, 'path> {
-        let tokens = Tokens { tokens: Vec::new(), text: Vec::new(), _src: PhantomData };
+        let tokens = Tokens { tokens: Vec::new(), text: Vec::new() };
         if src_file.code.len() == 0 {
             return TokenizedCode {
                 result: Ok(tokens),
@@ -1086,7 +1084,7 @@ impl LineEnd {
 
 #[forbid(clippy::question_mark_used, reason = "consistency")]
 // iteration of characters
-impl<'code> Tokenizer<'code, '_> {
+impl<'code> Tokenizer<'code> {
     #[inline]
     fn new_line(&mut self, line_end: LineEnd) {
         let line = Line { start: self.line_start, end: self.col };
@@ -1201,7 +1199,7 @@ impl<'code> Tokenizer<'code, '_> {
 }
 
 // tokenization of numbers, strings and identifiers
-impl Tokenizer<'_, '_> {
+impl Tokenizer<'_> {
     const MAX_IDENTIFIER_LEN: offset32 = 63;
 
     fn integer_decimal(&mut self) -> Result<TokenKind, ()> {

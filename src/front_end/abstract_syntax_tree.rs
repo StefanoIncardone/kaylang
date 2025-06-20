@@ -461,7 +461,7 @@ enum ParsedNode {
 }
 
 #[derive(Debug)]
-pub struct SyntaxTree<'tokens, 'code: 'tokens, 'path: 'code> {
+pub struct SyntaxTree<'tokens, 'code: 'tokens> {
     pub(crate) nodes: Vec<Node>,
 
     pub(crate) expressions: Vec<Expression>,
@@ -470,10 +470,10 @@ pub struct SyntaxTree<'tokens, 'code: 'tokens, 'path: 'code> {
     pub(crate) variable_definitions: Vec<VariableDefinition>,
     pub(crate) array_dimensions: Vec<ArrayDimension>,
 
-    _tokens: PhantomData<&'tokens Tokens<'code, 'path>>,
+    _tokens: PhantomData<&'tokens Tokens<'code>>,
 }
 
-impl SyntaxTree<'_, '_, '_> {
+impl SyntaxTree<'_, '_> {
     #[inline]
     fn new_expression(&mut self, expression: Expression) -> ExpressionIndex {
         self.expressions.push(expression);
@@ -483,23 +483,23 @@ impl SyntaxTree<'_, '_, '_> {
 }
 
 #[derive(Debug)]
-pub struct SyntaxTreeDisplay<'syntax_tree, 'tokens: 'syntax_tree, 'code: 'tokens, 'path: 'code> {
-    pub(crate) syntax_tree: &'syntax_tree SyntaxTree<'tokens, 'code, 'path>,
-    pub(crate) tokens: &'tokens Tokens<'code, 'path>,
+pub struct SyntaxTreeDisplay<'syntax_tree, 'tokens: 'syntax_tree, 'code: 'tokens> {
+    pub(crate) syntax_tree: &'syntax_tree SyntaxTree<'tokens, 'code>,
+    pub(crate) tokens: &'tokens Tokens<'code>,
 }
 
-impl<'tokens, 'code: 'tokens> SyntaxTree<'tokens, 'code, '_> {
+impl<'tokens, 'code: 'tokens> SyntaxTree<'tokens, 'code> {
     #[must_use]
     #[inline(always)]
     pub const fn display(
         &self,
-        tokens: &'tokens Tokens<'code, '_>,
-    ) -> SyntaxTreeDisplay<'_, 'tokens, 'code, '_> {
+        tokens: &'tokens Tokens<'code>,
+    ) -> SyntaxTreeDisplay<'_, 'tokens, 'code> {
         return SyntaxTreeDisplay { syntax_tree: self, tokens };
     }
 }
 
-impl SyntaxTreeDisplay<'_, '_, '_, '_> {
+impl SyntaxTreeDisplay<'_, '_, '_> {
     const INDENT_INCREMENT: usize = 2;
 
     #[inline(always)]
@@ -853,7 +853,7 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
     }
 }
 
-impl Display for SyntaxTreeDisplay<'_, '_, '_, '_> {
+impl Display for SyntaxTreeDisplay<'_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut node_index = 0;
         #[expect(clippy::cast_possible_truncation)]
@@ -871,10 +871,10 @@ pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     errors: Vec<Error<ErrorKind>>,
 
     token_index: TokenIndex,
-    tokens: &'tokens Tokens<'code, 'path>,
+    tokens: &'tokens Tokens<'code>,
 
     loop_depth: u32,
-    syntax_tree: SyntaxTree<'tokens, 'code, 'path>,
+    syntax_tree: SyntaxTree<'tokens, 'code>,
 }
 
 /* NOTE(stefano):
@@ -886,8 +886,8 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
     #[expect(clippy::missing_errors_doc, reason = "syntax errors cannot be documented in docs")]
     pub fn parse(
         src: &'src SrcCode<'code, 'path>,
-        tokens: &'tokens Tokens<'code, 'path>,
-    ) -> Result<SyntaxTree<'tokens, 'code, 'path>, Vec<Error<ErrorKind>>> {
+        tokens: &'tokens Tokens<'code>,
+    ) -> Result<SyntaxTree<'tokens, 'code>, Vec<Error<ErrorKind>>> {
         let mut parser = Self {
             src,
             errors: Vec::new(),

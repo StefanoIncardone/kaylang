@@ -747,7 +747,7 @@ pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     errors: Vec<Error<ErrorKind>>,
 
     token: TokenIndex,
-    tokens: &'tokens Tokens<'code, 'path>,
+    tokens: &'tokens Tokens<'code>,
 
     loop_depth: u32,
     string_label: u32,
@@ -761,7 +761,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
     #[expect(clippy::missing_errors_doc, reason = "syntax errors cannot be documented in docs")]
     pub fn parse(
         src: &'src SrcCode<'code, 'path>,
-        tokens: &'tokens Tokens<'code, 'path>,
+        tokens: &'tokens Tokens<'code>,
     ) -> Result<Ast<'code>, Vec<Error<ErrorKind>>> {
         let ast = Ast {
             nodes: vec![vec![]],
