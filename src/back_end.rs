@@ -67,7 +67,7 @@ struct TemporaryValue<'ast> {
     offset: usize,
 }
 #[derive(Debug)]
-pub struct Compiler<'ast, 'src: 'ast, 'path: 'src, 'code: 'src> {
+pub struct Compiler<'ast, 'src: 'ast, 'code: 'src, 'path: 'code> {
     src: &'src SrcCode<'code, 'path>,
     ast: &'ast Ast<'code>,
 
@@ -85,7 +85,7 @@ pub struct Compiler<'ast, 'src: 'ast, 'path: 'src, 'code: 'src> {
 }
 
 // Generation of compilation artifacts (.asm, .o, executable)
-impl<'ast, 'src: 'ast, 'path: 'src, 'code: 'src> Compiler<'ast, 'src, 'path, 'code> {
+impl<'ast, 'src: 'ast, 'code: 'src, 'path: 'code> Compiler<'ast, 'src, 'code, 'path> {
     #[must_use]
     pub fn compile(src: &'src SrcCode<'code, 'path>, ast: &'ast Ast<'code>) -> String {
         use asm::{
@@ -608,7 +608,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
 }
 
 // expressions
-impl<'ast, 'code: 'ast> Compiler<'ast, '_, '_, 'code> {
+impl<'ast, 'code: 'ast> Compiler<'ast, '_, 'code, '_> {
     fn resolve(&self, name: &'code [ascii]) -> &Variable<'ast, 'code> {
         for var in &self.variables {
             if var.inner.name == name {
