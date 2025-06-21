@@ -1,6 +1,7 @@
 use core::fmt::Display;
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
+#[repr(u8)]
 pub enum Fg {
     #[default]
     Default = 0,
@@ -22,7 +23,8 @@ pub enum Fg {
     White = 97,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
+#[repr(u8)]
 pub enum Bg {
     #[default]
     Default = 0,
@@ -47,7 +49,7 @@ pub enum Bg {
 #[expect(non_camel_case_types, reason = "alias to a primitive type")]
 pub type ansi_flag = u8;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum AnsiFlag {
     #[default]
@@ -62,7 +64,7 @@ pub enum AnsiFlag {
 #[expect(non_camel_case_types, reason = "alias to a primitive type")]
 pub type ansi_code = u8;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum AnsiCode {
     #[default]
@@ -170,7 +172,7 @@ pub(super) fn print_color(
     return write!(f, "\x1b[0m");
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Colored<Text: AsRef<str>> {
     pub text: Text,
     pub fg: Fg,

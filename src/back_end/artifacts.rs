@@ -9,7 +9,7 @@ const ASM_EXTENSION: &str = "asm";
 const OBJ_EXTENSION: &str = "o";
 const EXE_EXTENSION: &str = "";
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Artifacts {
     pub asm_path: PathBuf,
     pub obj_path: PathBuf,

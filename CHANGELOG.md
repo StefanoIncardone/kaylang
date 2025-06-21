@@ -58,6 +58,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 <!--  -->
 - Made the compiler only work on 64bit systems
 <!--  -->
+- More derives on structs an enums with improved layouts
 - Renamed `ast::BaseType::Int` to `ast::BaseType::I64`
 - `tokenizer::TokenKing::Ascii` now behaves like a string token
 - `src_file::Span`, `src_file::Position` and `src_file::DisplayPosition` now derive `Hash`

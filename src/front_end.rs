@@ -15,14 +15,14 @@ pub trait IntoErrorInfo {
     fn info(&self) -> ErrorInfo;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ErrorInfo {
     pub error_message: Cow<'static, str>,
     pub error_cause_message: Cow<'static, str>,
 }
 
 // IDEA(stefano): allow pointers to start past the end of the line
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Error<K: IntoErrorInfo> {
     pub kind: K,
     /// absolute source code byte position
@@ -54,7 +54,7 @@ impl<K: IntoErrorInfo> Error<K> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ErrorDisplay<'code, 'path: 'code> {
     pub error_message: Cow<'static, str>,
     pub file: &'path Path,

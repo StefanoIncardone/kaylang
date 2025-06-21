@@ -93,7 +93,7 @@ const BAR_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 #[rustfmt::skip] pub static ASSEMBLING_ERROR:              Colored<&str> = Colored { text: "Assembling Error",             fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 #[rustfmt::skip] pub static LINKING_ERROR:                 Colored<&str> = Colored { text: "Linking Error",                fg: ERR_FG, bg: ERR_BG, flags: ERR_FLAGS };
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Logger {
     pub start: Instant,
 }
@@ -215,7 +215,7 @@ macro_rules! flag {
 }
 
 #[rustfmt::skip]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ColorFlag {
     Long       = flag!(0b0000_0000, DashDash, Long),
@@ -237,7 +237,7 @@ impl Display for ColorFlag {
 }
 
 #[rustfmt::skip]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Color {
     #[default]
@@ -293,7 +293,7 @@ impl Color {
 }
 
 #[rustfmt::skip]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CommandFlag {
     Help                   = flag!(0b0000_0000, Empty,    Long),
@@ -347,7 +347,7 @@ impl Display for CommandFlag {
 }
 
 #[rustfmt::skip]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum LanguageFlag {
     Kay      = flag!(0b0000_0000, DashDash, Long),
@@ -373,7 +373,7 @@ impl Display for LanguageFlag {
 }
 
 #[rustfmt::skip]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Language {
     #[default]
@@ -394,7 +394,7 @@ impl Display for Language {
 }
 
 #[rustfmt::skip]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum OutputFlag {
     Long       = flag!(0b0000_0000, DashDash, Long),
@@ -416,7 +416,7 @@ impl Display for OutputFlag {
 }
 
 #[rustfmt::skip]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum VerbosityFlag {
     QuietLong         = flag!(0b0000_0000, DashDash, Long),
@@ -448,7 +448,7 @@ impl Display for VerbosityFlag {
 }
 
 #[rustfmt::skip]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Verbosity {
     #[default]
@@ -457,7 +457,7 @@ pub enum Verbosity {
     Verbose = 0b0000_0010,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Command {
     Help { executable_name: PathBuf },
     Version,
@@ -476,7 +476,7 @@ impl Default for Command {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Version {
     pub color: Color,
@@ -496,7 +496,7 @@ impl Display for Version {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Help {
     pub color: Color,
     pub executable_name: PathBuf,
@@ -622,7 +622,7 @@ impl Display for Help {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Hash, PartialEq, Eq)]
 pub struct Args {
     pub color: Color,
     pub command: Command,
@@ -1121,7 +1121,7 @@ impl TryFrom<std::env::Args> for Args {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum ErrorKind {
     MissingColorMode(ColorFlag),
     UnrecognizedColorMode,
@@ -1140,7 +1140,7 @@ pub enum ErrorKind {
     Unrecognized,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Error {
     EmptyArgs,
     FromArgs { args: Vec<String>, errors: Vec<(ErrorKind, usize)> },

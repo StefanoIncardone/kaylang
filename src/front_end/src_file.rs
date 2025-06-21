@@ -7,7 +7,7 @@ use unicode_width::UnicodeWidthChar as _;
 #[expect(clippy::pub_use)]
 pub use back_to_front::offset32;
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 pub struct Span {
     /// inclusive
     pub start: offset32,
@@ -32,7 +32,7 @@ pub struct DisplayPosition {
 }
 
 // IDEA(stefano, 0.7.0): let the user chose how to obtain the source code and just store a reference to it
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct SrcFile<'path> {
     pub(crate) path: &'path Path,
     pub(crate) code: String,
@@ -89,7 +89,7 @@ impl<'path> SrcFile<'path> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct SrcCode<'code, 'path: 'code> {
     pub(crate) src_file: &'code SrcFile<'path>,
     pub(crate) lines: Vec<Line>,

@@ -23,7 +23,8 @@ pub(crate) trait SizeOf {
     fn size(&self) -> usize;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[repr(u8)]
 pub enum BaseType {
     I64,
     Ascii,
@@ -68,7 +69,7 @@ impl SizeOf for BaseType {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum Type {
     Base(BaseType),
     // TODO(stefano): enforce a max length
@@ -125,7 +126,7 @@ impl SizeOf for Type {
 }
 
 #[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum UnaryOp {
     Len = Op::Len as u8,
@@ -176,7 +177,7 @@ impl BaseTypeOf for UnaryOp {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum BooleanUnaryOp {
     Not = Op::Not as u8,
@@ -219,7 +220,7 @@ impl BaseTypeOf for BooleanUnaryOp {
 }
 
 #[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum BinaryOp {
     Pow = Op::Pow as u8,
@@ -295,7 +296,7 @@ impl BaseTypeOf for BinaryOp {
 }
 
 #[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum BooleanBinaryOp {
     And = Op::And as u8,
@@ -339,7 +340,7 @@ impl BaseTypeOf for BooleanBinaryOp {
 }
 
 #[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum ComparisonOp {
     Compare = Op::Compare as u8,
@@ -397,7 +398,7 @@ impl BaseTypeOf for ComparisonOp {
 
 #[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
 #[rustfmt::skip]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum AssignmentOp {
     Equals = Op::Equals as u8,
@@ -470,7 +471,7 @@ type LoopIndex = offset32;
 type ExpressionIndex = offset32;
 pub(crate) type ScopeIndex = offset32;
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Expression {
     False,
     True,
@@ -668,7 +669,7 @@ impl Display for ExpressionDisplay<'_, '_> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct IfStatement {
     pub(crate) condition: Expression,
     pub(crate) statement: Node,
@@ -676,13 +677,13 @@ pub(crate) struct IfStatement {
 
 pub(crate) type Loop = IfStatement;
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct If {
     pub(crate) ifs: Vec<IfStatement>,
     pub(crate) els: Option<Node>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Node {
     Expression(Expression),
 
@@ -708,7 +709,7 @@ pub(crate) enum Node {
     ScopeEnd,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct Scope {
     pub(crate) parent: ScopeIndex,
     pub(crate) base_types: Vec<BaseType>,
@@ -716,7 +717,7 @@ pub(crate) struct Scope {
     pub(crate) var_variables: Vec<VariableIndex>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct Variable<'code> {
     pub(crate) name: &'code [ascii],
     pub(crate) value: Expression,
@@ -726,7 +727,7 @@ pub(crate) struct Variable<'code> {
 this is in reality closer to an intermediate representation than to an AST
 TODO: introduce other representation before and after this Ast
 */
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Ast<'code> {
     pub(crate) nodes: Vec<Vec<Node>>,
 
@@ -741,7 +742,7 @@ pub struct Ast<'code> {
     pub(crate) raw_string_labels: Vec<(u32, &'code str)>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     src: &'src SrcCode<'code, 'path>,
     errors: Vec<Error<ErrorKind>>,
@@ -3602,7 +3603,8 @@ impl Parser<'_, '_, '_, '_> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[repr(u8)]
 pub enum Expected {
     StatementAfterDo,
     Semicolon,
@@ -3651,7 +3653,7 @@ impl Display for Expected {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum ErrorKind {
     PrematureEndOfFile(Expected),
 

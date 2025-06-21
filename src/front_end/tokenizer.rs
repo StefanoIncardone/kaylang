@@ -20,7 +20,7 @@ pub(crate) type ascii = u8;
 /// kay's utf32 character type
 pub(crate) type utf32 = char;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Op {
     Equals,
@@ -288,7 +288,7 @@ impl Op {
 pub(crate) type TextIndex = offset32;
 pub(crate) type TokenIndex = offset32;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum TokenKind {
     Comment(TextIndex),
     BlockComment(TextIndex),
@@ -433,13 +433,13 @@ impl TokenKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct Token {
     pub(crate) kind: TokenKind,
     pub(crate) col: offset32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Tokens<'code> {
     pub(crate) tokens: Vec<Token>,
 
@@ -448,12 +448,13 @@ pub struct Tokens<'code> {
 }
 
 #[must_use = "this is similar to a `Result`, which should be handled"]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct TokenizedCode<'code, 'path: 'code> {
     pub result: Result<Tokens<'code>, Vec<Error<ErrorKind<'code>>>>,
     pub src: SrcCode<'code, 'path>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Tokenizer<'code> {
     code: &'code str,
     lines: Vec<Line>,
@@ -1782,7 +1783,7 @@ impl Tokenizer<'_> {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Base {
     #[default]
@@ -1816,7 +1817,7 @@ impl Base {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum ErrorKind<'code> {
     UnclosedBlockComment,
 

@@ -10,7 +10,7 @@ use back_to_front::offset32;
 
 #[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
 #[rustfmt::skip]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum PrefixOperator {
     Len = Op::Len as u8,
@@ -58,7 +58,7 @@ impl PrefixOperator {
 
 #[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
 #[rustfmt::skip]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum BinaryOperator {
     // binary operators
@@ -146,7 +146,7 @@ impl BinaryOperator {
 
 #[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
 #[rustfmt::skip]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum AssignmentOperator {
     Equals = Op::Equals as u8,
@@ -224,7 +224,7 @@ impl AssignmentOperator {
 pub(crate) type ArrayItemsIndex = offset32;
 pub(crate) type ExpressionIndex = offset32;
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Expression {
     False {
         column: offset32,
@@ -312,27 +312,28 @@ pub(crate) enum Expression {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[repr(u8)]
 pub(crate) enum ArrayItemSeparator {
     Comma,
     Semicolon,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct ArrayItem {
     item: ExpressionIndex,
     separator_column: offset32,
     separator: ArrayItemSeparator,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct ArrayDimension {
     open_square_bracket_column: offset32,
     dimension_expression: ExpressionIndex,
     close_square_bracket_column: offset32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct TypeAnnotation {
     colon_column: NonZero<offset32>,
     type_name: TextIndex,
@@ -341,13 +342,13 @@ pub(crate) struct TypeAnnotation {
     array_dimensions_len: offset32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct InitialValue {
     equals_column: NonZero<offset32>,
     expression: ExpressionIndex,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct VariableDefinition {
     name: TextIndex,
     name_column: offset32,
@@ -357,7 +358,7 @@ pub(crate) struct VariableDefinition {
 
 pub(crate) type VariableDefinitionIndex = offset32;
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Node {
     Semicolon {
         column: offset32,
@@ -459,7 +460,7 @@ pub(crate) enum Node {
 
 pub(crate) type NodeIndex = offset32;
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 enum ParsedNode {
     Node(Node),
     Scope,
@@ -467,7 +468,7 @@ enum ParsedNode {
     LoopStatement,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct SyntaxTree<'tokens, 'code: 'tokens> {
     pub(crate) nodes: Vec<Node>,
 
@@ -489,7 +490,7 @@ impl SyntaxTree<'_, '_> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct SyntaxTreeDisplay<'syntax_tree, 'tokens: 'syntax_tree, 'code: 'tokens> {
     pub(crate) syntax_tree: &'syntax_tree SyntaxTree<'tokens, 'code>,
     pub(crate) tokens: &'tokens Tokens<'code>,
@@ -878,7 +879,7 @@ impl Display for SyntaxTreeDisplay<'_, '_, '_> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     src: &'src SrcCode<'code, 'path>,
     errors: Vec<Error<ErrorKind>>,
@@ -1395,7 +1396,7 @@ impl Parser<'_, '_, '_, '_> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 struct Peeked {
     token: Token,
     index: TokenIndex,
@@ -1516,7 +1517,7 @@ impl Parser<'_, '_, '_, '_> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 struct Operator {
     token: Token,
     operator: Op,
@@ -2418,7 +2419,8 @@ impl Parser<'_, '_, '_, '_> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[repr(u8)]
 pub enum Expected {
     Statement,
     OperatorOrSemicolon,
@@ -2465,7 +2467,7 @@ impl Display for Expected {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum ErrorKind {
     PrematureEndOfFile(Expected),
     MissingSemicolon,
