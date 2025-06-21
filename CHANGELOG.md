@@ -43,7 +43,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Added `?` for help commands
 - Added `/` cli flags and commands variations: `-h` or `/h`
 - Added language selection flags `--kay`, `--asm`, `--obj` for language specific compilation
-- Added more flexible cli color mode options variations: `-c <mode>`, `-c-<mode>`, `-c=<mode>`
+- Added more flexible cli options variations: `-c <mode>`, `-c-<mode>`, `-c=<mode>`, `-o=out`
 <!--  -->
 - `Color` now has `set_color_auto`, `set_color_always` and `set_color_never` methods
 - `FlagPrefix` and `FlagLen`

@@ -462,7 +462,10 @@ pub enum Command {
     Help { executable_name: PathBuf },
     Version,
     Check { src_path: PathBuf, verbosity: Verbosity },
+
+    // IDEA(stefano): add `compile-kay`/`compile=kay` variations
     Compile { language: Language, src_path: PathBuf, out_path: PathBuf, verbosity: Verbosity },
+    // IDEA(stefano): add `run-kay`/`run=kay` variations
     Run { language: Language, src_path: PathBuf, out_path: PathBuf, verbosity: Verbosity },
 }
 
@@ -509,7 +512,7 @@ impl Display for Help {
         static USAGE:     Colored<&str> = Colored { text: "Usage",     fg, bg, flags };
         static OPTIONS:   Colored<&str> = Colored { text: "Options",   fg, bg, flags };
         static COMMAND:   Colored<&str> = Colored { text: "Command",   fg, bg, flags };
-        static MODE:      Colored<&str> = Colored { text: "mode",      fg, bg, flags };
+        static MODE:      Colored<&str> = Colored { text: "Mode",      fg, bg, flags };
         static LANGUAGE:  Colored<&str> = Colored { text: "Language",  fg, bg, flags };
         static FILE:      Colored<&str> = Colored { text: "file",      fg, bg, flags };
         static PATH:      Colored<&str> = Colored { text: "path",      fg, bg, flags };
@@ -554,7 +557,8 @@ impl Display for Help {
     <{OUTPUT}>:
         {__output}, {Soutput}, {_o}, {So} <{PATH}>
 
-        <{PATH}>: Folder to populate with compilation artifacts (default: '.')
+        <{PATH}> (supports '* {PATH}'and '*={PATH}' variations, eg: '-o=out'):
+            Folder to populate with compilation artifacts (default: '.')
 
     [{VERBOSITY}]:
         {__quiet},   {Squiet},   {_q}, {Sq}
@@ -629,6 +633,7 @@ impl TryFrom<Vec<String>> for Args {
 
     // IDEA(stefano): make help and version commands collide with other commands
     // i.e.: `kay run file.txt help` should raise an error
+    // NOTE(stefano): this function is a mess and needs heavy refactoring
     fn try_from(args: Vec<String>) -> Result<Self, Self::Error> {
         let mut color = Color::Auto;
         color.set(&std::io::stderr());
@@ -817,46 +822,71 @@ impl TryFrom<Vec<String>> for Args {
                         errors.push((ErrorKind::MustBeAFilePath, src_path_index));
                     }
 
-                    let out_path = if let Some((peeked_out_flag_index, out_flag)) = args_iter.peek() {
-                        let out_flag_index = *peeked_out_flag_index;
-                        let out_option = match out_flag.as_str() {
-                            "--output" | "/output" => {
+                    let out_path = 'out_path: {
+                        if let Some((peeked_out_flag_index, out_flag)) = args_iter.peek() {
+                            let out_flag_index = *peeked_out_flag_index;
+                            if out_flag.starts_with("--output=")
+                                || out_flag.starts_with("/output=")
+                                || out_flag.starts_with("-o=")
+                                || out_flag.starts_with("/o=")
+                            {
+                                let Some(equals_index) = out_flag.find('=') else {
+                                    unreachable!("already checked");
+                                };
+                                let start_of_path_index = equals_index + 1;
+
+                                let out_path_str = &out_flag[start_of_path_index..];
+                                let out_path = Path::new(out_path_str);
+                                if out_path.is_file() {
+                                    #[expect(clippy::cast_possible_truncation)]
+                                    errors.push((ErrorKind::MustBeADirectoryPath {
+                                        start_of_path_index: start_of_path_index as u8
+                                    }, out_flag_index));
+                                }
+
                                 _ = args_iter.next();
-                                OutputFlag::Long
+                                break 'out_path out_path;
                             }
-                            "-o" | "/o" => {
-                                _ = args_iter.next();
-                                OutputFlag::Short
-                            }
-                            _ => {
+
+                            let out_option = match out_flag.as_str() {
+                                "--output" | "/output" => {
+                                    _ = args_iter.next();
+                                    OutputFlag::Long
+                                }
+                                "-o" | "/o" => {
+                                    _ = args_iter.next();
+                                    OutputFlag::Short
+                                }
+                                _ => {
+                                    errors.push((
+                                        ErrorKind::MustBeFollowedByOutputFlag(command_flag),
+                                        src_path_index,
+                                    ));
+                                    break 'args;
+                                }
+                            };
+
+                            let Some((out_path_index, out_path_string)) = args_iter.next() else {
                                 errors.push((
-                                    ErrorKind::MustBeFollowedByOutputFlag(command_flag),
-                                    src_path_index,
+                                    ErrorKind::MustBeFollowedByDirectoryPath(out_option),
+                                    out_flag_index,
                                 ));
                                 break 'args;
-                            }
-                        };
+                            };
 
-                        let Some((out_path_index, out_path_string)) = args_iter.next() else {
+                            let out_path = Path::new(out_path_string);
+                            if out_path.is_file() {
+                                errors.push((ErrorKind::MustBeADirectoryPath { start_of_path_index: 0 }, out_path_index));
+                            }
+
+                            out_path
+                        } else {
                             errors.push((
-                                ErrorKind::MustBeFollowedByDirectoryPath(out_option),
-                                out_flag_index,
+                                ErrorKind::MustBeFollowedByOutputFlag(command_flag),
+                                src_path_index,
                             ));
                             break 'args;
-                        };
-
-                        let out_path = Path::new(out_path_string);
-                        if out_path.is_file() {
-                            errors.push((ErrorKind::MustBeADirectoryPath, out_path_index));
                         }
-
-                        out_path
-                    } else {
-                        errors.push((
-                            ErrorKind::MustBeFollowedByOutputFlag(command_flag),
-                            src_path_index,
-                        ));
-                        break 'args;
                     };
 
                     let verbosity = if let Some((_, verbosity_flag)) = args_iter.peek() {
@@ -948,9 +978,43 @@ impl TryFrom<Vec<String>> for Args {
 
                     let out_path = Path::new(out_path_string);
                     if !out_path.is_dir() {
-                        errors.push((ErrorKind::MustBeADirectoryPath, out_path_index));
+                        errors.push((ErrorKind::MustBeADirectoryPath { start_of_path_index: 0 }, out_path_index));
                     }
 
+                    errors.push((ErrorKind::StrayOutputDirectoryOption(flag), selected_flag_index));
+                }
+                out_flag if out_flag.starts_with("--output=")
+                    || out_flag.starts_with("/output=")
+                    || out_flag.starts_with("-o=")
+                    || out_flag.starts_with("/o=")
+                => {
+                    let flag = if out_flag.starts_with("--output=") {
+                        OutputFlag::Long
+                    } else if out_flag.starts_with("/output=") {
+                        OutputFlag::LongSlash
+                    } else if out_flag.starts_with("-o=") {
+                        OutputFlag::Short
+                    } else if out_flag.starts_with("/o=") {
+                        OutputFlag::ShortSlash
+                    } else {
+                        unreachable!();
+                    };
+
+                    let Some(equals_index) = out_flag.find('=') else {
+                        unreachable!("already checked");
+                    };
+                    let start_of_path_index = equals_index + 1;
+
+                    let out_path_str = &out_flag[start_of_path_index..];
+                    let out_path = Path::new(out_path_str);
+                    if out_path.is_file() {
+                        #[expect(clippy::cast_possible_truncation)]
+                        errors.push((ErrorKind::MustBeADirectoryPath {
+                            start_of_path_index: start_of_path_index as u8
+                        }, selected_flag_index));
+                    }
+
+                    _ = args_iter.next();
                     errors.push((ErrorKind::StrayOutputDirectoryOption(flag), selected_flag_index));
                 }
                 verbosity_flag @ (
@@ -1068,7 +1132,7 @@ pub enum ErrorKind {
     MustBeAFilePath,
     MustBeFollowedByOutputFlag(CommandFlag),
     MustBeFollowedByDirectoryPath(OutputFlag),
-    MustBeADirectoryPath,
+    MustBeADirectoryPath { start_of_path_index: u8 },
 
     StrayVerbosityOption(VerbosityFlag),
     StrayOutputDirectoryOption(OutputFlag),
@@ -1135,7 +1199,7 @@ impl Display for Error {
                     }
 
                     let erroneous_arg = &args[arg_index];
-                    let pointers_count = match erroneous_arg.len() {
+                    let mut pointers_count = match erroneous_arg.len() {
                         0 => 1, // empty arguments will at least get one pointer
                         other => other,
                     };
@@ -1191,8 +1255,11 @@ impl Display for Error {
                             _ = write!(error_message, "invalid '{option}' option");
                             _ = write!(error_cause_message, "must be followed by a directory path");
                         }
-                        ErrorKind::MustBeADirectoryPath => {
-                            _ = write!(error_message, "invalid '{erroneous_arg}' path");
+                        ErrorKind::MustBeADirectoryPath { start_of_path_index } => {
+                            let path = &erroneous_arg[*start_of_path_index as usize..];
+                            pointers_offset += *start_of_path_index as usize;
+                            pointers_count -= *start_of_path_index as usize;
+                            _ = write!(error_message, "invalid '{path}' path");
                             _ = write!(error_cause_message, "must be a directory path");
                         }
                         ErrorKind::StrayOutputDirectoryOption(option) => {
