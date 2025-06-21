@@ -463,9 +463,9 @@ pub enum Command {
     Version,
     Check { src_path: PathBuf, verbosity: Verbosity },
 
-    // IDEA(stefano): add `compile-kay`/`compile=kay` variations
+    // IDEA(stefano): add `compile-*` variations
     Compile { language: Language, src_path: PathBuf, out_path: PathBuf, verbosity: Verbosity },
-    // IDEA(stefano): add `run-kay`/`run=kay` variations
+    // IDEA(stefano): add `run-*` variations
     Run { language: Language, src_path: PathBuf, out_path: PathBuf, verbosity: Verbosity },
 }
 
@@ -528,7 +528,7 @@ impl Display for Help {
 [{OPTIONS}]:
     {__color}, {Scolor}, {_c}, {Sc} <{MODE}>
 
-    <{MODE}> (supports '* {MODE}', '*-{MODE}' and '*={MODE}' variations, eg: '-c=auto'):
+    <{MODE}> (supports '*-{MODE}' and '*={MODE}' variations: '-c=auto'):
         {auto} (default)    only print colored output if supported
         {always}            always print colored output, even if not supported
         {never}             never print colored output
@@ -557,8 +557,8 @@ impl Display for Help {
     <{OUTPUT}>:
         {__output}, {Soutput}, {_o}, {So} <{PATH}>
 
-        <{PATH}> (supports '* {PATH}'and '*={PATH}' variations, eg: '-o=out'):
-            Folder to populate with compilation artifacts (default: '.')
+        <{PATH}> (supports '*={PATH}' variations: '-o=out'):
+            Folder to populate with compilation artifacts
 
     [{VERBOSITY}]:
         {__quiet},   {Squiet},   {_q}, {Sq}
