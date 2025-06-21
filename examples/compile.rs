@@ -1,11 +1,17 @@
 #![expect(clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
-    back_end::{artifacts::Artifacts, Compiler}, error, front_end::{
+    back_end::{artifacts::Artifacts, Compiler},
+    error,
+    front_end::{
         ast::Parser,
         src_file::SrcFile,
         tokenizer::{TokenizedCode, Tokenizer},
-    }, Color, Language, Logger, ASSEMBLING, ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, DONE, GENERATING_ASM, LINKING, LINKING_ERROR, LOADING_SOURCE, PARSING_AST, SUBSTEP_DONE, TOKENIZATION
+    },
+    Color, Language, Logger, ASSEMBLING, ASSEMBLING_ERROR, CHECKING, COMPILING,
+    COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, DONE,
+    GENERATING_ASM, LINKING, LINKING_ERROR, LOADING_SOURCE, PARSING_AST, SUBSTEP_DONE,
+    TOKENIZATION,
 };
 use std::{path::Path, process::ExitCode};
 

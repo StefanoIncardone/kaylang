@@ -211,7 +211,7 @@ impl FlagLen {
 macro_rules! flag {
     ($base:expr, $prefix:ident, $len:ident) => {
         $base | FlagPrefix::$prefix as u8 | FlagLen::$len as u8
-    }
+    };
 }
 
 #[rustfmt::skip]
@@ -648,6 +648,7 @@ impl TryFrom<Vec<String>> for Args {
         let mut errors = Vec::<(ErrorKind, usize)>::new();
         'args: while let Some((selected_flag_index, selected_flag)) = args_iter.next() {
             match selected_flag.as_str() {
+                #[rustfmt::skip]
                 help_command @ (
                     "help"
                     | "--help"
@@ -692,6 +693,7 @@ impl TryFrom<Vec<String>> for Args {
                         Command::Help { executable_name: PathBuf::from(executable_name) },
                     ));
                 }
+                #[rustfmt::skip]
                 version_command @ (
                     "version"
                     | "--version"
@@ -742,7 +744,7 @@ impl TryFrom<Vec<String>> for Args {
                     let verbosity =
                         if let Some((_verbosity_flag_index, verbosity_flag)) = args_iter.peek() {
                             match verbosity_flag.as_str() {
-                                "--quiet" | "/quiet" | "-q" | "/q"  => {
+                                "--quiet" | "/quiet" | "-q" | "/q" => {
                                     _ = args_iter.next();
                                     Verbosity::Quiet
                                 }
@@ -758,8 +760,7 @@ impl TryFrom<Vec<String>> for Args {
 
                     match &command_option {
                         None => {
-                            let mode =
-                                Command::Check { src_path: src_path.to_owned(), verbosity };
+                            let mode = Command::Check { src_path: src_path.to_owned(), verbosity };
                             command_option = Some((command_flag, mode));
                         }
                         Some((previous_command_flag, previous_command)) => match previous_command {
@@ -839,9 +840,12 @@ impl TryFrom<Vec<String>> for Args {
                                 let out_path = Path::new(out_path_str);
                                 if out_path.is_file() {
                                     #[expect(clippy::cast_possible_truncation)]
-                                    errors.push((ErrorKind::MustBeADirectoryPath {
-                                        start_of_path_index: start_of_path_index as u8
-                                    }, out_flag_index));
+                                    errors.push((
+                                        ErrorKind::MustBeADirectoryPath {
+                                            start_of_path_index: start_of_path_index as u8,
+                                        },
+                                        out_flag_index,
+                                    ));
                                 }
 
                                 _ = args_iter.next();
@@ -876,7 +880,10 @@ impl TryFrom<Vec<String>> for Args {
 
                             let out_path = Path::new(out_path_string);
                             if out_path.is_file() {
-                                errors.push((ErrorKind::MustBeADirectoryPath { start_of_path_index: 0 }, out_path_index));
+                                errors.push((
+                                    ErrorKind::MustBeADirectoryPath { start_of_path_index: 0 },
+                                    out_path_index,
+                                ));
                             }
 
                             out_path
@@ -890,20 +897,20 @@ impl TryFrom<Vec<String>> for Args {
                     };
 
                     let verbosity = if let Some((_, verbosity_flag)) = args_iter.peek() {
-                            match verbosity_flag.as_str() {
-                                "--quiet" | "/quiet" | "-q" | "/q" => {
-                                    _ = args_iter.next();
-                                    Verbosity::Quiet
-                                }
-                                "--Verbose" | "/Verbose" | "-V" | "/V" => {
-                                    _ = args_iter.next();
-                                    Verbosity::Verbose
-                                }
-                                _ => Verbosity::Normal,
+                        match verbosity_flag.as_str() {
+                            "--quiet" | "/quiet" | "-q" | "/q" => {
+                                _ = args_iter.next();
+                                Verbosity::Quiet
                             }
-                        } else {
-                            Verbosity::Normal
-                        };
+                            "--Verbose" | "/Verbose" | "-V" | "/V" => {
+                                _ = args_iter.next();
+                                Verbosity::Verbose
+                            }
+                            _ => Verbosity::Normal,
+                        }
+                    } else {
+                        Verbosity::Normal
+                    };
 
                     match &command_option {
                         None => {
@@ -978,16 +985,20 @@ impl TryFrom<Vec<String>> for Args {
 
                     let out_path = Path::new(out_path_string);
                     if !out_path.is_dir() {
-                        errors.push((ErrorKind::MustBeADirectoryPath { start_of_path_index: 0 }, out_path_index));
+                        errors.push((
+                            ErrorKind::MustBeADirectoryPath { start_of_path_index: 0 },
+                            out_path_index,
+                        ));
                     }
 
                     errors.push((ErrorKind::StrayOutputDirectoryOption(flag), selected_flag_index));
                 }
-                out_flag if out_flag.starts_with("--output=")
-                    || out_flag.starts_with("/output=")
-                    || out_flag.starts_with("-o=")
-                    || out_flag.starts_with("/o=")
-                => {
+                out_flag
+                    if out_flag.starts_with("--output=")
+                        || out_flag.starts_with("/output=")
+                        || out_flag.starts_with("-o=")
+                        || out_flag.starts_with("/o=") =>
+                {
                     let flag = if out_flag.starts_with("--output=") {
                         OutputFlag::Long
                     } else if out_flag.starts_with("/output=") {
@@ -1009,14 +1020,18 @@ impl TryFrom<Vec<String>> for Args {
                     let out_path = Path::new(out_path_str);
                     if out_path.is_file() {
                         #[expect(clippy::cast_possible_truncation)]
-                        errors.push((ErrorKind::MustBeADirectoryPath {
-                            start_of_path_index: start_of_path_index as u8
-                        }, selected_flag_index));
+                        errors.push((
+                            ErrorKind::MustBeADirectoryPath {
+                                start_of_path_index: start_of_path_index as u8,
+                            },
+                            selected_flag_index,
+                        ));
                     }
 
                     _ = args_iter.next();
                     errors.push((ErrorKind::StrayOutputDirectoryOption(flag), selected_flag_index));
                 }
+                #[rustfmt::skip]
                 verbosity_flag @ (
                     "--quiet"
                     | "/quiet"
@@ -1043,6 +1058,7 @@ impl TryFrom<Vec<String>> for Args {
                     errors.push((ErrorKind::StrayVerbosityOption(flag), selected_flag_index));
                 }
 
+                #[rustfmt::skip]
                 "--color-auto"
                 | "--color=auto"
                 | "/color-auto"
@@ -1052,6 +1068,7 @@ impl TryFrom<Vec<String>> for Args {
                 | "/c-auto"
                 | "/c=auto" => color = Color::Auto,
 
+                #[rustfmt::skip]
                 "--color-always"
                 | "--color=always"
                 | "/color-always"
@@ -1061,6 +1078,7 @@ impl TryFrom<Vec<String>> for Args {
                 | "/c-always"
                 | "/c=always" => color = Color::Always,
 
+                #[rustfmt::skip]
                 "--color-never"
                 | "--color=never"
                 | "/color-never"

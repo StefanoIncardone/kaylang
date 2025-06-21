@@ -2,9 +2,17 @@
 //! This file is also an example of how it's possible to create cli tools based on this compiler
 
 use kaylang::{
-    back_end::{artifacts::Artifacts, Compiler}, error, front_end::{
-        ast::Parser, src_file::SrcFile, tokenizer::{TokenizedCode, Tokenizer}
-    }, Args, Command, Help, Language, Logger, Verbosity, Version, ASSEMBLING, ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, DONE, GENERATING_ASM, LINKING, LINKING_ERROR, LOADING_SOURCE, PARSING_AST, RUNNING, SUBSTEP_DONE, TOKENIZATION
+    back_end::{artifacts::Artifacts, Compiler},
+    error,
+    front_end::{
+        ast::Parser,
+        src_file::SrcFile,
+        tokenizer::{TokenizedCode, Tokenizer},
+    },
+    Args, Command, Help, Language, Logger, Verbosity, Version, ASSEMBLING, ASSEMBLING_ERROR,
+    CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER,
+    COULD_NOT_WRITE_COMPILED_CODE, DONE, GENERATING_ASM, LINKING, LINKING_ERROR, LOADING_SOURCE,
+    PARSING_AST, RUNNING, SUBSTEP_DONE, TOKENIZATION,
 };
 use std::{path::Path, process::ExitCode};
 
@@ -35,11 +43,12 @@ fn main() -> ExitCode {
     let compilation_sub_step: Logger;
 
     let execution_step = Logger::new();
-    if let
-        Command::Check { src_path, verbosity: verbosity_ref }
-        | Command::Compile { language: Language::Kay, src_path, verbosity: verbosity_ref, .. }
-        | Command::Run { language: Language::Kay, src_path, verbosity: verbosity_ref, .. }
-    = &command {
+    if let Command::Check { src_path, verbosity: verbosity_ref }
+    | Command::Compile {
+        language: Language::Kay, src_path, verbosity: verbosity_ref, ..
+    }
+    | Command::Run { language: Language::Kay, src_path, verbosity: verbosity_ref, .. } = &command
+    {
         language = Language::Kay;
         verbosity = *verbosity_ref;
 
@@ -122,8 +131,14 @@ fn main() -> ExitCode {
             }
         };
     } else {
-        let (Command::Compile { language: language_ref, src_path, out_path, verbosity: verbosity_ref }
-            | Command::Run { language: language_ref, src_path, out_path, verbosity: verbosity_ref }) = &command
+        let (Command::Compile {
+            language: language_ref,
+            src_path,
+            out_path,
+            verbosity: verbosity_ref,
+        }
+        | Command::Run { language: language_ref, src_path, out_path, verbosity: verbosity_ref }) =
+            &command
         else {
             unreachable!()
         };

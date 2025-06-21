@@ -3638,7 +3638,9 @@ impl Display for Expected {
             Self::ArrayElementOrClosingSquareBracket => {
                 write!(f, "array item or closing square bracket")
             }
-            Self::CommaOrSemicolonOrClosingSquareBracket => write!(f, "comma, semicolon or closing square bracket"),
+            Self::CommaOrSemicolonOrClosingSquareBracket => {
+                write!(f, "comma, semicolon or closing square bracket")
+            }
             Self::TypeAnnotationOrVariableDefinition => {
                 write!(f, "type annotation or variable definition")
             }

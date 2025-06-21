@@ -73,6 +73,7 @@ impl Artifacts {
         return assembler_command;
     }
 
+    #[rustfmt::skip]
     #[must_use]
     pub fn linker(&self) -> Command {
         let mut linker_command = Command::new("ld");

@@ -1,11 +1,8 @@
 #![expect(clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
-    back_end::artifacts::Artifacts,
-    error,
-    Color, Logger, COMPILING,
-    COULD_NOT_RUN_LINKER, DONE, LINKING,
-    LINKING_ERROR, SUBSTEP_DONE,
+    back_end::artifacts::Artifacts, error, Color, Logger, COMPILING, COULD_NOT_RUN_LINKER, DONE,
+    LINKING, LINKING_ERROR, SUBSTEP_DONE,
 };
 use std::{path::Path, process::ExitCode};
 
