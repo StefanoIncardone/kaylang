@@ -17,7 +17,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Lack of windows/unix path normalization in log messages
 - Cli arguments such as output and verbosity cannot be placed in arbitrary order
 
-## 0.6.3 -
+## 0.6.3 - 2025-06-21
 
 > [!NOTE]
 > From this release onwards individual modules may be extracted to separate `back-to-front` compiler
