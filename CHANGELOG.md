@@ -14,7 +14,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ## Known issues
 
-- Lack of path windows/unix normalization in log messages
+- Lack of windows/unix path normalization in log messages
 - Cli arguments such as output and verbosity cannot be placed in arbitrary order
 
 ## 0.6.3 -
