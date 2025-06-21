@@ -17,6 +17,14 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Lack of windows/unix path normalization in log messages
 - Cli arguments such as output and verbosity cannot be placed in arbitrary order
 
+## 0.6.4 -
+
+### Language
+
+#### Changed
+
+- Made block comments delimited by `#*` and `*#` instead of `##`, allowing for nested block comments
+
 ## 0.6.3 - 2025-06-21
 
 > [!NOTE]
@@ -103,35 +111,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Empty binary/octal/hexadecimal numbers literals (`0b`, `0o`, `0x`) are no longer considered syntax
     errors and now mean `0`
-- Made block comments delimited by `##` instead of `#{` and `#}`:
-    - with opening `#{` and closing `}#` or `#}`:
-
-        ```text
-        println #{ symmetric }# 21; # looks symetric with `}#`
-
-        # look asymetric with `}#`
-        #{
-        asymmetric
-        }#
-
-        println #{ asymmetric #} 21; # looks asymetric with `#}`
-
-        # look symetric with `#}` 
-        #{
-        symmetric
-        #}
-        ```
-
-    - with `##`:
-
-        ```kay
-        # both single line and multiline block comments look symmetric
-        println ## symmetric ## 12;
-
-        ##
-        symmetric
-        ##
-        ```
+- Made block comments delimited by `##` instead of `#{` and `#}`
 
 #### Removed
 

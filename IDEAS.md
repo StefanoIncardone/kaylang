@@ -3,7 +3,7 @@
 >[!WARNING]
 > no feature is final, modifications can happen at any moment
 
-## 0.6.3/?.?.? - invoking internal tools
+## 0.6.4/?.?.? - invoking internal tools
 
 Ability to invoke internal tools such as assembler and linkers, basically turning the compiler into
 an assembler/linker frontend/wrapper:
@@ -27,33 +27,12 @@ and all of the previous commands will produce the same final executable
 ## 0.6.4 - Revised comments
 
 - i like the `#` for compiler directives instead of say `@`
-- could treat `#` as a compile directive:
+- could treat `#` as a compile directive
 - use a second `#` to signal a line comment:
 
     ```kay
     #compiler_directive
     ## line comment
-    ```
-
-- use a opening/closing symbol to signal a block comment:
-
-    ```kay
-    ## current block comment ## does not allow nested comments ## ##
-    #* block comment #* would allow for nested block comments *# *#
-    #/ block comment /#
-    #/ as an easter-egg, a block comment formatted like this resembles a % symbol
-    /#
-    #/ comments with a difference of one character look like a slide /#
-    #/ comments with a difference of one character are like sliding /#
-    #" block comment "#
-    #"
-        block comment
-    "#
-    #< block comment >#
-    #{ block comment }#
-    #{
-     block comment 
-    }#
     ```
 
 - use a second `#` followed by the previous "directives" for a documentation comment:
@@ -62,11 +41,6 @@ and all of the previous commands will produce the same final executable
     ### documentation line comment
     ##* documentation block comment *##
     ```
-
-maybe experiment with deprecation periods:
-
-- support both old and new comment styles and emit a warning/error when encountering the old style:
-    - would need to develop a proper log with warning/error/note/hint system
 
 ## ?.?.? - Disallowing optional trailing comma, make it mandatory
 
@@ -243,7 +217,7 @@ kay tags -n TODO -n IDEA -n NOTE # would recognize TODO, IDEA and NOTE
 kay tags # Error: no specified tags to look for
 ```
 
-## 0.6.3/0.6.4 - Sub-menu help commands
+## 0.6.4 - Sub-menu help commands
 
 printing the help message could lead to some useful information being offscreen, since the more
 relevant options are usually listed first, could only print some information and provide some sort
@@ -258,7 +232,7 @@ kay help
 Note: use `kay help *specific command*` for further explanation
 ```
 
-## 0.6.3/0.6.4 - More output file names flags
+## 0.6.4 - More output file names flags
 
 currently only the output path (`-o`, `--output`) can be specified and the names of the generated artifacts is
 generated from the source file name, i.e:

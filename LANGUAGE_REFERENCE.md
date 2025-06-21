@@ -12,19 +12,25 @@ line comments start with `#` and ignore everything until the end of the line:
 # lines starting with the `#` symbol will be ignored by the compiler
 ```
 
-block comments start with `##` and ignore everthing until the next `##`:
+block comments start with `#*` and ignore everthing until the next matched `*#`:
 
 ```kay
-##
+#*
 these lines
 will be
 ignored
 by
 the compiler
-##
+*#
 
 # blocks inside other statements will be ignored
-println ## lucky ## 12;
+println #* lucky *# 12;
+```
+
+nested block comments are allowed:
+
+```kay
+#* this is a #* nested *# block comment *#
 ```
 
 ## Semicolons

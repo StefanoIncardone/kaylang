@@ -488,7 +488,10 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
 
             errors: Vec::new(),
         };
+        // IDEA(stefano): merge into a single vector
+        // IDEA(stefano): reverse the order of errors for unclosed brackets/comments
         let mut brackets_indicies = Vec::<TokenIndex>::new();
+        let mut block_comments_token_starts = Vec::<offset32>::new();
 
         'tokenization: while let Some(next_character) = tokenizer.peek_ascii_multiline() {
             let token_kind_result = 'next_token: {
@@ -574,35 +577,53 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                     b'"' => tokenizer.str_literal(),
                     b'`' => tokenizer.identifier_str(),
                     b'#' => match tokenizer.peek_byte_singleline() {
-                        Some(b'#') => 'comment: {
+                        Some(b'*') => 'comment: {
                             'next_character: loop {
                                 match tokenizer.next_byte_multiline() {
-                                    Some(b'#') => match tokenizer.next_byte_multiline() {
-                                        Some(b'#') => break 'next_character,
+                                    Some(b'*') => match tokenizer.next_byte_multiline() {
+                                        Some(b'#') => {
+                                            let comment_index = tokenizer.new_token_text();
+                                            let Some(token_start_col) = block_comments_token_starts.pop() else {
+                                                break 'comment Ok(TokenKind::BlockComment(comment_index));
+                                            };
+
+                                            let kind = TokenKind::BlockComment(comment_index);
+                                            tokenizer.tokens.tokens.push(Token { kind, col: tokenizer.token_start_col });
+                                            tokenizer.token_start_col = token_start_col;
+                                        },
                                         Some(_) => {}
-                                        None => {
-                                            tokenizer.errors.push(Error {
-                                                kind: ErrorKind::UnclosedBlockComment,
-                                                col: tokenizer.token_start_col,
-                                                pointers_count: 2,
-                                            });
-                                            break 'comment Err(());
-                                        }
+                                        None => break 'next_character,
                                     },
-                                    Some(_) => {}
-                                    None => {
-                                        tokenizer.errors.push(Error {
-                                            kind: ErrorKind::UnclosedBlockComment,
-                                            col: tokenizer.token_start_col,
-                                            pointers_count: 2,
-                                        });
-                                        break 'comment Err(());
+                                    Some(b'#') => {
+                                        let comment_start_col = tokenizer.col - 1;
+                                        match tokenizer.next_byte_multiline() {
+                                            Some(b'*') => {
+                                                block_comments_token_starts.push(tokenizer.token_start_col);
+                                                tokenizer.token_start_col = comment_start_col;
+                                                continue 'next_character;
+                                            }
+                                            Some(_) => {}
+                                            None => break 'next_character,
+                                        }
                                     }
+                                    Some(_) => {}
+                                    None => break 'next_character,
                                 }
                             }
 
-                            let comment_index = tokenizer.new_token_text();
-                            Ok(TokenKind::BlockComment(comment_index))
+                            tokenizer.errors.push(Error {
+                                kind: ErrorKind::UnclosedBlockComment,
+                                col: tokenizer.token_start_col,
+                                pointers_count: 2,
+                            });
+                            while let Some(block_comment_token_start) = block_comments_token_starts.pop() {
+                                tokenizer.errors.push(Error {
+                                    kind: ErrorKind::UnclosedBlockComment,
+                                    col: block_comment_token_start,
+                                    pointers_count: 2,
+                                });
+                            }
+                            Err(())
                         }
                         Some(_) => {
                             while let Some(_) = tokenizer.peek_byte_singleline() {
@@ -1886,7 +1907,7 @@ impl IntoErrorInfo for ErrorKind<'_> {
         let (error_message, error_cause_message) = match self {
             Self::UnclosedBlockComment => (
                 "unclosed block comment".into(),
-                "missing closing `##`".into(),
+                "missing closing `*#`".into(),
             ),
 
             Self::UnclosedRoundBracket => (
