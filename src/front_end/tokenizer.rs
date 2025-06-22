@@ -1077,7 +1077,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
             tokenizer.lines.push(line);
         }
 
-        for bracket_index in back_patches {
+        while let Some(bracket_index) = back_patches.pop() {
             // there can only be open brackets at this point
             let bracket_token = &tokenizer.tokens.tokens[bracket_index as usize];
 
