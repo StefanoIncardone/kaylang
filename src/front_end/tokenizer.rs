@@ -576,7 +576,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                     b'\'' => tokenizer.ascii_literal(),
                     b'"' => tokenizer.str_literal(),
                     b'`' => tokenizer.identifier_str(),
-                    b'#' => match tokenizer.peek_byte_singleline() {
+                    b'#' => match tokenizer.next_byte_singleline() {
                         Some(b'*') => 'comment: {
                             'next_character: loop {
                                 match tokenizer.next_byte_multiline() {
@@ -626,8 +626,8 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             Err(())
                         }
                         Some(_) => {
-                            while let Some(_) = tokenizer.peek_byte_singleline() {
-                                tokenizer.col += 1;
+                            while let Some(_) = tokenizer.next_byte_singleline() {
+                                // consume next character
                             }
                             let comment_index = tokenizer.new_token_text();
                             Ok(TokenKind::Comment(comment_index))
@@ -1166,6 +1166,20 @@ impl<'code> Tokenizer<'code> {
         return match next {
             b'\r' | b'\n' => None,
             other => Some(other),
+        };
+    }
+
+    #[must_use]
+    fn next_byte_singleline(&mut self) -> Option<u8> {
+        let Some(next) = self.peek_byte_multiline() else {
+            return None;
+        };
+        return match next {
+            b'\r' | b'\n' => None,
+            other => {
+                self.col += 1;
+                Some(other)
+            },
         };
     }
 
