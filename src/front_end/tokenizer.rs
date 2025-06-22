@@ -488,10 +488,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
 
             errors: Vec::new(),
         };
-        // IDEA(stefano): merge into a single vector
-        // IDEA(stefano): reverse the order of errors for unclosed brackets/comments
-        let mut brackets_indicies = Vec::<TokenIndex>::new();
-        let mut block_comments_token_starts = Vec::<offset32>::new();
+        let mut back_patches = Vec::<offset32>::new();
 
         'tokenization: while let Some(next_character) = tokenizer.peek_ascii_multiline() {
             let token_kind_result = 'next_token: {
@@ -578,19 +575,28 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                     b'`' => tokenizer.identifier_str(),
                     b'#' => match tokenizer.next_byte_singleline() {
                         Some(b'*') => 'comment: {
+                            let previous_block_comments_token_start_len = back_patches.len();
                             'next_character: loop {
                                 match tokenizer.next_byte_multiline() {
                                     Some(b'*') => match tokenizer.next_byte_multiline() {
                                         Some(b'#') => {
                                             let comment_index = tokenizer.new_token_text();
-                                            let Some(token_start_col) = block_comments_token_starts.pop() else {
-                                                break 'comment Ok(TokenKind::BlockComment(comment_index));
+                                            if back_patches.len() == previous_block_comments_token_start_len {
+                                                break 'comment Ok(TokenKind::BlockComment(
+                                                    comment_index,
+                                                ));
+                                            }
+                                            let Some(token_start_col) = back_patches.pop() else {
+                                                unreachable!("unclosed block comment");
                                             };
 
                                             let kind = TokenKind::BlockComment(comment_index);
-                                            tokenizer.tokens.tokens.push(Token { kind, col: tokenizer.token_start_col });
+                                            tokenizer.tokens.tokens.push(Token {
+                                                kind,
+                                                col: tokenizer.token_start_col,
+                                            });
                                             tokenizer.token_start_col = token_start_col;
-                                        },
+                                        }
                                         Some(_) => {}
                                         None => break 'next_character,
                                     },
@@ -598,7 +604,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                         let comment_start_col = tokenizer.col - 1;
                                         match tokenizer.next_byte_multiline() {
                                             Some(b'*') => {
-                                                block_comments_token_starts.push(tokenizer.token_start_col);
+                                                back_patches.push(tokenizer.token_start_col);
                                                 tokenizer.token_start_col = comment_start_col;
                                                 continue 'next_character;
                                             }
@@ -616,7 +622,10 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                 col: tokenizer.token_start_col,
                                 pointers_count: 2,
                             });
-                            while let Some(block_comment_token_start) = block_comments_token_starts.pop() {
+                            while back_patches.len() != previous_block_comments_token_start_len {
+                                let Some(block_comment_token_start) = back_patches.pop() else {
+                                    break;
+                                };
                                 tokenizer.errors.push(Error {
                                     kind: ErrorKind::UnclosedBlockComment,
                                     col: block_comment_token_start,
@@ -639,11 +648,11 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                     },
                     b'(' => {
                         #[expect(clippy::cast_possible_truncation)]
-                        brackets_indicies.push(tokenizer.tokens.tokens.len() as TokenIndex);
+                        back_patches.push(tokenizer.tokens.tokens.len() as TokenIndex);
                         Ok(TokenKind::OpenRoundBracket)
                     }
                     b')' => 'bracket: {
-                        let Some(bracket_index) = brackets_indicies.pop() else {
+                        let Some(bracket_index) = back_patches.pop() else {
                             tokenizer.errors.push(Error {
                                 kind: ErrorKind::UnopenedRoundBracket,
                                 col: tokenizer.token_start_col,
@@ -679,11 +688,11 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                     }
                     b'[' => {
                         #[expect(clippy::cast_possible_truncation)]
-                        brackets_indicies.push(tokenizer.tokens.tokens.len() as TokenIndex);
+                        back_patches.push(tokenizer.tokens.tokens.len() as TokenIndex);
                         Ok(TokenKind::OpenSquareBracket)
                     }
                     b']' => 'bracket: {
-                        let Some(bracket_index) = brackets_indicies.pop() else {
+                        let Some(bracket_index) = back_patches.pop() else {
                             tokenizer.errors.push(Error {
                                 kind: ErrorKind::UnopenedSquareBracket,
                                 col: tokenizer.token_start_col,
@@ -719,11 +728,11 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                     }
                     b'{' => {
                         #[expect(clippy::cast_possible_truncation)]
-                        brackets_indicies.push(tokenizer.tokens.tokens.len() as TokenIndex);
+                        back_patches.push(tokenizer.tokens.tokens.len() as TokenIndex);
                         Ok(TokenKind::OpenCurlyBracket)
                     }
                     b'}' => 'bracket: {
-                        let Some(bracket_index) = brackets_indicies.pop() else {
+                        let Some(bracket_index) = back_patches.pop() else {
                             tokenizer.errors.push(Error {
                                 kind: ErrorKind::UnopenedCurlyBracket,
                                 col: tokenizer.token_start_col,
@@ -1068,7 +1077,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
             tokenizer.lines.push(line);
         }
 
-        for bracket_index in brackets_indicies {
+        for bracket_index in back_patches {
             // there can only be open brackets at this point
             let bracket_token = &tokenizer.tokens.tokens[bracket_index as usize];
 
@@ -1179,7 +1188,7 @@ impl<'code> Tokenizer<'code> {
             other => {
                 self.col += 1;
                 Some(other)
-            },
+            }
         };
     }
 
