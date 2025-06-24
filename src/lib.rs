@@ -296,26 +296,36 @@ impl Color {
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CommandFlag {
-    Help                   = flag!(0b0000_0000, Empty,    Long),
-    HelpLong               = flag!(0b0000_0000, DashDash, Long),
-    HelpLongSlash          = flag!(0b0000_0000, Slash,    Long),
-    HelpShort              = flag!(0b0000_0000, Dash,     Short),
-    HelpShortSlash         = flag!(0b0000_0000, Slash,    Short),
+    Help                   = flag!(Self::HELP,          Empty,    Long),
+    HelpLong               = flag!(Self::HELP,          DashDash, Long),
+    HelpLongSlash          = flag!(Self::HELP,          Slash,    Long),
+    HelpShort              = flag!(Self::HELP,          Dash,     Short),
+    HelpShortSlash         = flag!(Self::HELP,          Slash,    Short),
 
-    HelpQuestion           = flag!(0b0000_0001, Empty,    Long),
-    HelpQuestionLong       = flag!(0b0000_0001, DashDash, Long),
-    HelpQuestionShort      = flag!(0b0000_0001, Dash,     Short),
-    HelpQuestionShortSlash = flag!(0b0000_0001, Slash,    Short),
+    HelpQuestion           = flag!(Self::HELP_QUESTION, Empty,    Long),
+    HelpQuestionLong       = flag!(Self::HELP_QUESTION, DashDash, Long),
+    HelpQuestionShort      = flag!(Self::HELP_QUESTION, Dash,     Short),
+    HelpQuestionShortSlash = flag!(Self::HELP_QUESTION, Slash,    Short),
 
-    Version                = flag!(0b0000_0010, Empty,    Long),
-    VersionLong            = flag!(0b0000_0010, DashDash, Long),
-    VersionLongSlash       = flag!(0b0000_0010, Slash,    Long),
-    VersionShort           = flag!(0b0000_0010, Dash,     Short),
-    VersionShortSlash      = flag!(0b0000_0010, Slash,    Short),
+    Version                = flag!(Self::VERSION,       Empty,    Long),
+    VersionLong            = flag!(Self::VERSION,       DashDash, Long),
+    VersionLongSlash       = flag!(Self::VERSION,       Slash,    Long),
+    VersionShort           = flag!(Self::VERSION,       Dash,     Short),
+    VersionShortSlash      = flag!(Self::VERSION,       Slash,    Short),
 
-    Check                  = flag!(0b0000_0100, Empty,    Long),
-    Compile                = flag!(0b0000_0101, Empty,    Long),
-    Run                    = flag!(0b0000_0110, Empty,    Long),
+    Check                  = flag!(Self::CHECK,         Empty,    Long),
+    Compile                = flag!(Self::COMPILE,       Empty,    Long),
+    Run                    = flag!(Self::RUN,           Empty,    Long),
+}
+
+#[rustfmt::skip]
+impl CommandFlag {
+    const HELP: u8          = 0b0000_0000;
+    const HELP_QUESTION: u8 = 0b0000_0001;
+    const VERSION: u8       = 0b0000_0010;
+    const CHECK: u8         = 0b0000_0100;
+    const COMPILE: u8       = 0b0000_0101;
+    const RUN: u8           = 0b0000_0110;
 }
 
 impl Display for CommandFlag {
@@ -346,28 +356,54 @@ impl Display for CommandFlag {
     }
 }
 
+#[derive(Clone, Debug, Default, Hash, PartialEq, Eq)]
+pub enum Command<'args> {
+    #[default]
+    Help,
+    Version,
+    Check {
+        src_path: &'args Path,
+        verbosity: Verbosity,
+    },
+
+    // IDEA(stefano): add `compile-*` variations
+    Compile {
+        language: Language,
+        src_path: &'args Path,
+        out_path: &'args Path,
+        verbosity: Verbosity,
+    },
+    // IDEA(stefano): add `run-*` variations
+    Run {
+        language: Language,
+        src_path: &'args Path,
+        out_path: &'args Path,
+        verbosity: Verbosity,
+    },
+}
+
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum LanguageFlag {
-    Kay      = flag!(0b0000_0000, DashDash, Long),
-    KaySlash = flag!(0b0000_0000, Slash,    Long),
-    Asm      = flag!(0b0000_0001, DashDash, Long),
-    AsmSlash = flag!(0b0000_0001, Slash,    Long),
-    Obj      = flag!(0b0000_0010, Dash,     Long),
-    ObjSlash = flag!(0b0000_0010, Slash,    Long),
+    KayLong  = flag!(Language::Kay as u8, DashDash, Long),
+    KaySlash = flag!(Language::Kay as u8, Slash,    Long),
+    AsmLong  = flag!(Language::Asm as u8, DashDash, Long),
+    AsmSlash = flag!(Language::Asm as u8, Slash,    Long),
+    ObjLong  = flag!(Language::Obj as u8, Dash,     Long),
+    ObjSlash = flag!(Language::Obj as u8, Slash,    Long),
 }
 
 impl Display for LanguageFlag {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         #[rustfmt::skip]
         return match self {
-            Self::Kay       => write!(f, "--kay"),
-            Self::KaySlash  => write!(f, "/kay"),
-            Self::Asm       => write!(f, "--asm"),
-            Self::AsmSlash  => write!(f, "/asm"),
-            Self::Obj       => write!(f, "--obj"),
-            Self::ObjSlash  => write!(f, "/obj"),
+            Self::KayLong  => write!(f, "--kay"),
+            Self::KaySlash => write!(f, "/kay"),
+            Self::AsmLong  => write!(f, "--asm"),
+            Self::AsmSlash => write!(f, "/asm"),
+            Self::ObjLong  => write!(f, "--obj"),
+            Self::ObjSlash => write!(f, "/obj"),
         };
     }
 }
@@ -419,15 +455,15 @@ impl Display for OutputFlag {
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum VerbosityFlag {
-    QuietLong         = flag!(0b0000_0000, DashDash, Long),
-    QuietLongSlash    = flag!(0b0000_0000, Slash,    Long),
-    QuietShort        = flag!(0b0000_0000, Dash,     Short),
-    QuietShortSlash   = flag!(0b0000_0000, Slash,    Short),
+    QuietLong         = flag!(Verbosity::Quiet as u8, DashDash, Long),
+    QuietLongSlash    = flag!(Verbosity::Quiet as u8, Slash,    Long),
+    QuietShort        = flag!(Verbosity::Quiet as u8, Dash,     Short),
+    QuietShortSlash   = flag!(Verbosity::Quiet as u8, Slash,    Short),
 
-    VerboseLong       = flag!(0b0000_0001, DashDash, Long),
-    VerboseLongSlash  = flag!(0b0000_0001, Slash,    Long),
-    VerboseShort      = flag!(0b0000_0001, Dash,     Short),
-    VerboseShortSlash = flag!(0b0000_0001, Slash,    Short),
+    VerboseLong       = flag!(Verbosity::Verbose as u8, DashDash, Long),
+    VerboseLongSlash  = flag!(Verbosity::Verbose as u8, Slash,    Long),
+    VerboseShort      = flag!(Verbosity::Verbose as u8, Dash,     Short),
+    VerboseShortSlash = flag!(Verbosity::Verbose as u8, Slash,    Short),
 }
 
 impl Display for VerbosityFlag {
@@ -457,25 +493,6 @@ pub enum Verbosity {
     Verbose = 0b0000_0010,
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub enum Command {
-    Help { executable_name: PathBuf },
-    Version,
-    Check { src_path: PathBuf, verbosity: Verbosity },
-
-    // IDEA(stefano): add `compile-*` variations
-    Compile { language: Language, src_path: PathBuf, out_path: PathBuf, verbosity: Verbosity },
-    // IDEA(stefano): add `run-*` variations
-    Run { language: Language, src_path: PathBuf, out_path: PathBuf, verbosity: Verbosity },
-}
-
-impl Default for Command {
-    #[inline(always)]
-    fn default() -> Self {
-        return Self::Help { executable_name: PathBuf::from("kay") };
-    }
-}
-
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Version {
@@ -500,6 +517,25 @@ impl Display for Version {
 pub struct Help {
     pub color: Color,
     pub executable_name: PathBuf,
+}
+
+impl Help {
+    #[must_use]
+    #[inline(always)]
+    pub fn default_executable_name() -> &'static Path {
+        return Path::new("kay");
+    }
+}
+
+impl Default for Help {
+    #[must_use]
+    #[inline]
+    fn default() -> Self {
+        return Self {
+            color: Color::Auto,
+            executable_name: Self::default_executable_name().to_owned(),
+        };
+    }
 }
 
 impl Display for Help {
@@ -598,11 +634,11 @@ impl Display for Help {
             compile = CommandFlag::Compile,
             run = CommandFlag::Run,
 
-            __kay = LanguageFlag::Kay,
+            __kay = LanguageFlag::KayLong,
             Skay = LanguageFlag::KaySlash,
-            __asm = LanguageFlag::Asm,
+            __asm = LanguageFlag::AsmLong,
             Sasm = LanguageFlag::AsmSlash,
-            __obj = LanguageFlag::Obj,
+            __obj = LanguageFlag::ObjLong,
             Sobj = LanguageFlag::ObjSlash,
 
             __output = OutputFlag::Long,
@@ -622,706 +658,828 @@ impl Display for Help {
     }
 }
 
-#[derive(Clone, Debug, Default, Hash, PartialEq, Eq)]
-pub struct Args {
-    pub color: Color,
-    pub command: Command,
+#[derive(Debug)]
+enum ArgResult<P> {
+    Ok(P),
+    Err,
+    Unrecognized,
 }
 
-impl TryFrom<Vec<String>> for Args {
-    type Error = Error;
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Args<'args> {
+    pub command: Result<Command<'args>, Vec<(ErrorKind, usize)>>,
+    pub color: Color,
+}
 
-    // IDEA(stefano): make help and version commands collide with other commands
-    // i.e.: `kay run file.txt help` should raise an error
-    // NOTE(stefano): this function is a mess and needs heavy refactoring
-    fn try_from(args: Vec<String>) -> Result<Self, Self::Error> {
-        let mut color = Color::Auto;
-        color.set(&std::io::stderr());
-
-        // IDEA(stefano): go back to good ol' index iterators
-        let mut args_iter = args.iter().enumerate().peekable();
-        let Some((_executable_name_index, executable_name)) = args_iter.next() else {
-            return Err(Error::EmptyArgs);
-        };
-
-        let mut command_option: Option<(CommandFlag, Command)> = None;
-        let mut errors = Vec::<(ErrorKind, usize)>::new();
-        'args: while let Some((selected_flag_index, selected_flag)) = args_iter.next() {
-            match selected_flag.as_str() {
-                #[rustfmt::skip]
-                help_command @ (
-                    "help"
-                    | "--help"
-                    | "/help"
-                    | "-h"
-                    | "/h"
-
-                    | "?"
-                    | "--?"
-                    | "-?"
-                    | "/?"
-                ) => {
-                    let help_flag = match help_command {
-                        "help" => CommandFlag::Help,
-                        "--help" => CommandFlag::HelpLong,
-                        "/help" => CommandFlag::HelpLongSlash,
-                        "-h" => CommandFlag::HelpShort,
-                        "/h" => CommandFlag::HelpShortSlash,
-
-                        "?" => CommandFlag::HelpQuestion,
-                        "--?" => CommandFlag::HelpQuestionLong,
-                        "-?" => CommandFlag::HelpQuestionShort,
-                        "/?" => CommandFlag::HelpQuestionShortSlash,
-                        _ => unreachable!(),
-                    };
-
-                    if let Some((previous_help_flag, Command::Help { .. } | Command::Version)) =
-                        command_option
-                    {
-                        errors.push((
-                            ErrorKind::CommandAlreadySelected {
-                                current: help_flag,
-                                previous: previous_help_flag,
-                            },
-                            selected_flag_index,
-                        ));
-                        continue 'args;
-                    }
-
-                    command_option = Some((
-                        help_flag,
-                        Command::Help { executable_name: PathBuf::from(executable_name) },
-                    ));
-                }
-                #[rustfmt::skip]
-                version_command @ (
-                    "version"
-                    | "--version"
-                    | "/version"
-                    | "-v"
-                    | "/v"
-                ) => {
-                    let version_flag = match version_command {
-                        "version" => CommandFlag::Version,
-                        "--version" => CommandFlag::VersionLong,
-                        "/version" => CommandFlag::VersionLongSlash,
-                        "-v" => CommandFlag::VersionShort,
-                        "/v" => CommandFlag::VersionShortSlash,
-                        _ => unreachable!(),
-                    };
-
-                    if let Some((previous_version_flag, Command::Help { .. } | Command::Version)) =
-                        command_option
-                    {
-                        errors.push((
-                            ErrorKind::CommandAlreadySelected {
-                                current: version_flag,
-                                previous: previous_version_flag,
-                            },
-                            selected_flag_index,
-                        ));
-                        continue 'args;
-                    }
-
-                    command_option = Some((version_flag, Command::Version));
-                }
-                "check" => {
-                    let command_flag = CommandFlag::Check;
-
-                    let Some((src_path_index, src_path_string)) = args_iter.next() else {
-                        errors.push((
-                            ErrorKind::MustBeFollowedByASourceFilePath(command_flag),
-                            selected_flag_index,
-                        ));
-                        break 'args;
-                    };
-
-                    let src_path = Path::new(src_path_string);
-                    if !src_path.is_file() {
-                        errors.push((ErrorKind::MustBeAFilePath, src_path_index));
-                    }
-
-                    let verbosity =
-                        if let Some((_verbosity_flag_index, verbosity_flag)) = args_iter.peek() {
-                            match verbosity_flag.as_str() {
-                                "--quiet" | "/quiet" | "-q" | "/q" => {
-                                    _ = args_iter.next();
-                                    Verbosity::Quiet
-                                }
-                                "--Verbose" | "/Verbose" | "-V" | "/V" => {
-                                    _ = args_iter.next();
-                                    Verbosity::Verbose
-                                }
-                                _ => Verbosity::Normal,
-                            }
-                        } else {
-                            Verbosity::Normal
-                        };
-
-                    match &command_option {
-                        None => {
-                            let mode = Command::Check { src_path: src_path.to_owned(), verbosity };
-                            command_option = Some((command_flag, mode));
-                        }
-                        Some((previous_command_flag, previous_command)) => match previous_command {
-                            Command::Help { .. } | Command::Version => {
-                                // this is just to make sure that commands are properly formatted,
-                                // so we do nothing in the case where help or version commands were
-                                // already selected
-                            }
-                            Command::Check { .. }
-                            | Command::Compile { .. }
-                            | Command::Run { .. } => {
-                                errors.push((
-                                    ErrorKind::CommandAlreadySelected {
-                                        current: command_flag,
-                                        previous: *previous_command_flag,
-                                    },
-                                    selected_flag_index,
-                                ));
-                            }
-                        },
-                    }
-                }
-                command @ ("compile" | "run") => {
-                    let command_flag = match command {
-                        "compile" => CommandFlag::Compile,
-                        "run" => CommandFlag::Run,
-                        _ => unreachable!(),
-                    };
-
-                    let language = if let Some((_, language_flag)) = args_iter.peek() {
-                        match language_flag.as_str() {
-                            "--kay" | "/kay" => {
-                                _ = args_iter.next();
-                                Language::Kay
-                            }
-                            "--asm" | "/asm" => {
-                                _ = args_iter.next();
-                                Language::Asm
-                            }
-                            "--obj" | "/obj" => {
-                                _ = args_iter.next();
-                                Language::Obj
-                            }
-                            _ => Language::Kay,
-                        }
-                    } else {
-                        Language::Kay
-                    };
-
-                    let Some((src_path_index, src_path_string)) = args_iter.next() else {
-                        errors.push((
-                            ErrorKind::MustBeFollowedByASourceFilePath(command_flag),
-                            selected_flag_index,
-                        ));
-                        break 'args;
-                    };
-
-                    let src_path = Path::new(src_path_string);
-                    if !src_path.is_file() {
-                        errors.push((ErrorKind::MustBeAFilePath, src_path_index));
-                    }
-
-                    let out_path = 'out_path: {
-                        if let Some((peeked_out_flag_index, out_flag)) = args_iter.peek() {
-                            let out_flag_index = *peeked_out_flag_index;
-                            if out_flag.starts_with("--output=")
-                                || out_flag.starts_with("/output=")
-                                || out_flag.starts_with("-o=")
-                                || out_flag.starts_with("/o=")
-                            {
-                                let Some(equals_index) = out_flag.find('=') else {
-                                    unreachable!("already checked");
-                                };
-                                let start_of_path_index = equals_index + 1;
-
-                                let out_path_str = &out_flag[start_of_path_index..];
-                                let out_path = Path::new(out_path_str);
-                                if out_path.is_file() {
-                                    #[expect(clippy::cast_possible_truncation)]
-                                    errors.push((
-                                        ErrorKind::MustBeADirectoryPath {
-                                            start_of_path_index: start_of_path_index as u8,
-                                        },
-                                        out_flag_index,
-                                    ));
-                                }
-
-                                _ = args_iter.next();
-                                break 'out_path out_path;
-                            }
-
-                            let out_option = match out_flag.as_str() {
-                                "--output" | "/output" => {
-                                    _ = args_iter.next();
-                                    OutputFlag::Long
-                                }
-                                "-o" | "/o" => {
-                                    _ = args_iter.next();
-                                    OutputFlag::Short
-                                }
-                                _ => {
-                                    errors.push((
-                                        ErrorKind::MustBeFollowedByOutputFlag(command_flag),
-                                        src_path_index,
-                                    ));
-                                    break 'args;
-                                }
-                            };
-
-                            let Some((out_path_index, out_path_string)) = args_iter.next() else {
-                                errors.push((
-                                    ErrorKind::MustBeFollowedByDirectoryPath(out_option),
-                                    out_flag_index,
-                                ));
-                                break 'args;
-                            };
-
-                            let out_path = Path::new(out_path_string);
-                            if out_path.is_file() {
-                                errors.push((
-                                    ErrorKind::MustBeADirectoryPath { start_of_path_index: 0 },
-                                    out_path_index,
-                                ));
-                            }
-
-                            out_path
-                        } else {
-                            errors.push((
-                                ErrorKind::MustBeFollowedByOutputFlag(command_flag),
-                                src_path_index,
-                            ));
-                            break 'args;
-                        }
-                    };
-
-                    let verbosity = if let Some((_, verbosity_flag)) = args_iter.peek() {
-                        match verbosity_flag.as_str() {
-                            "--quiet" | "/quiet" | "-q" | "/q" => {
-                                _ = args_iter.next();
-                                Verbosity::Quiet
-                            }
-                            "--Verbose" | "/Verbose" | "-V" | "/V" => {
-                                _ = args_iter.next();
-                                Verbosity::Verbose
-                            }
-                            _ => Verbosity::Normal,
-                        }
-                    } else {
-                        Verbosity::Normal
-                    };
-
-                    match &command_option {
-                        None => {
-                            let mode = match command_flag {
-                                CommandFlag::Compile => Command::Compile {
-                                    language,
-                                    src_path: src_path.to_owned(),
-                                    out_path: out_path.to_owned(),
-                                    verbosity,
-                                },
-                                CommandFlag::Run => Command::Run {
-                                    language,
-                                    src_path: src_path.to_owned(),
-                                    out_path: out_path.to_owned(),
-                                    verbosity,
-                                },
-                                CommandFlag::Help
-                                | CommandFlag::HelpLong
-                                | CommandFlag::HelpLongSlash
-                                | CommandFlag::HelpShort
-                                | CommandFlag::HelpShortSlash
-                                | CommandFlag::HelpQuestion
-                                | CommandFlag::HelpQuestionLong
-                                | CommandFlag::HelpQuestionShort
-                                | CommandFlag::HelpQuestionShortSlash
-                                | CommandFlag::Version
-                                | CommandFlag::VersionLong
-                                | CommandFlag::VersionLongSlash
-                                | CommandFlag::VersionShort
-                                | CommandFlag::VersionShortSlash
-                                | CommandFlag::Check => unreachable!(),
-                            };
-
-                            command_option = Some((command_flag, mode));
-                        }
-                        Some((previous_command_flag, previous_command)) => match previous_command {
-                            Command::Help { .. } | Command::Version => {
-                                // this is just to make sure that commands are properly formatted,
-                                // so we do nothing in the case where help or version commands were
-                                // already selected
-                            }
-                            Command::Check { .. }
-                            | Command::Compile { .. }
-                            | Command::Run { .. } => {
-                                errors.push((
-                                    ErrorKind::CommandAlreadySelected {
-                                        current: command_flag,
-                                        previous: *previous_command_flag,
-                                    },
-                                    selected_flag_index,
-                                ));
-                            }
-                        },
-                    }
-                }
-                out_flag @ ("--output" | "/output" | "-o" | "/o") => {
-                    let flag = match out_flag {
-                        "--output" => OutputFlag::Long,
-                        "/output" => OutputFlag::LongSlash,
-                        "-o" => OutputFlag::Short,
-                        "/o" => OutputFlag::ShortSlash,
-                        _ => unreachable!(),
-                    };
-
-                    let Some((out_path_index, out_path_string)) = args_iter.next() else {
-                        errors.push((
-                            ErrorKind::MustBeFollowedByDirectoryPath(flag),
-                            selected_flag_index,
-                        ));
-                        break 'args;
-                    };
-
-                    let out_path = Path::new(out_path_string);
-                    if !out_path.is_dir() {
-                        errors.push((
-                            ErrorKind::MustBeADirectoryPath { start_of_path_index: 0 },
-                            out_path_index,
-                        ));
-                    }
-
-                    errors.push((ErrorKind::StrayOutputDirectoryOption(flag), selected_flag_index));
-                }
-                out_flag
-                    if out_flag.starts_with("--output=")
-                        || out_flag.starts_with("/output=")
-                        || out_flag.starts_with("-o=")
-                        || out_flag.starts_with("/o=") =>
-                {
-                    let flag = if out_flag.starts_with("--output=") {
-                        OutputFlag::Long
-                    } else if out_flag.starts_with("/output=") {
-                        OutputFlag::LongSlash
-                    } else if out_flag.starts_with("-o=") {
-                        OutputFlag::Short
-                    } else if out_flag.starts_with("/o=") {
-                        OutputFlag::ShortSlash
-                    } else {
-                        unreachable!();
-                    };
-
-                    let Some(equals_index) = out_flag.find('=') else {
-                        unreachable!("already checked");
-                    };
-                    let start_of_path_index = equals_index + 1;
-
-                    let out_path_str = &out_flag[start_of_path_index..];
-                    let out_path = Path::new(out_path_str);
-                    if out_path.is_file() {
-                        #[expect(clippy::cast_possible_truncation)]
-                        errors.push((
-                            ErrorKind::MustBeADirectoryPath {
-                                start_of_path_index: start_of_path_index as u8,
-                            },
-                            selected_flag_index,
-                        ));
-                    }
-
-                    _ = args_iter.next();
-                    errors.push((ErrorKind::StrayOutputDirectoryOption(flag), selected_flag_index));
-                }
-                #[rustfmt::skip]
-                verbosity_flag @ (
-                    "--quiet"
-                    | "/quiet"
-                    | "-q"
-                    | "/q"
-
-                    | "--Verbose"
-                    | "/Verbose"
-                    | "-V"
-                    | "/V"
-                ) => {
-                    let flag = match verbosity_flag {
-                        "--quiet" => VerbosityFlag::QuietLong,
-                        "/quiet" => VerbosityFlag::QuietLongSlash,
-                        "-q" => VerbosityFlag::QuietShort,
-                        "/q" => VerbosityFlag::QuietShortSlash,
-                        "--Verbose" => VerbosityFlag::VerboseLong,
-                        "/Verbose" => VerbosityFlag::VerboseLongSlash,
-                        "-V" => VerbosityFlag::VerboseShort,
-                        "/V" => VerbosityFlag::VerboseShortSlash,
-                        _ => unreachable!(),
-                    };
-
-                    errors.push((ErrorKind::StrayVerbosityOption(flag), selected_flag_index));
-                }
-
-                #[rustfmt::skip]
-                "--color-auto"
-                | "--color=auto"
-                | "/color-auto"
-                | "/color=auto"
-                | "-c-auto"
-                | "-c=auto"
-                | "/c-auto"
-                | "/c=auto" => color = Color::Auto,
-
-                #[rustfmt::skip]
-                "--color-always"
-                | "--color=always"
-                | "/color-always"
-                | "/color=always"
-                | "-c-always"
-                | "-c=always"
-                | "/c-always"
-                | "/c=always" => color = Color::Always,
-
-                #[rustfmt::skip]
-                "--color-never"
-                | "--color=never"
-                | "/color-never"
-                | "/color=never"
-                | "-c-never"
-                | "-c=never"
-                | "/c-never"
-                | "/c=never" => color = Color::Never,
-
-                color_flag @ ("--color" | "/color" | "-c" | "/c") => {
-                    let flag = match color_flag {
-                        "--color" => ColorFlag::Long,
-                        "/color" => ColorFlag::LongSlash,
-                        "-c" => ColorFlag::Short,
-                        "/c" => ColorFlag::ShortSlash,
-                        _ => unreachable!(),
-                    };
-
-                    let Some((selected_color_index, selected_color)) = args_iter.next() else {
-                        errors.push((ErrorKind::MissingColorMode(flag), selected_flag_index));
-                        break 'args;
-                    };
-
-                    color = match selected_color.as_str() {
-                        "auto" => Color::Auto,
-                        "always" => Color::Always,
-                        "never" => Color::Never,
-                        _ => {
-                            errors.push((ErrorKind::UnrecognizedColorMode, selected_color_index));
-                            continue 'args;
-                        }
-                    };
-                }
-                _ => errors.push((ErrorKind::Unrecognized, selected_flag_index)),
-            }
-        }
-
-        color.set(&std::io::stderr());
-
-        if !errors.is_empty() {
-            return Err(Error::FromArgs { args, errors });
-        }
-
-        let command = match command_option {
-            Some((_, command)) => command,
-            None => Command::Help { executable_name: PathBuf::from(executable_name) },
-        };
-
-        return Ok(Self { color, command });
+impl Default for Args<'_> {
+    fn default() -> Self {
+        return Self { color: Color::Auto, command: Ok(Command::Help) };
     }
 }
 
-impl TryFrom<std::env::Args> for Args {
-    type Error = Error;
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct ArgsParser<'args> {
+    args: &'args [String],
+    arg_index: usize,
 
-    fn try_from(args: std::env::Args) -> Result<Self, Self::Error> {
-        return Self::try_from(args.collect::<Vec<String>>());
+    color: Color,
+    selected_command: Option<(CommandFlag, Command<'args>)>,
+    errors: Vec<(ErrorKind, usize)>,
+}
+
+impl<'args> ArgsParser<'args> {
+    // IDEA(stefano): make help and version commands collide with other commands
+    // i.e.: `kay run file.txt help` should raise an error
+    #[must_use]
+    pub fn parse(args: &'args [String]) -> Args<'args> {
+        use FlagPrefix::{Dash, DashDash, Empty, Slash};
+
+        let mut parser = Self {
+            args,
+            arg_index: 0,
+
+            color: Color::Auto,
+            selected_command: None,
+            errors: Vec::new(),
+        };
+
+        'next_arg: while let Some(raw_arg) = parser.current_arg() {
+            let current_flag_index = parser.arg_index;
+            if raw_arg.len() == 0 {
+                parser.errors.push((ErrorKind::Empty, current_flag_index));
+                parser.arg_index += 1;
+                continue 'next_arg;
+            }
+
+            let (prefix, arg) = Self::split_prefix(raw_arg);
+
+            'color: {
+                let color = match parser.parse_color(prefix, arg) {
+                    ArgResult::Ok((color, _)) => color,
+                    ArgResult::Err => continue 'next_arg,
+                    ArgResult::Unrecognized => break 'color,
+                };
+
+                parser.color = color;
+                continue 'next_arg;
+            }
+
+            'help: {
+                let flag = match arg {
+                    "help" => match prefix {
+                        Empty => CommandFlag::Help,
+                        DashDash => CommandFlag::HelpLong,
+                        Slash => CommandFlag::HelpLongSlash,
+                        Dash => break 'help,
+                    },
+                    "h" => match prefix {
+                        Dash => CommandFlag::HelpShort,
+                        Slash => CommandFlag::HelpShortSlash,
+                        Empty | DashDash => break 'help,
+                    },
+                    "?" => match prefix {
+                        Empty => CommandFlag::HelpQuestion,
+                        DashDash => CommandFlag::HelpQuestionLong,
+                        Dash => CommandFlag::HelpQuestionShort,
+                        Slash => CommandFlag::HelpQuestionShortSlash,
+                    },
+                    _ => break 'help,
+                };
+                parser.arg_index += 1;
+
+                if let Some((previous_flag, Command::Help | Command::Version)) =
+                    parser.selected_command
+                {
+                    parser.errors.push((
+                        ErrorKind::CommandAlreadySelected {
+                            current: flag,
+                            previous: previous_flag,
+                        },
+                        current_flag_index,
+                    ));
+                    continue 'next_arg;
+                }
+                parser.selected_command = Some((flag, Command::Help));
+                continue 'next_arg;
+            }
+
+            'version: {
+                let flag = match arg {
+                    "version" => match prefix {
+                        Empty => CommandFlag::Version,
+                        DashDash => CommandFlag::VersionLong,
+                        Slash => CommandFlag::VersionLongSlash,
+                        Dash => break 'version,
+                    },
+                    "v" => match prefix {
+                        Dash => CommandFlag::VersionShort,
+                        Slash => CommandFlag::VersionShortSlash,
+                        Empty | DashDash => break 'version,
+                    },
+                    _ => break 'version,
+                };
+                parser.arg_index += 1;
+
+                if let Some((previous_flag, Command::Help | Command::Version)) =
+                    parser.selected_command
+                {
+                    parser.errors.push((
+                        ErrorKind::CommandAlreadySelected {
+                            current: flag,
+                            previous: previous_flag,
+                        },
+                        current_flag_index,
+                    ));
+                    continue 'next_arg;
+                }
+                parser.selected_command = Some((flag, Command::Version));
+                continue 'next_arg;
+            }
+
+            'check: {
+                let command_flag = match arg {
+                    "check" => match prefix {
+                        Empty => CommandFlag::Check,
+                        Dash | DashDash | Slash => break 'check,
+                    },
+                    _ => break 'check,
+                };
+                parser.arg_index += 1;
+
+                let src_path = match parser.parse_src_path(command_flag, current_flag_index) {
+                    ArgResult::Ok(src_path) => src_path,
+                    ArgResult::Err | ArgResult::Unrecognized => continue 'next_arg,
+                };
+
+                let verbosity = parser.parse_verbosity_or_default();
+
+                match &parser.selected_command {
+                    None => {
+                        let command = Command::Check { src_path, verbosity };
+                        parser.selected_command = Some((command_flag, command));
+                    }
+                    Some((previous_command_flag, previous_command)) => match previous_command {
+                        Command::Help | Command::Version => {
+                            // make sure the command is properly formatted
+                        }
+                        Command::Check { .. } | Command::Compile { .. } | Command::Run { .. } => {
+                            parser.errors.push((
+                                ErrorKind::CommandAlreadySelected {
+                                    current: command_flag,
+                                    previous: *previous_command_flag,
+                                },
+                                current_flag_index,
+                            ));
+                        }
+                    },
+                }
+                continue 'next_arg;
+            }
+
+            'compile: {
+                let command_flag = match arg {
+                    "compile" => match prefix {
+                        Empty => CommandFlag::Compile,
+                        Dash | DashDash | Slash => break 'compile,
+                    },
+                    _ => break 'compile,
+                };
+                parser.arg_index += 1;
+
+                let language = parser.parse_language_or_default();
+
+                let src_path_index = parser.arg_index;
+                let src_path = match parser.parse_src_path(command_flag, current_flag_index) {
+                    ArgResult::Ok(src_path) => src_path,
+                    ArgResult::Err | ArgResult::Unrecognized => continue 'next_arg,
+                };
+
+                let out_path = match parser.parse_out_path_command(command_flag, src_path_index) {
+                    ArgResult::Ok(out_path) => out_path,
+                    ArgResult::Err | ArgResult::Unrecognized => continue 'next_arg,
+                };
+
+                let verbosity = parser.parse_verbosity_or_default();
+
+                match &parser.selected_command {
+                    None => {
+                        let command = Command::Compile { language, src_path, out_path, verbosity };
+                        parser.selected_command = Some((command_flag, command));
+                    }
+                    Some((previous_command_flag, previous_command)) => match previous_command {
+                        Command::Help | Command::Version => {
+                            // make sure the command is properly formatted
+                        }
+                        Command::Check { .. } | Command::Compile { .. } | Command::Run { .. } => {
+                            parser.errors.push((
+                                ErrorKind::CommandAlreadySelected {
+                                    current: command_flag,
+                                    previous: *previous_command_flag,
+                                },
+                                current_flag_index,
+                            ));
+                        }
+                    },
+                }
+                continue 'next_arg;
+            }
+
+            'run: {
+                let command_flag = match arg {
+                    "run" => match prefix {
+                        Empty => CommandFlag::Run,
+                        Dash | DashDash | Slash => break 'run,
+                    },
+                    _ => break 'run,
+                };
+                parser.arg_index += 1;
+
+                let language = parser.parse_language_or_default();
+
+                let src_path_index = parser.arg_index;
+                let src_path = match parser.parse_src_path(command_flag, current_flag_index) {
+                    ArgResult::Ok(src_path) => src_path,
+                    ArgResult::Err | ArgResult::Unrecognized => continue 'next_arg,
+                };
+
+                let out_path = match parser.parse_out_path_command(command_flag, src_path_index) {
+                    ArgResult::Ok(out_path) => out_path,
+                    ArgResult::Err | ArgResult::Unrecognized => continue 'next_arg,
+                };
+
+                let verbosity = parser.parse_verbosity_or_default();
+
+                match &parser.selected_command {
+                    None => {
+                        let command = Command::Run { language, src_path, out_path, verbosity };
+                        parser.selected_command = Some((command_flag, command));
+                    }
+                    Some((previous_command_flag, previous_command)) => match previous_command {
+                        Command::Help | Command::Version => {
+                            // make sure the command is properly formatted
+                        }
+                        Command::Check { .. } | Command::Compile { .. } | Command::Run { .. } => {
+                            parser.errors.push((
+                                ErrorKind::CommandAlreadySelected {
+                                    current: command_flag,
+                                    previous: *previous_command_flag,
+                                },
+                                current_flag_index,
+                            ));
+                        }
+                    },
+                }
+                continue 'next_arg;
+            }
+
+            'stray_language: {
+                let Some((_, flag)) = parser.parse_language(prefix, arg) else {
+                    break 'stray_language;
+                };
+                parser.errors.push((ErrorKind::StrayLanguageOption(flag), current_flag_index));
+                continue 'next_arg;
+            }
+
+            'stray_out_path: {
+                let flag = match parser.parse_out_path(prefix, arg) {
+                    ArgResult::Ok((_, flag)) => flag,
+                    ArgResult::Err => continue 'next_arg,
+                    ArgResult::Unrecognized => break 'stray_out_path,
+                };
+
+                parser
+                    .errors
+                    .push((ErrorKind::StrayOutputDirectoryOption(flag), current_flag_index));
+                continue 'next_arg;
+            }
+
+            'stray_verbosity: {
+                let Some((_, flag)) = parser.parse_verbosity(prefix, arg) else {
+                    break 'stray_verbosity;
+                };
+                parser.errors.push((ErrorKind::StrayVerbosityOption(flag), current_flag_index));
+                continue 'next_arg;
+            }
+
+            parser.errors.push((ErrorKind::Unrecognized, current_flag_index));
+            parser.arg_index += 1;
+        }
+
+        if !parser.errors.is_empty() {
+            return Args { color: parser.color, command: Err(parser.errors) };
+        }
+
+        let command = match parser.selected_command {
+            Some((_, command)) => command,
+            None => Command::Help,
+        };
+
+        return Args { color: parser.color, command: Ok(command) };
+    }
+}
+
+impl<'args> ArgsParser<'args> {
+    #[must_use]
+    fn current_arg(&self) -> Option<&'args str> {
+        if self.arg_index >= self.args.len() {
+            return None;
+        }
+
+        let arg = &self.args[self.arg_index];
+        return Some(arg.as_str());
+    }
+
+    #[must_use]
+    fn split_prefix(arg: &'args str) -> (FlagPrefix, &'args str) {
+        let arg_characters = arg.as_bytes();
+        let split_prefix = match arg_characters.get(0) {
+            Some(b'/') => {
+                let content = &arg[1..];
+                (FlagPrefix::Slash, content)
+            }
+            Some(b'-') => {
+                if let Some(b'-') = arg_characters.get(1) {
+                    let content = &arg[2..];
+                    (FlagPrefix::DashDash, content)
+                } else {
+                    let content = &arg[1..];
+                    (FlagPrefix::Dash, content)
+                }
+            }
+            Some(_) | None => (FlagPrefix::Empty, arg),
+        };
+
+        return split_prefix;
+    }
+}
+
+impl<'args> ArgsParser<'args> {
+    #[must_use]
+    fn parse_src_path(
+        &mut self,
+        command_flag: CommandFlag,
+        command_flag_index: usize,
+    ) -> ArgResult<&'args Path> {
+        let Some(src_path_str) = self.current_arg() else {
+            self.errors.push((
+                ErrorKind::MustBeFollowedBySourceFilePath(command_flag),
+                command_flag_index,
+            ));
+            return ArgResult::Err;
+        };
+        self.arg_index += 1;
+
+        let src_path = Path::new(src_path_str);
+        if !src_path.is_file() {
+            self.errors.push((ErrorKind::MustBeAFilePath, self.arg_index));
+            return ArgResult::Err;
+        }
+        return ArgResult::Ok(src_path);
+    }
+
+    #[must_use]
+    fn parse_out_path(
+        &mut self,
+        prefix: FlagPrefix,
+        arg: &'args str,
+    ) -> ArgResult<(&'args Path, OutputFlag)> {
+        use FlagPrefix::{Dash, DashDash, Empty, Slash};
+        const OUTPUT_LONG: &str = "output";
+        const OUTPUT_SHORT: &str = "o";
+
+        let (flag, separator_index) = if arg.starts_with(OUTPUT_LONG) {
+            let flag = match prefix {
+                DashDash => OutputFlag::Long,
+                Slash => OutputFlag::LongSlash,
+                Empty | Dash => return ArgResult::Unrecognized,
+            };
+            (flag, OUTPUT_LONG.len())
+        } else if arg.starts_with(OUTPUT_SHORT) {
+            let flag = match prefix {
+                Dash => OutputFlag::Short,
+                Slash => OutputFlag::ShortSlash,
+                Empty | DashDash => return ArgResult::Unrecognized,
+            };
+            (flag, OUTPUT_SHORT.len())
+        } else {
+            return ArgResult::Unrecognized;
+        };
+
+        let current_flag_index = self.arg_index;
+        let (out_path_str, start_of_path_index) = 'out_path_str: {
+            let Some(separator) = arg.as_bytes().get(separator_index) else {
+                self.arg_index += 1;
+                let Some(out_path_str) = self.current_arg() else {
+                    self.errors
+                        .push((ErrorKind::MissingOutputDirectoryPath(flag), current_flag_index));
+                    return ArgResult::Err;
+                };
+                break 'out_path_str (out_path_str, None);
+            };
+
+            let start_of_path_index = match separator {
+                b'=' => separator_index + 1,
+                _ => return ArgResult::Unrecognized,
+            };
+            #[expect(clippy::cast_possible_truncation)]
+            (&arg[start_of_path_index..], Some(start_of_path_index as u8))
+        };
+        self.arg_index += 1;
+
+        let out_path = Path::new(out_path_str);
+        if out_path.is_file() {
+            let (flag_index, path_arg_index) = match start_of_path_index {
+                Some(path_arg_index) => (current_flag_index, path_arg_index),
+                None => (self.arg_index, 0),
+            };
+            self.errors.push((
+                ErrorKind::MustBeADirectoryPath { start_of_path_index: path_arg_index },
+                flag_index,
+            ));
+            return ArgResult::Err;
+        }
+
+        return ArgResult::Ok((out_path, flag));
+    }
+
+    #[must_use]
+    fn parse_out_path_command(
+        &mut self,
+        command_flag: CommandFlag,
+        src_path_index: usize,
+    ) -> ArgResult<&'args Path> {
+        let Some(out_path_flag_str) = self.current_arg() else {
+            self.errors.push((ErrorKind::MustBeFollowedByOutputFlag(command_flag), src_path_index));
+            return ArgResult::Err;
+        };
+
+        let (out_path_prefix, out_path_flag) = Self::split_prefix(out_path_flag_str);
+        let out_path = match self.parse_out_path(out_path_prefix, out_path_flag) {
+            ArgResult::Ok((out_path, _)) => out_path,
+            ArgResult::Err => return ArgResult::Err,
+            ArgResult::Unrecognized => {
+                self.errors
+                    .push((ErrorKind::MustBeFollowedByOutputFlag(command_flag), src_path_index));
+                return ArgResult::Err;
+            }
+        };
+        return ArgResult::Ok(out_path);
+    }
+
+    #[must_use]
+    fn parse_color(
+        &mut self,
+        prefix: FlagPrefix,
+        arg: &'args str,
+    ) -> ArgResult<(Color, ColorFlag)> {
+        use FlagPrefix::{Dash, DashDash, Empty, Slash};
+        const COLOR_LONG: &str = "color";
+        const COLOR_SHORT: &str = "c";
+
+        let (flag, separator_index) = if arg.starts_with(COLOR_LONG) {
+            let flag = match prefix {
+                DashDash => ColorFlag::Long,
+                Slash => ColorFlag::LongSlash,
+                Empty | Dash => return ArgResult::Unrecognized,
+            };
+            (flag, COLOR_LONG.len())
+        } else if arg.starts_with(COLOR_SHORT) {
+            let flag = match prefix {
+                Dash => ColorFlag::Short,
+                Slash => ColorFlag::ShortSlash,
+                Empty | DashDash => return ArgResult::Unrecognized,
+            };
+            (flag, COLOR_SHORT.len())
+        } else {
+            return ArgResult::Unrecognized;
+        };
+
+        let current_flag_index = self.arg_index;
+        let (color_str, start_of_color_index) = 'color_str: {
+            let Some(separator) = arg.as_bytes().get(separator_index) else {
+                self.arg_index += 1;
+                let Some(color_str) = self.current_arg() else {
+                    self.errors
+                        .push((ErrorKind::MustBeFollowedByColorMode(flag), current_flag_index));
+                    return ArgResult::Err;
+                };
+                break 'color_str (color_str, None);
+            };
+
+            let start_of_color_index = match separator {
+                b'-' | b'=' => separator_index + 1,
+                _ => return ArgResult::Unrecognized,
+            };
+
+            #[expect(clippy::cast_possible_truncation)]
+            (&arg[start_of_color_index..], Some(start_of_color_index as u8))
+        };
+        self.arg_index += 1;
+
+        let color = match color_str {
+            "auto" => Color::Auto,
+            "always" => Color::Always,
+            "never" => Color::Never,
+            _ => {
+                let (flag_index, color_arg_index) = match start_of_color_index {
+                    Some(color_arg_index) => (current_flag_index, color_arg_index),
+                    None => (self.arg_index, 0),
+                };
+                self.errors.push((
+                    ErrorKind::UnrecognizedColorMode { start_of_color_index: color_arg_index },
+                    flag_index,
+                ));
+                return ArgResult::Err;
+            }
+        };
+
+        return ArgResult::Ok((color, flag));
+    }
+
+    #[must_use]
+    fn parse_verbosity(
+        &mut self,
+        prefix: FlagPrefix,
+        arg: &'args str,
+    ) -> Option<(Verbosity, VerbosityFlag)> {
+        use FlagPrefix::{Dash, DashDash, Empty, Slash};
+        let verbosity_and_flag = match arg {
+            "quiet" => match prefix {
+                DashDash => (Verbosity::Quiet, VerbosityFlag::QuietLong),
+                Slash => (Verbosity::Quiet, VerbosityFlag::QuietLongSlash),
+                Empty | Dash => return None,
+            },
+            "q" => match prefix {
+                Dash => (Verbosity::Quiet, VerbosityFlag::QuietShort),
+                Slash => (Verbosity::Quiet, VerbosityFlag::QuietShortSlash),
+                Empty | DashDash => return None,
+            },
+            "Verbose" => match prefix {
+                DashDash => (Verbosity::Verbose, VerbosityFlag::VerboseLong),
+                Slash => (Verbosity::Verbose, VerbosityFlag::VerboseLongSlash),
+                Empty | Dash => return None,
+            },
+            "V" => match prefix {
+                Dash => (Verbosity::Verbose, VerbosityFlag::VerboseShort),
+                Slash => (Verbosity::Verbose, VerbosityFlag::VerboseShortSlash),
+                Empty | DashDash => return None,
+            },
+            _ => return None,
+        };
+        self.arg_index += 1;
+
+        return Some(verbosity_and_flag);
+    }
+
+    #[must_use]
+    fn parse_verbosity_or_default(&mut self) -> Verbosity {
+        let Some(verbosity_flag_str) = self.current_arg() else {
+            return Verbosity::default();
+        };
+
+        let (verbosity_prefix, verbosity_flag) = Self::split_prefix(verbosity_flag_str);
+        return match self.parse_verbosity(verbosity_prefix, verbosity_flag) {
+            Some((verbosity, _)) => verbosity,
+            None => Verbosity::default(),
+        };
+    }
+
+    #[must_use]
+    fn parse_language(
+        &mut self,
+        prefix: FlagPrefix,
+        arg: &'args str,
+    ) -> Option<(Language, LanguageFlag)> {
+        use FlagPrefix::{Dash, DashDash, Empty, Slash};
+        let language_and_flag = match arg {
+            "kay" => match prefix {
+                DashDash => (Language::Kay, LanguageFlag::KayLong),
+                Slash => (Language::Kay, LanguageFlag::KaySlash),
+                Empty | Dash => return None,
+            },
+            "asm" => match prefix {
+                Dash => (Language::Asm, LanguageFlag::AsmLong),
+                Slash => (Language::Asm, LanguageFlag::AsmSlash),
+                Empty | DashDash => return None,
+            },
+            "obj" => match prefix {
+                Dash => (Language::Obj, LanguageFlag::ObjLong),
+                Slash => (Language::Obj, LanguageFlag::ObjSlash),
+                Empty | DashDash => return None,
+            },
+            _ => return None,
+        };
+        self.arg_index += 1;
+
+        return Some(language_and_flag);
+    }
+
+    #[must_use]
+    fn parse_language_or_default(&mut self) -> Language {
+        let Some(language_flag_str) = self.current_arg() else {
+            return Language::default();
+        };
+
+        let (language_prefix, language_flag) = Self::split_prefix(language_flag_str);
+        return match self.parse_language(language_prefix, language_flag) {
+            Some((language, _)) => language,
+            None => Language::default(),
+        };
     }
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum ErrorKind {
-    MissingColorMode(ColorFlag),
-    UnrecognizedColorMode,
+    Empty,
 
-    CommandAlreadySelected { current: CommandFlag, previous: CommandFlag },
+    MustBeFollowedByColorMode(ColorFlag),
+    UnrecognizedColorMode { start_of_color_index: u8 },
 
-    MustBeFollowedByASourceFilePath(CommandFlag),
+    MustBeFollowedBySourceFilePath(CommandFlag),
     MustBeAFilePath,
+
     MustBeFollowedByOutputFlag(CommandFlag),
-    MustBeFollowedByDirectoryPath(OutputFlag),
+    MissingOutputDirectoryPath(OutputFlag),
     MustBeADirectoryPath { start_of_path_index: u8 },
 
-    StrayVerbosityOption(VerbosityFlag),
+    StrayLanguageOption(LanguageFlag),
     StrayOutputDirectoryOption(OutputFlag),
+    StrayVerbosityOption(VerbosityFlag),
+
+    CommandAlreadySelected { current: CommandFlag, previous: CommandFlag },
 
     Unrecognized,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub enum Error {
-    EmptyArgs,
-    FromArgs { args: Vec<String>, errors: Vec<(ErrorKind, usize)> },
+pub struct Errors<'executable_name, 'args> {
+    pub executable_name: Option<&'executable_name Path>,
+    pub args: &'args [String],
+    pub errors: Vec<(ErrorKind, usize)>,
 }
 
-impl Display for Error {
+impl Display for Errors<'_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut args_text = String::new();
 
-        match self {
-            Self::EmptyArgs => {
-                let pointers_offset = 0_u32;
-                let pointers_count = 1_u32;
-                let error_message = "missing executable name";
-                let error_cause_message = "executable name should always be present";
+        let mut pointers_offset = if let Some(executable_name) = self.executable_name {
+            _ = write!(args_text, "{} ", executable_name.display());
+            args_text.len()
+        } else {
+            0
+        };
 
-                let error = MsgWithCauseUnderText {
-                    kind: &ERROR,
-                    message: &error_message,
-                    cause: &error_cause_message,
-                    line_text: &args_text,
-                    pointers_offset,
-                    pointers_count,
-                };
-                return write!(f, "{error}");
-            }
-            Self::FromArgs { args, errors } => {
-                let mut arg_index = 0;
-                let executable_name = &args[arg_index];
-                arg_index += 1;
-                _ = write!(args_text, "{executable_name}");
-
-                // skipping the executable name
-                while arg_index < args.len() {
-                    let arg = &args[arg_index];
-                    arg_index += 1;
-                    _ = write!(args_text, " {arg}");
-                }
-
-                let mut error_message = String::new();
-                let mut error_cause_message = String::new();
-
-                arg_index = 0;
-                let mut pointers_offset = 0;
-                for (kind, erroneous_arg_index) in errors {
-                    // Note: these two loops are mutually exclusive and avoid extra checking
-                    while arg_index < *erroneous_arg_index {
-                        let arg = &args[arg_index];
-                        arg_index += 1;
-                        pointers_offset += arg.len() + 1; // + 1 to account for the space between args
-                    }
-                    while arg_index > *erroneous_arg_index {
-                        arg_index -= 1;
-                        let arg = &args[arg_index];
-                        pointers_offset -= arg.len() + 1; // + 1 to account for the space between args
-                    }
-
-                    let erroneous_arg = &args[arg_index];
-                    let mut pointers_count = match erroneous_arg.len() {
-                        0 => 1, // empty arguments will at least get one pointer
-                        other => other,
-                    };
-
-                    error_message.clear();
-                    error_cause_message.clear();
-                    match kind {
-                        ErrorKind::MissingColorMode(flag) => {
-                            _ = write!(error_message, "missing color mode for '{flag}'");
-                            _ = write!(
-                                error_cause_message,
-                                "must be followed by '{auto}', '{always}' or '{never}'",
-                                auto = Color::Auto,
-                                always = Color::Always,
-                                never = Color::Never,
-                            );
-                        }
-                        ErrorKind::UnrecognizedColorMode => {
-                            _ = write!(error_message, "unrecognized color mode '{erroneous_arg}'");
-                            _ = write!(
-                                error_cause_message,
-                                "must be one of '{auto}', '{always}' or '{never}'",
-                                auto = Color::Auto,
-                                always = Color::Always,
-                                never = Color::Never,
-                            );
-                        }
-                        ErrorKind::CommandAlreadySelected { current, previous } => {
-                            _ = write!(error_message, "invalid '{current}' command");
-                            _ = write!(
-                                error_cause_message,
-                                "cannot use '{current}' because '{previous}' was already selected"
-                            );
-                        }
-                        ErrorKind::MustBeFollowedByASourceFilePath(command) => {
-                            _ = write!(error_message, "invalid '{command}' command");
-                            _ = write!(error_cause_message, "must be followed by a file path");
-                        }
-                        ErrorKind::MustBeAFilePath => {
-                            _ = write!(error_message, "invalid '{erroneous_arg}' path");
-                            _ = write!(error_cause_message, "must be a file path");
-                        }
-                        ErrorKind::MustBeFollowedByOutputFlag(command) => {
-                            _ = write!(error_message, "invalid '{command}' command");
-                            _ = write!(
-                                error_cause_message,
-                                "must be followed by '{_o}' or '{__output}'",
-                                _o = OutputFlag::Short,
-                                __output = OutputFlag::Long,
-                            );
-                        }
-                        ErrorKind::MustBeFollowedByDirectoryPath(option) => {
-                            _ = write!(error_message, "invalid '{option}' option");
-                            _ = write!(error_cause_message, "must be followed by a directory path");
-                        }
-                        ErrorKind::MustBeADirectoryPath { start_of_path_index } => {
-                            let path = &erroneous_arg[*start_of_path_index as usize..];
-                            pointers_offset += *start_of_path_index as usize;
-                            pointers_count -= *start_of_path_index as usize;
-                            _ = write!(error_message, "invalid '{path}' path");
-                            _ = write!(error_cause_message, "must be a directory path");
-                        }
-                        ErrorKind::StrayOutputDirectoryOption(option) => {
-                            _ = write!(error_message, "stray '{option}' option");
-                            _ = write!(
-                                error_cause_message,
-                                "can only be used after a '{compile}' or '{run}' command",
-                                compile = CommandFlag::Compile,
-                                run = CommandFlag::Run,
-                            );
-                        }
-                        ErrorKind::StrayVerbosityOption(option) => {
-                            _ = write!(error_message, "stray '{option}' option");
-                            _ = write!(
-                                error_cause_message,
-                                "can only be used after a '{check}', '{compile}' or '{run}' command",
-                                check = CommandFlag::Check,
-                                compile = CommandFlag::Compile,
-                                run = CommandFlag::Run,
-                            );
-                        }
-                        ErrorKind::Unrecognized => {
-                            _ = write!(error_message, "unrecognized '{erroneous_arg}' arg");
-                            _ = write!(error_cause_message, "unrecognized");
-                        }
-                    }
-
-                    let error = MsgWithCauseUnderText {
-                        kind: &ERROR,
-                        message: &error_message,
-                        cause: &error_cause_message,
-                        line_text: &args_text,
-                        #[expect(clippy::cast_possible_truncation)]
-                        pointers_offset: pointers_offset as offset32,
-                        #[expect(clippy::cast_possible_truncation)]
-                        pointers_count: pointers_count as offset32,
-                    };
-                    writeln!(f, "{error}\n")?;
-                }
-                return Ok(());
-            }
+        let mut arg_index = 0;
+        while arg_index < self.args.len() - 1 {
+            let arg = &self.args[arg_index];
+            arg_index += 1;
+            _ = write!(args_text, "{arg} ");
         }
+
+        let last_arg = &self.args[arg_index];
+        _ = write!(args_text, "{last_arg}");
+
+        let mut error_message = String::new();
+        let mut error_cause_message = String::new();
+
+        arg_index = 0;
+        for (kind, erroneous_arg_index) in &self.errors {
+            // Note: these two loops are mutually exclusive and avoid extra checking
+            while arg_index < *erroneous_arg_index {
+                let arg = &self.args[arg_index];
+                arg_index += 1;
+                pointers_offset += arg.len() + 1; // + 1 to account for the space between args
+            }
+            while arg_index > *erroneous_arg_index {
+                arg_index -= 1;
+                let arg = &self.args[arg_index];
+                pointers_offset -= arg.len() + 1; // + 1 to account for the space between args
+            }
+
+            let erroneous_arg = &self.args[arg_index];
+            let pointers_count = match erroneous_arg.len() {
+                0 => 1, // empty arguments will at least get one pointer
+                other => other,
+            };
+
+            let mut pointers_offset_inside_arg = 0;
+            error_message.clear();
+            error_cause_message.clear();
+            match kind {
+                ErrorKind::Empty => {
+                    _ = write!(error_message, "invalid argument");
+                    _ = write!(error_cause_message, "cannot be empty");
+                }
+                ErrorKind::MustBeFollowedByColorMode(flag) => {
+                    _ = write!(error_message, "invalid '{flag}' option");
+                    _ = write!(
+                        error_cause_message,
+                        "must be followed by '{auto}', '{always}' or '{never}'",
+                        auto = Color::Auto,
+                        always = Color::Always,
+                        never = Color::Never,
+                    );
+                }
+                ErrorKind::UnrecognizedColorMode { start_of_color_index } => {
+                    pointers_offset_inside_arg = *start_of_color_index as usize + 1;
+                    let color = &erroneous_arg[*start_of_color_index as usize..];
+
+                    _ = write!(error_message, "unrecognized color mode '{color}'");
+                    _ = write!(
+                        error_cause_message,
+                        "must be one of '{auto}', '{always}' or '{never}'",
+                        auto = Color::Auto,
+                        always = Color::Always,
+                        never = Color::Never,
+                    );
+                }
+                ErrorKind::CommandAlreadySelected { current, previous } => {
+                    _ = write!(error_message, "invalid '{current}' command");
+                    _ = write!(
+                        error_cause_message,
+                        "cannot use '{current}' because '{previous}' was already selected"
+                    );
+                }
+                ErrorKind::MustBeFollowedBySourceFilePath(command) => {
+                    _ = write!(error_message, "invalid '{command}' command");
+                    _ = write!(error_cause_message, "must be followed by a source file path");
+                }
+                ErrorKind::MustBeAFilePath => {
+                    _ = write!(error_message, "invalid '{erroneous_arg}' path");
+                    _ = write!(error_cause_message, "must be a source file path");
+                }
+                ErrorKind::MustBeFollowedByOutputFlag(command) => {
+                    _ = write!(error_message, "invalid '{command}' command");
+                    _ = write!(
+                        error_cause_message,
+                        "must be followed by '{_o}' or '{__output}'",
+                        _o = OutputFlag::Short,
+                        __output = OutputFlag::Long,
+                    );
+                }
+                ErrorKind::MissingOutputDirectoryPath(option) => {
+                    _ = write!(error_message, "invalid '{option}' option");
+                    _ = write!(error_cause_message, "must be followed by an output directory path");
+                }
+                ErrorKind::MustBeADirectoryPath { start_of_path_index } => {
+                    pointers_offset_inside_arg = *start_of_path_index as usize + 1;
+                    let path = &erroneous_arg[*start_of_path_index as usize..];
+
+                    _ = write!(error_message, "invalid '{path}' path");
+                    _ = write!(error_cause_message, "must be a directory path");
+                }
+                ErrorKind::StrayOutputDirectoryOption(option) => {
+                    _ = write!(error_message, "stray '{option}' option");
+                    _ = write!(
+                        error_cause_message,
+                        "can only be used after a '{compile}' or '{run}' command",
+                        compile = CommandFlag::Compile,
+                        run = CommandFlag::Run,
+                    );
+                }
+                ErrorKind::StrayLanguageOption(option) => {
+                    _ = write!(error_message, "stray '{option}' option");
+                    _ = write!(
+                        error_cause_message,
+                        "can only be used after a '{check}', '{compile}' or '{run}' command",
+                        check = CommandFlag::Check,
+                        compile = CommandFlag::Compile,
+                        run = CommandFlag::Run,
+                    );
+                }
+                ErrorKind::StrayVerbosityOption(option) => {
+                    _ = write!(error_message, "stray '{option}' option");
+                    _ = write!(
+                        error_cause_message,
+                        "can only be used after a '{check}', '{compile}' or '{run}' command",
+                        check = CommandFlag::Check,
+                        compile = CommandFlag::Compile,
+                        run = CommandFlag::Run,
+                    );
+                }
+                ErrorKind::Unrecognized => {
+                    _ = write!(error_message, "unrecognized '{erroneous_arg}' arg");
+                    _ = write!(error_cause_message, "unrecognized");
+                }
+            }
+
+            let display_pointers_offset = pointers_offset + pointers_offset_inside_arg;
+            let display_pointers_count = pointers_count - pointers_offset_inside_arg;
+            let error = MsgWithCauseUnderText {
+                kind: &ERROR,
+                message: &error_message,
+                cause: &error_cause_message,
+                line_text: &args_text,
+                #[expect(clippy::cast_possible_truncation)]
+                pointers_offset: display_pointers_offset as offset32,
+                #[expect(clippy::cast_possible_truncation)]
+                pointers_count: display_pointers_count as offset32,
+            };
+            writeln!(f, "{error}\n")?;
+        }
+        return Ok(());
     }
 }
 
 #[expect(clippy::missing_trait_methods, reason = "using default implementations")]
-impl core::error::Error for Error {}
+impl core::error::Error for Errors<'_, '_> {}

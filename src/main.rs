@@ -9,31 +9,49 @@ use kaylang::{
         src_file::SrcFile,
         tokenizer::{TokenizedCode, Tokenizer},
     },
-    Args, Command, Help, Language, Logger, Verbosity, Version, ASSEMBLING, ASSEMBLING_ERROR,
-    CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER,
-    COULD_NOT_WRITE_COMPILED_CODE, DONE, GENERATING_ASM, LINKING, LINKING_ERROR, LOADING_SOURCE,
-    PARSING_AST, RUNNING, SUBSTEP_DONE, TOKENIZATION,
+    Args, ArgsParser, Command, Help, Language, Logger, Verbosity, Version, ASSEMBLING,
+    ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE,
+    COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, DONE, GENERATING_ASM, LINKING,
+    LINKING_ERROR, LOADING_SOURCE, PARSING_AST, RUNNING, SUBSTEP_DONE, TOKENIZATION,
 };
-use std::{path::Path, process::ExitCode};
+use std::{
+    path::{Path, PathBuf},
+    process::ExitCode,
+};
 
 fn main() -> ExitCode {
-    let Args { color, command } = match Args::try_from(std::env::args()) {
-        Ok(args) => args,
-        Err(err) => {
-            eprint!("{err}");
-            return ExitCode::FAILURE;
+    let mut env_args = std::env::args();
+    let executable_name = match env_args.next() {
+        Some(executable_name) => PathBuf::from(executable_name),
+        None => Help::default_executable_name().to_owned(),
+    };
+
+    let args = env_args.collect::<Vec<String>>();
+    let (color, command) = {
+        let Args { color, command } = ArgsParser::parse(&args);
+        color.set(&std::io::stderr());
+
+        match command {
+            Ok(parsed_command) => (color, parsed_command),
+            Err(errors) => {
+                let errors_display = kaylang::Errors {
+                    executable_name: Some(executable_name.as_path()),
+                    args: &args,
+                    errors,
+                };
+                eprint!("{errors_display}");
+                return ExitCode::FAILURE;
+            }
         }
     };
 
-    color.set(&std::io::stderr());
-
-    if let Command::Version = command {
-        println!("{}", Version { color });
+    if let Command::Help = command {
+        println!("{}", Help { color, executable_name });
         return ExitCode::SUCCESS;
     }
 
-    if let Command::Help { executable_name } = command {
-        println!("{}", Help { color, executable_name });
+    if let Command::Version = command {
+        println!("{}", Version { color });
         return ExitCode::SUCCESS;
     }
 

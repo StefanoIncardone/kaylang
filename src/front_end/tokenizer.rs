@@ -581,7 +581,9 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                     Some(b'*') => match tokenizer.next_byte_multiline() {
                                         Some(b'#') => {
                                             let comment_index = tokenizer.new_token_text();
-                                            if back_patches.len() == previous_block_comments_token_start_len {
+                                            if back_patches.len()
+                                                == previous_block_comments_token_start_len
+                                            {
                                                 break 'comment Ok(TokenKind::BlockComment(
                                                     comment_index,
                                                 ));

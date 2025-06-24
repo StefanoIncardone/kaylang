@@ -15,7 +15,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 ## Known issues
 
 - Lack of windows/unix path normalization in log messages
-- Cli arguments such as output and verbosity cannot be placed in arbitrary order
+- Optional cli arguments cannot be placed in arbitrary order and produce false positive errors
 
 ## 0.6.4 -
 
@@ -24,6 +24,19 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 #### Changed
 
 - Made block comments delimited by `#*` and `*#` instead of `##`, allowing for nested block comments
+
+### Compiler
+
+#### Changed
+
+- Refactored cli arguments and parsing:
+    - Introduced `ArgParser`: does not require the first argument to be the executable file
+    - `Command::Help` no longer contains the executable name
+    - `Command::Check`, `Command::Compile` and `Command::Run` now contain `&Path`
+
+#### Fixed
+
+- Corrected cli error messages
 
 ## 0.6.3 - 2025-06-21
 
