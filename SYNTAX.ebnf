@@ -1,56 +1,96 @@
-ASCII_character = ? ASCII 32..126 ?;
+ASCII_valid_character = ? U+0032..U+0126 ?;
 UTF-8_character = ? U+0080.. ?;
 
-line_comment = "#", [{ASCII_character | UTF-8_character}], "\n";
-block_comment = "#*", [{ASCII_character | UTF-8_character | "\n" | block_comment}], "*#";
+(* comments *)
+line_comment = "#", [{ASCII_valid_character | UTF-8_character}], "\n";
+block_comment = "#*", [{ASCII_valid_character | UTF-8_character | "\n" | block_comment}], "*#";
 
-decimal_digit               = "0".."9";
-binary_digit                = "0".."1";
-octal_digit                 = "0".."7";
-hexadecimal_digit           = "0".."9" | "A".."F" | "a".."f";
-decimal_integer_literal     = decimal_digit, [{decimal_digit | "_"}];
-binary_integer_literal      = "0b", [{binary_digit | "_"}];
-octal_integer_literal       = "0o", [{octal_digit | "_"}];
-hexadecimal_integer_literal = "0x", [{hexadecimal_digit | "_"}];
-integer_literal             = decimal_integer_literal | binary_integer_literal | octal_integer_literal | hexadecimal_integer_literal;
+(* booleans *)
+boolean_literal = "true" | "false";
 
-boolean_literal    = "true" | "false";
-escapes            = "\\" | "\'" | '\"' | "\n" | "\r" | "\t" | "\0";
+(* integers *)
+decimal_digit     = "0".."9";
+binary_digit      = "0".."1";
+octal_digit       = "0".."7";
+hexadecimal_digit = "0".."9" | "A".."F" | "a".."f";
+
+decimal_integer_literal     = decimal_digit, [{decimal_digit     | "_"}];
+binary_integer_literal      = "0b",          [{binary_digit      | "_"}];
+octal_integer_literal       = "0o",          [{octal_digit       | "_"}];
+hexadecimal_integer_literal = "0x",          [{hexadecimal_digit | "_"}];
+integer_literal =
+    decimal_integer_literal
+    | binary_integer_literal
+    | octal_integer_literal
+    | hexadecimal_integer_literal
+    ;
+
+(* characters *)
+character_escapes = "\\" | "\'" | '\"' | "\n" | "\r" | "\t" | "\0";
+character_literal = "'", (ASCII_valid_character | character_escapes), "'";
+
+(* strings *)
+string_literal = '"', [{ASCII_valid_character | character_escapes}], '"';
+
+(* raw strings *)
 raw_string_escapes = '\"';
-character_literal  = "'", (ASCII_character | escapes), "'";
-string_literal     = '"', [{ASCII_character | escapes}], '"';
-raw_string_literal = 'r"', [{ASCII_character | raw_string_escapes}], '"';
+raw_string_literal = 'r"', [{ASCII_valid_character | raw_string_escapes}], '"';
+
+(* identifiers *)
 identifier_regular = "_" | "A".."Z" | "a".."z", [{"_" | "A".."Z" | "a".."z" | decimal_digit}];
-identifier_str     = "`", [{ASCII_character}], "`";
+identifier_str     = "`", [{ASCII_valid_character}], "`";
 identifier         = identifier_regular | identifier_str;
 
-operator_len               = "len";
-operator_equals            = "=";
-operator_not               = "!";
-operator_pow               = "**" | "**\" | "**|";
-operator_times             = "*" | "*\" | "*|";
-operator_divide            = "/" | "/\" | "/|";
-operator_remainder         = "%";
-operator_plus              = "+" | "+\" | "+|" ;
-operator_minus             = "-" | "-\" | "-|" ;
-operator_and               = "&&";
-operator_bitand            = "&";
-operator_or                = "||";
-operator_bitor             = "|";
-operator_bitxor            = "^";
-operator_leftshift         = "<<" | "<<\" | "<<|";
-operator_rightshift        = ">>";
-operator_leftrotate        = "<<<";
-operator_rightrotate       = ">>>";
-operator_equalsequals      = "==";
-operator_notequals         = "==";
-operator_greater           = ">";
-operator_greater_or_equals = ">=";
-operator_less              = "<";
-operator_less_or_equals    = "<=";
-operator_compare           = "<=>";
+(* operators *)
+operator_equals             = "=";
+operator_len                = "len";
+operator_not                = "!";
+operator_pow                = "**" | "**\" | "**|";
+operator_pow_equals         = "**=" | "**\=" | "**|=";
+operator_times              = "*" | "*\" | "*|";
+operator_times_equals       = "*=" | "*\=" | "*|=";
+operator_divide             = "/" | "/\" | "/|";
+operator_divide_equals      = "/=" | "/\=" | "/|=";
+operator_remainder          = "%";
+operator_remainder_equals   = "%=";
+operator_plus               = "+" | "+\" | "+|";
+operator_plus_equals        = "+=" | "+\=" | "+|=";
+operator_minus              = "-" | "-\" | "-|";
+operator_minus_equals       = "-=" | "-\=" | "-|=";
+operator_leftshift          = "<<" | "<<\" | "<<|";
+operator_leftshift_equals   = "<<=" | "<<\=" | "<<|=";
+operator_rightshift         = ">>";
+operator_rightshift_equals  = ">>=";
+operator_leftrotate         = "<<<";
+operator_leftrotate_equals  = "<<<=";
+operator_rightrotate        = ">>>";
+operator_rightrotate_equals = ">>>=";
+operator_bitand             = "&";
+operator_bitand_equals      = "&=";
+operator_bitxor             = "^";
+operator_bitxor_equals      = "^=";
+operator_bitor              = "|";
+operator_bitor_equals       = "|=";
+operator_and                = "&&";
+operator_and_equals         = "&&=";
+operator_or                 = "||";
+operator_or_equals          = "||=";
+operator_compare            = "<=>";
+operator_equalsequals       = "==";
+operator_notequals          = "==";
+operator_greater            = ">";
+operator_greater_or_equals  = ">=";
+operator_less               = "<";
+operator_less_or_equals     = "<=";
 
-comparison_operator =
+operator_prefix =
+    operator_len
+    | operator_not
+    | operator_plus
+    | operator_minus
+    ;
+
+operator_comparison =
     operator_compare
     | operator_equalsequals
     | operator_notequals
@@ -60,39 +100,62 @@ comparison_operator =
     | operator_less_or_equals
     ;
 
-unary_operator = operator_len | operator_not | operator_plus | operator_minus;
-binary_operator =
+operator_binary =
     operator_pow
     | operator_times
     | operator_divide
     | operator_remainder
     | operator_plus
     | operator_minus
-    | operator_and
-    | operator_bitand
-    | operator_or
-    | operator_bitor
-    | operator_bitxor
     | operator_leftshift
     | operator_rightshift
     | operator_leftrotate
     | operator_rightrotate
-    | comparison_operator
+    | operator_bitand
+    | operator_bitxor
+    | operator_bitor
+    | operator_comparison
+    | operator_and
+    | operator_or
     ;
 
-assignment_operator = "=" | "**=" | "*=" | "/=" | "%=" | "+=" | "-=" | "<<=" | ">>=" | "&=" | "^=" | "|=" | "&&=" | "||=";
+operator_assignment =
+    operator_equals
+    | operator_pow_equals
+    | operator_times_equals
+    | operator_divide_equals
+    | operator_remainder_equals
+    | operator_plus_equals
+    | operator_minus_equals
+    | operator_leftshift_equals
+    | operator_rightshift_equals
+    | operator_leftrotate_equals
+    | operator_rightrotate_equals
+    | operator_bitand_equals
+    | operator_bitxor_equals
+    | operator_bitor_equals
+    | operator_and_equals
+    | operator_or_equals
+    ;
 
-(* expressions must be of the same type *)
-array          = "[", [{expression, ("," | ";")}], [expression], "]";
-array_variable = identifier;
-array_index    = array_variable, "[", integer_expression, "]";
+(* expressions *)
+array_literal          = "[", [{expression, ("," | ";")}], [expression], "]";
+parenthesis_expression = "(", expression, ")";
+prefix_expression      = operator_prefix, primary_expression;
+index_expression       = expression, "[", expression, "]";
+primary_expression =
+    boolean_literal
+    | integer_literal
+    | character_literal
+    | string_literal
+    | raw_string_literal
+    | identifier
+    | array_literal
+    | parenthesis_expression
+    | prefix_expression
+    | index_expression
+    ;
 
-(* from highest precedence to lowest *)
-i64_factor       = [unary_operator], (integer_literal | character_literal | identifier | ("(", integer_expression, ")") | array_index);
-boolean_factor   = [operator_not], (boolean_literal | identifier | ("(", boolean_expression, ")") | array_index);
-character_factor = character_literal | ((identifier | array_index), "[", integer_expression, "]");
-
-primary_expression        = i64_factor | boolean_factor | character_factor | array_index | ("(", expression, ")");
 exponentiative_expression = primary_expression, [operator_pow, primary_expression];
 multiplicative_expression = boolean_literal, [(operator_times | operator_divide | operator_remainder), boolean_literal];
 additive_expression       = multiplicative_expression, [(operator_plus | operator_minus), multiplicative_expression];
@@ -100,31 +163,30 @@ shift_expression          = additive_expression, [(operator_rightshift | operato
 bitand_expression         = shift_expression, [operator_bitand, shift_expression];
 bitxor_expression         = bitand_expression, [operator_bitxor, bitand_expression];
 bitor_expression          = bitxor_expression, [operator_bitor, bitxor_expression];
-(* comparison and boolean expressions cannot be chained *)
-comparison_expression     = bitor_expression, [comparison_operator, bitor_expression];
+comparison_expression     = bitor_expression, [operator_comparison, bitor_expression];
 and_expression            = comparison_expression, [operator_and, comparison_expression];
 or_expression             = and_expression, [operator_or, and_expression];
-boolean_expression        = or_expression;
-integer_expression        = bitor_expression;
-string_expression         = string_literal, comparison_operator, string_literal;
-array_expression          = array_variable, comparison_operator, array_variable;
-expression                = boolean_expression | integer_expression | string_literal | string_expression | array  | array_expression;
+expression                = or_expression;
 
-type = identifier, ["[", integer_literal, "]"];
+(* statements *)
+type = identifier, ["[", expression, "]"];
 variable_declaration = ("let" | "var"), identifier, [[":", type], "=", expression], ";";
-variable_reassignment = (identifier | array_index), assignment_operator, expression, ";";
+variable_reassignment = expression, operator_assignment, expression, ";";
+
+break_statement = "break", ";";
+continue_statement = "continue", ";";
 
 statement = expression | print | variable_declaration | variable_reassignment | if | loop;
-statement_in_loop = expression | print | variable_declaration | variable_reassignment | if | loop | "break" | "continue";
-scope     = "{", [{line_comment | block_comment | statement | scope}], "}";
-scope_in_loop     = "{", [{line_comment | block_comment | statement_in_loop | scope_in_loop}], "}";
+statement_in_loop = statement | break_statement | continue_statement;
+scope         = "{", [{line_comment | block_comment | statement | scope}], "}";
+scope_in_loop = "{", [{line_comment | block_comment | statement_in_loop | scope_in_loop}], "}";
 
 if =
-    "if", boolean_expression, scope,
-    [{"else", "if", boolean_expression, scope}],
+    "if", expression, scope,
+    [{"else", "if", expression, scope}],
     ["else", scope]
     ;
-loop  = ["do"], "loop", boolean_expression, scope_in_loop;
+loop  = ["do"], "loop", expression, scope_in_loop;
 
 print    = "print", expression, ";";
 eprint   = "eprint", expression, ";";

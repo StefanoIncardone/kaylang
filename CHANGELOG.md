@@ -33,6 +33,8 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
     - Introduced `ArgParser`: does not require the first argument to be the executable file
     - `Command::Help` no longer contains the executable name
     - `Command::Check`, `Command::Compile` and `Command::Run` now contain `&Path`
+<!--  -->
+- [Syntax specification](SYNTAX.ebnf) only considers syntax and not typing
 
 #### Fixed
 
