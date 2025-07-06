@@ -945,7 +945,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
     }
 }
 
-impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'code, 'path> {
+impl Parser<'_, '_, '_, '_> {
     fn any(&mut self, token: Token) -> Result<ParsedNode, Error<ErrorKind>> {
         return match token.kind {
             TokenKind::True
@@ -1100,7 +1100,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                         pointers_count: end_of_expression_token.kind.display_len(self.tokens),
                     }),
                     TokenKind::Unexpected(_)
-                    | TokenKind::Comment(_)
+                    | TokenKind::LineComment(_)
                     | TokenKind::BlockComment(_) => self.should_have_been_skipped(token),
                 }
             }
@@ -1319,7 +1319,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
             TokenKind::CloseRoundBracket
             | TokenKind::CloseSquareBracket
             | TokenKind::CloseCurlyBracket => self.unbalanced_bracket(token),
-            TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+            TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
                 self.should_have_been_skipped(token)
             }
         };
@@ -1443,7 +1443,7 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::Continue => {
                     return Some(Peeked { token: next_token, index: next_token_index + 1 })
                 }
-                TokenKind::Comment(_) | TokenKind::BlockComment(_) => {}
+                TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {}
                 TokenKind::Unexpected(_) => self.unexpected(next_token),
             }
         }
@@ -1508,7 +1508,7 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::Loop
                 | TokenKind::Break
                 | TokenKind::Continue => return previous_token,
-                TokenKind::Comment(_) | TokenKind::BlockComment(_) => {}
+                TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {}
                 TokenKind::Unexpected(_) => self.unexpected(previous_token),
             }
         }
@@ -1685,7 +1685,7 @@ impl Parser<'_, '_, '_, '_> {
                             });
                         }
                         TokenKind::Unexpected(_)
-                        | TokenKind::Comment(_)
+                        | TokenKind::LineComment(_)
                         | TokenKind::BlockComment(_) => self.should_have_been_skipped(token),
                     }
                 }
@@ -1740,7 +1740,7 @@ impl Parser<'_, '_, '_, '_> {
                     pointers_count: token.kind.display_len(self.tokens),
                 })
             }
-            TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+            TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
                 self.should_have_been_skipped(token)
             }
         };
@@ -2048,7 +2048,7 @@ impl Parser<'_, '_, '_, '_> {
                     pointers_count: mutability_token.kind.display_len(self.tokens),
                 })
             }
-            TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+            TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
                 self.should_have_been_skipped(variable_name_token)
             }
         };
@@ -2108,7 +2108,7 @@ impl Parser<'_, '_, '_, '_> {
                         pointers_count: after_variable_name_token.kind.display_len(self.tokens),
                     })
                 }
-                TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+                TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
                     self.should_have_been_skipped(after_variable_name_token)
                 }
             };
@@ -2235,7 +2235,7 @@ impl Parser<'_, '_, '_, '_> {
                     pointers_count: equals_or_semicolon_token.kind.display_len(self.tokens),
                 }),
             },
-            TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+            TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
                 self.should_have_been_skipped(equals_or_semicolon_token)
             }
         };
@@ -2359,7 +2359,7 @@ impl Parser<'_, '_, '_, '_> {
                         pointers_count: else_token.kind.display_len(self.tokens),
                     });
                 }
-                TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+                TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
                     self.should_have_been_skipped(after_else_token)
                 }
             }
@@ -2467,6 +2467,7 @@ impl Display for Expected {
     }
 }
 
+// TODO(stefano): add syntax errors such as if not followed by an expression
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum ErrorKind {
     PrematureEndOfFile(Expected),

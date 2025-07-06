@@ -290,7 +290,7 @@ pub(crate) type TokenIndex = offset32;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum TokenKind {
-    Comment(TextIndex),
+    LineComment(TextIndex),
     BlockComment(TextIndex),
     // IDEA(stefano): remove from the returned tokens, to avoid encountering them during the parsing stage
     Unexpected(TextIndex),
@@ -312,7 +312,7 @@ pub(crate) enum TokenKind {
     False,
     True,
 
-    /// integer literals are never empty and always contain valid ascii digits
+    // integer literals are never empty and always contain valid ascii digits
     DecimalInteger(TextIndex),
     BinaryInteger(TextIndex),
     OctalInteger(TextIndex),
@@ -349,7 +349,7 @@ impl TokenKind {
     pub(super) fn display_len(self, tokens: &Tokens<'_>) -> offset32 {
         #[expect(clippy::cast_possible_truncation)]
         return match self {
-            Self::Comment(comment) => {
+            Self::LineComment(comment) => {
                 let text = tokens.text[comment as usize];
                 text.display_len()
             }
@@ -494,13 +494,12 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
             let token_kind_result = 'next_token: {
                 let next = match next_character {
                     Ok(next) => match next {
-                        // ignore whitespace
                         b' ' | b'\t' | b'\x0C' => {
+                            // ignore whitespace
                             tokenizer.col += 1;
                             continue 'tokenization;
                         }
 
-                        // we reached the end of the line on a LF (\n)
                         b'\n' => {
                             tokenizer.new_line(LineEnd::LF);
                             continue 'tokenization;
@@ -519,7 +518,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             //     pointers_count: 0,
                             // });
                             tokenizer.new_line(LineEnd::CR);
-                            break 'next_token Err(());
+                            continue 'tokenization;
                         }
                         other => {
                             tokenizer.token_start_col = tokenizer.col;
@@ -641,11 +640,11 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                 // consume next character
                             }
                             let comment_index = tokenizer.new_token_text();
-                            Ok(TokenKind::Comment(comment_index))
+                            Ok(TokenKind::LineComment(comment_index))
                         }
                         None => {
                             let comment_index = tokenizer.new_token_text();
-                            Ok(TokenKind::Comment(comment_index))
+                            Ok(TokenKind::LineComment(comment_index))
                         }
                     },
                     b'(' => {
@@ -1151,25 +1150,6 @@ impl<'code> Tokenizer<'code> {
     }
 
     #[must_use]
-    fn peek_ascii_multiline(&self) -> Option<Result<ascii, &'code str>> {
-        let Some(next) = self.peek_byte_multiline() else {
-            return None;
-        };
-        return match next {
-            ascii_ch @ 0..=b'\x7F' => Some(Ok(ascii_ch)),
-            _utf8_ch => {
-                let rest_of_code = &self.code[self.col as usize..];
-                let mut rest_of_line_graphemes = rest_of_code.graphemes(true);
-                let Some(grapheme) = rest_of_line_graphemes.next() else {
-                    unreachable!("this branch assured we would have a valid grapheme");
-                };
-
-                Some(Err(grapheme))
-            }
-        };
-    }
-
-    #[must_use]
     const fn peek_byte_singleline(&self) -> Option<u8> {
         let Some(next) = self.peek_byte_multiline() else {
             return None;
@@ -1177,39 +1157,6 @@ impl<'code> Tokenizer<'code> {
         return match next {
             b'\r' | b'\n' => None,
             other => Some(other),
-        };
-    }
-
-    #[must_use]
-    fn next_byte_singleline(&mut self) -> Option<u8> {
-        let Some(next) = self.peek_byte_multiline() else {
-            return None;
-        };
-        return match next {
-            b'\r' | b'\n' => None,
-            other => {
-                self.col += 1;
-                Some(other)
-            }
-        };
-    }
-
-    #[must_use]
-    fn peek_ascii_singleline(&self) -> Option<Result<ascii, &'code str>> {
-        let Some(next) = self.peek_byte_singleline() else {
-            return None;
-        };
-        return match next {
-            ascii_ch @ 0..=b'\x7F' => Some(Ok(ascii_ch)),
-            _utf8_ch => {
-                let rest_of_code = &self.code[self.col as usize..];
-                let mut rest_of_line_graphemes = rest_of_code.graphemes(true);
-                let Some(grapheme) = rest_of_line_graphemes.next() else {
-                    unreachable!("this branch assured we would have a valid grapheme");
-                };
-
-                Some(Err(grapheme))
-            }
         };
     }
 
@@ -1240,6 +1187,58 @@ impl<'code> Tokenizer<'code> {
             other => {
                 self.col += 1;
                 Some(other)
+            }
+        };
+    }
+
+    #[must_use]
+    fn next_byte_singleline(&mut self) -> Option<u8> {
+        let Some(next) = self.peek_byte_multiline() else {
+            return None;
+        };
+        return match next {
+            b'\r' | b'\n' => None,
+            other => {
+                self.col += 1;
+                Some(other)
+            }
+        };
+    }
+
+    #[must_use]
+    fn peek_ascii_multiline(&self) -> Option<Result<ascii, &'code str>> {
+        let Some(next) = self.peek_byte_multiline() else {
+            return None;
+        };
+        return match next {
+            ascii_ch @ 0..=b'\x7F' => Some(Ok(ascii_ch)),
+            _utf8_ch => {
+                let rest_of_code = &self.code[self.col as usize..];
+                let mut rest_of_line_graphemes = rest_of_code.graphemes(true);
+                let Some(grapheme) = rest_of_line_graphemes.next() else {
+                    unreachable!("this branch assured we would have a valid grapheme");
+                };
+
+                Some(Err(grapheme))
+            }
+        };
+    }
+
+    #[must_use]
+    fn peek_ascii_singleline(&self) -> Option<Result<ascii, &'code str>> {
+        let Some(next) = self.peek_byte_singleline() else {
+            return None;
+        };
+        return match next {
+            ascii_ch @ 0..=b'\x7F' => Some(Ok(ascii_ch)),
+            _utf8_ch => {
+                let rest_of_code = &self.code[self.col as usize..];
+                let mut rest_of_line_graphemes = rest_of_code.graphemes(true);
+                let Some(grapheme) = rest_of_line_graphemes.next() else {
+                    unreachable!("this branch assured we would have a valid grapheme");
+                };
+
+                Some(Err(grapheme))
             }
         };
     }

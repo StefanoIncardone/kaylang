@@ -787,7 +787,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
         #[expect(clippy::cast_possible_truncation)]
         while token < tokens.tokens.len() as TokenIndex {
             let current = tokens.tokens[token as usize];
-            let (TokenKind::Comment(_) | TokenKind::BlockComment(_)) = current.kind else {
+            let (TokenKind::LineComment(_) | TokenKind::BlockComment(_)) = current.kind else {
                 break;
             };
 
@@ -1037,7 +1037,7 @@ impl Parser<'_, '_, '_, '_> {
                             pointers_count: previous_token.kind.display_len(self.tokens),
                         })
                     }
-                    TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+                    TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
                         unreachable!("should be skipped by the token iterator")
                     }
                     TokenKind::Unexpected(_) => unreachable!("only valid tokens should be present"),
@@ -1176,65 +1176,10 @@ impl Parser<'_, '_, '_, '_> {
                     pointers_count: token.kind.display_len(self.tokens),
                 })
             }
-            TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+            TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
                 unreachable!("should be skipped by the token iterator")
             }
             TokenKind::Unexpected(_) => unreachable!("only valid tokens should be present"),
-        };
-    }
-
-    fn do_statement(&mut self) -> Result<Node, Error<ErrorKind>> {
-        let token = self.next_token_bounded(Expected::StatementAfterDo)?;
-        return match token.kind {
-            TokenKind::OpenCurlyBracket => {
-                _ = self.next_token();
-                Err(Error {
-                    kind: ErrorKind::BlockInDoStatement,
-                    col: token.col,
-                    pointers_count: token.kind.display_len(self.tokens),
-                })
-            }
-            TokenKind::Let | TokenKind::Var => {
-                _ = self.next_token();
-                Err(Error {
-                    kind: ErrorKind::VariableInDoStatement,
-                    col: token.col,
-                    pointers_count: token.kind.display_len(self.tokens),
-                })
-            }
-            TokenKind::OpenRoundBracket
-            | TokenKind::CloseRoundBracket
-            | TokenKind::OpenSquareBracket
-            | TokenKind::CloseSquareBracket
-            | TokenKind::CloseCurlyBracket
-            | TokenKind::Comment(_)
-            | TokenKind::BlockComment(_)
-            | TokenKind::Unexpected(_)
-            | TokenKind::Colon
-            | TokenKind::SemiColon
-            | TokenKind::Comma
-            | TokenKind::Op(_)
-            | TokenKind::False
-            | TokenKind::True
-            | TokenKind::BinaryInteger(_)
-            | TokenKind::OctalInteger(_)
-            | TokenKind::DecimalInteger(_)
-            | TokenKind::HexadecimalInteger(_)
-            | TokenKind::Ascii(_)
-            | TokenKind::Str(_)
-            | TokenKind::RawStr(_)
-            | TokenKind::Identifier(_)
-            | TokenKind::IdentifierStr(_)
-            | TokenKind::Print
-            | TokenKind::PrintLn
-            | TokenKind::Eprint
-            | TokenKind::EprintLn
-            | TokenKind::Do
-            | TokenKind::If
-            | TokenKind::Else
-            | TokenKind::Loop
-            | TokenKind::Break
-            | TokenKind::Continue => self.statement(token),
         };
     }
 
@@ -1265,7 +1210,7 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::CloseRoundBracket
             | TokenKind::OpenSquareBracket
             | TokenKind::CloseSquareBracket
-            | TokenKind::Comment(_)
+            | TokenKind::LineComment(_)
             | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
             | TokenKind::Colon
@@ -1326,7 +1271,7 @@ impl Parser<'_, '_, '_, '_> {
 
             self.token += 1;
             let next = self.tokens.tokens[self.token as usize];
-            let (TokenKind::Comment(_) | TokenKind::BlockComment(_)) = next.kind else {
+            let (TokenKind::LineComment(_) | TokenKind::BlockComment(_)) = next.kind else {
                 return Some(next);
             };
         }
@@ -1348,7 +1293,7 @@ impl Parser<'_, '_, '_, '_> {
 
             self.token += 1;
             let next = self.tokens.tokens[self.token as usize];
-            let (TokenKind::Comment(_) | TokenKind::BlockComment(_)) = next.kind else {
+            let (TokenKind::LineComment(_) | TokenKind::BlockComment(_)) = next.kind else {
                 return Ok(next);
             };
         }
@@ -1364,7 +1309,7 @@ impl Parser<'_, '_, '_, '_> {
 
             current_token += 1;
             let next = self.tokens.tokens[current_token as usize];
-            let (TokenKind::Comment(_) | TokenKind::BlockComment(_)) = next.kind else {
+            let (TokenKind::LineComment(_) | TokenKind::BlockComment(_)) = next.kind else {
                 return Some(next);
             };
         }
@@ -1377,7 +1322,7 @@ impl Parser<'_, '_, '_, '_> {
         loop {
             current_token -= 1;
             let previous = self.tokens.tokens[current_token as usize];
-            let (TokenKind::Comment(_) | TokenKind::BlockComment(_)) = previous.kind else {
+            let (TokenKind::LineComment(_) | TokenKind::BlockComment(_)) = previous.kind else {
                 return previous;
             };
         }
@@ -1480,9 +1425,7 @@ impl Parser<'_, '_, '_, '_> {
         const fn parse_positive_binary_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Binary;
             let mut integer: i64 = 0;
-            let mut digit_index = 0;
-            digit_index += 1; // leading zero
-            digit_index += 1; // base (b)
+            let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
 
             while digit_index < literal.len() {
                 let ascii_digit = literal[digit_index];
@@ -1508,9 +1451,7 @@ impl Parser<'_, '_, '_, '_> {
         const fn parse_positive_octal_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Octal;
             let mut integer: i64 = 0;
-            let mut digit_index = 0;
-            digit_index += 1; // leading zero
-            digit_index += 1; // base (o)
+            let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
 
             while digit_index < literal.len() {
                 let ascii_digit = literal[digit_index];
@@ -1562,9 +1503,7 @@ impl Parser<'_, '_, '_, '_> {
         const fn parse_positive_hexadecimal_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Hexadecimal;
             let mut integer: i64 = 0;
-            let mut digit_index = 0;
-            digit_index += 1; // leading zero
-            digit_index += 1; // base (x)
+            let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
 
             while digit_index < literal.len() {
                 let ascii_digit = literal[digit_index];
@@ -1595,9 +1534,7 @@ impl Parser<'_, '_, '_, '_> {
         const fn parse_negative_binary_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Binary;
             let mut integer: i64 = 0;
-            let mut digit_index = 0;
-            digit_index += 1; // leading zero
-            digit_index += 1; // base (b)
+            let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
 
             while digit_index < literal.len() {
                 let ascii_digit = literal[digit_index];
@@ -1624,9 +1561,7 @@ impl Parser<'_, '_, '_, '_> {
         const fn parse_negative_octal_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Octal;
             let mut integer: i64 = 0;
-            let mut digit_index = 0;
-            digit_index += 1; // leading zero
-            digit_index += 1; // base (o)
+            let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
 
             while digit_index < literal.len() {
                 let ascii_digit = literal[digit_index];
@@ -1680,9 +1615,7 @@ impl Parser<'_, '_, '_, '_> {
         const fn parse_negative_hexadecimal_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Hexadecimal;
             let mut integer: i64 = 0;
-            let mut digit_index = 0;
-            digit_index += 1; // leading zero
-            digit_index += 1; // base (x)
+            let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
 
             while digit_index < literal.len() {
                 let ascii_digit = literal[digit_index];
@@ -2092,12 +2025,15 @@ impl Parser<'_, '_, '_, '_> {
                     }
                 };
             }
-            TokenKind::Op(Op::Plus) => {
+            TokenKind::Op(plus @ (Op::Plus | Op::WrappingPlus | Op::SaturatingPlus)) => {
                 let mut should_be_made_positive = true;
 
                 // NOTE(stefano): this optimization should be moved to later stages
                 // removing extra "+" symbols
-                while let Some(Token { kind: TokenKind::Op(Op::Plus), .. }) = self.next_token() {
+                while let Some(Token { kind: TokenKind::Op(op), .. }) = self.next_token() {
+                    if op != plus {
+                        break;
+                    }
                     should_be_made_positive = !should_be_made_positive;
                 }
 
@@ -2108,7 +2044,7 @@ impl Parser<'_, '_, '_, '_> {
                     Type::Base(BaseType::I64) => {
                         if should_be_made_positive {
                             Ok(Expression::Unary {
-                                op: UnaryOp::Plus,
+                                op: plus.into(),
                                 op_col: current_token.col,
                                 operand_index: self.new_expression(operand),
                             })
@@ -2121,76 +2057,6 @@ impl Parser<'_, '_, '_, '_> {
                     )
                     | Type::Array { .. }) => Err(Error {
                         kind: ErrorKind::CannotTakeAbsoluteValueOf(invalid_type),
-                        col: current_token.col,
-                        pointers_count: current_token.kind.display_len(self.tokens),
-                    }),
-                };
-            }
-            TokenKind::Op(Op::WrappingPlus) => {
-                let mut should_be_made_positive = true;
-
-                // NOTE(stefano): this optimization should be moved to later stages
-                // removing extra "+\" symbols
-                while let Some(Token { kind: TokenKind::Op(Op::WrappingPlus), .. }) =
-                    self.next_token()
-                {
-                    should_be_made_positive = !should_be_made_positive;
-                }
-
-                let operand = self.primary_expression()?;
-
-                // returning to avoid the call to tokens.next at the end of the function
-                return match operand.typ() {
-                    Type::Base(BaseType::I64) => {
-                        if should_be_made_positive {
-                            Ok(Expression::Unary {
-                                op: UnaryOp::WrappingPlus,
-                                op_col: current_token.col,
-                                operand_index: self.new_expression(operand),
-                            })
-                        } else {
-                            Ok(operand)
-                        }
-                    }
-                    invalid_type @ (Type::Base(
-                        BaseType::Ascii | BaseType::Bool | BaseType::Str,
-                    )
-                    | Type::Array { .. }) => Err(Error {
-                        kind: ErrorKind::CannotTakeAbsoluteValueOf(invalid_type),
-                        col: current_token.col,
-                        pointers_count: current_token.kind.display_len(self.tokens),
-                    }),
-                };
-            }
-            TokenKind::Op(Op::SaturatingPlus) => {
-                let mut should_be_made_positive = true;
-
-                // NOTE(stefano): this optimization should be moved to later stages
-                // removing extra "+|" symbols
-                while let Some(Token { kind: TokenKind::Op(Op::SaturatingPlus), .. }) =
-                    self.next_token()
-                {
-                    should_be_made_positive = !should_be_made_positive;
-                }
-
-                let operand = self.primary_expression()?;
-
-                // returning to avoid the call to tokens.next at the end of the function
-                return match operand.typ() {
-                    Type::Base(BaseType::I64) => {
-                        if should_be_made_positive {
-                            Ok(Expression::Unary {
-                                op: UnaryOp::SaturatingPlus,
-                                op_col: current_token.col,
-                                operand_index: self.new_expression(operand),
-                            })
-                        } else {
-                            Ok(operand)
-                        }
-                    }
-                    invalid_typ @ (Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
-                    | Type::Array { .. }) => Err(Error {
-                        kind: ErrorKind::CannotTakeAbsoluteValueOf(invalid_typ),
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(self.tokens),
                     }),
@@ -2431,7 +2297,7 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::OpenCurlyBracket
             | TokenKind::CloseCurlyBracket
             | TokenKind::Op(_)
-            | TokenKind::Comment(_)
+            | TokenKind::LineComment(_)
             | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
             | TokenKind::Colon
@@ -2943,6 +2809,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         };
     }
 
+    // TODO(stefano): remove default values on uninitialized variables
     fn variable_definition(&mut self) -> Result<Variable<'code>, Error<ErrorKind>> {
         let name_token = self.next_token_bounded(Expected::Identifier)?;
         let name = match name_token.kind {
@@ -2959,7 +2826,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     }
                 }
             }
-            TokenKind::Comment(_)
+            TokenKind::LineComment(_)
             | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
             | TokenKind::OpenRoundBracket
@@ -3018,7 +2885,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             }
             TokenKind::SemiColon => None,
             TokenKind::Op(_)
-            | TokenKind::Comment(_)
+            | TokenKind::LineComment(_)
             | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
             | TokenKind::OpenRoundBracket
@@ -3316,22 +3183,18 @@ impl Parser<'_, '_, '_, '_> {
                 });
             };
 
-            let after_condition_token = self.current_token(Expected::DoOrBlock)?;
+            let after_condition_token = self.current_token(Expected::Block)?;
             let if_statement = match after_condition_token.kind {
                 TokenKind::OpenCurlyBracket => {
                     let scope = self.any(after_condition_token)?;
                     IfStatement { condition, statement: scope }
-                }
-                TokenKind::Do => {
-                    let statement = self.do_statement()?;
-                    IfStatement { condition, statement }
                 }
                 TokenKind::OpenRoundBracket
                 | TokenKind::CloseRoundBracket
                 | TokenKind::OpenSquareBracket
                 | TokenKind::CloseSquareBracket
                 | TokenKind::CloseCurlyBracket
-                | TokenKind::Comment(_)
+                | TokenKind::LineComment(_)
                 | TokenKind::BlockComment(_)
                 | TokenKind::Unexpected(_)
                 | TokenKind::Colon
@@ -3359,10 +3222,11 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::Else
                 | TokenKind::Loop
                 | TokenKind::Break
-                | TokenKind::Continue => {
+                | TokenKind::Continue
+                | TokenKind::Do => {
                     let before_curly_bracket_token = self.peek_previous_token();
                     return Err(Error {
-                        kind: ErrorKind::IfMustBeFollowedByDoOrBlock,
+                        kind: ErrorKind::IfMustBeFollowedByBlock,
                         col: before_curly_bracket_token.col,
                         pointers_count: before_curly_bracket_token.kind.display_len(self.tokens),
                     });
@@ -3373,8 +3237,8 @@ impl Parser<'_, '_, '_, '_> {
 
             while let Some(else_token) = self.tokens.tokens.get(self.token as usize) {
                 let after_else_token = match else_token.kind {
-                    TokenKind::Else => self.next_token_bounded(Expected::DoOrBlockOrIfStatement)?,
-                    TokenKind::Comment(_)
+                    TokenKind::Else => self.next_token_bounded(Expected::BlockOrIfStatement)?,
+                    TokenKind::LineComment(_)
                     | TokenKind::BlockComment(_)
                     | TokenKind::Unexpected(_)
                     | TokenKind::OpenRoundBracket
@@ -3418,18 +3282,13 @@ impl Parser<'_, '_, '_, '_> {
                         els = Some(scope);
                         break 'iff;
                     }
-                    TokenKind::Do => {
-                        let statement = self.do_statement()?;
-                        els = Some(statement);
-                        break 'iff;
-                    }
                     TokenKind::If => break,
                     TokenKind::OpenRoundBracket
                     | TokenKind::CloseRoundBracket
                     | TokenKind::OpenSquareBracket
                     | TokenKind::CloseSquareBracket
                     | TokenKind::CloseCurlyBracket
-                    | TokenKind::Comment(_)
+                    | TokenKind::LineComment(_)
                     | TokenKind::BlockComment(_)
                     | TokenKind::Unexpected(_)
                     | TokenKind::Colon
@@ -3456,8 +3315,9 @@ impl Parser<'_, '_, '_, '_> {
                     | TokenKind::Else
                     | TokenKind::Loop
                     | TokenKind::Break
-                    | TokenKind::Continue => Err(Error {
-                        kind: ErrorKind::MustBeFollowedByDoOrBlockOrIfStatement,
+                    | TokenKind::Continue
+                    | TokenKind::Do => Err(Error {
+                        kind: ErrorKind::MustBeFollowedByBlockOrIfStatement,
                         col: else_token.col,
                         pointers_count: else_token.kind.display_len(self.tokens),
                     }),
@@ -3491,7 +3351,7 @@ impl Parser<'_, '_, '_, '_> {
 
                 loop_token
             }
-            TokenKind::Comment(_)
+            TokenKind::LineComment(_)
             | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
             | TokenKind::OpenRoundBracket
@@ -3538,22 +3398,18 @@ impl Parser<'_, '_, '_, '_> {
             });
         };
 
-        let after_condition_token = self.current_token(Expected::DoOrBlock)?;
+        let after_condition_token = self.current_token(Expected::Block)?;
         let statement_result = match after_condition_token.kind {
             TokenKind::OpenCurlyBracket => {
                 let scope = self.any(after_condition_token)?;
                 Ok(scope)
-            }
-            TokenKind::Do => {
-                let statement = self.do_statement()?;
-                Ok(statement)
             }
             TokenKind::OpenRoundBracket
             | TokenKind::CloseRoundBracket
             | TokenKind::OpenSquareBracket
             | TokenKind::CloseSquareBracket
             | TokenKind::CloseCurlyBracket
-            | TokenKind::Comment(_)
+            | TokenKind::LineComment(_)
             | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
             | TokenKind::Colon
@@ -3581,10 +3437,11 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Else
             | TokenKind::Loop
             | TokenKind::Break
-            | TokenKind::Continue => {
+            | TokenKind::Continue
+            | TokenKind::Do => {
                 let before_curly_bracket_token = self.peek_previous_token();
                 Err(Error {
-                    kind: ErrorKind::LoopMustBeFollowedByDoOrBlock,
+                    kind: ErrorKind::LoopMustBeFollowedByBlock,
                     col: before_curly_bracket_token.col,
                     pointers_count: before_curly_bracket_token.kind.display_len(self.tokens),
                 })
@@ -3606,7 +3463,6 @@ impl Parser<'_, '_, '_, '_> {
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Expected {
-    StatementAfterDo,
     Semicolon,
     OperatorOrSemicolon,
     Expression,
@@ -3620,15 +3476,14 @@ pub enum Expected {
     ArrayLength,
     Identifier,
     EqualsOrSemicolon,
-    DoOrBlock,
-    DoOrBlockOrIfStatement,
+    Block,
+    BlockOrIfStatement,
     LoopStatement,
 }
 
 impl Display for Expected {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
-            Self::StatementAfterDo => write!(f, "statement after do keyword"),
             Self::Semicolon => write!(f, "semicolon"),
             Self::OperatorOrSemicolon => write!(f, "operator or semicolon"),
             Self::Expression => write!(f, "expression"),
@@ -3648,8 +3503,8 @@ impl Display for Expected {
             Self::ArrayLength => write!(f, "array length"),
             Self::Identifier => write!(f, "identifier"),
             Self::EqualsOrSemicolon => write!(f, "'=' or ';'"),
-            Self::DoOrBlock => write!(f, "do statement or block"),
-            Self::DoOrBlockOrIfStatement => write!(f, "do statement, block or if statement"),
+            Self::Block => write!(f, "block"),
+            Self::BlockOrIfStatement => write!(f, "block or if statement"),
             Self::LoopStatement => write!(f, "loop statement"),
         };
     }
@@ -3720,17 +3575,14 @@ pub enum ErrorKind {
 
     StrayElseBlock,
     IfMustBeFollowedByBooleanExpression,
-    IfMustBeFollowedByDoOrBlock,
-    MustBeFollowedByDoOrBlockOrIfStatement,
+    IfMustBeFollowedByBlock,
+    MustBeFollowedByBlockOrIfStatement,
 
     DoMustBeFollowedByLoop,
     LoopMustBeFollowedByBooleanExpression,
-    LoopMustBeFollowedByDoOrBlock,
+    LoopMustBeFollowedByBlock,
     StrayBreakStatement,
     StrayContinueStatement,
-
-    BlockInDoStatement,
-    VariableInDoStatement, // IDEA(stefano): allow variables and emit an unused variable warning instead
 }
 
 impl IntoErrorInfo for ErrorKind {
@@ -3999,13 +3851,13 @@ impl IntoErrorInfo for ErrorKind {
                 "invalid if condition".into(),
                 "must be followed by a boolean expression".into(),
             ),
-            Self::IfMustBeFollowedByDoOrBlock => (
+            Self::IfMustBeFollowedByBlock => (
                 "invalid if statement".into(),
-                "must be followed by a do statement or a block".into(),
+                "must be followed by a block".into(),
             ),
-            Self::MustBeFollowedByDoOrBlockOrIfStatement => (
+            Self::MustBeFollowedByBlockOrIfStatement => (
                 "invalid if statement".into(),
-                "must be followed by a do statement, a block or an other if statement".into(),
+                "must be followed by a block or an other if statement".into(),
             ),
 
             Self::DoMustBeFollowedByLoop => (
@@ -4016,9 +3868,9 @@ impl IntoErrorInfo for ErrorKind {
                 "invalid if condition".into(),
                 "must be followed by a boolean expression".into(),
             ),
-            Self::LoopMustBeFollowedByDoOrBlock => (
+            Self::LoopMustBeFollowedByBlock => (
                 "invalid if statement".into(),
-                "must be followed by a do statement or a block".into(),
+                "must be followed by a block".into(),
             ),
             Self::StrayBreakStatement => (
                 "stray break statement".into(),
@@ -4027,15 +3879,6 @@ impl IntoErrorInfo for ErrorKind {
             Self::StrayContinueStatement => (
                 "stray continue statement".into(),
                 "cannot be used outside of loops".into(),
-            ),
-
-            Self::BlockInDoStatement => (
-                "invalid block".into(),
-                "blocks are not allowed in do statements".into(),
-            ),
-            Self::VariableInDoStatement => (
-                "invalid variable definition".into(),
-                "variable definitions are not allowed in do statements".into(),
             ),
         };
 

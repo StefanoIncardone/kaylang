@@ -39,6 +39,8 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 #### Fixed
 
 - Corrected cli error messages
+- Corrected line ending tokenization
+- Actually removed do-statements
 
 ## 0.6.3 - 2025-06-21
 
