@@ -867,6 +867,7 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::BinaryInteger(_)
             | TokenKind::OctalInteger(_)
             | TokenKind::DecimalInteger(_)
+            | TokenKind::DecimalIntegerPrefix(_)
             | TokenKind::HexadecimalInteger(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
@@ -1012,6 +1013,7 @@ impl Parser<'_, '_, '_, '_> {
                     | TokenKind::BinaryInteger(_)
                     | TokenKind::OctalInteger(_)
                     | TokenKind::DecimalInteger(_)
+                    | TokenKind::DecimalIntegerPrefix(_)
                     | TokenKind::HexadecimalInteger(_)
                     | TokenKind::Ascii(_)
                     | TokenKind::Str(_)
@@ -1222,6 +1224,7 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::BinaryInteger(_)
             | TokenKind::OctalInteger(_)
             | TokenKind::DecimalInteger(_)
+            | TokenKind::DecimalIntegerPrefix(_)
             | TokenKind::HexadecimalInteger(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
@@ -1500,6 +1503,32 @@ impl Parser<'_, '_, '_, '_> {
             return Some(integer);
         }
 
+        const fn parse_positive_decimal_prefix_i64(literal: &[ascii]) -> Option<i64> {
+            const BASE: Base = Base::Decimal;
+            let mut integer: i64 = 0;
+            let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
+
+            while digit_index < literal.len() {
+                let ascii_digit = literal[digit_index];
+                digit_index += 1;
+                if ascii_digit == b'_' {
+                    continue;
+                }
+
+                let digit = ascii_digit - b'0';
+                debug_assert!(digit < BASE as u8, "invalid decimal digit");
+                integer = match integer.checked_mul(BASE as i64) {
+                    Some(integer_) => integer_,
+                    None => return None,
+                };
+                integer = match integer.checked_add(digit as i64) {
+                    Some(integer_) => integer_,
+                    None => return None,
+                };
+            }
+            return Some(integer);
+        }
+
         const fn parse_positive_hexadecimal_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Hexadecimal;
             let mut integer: i64 = 0;
@@ -1612,6 +1641,33 @@ impl Parser<'_, '_, '_, '_> {
         }
 
         #[expect(clippy::single_call_fn, reason = "readability")]
+        const fn parse_negative_decimal_prefix_i64(literal: &[ascii]) -> Option<i64> {
+            const BASE: Base = Base::Decimal;
+            let mut integer: i64 = 0;
+            let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
+
+            while digit_index < literal.len() {
+                let ascii_digit = literal[digit_index];
+                digit_index += 1;
+                if ascii_digit == b'_' {
+                    continue;
+                }
+
+                let digit = ascii_digit - b'0';
+                debug_assert!(digit < BASE as u8, "invalid decimal digit");
+                integer = match integer.checked_mul(BASE as i64) {
+                    Some(integer_) => integer_,
+                    None => return None,
+                };
+                integer = match integer.checked_sub(digit as i64) {
+                    Some(integer_) => integer_,
+                    None => return None,
+                };
+            }
+            return Some(integer);
+        }
+
+        #[expect(clippy::single_call_fn, reason = "readability")]
         const fn parse_negative_hexadecimal_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Hexadecimal;
             let mut integer: i64 = 0;
@@ -1671,6 +1727,17 @@ impl Parser<'_, '_, '_, '_> {
             TokenKind::DecimalInteger(literal_index) => {
                 let literal = self.tokens.text[literal_index as usize];
                 match parse_positive_decimal_i64(literal.as_bytes()) {
+                    Some(integer) => Ok(Expression::I64(integer)),
+                    None => Err(Error {
+                        kind: ErrorKind::DecimalIntegerOverflow,
+                        col: current_token.col,
+                        pointers_count: current_token.kind.display_len(self.tokens),
+                    }),
+                }
+            }
+            TokenKind::DecimalIntegerPrefix(literal_index) => {
+                let literal = self.tokens.text[literal_index as usize];
+                match parse_positive_decimal_prefix_i64(literal.as_bytes()) {
                     Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Error {
                         kind: ErrorKind::DecimalIntegerOverflow,
@@ -2165,6 +2232,39 @@ impl Parser<'_, '_, '_, '_> {
                             }
                         } else {
                             match parse_positive_decimal_i64(literal.as_bytes()) {
+                                Some(integer) => Ok(Expression::I64(integer)),
+                                None => Err(Error {
+                                    kind: ErrorKind::DecimalIntegerOverflow,
+                                    col: start_of_expression.col,
+                                    pointers_count: start_of_expression
+                                        .kind
+                                        .display_len(self.tokens),
+                                }),
+                            }
+                        }
+                    }
+                    TokenKind::DecimalIntegerPrefix(literal_index) => {
+                        let literal = self.tokens.text[literal_index as usize];
+                        if should_be_negated {
+                            match parse_negative_decimal_prefix_i64(literal.as_bytes()) {
+                                Some(0) => Err(Error {
+                                    kind: ErrorKind::MinusZeroInteger,
+                                    col: start_of_expression.col,
+                                    pointers_count: start_of_expression
+                                        .kind
+                                        .display_len(self.tokens),
+                                }),
+                                Some(integer) => Ok(Expression::I64(integer)),
+                                None => Err(Error {
+                                    kind: ErrorKind::DecimalIntegerUnderflow,
+                                    col: start_of_expression.col,
+                                    pointers_count: start_of_expression
+                                        .kind
+                                        .display_len(self.tokens),
+                                }),
+                            }
+                        } else {
+                            match parse_positive_decimal_prefix_i64(literal.as_bytes()) {
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Error {
                                     kind: ErrorKind::DecimalIntegerOverflow,
@@ -2844,6 +2944,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::BinaryInteger(_)
             | TokenKind::OctalInteger(_)
             | TokenKind::DecimalInteger(_)
+            | TokenKind::DecimalIntegerPrefix(_)
             | TokenKind::HexadecimalInteger(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
@@ -2901,6 +3002,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::BinaryInteger(_)
             | TokenKind::OctalInteger(_)
             | TokenKind::DecimalInteger(_)
+            | TokenKind::DecimalIntegerPrefix(_)
             | TokenKind::HexadecimalInteger(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
@@ -3206,6 +3308,7 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::BinaryInteger(_)
                 | TokenKind::OctalInteger(_)
                 | TokenKind::DecimalInteger(_)
+                | TokenKind::DecimalIntegerPrefix(_)
                 | TokenKind::HexadecimalInteger(_)
                 | TokenKind::Ascii(_)
                 | TokenKind::Str(_)
@@ -3256,6 +3359,7 @@ impl Parser<'_, '_, '_, '_> {
                     | TokenKind::BinaryInteger(_)
                     | TokenKind::OctalInteger(_)
                     | TokenKind::DecimalInteger(_)
+                    | TokenKind::DecimalIntegerPrefix(_)
                     | TokenKind::HexadecimalInteger(_)
                     | TokenKind::Ascii(_)
                     | TokenKind::Str(_)
@@ -3300,6 +3404,7 @@ impl Parser<'_, '_, '_, '_> {
                     | TokenKind::BinaryInteger(_)
                     | TokenKind::OctalInteger(_)
                     | TokenKind::DecimalInteger(_)
+                    | TokenKind::DecimalIntegerPrefix(_)
                     | TokenKind::HexadecimalInteger(_)
                     | TokenKind::Ascii(_)
                     | TokenKind::Str(_)
@@ -3369,6 +3474,7 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::BinaryInteger(_)
             | TokenKind::OctalInteger(_)
             | TokenKind::DecimalInteger(_)
+            | TokenKind::DecimalIntegerPrefix(_)
             | TokenKind::HexadecimalInteger(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
@@ -3421,6 +3527,7 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::BinaryInteger(_)
             | TokenKind::OctalInteger(_)
             | TokenKind::DecimalInteger(_)
+            | TokenKind::DecimalIntegerPrefix(_)
             | TokenKind::HexadecimalInteger(_)
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)

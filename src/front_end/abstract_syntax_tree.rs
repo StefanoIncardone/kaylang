@@ -236,6 +236,10 @@ pub(crate) enum Expression {
         literal: TextIndex,
         column: offset32,
     },
+    DecimalIntegerPrefix {
+        literal: TextIndex,
+        column: offset32,
+    },
     BinaryInteger {
         literal: TextIndex,
         column: offset32,
@@ -407,7 +411,7 @@ pub(crate) enum Node {
         variable_definition: VariableDefinitionIndex,
         semicolon_column: offset32,
     },
-    // IDEA(stefano): maybe move into expressions enum
+
     Assignment {
         target: ExpressionIndex,
         operator: AssignmentOperator,
@@ -680,6 +684,10 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 let literal_str = self.tokens.text[*literal as usize];
                 writeln!(f, "{:>indent$}DecimalInteger: {column} = {literal_str}", "")
             }
+            Expression::DecimalIntegerPrefix { literal, column } => {
+                let literal_str = self.tokens.text[*literal as usize];
+                writeln!(f, "{:>indent$}DecimalIntegerPrefix: {column} = {literal_str}", "")
+            }
             Expression::BinaryInteger { literal, column } => {
                 let literal_str = self.tokens.text[*literal as usize];
                 writeln!(f, "{:>indent$}BinaryInteger: {column} = {literal_str}", "")
@@ -951,6 +959,7 @@ impl Parser<'_, '_, '_, '_> {
             TokenKind::True
             | TokenKind::False
             | TokenKind::DecimalInteger(_)
+            | TokenKind::DecimalIntegerPrefix(_)
             | TokenKind::BinaryInteger(_)
             | TokenKind::OctalInteger(_)
             | TokenKind::HexadecimalInteger(_)
@@ -1075,6 +1084,7 @@ impl Parser<'_, '_, '_, '_> {
                     | TokenKind::False
                     | TokenKind::True
                     | TokenKind::DecimalInteger(_)
+                    | TokenKind::DecimalIntegerPrefix(_)
                     | TokenKind::BinaryInteger(_)
                     | TokenKind::OctalInteger(_)
                     | TokenKind::HexadecimalInteger(_)
@@ -1421,6 +1431,7 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::False
                 | TokenKind::True
                 | TokenKind::DecimalInteger(_)
+                | TokenKind::DecimalIntegerPrefix(_)
                 | TokenKind::BinaryInteger(_)
                 | TokenKind::OctalInteger(_)
                 | TokenKind::HexadecimalInteger(_)
@@ -1488,6 +1499,7 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::False
                 | TokenKind::True
                 | TokenKind::DecimalInteger(_)
+                | TokenKind::DecimalIntegerPrefix(_)
                 | TokenKind::BinaryInteger(_)
                 | TokenKind::OctalInteger(_)
                 | TokenKind::HexadecimalInteger(_)
@@ -1547,6 +1559,9 @@ impl Parser<'_, '_, '_, '_> {
             TokenKind::True => Expression::True { column: token.col },
             TokenKind::DecimalInteger(literal) => {
                 Expression::DecimalInteger { literal, column: token.col }
+            }
+            TokenKind::DecimalIntegerPrefix(literal) => {
+                Expression::DecimalIntegerPrefix { literal, column: token.col }
             }
             TokenKind::BinaryInteger(literal) => {
                 Expression::BinaryInteger { literal, column: token.col }
@@ -1656,6 +1671,7 @@ impl Parser<'_, '_, '_, '_> {
                         | TokenKind::False
                         | TokenKind::True
                         | TokenKind::DecimalInteger(_)
+                        | TokenKind::DecimalIntegerPrefix(_)
                         | TokenKind::BinaryInteger(_)
                         | TokenKind::OctalInteger(_)
                         | TokenKind::HexadecimalInteger(_)
@@ -2018,6 +2034,7 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::False
             | TokenKind::True
             | TokenKind::DecimalInteger(_)
+            | TokenKind::DecimalIntegerPrefix(_)
             | TokenKind::BinaryInteger(_)
             | TokenKind::OctalInteger(_)
             | TokenKind::HexadecimalInteger(_)
@@ -2078,6 +2095,7 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::False
                 | TokenKind::True
                 | TokenKind::DecimalInteger(_)
+                | TokenKind::DecimalIntegerPrefix(_)
                 | TokenKind::BinaryInteger(_)
                 | TokenKind::OctalInteger(_)
                 | TokenKind::HexadecimalInteger(_)
@@ -2204,6 +2222,7 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::False
             | TokenKind::True
             | TokenKind::DecimalInteger(_)
+            | TokenKind::DecimalIntegerPrefix(_)
             | TokenKind::BinaryInteger(_)
             | TokenKind::OctalInteger(_)
             | TokenKind::HexadecimalInteger(_)
@@ -2335,6 +2354,7 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::False
                 | TokenKind::True
                 | TokenKind::DecimalInteger(_)
+                | TokenKind::DecimalIntegerPrefix(_)
                 | TokenKind::BinaryInteger(_)
                 | TokenKind::OctalInteger(_)
                 | TokenKind::HexadecimalInteger(_)

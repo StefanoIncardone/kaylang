@@ -14,12 +14,14 @@ binary_digit      = "0".."1";
 octal_digit       = "0".."7";
 hexadecimal_digit = "0".."9" | "A".."F" | "a".."f";
 
-decimal_integer_literal     = decimal_digit, [{decimal_digit     | "_"}];
-binary_integer_literal      = "0b",          [{binary_digit      | "_"}];
-octal_integer_literal       = "0o",          [{octal_digit       | "_"}];
-hexadecimal_integer_literal = "0x",          [{hexadecimal_digit | "_"}];
+decimal_integer_literal        = decimal_digit, [{decimal_digit     | "_"}];
+decimal_prefix_integer_literal = "0d",          [{decimal_digit     | "_"}];
+binary_integer_literal         = "0b",          [{binary_digit      | "_"}];
+octal_integer_literal          = "0o",          [{octal_digit       | "_"}];
+hexadecimal_integer_literal    = "0x",          [{hexadecimal_digit | "_"}];
 integer_literal =
     decimal_integer_literal
+    | decimal_prefix_integer_literal
     | binary_integer_literal
     | octal_integer_literal
     | hexadecimal_integer_literal

@@ -314,6 +314,7 @@ pub(crate) enum TokenKind {
 
     // integer literals are never empty and always contain valid ascii digits
     DecimalInteger(TextIndex),
+    DecimalIntegerPrefix(TextIndex),
     BinaryInteger(TextIndex),
     OctalInteger(TextIndex),
     HexadecimalInteger(TextIndex),
@@ -377,7 +378,7 @@ impl TokenKind {
             Self::True => 4,
             Self::False => 5,
 
-            Self::DecimalInteger(integer) => {
+            Self::DecimalInteger(integer) | Self::DecimalIntegerPrefix(integer) => {
                 let text = tokens.text[integer as usize];
                 text.len() as offset32
             }
@@ -565,6 +566,10 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         Some(b'x') => {
                             tokenizer.col += 1;
                             tokenizer.integer_hexadecimal()
+                        }
+                        Some(b'd') => {
+                            tokenizer.col += 1;
+                            tokenizer.integer_decimal_prefix()
                         }
                         Some(_) => tokenizer.integer_decimal(),
                     },
@@ -1285,6 +1290,45 @@ impl Tokenizer<'_> {
 
         let literal_index = self.new_token_text();
         return Ok(TokenKind::DecimalInteger(literal_index));
+    }
+
+    fn integer_decimal_prefix(&mut self) -> Result<TokenKind, ()> {
+        let previous_errors_len = self.errors.len();
+
+        loop {
+            match self.peek_ascii_multiline() {
+                Some(Ok(b'0'..=b'9' | b'_')) => {
+                    self.col += 1;
+                }
+                Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
+                    self.errors.push(Error {
+                        kind: ErrorKind::LetterInDecimalNumberLiteral(letter),
+                        col: self.col,
+                        pointers_count: 1,
+                    });
+                    self.col += 1;
+                }
+                Some(Err(grapheme)) => {
+                    self.errors.push(Error {
+                        kind: ErrorKind::Utf8InDecimalNumberLiteral { grapheme },
+                        col: self.col,
+                        pointers_count: grapheme.display_len(),
+                    });
+                    #[expect(clippy::cast_possible_truncation)]
+                    {
+                        self.col += grapheme.len() as offset32;
+                    }
+                }
+                Some(Ok(_)) | None => break,
+            }
+        }
+
+        if previous_errors_len != self.errors.len() {
+            return Err(());
+        }
+
+        let literal_index = self.new_token_text();
+        return Ok(TokenKind::DecimalIntegerPrefix(literal_index));
     }
 
     fn integer_binary(&mut self) -> Result<TokenKind, ()> {

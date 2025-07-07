@@ -77,15 +77,16 @@ memory as signed 64 bit values:
 Number literals can be written in other bases other than the default decimal namely, binay, octal
 and hexadecimal, with the appropriate prefixes:
 
-| number system     | base | valid digits          | prefix | example        |
-| :---------------- | :--- | :-------------------- | :----- | :------------- |
-| decimal (default) | 10   | 0..=9                 |        | `21`           |
-| binary            | 2    | 0..=1                 | `0b`   | `0b1100`       |
-| octal             | 8    | 0..=7                 | `0o`   | `0o14`         |
-| hexadecimal       | 16   | 0..=9, A..=F or a..=f | `0x`   | `0xc` or `0xC` |
+| number system                    | base | valid digits          | prefix | example        |
+| :------------------------------- | :--- | :-------------------- | :----- | :------------- |
+| decimal (default)                | 10   | 0..=9                 |        | `21`           |
+| decimal prefix (for consistency) | 10   | 0..=9                 | `0d`   | `0d21`         |
+| binary                           | 2    | 0..=1                 | `0b`   | `0b1100`       |
+| octal                            | 8    | 0..=7                 | `0o`   | `0o14`         |
+| hexadecimal                      | 16   | 0..=9, A..=F or a..=f | `0x`   | `0xC` or `0xc` |
 
 >[!NOTE]
-> empty numbers in bases other than decimal, i.e. `0b`, `0o` and `0x`, are all equal to `0`
+> empty prefixed numbers `0d`, `0b`, `0o` and `0x` are treated as `0`
 
 ## Booleans
 

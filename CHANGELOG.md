@@ -21,6 +21,10 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ### Language
 
+#### Added
+
+- Decimal number prefix `0d` for consistency
+
 #### Changed
 
 - Made block comments delimited by `#*` and `*#` instead of `##`, allowing for nested block comments
