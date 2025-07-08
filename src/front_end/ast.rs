@@ -2005,90 +2005,20 @@ impl Parser<'_, '_, '_, '_> {
             TokenKind::Op(Op::Len) => {
                 _ = self.next_token();
                 let operand = self.primary_expression()?;
-                return match &operand {
-                    Expression::Str { .. } => Ok(Expression::Unary {
+                let operand_typ = operand.typ();
+                // returning to avoid the call to tokens.next at the end of the function
+                return match operand_typ {
+                    Type::Base(BaseType::Str) | Type::Array { .. } => Ok(Expression::Unary {
                         op: UnaryOp::Len,
                         op_col: current_token.col,
                         operand_index: self.new_expression(operand),
                     }),
-                    Expression::I64(_) => Err(Error {
-                        kind: ErrorKind::CannotTakeLenOf(Type::Base(BaseType::I64)),
-                        col: current_token.col,
-                        pointers_count: current_token.kind.display_len(self.tokens),
-                    }),
-                    Expression::Ascii(_) => Err(Error {
-                        kind: ErrorKind::CannotTakeLenOf(Type::Base(BaseType::Ascii)),
-                        col: current_token.col,
-                        pointers_count: current_token.kind.display_len(self.tokens),
-                    }),
-                    Expression::True | Expression::False => Err(Error {
-                        kind: ErrorKind::CannotTakeLenOf(Type::Base(BaseType::Bool)),
-                        col: current_token.col,
-                        pointers_count: current_token.kind.display_len(self.tokens),
-                    }),
-                    Expression::Array { .. } => Ok(Expression::Unary {
-                        op: UnaryOp::Len,
-                        op_col: current_token.col,
-                        operand_index: self.new_expression(operand),
-                    }),
-                    Expression::Variable { typ, .. } => match typ {
-                        Type::Base(BaseType::Str) | Type::Array { .. } => Ok(Expression::Unary {
-                            op: UnaryOp::Len,
-                            op_col: current_token.col,
-                            operand_index: self.new_expression(operand),
-                        }),
-                        Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => {
-                            Err(Error {
-                                kind: ErrorKind::CannotTakeLenOf(*typ),
-                                col: current_token.col,
-                                pointers_count: current_token.kind.display_len(self.tokens),
-                            })
-                        }
-                    },
-                    Expression::ArrayIndex { base_type, .. } => match base_type {
-                        BaseType::Str => Ok(Expression::Unary {
-                            op: UnaryOp::Len,
-                            op_col: current_token.col,
-                            operand_index: self.new_expression(operand),
-                        }),
-                        BaseType::I64 | BaseType::Ascii | BaseType::Bool => Err(Error {
-                            kind: ErrorKind::CannotTakeLenOf(Type::Base(*base_type)),
+                    Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => {
+                        return Err(Error {
+                            kind: ErrorKind::CannotTakeLenOf(operand_typ),
                             col: current_token.col,
                             pointers_count: current_token.kind.display_len(self.tokens),
-                        }),
-                    },
-                    Expression::Parenthesis { typ, .. } => Err(Error {
-                        kind: ErrorKind::CannotTakeLenOf(*typ),
-                        col: current_token.col,
-                        pointers_count: current_token.kind.display_len(self.tokens),
-                    }),
-                    Expression::Unary { op, .. } => Err(Error {
-                        kind: ErrorKind::CannotTakeLenOf(op.typ()),
-                        col: current_token.col,
-                        pointers_count: current_token.kind.display_len(self.tokens),
-                    }),
-                    Expression::BooleanUnary { op, .. } => Err(Error {
-                        kind: ErrorKind::CannotTakeLenOf(op.typ()),
-                        col: current_token.col,
-                        pointers_count: current_token.kind.display_len(self.tokens),
-                    }),
-                    Expression::Binary { op, .. } => Err(Error {
-                        kind: ErrorKind::CannotTakeLenOf(op.typ()),
-                        col: current_token.col,
-                        pointers_count: current_token.kind.display_len(self.tokens),
-                    }),
-                    Expression::BooleanBinary { op, .. } => Err(Error {
-                        kind: ErrorKind::CannotTakeLenOf(op.typ()),
-                        col: current_token.col,
-                        pointers_count: current_token.kind.display_len(self.tokens),
-                    }),
-                    Expression::Comparison { op, .. } => Err(Error {
-                        kind: ErrorKind::CannotTakeLenOf(op.typ()),
-                        col: current_token.col,
-                        pointers_count: current_token.kind.display_len(self.tokens),
-                    }),
-                    Expression::Temporary { .. } => {
-                        unreachable!("should be returned from expressions");
+                        });
                     }
                 };
             }
@@ -2119,10 +2049,10 @@ impl Parser<'_, '_, '_, '_> {
                             Ok(operand)
                         }
                     }
-                    invalid_type @ (Type::Base(
-                        BaseType::Ascii | BaseType::Bool | BaseType::Str,
-                    )
-                    | Type::Array { .. }) => Err(Error {
+                    invalid_type @ (
+                        Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
+                        | Type::Array { .. }
+                    ) => Err(Error {
                         kind: ErrorKind::CannotTakeAbsoluteValueOf(invalid_type),
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(self.tokens),

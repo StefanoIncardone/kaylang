@@ -29,6 +29,10 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Made block comments delimited by `#*` and `*#` instead of `##`, allowing for nested block comments
 
+#### Fixed
+
+- Fixed bug where the `len` operator could not be used with nested expressions
+
 ### Compiler
 
 #### Changed
