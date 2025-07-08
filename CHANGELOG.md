@@ -37,6 +37,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 #### Changed
 
+- `tokenizer::Token` is now `pub(crate)`
 - Refactored cli arguments and parsing:
     - Introduced `ArgParser`: does not require the first argument to be the executable file
     - `Command::Help` no longer contains the executable name

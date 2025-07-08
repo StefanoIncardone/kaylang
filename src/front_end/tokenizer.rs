@@ -435,7 +435,7 @@ impl TokenKind {
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub struct Token {
+pub(crate) struct Token {
     pub(crate) kind: TokenKind,
     pub(crate) col: offset32,
 }
