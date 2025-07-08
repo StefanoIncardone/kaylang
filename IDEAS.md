@@ -60,6 +60,7 @@ let i = [
     2,
     4, # would not be a problem if a trailing comma was mandatory
     3,
+    5, # additions would truly be one line changes (already possible by allowing trailing commas)
 ];
 
 # should we do it for function arguments?
@@ -79,9 +80,6 @@ struct Point<I,>(
 
 # should we do it for generics?
 let p = Point<i64,>(x = 12, y = 21,);
-
-if a { println "a"; }
-else if b { println "b" } # could we allow "trailing semicolons" before curly brackets?
 ```
 
 might just be a compiler or linter flag
@@ -319,8 +317,6 @@ could move to self hosting the compilation process, with a `build.kay` "build sy
 ```shell
 kay run build.kay
 ```
-
-## ?.?.? - Language version embedded in the binary executable
 
 ## ?.?.? - Amount of crash information
 
@@ -773,38 +769,57 @@ let ok = match answer {
 
 ```kay
 # possible label syntax
-let x = loop:loop_label {
-    loop {
-        break;
-    }
-    loop {
-        let i = if:if_label condition {
-            # forcing breaks to "return" values from blocks and loops
-            break:if_label 12;
-        } else {
-            break:if_label 21;
-        }
+loop:label condition { ... }
+if:label condition { ... }
+:label { ... }
+break:label 21;
 
-        let x = :scope_label {
-            break:scope_label 12;
-        }
-        
-        # specialized syntax
-        let i = if condition {
-            # forcing breaks to "return" values from blocks and loops
-            break:if 12;
-        } else {
-            break:if 21;
-        }
+# or
+:label loop condition { ... }
+:label if condition { ... }
+:label { ... }
+:label break 21;
 
-        let x = loop {
-            if condition {
-                break:loop i; # breaks from direct loop parent
-                break:if i; # breaks from direct if parent
-            }
-        }
-        break:loop_label x;
+# or
+loop condition :label { ... }
+if condition :label { ... }
+:label { ... }
+break 21 :label;
+
+# or
+loop condition :label { ... }
+if condition :label { ... }
+:label { ... }
+break:label 21;
+
+let x = loop:loop_label condition {
+    # implicit break from direct loop parent block
+    break 12;
+
+    # explicit break from direct loop parent block
+    break:if 12;
+
+    let i = if:if_label condition {
+        # implicit break from direct if block
+        break 12;
+
+        # explicit break from direct if parent block
+        break:if 12;
+
+        # explicit break from direct loop parent block
+        break:loop 12;
+
+        # forcing breaks to "return" values from blocks and loops
+        break:if_label 12;
+    } else {
+        break:if_label 21;
     }
+
+    let x = :scope_label {
+        break:scope_label 12;
+    }
+    
+    break:loop_label x;
 }
 ```
 
@@ -1609,12 +1624,13 @@ pointers are going to come in different flavours (introducing `none` keyword):
 ```kay
 let answer = 42;
 
-let pointer: i64*; # owned pointer, pointing to owned memory (will free the memory it owns when going out of scope or something)
-let reference: i64&; # borrowed pointer, pointing to non-owned memory (will possibly support lifetimes)
-
-# avery pointer type can be created with the same syntax
-pointer = &answer;
-reference = &answer;
+# owned pointer, pointing to owned memory (will free the memory it owns when going out of scope or something)
+let pointer: i64* = &answer;
+# borrowed pointer, pointing to non-owned memory (will possibly support lifetimes)
+let reference: i64& = &answer;
+# or
+let pointer = answer.&;
+let reference = answer.&;
 
 let dereferenced: i64;
 
@@ -1622,11 +1638,16 @@ let dereferenced: i64;
 if reference != none {
     # after this point the compiler knows that "reference" is not none and can safely dereference
     dereferenced = *reference;
+    # or
+    dereferenced = reference.*;
 }
 # after this point the compiler can't guarantee that "reference" is not none, so from now on it's again mandatory to check for null
 
 # or you can forcefully dereference (say for example if you for sure know the pointer is valid), crashing in case of a null pointer
 dereferenced = ^reference;
+# or
+dereferenced = reference.^;
+dereferenced = reference.**;
 ```
 
 ## ?.?.? - Index pointers
@@ -1638,14 +1659,17 @@ basically just 'type safe' indexes with semantics roughly similar to pointers an
 
 let some_array: i64[3] = [1, 2, 3];
 # would basically get the value of the index between brackets, syntax is similar to regular pointers
-let index_pointer: i64&<u8, some_array ## can specify to what this index refers to ##> = &some_array[0];
-let index_pointer: i64&<u8 ## or it can be inferred from the right hand side of the assignment ##> = &some_array[0];
+# can specify to what this index refers to
+let index_pointer: i64&<u8, some_array> = &some_array[0];
+# or it can be inferred from the right hand side of the assignment
+let index_pointer: i64&<u8> = &some_array[0];
 
 # would basically be syntactic sugar for
 let index_pointer: u8 = 0;
 
 # or with inference
 let index_pointer = &<u8>some_array[0];
+let index_pointer = some_array[0].&<u8>;
 
 # if the array has a known length bigger that the index pointer size it would result in an error
 let some_array: i64[257] = [...];
@@ -1663,28 +1687,30 @@ let list: i64[3..] = [1, 2, 3]; # growable array
 # time, hence its the programmer's responsibility to make sure to have the proper index type,
 # thus this u8 index pointer can only reach the first 255 items of the list
 let list_index_pointer = &<u8>list[0];
+# or force the use of the same type of index as the type of the `len` of the list
+let list_index_pointer = &<i64>list[0]; # the `len` operator currently returns i64
 let list_pointer = &list[0];
 
-fn append(list: i64[..], item: i64) {
+fn append(list: i64[..]&var, item: i64) {
     # append operation only adds items to the end of the list:
     # - does not invalidate previously created indexes
-    # - it may invalidate regular pointers if the list were to reallocate
+    # - may invalidate regular pointers if the list were to reallocate
     ...
 }
 
 # could create attributes to signal possible indexs invalidation of the specified list
-fn i64 = pop(@invalidates_indexes list: i64[..]&var) {
+fn i64 = pop(list: i64[..]&var) @invalidates_indexes {
     # pop operation only removes from the end of the list:
-    # - may invalidate indexe poitners that pointed to the end of the list
+    # - may invalidate index pointers that pointed to the end of the list
     # - may invalidate regular pointers that pointed to the end of the list
     ...
 }
 
-let last_element_index = &<u8>list[len list - 1];
-let last_element = pop(&var list); # Error: cannot pop, it would invalidate index 'last_element_indexe'
+let last_element_index = list[len list - 1].&<u8>;
+let last_element = pop(list.&var); # Error: cannot pop, it would invalidate index 'last_element_index'
 
 # example usage
-fn &i64 = get(list: &var i64[..], index: i64&<u8, list>) { ... }
+fn i64& = get(list: i64[..]&var, index: i64&<u8, list>) { ... }
 ```
 
 ## ?.?.? - Optional types (nullable pointers)
@@ -1951,14 +1977,14 @@ let rgba_u32: u32 = rgba alias u32;
 let rgba_u32: u32 = rgba cast u32;
 let rgba_u32: u32 = rgba view u32;
 
-let red = Rgba { r = 255 };
-let green = Rgba { g = 255 };
+let red = Rgba(r = 255);
+let green = Rgba(g = 255);
 
 # the compiler would treat this as Rgba + Rgba
 let red_plus_green = red + green;
 
 # while this would be treated as u32 + u32 and no conversion code would be run
-let red_plus_green = red as u32 + green as u32;
+let red_plus_green = (red as u32 + green as u32) as Rgba;
 
 # so it avoids this
 var red_plus_green: Rgba;
@@ -1976,11 +2002,11 @@ struct SomeOtherStruct(...)
 
 impl SomeStruct {
     # member function
-    op SomeOtherStruct = cast(self, other: SomeOtherStruct) { ...; return ...; }
-    op SomeOtherStruct = into(self, other: SomeOtherStruct) { ...; return ...; }
-    op SomeOtherStruct = convert(self, other: SomeOtherStruct) { ...; return ...; }
-    op SomeOtherStruct = into(self, other: SomeOtherStruct, other_args: ...) { ...; return ...; }
-    op SomeOtherStruct = self into other: SomeOtherStruct ## how do i add other args? ## { ...; return ...; }
+    op SomeOtherStruct = cast(self, other: SomeOtherStruct) { ... }
+    op SomeOtherStruct = into(self, other: SomeOtherStruct) { ... }
+    op SomeOtherStruct = convert(self, other: SomeOtherStruct) { ... }
+    op SomeOtherStruct = into(self, other: SomeOtherStruct, other_args: ...) { ... }
+    op SomeOtherStruct = self into other: SomeOtherStruct #* how do i add other args? *# { ... }
 }
 
 # freestanding function
@@ -2559,22 +2585,26 @@ let outer_0 = ...;
 let outer_1 = ...;
 
 # syntax subject to change
-@capture(outer_0) ## only capture outer_0 ## {
+@capture(outer_0) #* only capture outer_0 *# {
     let inner_0 = outer_0; # can see outer_0
     let inner_1 = outer_1; # Error: cannot see outer_1, not specified in the capturing group
 }
-@capture(outer_0, outer_1) ## only capture outer_0 and outer_1 ## {
+@capture(outer_0, outer_1) #* only capture outer_0 and outer_1 *# {
     let inner_0 = outer_0; # can see outer_0
     let inner_1 = outer_1; # can see outer_1
 }
 
-@capture(!outer_0) ## capture everyting except outer_0 ## {
+@capture(!outer_0) #* capture everyting except outer_0 *# {
     let inner_0 = outer_0; # Error: cannot see outer_0, not specified in the capturing group
     let inner_1 = outer_1; # can see outer_1
 }
-@capture() ## capture nothing ## {
+@capture() #* capture nothing *# {
     let inner_0 = outer_0; # Error: cannot see outer_0, not specified in the capturing group
     let inner_1 = outer_1; # Error: cannot see outer_1, not specified in the capturing group
+}
+#* capture from outer scope *# {
+    let inner_0 = outer_0; # can see outer_0
+    let inner_1 = outer_1; # can see outer_1
 }
 
 # need to implement other ways to specify what to capture
@@ -2586,6 +2616,10 @@ could be applied to functions as well (when global variables will be implemented
 let global_0 = ...;
 let global_1 = ...;
 fn foo(...) @capture(global_0) {
+    let inner_0 = global_0; # can see global_0
+    let inner_1 = global_1; # Error: cannot see global_1, not specified in the capturing group
+}
+fn foo(...) [global_0] {
     let inner_0 = global_0; # can see global_0
     let inner_1 = global_1; # Error: cannot see global_1, not specified in the capturing group
 }
