@@ -232,14 +232,10 @@ let inferred = 42; # the type will be inferred as `i64` by the expression to the
 let explicit: i64 = 42; # with the type annotation the type is specified to be `i64
 let mismatched: i64 = "42"; # Error: annotated type differs from actual value, expected `i64` but got `str`
 
-# 4. optional variable values
-# when no initial value is specified a default value will be assigned base on the annotated type
-let default_initialized_i64: i64; # 0 is the default value for `i64`
-let default_initialized_ascii: ascii; # '\0' is the default value for `ascii`
-let default_initialized_bool: bool; # `false` is the default value for `bool`
-let default_initialized_str: str; # "" is the default value for `str`
+# 4. mandatory variable values
+let missing_initial_value: i64; # Error: missing initial value
 
-# since all variables must hold a concrete type, there need to be specified either a type annotation
+# since all variables must hold a concrete type, there needs to be specified either a type annotation
 # or an initial value to be able to determine the type of the variable
 let cannot_infer_type; # Error: missing either type annotation or initial value to determine the type of the variable
 ```

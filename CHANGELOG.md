@@ -10,7 +10,6 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Shortcircuted and/or operators
 - Unsigned integers
-- Reworked multiline comments to allow nesting
 
 ## Known issues
 
@@ -32,6 +31,11 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 #### Fixed
 
 - Fixed bug where the `len` operator could not be used with nested expressions
+
+#### Removed
+
+- Removed variables in type signatures mimicking `typeof`
+- Removed variables default values
 
 ### Compiler
 

@@ -172,7 +172,7 @@ expression                = or_expression;
 
 (* statements *)
 type = identifier, ["[", expression, "]"];
-variable_declaration = ("let" | "var"), identifier, [[":", type], "=", expression], ";";
+variable_declaration = ("let" | "var"), identifier, [":", type], "=", expression, ";";
 variable_reassignment = expression, operator_assignment, expression, ";";
 
 break_statement = "break", ";";

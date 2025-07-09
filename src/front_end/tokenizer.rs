@@ -324,6 +324,7 @@ pub(crate) enum TokenKind {
     RawStr(TextIndex),
     IdentifierStr(TextIndex),
 
+    // IDEA(stefano): extract base types from identifiers
     Identifier(TextIndex),
 
     // Keywords

@@ -1,3 +1,5 @@
+// TODO(stefanno): rename module to `syntax_tree` or `st`
+// IDEA(stefano): introduced typed indexes
 use super::{
     src_file::{DisplayPosition, SrcCode},
     tokenizer::{Op, TextIndex, Token, TokenIndex, TokenKind, Tokens},
@@ -8,7 +10,6 @@ extern crate alloc;
 use alloc::borrow::Cow;
 use back_to_front::offset32;
 
-#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
@@ -48,7 +49,6 @@ impl Display for PrefixOperator {
 }
 
 impl PrefixOperator {
-    #[expect(dead_code, reason = "kept for consistency")]
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
         let op: Op = self.into();
@@ -56,7 +56,6 @@ impl PrefixOperator {
     }
 }
 
-#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
@@ -136,7 +135,6 @@ impl Display for BinaryOperator {
 }
 
 impl BinaryOperator {
-    #[expect(dead_code, reason = "kept for consistency")]
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
         let op: Op = self.into();
@@ -144,7 +142,6 @@ impl BinaryOperator {
     }
 }
 
-#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
@@ -303,10 +300,6 @@ pub(crate) enum Expression {
         inner_expression: ExpressionIndex,
         close_round_bracket_column: offset32,
     },
-    EmptyParenthesis {
-        open_round_bracket_column: offset32,
-        close_round_bracket_column: offset32,
-    },
 
     Index {
         indexed_expression: ExpressionIndex,
@@ -325,39 +318,39 @@ pub(crate) enum ArrayItemSeparator {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct ArrayItem {
-    item: ExpressionIndex,
-    separator_column: offset32,
+    pub(crate) expression: ExpressionIndex,
     separator: ArrayItemSeparator,
+    separator_column: offset32,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct ArrayDimension {
     open_square_bracket_column: offset32,
-    dimension_expression: ExpressionIndex,
+    pub(crate) dimension_expression: ExpressionIndex,
     close_square_bracket_column: offset32,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct TypeAnnotation {
     colon_column: NonZero<offset32>,
-    type_name: TextIndex,
-    type_name_column: offset32,
-    array_dimensions_start: offset32,
-    array_dimensions_len: offset32,
+    pub(crate) type_name: TextIndex,
+    pub(crate) type_name_column: offset32,
+    pub(crate) array_dimensions_start: offset32,
+    pub(crate) array_dimensions_len: offset32,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct InitialValue {
     equals_column: NonZero<offset32>,
-    expression: ExpressionIndex,
+    pub(crate) expression: ExpressionIndex,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct VariableDefinition {
-    name: TextIndex,
-    name_column: offset32,
-    type_annotation: Option<TypeAnnotation>,
-    initial_value: Option<InitialValue>,
+    pub(crate) name: TextIndex,
+    pub(crate) name_column: offset32,
+    pub(crate) type_annotation: Option<TypeAnnotation>,
+    pub(crate) initial_value: Option<InitialValue>,
 }
 
 pub(crate) type VariableDefinitionIndex = offset32;
@@ -488,9 +481,10 @@ pub struct SyntaxTree<'tokens, 'code: 'tokens> {
 impl SyntaxTree<'_, '_> {
     #[inline]
     fn new_expression(&mut self, expression: Expression) -> ExpressionIndex {
-        self.expressions.push(expression);
         #[expect(clippy::cast_possible_truncation)]
-        return self.expressions.len() as ExpressionIndex - 1;
+        let index = self.expressions.len() as ExpressionIndex;
+        self.expressions.push(expression);
+        return index;
     }
 }
 
@@ -732,8 +726,8 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 let items_indent = expression_indent + Self::INDENT_INCREMENT;
                 let items_end = items_start + items_len;
                 let items = &self.syntax_tree.array_items[*items_start as usize..items_end as usize];
-                for ArrayItem { item, separator_column, separator } in items {
-                self.info_expression(f, *item, items_indent)?;
+                for ArrayItem { expression: item_expression, separator_column, separator } in items {
+                    self.info_expression(f, *item_expression, items_indent)?;
                     match separator {
                         ArrayItemSeparator::Comma => writeln!(f, "{:>items_indent$}Comma: {separator_column} = ,", "")?,
                         ArrayItemSeparator::Semicolon => writeln!(f, "{:>items_indent$}Semicolon: {separator_column} = ;", "")?,
@@ -755,8 +749,8 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 let items_indent = expression_indent + Self::INDENT_INCREMENT;
                 let items_end = items_start + items_len;
                 let items = &self.syntax_tree.array_items[*items_start as usize..items_end as usize];
-                for ArrayItem { item, separator_column, separator } in items {
-                self.info_expression(f, *item, items_indent)?;
+                for ArrayItem { expression: item_expression, separator_column, separator } in items {
+                    self.info_expression(f, *item_expression, items_indent)?;
                     match separator {
                         ArrayItemSeparator::Comma => writeln!(f, "{:>items_indent$}Comma: {separator_column} = ,", "")?,
                         ArrayItemSeparator::Semicolon => writeln!(f, "{:>items_indent$}Semicolon: {separator_column} = ;", "")?,
@@ -786,14 +780,6 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 writeln!(f, "{:indent$}ParenthesisExpression", "")?;
                 writeln!(f, "{:>expression_indent$}OpenRoundBracket: {open_round_bracket_column} = (", "")?;
                 self.info_expression(f, *inner_expression, expression_indent)?;
-                writeln!(f, "{:>expression_indent$}CloseRoundBracket: {close_round_bracket_column} = )", "")
-            },
-            Expression::EmptyParenthesis {
-                open_round_bracket_column,
-                close_round_bracket_column
-            } => {
-                writeln!(f, "{:indent$}ParenthesisExpression", "")?;
-                writeln!(f, "{:>expression_indent$}OpenRoundBracket: {open_round_bracket_column} = (", "")?;
                 writeln!(f, "{:>expression_indent$}CloseRoundBracket: {close_round_bracket_column} = )", "")
             },
 
@@ -1281,7 +1267,7 @@ impl Parser<'_, '_, '_, '_> {
 
                 if self.loop_depth == 0 {
                     return Err(Error {
-                        kind: ErrorKind::BreakOutsideOfLoop,
+                        kind: ErrorKind::StrayBreak,
                         col: token.col,
                         pointers_count: token.kind.display_len(self.tokens),
                     });
@@ -1294,7 +1280,7 @@ impl Parser<'_, '_, '_, '_> {
 
                 if self.loop_depth == 0 {
                     return Err(Error {
-                        kind: ErrorKind::ContinueOutsideOfLoop,
+                        kind: ErrorKind::StrayContinue,
                         col: token.col,
                         pointers_count: token.kind.display_len(self.tokens),
                     });
@@ -1581,16 +1567,17 @@ impl Parser<'_, '_, '_, '_> {
             TokenKind::IdentifierStr(identifier) => {
                 Expression::IdentifierStr { identifier, column: token.col }
             }
-            TokenKind::OpenRoundBracket => 'bracket: {
+            TokenKind::OpenRoundBracket => {
                 let open_round_bracket_token = token;
 
                 let start_of_inner_expression_token =
                     self.next_expected_token(Expected::Operand)?;
                 if let TokenKind::CloseRoundBracket = start_of_inner_expression_token.kind {
-                    break 'bracket Expression::EmptyParenthesis {
-                        open_round_bracket_column: open_round_bracket_token.col,
-                        close_round_bracket_column: start_of_inner_expression_token.col,
-                    };
+                    return Err(Error {
+                        kind: ErrorKind::EmptyParenthesis,
+                        col: open_round_bracket_token.col,
+                        pointers_count: 1,
+                    });
                 }
 
                 let inner_expression = self.expression(start_of_inner_expression_token)?;
@@ -1611,23 +1598,20 @@ impl Parser<'_, '_, '_, '_> {
                     close_round_bracket_column: close_round_bracket_token.col,
                 }
             }
-            TokenKind::OpenSquareBracket => 'array: {
+            TokenKind::OpenSquareBracket => {
                 let open_square_bracket_token = token;
 
-                #[expect(clippy::cast_possible_truncation)]
-                let items_start = self.syntax_tree.array_items.len() as ArrayItemsIndex;
-                loop {
+                let mut array_items = Vec::<ArrayItem>::new();
+
+                let (
+                    open_square_bracket_column,
+                    close_square_bracket_column,
+                    trailing_item,
+                ) = 'array: loop {
                     let start_of_item_token =
                         self.next_expected_token(Expected::ArrayItemOrCloseSquareBracket)?;
                     if let TokenKind::CloseSquareBracket = start_of_item_token.kind {
-                        break 'array Expression::Array {
-                            open_square_bracket_column: open_square_bracket_token.col,
-                            items_start,
-                            #[expect(clippy::cast_possible_truncation)]
-                            items_len: self.syntax_tree.array_items.len() as ArrayItemsIndex
-                                - items_start,
-                            close_square_bracket_column: start_of_item_token.col,
-                        };
+                        break 'array (open_square_bracket_token.col, start_of_item_token.col, None);
                     }
 
                     let item = self.expression(start_of_item_token)?;
@@ -1636,30 +1620,25 @@ impl Parser<'_, '_, '_, '_> {
                         self.next_expected_token(Expected::CommaOrSemicolonCloseSquareBracket)?;
                     match comma_or_close_square_bracket_token.kind {
                         TokenKind::Comma => {
-                            self.syntax_tree.array_items.push(ArrayItem {
-                                item,
+                            array_items.push(ArrayItem {
+                                expression: item,
                                 separator_column: comma_or_close_square_bracket_token.col,
                                 separator: ArrayItemSeparator::Comma,
                             });
                         }
                         TokenKind::SemiColon => {
-                            self.syntax_tree.array_items.push(ArrayItem {
-                                item,
+                            array_items.push(ArrayItem {
+                                expression: item,
                                 separator_column: comma_or_close_square_bracket_token.col,
                                 separator: ArrayItemSeparator::Semicolon,
                             });
                         }
                         TokenKind::CloseSquareBracket => {
-                            break 'array Expression::ArrayTrailingItem {
-                                open_square_bracket_column: open_square_bracket_token.col,
-                                items_start,
-                                #[expect(clippy::cast_possible_truncation)]
-                                items_len: self.syntax_tree.array_items.len() as ArrayItemsIndex
-                                    - items_start,
-                                last_item: item,
-                                close_square_bracket_column: comma_or_close_square_bracket_token
-                                    .col,
-                            };
+                            break 'array (
+                                open_square_bracket_token.col,
+                                comma_or_close_square_bracket_token.col,
+                                Some(item),
+                            );
                         }
                         TokenKind::Colon
                         | TokenKind::Op(_)
@@ -1703,6 +1682,29 @@ impl Parser<'_, '_, '_, '_> {
                         TokenKind::Unexpected(_)
                         | TokenKind::LineComment(_)
                         | TokenKind::BlockComment(_) => self.should_have_been_skipped(token),
+                    }
+                };
+
+                #[expect(clippy::cast_possible_truncation)]
+                let items_start = self.syntax_tree.array_items.len() as ArrayItemsIndex;
+                #[expect(clippy::cast_possible_truncation)]
+                let items_len = array_items.len() as ArrayItemsIndex;
+                self.syntax_tree.array_items.extend_from_slice(&array_items);
+
+                if let Some(last_item) = trailing_item {
+                    Expression::ArrayTrailingItem {
+                        open_square_bracket_column,
+                        items_start,
+                        items_len,
+                        last_item,
+                        close_square_bracket_column,
+                    }
+                } else {
+                    Expression::Array {
+                        open_square_bracket_column,
+                        items_start,
+                        items_len,
+                        close_square_bracket_column,
                     }
                 }
             }
@@ -2126,7 +2128,9 @@ impl Parser<'_, '_, '_, '_> {
                         pointers_count: after_variable_name_token.kind.display_len(self.tokens),
                     })
                 }
-                TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
+                TokenKind::Unexpected(_)
+                | TokenKind::LineComment(_)
+                | TokenKind::BlockComment(_) => {
                     self.should_have_been_skipped(after_variable_name_token)
                 }
             };
@@ -2492,17 +2496,17 @@ impl Display for Expected {
 pub enum ErrorKind {
     PrematureEndOfFile(Expected),
     MissingSemicolon,
-    StrayElse,
     StrayColon,
     StrayComma,
-    StrayOperator(Op),
 
     // expressions
     KeywordInExpression,
     ExpectedOperand,
+    EmptyParenthesis,
     ExpectedCloseRoundBracket,
     ExpectedCommaOrCloseSquareBracket,
     MissingCloseSquareBracketInIndex,
+    StrayOperator(Op),
 
     // variables
     ExpectedVariableName,
@@ -2514,14 +2518,17 @@ pub enum ErrorKind {
     ExpectedEqualsOrSemicolonAfterTypeAnnotation,
 
     // if statements
+    // IfMustBeFollowedByExpression,
     IfMustBeFollowedByBlock,
     ElseMustBeFollowedByBlockOrIf,
+    StrayElse,
 
     // loop statements
     DoMustBeFollowedByLoop,
-    BreakOutsideOfLoop,
-    ContinueOutsideOfLoop,
+    // LoopMustBeFollowedByExpression,
     LoopMustBeFollowedByBlock,
+    StrayBreak,
+    StrayContinue,
 }
 
 impl IntoErrorInfo for ErrorKind {
@@ -2560,6 +2567,10 @@ impl IntoErrorInfo for ErrorKind {
             Self::ExpectedOperand => (
                 "invalid expression".into(),
                 "expected operand before this token".into(),
+            ),
+            Self::EmptyParenthesis => (
+                "invalid expression".into(),
+                "empty expressions are not allowed".into(),
             ),
             Self::ExpectedCloseRoundBracket => (
                 "invalid expression".into(),
@@ -2616,11 +2627,11 @@ impl IntoErrorInfo for ErrorKind {
                 "invalid do loop".into(),
                 "must be followed by a loop statement".into(),
             ),
-            Self::BreakOutsideOfLoop => (
+            Self::StrayBreak => (
                 "invalid break statement".into(),
                 "cannot be used outside of loops".into(),
             ),
-            Self::ContinueOutsideOfLoop => (
+            Self::StrayContinue => (
                 "invalid continue statement".into(),
                 "cannot be used outside of loops".into(),
             ),
