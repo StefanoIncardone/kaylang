@@ -624,7 +624,7 @@ impl AssignmentOperator {
 
 
 pub(crate) type ArrayItemsIndex = offset32;
-pub(crate) type VariableIndex = offset32;
+pub(crate) type VariableDefinitionIndex = offset32;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Expression {
@@ -757,12 +757,12 @@ pub(crate) type ScopeIndex = offset32;
 pub(crate) struct Scope {
     pub(crate) parent: ScopeIndex,
     pub(crate) types: Vec<BaseType>,
-    pub(crate) let_variables: Vec<VariableIndex>,
-    pub(crate) var_variables: Vec<VariableIndex>,
+    pub(crate) let_variables: Vec<VariableDefinitionIndex>,
+    pub(crate) var_variables: Vec<VariableDefinitionIndex>,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub(crate) struct Variable {
+pub(crate) struct VariableDefinition {
     name: TextIndex,
     typ: Type,
     initial_value: ExpressionIndex,
@@ -788,10 +788,10 @@ pub(crate) enum Node {
     EprintlnNoArg,
 
     LetVariableDefinition {
-        variable: VariableIndex,
+        variable: VariableDefinitionIndex,
     },
     VarVariableDefinition {
-        variable: VariableIndex,
+        variable: VariableDefinitionIndex,
     },
 
     Assignment {
@@ -807,8 +807,9 @@ pub(crate) enum Node {
 
     If {
         condition: ExpressionIndex,
+        else_ifs_count: offset32,
     },
-    IfElse {
+    IfTrailingElse {
         condition: ExpressionIndex,
         else_ifs_count: offset32,
     },
@@ -840,9 +841,275 @@ pub struct TypedSyntaxTree<'syntax_tree, 'tokens: 'syntax_tree, 'code: 'tokens> 
 
     pub(crate) expressions: Vec<Expression>,
     pub(crate) array_items: Vec<ExpressionIndex>,
-    pub(crate) variables: Vec<Variable>,
+    pub(crate) variables: Vec<VariableDefinition>,
 
     _syntax_tree: PhantomData<&'syntax_tree SyntaxTree<'tokens, 'code>>,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct TypedSyntaxTreeDisplay<'typed_syntax_tree, 'syntax_tree: 'typed_syntax_tree, 'tokens: 'syntax_tree, 'code: 'tokens> {
+    pub(crate) typed_syntax_tree: &'typed_syntax_tree TypedSyntaxTree<'syntax_tree, 'tokens, 'code>,
+    pub(crate) syntax_tree: &'syntax_tree SyntaxTree<'tokens, 'code>,
+    pub(crate) tokens: &'tokens Tokens<'code>,
+}
+
+impl<'syntax_tree, 'tokens: 'syntax_tree, 'code: 'tokens> TypedSyntaxTree<'syntax_tree, 'tokens, 'code> {
+    #[must_use]
+    #[inline(always)]
+    pub const fn display(
+        &self,
+        syntax_tree: &'syntax_tree SyntaxTree<'tokens, 'code>,
+        tokens: &'tokens Tokens<'code>,
+    ) -> TypedSyntaxTreeDisplay<'_, 'syntax_tree, 'tokens, 'code> {
+        return TypedSyntaxTreeDisplay { typed_syntax_tree: self, syntax_tree, tokens };
+    }
+}
+
+impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
+    const INDENT_INCREMENT: usize = 2;
+
+    fn info_if(
+        &self,
+        f: &mut core::fmt::Formatter<'_>,
+        node_index: &mut NodeIndex,
+        indent: usize,
+        condition: ExpressionIndex,
+    ) -> core::fmt::Result {
+        writeln!(f, "{:>indent$}If = if", "")?;
+        let if_indent = indent + Self::INDENT_INCREMENT;
+        self.info_expression(f, condition, if_indent)?;
+        return self.info_node(f, node_index, if_indent);
+    }
+
+    fn info_node(
+        &self,
+        f: &mut core::fmt::Formatter<'_>,
+        node_index: &mut NodeIndex,
+        indent: usize,
+    ) -> core::fmt::Result {
+        let node = &self.typed_syntax_tree.nodes[*node_index as usize];
+        *node_index += 1;
+
+        #[rustfmt::skip]
+        return match node {
+            Node::Expression(expression) => {
+                self.info_expression(f, *expression, indent)
+            }
+
+            Node::Print { argument } => {
+                writeln!(f, "{:>indent$}Print = print", "")?;
+                let argument_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *argument, argument_indent)
+            }
+            Node::Println { argument } => {
+                writeln!(f, "{:>indent$}Println = println", "")?;
+                let argument_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *argument, argument_indent)
+            }
+            Node::PrintlnNoArg => {
+                writeln!(f, "{:>indent$}Println = println", "")
+            }
+            Node::Eprint { argument } => {
+                writeln!(f, "{:>indent$}Eprint = eprint", "")?;
+                let argument_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *argument, argument_indent)
+            }
+            Node::Eprintln { argument } => {
+                writeln!(f, "{:>indent$}Eprintln = eprintln", "")?;
+                let argument_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *argument, argument_indent)
+            }
+            Node::EprintlnNoArg => {
+                writeln!(f, "{:>indent$}Eprintln = eprintln", "")
+            }
+
+            Node::LetVariableDefinition { variable } => {
+                writeln!(f, "{:>indent$}VariableDefinition = let", "")?;
+                let definition_indent = indent + Self::INDENT_INCREMENT;
+                self.info_variable(f, *variable, definition_indent)
+            }
+            Node::VarVariableDefinition { variable } => {
+                writeln!(f, "{:>indent$}VariableDefinition = var", "")?;
+                let definition_indent = indent + Self::INDENT_INCREMENT;
+                self.info_variable(f, *variable, definition_indent)
+            }
+            Node::Assignment { target, operator, new_value, .. } => {
+                writeln!(f, "{:>indent$}Assignment", "")?;
+                let assignment_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *target, assignment_indent)?;
+                writeln!(f, "{:>assignment_indent$}AssignmentOp = {operator}", "")?;
+                self.info_expression(f, *new_value, assignment_indent)
+            }
+
+            Node::Scope { raw_nodes_in_scope_count } => {
+                writeln!(f, "{:>indent$}Scope", "")?;
+                let scope_indent = indent + Self::INDENT_INCREMENT;
+                writeln!(f, "{:>scope_indent$}OpenCurlyBracket = {{", "")?;
+
+                let after_end_scope_node_index = *node_index + raw_nodes_in_scope_count;
+                while *node_index < after_end_scope_node_index {
+                    self.info_node(f, node_index, scope_indent)?;
+                }
+                writeln!(f, "{:>scope_indent$}CloseCurlyBracket = }}", "")
+            }
+
+            Node::If { condition, mut else_ifs_count } => {
+                self.info_if(f, node_index, indent, *condition)?;
+                while else_ifs_count > 0 {
+                    else_ifs_count -= 1;
+                    self.info_node(f, node_index, indent)?;
+                }
+                Ok(())
+            }
+            Node::IfTrailingElse { condition, mut else_ifs_count } => {
+                self.info_if(f, node_index, indent, *condition)?;
+                while else_ifs_count > 0 {
+                    else_ifs_count -= 1;
+                    self.info_node(f, node_index, indent)?;
+                }
+                let else_indent = indent + Self::INDENT_INCREMENT;
+                writeln!(f, "{:>indent$}Else = else", "")?;
+                self.info_node(f, node_index, else_indent)
+            }
+            Node::ElseIf { condition } => {
+                writeln!(f, "{:>indent$}Else = else", "")?;
+                self.info_if(f, node_index, indent, *condition)
+            }
+
+            Node::Loop { condition } => {
+                writeln!(f, "{:>indent$}Loop = loop", "")?;
+                let loop_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *condition, loop_indent)?;
+                self.info_node(f, node_index, loop_indent)
+            }
+            Node::DoLoop { condition } => {
+                writeln!(f, "{:>indent$}Do = do", "")?;
+                writeln!(f, "{:>indent$}Loop = loop", "")?;
+                let loop_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *condition, loop_indent)?;
+                self.info_node(f, node_index, loop_indent)
+            }
+            Node::Break => {
+                writeln!(f, "{:>indent$}Break = break", "")
+            }
+            Node::Continue => {
+                writeln!(f, "{:>indent$}Continue = continue", "")
+            }
+        };
+    }
+
+    fn info_expression(
+        &self,
+        f: &mut core::fmt::Formatter<'_>,
+        expression_index: ExpressionIndex,
+        indent: usize,
+    ) -> core::fmt::Result {
+        let expression_indent = indent + Self::INDENT_INCREMENT;
+        let expression = &self.typed_syntax_tree.expressions[expression_index as usize];
+
+        #[rustfmt::skip]
+        return match expression {
+            Expression::False { .. } => writeln!(f, "{:>indent$}False = false", ""),
+            Expression::True { .. } => writeln!(f, "{:>indent$}True = true", ""),
+            Expression::I64 { value, .. } => {
+                writeln!(f, "{:>indent$}I64 = {value}", "")
+            }
+            Expression::Ascii { character, .. } => {
+                writeln!(f, "{:>indent$}Ascii = {character}", "")
+            }
+            Expression::Str { literal, .. } => {
+                let literal_str = &self.tokens.text[*literal as usize];
+                writeln!(f, "{:>indent$}Str = {literal_str}", "")
+            }
+            Expression::Variable { variable, .. } => {
+                let identifier_str = self.tokens.text[*variable as usize];
+                writeln!(f, "{:>indent$}Identifier = {identifier_str}", "")
+            },
+            Expression::Array { items_start, items_len, .. } => {
+                writeln!(f, "{:>indent$}Array", "")?;
+
+                let items_indent = expression_indent + Self::INDENT_INCREMENT;
+                let items_end = *items_start as usize + *items_len as usize;
+                let items = &self.typed_syntax_tree.array_items[*items_start as usize..items_end];
+                for item_expression in items {
+                    self.info_expression(f, *item_expression, items_indent)?;
+                }
+                Ok(())
+            },
+
+            Expression::Prefix { operator, right_operand, .. } => {
+                writeln!(f, "{:>indent$}PrefixExpression", "")?;
+                writeln!(f, "{:>expression_indent$}PrefixOperator = {operator}", "")?;
+                self.info_expression(f, *right_operand, expression_indent)
+            }
+            Expression::BooleanPrefix { operator, right_operand, .. } => {
+                writeln!(f, "{:>indent$}BooleanPrefixExpression", "")?;
+                writeln!(f, "{:>expression_indent$}BooleanPrefixOperator = {operator}", "")?;
+                self.info_expression(f, *right_operand, expression_indent)
+            }
+            Expression::Binary { left_operand, operator, right_operand, .. } => {
+                writeln!(f, "{:>indent$}BinaryExpression", "")?;
+                self.info_expression(f, *left_operand, expression_indent)?;
+                writeln!(f, "{:>expression_indent$}BinaryOperator = {operator}", "")?;
+                self.info_expression(f, *right_operand, expression_indent)
+            },
+            Expression::BooleanBinary { left_operand, operator, right_operand, .. } => {
+                writeln!(f, "{:>indent$}BooleanBinaryExpression", "")?;
+                self.info_expression(f, *left_operand, expression_indent)?;
+                writeln!(f, "{:>expression_indent$}BooleanBinaryOperator = {operator}", "")?;
+                self.info_expression(f, *right_operand, expression_indent)
+            },
+            Expression::Comparison { left_operand, operator, right_operand, .. } => {
+                writeln!(f, "{:>indent$}Comparison", "")?;
+                self.info_expression(f, *left_operand, expression_indent)?;
+                writeln!(f, "{:>expression_indent$}ComparisonOperator = {operator}", "")?;
+                self.info_expression(f, *right_operand, expression_indent)
+            },
+            Expression::BooleanComparison { left_operand, operator, right_operand, .. } => {
+                writeln!(f, "{:>indent$}BooleanComparison", "")?;
+                self.info_expression(f, *left_operand, expression_indent)?;
+                writeln!(f, "{:>expression_indent$}BooleanComparisonOperator = {operator}", "")?;
+                self.info_expression(f, *right_operand, expression_indent)
+            },
+
+            Expression::Index {
+                indexed_expression,
+                index_expression,
+                ..
+            } => {
+                writeln!(f, "{:indent$}IndexExpression", "")?;
+                self.info_expression(f, *indexed_expression, expression_indent)?;
+                self.info_expression(f, *index_expression, expression_indent)
+            },
+        };
+    }
+
+    fn info_variable(
+        &self,
+        f: &mut core::fmt::Formatter<'_>,
+        variable_index: VariableDefinitionIndex,
+        indent: usize,
+    ) -> core::fmt::Result {
+        let VariableDefinition { name, initial_value, typ } =
+            &self.typed_syntax_tree.variables[variable_index as usize];
+        let name_str = self.tokens.text[*name as usize];
+        writeln!(f, "{:>indent$}Name = {name_str}", "")?;
+        writeln!(f, "{:>indent$}Type = {typ}", "")?;
+        writeln!(f, "{:>indent$}InitialValue = {typ}", "")?;
+        return self.info_expression(f, *initial_value, indent);
+    }
+}
+
+impl Display for TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut node_index = 0;
+        #[expect(clippy::cast_possible_truncation)]
+        while node_index < self.typed_syntax_tree.nodes.len() as NodeIndex {
+            self.info_node(f, &mut node_index, 0)?;
+        }
+
+        return Ok(());
+    }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -1003,7 +1270,7 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
             } => unimplemented!(),
 
             st::Node::If { if_column, condition, else_ifs_count } => unimplemented!(),
-            st::Node::IfElse { if_column, condition, else_ifs_count, else_column } => unimplemented!(),
+            st::Node::IfTrailingElse { if_column, condition, else_ifs_count, else_column } => unimplemented!(),
             st::Node::ElseIf { else_column, if_column, condition } => unimplemented!(),
             st::Node::Loop { loop_column, condition } => unimplemented!(),
             st::Node::DoLoop { do_column, loop_column, condition } => unimplemented!(),
@@ -1048,9 +1315,9 @@ impl TypedSyntaxTree<'_, '_, '_> {
     }
 
     #[inline]
-    fn new_variable(&mut self, variable: Variable) -> VariableIndex {
+    fn new_variable(&mut self, variable: VariableDefinition) -> VariableDefinitionIndex {
         #[expect(clippy::cast_possible_truncation)]
-        let index = self.variables.len() as VariableIndex;
+        let index = self.variables.len() as VariableDefinitionIndex;
         self.variables.push(variable);
         return index;
     }
@@ -1439,7 +1706,7 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
         return column;
     }
 
-    fn resolve_variable(&self, name: TextIndex) -> Option<VariableIndex> {
+    fn resolve_variable(&self, name: TextIndex) -> Option<VariableDefinitionIndex> {
         if let Some(variable) = self.resolve_let_variable(name) {
             return Some(variable);
         }
@@ -1447,7 +1714,7 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
         return self.resolve_var_variable(name);
     }
 
-    fn resolve_let_variable(&self, name: TextIndex) -> Option<VariableIndex> {
+    fn resolve_let_variable(&self, name: TextIndex) -> Option<VariableDefinitionIndex> {
         let mut scope_index = self.scope;
         loop {
             let scope = &self.scopes[scope_index as usize];
@@ -1465,7 +1732,7 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
         }
     }
 
-    fn resolve_var_variable(&self, name: TextIndex) -> Option<VariableIndex> {
+    fn resolve_var_variable(&self, name: TextIndex) -> Option<VariableDefinitionIndex> {
         let mut scope_index = self.scope;
         loop {
             let scope = &self.scopes[scope_index as usize];
@@ -2227,7 +2494,7 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
     fn parse_variable(
         &mut self,
         variable_definition: st::VariableDefinitionIndex,
-    ) -> Result<VariableIndex, Error<ErrorKind>> {
+    ) -> Result<VariableDefinitionIndex, Error<ErrorKind>> {
         let st::VariableDefinition {
             name,
             name_column,
@@ -2283,7 +2550,7 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
             (parsed_expression, expression_type)
         };
 
-        let variable = Variable {
+        let variable = VariableDefinition {
             name: *name,
             typ: expression_type,
             initial_value: self.ast.new_expression(parsed_expression),

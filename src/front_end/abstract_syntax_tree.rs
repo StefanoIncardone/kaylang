@@ -463,8 +463,7 @@ pub(crate) enum Node {
         condition: ExpressionIndex,
         else_ifs_count: offset32,
     },
-    // IDEA(stefano): rename to `IfTrailingElse`
-    IfElse {
+    IfTrailingElse {
         if_column: offset32,
         condition: ExpressionIndex,
         else_ifs_count: offset32,
@@ -662,7 +661,7 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 }
                 Ok(())
             }
-            Node::IfElse { if_column, condition, mut else_ifs_count, else_column } => {
+            Node::IfTrailingElse { if_column, condition, mut else_ifs_count, else_column } => {
                 self.info_if(f, node_index, indent, *if_column, *condition)?;
                 while else_ifs_count > 0 {
                     else_ifs_count -= 1;
@@ -2370,7 +2369,7 @@ impl Parser<'_, '_, '_, '_> {
                         unreachable!();
                     };
 
-                    self.syntax_tree.nodes[placeholder_if_node_index] = Node::IfElse {
+                    self.syntax_tree.nodes[placeholder_if_node_index] = Node::IfTrailingElse {
                         if_column,
                         condition,
                         else_ifs_count: placeholder_if_else_ifs_count,
