@@ -278,8 +278,8 @@ pub(crate) enum Expression {
     ArrayTrailingItem {
         open_square_bracket_column: offset32,
         items_start: ArrayItemsIndex,
+        /// always greater than 0
         items_len: offset32,
-        last_item: ExpressionIndex,
         close_square_bracket_column: offset32,
     },
 
@@ -311,16 +311,55 @@ pub(crate) enum Expression {
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
-pub(crate) enum ArrayItemSeparator {
+pub(crate) enum ArrayItemSeparatorKind {
     Comma,
     Semicolon,
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub(crate) struct ArrayItemSeparatorSome {
+    kind: ArrayItemSeparatorKind,
+    column: offset32,
+}
+
+#[derive(Clone, Copy, Eq)]
+#[repr(C)]
+pub(crate) union ArrayItemSeparator {
+    some: ArrayItemSeparatorSome,
+    none: (),
+}
+
+impl core::fmt::Debug for ArrayItemSeparator {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        return f.debug_struct("ArrayItemSeparator")
+            .field("separator", unsafe { &self.some })
+            .field("no_separator", unsafe { &self.none })
+            .finish();
+    }
+}
+
+#[expect(clippy::missing_trait_methods)]
+impl core::hash::Hash for ArrayItemSeparator {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        #[expect(clippy::ref_as_ptr)]
+        let separator_bytes_ptr = unsafe { &self.some as *const _ as *const u8 };
+        let separator_bytes = unsafe { core::slice::from_raw_parts(separator_bytes_ptr, size_of::<ArrayItemSeparatorSome>()) };
+        state.write(separator_bytes);
+    }
+}
+
+#[expect(clippy::missing_trait_methods)]
+impl PartialEq for ArrayItemSeparator {
+    fn eq(&self, other: &Self) -> bool {
+        return unsafe { self.some == other.some };
+    }
+}
+
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[repr(C)]
 pub(crate) struct ArrayItem {
     pub(crate) expression: ExpressionIndex,
-    separator: ArrayItemSeparator,
-    separator_column: offset32,
+    pub(crate) separator: ArrayItemSeparator,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -424,6 +463,7 @@ pub(crate) enum Node {
         condition: ExpressionIndex,
         else_ifs_count: offset32,
     },
+    // IDEA(stefano): rename to `IfTrailingElse`
     IfElse {
         if_column: offset32,
         condition: ExpressionIndex,
@@ -726,11 +766,13 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 let items_indent = expression_indent + Self::INDENT_INCREMENT;
                 let items_end = items_start + items_len;
                 let items = &self.syntax_tree.array_items[*items_start as usize..items_end as usize];
-                for ArrayItem { expression: item_expression, separator_column, separator } in items {
+                for ArrayItem { expression: item_expression, separator } in items {
                     self.info_expression(f, *item_expression, items_indent)?;
-                    match separator {
-                        ArrayItemSeparator::Comma => writeln!(f, "{:>items_indent$}Comma: {separator_column} = ,", "")?,
-                        ArrayItemSeparator::Semicolon => writeln!(f, "{:>items_indent$}Semicolon: {separator_column} = ;", "")?,
+
+                    let ArrayItemSeparatorSome { kind, column } = unsafe { separator.some };
+                    match kind {
+                        ArrayItemSeparatorKind::Comma => writeln!(f, "{:>items_indent$}Comma: {column} = ,", "")?,
+                        ArrayItemSeparatorKind::Semicolon => writeln!(f, "{:>items_indent$}Semicolon: {column} = ;", "")?,
                     }
                 }
 
@@ -740,7 +782,6 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 open_square_bracket_column,
                 items_start,
                 items_len,
-                last_item,
                 close_square_bracket_column
             } => {
                 writeln!(f, "{:>indent$}Array", "")?;
@@ -749,14 +790,21 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 let items_indent = expression_indent + Self::INDENT_INCREMENT;
                 let items_end = items_start + items_len;
                 let items = &self.syntax_tree.array_items[*items_start as usize..items_end as usize];
-                for ArrayItem { expression: item_expression, separator_column, separator } in items {
+                let mut items_iter = items.iter();
+                let Some(last_item) = items_iter.next_back() else {
+                    unreachable!();
+                };
+                for ArrayItem { expression: item_expression, separator } in items_iter {
                     self.info_expression(f, *item_expression, items_indent)?;
-                    match separator {
-                        ArrayItemSeparator::Comma => writeln!(f, "{:>items_indent$}Comma: {separator_column} = ,", "")?,
-                        ArrayItemSeparator::Semicolon => writeln!(f, "{:>items_indent$}Semicolon: {separator_column} = ;", "")?,
+
+                    let ArrayItemSeparatorSome { kind, column } = unsafe { separator.some };
+                    match kind {
+                        ArrayItemSeparatorKind::Comma => writeln!(f, "{:>items_indent$}Comma: {column} = ,", "")?,
+                        ArrayItemSeparatorKind::Semicolon => writeln!(f, "{:>items_indent$}Semicolon: {column} = ;", "")?,
                     }
                 }
-                self.info_expression(f, *last_item, items_indent)?;
+
+                self.info_expression(f, last_item.expression, items_indent)?;
                 writeln!(f, "{:>expression_indent$}CloseSquareBracket: {close_square_bracket_column} = ]", "")
             },
 
@@ -1622,15 +1670,23 @@ impl Parser<'_, '_, '_, '_> {
                         TokenKind::Comma => {
                             array_items.push(ArrayItem {
                                 expression: item,
-                                separator_column: comma_or_close_square_bracket_token.col,
-                                separator: ArrayItemSeparator::Comma,
+                                separator: ArrayItemSeparator {
+                                    some: ArrayItemSeparatorSome {
+                                        kind: ArrayItemSeparatorKind::Comma,
+                                        column: comma_or_close_square_bracket_token.col,
+                                    },
+                                }
                             });
                         }
                         TokenKind::SemiColon => {
                             array_items.push(ArrayItem {
                                 expression: item,
-                                separator_column: comma_or_close_square_bracket_token.col,
-                                separator: ArrayItemSeparator::Semicolon,
+                                separator: ArrayItemSeparator {
+                                    some: ArrayItemSeparatorSome {
+                                        kind: ArrayItemSeparatorKind::Semicolon,
+                                        column: comma_or_close_square_bracket_token.col,
+                                    },
+                                }
                             });
                         }
                         TokenKind::CloseSquareBracket => {
@@ -1687,19 +1743,30 @@ impl Parser<'_, '_, '_, '_> {
 
                 #[expect(clippy::cast_possible_truncation)]
                 let items_start = self.syntax_tree.array_items.len() as ArrayItemsIndex;
-                #[expect(clippy::cast_possible_truncation)]
-                let items_len = array_items.len() as ArrayItemsIndex;
-                self.syntax_tree.array_items.extend_from_slice(&array_items);
 
                 if let Some(last_item) = trailing_item {
+                    array_items.push(ArrayItem {
+                        expression: last_item,
+                        separator: ArrayItemSeparator {
+                            none: (),
+                        }
+                    });
+
+                    #[expect(clippy::cast_possible_truncation)]
+                    let items_len = array_items.len() as ArrayItemsIndex;
+                    self.syntax_tree.array_items.extend_from_slice(&array_items);
+
                     Expression::ArrayTrailingItem {
                         open_square_bracket_column,
                         items_start,
                         items_len,
-                        last_item,
                         close_square_bracket_column,
                     }
                 } else {
+                    #[expect(clippy::cast_possible_truncation)]
+                    let items_len = array_items.len() as ArrayItemsIndex;
+                    self.syntax_tree.array_items.extend_from_slice(&array_items);
+
                     Expression::Array {
                         open_square_bracket_column,
                         items_start,

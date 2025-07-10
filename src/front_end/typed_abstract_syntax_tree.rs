@@ -1501,6 +1501,7 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
         }
     }
 
+    // IDEA(stefano): provide version with explicit expected type
     fn expression(
         &mut self,
         st_expression_index: ExpressionIndex,
@@ -1602,143 +1603,63 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
                 Expression::Variable { variable, column: *column }
             }
 
-            st::Expression::Array { items_start, items_len, open_square_bracket_column, .. } => {
-                if *items_len > 0 {
-                    let mut item_index = *items_start as usize;
-
-                    let first_item = &self.syntax_tree.array_items[item_index];
-                    item_index += 1;
-
-                    let parsed_first_item = self.expression(first_item.expression, expected_type)?;
-                    let parsed_first_item_type = parsed_first_item.typ(&self.ast);
-                    if let Type::Array { .. } = parsed_first_item_type {
-                        return Err(Error {
-                            kind: ErrorKind::NestedArrayNotSupportedYet,
-                            col: self.first_token_column(first_item.expression),
-                            pointers_count: self.first_token_display_len(first_item.expression),
-                        });
-                    }
-                    let parsed_first_item_index = self.ast.new_expression(parsed_first_item);
-                    self.ast.array_items.push(parsed_first_item_index);
-
-                    let expected_array_items_type = if let Some(_) = expected_type {
-                        expected_type
-                    } else {
-                        Some(&parsed_first_item_type)
-                    };
-
-                    let items_end = (*items_start + items_len) as usize;
-                    while item_index < items_end {
-                        let item = &self.syntax_tree.array_items[item_index];
-                        item_index += 1;
-
-                        let parsed_item = self.expression(item.expression, expected_array_items_type)?;
-                        let parsed_item_type = parsed_item.typ(&self.ast);
-                        if let Type::Array { .. } = parsed_item_type {
-                            return Err(Error {
-                                kind: ErrorKind::NestedArrayNotSupportedYet,
-                                col: self.first_token_column(item.expression),
-                                pointers_count: self.first_token_display_len(item.expression),
-                            });
-                        }
-
-                        let parsed_item_index = self.ast.new_expression(parsed_item);
-                        self.ast.array_items.push(parsed_item_index);
-                    }
-                    Expression::Array {
-                        base_type: parsed_first_item_type.base_typ(),
-                        items_start: *items_start,
-                        items_len: *items_len as u64,
-                    }
-                } else {
+            st::Expression::Array { items_start, items_len, open_square_bracket_column, .. }
+            | st::Expression::ArrayTrailingItem { items_start, items_len, open_square_bracket_column, .. } => {
+                if *items_len == 0 {
                     return Err(Error {
                         kind: ErrorKind::EmptyArray,
                         col: *open_square_bracket_column,
                         pointers_count: 1,
                     });
                 }
-            }
-            st::Expression::ArrayTrailingItem { items_start, items_len, last_item, .. } => {
-                let first_item_type: Type;
-                if *items_len > 0 {
-                    let mut item_index = *items_start as usize;
 
-                    let first_item = &self.syntax_tree.array_items[item_index];
+                let mut array_items = Vec::<ExpressionIndex>::new();
+                let mut item_index = *items_start as usize;
+
+                let first_item = &self.syntax_tree.array_items[item_index];
+                item_index += 1;
+
+                let parsed_first_item = self.expression(first_item.expression, expected_type)?;
+                let parsed_first_item_type = parsed_first_item.typ(&self.ast);
+                if let Type::Array { .. } = parsed_first_item_type {
+                    return Err(Error {
+                        kind: ErrorKind::NestedArrayNotSupportedYet,
+                        col: self.first_token_column(first_item.expression),
+                        pointers_count: self.first_token_display_len(first_item.expression),
+                    });
+                }
+                let parsed_first_item_index = self.ast.new_expression(parsed_first_item);
+                array_items.push(parsed_first_item_index);
+
+                let expected_array_items_type = if let Some(_) = expected_type {
+                    expected_type
+                } else {
+                    Some(&parsed_first_item_type)
+                };
+
+                let items_end = (*items_start + items_len) as usize;
+                while item_index < items_end {
+                    let item = &self.syntax_tree.array_items[item_index];
                     item_index += 1;
 
-                    let parsed_first_item = self.expression(first_item.expression, expected_type)?;
-                    first_item_type = parsed_first_item.typ(&self.ast);
-                    if let Type::Array { .. } = first_item_type {
+                    let parsed_item = self.expression(item.expression, expected_array_items_type)?;
+                    let parsed_item_type = parsed_item.typ(&self.ast);
+                    if let Type::Array { .. } = parsed_item_type {
                         return Err(Error {
                             kind: ErrorKind::NestedArrayNotSupportedYet,
-                            col: self.first_token_column(first_item.expression),
-                            pointers_count: self.first_token_display_len(first_item.expression),
+                            col: self.first_token_column(item.expression),
+                            pointers_count: self.first_token_display_len(item.expression),
                         });
                     }
-
-                    let parsed_first_item_index = self.ast.new_expression(parsed_first_item);
-                    self.ast.array_items.push(parsed_first_item_index);
-
-                    let expected_array_items_type = if let Some(_) = expected_type {
-                        expected_type
-                    } else {
-                        Some(&first_item_type)
-                    };
-
-                    let items_end = (*items_start + items_len) as usize;
-                    while item_index < items_end {
-                        let item = &self.syntax_tree.array_items[item_index];
-                        item_index += 1;
-
-                        let parsed_item = self.expression(item.expression, expected_array_items_type)?;
-                        let parsed_item_type = parsed_item.typ(&self.ast);
-                        if let Type::Array { .. } = parsed_item_type {
-                            return Err(Error {
-                                kind: ErrorKind::NestedArrayNotSupportedYet,
-                                col: self.first_token_column(item.expression),
-                                pointers_count: self.first_token_display_len(item.expression),
-                            });
-                        }
-
-                        let parsed_item_index = self.ast.new_expression(parsed_item);
-                        self.ast.array_items.push(parsed_item_index);
-                    }
-
-                    let parsed_last_item_expression =
-                        self.expression(*last_item, expected_array_items_type)?;
-                    let parsed_last_item_type = parsed_last_item_expression.typ(&self.ast);
-                    if let Type::Array { .. } = parsed_last_item_type {
-                        return Err(Error {
-                            kind: ErrorKind::NestedArrayNotSupportedYet,
-                            col: self.first_token_column(*last_item),
-                            pointers_count: self.first_token_display_len(*last_item),
-                        });
-                    }
-
-                    let parsed_last_item_index =
-                        self.ast.new_expression(parsed_last_item_expression);
-                    self.ast.array_items.push(parsed_last_item_index);
-                } else {
-                    let parsed_last_item_expression =
-                        self.expression(*last_item, expected_type)?;
-                    first_item_type = parsed_last_item_expression.typ(&self.ast);
-                    if let Type::Array { .. } = first_item_type {
-                        return Err(Error {
-                            kind: ErrorKind::NestedArrayNotSupportedYet,
-                            col: self.first_token_column(*last_item),
-                            pointers_count: self.first_token_display_len(*last_item),
-                        });
-                    }
-
-                    let parsed_last_item_index =
-                        self.ast.new_expression(parsed_last_item_expression);
-                    self.ast.array_items.push(parsed_last_item_index);
+                    let parsed_item_index = self.ast.new_expression(parsed_item);
+                    array_items.push(parsed_item_index);
                 }
 
+                self.ast.array_items.extend_from_slice(&array_items);
                 Expression::Array {
-                    base_type: first_item_type.base_typ(),
+                    base_type: parsed_first_item_type.base_typ(),
                     items_start: *items_start,
-                    items_len: *items_len as u64 + 1,
+                    items_len: *items_len as u64,
                 }
             }
 
