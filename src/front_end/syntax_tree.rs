@@ -1,4 +1,3 @@
-// TODO(stefanno): rename module to `syntax_tree` or `st`
 use crate::front_end::SliceIndexPtr;
 use super::{
     src_file::{DisplayPosition, SrcCode},

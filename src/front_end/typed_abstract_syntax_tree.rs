@@ -1,23 +1,8 @@
-// TODO(stefano): rename module to `abstract_syntax_tree` or `ast`
-// - Reworked compilation stages:
-//    - old:
-//        - loading of source code file and line boundaries precalculations
-//        - tokenization
-//        - abstract syntax tree parsing
-//        - compilation of abstract syntax tree
-//    - new:
-//        - loading of source code file
-//        - tokenization and line boundaries calculations
-//        - (added) parsing of syntax tree (phantom stage, does not affect other stages for now)
-//        - abstract syntax tree parsing
-//        - compilation of abstract syntax tree
-//        - return the compiled code
-
 use crate::front_end::{src_file::DisplayPosition, tokenizer::{Base, TokenKind, Tokens}, ErrorDisplay, SliceIndexPtr};
 use back_to_front::offset32;
 
 use super::{
-    abstract_syntax_tree::{self as st, SyntaxTree},
+    syntax_tree::{self as st, SyntaxTree},
     src_file::SrcCode,
     tokenizer::{ascii, Op, TextIndex},
     Error, ErrorInfo, IntoErrorInfo,
@@ -1772,7 +1757,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         }
     }
 
-    // IDEA(stefano): provide version with explicit expected type
     fn expression(
         &mut self,
         st_expression_index: st::ExpressionIndex<'code>,

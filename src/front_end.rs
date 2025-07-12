@@ -1,4 +1,4 @@
-pub mod abstract_syntax_tree;
+pub mod syntax_tree;
 pub mod ast;
 pub mod src_file;
 pub mod tokenizer;
