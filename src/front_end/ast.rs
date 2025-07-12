@@ -747,7 +747,7 @@ pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     src: &'src SrcCode<'code, 'path>,
     errors: Vec<Error<ErrorKind>>,
 
-    token: TokenIndex,
+    token: TokenIndex<'code>,
     tokens: &'tokens Tokens<'code>,
 
     loop_depth: u32,
@@ -783,15 +783,14 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
         }
 
         // skipping to the first non-comment token
-        let mut token: TokenIndex = 0;
-        #[expect(clippy::cast_possible_truncation)]
-        while token < tokens.tokens.len() as TokenIndex {
-            let current = tokens.tokens[token as usize];
+        let mut token = TokenIndex::new(0);
+        while (token.0 as usize) < tokens.tokens.len() {
+            let current = tokens.tokens[token];
             let (TokenKind::LineComment(_) | TokenKind::BlockComment(_)) = current.kind else {
                 break;
             };
 
-            token += 1;
+            token.0 += 1;
         }
 
         let mut parser = Parser {
@@ -818,7 +817,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
 }
 
 // parsing of statements
-impl Parser<'_, '_, '_, '_> {
+impl<'code> Parser<'_, '_, 'code, '_> {
     fn semicolon(&mut self) -> Result<(), Error<ErrorKind>> {
         let semicolon_token = self.current_token(Expected::Semicolon)?;
         let TokenKind::SemiColon = semicolon_token.kind else {
@@ -840,7 +839,7 @@ impl Parser<'_, '_, '_, '_> {
     effect that propagates to the rest of the parsing, causing subsequent errors to be wrong
     */
     fn scope(&mut self) {
-        while let Some(token) = self.tokens.tokens.get(self.token as usize) {
+        while let Some(token) = self.token.get(&self.tokens.tokens) {
             match self.any(*token) {
                 // skip to the next token after a semicolon
                 Ok(Node::Semicolon) => continue,
@@ -850,17 +849,14 @@ impl Parser<'_, '_, '_, '_> {
                     self.errors.push(err);
 
                     // consuming all remaining tokens until the end of the file
-                    #[expect(clippy::cast_possible_truncation)]
-                    {
-                        self.token = self.tokens.tokens.len() as TokenIndex;
-                    }
+                    self.token = TokenIndex::new(self.tokens.tokens.len());
                     break;
                 }
             }
         }
     }
 
-    fn statement(&mut self, token: Token) -> Result<Node, Error<ErrorKind>> {
+    fn statement(&mut self, token: Token<'code>) -> Result<Node, Error<ErrorKind>> {
         return match token.kind {
             TokenKind::False
             | TokenKind::True
@@ -893,7 +889,7 @@ impl Parser<'_, '_, '_, '_> {
                 migrate iteration to using the rust model, such that calling next
                 would return the current item and then advance.
                 */
-                self.token -= 1;
+                self.token.0 -= 1;
                 let after_expression_token = self.next_token_bounded(Expected::Semicolon)?;
                 match after_expression_token.kind {
                     TokenKind::SemiColon => {
@@ -1185,7 +1181,7 @@ impl Parser<'_, '_, '_, '_> {
         };
     }
 
-    fn any(&mut self, token: Token) -> Result<Node, Error<ErrorKind>> {
+    fn any(&mut self, token: Token<'code>) -> Result<Node, Error<ErrorKind>> {
         return match token.kind {
             TokenKind::OpenCurlyBracket => {
                 #[expect(clippy::cast_possible_truncation)]
@@ -1248,10 +1244,10 @@ impl Parser<'_, '_, '_, '_> {
 }
 
 // iteration over tokens
-impl Parser<'_, '_, '_, '_> {
+impl<'code> Parser<'_, '_, 'code, '_> {
     // IDEA(stefano): remove self.current_token method and pass the current token around
-    fn current_token(&self, expected: Expected) -> Result<Token, Error<ErrorKind>> {
-        let Some(token) = self.tokens.tokens.get(self.token as usize) else {
+    fn current_token(&self, expected: Expected) -> Result<Token<'code>, Error<ErrorKind>> {
+        let Some(token) = self.token.get(&self.tokens.tokens) else {
             let previous = self.peek_previous_token();
             return Err(Error {
                 kind: ErrorKind::PrematureEndOfFile(expected),
@@ -1263,30 +1259,30 @@ impl Parser<'_, '_, '_, '_> {
         return Ok(*token);
     }
 
-    fn next_token(&mut self) -> Option<Token> {
+    fn next_token(&mut self) -> Option<Token<'code>> {
         loop {
             #[expect(clippy::cast_possible_truncation)]
-            let tokens_len = self.tokens.tokens.len() as TokenIndex;
-            if self.token >= tokens_len - 1 {
-                self.token = tokens_len;
+            let tokens_len = self.tokens.tokens.len() as offset32;
+            if self.token.0 >= tokens_len - 1 {
+                self.token.0 = tokens_len;
                 return None;
             }
 
-            self.token += 1;
-            let next = self.tokens.tokens[self.token as usize];
+            self.token.0 += 1;
+            let next = self.tokens.tokens[self.token];
             let (TokenKind::LineComment(_) | TokenKind::BlockComment(_)) = next.kind else {
                 return Some(next);
             };
         }
     }
 
-    fn next_token_bounded(&mut self, expected: Expected) -> Result<Token, Error<ErrorKind>> {
+    fn next_token_bounded(&mut self, expected: Expected) -> Result<Token<'code>, Error<ErrorKind>> {
         loop {
             #[expect(clippy::cast_possible_truncation)]
-            let tokens_len = self.tokens.tokens.len() as TokenIndex;
-            if self.token >= tokens_len - 1 {
-                let previous = self.tokens.tokens[self.token as usize];
-                self.token = tokens_len;
+            let tokens_len = self.tokens.tokens.len() as offset32;
+            if self.token.0 >= tokens_len - 1 {
+                let previous = self.tokens.tokens[self.token];
+                self.token.0 = tokens_len;
                 return Err(Error {
                     kind: ErrorKind::PrematureEndOfFile(expected),
                     col: previous.col,
@@ -1294,24 +1290,24 @@ impl Parser<'_, '_, '_, '_> {
                 });
             }
 
-            self.token += 1;
-            let next = self.tokens.tokens[self.token as usize];
+            self.token.0 += 1;
+            let next = self.tokens.tokens[self.token];
             let (TokenKind::LineComment(_) | TokenKind::BlockComment(_)) = next.kind else {
                 return Ok(next);
             };
         }
     }
 
-    fn peek_next_token(&self) -> Option<Token> {
+    fn peek_next_token(&self) -> Option<Token<'code>> {
         let mut current_token = self.token;
         loop {
             #[expect(clippy::cast_possible_truncation)]
-            if current_token >= self.tokens.tokens.len() as TokenIndex - 1 {
+            if current_token.0 >= self.tokens.tokens.len() as offset32 - 1 {
                 return None;
             }
 
-            current_token += 1;
-            let next = self.tokens.tokens[current_token as usize];
+            current_token.0 += 1;
+            let next = self.tokens.tokens[current_token];
             let (TokenKind::LineComment(_) | TokenKind::BlockComment(_)) = next.kind else {
                 return Some(next);
             };
@@ -1320,11 +1316,11 @@ impl Parser<'_, '_, '_, '_> {
 
     // Note: this function is always called when underflowing the tokens array is never the case,
     // so there is no need for bounds checking
-    fn peek_previous_token(&self) -> Token {
+    fn peek_previous_token(&self) -> Token<'code> {
         let mut current_token = self.token;
         loop {
-            current_token -= 1;
-            let previous = self.tokens.tokens[current_token as usize];
+            current_token.0 -= 1;
+            let previous = self.tokens.tokens[current_token];
             let (TokenKind::LineComment(_) | TokenKind::BlockComment(_)) = previous.kind else {
                 return previous;
             };
@@ -1333,7 +1329,7 @@ impl Parser<'_, '_, '_, '_> {
 }
 
 // expressions
-impl Parser<'_, '_, '_, '_> {
+impl<'code> Parser<'_, '_, 'code, '_> {
     fn new_expression(&mut self, expression: Expression) -> ExpressionIndex {
         #[expect(clippy::cast_possible_truncation)]
         let index = self.ast.expressions.len() as ExpressionIndex;
@@ -1343,7 +1339,7 @@ impl Parser<'_, '_, '_, '_> {
 
     fn assert_lhs_is_not_string_or_array(
         &self,
-        op_token: Token,
+        op_token: Token<'code>,
         lhs: &Expression,
     ) -> Result<(), Error<ErrorKind>> {
         let lhs_type = lhs.typ();
@@ -1360,7 +1356,7 @@ impl Parser<'_, '_, '_, '_> {
 
     fn assert_rhs_is_not_string_or_array(
         &self,
-        op_token: Token,
+        op_token: Token<'code>,
         rhs: &Expression,
     ) -> Result<(), Error<ErrorKind>> {
         let rhs_type = rhs.typ();
@@ -1377,7 +1373,7 @@ impl Parser<'_, '_, '_, '_> {
 
     fn assert_lhs_is_bool(
         &self,
-        op_token: Token,
+        op_token: Token<'code>,
         lhs: &Expression,
     ) -> Result<(), Error<ErrorKind>> {
         let lhs_type = lhs.typ();
@@ -1394,7 +1390,7 @@ impl Parser<'_, '_, '_, '_> {
 
     fn assert_rhs_is_bool(
         &self,
-        op_token: Token,
+        op_token: Token<'code>,
         rhs: &Expression,
     ) -> Result<(), Error<ErrorKind>> {
         let rhs_type = rhs.typ();
@@ -1409,7 +1405,7 @@ impl Parser<'_, '_, '_, '_> {
         return Ok(());
     }
 
-    fn operator(&mut self, ops: &[Op]) -> Result<Option<(Token, Op)>, Error<ErrorKind>> {
+    fn operator(&mut self, ops: &[Op]) -> Result<Option<(Token<'code>, Op)>, Error<ErrorKind>> {
         let current_token = self.current_token(Expected::OperatorOrSemicolon)?;
         let TokenKind::Op(op) = current_token.kind else {
             return Ok(None);
@@ -1703,7 +1699,7 @@ impl Parser<'_, '_, '_, '_> {
             TokenKind::False => Ok(Expression::False),
             TokenKind::True => Ok(Expression::True),
             TokenKind::BinaryInteger(literal_index) => {
-                let literal = self.tokens.text[literal_index as usize];
+                let literal = self.tokens.text[literal_index];
                 match parse_positive_binary_i64(literal.as_bytes()) {
                     Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Error {
@@ -1714,7 +1710,7 @@ impl Parser<'_, '_, '_, '_> {
                 }
             }
             TokenKind::OctalInteger(literal_index) => {
-                let literal = self.tokens.text[literal_index as usize];
+                let literal = self.tokens.text[literal_index];
                 match parse_positive_octal_i64(literal.as_bytes()) {
                     Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Error {
@@ -1725,7 +1721,7 @@ impl Parser<'_, '_, '_, '_> {
                 }
             }
             TokenKind::DecimalInteger(literal_index) => {
-                let literal = self.tokens.text[literal_index as usize];
+                let literal = self.tokens.text[literal_index];
                 match parse_positive_decimal_i64(literal.as_bytes()) {
                     Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Error {
@@ -1736,7 +1732,7 @@ impl Parser<'_, '_, '_, '_> {
                 }
             }
             TokenKind::DecimalIntegerPrefix(literal_index) => {
-                let literal = self.tokens.text[literal_index as usize];
+                let literal = self.tokens.text[literal_index];
                 match parse_positive_decimal_prefix_i64(literal.as_bytes()) {
                     Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Error {
@@ -1747,7 +1743,7 @@ impl Parser<'_, '_, '_, '_> {
                 }
             }
             TokenKind::HexadecimalInteger(literal_index) => {
-                let literal = self.tokens.text[literal_index as usize];
+                let literal = self.tokens.text[literal_index];
                 match parse_positive_hexadecimal_i64(literal.as_bytes()) {
                     Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Error {
@@ -1758,7 +1754,7 @@ impl Parser<'_, '_, '_, '_> {
                 }
             }
             TokenKind::Ascii(literal_index) => {
-                let string = self.tokens.text[literal_index as usize];
+                let string = self.tokens.text[literal_index];
                 let string_contents = &string[1..string.len() - 1];
                 let Ok(literal) = string_contents.parse::<u8>() else {
                     panic!("wrong parsing of ascii literals");
@@ -1767,7 +1763,7 @@ impl Parser<'_, '_, '_, '_> {
             }
             TokenKind::Str(string_index) => {
                 let string_label = self.string_label;
-                let string = self.tokens.text[string_index as usize];
+                let string = self.tokens.text[string_index];
                 self.ast.string_labels.push((string_label, &string[1..string.len() - 1]));
                 self.string_label += 1;
 
@@ -1775,14 +1771,14 @@ impl Parser<'_, '_, '_, '_> {
             }
             TokenKind::RawStr(string_index) => {
                 let string_label = self.string_label;
-                let string = self.tokens.text[string_index as usize];
+                let string = self.tokens.text[string_index];
                 self.ast.raw_string_labels.push((string_label, &string[2..string.len() - 1]));
                 self.string_label += 1;
 
                 Ok(Expression::Str { label: string_label })
             }
             TokenKind::Identifier(name_index) | TokenKind::IdentifierStr(name_index) => {
-                let name = self.tokens.text[name_index as usize];
+                let name = self.tokens.text[name_index];
                 match self.resolve_type(name.as_bytes()) {
                     None => match self.resolve_variable(name.as_bytes()) {
                         Some(variable_index) => {
@@ -2071,11 +2067,11 @@ impl Parser<'_, '_, '_, '_> {
                     should_be_negated = !should_be_negated;
                 }
 
-                let start_of_expression = self.tokens.tokens[self.token as usize];
+                let start_of_expression = self.tokens.tokens[self.token];
                 #[expect(clippy::wildcard_enum_match_arm, reason = "readability")]
                 match start_of_expression.kind {
                     TokenKind::BinaryInteger(literal_index) => {
-                        let literal = self.tokens.text[literal_index as usize];
+                        let literal = self.tokens.text[literal_index];
                         if should_be_negated {
                             match parse_negative_binary_i64(literal.as_bytes()) {
                                 Some(0) => Err(Error {
@@ -2108,7 +2104,7 @@ impl Parser<'_, '_, '_, '_> {
                         }
                     }
                     TokenKind::OctalInteger(literal_index) => {
-                        let literal = self.tokens.text[literal_index as usize];
+                        let literal = self.tokens.text[literal_index];
                         if should_be_negated {
                             match parse_negative_octal_i64(literal.as_bytes()) {
                                 Some(0) => Err(Error {
@@ -2141,7 +2137,7 @@ impl Parser<'_, '_, '_, '_> {
                         }
                     }
                     TokenKind::DecimalInteger(literal_index) => {
-                        let literal = self.tokens.text[literal_index as usize];
+                        let literal = self.tokens.text[literal_index];
                         if should_be_negated {
                             match parse_negative_decimal_i64(literal.as_bytes()) {
                                 Some(0) => Err(Error {
@@ -2174,7 +2170,7 @@ impl Parser<'_, '_, '_, '_> {
                         }
                     }
                     TokenKind::DecimalIntegerPrefix(literal_index) => {
-                        let literal = self.tokens.text[literal_index as usize];
+                        let literal = self.tokens.text[literal_index];
                         if should_be_negated {
                             match parse_negative_decimal_prefix_i64(literal.as_bytes()) {
                                 Some(0) => Err(Error {
@@ -2207,7 +2203,7 @@ impl Parser<'_, '_, '_, '_> {
                         }
                     }
                     TokenKind::HexadecimalInteger(literal_index) => {
-                        let literal = self.tokens.text[literal_index as usize];
+                        let literal = self.tokens.text[literal_index];
                         if should_be_negated {
                             match parse_negative_hexadecimal_i64(literal.as_bytes()) {
                                 Some(0) => Err(Error {
@@ -2739,11 +2735,11 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         }
     }
 
-    fn type_annotation(&mut self) -> Result<Option<(Token, Type)>, Error<ErrorKind>> {
+    fn type_annotation(&mut self) -> Result<Option<(Token<'code>, Type)>, Error<ErrorKind>> {
         let colon_token = self.next_token_bounded(Expected::TypeAnnotationOrVariableDefinition)?;
 
         let TokenKind::Colon = colon_token.kind else {
-            self.token -= 1;
+            self.token.0 -= 1;
             return Ok(None);
         };
 
@@ -2756,7 +2752,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             });
         };
 
-        let type_name = self.tokens.text[type_name_index as usize];
+        let type_name = self.tokens.text[type_name_index];
         let Some(base_type) = self.resolve_type(type_name.as_bytes()) else {
             // REMOVE(stefano): remove possibility of emulating `typeof` using other variables as type annotation
             return match self.resolve_variable(type_name.as_bytes()) {
@@ -2844,7 +2840,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         let name_token = self.next_token_bounded(Expected::Identifier)?;
         let name = match name_token.kind {
             TokenKind::Identifier(name_index) | TokenKind::IdentifierStr(name_index) => {
-                let name = self.tokens.text[name_index as usize];
+                let name = self.tokens.text[name_index];
                 match self.resolve_type(name.as_bytes()) {
                     None => name,
                     Some(_) => {
@@ -3023,9 +3019,9 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn reassignment(
         &mut self,
         target: Expression,
-        target_token: Token,
+        target_token: Token<'code>,
         op: AssignmentOp,
-        op_token: Token,
+        op_token: Token<'code>,
     ) -> Result<Node, Error<ErrorKind>> {
         let (error_token, target_type) = match &target {
             Expression::ArrayIndex { base_type, indexable_index, .. } => {
@@ -3048,7 +3044,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 };
 
                 let error_token = if let TokenKind::Identifier(name_index) = target_token.kind {
-                    let name = self.tokens.text[name_index as usize];
+                    let name = self.tokens.text[name_index];
                     if let Some(_) = self.resolve_let_variable(name.as_bytes()) {
                         return Err(Error {
                             kind: ErrorKind::CannotMutateVariable,
@@ -3181,7 +3177,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 }
 
 // print statements
-impl Parser<'_, '_, '_, '_> {
+impl<'code> Parser<'_, '_, 'code, '_> {
     fn print_arg(&mut self) -> Result<Expression, Error<ErrorKind>> {
         let _start_of_expression_token = self.next_token_bounded(Expected::Expression)?;
         let argument = self.expression()?;
@@ -3198,12 +3194,12 @@ impl Parser<'_, '_, '_, '_> {
 }
 
 // if statements
-impl Parser<'_, '_, '_, '_> {
+impl<'code> Parser<'_, '_, 'code, '_> {
     fn iff(&mut self) -> Result<Node, Error<ErrorKind>> {
         let mut ifs = Vec::new();
         let mut els = None;
 
-        'iff: while let Some(if_token) = self.tokens.tokens.get(self.token as usize) {
+        'iff: while let Some(if_token) = self.token.get(&self.tokens.tokens) {
             _ = self.next_token_bounded(Expected::BooleanExpression)?;
 
             let condition = self.expression()?;
@@ -3268,7 +3264,7 @@ impl Parser<'_, '_, '_, '_> {
 
             ifs.push(if_statement);
 
-            while let Some(else_token) = self.tokens.tokens.get(self.token as usize) {
+            while let Some(else_token) = self.token.get(&self.tokens.tokens) {
                 let after_else_token = match else_token.kind {
                     TokenKind::Else => self.next_token_bounded(Expected::BlockOrIfStatement)?,
                     TokenKind::LineComment(_)
@@ -3370,9 +3366,9 @@ impl Parser<'_, '_, '_, '_> {
 }
 
 // loop statements
-impl Parser<'_, '_, '_, '_> {
+impl<'code> Parser<'_, '_, 'code, '_> {
     fn loop_statement(&mut self) -> Result<Node, Error<ErrorKind>> {
-        let do_token = self.tokens.tokens[self.token as usize];
+        let do_token = self.tokens.tokens[self.token];
         let loop_token = match do_token.kind {
             TokenKind::Do => {
                 let loop_token = self.next_token_bounded(Expected::LoopStatement)?;

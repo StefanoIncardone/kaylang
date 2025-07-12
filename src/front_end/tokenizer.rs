@@ -5,7 +5,7 @@ use super::{
     src_file::{Line, SrcCode, SrcFile},
     Error, ErrorInfo, IntoErrorInfo,
 };
-use crate::error::DisplayLen as _;
+use crate::{error::DisplayLen as _, front_end::SliceIndexPtr};
 use back_to_front::offset32;
 use core::fmt::Display;
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -285,15 +285,15 @@ impl Op {
     }
 }
 
-pub(crate) type TextIndex = offset32;
-pub(crate) type TokenIndex = offset32;
+pub(crate) type TextIndex<'code> = SliceIndexPtr<&'code str>;
+pub(crate) type TokenIndex<'code> = SliceIndexPtr<Token<'code>>;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub(crate) enum TokenKind {
-    LineComment(TextIndex),
-    BlockComment(TextIndex),
+pub(crate) enum TokenKind<'code> {
+    LineComment(TextIndex<'code>),
+    BlockComment(TextIndex<'code>),
     // IDEA(stefano): remove from the returned tokens, to avoid encountering them during the parsing stage
-    Unexpected(TextIndex),
+    Unexpected(TextIndex<'code>),
 
     // Symbols
     OpenRoundBracket,
@@ -313,19 +313,19 @@ pub(crate) enum TokenKind {
     True,
 
     // integer literals are never empty and always contain valid ascii digits
-    DecimalInteger(TextIndex),
-    DecimalIntegerPrefix(TextIndex),
-    BinaryInteger(TextIndex),
-    OctalInteger(TextIndex),
-    HexadecimalInteger(TextIndex),
+    DecimalInteger(TextIndex<'code>),
+    DecimalIntegerPrefix(TextIndex<'code>),
+    BinaryInteger(TextIndex<'code>),
+    OctalInteger(TextIndex<'code>),
+    HexadecimalInteger(TextIndex<'code>),
 
-    Ascii(TextIndex),
-    Str(TextIndex),
-    RawStr(TextIndex),
-    IdentifierStr(TextIndex),
+    Ascii(TextIndex<'code>),
+    Str(TextIndex<'code>),
+    RawStr(TextIndex<'code>),
+    IdentifierStr(TextIndex<'code>),
 
     // IDEA(stefano): extract base types from identifiers
-    Identifier(TextIndex),
+    Identifier(TextIndex<'code>),
 
     // Keywords
     /// temporary way of printing values to stdout
@@ -347,20 +347,20 @@ pub(crate) enum TokenKind {
     Continue,
 }
 
-impl TokenKind {
-    pub(super) fn display_len(self, tokens: &Tokens<'_>) -> offset32 {
+impl<'code> TokenKind<'code> {
+    pub(super) fn display_len(self, tokens: &Tokens<'code>) -> offset32 {
         #[expect(clippy::cast_possible_truncation)]
         return match self {
             Self::LineComment(comment) => {
-                let text = tokens.text[comment as usize];
+                let text = tokens.text[comment];
                 text.display_len()
             }
             Self::BlockComment(comment) => {
-                let text = tokens.text[comment as usize];
+                let text = tokens.text[comment];
                 text.display_len()
             }
             Self::Unexpected(unexpected) => {
-                let text = tokens.text[unexpected as usize];
+                let text = tokens.text[unexpected];
                 text.display_len()
             }
 
@@ -380,41 +380,41 @@ impl TokenKind {
             Self::False => 5,
 
             Self::DecimalInteger(integer) | Self::DecimalIntegerPrefix(integer) => {
-                let text = tokens.text[integer as usize];
+                let text = tokens.text[integer];
                 text.len() as offset32
             }
             Self::BinaryInteger(integer) => {
-                let text = tokens.text[integer as usize];
+                let text = tokens.text[integer];
                 text.len() as offset32
             }
             Self::OctalInteger(integer) => {
-                let text = tokens.text[integer as usize];
+                let text = tokens.text[integer];
                 text.len() as offset32
             }
             Self::HexadecimalInteger(integer) => {
-                let text = tokens.text[integer as usize];
+                let text = tokens.text[integer];
                 text.len() as offset32
             }
 
             Self::Ascii(ascii_char) => {
-                let text = tokens.text[ascii_char as usize];
+                let text = tokens.text[ascii_char];
                 text.len() as offset32
             }
             Self::Str(string) => {
-                let text = tokens.text[string as usize];
+                let text = tokens.text[string];
                 text.len() as offset32
             }
             Self::RawStr(string) => {
-                let text = tokens.text[string as usize];
+                let text = tokens.text[string];
                 text.len() as offset32
             }
             Self::IdentifierStr(identifier) => {
-                let text = tokens.text[identifier as usize];
+                let text = tokens.text[identifier];
                 text.len() as offset32
             }
 
             Self::Identifier(identifier) => {
-                let text = tokens.text[identifier as usize];
+                let text = tokens.text[identifier];
                 text.len() as offset32
             }
 
@@ -436,14 +436,14 @@ impl TokenKind {
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub(crate) struct Token {
-    pub(crate) kind: TokenKind,
+pub(crate) struct Token<'code> {
+    pub(crate) kind: TokenKind<'code>,
     pub(crate) col: offset32,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Tokens<'code> {
-    pub(crate) tokens: Vec<Token>,
+    pub(crate) tokens: Vec<Token<'code>>,
 
     // IDEA(stefano): store a Range<offset32> instead
     pub(crate) text: Vec<&'code str>,
@@ -471,6 +471,12 @@ pub struct Tokenizer<'code> {
 
 impl<'code, 'path: 'code> Tokenizer<'code> {
     pub fn tokenize(src_file: &'code SrcFile<'path>) -> TokenizedCode<'code, 'path> {
+        #[repr(C)]
+        union BackPatch<'code> {
+            token: TokenIndex<'code>,
+            column: offset32,
+        }
+
         let tokens = Tokens { tokens: Vec::new(), text: Vec::new() };
         if src_file.code.len() == 0 {
             return TokenizedCode {
@@ -490,7 +496,8 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
 
             errors: Vec::new(),
         };
-        let mut back_patches = Vec::<offset32>::new();
+
+        let mut back_patches = Vec::<BackPatch<'_>>::new();
 
         'tokenization: while let Some(next_character) = tokenizer.peek_ascii_multiline() {
             let token_kind_result = 'next_token: {
@@ -602,7 +609,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                                 kind,
                                                 col: tokenizer.token_start_col,
                                             });
-                                            tokenizer.token_start_col = token_start_col;
+                                            tokenizer.token_start_col = unsafe { token_start_col.column };
                                         }
                                         Some(_) => {}
                                         None => break 'next_character,
@@ -611,7 +618,10 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                         let comment_start_col = tokenizer.col - 1;
                                         match tokenizer.next_byte_multiline() {
                                             Some(b'*') => {
-                                                back_patches.push(tokenizer.token_start_col);
+                                                let back_patch = BackPatch {
+                                                    column: tokenizer.token_start_col,
+                                                };
+                                                back_patches.push(back_patch);
                                                 tokenizer.token_start_col = comment_start_col;
                                                 continue 'next_character;
                                             }
@@ -635,7 +645,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                 };
                                 tokenizer.errors.push(Error {
                                     kind: ErrorKind::UnclosedBlockComment,
-                                    col: block_comment_token_start,
+                                    col: unsafe { block_comment_token_start.column },
                                     pointers_count: 2,
                                 });
                             }
@@ -654,8 +664,10 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         }
                     },
                     b'(' => {
-                        #[expect(clippy::cast_possible_truncation)]
-                        back_patches.push(tokenizer.tokens.tokens.len() as TokenIndex);
+                        let back_patch = BackPatch {
+                            token: TokenIndex::new(tokenizer.tokens.tokens.len()),
+                        };
+                        back_patches.push(back_patch);
                         Ok(TokenKind::OpenRoundBracket)
                     }
                     b')' => 'bracket: {
@@ -668,8 +680,9 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             break 'bracket Err(());
                         };
 
+                        let token = unsafe { bracket_index.token };
                         #[expect(clippy::wildcard_enum_match_arm)]
-                        match &tokenizer.tokens.tokens[bracket_index as usize].kind {
+                        match tokenizer.tokens.tokens[token].kind {
                             TokenKind::OpenRoundBracket
                             | TokenKind::CloseRoundBracket
                             | TokenKind::CloseCurlyBracket
@@ -694,8 +707,10 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         }
                     }
                     b'[' => {
-                        #[expect(clippy::cast_possible_truncation)]
-                        back_patches.push(tokenizer.tokens.tokens.len() as TokenIndex);
+                        let back_patch = BackPatch {
+                            token: TokenIndex::new(tokenizer.tokens.tokens.len()),
+                        };
+                        back_patches.push(back_patch);
                         Ok(TokenKind::OpenSquareBracket)
                     }
                     b']' => 'bracket: {
@@ -708,8 +723,9 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             break 'bracket Err(());
                         };
 
+                        let token = unsafe { bracket_index.token };
                         #[expect(clippy::wildcard_enum_match_arm)]
-                        match &tokenizer.tokens.tokens[bracket_index as usize].kind {
+                        match tokenizer.tokens.tokens[token].kind {
                             TokenKind::OpenSquareBracket
                             | TokenKind::CloseSquareBracket
                             | TokenKind::CloseCurlyBracket
@@ -734,8 +750,10 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         }
                     }
                     b'{' => {
-                        #[expect(clippy::cast_possible_truncation)]
-                        back_patches.push(tokenizer.tokens.tokens.len() as TokenIndex);
+                        let back_patch = BackPatch {
+                            token: TokenIndex::new(tokenizer.tokens.tokens.len()),
+                        };
+                        back_patches.push(back_patch);
                         Ok(TokenKind::OpenCurlyBracket)
                     }
                     b'}' => 'bracket: {
@@ -748,8 +766,9 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             break 'bracket Err(());
                         };
 
+                        let token = unsafe { bracket_index.token };
                         #[expect(clippy::wildcard_enum_match_arm)]
-                        match &tokenizer.tokens.tokens[bracket_index as usize].kind {
+                        match tokenizer.tokens.tokens[token].kind {
                             TokenKind::OpenCurlyBracket
                             | TokenKind::CloseCurlyBracket
                             | TokenKind::CloseRoundBracket
@@ -1085,8 +1104,9 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
         }
 
         while let Some(bracket_index) = back_patches.pop() {
+            let token = unsafe { bracket_index.token };
             // there can only be open brackets at this point
-            let bracket_token = &tokenizer.tokens.tokens[bracket_index as usize];
+            let bracket_token = tokenizer.tokens.tokens[token];
 
             #[expect(clippy::wildcard_enum_match_arm)]
             let error_kind = match bracket_token.kind {
@@ -1132,10 +1152,9 @@ impl<'code> Tokenizer<'code> {
     }
 
     #[must_use]
-    fn new_token_text(&mut self) -> TokenIndex {
+    fn new_token_text(&mut self) -> TextIndex<'code> {
         let text = self.token_text();
-        #[expect(clippy::cast_possible_truncation)]
-        let index = self.tokens.text.len() as TextIndex;
+        let index = TextIndex::new(self.tokens.text.len());
         self.tokens.text.push(text);
         return index;
     }
@@ -1251,10 +1270,10 @@ impl<'code> Tokenizer<'code> {
 }
 
 // tokenization of numbers, strings and identifiers
-impl Tokenizer<'_> {
+impl<'code> Tokenizer<'code> {
     const MAX_IDENTIFIER_LEN: offset32 = 63;
 
-    fn integer_decimal(&mut self) -> Result<TokenKind, ()> {
+    fn integer_decimal(&mut self) -> Result<TokenKind<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1293,7 +1312,7 @@ impl Tokenizer<'_> {
         return Ok(TokenKind::DecimalInteger(literal_index));
     }
 
-    fn integer_decimal_prefix(&mut self) -> Result<TokenKind, ()> {
+    fn integer_decimal_prefix(&mut self) -> Result<TokenKind<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1332,7 +1351,7 @@ impl Tokenizer<'_> {
         return Ok(TokenKind::DecimalIntegerPrefix(literal_index));
     }
 
-    fn integer_binary(&mut self) -> Result<TokenKind, ()> {
+    fn integer_binary(&mut self) -> Result<TokenKind<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1379,7 +1398,7 @@ impl Tokenizer<'_> {
         return Ok(TokenKind::BinaryInteger(literal_index));
     }
 
-    fn integer_octal(&mut self) -> Result<TokenKind, ()> {
+    fn integer_octal(&mut self) -> Result<TokenKind<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1426,7 +1445,7 @@ impl Tokenizer<'_> {
         return Ok(TokenKind::OctalInteger(literal_index));
     }
 
-    fn integer_hexadecimal(&mut self) -> Result<TokenKind, ()> {
+    fn integer_hexadecimal(&mut self) -> Result<TokenKind<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1465,7 +1484,7 @@ impl Tokenizer<'_> {
         return Ok(TokenKind::HexadecimalInteger(literal_index));
     }
 
-    fn ascii_literal(&mut self) -> Result<TokenKind, ()> {
+    fn ascii_literal(&mut self) -> Result<TokenKind<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
         let mut logical_characters_count = 0;
@@ -1574,7 +1593,7 @@ impl Tokenizer<'_> {
         return Ok(TokenKind::Ascii(literal_index));
     }
 
-    fn str_literal(&mut self) -> Result<TokenKind, ()> {
+    fn str_literal(&mut self) -> Result<TokenKind<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1663,7 +1682,7 @@ impl Tokenizer<'_> {
         return Ok(TokenKind::Str(literal_index));
     }
 
-    fn raw_str_literal(&mut self) -> Result<TokenKind, ()> {
+    fn raw_str_literal(&mut self) -> Result<TokenKind<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1743,7 +1762,7 @@ impl Tokenizer<'_> {
     }
 
     // IDEA(stefano): allow for escaped \`
-    fn identifier_str(&mut self) -> Result<TokenKind, ()> {
+    fn identifier_str(&mut self) -> Result<TokenKind<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1801,13 +1820,12 @@ impl Tokenizer<'_> {
             return Err(());
         }
 
-        #[expect(clippy::cast_possible_truncation)]
-        let identifier_index = self.tokens.text.len() as TextIndex;
+        let identifier_index = TextIndex::new(self.tokens.text.len());
         self.tokens.text.push(identifier);
         return Ok(TokenKind::IdentifierStr(identifier_index));
     }
 
-    fn identifier(&mut self) -> Result<TokenKind, ()> {
+    fn identifier(&mut self) -> Result<TokenKind<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1862,8 +1880,7 @@ impl Tokenizer<'_> {
                     return Err(());
                 }
 
-                #[expect(clippy::cast_possible_truncation)]
-                let identifier_index = self.tokens.text.len() as TextIndex;
+                let identifier_index = TextIndex::new(self.tokens.text.len());
                 self.tokens.text.push(identifier);
                 TokenKind::Identifier(identifier_index)
             }

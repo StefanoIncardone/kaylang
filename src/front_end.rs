@@ -12,6 +12,93 @@ use alloc::borrow::Cow;
 use back_to_front::offset32;
 use std::path::Path;
 
+#[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(transparent)]
+pub(crate) struct SliceIndexPtr<T>(
+    pub(crate) offset32,
+    core::marker::PhantomData<T>,
+);
+
+#[expect(clippy::missing_trait_methods)]
+impl<T> Clone for SliceIndexPtr<T> {
+    #[expect(clippy::non_canonical_clone_impl, reason = "false positive due to return")]
+    fn clone(&self) -> Self {
+        return *self;
+    }
+}
+
+impl<T> Copy for SliceIndexPtr<T> {}
+
+impl<T> SliceIndexPtr<T> {
+    #[must_use]
+    #[inline(always)]
+    pub(crate) const fn new_offset32(index: offset32) -> Self {
+        return Self(index, core::marker::PhantomData);
+    }
+
+    #[must_use]
+    #[inline(always)]
+    pub(crate) const fn new(index: usize) -> Self {
+        #[expect(clippy::cast_possible_truncation)]
+        return Self(index as offset32, core::marker::PhantomData);
+    }
+
+    #[track_caller]
+    #[must_use]
+    #[inline(always)]
+    pub(crate) fn get(self, slice: &[T]) -> Option<&T> {
+        return slice.get(self.0 as usize);
+    }
+
+    #[expect(dead_code)]
+    #[track_caller]
+    #[must_use]
+    #[inline(always)]
+    pub(crate) fn get_mut(self, slice: &mut [T]) -> Option<&mut T> {
+        return slice.get_mut(self.0 as usize);
+    }
+}
+
+impl<T> core::ops::Index<SliceIndexPtr<T>> for [T] {
+    type Output = T;
+
+    #[track_caller]
+    #[must_use]
+    #[inline(always)]
+    fn index(&self, index: SliceIndexPtr<T>) -> &Self::Output {
+        return &self[index.0 as usize];
+    }
+}
+
+impl<T> core::ops::IndexMut<SliceIndexPtr<T>> for [T] {
+    #[track_caller]
+    #[must_use]
+    #[inline(always)]
+    fn index_mut(&mut self, index: SliceIndexPtr<T>) -> &mut Self::Output {
+        return &mut self[index.0 as usize];
+    }
+}
+
+impl<T> core::ops::Index<SliceIndexPtr<T>> for Vec<T> {
+    type Output = T;
+
+    #[track_caller]
+    #[must_use]
+    #[inline(always)]
+    fn index(&self, index: SliceIndexPtr<T>) -> &Self::Output {
+        return self.as_slice().index(index);
+    }
+}
+
+impl<T> core::ops::IndexMut<SliceIndexPtr<T>> for Vec<T> {
+    #[track_caller]
+    #[must_use]
+    #[inline(always)]
+    fn index_mut(&mut self, index: SliceIndexPtr<T>) -> &mut Self::Output {
+        return self.as_mut_slice().index_mut(index);
+    }
+}
+
 pub trait IntoErrorInfo {
     fn info(&self) -> ErrorInfo;
 }

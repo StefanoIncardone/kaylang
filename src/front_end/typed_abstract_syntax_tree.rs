@@ -13,11 +13,11 @@
 //        - compilation of abstract syntax tree
 //        - return the compiled code
 
-use crate::front_end::{src_file::DisplayPosition, tokenizer::{Base, TokenKind, Tokens}, ErrorDisplay};
+use crate::front_end::{src_file::DisplayPosition, tokenizer::{Base, TokenKind, Tokens}, ErrorDisplay, SliceIndexPtr};
 use back_to_front::offset32;
 
 use super::{
-    abstract_syntax_tree::{self as st, ExpressionIndex, NodeIndex, SyntaxTree},
+    abstract_syntax_tree::{self as st, SyntaxTree},
     src_file::SrcCode,
     tokenizer::{ascii, Op, TextIndex},
     Error, ErrorInfo, IntoErrorInfo,
@@ -622,12 +622,12 @@ impl AssignmentOperator {
     }
 }
 
-
-pub(crate) type ArrayItemsIndex = offset32;
-pub(crate) type VariableDefinitionIndex = offset32;
+pub(crate) type ExpressionIndex<'code> = SliceIndexPtr<Expression<'code>>;
+pub(crate) type ArrayItemsIndex<'code> = SliceIndexPtr<Expression<'code>>;
+pub(crate) type VariableDefinitionIndex<'code> = SliceIndexPtr<VariableDefinition<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub(crate) enum Expression {
+pub(crate) enum Expression<'code> {
     False {
         column: offset32,
     },
@@ -643,16 +643,16 @@ pub(crate) enum Expression {
         column: offset32,
     },
     Str {
-        literal: TextIndex,
+        literal: TextIndex<'code>,
         column: offset32,
     },
     Variable {
-        variable: TextIndex,
+        variable: VariableDefinitionIndex<'code>,
         column: offset32,
     },
     Array {
         base_type: BaseType,
-        items_start: ArrayItemsIndex,
+        items_start: ArrayItemsIndex<'code>,
         /// always greater than 0
         items_len: u64,
     },
@@ -660,46 +660,46 @@ pub(crate) enum Expression {
     Prefix {
         operator: PrefixOperator,
         operator_column: offset32,
-        right_operand: ExpressionIndex,
+        right_operand: ExpressionIndex<'code>,
     },
     BooleanPrefix {
         operator: BooleanPrefixOperator,
         operator_column: offset32,
-        right_operand: ExpressionIndex,
+        right_operand: ExpressionIndex<'code>,
     },
     Binary {
-        left_operand: ExpressionIndex,
+        left_operand: ExpressionIndex<'code>,
         operator: BinaryOperator,
         operator_column: offset32,
-        right_operand: ExpressionIndex,
+        right_operand: ExpressionIndex<'code>,
     },
     BooleanBinary {
-        left_operand: ExpressionIndex,
+        left_operand: ExpressionIndex<'code>,
         operator: BooleanBinaryOperator,
         operator_column: offset32,
-        right_operand: ExpressionIndex,
+        right_operand: ExpressionIndex<'code>,
     },
     Comparison {
-        left_operand: ExpressionIndex,
+        left_operand: ExpressionIndex<'code>,
         operator: ComparisonOperator,
         operator_column: offset32,
-        right_operand: ExpressionIndex,
+        right_operand: ExpressionIndex<'code>,
     },
     BooleanComparison {
-        left_operand: ExpressionIndex,
+        left_operand: ExpressionIndex<'code>,
         operator: BooleanComparisonOperator,
         operator_column: offset32,
-        right_operand: ExpressionIndex,
+        right_operand: ExpressionIndex<'code>,
     },
 
     Index {
-        indexed_expression: ExpressionIndex,
+        indexed_expression: ExpressionIndex<'code>,
         open_square_bracket_column: offset32,
-        index_expression: ExpressionIndex,
+        index_expression: ExpressionIndex<'code>,
     },
 }
 
-impl Expression {
+impl Expression<'_> {
     pub(crate) fn base_typ(&self, ast: &TypedSyntaxTree<'_, '_, '_>) -> BaseType {
         return match self {
             Self::False { .. } | Self::True { .. } => BaseType::Bool,
@@ -707,7 +707,7 @@ impl Expression {
             Self::Ascii { .. } => BaseType::Ascii,
             Self::Str { .. } => BaseType::Str,
             Self::Variable { variable, .. } => {
-                let variable_definition = &ast.variables[*variable as usize];
+                let variable_definition = &ast.variables[*variable];
                 variable_definition.typ.base_typ()
             }
             Self::Array { base_type, .. } => *base_type,
@@ -718,7 +718,7 @@ impl Expression {
             Self::Comparison { .. } => ComparisonOperator::BASE_TYPE,
             Self::BooleanComparison { .. } => BooleanComparisonOperator::BASE_TYPE,
             Self::Index { indexed_expression, .. } => {
-                let expression = &ast.expressions[*indexed_expression as usize];
+                let expression = &ast.expressions[*indexed_expression];
                 expression.base_typ(ast)
             }
         };
@@ -731,7 +731,7 @@ impl Expression {
             Self::Ascii { .. } => Type::Base(BaseType::Ascii),
             Self::Str { .. } => Type::Base(BaseType::Str),
             Self::Variable { variable, .. } => {
-                let variable_definition = &ast.variables[*variable as usize];
+                let variable_definition = &ast.variables[*variable];
                 variable_definition.typ.clone()
             }
             Self::Array { base_type, items_len, .. } => {
@@ -744,61 +744,63 @@ impl Expression {
             Self::Comparison { .. } => ComparisonOperator::TYPE,
             Self::BooleanComparison { .. } => BooleanComparisonOperator::TYPE,
             Self::Index { indexed_expression, .. } => {
-                let expression = &ast.expressions[*indexed_expression as usize];
+                let expression = &ast.expressions[*indexed_expression];
                 expression.typ(ast)
             }
         };
     }
 }
 
-pub(crate) type ScopeIndex = offset32;
+pub(crate) type ScopeIndex<'code> = SliceIndexPtr<Scope<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub(crate) struct Scope {
-    pub(crate) parent: ScopeIndex,
+pub(crate) struct Scope<'code> {
+    pub(crate) parent: ScopeIndex<'code>,
     pub(crate) types: Vec<BaseType>,
-    pub(crate) let_variables: Vec<VariableDefinitionIndex>,
-    pub(crate) var_variables: Vec<VariableDefinitionIndex>,
+    pub(crate) let_variables: Vec<VariableDefinitionIndex<'code>>,
+    pub(crate) var_variables: Vec<VariableDefinitionIndex<'code>>,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub(crate) struct VariableDefinition {
-    name: TextIndex,
+pub(crate) struct VariableDefinition<'code> {
+    name: TextIndex<'code>,
     typ: Type,
-    initial_value: ExpressionIndex,
+    initial_value: ExpressionIndex<'code>,
 }
 
+pub(crate) type NodeIndex<'code> = SliceIndexPtr<Node<'code>>;
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub(crate) enum Node {
-    Expression(ExpressionIndex),
+pub(crate) enum Node<'code> {
+    Expression(ExpressionIndex<'code>),
 
     Print {
-        argument: ExpressionIndex,
+        argument: ExpressionIndex<'code>,
     },
     Println {
-        argument: ExpressionIndex,
+        argument: ExpressionIndex<'code>,
     },
     PrintlnNoArg,
     Eprint {
-        argument: ExpressionIndex,
+        argument: ExpressionIndex<'code>,
     },
     Eprintln {
-        argument: ExpressionIndex,
+        argument: ExpressionIndex<'code>,
     },
     EprintlnNoArg,
 
     LetVariableDefinition {
-        variable: VariableDefinitionIndex,
+        variable: VariableDefinitionIndex<'code>,
     },
     VarVariableDefinition {
-        variable: VariableDefinitionIndex,
+        variable: VariableDefinitionIndex<'code>,
     },
 
     Assignment {
-        target: ExpressionIndex,
+        target: ExpressionIndex<'code>,
         operator: AssignmentOperator,
         operator_column: offset32,
-        new_value: ExpressionIndex,
+        new_value: ExpressionIndex<'code>,
     },
 
     Scope {
@@ -806,42 +808,44 @@ pub(crate) enum Node {
     },
 
     If {
-        condition: ExpressionIndex,
+        condition: ExpressionIndex<'code>,
         else_ifs_count: offset32,
     },
     IfTrailingElse {
-        condition: ExpressionIndex,
+        condition: ExpressionIndex<'code>,
         else_ifs_count: offset32,
     },
     ElseIf {
-        condition: ExpressionIndex,
+        condition: ExpressionIndex<'code>,
     },
 
     Loop {
-        condition: ExpressionIndex,
+        condition: ExpressionIndex<'code>,
     },
     DoLoop {
-        condition: ExpressionIndex,
+        condition: ExpressionIndex<'code>,
     },
     Break,
     Continue,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-enum ParsedNode {
-    Node(Node),
+enum ParsedNode<'code> {
+    Node(Node<'code>),
     Scope,
     IfStatement,
     LoopStatement,
 }
 
+pub(crate) type ArrayItem<'code> = ExpressionIndex<'code>;
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct TypedSyntaxTree<'syntax_tree, 'tokens: 'syntax_tree, 'code: 'tokens> {
-    pub(crate) nodes: Vec<Node>,
+    pub(crate) nodes: Vec<Node<'code>>,
 
-    pub(crate) expressions: Vec<Expression>,
-    pub(crate) array_items: Vec<ExpressionIndex>,
-    pub(crate) variables: Vec<VariableDefinition>,
+    pub(crate) expressions: Vec<Expression<'code>>,
+    pub(crate) array_items: Vec<ArrayItem<'code>>,
+    pub(crate) variables: Vec<VariableDefinition<'code>>,
 
     _syntax_tree: PhantomData<&'syntax_tree SyntaxTree<'tokens, 'code>>,
 }
@@ -871,9 +875,9 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
     fn info_if(
         &self,
         f: &mut core::fmt::Formatter<'_>,
-        node_index: &mut NodeIndex,
+        node_index: &mut NodeIndex<'_>,
         indent: usize,
-        condition: ExpressionIndex,
+        condition: ExpressionIndex<'_>,
     ) -> core::fmt::Result {
         writeln!(f, "{:>indent$}If = if", "")?;
         let if_indent = indent + Self::INDENT_INCREMENT;
@@ -884,11 +888,11 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
     fn info_node(
         &self,
         f: &mut core::fmt::Formatter<'_>,
-        node_index: &mut NodeIndex,
+        node_index: &mut NodeIndex<'_>,
         indent: usize,
     ) -> core::fmt::Result {
-        let node = &self.typed_syntax_tree.nodes[*node_index as usize];
-        *node_index += 1;
+        let node = &self.typed_syntax_tree.nodes[*node_index];
+        node_index.0 += 1;
 
         #[rustfmt::skip]
         return match node {
@@ -946,8 +950,8 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
                 let scope_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:>scope_indent$}OpenCurlyBracket = {{", "")?;
 
-                let after_end_scope_node_index = *node_index + raw_nodes_in_scope_count;
-                while *node_index < after_end_scope_node_index {
+                let after_end_scope_node_index = node_index.0 + raw_nodes_in_scope_count;
+                while node_index.0 < after_end_scope_node_index {
                     self.info_node(f, node_index, scope_indent)?;
                 }
                 writeln!(f, "{:>scope_indent$}CloseCurlyBracket = }}", "")
@@ -1001,11 +1005,11 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
     fn info_expression(
         &self,
         f: &mut core::fmt::Formatter<'_>,
-        expression_index: ExpressionIndex,
+        expression_index: ExpressionIndex<'_>,
         indent: usize,
     ) -> core::fmt::Result {
         let expression_indent = indent + Self::INDENT_INCREMENT;
-        let expression = &self.typed_syntax_tree.expressions[expression_index as usize];
+        let expression = &self.typed_syntax_tree.expressions[expression_index];
 
         #[rustfmt::skip]
         return match expression {
@@ -1018,19 +1022,21 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
                 writeln!(f, "{:>indent$}Ascii = {character}", "")
             }
             Expression::Str { literal, .. } => {
-                let literal_str = &self.tokens.text[*literal as usize];
+                let literal_str = self.tokens.text[*literal];
                 writeln!(f, "{:>indent$}Str = {literal_str}", "")
             }
             Expression::Variable { variable, .. } => {
-                let identifier_str = self.tokens.text[*variable as usize];
+                let variable_definition = &self.typed_syntax_tree.variables[*variable];
+                let identifier_str = self.tokens.text[variable_definition.name];
                 writeln!(f, "{:>indent$}Identifier = {identifier_str}", "")
             },
             Expression::Array { items_start, items_len, .. } => {
                 writeln!(f, "{:>indent$}Array", "")?;
 
                 let items_indent = expression_indent + Self::INDENT_INCREMENT;
-                let items_end = *items_start as usize + *items_len as usize;
-                let items = &self.typed_syntax_tree.array_items[*items_start as usize..items_end];
+                #[expect(clippy::cast_possible_truncation)]
+                let items_end = items_start.0 as usize + *items_len as usize;
+                let items = &self.typed_syntax_tree.array_items[items_start.0 as usize..items_end];
                 for item_expression in items {
                     self.info_expression(f, *item_expression, items_indent)?;
                 }
@@ -1087,12 +1093,12 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
     fn info_variable(
         &self,
         f: &mut core::fmt::Formatter<'_>,
-        variable_index: VariableDefinitionIndex,
+        variable_index: VariableDefinitionIndex<'_>,
         indent: usize,
     ) -> core::fmt::Result {
         let VariableDefinition { name, initial_value, typ } =
-            &self.typed_syntax_tree.variables[variable_index as usize];
-        let name_str = self.tokens.text[*name as usize];
+            &self.typed_syntax_tree.variables[variable_index];
+        let name_str = self.tokens.text[*name];
         writeln!(f, "{:>indent$}Name = {name_str}", "")?;
         writeln!(f, "{:>indent$}Type = {typ}", "")?;
         writeln!(f, "{:>indent$}InitialValue = {typ}", "")?;
@@ -1102,9 +1108,8 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
 
 impl Display for TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let mut node_index = 0;
-        #[expect(clippy::cast_possible_truncation)]
-        while node_index < self.typed_syntax_tree.nodes.len() as NodeIndex {
+        let mut node_index = NodeIndex::new(0);
+        while (node_index.0 as usize) < self.typed_syntax_tree.nodes.len() {
             self.info_node(f, &mut node_index, 0)?;
         }
 
@@ -1118,12 +1123,13 @@ pub struct Parser<'syntax_tree, 'tokens: 'syntax_tree, 'src: 'tokens, 'code: 'sr
     errors: Vec<Error<ErrorKind>>,
 
     tokens: &'tokens Tokens<'code>,
-    node_index: NodeIndex,
+    node_index: NodeIndex<'code>,
     syntax_tree: &'syntax_tree SyntaxTree<'tokens, 'code>,
 
+    temp_array_items: Vec<ArrayItem<'code>>,
     ast: TypedSyntaxTree<'syntax_tree, 'tokens, 'code>,
-    scope: ScopeIndex,
-    scopes: Vec<Scope>,
+    scope: ScopeIndex<'code>,
+    scopes: Vec<Scope<'code>>,
 }
 
 impl<'syntax_tree, 'tokens: 'syntax_tree, 'src: 'tokens, 'code: 'src, 'path: 'code>
@@ -1145,9 +1151,10 @@ impl<'syntax_tree, 'tokens: 'syntax_tree, 'src: 'tokens, 'code: 'src, 'path: 'co
             errors: Vec::new(),
 
             tokens,
-            node_index: 0,
+            node_index: NodeIndex::new(0),
             syntax_tree,
 
+            temp_array_items: Vec::new(),
             ast: TypedSyntaxTree {
                 nodes: Vec::new(),
                 expressions: Vec::new(),
@@ -1155,9 +1162,9 @@ impl<'syntax_tree, 'tokens: 'syntax_tree, 'src: 'tokens, 'code: 'src, 'path: 'co
                 variables: Vec::new(),
                 _syntax_tree: PhantomData,
             },
-            scope: 0,
+            scope: ScopeIndex::new(0),
             scopes: vec![Scope {
-                parent: 0,
+                parent: ScopeIndex::new(0),
                 types: vec![
                     BaseType::I64,
                     BaseType::Ascii,
@@ -1180,10 +1187,7 @@ impl<'syntax_tree, 'tokens: 'syntax_tree, 'src: 'tokens, 'code: 'src, 'path: 'co
                     parser.errors.push(err);
 
                     // consuming all remaining nodes until the end of the file
-                    #[expect(clippy::cast_possible_truncation)]
-                    {
-                        parser.node_index = parser.syntax_tree.nodes.len() as NodeIndex;
-                    }
+                    parser.node_index = NodeIndex::new(parser.syntax_tree.nodes.len());
                     break;
                 }
             };
@@ -1193,19 +1197,21 @@ impl<'syntax_tree, 'tokens: 'syntax_tree, 'src: 'tokens, 'code: 'src, 'path: 'co
     }
 }
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-struct Peeked<'node> {
-    node: &'node st::Node,
-    index: NodeIndex,
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+struct Peeked<'syntax_tree, 'code: 'syntax_tree> {
+    node: &'syntax_tree st::Node<'code>,
+    index: NodeIndex<'code>,
 }
 
-impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
-    fn peek_next_node(&self) -> Option<Peeked<'syntax_tree>> {
-        #[expect(clippy::cast_possible_truncation)]
-        for next_node_index in self.node_index..self.syntax_tree.nodes.len() as NodeIndex {
-            let next_node = &self.syntax_tree.nodes[next_node_index as usize];
+impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> {
+    fn peek_next_node(&self) -> Option<Peeked<'syntax_tree, 'code>> {
+        let node_index_end = NodeIndex::new(self.tokens.tokens.len());
+        for next_node_index in self.node_index.0..node_index_end.0 {
+            let next_node_index_index = st::NodeIndex::new_offset32(next_node_index);
+            let next_node = &self.syntax_tree.nodes[next_node_index_index];
             let st::Node::Semicolon { .. } = next_node else {
-                return Some(Peeked { node: next_node, index: next_node_index + 1 });
+                let peeked_node_index_index = NodeIndex::new_offset32(next_node_index_index.0 + 1);
+                return Some(Peeked { node: next_node, index: peeked_node_index_index });
             };
         }
 
@@ -1213,8 +1219,8 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
     }
 }
 
-impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
-    fn any(&mut self, node: &'syntax_tree st::Node) -> Result<ParsedNode, Error<ErrorKind>> {
+impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> {
+    fn any(&mut self, node: &'syntax_tree st::Node<'code>) -> Result<ParsedNode<'code>, Error<ErrorKind>> {
         return match node {
             st::Node::Expression { expression, .. } => {
                 let parsed_expression_index = self.parse_expression(*expression, None)?;
@@ -1246,12 +1252,12 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
 
             st::Node::LetVariableDefinition { variable_definition, .. } => {
                 let variable = self.parse_variable(*variable_definition)?;
-                self.scopes[self.scope as usize].let_variables.push(variable);
+                self.scopes[self.scope].let_variables.push(variable);
                 Ok(ParsedNode::Node(Node::LetVariableDefinition { variable }))
             }
             st::Node::VarVariableDefinition { variable_definition, .. } => {
                 let variable = self.parse_variable(*variable_definition)?;
-                self.scopes[self.scope as usize].var_variables.push(variable);
+                self.scopes[self.scope].var_variables.push(variable);
                 Ok(ParsedNode::Node(Node::VarVariableDefinition { variable }))
             }
 
@@ -1282,7 +1288,7 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
     }
 }
 
-impl Parser<'_, '_, '_, '_, '_> {
+impl<'code> Parser<'_, '_, '_, 'code, '_> {
     #[expect(clippy::panic, reason = "it's basically a more descriptive panic implementation")]
     #[track_caller]
     fn stray_semicolon(&self, semicolon_colon: offset32) -> ! {
@@ -1305,25 +1311,23 @@ impl Parser<'_, '_, '_, '_, '_> {
     }
 }
 
-impl TypedSyntaxTree<'_, '_, '_> {
+impl<'code> TypedSyntaxTree<'_, '_, 'code> {
     #[inline]
-    fn new_expression(&mut self, expression: Expression) -> ExpressionIndex {
-        #[expect(clippy::cast_possible_truncation)]
-        let index = self.expressions.len() as ExpressionIndex;
+    fn new_expression(&mut self, expression: Expression<'code>) -> ExpressionIndex<'code> {
+        let index = ExpressionIndex::new(self.expressions.len());
         self.expressions.push(expression);
         return index;
     }
 
     #[inline]
-    fn new_variable(&mut self, variable: VariableDefinition) -> VariableDefinitionIndex {
-        #[expect(clippy::cast_possible_truncation)]
-        let index = self.variables.len() as VariableDefinitionIndex;
+    fn new_variable(&mut self, variable: VariableDefinition<'code>) -> VariableDefinitionIndex<'code> {
+        let index = VariableDefinitionIndex::new(self.variables.len());
         self.variables.push(variable);
         return index;
     }
 }
 
-impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
+impl<'code> Parser<'_, '_, '_, 'code, '_> {
     #[expect(clippy::single_call_fn, reason = "readability")]
     const fn parse_positive_binary_i64(literal: &[ascii]) -> Result<i64, ()> {
         const BASE: Base = Base::Binary;
@@ -1638,9 +1642,9 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
     // multiline error messages are developed
     fn first_token_display_len(
         &self,
-        expression: ExpressionIndex,
+        expression: st::ExpressionIndex<'code>,
     ) -> offset32 {
-        let st_expression = &self.syntax_tree.expressions[expression as usize];
+        let st_expression = &self.syntax_tree.expressions[expression];
         let token_kind = match st_expression {
             st::Expression::False { .. } => TokenKind::False,
             st::Expression::True { .. } => TokenKind::True,
@@ -1675,9 +1679,9 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
     // multiline error messages are developed
     fn first_token_column(
         &self,
-        expression: ExpressionIndex,
+        expression: st::ExpressionIndex<'code>,
     ) -> offset32 {
-        let st_expression = &self.syntax_tree.expressions[expression as usize];
+        let st_expression = &self.syntax_tree.expressions[expression];
         let column = match st_expression {
             st::Expression::False { column }
             | st::Expression::True { column }
@@ -1706,7 +1710,7 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
         return column;
     }
 
-    fn resolve_variable(&self, name: TextIndex) -> Option<VariableDefinitionIndex> {
+    fn resolve_variable(&self, name: TextIndex<'code>) -> Option<VariableDefinitionIndex<'code>> {
         if let Some(variable) = self.resolve_let_variable(name) {
             return Some(variable);
         }
@@ -1714,54 +1718,54 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
         return self.resolve_var_variable(name);
     }
 
-    fn resolve_let_variable(&self, name: TextIndex) -> Option<VariableDefinitionIndex> {
+    fn resolve_let_variable(&self, name: TextIndex<'code>) -> Option<VariableDefinitionIndex<'code>> {
         let mut scope_index = self.scope;
         loop {
-            let scope = &self.scopes[scope_index as usize];
+            let scope = &self.scopes[scope_index];
             for var_index in &scope.let_variables {
-                let var = &self.ast.variables[*var_index as usize];
+                let var = &self.ast.variables[*var_index];
                 if var.name == name {
                     return Some(*var_index);
                 }
             }
 
-            scope_index = match scope_index {
+            scope_index = match scope_index.0 {
                 0 => return None,
                 _ => scope.parent,
             };
         }
     }
 
-    fn resolve_var_variable(&self, name: TextIndex) -> Option<VariableDefinitionIndex> {
+    fn resolve_var_variable(&self, name: TextIndex<'code>) -> Option<VariableDefinitionIndex<'code>> {
         let mut scope_index = self.scope;
         loop {
-            let scope = &self.scopes[scope_index as usize];
+            let scope = &self.scopes[scope_index];
             for var_index in &scope.var_variables {
-                let var = &self.ast.variables[*var_index as usize];
+                let var = &self.ast.variables[*var_index];
                 if var.name == name {
                     return Some(*var_index);
                 }
             }
 
-            scope_index = match scope_index {
+            scope_index = match scope_index.0 {
                 0 => return None,
                 _ => scope.parent,
             };
         }
     }
 
-    fn resolve_type(&self, name: TextIndex) -> Option<BaseType> {
-        let name_text = self.tokens.text[name as usize];
+    fn resolve_type(&self, name: TextIndex<'code>) -> Option<BaseType> {
+        let name_text = self.tokens.text[name];
         let mut scope_index = self.scope;
         loop {
-            let scope = &self.scopes[scope_index as usize];
+            let scope = &self.scopes[scope_index];
             for typ in &scope.types {
                 if typ.matches(name_text.as_bytes()) {
                     return Some(*typ);
                 }
             }
 
-            scope_index = match scope_index {
+            scope_index = match scope_index.0 {
                 0 => return None,
                 _ => scope.parent,
             };
@@ -1771,16 +1775,16 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
     // IDEA(stefano): provide version with explicit expected type
     fn expression(
         &mut self,
-        st_expression_index: ExpressionIndex,
+        st_expression_index: st::ExpressionIndex<'code>,
         expected_type: Option<&Type>,
-    ) -> Result<Expression, Error<ErrorKind>> {
-        let st_expression = &self.syntax_tree.expressions[st_expression_index as usize];
+    ) -> Result<Expression<'code>, Error<ErrorKind>> {
+        let st_expression = &self.syntax_tree.expressions[st_expression_index];
         let expression = match st_expression {
             st::Expression::False { column } => Expression::False { column: *column },
             st::Expression::True { column } => Expression::True { column: *column },
             st::Expression::DecimalInteger { literal, column } => {
-                let literal_text = self.tokens.text[*literal as usize].as_bytes();
-                let Ok(value) = Self::parse_positive_decimal_i64(literal_text) else {
+                let literal_text = self.tokens.text[*literal];
+                let Ok(value) = Self::parse_positive_decimal_i64(literal_text.as_bytes()) else {
                     return Err(Error {
                         kind: ErrorKind::DecimalIntegerOverflow,
                         col: *column,
@@ -1791,8 +1795,8 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
                 Expression::I64 { value, column: *column }
             }
             st::Expression::DecimalIntegerPrefix { literal, column } => {
-                let literal_text = self.tokens.text[*literal as usize].as_bytes();
-                let Ok(value) = Self::parse_positive_decimal_prefix_i64(literal_text) else {
+                let literal_text = self.tokens.text[*literal];
+                let Ok(value) = Self::parse_positive_decimal_prefix_i64(literal_text.as_bytes()) else {
                     return Err(Error {
                         kind: ErrorKind::DecimalIntegerOverflow,
                         col: *column,
@@ -1803,8 +1807,8 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
                 Expression::I64 { value, column: *column }
             }
             st::Expression::BinaryInteger { literal, column } => {
-                let literal_text = self.tokens.text[*literal as usize].as_bytes();
-                let Ok(value) = Self::parse_positive_binary_i64(literal_text) else {
+                let literal_text = self.tokens.text[*literal];
+                let Ok(value) = Self::parse_positive_binary_i64(literal_text.as_bytes()) else {
                     return Err(Error {
                         kind: ErrorKind::BinaryIntegerOverflow,
                         col: *column,
@@ -1815,8 +1819,8 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
                 Expression::I64 { value, column: *column }
             }
             st::Expression::OctalInteger { literal, column } => {
-                let literal_text = self.tokens.text[*literal as usize].as_bytes();
-                let Ok(value) = Self::parse_positive_octal_i64(literal_text) else {
+                let literal_text = self.tokens.text[*literal];
+                let Ok(value) = Self::parse_positive_octal_i64(literal_text.as_bytes()) else {
                     return Err(Error {
                         kind: ErrorKind::OctalIntegerOverflow,
                         col: *column,
@@ -1827,8 +1831,8 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
                 Expression::I64 { value, column: *column }
             }
             st::Expression::HexadecimalInteger { literal, column } => {
-                let literal_text = self.tokens.text[*literal as usize].as_bytes();
-                let Ok(value) = Self::parse_positive_hexadecimal_i64(literal_text) else {
+                let literal_text = self.tokens.text[*literal];
+                let Ok(value) = Self::parse_positive_hexadecimal_i64(literal_text.as_bytes()) else {
                     return Err(Error {
                         kind: ErrorKind::HexadecimalIntegerOverflow,
                         col: *column,
@@ -1839,7 +1843,7 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
                 Expression::I64 { value, column: *column }
             }
             st::Expression::Ascii { literal, column } => {
-                let ascii_literal = &self.tokens.text[*literal as usize];
+                let ascii_literal = &self.tokens.text[*literal];
                 let ascii_ch = Self::parse_ascii(ascii_literal.as_bytes());
                 Expression::Ascii { character: ascii_ch, column: *column }
             }
@@ -1849,7 +1853,7 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
             st::Expression::Identifier { identifier, column }
             | st::Expression::IdentifierStr { identifier, column } => {
                 if let Some(_) = self.resolve_type(*identifier) {
-                    let name_text = self.tokens.text[*identifier as usize];
+                    let name_text = self.tokens.text[*identifier];
                     return Err(Error {
                         kind: ErrorKind::TypeInExpression,
                         col: *column,
@@ -1858,7 +1862,7 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
                     });
                 }
                 let Some(variable) = self.resolve_variable(*identifier) else {
-                    let name_text = self.tokens.text[*identifier as usize];
+                    let name_text = self.tokens.text[*identifier];
                     return Err(Error {
                         kind: ErrorKind::VariableNotPreviouslyDefined,
                         col: *column,
@@ -1880,11 +1884,11 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
                     });
                 }
 
-                let mut array_items = Vec::<ExpressionIndex>::new();
-                let mut item_index = *items_start as usize;
+                let temp_array_items_start = self.temp_array_items.len();
+                let mut item_index = *items_start;
 
                 let first_item = &self.syntax_tree.array_items[item_index];
-                item_index += 1;
+                item_index.0 += 1;
 
                 let parsed_first_item = self.expression(first_item.expression, expected_type)?;
                 let parsed_first_item_type = parsed_first_item.typ(&self.ast);
@@ -1896,7 +1900,7 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
                     });
                 }
                 let parsed_first_item_index = self.ast.new_expression(parsed_first_item);
-                array_items.push(parsed_first_item_index);
+                self.temp_array_items.push(parsed_first_item_index);
 
                 let expected_array_items_type = if let Some(_) = expected_type {
                     expected_type
@@ -1904,10 +1908,10 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
                     Some(&parsed_first_item_type)
                 };
 
-                let items_end = (*items_start + items_len) as usize;
-                while item_index < items_end {
+                let items_end = (items_start.0 + items_len) as usize;
+                while (item_index.0 as usize) < items_end {
                     let item = &self.syntax_tree.array_items[item_index];
-                    item_index += 1;
+                    item_index.0 += 1;
 
                     let parsed_item = self.expression(item.expression, expected_array_items_type)?;
                     let parsed_item_type = parsed_item.typ(&self.ast);
@@ -1919,15 +1923,20 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
                         });
                     }
                     let parsed_item_index = self.ast.new_expression(parsed_item);
-                    array_items.push(parsed_item_index);
+                    self.temp_array_items.push(parsed_item_index);
                 }
 
-                self.ast.array_items.extend_from_slice(&array_items);
-                Expression::Array {
+                let array_items = &self.temp_array_items[temp_array_items_start..];
+                self.ast.array_items.extend_from_slice(array_items);
+
+                let array_expression = Expression::Array {
                     base_type: parsed_first_item_type.base_typ(),
-                    items_start: *items_start,
+                    items_start: ExpressionIndex::new_offset32(items_start.0),
                     items_len: *items_len as u64,
-                }
+                };
+
+                unsafe { self.temp_array_items.set_len(temp_array_items_start); }
+                array_expression
             }
 
             st::Expression::Prefix { operator, operator_column, right_operand } => match operator {
@@ -1995,10 +2004,10 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
                 st::PrefixOperator::Minus
                 | st::PrefixOperator::WrappingMinus
                 | st::PrefixOperator::SaturatingMinus => {
-                    let st_right_operand = &self.syntax_tree.expressions[*right_operand as usize];
+                    let st_right_operand = &self.syntax_tree.expressions[*right_operand];
                     match st_right_operand {
                         st::Expression::BinaryInteger { literal, column } => {
-                            let literal_text = self.tokens.text[*literal as usize];
+                            let literal_text = self.tokens.text[*literal];
                             let right_operand_expression = match Self::parse_negative_binary_i64(literal_text.as_bytes()) {
                                 Ok(0) => return Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
@@ -2022,7 +2031,7 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
                             }
                         }
                         st::Expression::OctalInteger { literal, column } => {
-                            let literal_text = self.tokens.text[*literal as usize];
+                            let literal_text = self.tokens.text[*literal];
                             let right_operand_expression = match Self::parse_negative_octal_i64(literal_text.as_bytes()) {
                                 Ok(0) => return Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
@@ -2046,7 +2055,7 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
                             }
                         }
                         st::Expression::DecimalInteger { literal, column } => {
-                            let literal_text = self.tokens.text[*literal as usize];
+                            let literal_text = self.tokens.text[*literal];
                             let right_operand_expression = match Self::parse_negative_decimal_i64(literal_text.as_bytes()) {
                                 Ok(0) => return Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
@@ -2070,7 +2079,7 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
                             }
                         }
                         st::Expression::DecimalIntegerPrefix { literal, column } => {
-                            let literal_text = self.tokens.text[*literal as usize];
+                            let literal_text = self.tokens.text[*literal];
                             let right_operand_expression = match Self::parse_negative_decimal_prefix_i64(literal_text.as_bytes()) {
                                 Ok(0) => return Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
@@ -2094,7 +2103,7 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
                             }
                         }
                         st::Expression::HexadecimalInteger { literal, column } => {
-                            let literal_text = self.tokens.text[*literal as usize];
+                            let literal_text = self.tokens.text[*literal];
                             let right_operand_expression = match Self::parse_negative_hexadecimal_i64(literal_text.as_bytes()) {
                                 Ok(0) => return Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
@@ -2382,16 +2391,16 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
     #[inline]
     fn parse_expression(
         &mut self,
-        st_expression_index: ExpressionIndex,
+        st_expression_index: st::ExpressionIndex<'code>,
         expected_type: Option<&Type>,
-    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    ) -> Result<ExpressionIndex<'code>, Error<ErrorKind>> {
         let expression = self.expression(st_expression_index, expected_type)?;
         let expression_index = self.ast.new_expression(expression);
         return Ok(expression_index);
     }
 }
 
-impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
+impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> {
     // NOTE(stefano): "leaks" memory by parsing and storing expressions, but these expressions
     // should never be used
     fn parse_type_annotation(
@@ -2402,10 +2411,10 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
             array_dimensions_start,
             array_dimensions_len,
             ..
-        }: &'syntax_tree st::TypeAnnotation,
+        }: &'syntax_tree st::TypeAnnotation<'code>,
     ) -> Result<Type, Error<ErrorKind>> {
         if let Some(_) = self.resolve_variable(*type_name) {
-            let type_name_text = self.tokens.text[*type_name as usize];
+            let type_name_text = self.tokens.text[*type_name];
             return Err(Error {
                 kind: ErrorKind::VariableInTypeAnnotation,
                 col: *type_name_column,
@@ -2414,7 +2423,7 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
             });
         }
         let Some(base_type) = self.resolve_type(*type_name) else {
-            let type_name_text = self.tokens.text[*type_name as usize];
+            let type_name_text = self.tokens.text[*type_name];
             return Err(Error {
                 kind: ErrorKind::TypeNotPreviouslyDefined,
                 col: *type_name_column,
@@ -2493,17 +2502,17 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
 
     fn parse_variable(
         &mut self,
-        variable_definition: st::VariableDefinitionIndex,
-    ) -> Result<VariableDefinitionIndex, Error<ErrorKind>> {
+        variable_definition: st::VariableDefinitionIndex<'code>,
+    ) -> Result<VariableDefinitionIndex<'code>, Error<ErrorKind>> {
         let st::VariableDefinition {
             name,
             name_column,
             type_annotation,
             initial_value,
-        } = &self.syntax_tree.variable_definitions[variable_definition as usize];
+        } = &self.syntax_tree.variable_definitions[variable_definition];
 
         if let Some(_) = self.resolve_variable(*name) {
-            let name_text = self.tokens.text[*name as usize];
+            let name_text = self.tokens.text[*name];
             return Err(Error {
                 kind: ErrorKind::VariableAlreadyDefined,
                 col: *name_column,
@@ -2512,7 +2521,7 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
             });
         }
         if let Some(_) = self.resolve_type(*name) {
-            let name_text = self.tokens.text[*name as usize];
+            let name_text = self.tokens.text[*name];
             return Err(Error {
                 kind: ErrorKind::TypeInVariableName,
                 col: *name_column,
@@ -2523,7 +2532,7 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
 
         let Some(st::InitialValue { expression, .. }) = initial_value else {
             let Some(type_annotation_inner) = type_annotation else {
-                let name_text = self.tokens.text[*name as usize];
+                let name_text = self.tokens.text[*name];
                 return Err(Error {
                     kind: ErrorKind::CannotInferTypeOfVariable,
                     col: *name_column,
@@ -2532,7 +2541,7 @@ impl<'syntax_tree> Parser<'syntax_tree, '_, '_, '_, '_> {
                 });
             };
             let _typ = self.parse_type_annotation(type_annotation_inner)?;
-            let name_text = self.tokens.text[*name as usize];
+            let name_text = self.tokens.text[*name];
             return Err(Error {
                 kind: ErrorKind::VariablesMustBeInitialized,
                 col: *name_column,
