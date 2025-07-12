@@ -2515,7 +2515,7 @@ impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> 
         }
 
         let Some(st::InitialValue { expression, .. }) = initial_value else {
-            let Some(type_annotation_inner) = type_annotation else {
+            let Some(_) = type_annotation else {
                 let name_text = self.tokens.text[*name];
                 return Err(Error {
                     kind: ErrorKind::CannotInferTypeOfVariable,
@@ -2524,7 +2524,6 @@ impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> 
                     pointers_count: name_text.len() as offset32,
                 });
             };
-            let _typ = self.parse_type_annotation(type_annotation_inner)?;
             let name_text = self.tokens.text[*name];
             return Err(Error {
                 kind: ErrorKind::VariablesMustBeInitialized,

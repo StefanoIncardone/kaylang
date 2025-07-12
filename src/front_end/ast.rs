@@ -1,6 +1,5 @@
 // IDEA(stefano): fuse tokenization and parsing, making the tokenizer a generator of tokens
 // TODO(stefano): multidimensional arrays
-// REMOVE(stefano, 0.7.0): remove unitialized variables initialized to default values
 
 use back_to_front::offset32;
 
@@ -2819,22 +2818,6 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Ok(Some((close_square_bracket_token, Type::Array { base_type, len })));
     }
 
-    fn expression_from_base_type(&mut self, typ: BaseType) -> Expression {
-        return match typ {
-            BaseType::I64 => Expression::I64(0),
-            BaseType::Ascii => Expression::Ascii(b'0'),
-            BaseType::Bool => Expression::False,
-            BaseType::Str => {
-                // FIX(stefano): proper empty string handling
-                let string_label = self.string_label;
-                let string = &self.src.code()[0..0];
-                self.ast.string_labels.push((string_label, string));
-                self.string_label += 1;
-                Expression::Str { label: string_label }
-            }
-        };
-    }
-
     // TODO(stefano): remove default values on uninitialized variables
     fn variable_definition(&mut self) -> Result<Variable<'code>, Error<ErrorKind>> {
         let name_token = self.next_token_bounded(Expected::Identifier)?;
@@ -2905,7 +2888,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
         let equals_or_semicolon_token = self.next_token_bounded(Expected::EqualsOrSemicolon)?;
 
-        let expression = match equals_or_semicolon_token.kind {
+        let initial_value = match equals_or_semicolon_token.kind {
             TokenKind::Op(Op::Equals) => {
                 _ = self.next_token();
                 Some(self.expression()?)
@@ -2964,6 +2947,21 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             },
         };
 
+        let Some(expression) = initial_value else {
+            let Some(_) = annotation else {
+                return Err(Error {
+                    kind: ErrorKind::CannotInferTypeOfVariable,
+                    col: name_token.col,
+                    pointers_count: name_token.kind.display_len(self.tokens),
+                });
+            };
+            return Err(Error {
+                kind: ErrorKind::VariablesMustBeInitialized,
+                col: name_token.col,
+                pointers_count: name_token.kind.display_len(self.tokens),
+            });
+        };
+
         let None = self.resolve_variable(name.as_bytes()) else {
             return Err(Error {
                 kind: ErrorKind::VariableAlreadyDefined,
@@ -2972,47 +2970,21 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             });
         };
 
-        return match expression {
-            Some(value) => {
-                let value_typ = value.typ();
-                if let Some((token, annotation_typ)) = annotation {
-                    if annotation_typ != value_typ {
-                        return Err(Error {
-                            kind: ErrorKind::VariableDefinitionTypeMismatch {
-                                expected: annotation_typ,
-                                actual: value_typ,
-                            },
-                            col: token.col,
-                            pointers_count: token.kind.display_len(self.tokens),
-                        });
-                    }
-                }
-                self.semicolon()?;
-                Ok(Variable { name: name.as_bytes(), value })
+        let expression_typ = expression.typ();
+        if let Some((token, annotation_typ)) = annotation {
+            if annotation_typ != expression_typ {
+                return Err(Error {
+                    kind: ErrorKind::VariableDefinitionTypeMismatch {
+                        expected: annotation_typ,
+                        actual: expression_typ,
+                    },
+                    col: token.col,
+                    pointers_count: token.kind.display_len(self.tokens),
+                });
             }
-            None => match annotation {
-                Some((_, typ)) => {
-                    let value = match typ {
-                        Type::Base(base_type) => self.expression_from_base_type(base_type),
-                        Type::Array { base_type, len } => {
-                            debug_assert!(len > 0, "arrays of 0 items are not allowed");
-                            #[expect(clippy::cast_possible_truncation)]
-                            let items =
-                                vec![self.expression_from_base_type(base_type); len as usize];
-                            debug_assert!(items.len() > 0, "arrays of 0 items are not allowed");
-                            Expression::Array { base_type, items }
-                        }
-                    };
-                    self.semicolon()?;
-                    Ok(Variable { name: name.as_bytes(), value })
-                }
-                None => Err(Error {
-                    kind: ErrorKind::CannotInferTypeOfVariable,
-                    col: name_token.col,
-                    pointers_count: name_token.kind.display_len(self.tokens),
-                }),
-            },
-        };
+        }
+        self.semicolon()?;
+        return Ok(Variable { name: name.as_bytes(), value: expression });
     }
 
     // NOTE(stefano): mutations of string characters are disallowed until a sort of "borrow checker" is developed
@@ -3598,6 +3570,7 @@ pub enum ErrorKind {
     VariableDefinitionTypeMismatch { actual: Type, expected: Type },
     VariableReassignmentTypeMismatch { actual: Type, expected: Type },
     CannotInferTypeOfVariable,
+    VariablesMustBeInitialized,
     CannotMutateVariable,
     CannotModifyInplace(Type),
     CannotAssignToExpression,
@@ -3849,6 +3822,10 @@ impl IntoErrorInfo for ErrorKind {
             Self::CannotInferTypeOfVariable => (
                 "invalid variable definition".into(),
                 "expected type annotation after here to infer the type of the variable".into(),
+            ),
+            Self::VariablesMustBeInitialized => (
+                "invalid variable definition".into(),
+                "variables must be initialized, provide an initial value".into(),
             ),
             Self::CannotMutateVariable => (
                 "invalid variable reassignment".into(),
