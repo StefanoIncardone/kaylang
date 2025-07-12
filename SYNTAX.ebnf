@@ -141,7 +141,7 @@ operator_assignment =
     ;
 
 (* expressions *)
-array_literal          = "[", [{expression, ("," | ";")}], [expression], "]";
+array_literal          = "[", [{expression, ";"}], [expression], "]";
 parenthesis_expression = "(", expression, ")";
 prefix_expression      = operator_prefix, primary_expression;
 index_expression       = expression, "[", expression, "]";

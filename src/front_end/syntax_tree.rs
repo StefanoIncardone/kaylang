@@ -308,31 +308,18 @@ pub(crate) enum Expression<'code> {
     },
 }
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
-pub(crate) enum ArrayItemSeparatorKind {
-    Comma,
-    Semicolon,
-}
-
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub(crate) struct ArrayItemSeparatorSome {
-    kind: ArrayItemSeparatorKind,
-    column: offset32,
-}
-
 #[derive(Clone, Copy, Eq)]
 #[repr(C)]
 pub(crate) union ArrayItemSeparator {
-    some: ArrayItemSeparatorSome,
+    some: offset32,
     none: (),
 }
 
 impl core::fmt::Debug for ArrayItemSeparator {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return f.debug_struct("ArrayItemSeparator")
-            .field("separator", unsafe { &self.some })
-            .field("no_separator", unsafe { &self.none })
+            .field("some", unsafe { &self.some })
+            .field("none", unsafe { &self.none })
             .finish();
     }
 }
@@ -342,7 +329,7 @@ impl core::hash::Hash for ArrayItemSeparator {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         #[expect(clippy::ref_as_ptr)]
         let separator_bytes_ptr = unsafe { &self.some as *const _ as *const u8 };
-        let separator_bytes = unsafe { core::slice::from_raw_parts(separator_bytes_ptr, size_of::<ArrayItemSeparatorSome>()) };
+        let separator_bytes = unsafe { core::slice::from_raw_parts(separator_bytes_ptr, size_of::<offset32>()) };
         state.write(separator_bytes);
     }
 }
@@ -766,11 +753,8 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 for ArrayItem { expression: item_expression, separator } in items {
                     self.info_expression(f, *item_expression, items_indent)?;
 
-                    let ArrayItemSeparatorSome { kind, column } = unsafe { separator.some };
-                    match kind {
-                        ArrayItemSeparatorKind::Comma => writeln!(f, "{:>items_indent$}Comma: {column} = ,", "")?,
-                        ArrayItemSeparatorKind::Semicolon => writeln!(f, "{:>items_indent$}Semicolon: {column} = ;", "")?,
-                    }
+                    let column = unsafe { separator.some };
+                    writeln!(f, "{:>items_indent$}Semicolon: {column} = ;", "")?;
                 }
 
                 writeln!(f, "{:>expression_indent$}CloseSquareBracket: {close_square_bracket_column} = ]", "")
@@ -794,11 +778,8 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 for ArrayItem { expression: item_expression, separator } in items_iter {
                     self.info_expression(f, *item_expression, items_indent)?;
 
-                    let ArrayItemSeparatorSome { kind, column } = unsafe { separator.some };
-                    match kind {
-                        ArrayItemSeparatorKind::Comma => writeln!(f, "{:>items_indent$}Comma: {column} = ,", "")?,
-                        ArrayItemSeparatorKind::Semicolon => writeln!(f, "{:>items_indent$}Semicolon: {column} = ;", "")?,
-                    }
+                    let column = unsafe { separator.some };
+                    writeln!(f, "{:>items_indent$}Semicolon: {column} = ;", "")?;
                 }
 
                 self.info_expression(f, last_item.expression, items_indent)?;
@@ -1656,34 +1637,29 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
                     let item = self.expression(start_of_item_token)?;
 
-                    let comma_or_close_square_bracket_token =
-                        self.next_expected_token(Expected::CommaOrSemicolonCloseSquareBracket)?;
-                    let array_item = match comma_or_close_square_bracket_token.kind {
-                        TokenKind::Comma => ArrayItem {
-                            expression: item,
-                            separator: ArrayItemSeparator {
-                                some: ArrayItemSeparatorSome {
-                                    kind: ArrayItemSeparatorKind::Comma,
-                                    column: comma_or_close_square_bracket_token.col,
-                                },
-                            }
-                        },
+                    let semicolon_or_close_square_bracket_token =
+                        self.next_expected_token(Expected::SemicolonCloseSquareBracket)?;
+                    let array_item = match semicolon_or_close_square_bracket_token.kind {
                         TokenKind::SemiColon => ArrayItem {
                             expression: item,
                             separator: ArrayItemSeparator {
-                                some: ArrayItemSeparatorSome {
-                                    kind: ArrayItemSeparatorKind::Semicolon,
-                                    column: comma_or_close_square_bracket_token.col,
-                                },
+                                some:  semicolon_or_close_square_bracket_token.col,
                             }
                         },
                         TokenKind::CloseSquareBracket => {
                             break 'array (
                                 open_square_bracket_token.col,
-                                comma_or_close_square_bracket_token.col,
+                                semicolon_or_close_square_bracket_token.col,
                                 Some(item),
                             );
                         }
+                        TokenKind::Comma => {
+                            return Err(Error {
+                                kind: ErrorKind::UseSemicolonInsteadOfComma,
+                                col: semicolon_or_close_square_bracket_token.col,
+                                pointers_count: semicolon_or_close_square_bracket_token.kind.display_len(self.tokens),
+                            });
+                        },
                         TokenKind::Colon
                         | TokenKind::Op(_)
                         | TokenKind::OpenRoundBracket
@@ -1716,9 +1692,9 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         | TokenKind::Break
                         | TokenKind::Continue => {
                             return Err(Error {
-                                kind: ErrorKind::ExpectedCommaOrCloseSquareBracket,
-                                col: comma_or_close_square_bracket_token.col,
-                                pointers_count: comma_or_close_square_bracket_token
+                                kind: ErrorKind::ExpectedSemicolonOrCloseSquareBracket,
+                                col: semicolon_or_close_square_bracket_token.col,
+                                pointers_count: semicolon_or_close_square_bracket_token
                                     .kind
                                     .display_len(self.tokens),
                             });
@@ -2507,15 +2483,12 @@ impl Parser<'_, '_, '_, '_> {
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Expected {
-    Statement,
-    OperatorOrSemicolon,
     Operand,
     CloseRoundBracket,
     CloseSquareBracket,
     Expression,
     ExpressionOrSemicolon,
-    Comma,
-    CommaOrSemicolonCloseSquareBracket,
+    SemicolonCloseSquareBracket,
     ArrayItemOrCloseSquareBracket,
     Semicolon,
     VariableName,
@@ -2530,15 +2503,12 @@ pub enum Expected {
 impl Display for Expected {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
-            Self::Statement => write!(f, "statement"),
-            Self::OperatorOrSemicolon => write!(f, "operator or ';'"),
             Self::Operand => write!(f, "operand"),
             Self::CloseRoundBracket => write!(f, "')'"),
             Self::CloseSquareBracket => write!(f, "']'"),
             Self::Expression => write!(f, "expression"),
             Self::ExpressionOrSemicolon => write!(f, "expression or ';'"),
-            Self::Comma => write!(f, "','"),
-            Self::CommaOrSemicolonCloseSquareBracket => write!(f, "',', ';' or ']'"),
+            Self::SemicolonCloseSquareBracket => write!(f, "';' or ']'"),
             Self::ArrayItemOrCloseSquareBracket => write!(f, "array item or ']'"),
             Self::Semicolon => write!(f, "';'"),
             Self::VariableName => write!(f, "variable name"),
@@ -2565,7 +2535,8 @@ pub enum ErrorKind {
     ExpectedOperand,
     EmptyParenthesis,
     ExpectedCloseRoundBracket,
-    ExpectedCommaOrCloseSquareBracket,
+    UseSemicolonInsteadOfComma,
+    ExpectedSemicolonOrCloseSquareBracket,
     MissingCloseSquareBracketInIndex,
     StrayOperator(Op),
 
@@ -2637,9 +2608,13 @@ impl IntoErrorInfo for ErrorKind {
                 "invalid expression".into(),
                 "expected ')' bracket before this token".into(),
             ),
-            Self::ExpectedCommaOrCloseSquareBracket => (
+            Self::UseSemicolonInsteadOfComma => (
+                "invalid array item separator".into(),
+                "this language uses ';' instead of ',' as the array's items separator".into(),
+            ),
+            Self::ExpectedSemicolonOrCloseSquareBracket => (
                 "invalid array".into(),
-                "expected ',' or ']' before this token".into(),
+                "expected ';' or ']' before this token".into(),
             ),
             Self::MissingCloseSquareBracketInIndex => (
                 "invalid array index".into(),

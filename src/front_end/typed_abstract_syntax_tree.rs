@@ -1860,6 +1860,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
             st::Expression::Array { items_start, items_len, open_square_bracket_column, .. }
             | st::Expression::ArrayTrailingItem { items_start, items_len, open_square_bracket_column, .. } => {
+                // TODO(stefano): take into consideration the array base type instead of the
+                // whole type
                 if *items_len == 0 {
                     return Err(Error {
                         kind: ErrorKind::EmptyArray,

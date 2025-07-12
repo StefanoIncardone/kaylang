@@ -949,52 +949,6 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         Ok(reassignment)
                     }
 
-                    TokenKind::Op(
-                        Op::Len
-                        | Op::Not
-                        | Op::Pow
-                        | Op::WrappingPow
-                        | Op::SaturatingPow
-                        | Op::Times
-                        | Op::WrappingTimes
-                        | Op::SaturatingTimes
-                        | Op::Divide
-                        | Op::WrappingDivide
-                        | Op::SaturatingDivide
-                        | Op::Remainder
-                        | Op::Plus
-                        | Op::WrappingPlus
-                        | Op::SaturatingPlus
-                        | Op::Minus
-                        | Op::WrappingMinus
-                        | Op::SaturatingMinus
-                        | Op::LeftShift
-                        | Op::WrappingLeftShift
-                        | Op::SaturatingLeftShift
-                        | Op::RightShift
-                        | Op::LeftRotate
-                        | Op::RightRotate
-                        | Op::BitAnd
-                        | Op::BitXor
-                        | Op::BitOr
-                        | Op::And
-                        | Op::Or
-                        | Op::Compare
-                        | Op::EqualsEquals
-                        | Op::NotEquals
-                        | Op::Greater
-                        | Op::GreaterOrEquals
-                        | Op::Less
-                        | Op::LessOrEquals,
-                    ) => {
-                        let previous_token = self.peek_previous_token();
-                        Err(Error {
-                            kind: ErrorKind::MissingSemicolon,
-                            col: previous_token.col,
-                            pointers_count: previous_token.kind.display_len(self.tokens),
-                        })
-                    }
-
                     TokenKind::OpenRoundBracket
                     | TokenKind::CloseRoundBracket
                     | TokenKind::OpenSquareBracket
@@ -1003,6 +957,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     | TokenKind::CloseCurlyBracket
                     | TokenKind::Colon
                     | TokenKind::Comma
+                    | TokenKind::Op(_)
                     | TokenKind::False
                     | TokenKind::True
                     | TokenKind::BinaryInteger(_)
@@ -1917,11 +1872,11 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 })
             }
             TokenKind::OpenSquareBracket => 'array: {
-                let mut bracket_or_comma_token =
+                let mut bracket_or_semicolon_token =
                     self.next_token_bounded(Expected::ArrayElementOrClosingSquareBracket)?;
 
                 // REMOVE(stefano): allow arrays of 0 elements
-                if let TokenKind::CloseSquareBracket = bracket_or_comma_token.kind {
+                if let TokenKind::CloseSquareBracket = bracket_or_semicolon_token.kind {
                     break 'array Err(Error {
                         kind: ErrorKind::ArrayOfZeroElements,
                         col: current_token.col,
@@ -1931,11 +1886,18 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
                 let first_item = self.expression()?;
 
-                bracket_or_comma_token =
-                    self.current_token(Expected::CommaOrSemicolonOrClosingSquareBracket)?;
+                bracket_or_semicolon_token =
+                    self.current_token(Expected::SemicolonOrClosingSquareBracket)?;
 
-                if let TokenKind::Comma | TokenKind::SemiColon = bracket_or_comma_token.kind {
-                    bracket_or_comma_token =
+                if let TokenKind::Comma = bracket_or_semicolon_token.kind {
+                    break 'array Err(Error {
+                        kind: ErrorKind::UseSemicolonInsteadOfComma,
+                        col: bracket_or_semicolon_token.col,
+                        pointers_count: bracket_or_semicolon_token.kind.display_len(self.tokens),
+                    })
+                }
+                if let TokenKind::SemiColon = bracket_or_semicolon_token.kind {
+                    bracket_or_semicolon_token =
                         self.next_token_bounded(Expected::ArrayElementOrClosingSquareBracket)?;
                 }
 
@@ -1951,7 +1913,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 };
                 let mut items = vec![first_item];
 
-                if let TokenKind::CloseSquareBracket = bracket_or_comma_token.kind {
+                if let TokenKind::CloseSquareBracket = bracket_or_semicolon_token.kind {
                     break 'array Ok(Expression::Array { base_type: items_type, items });
                 }
 
@@ -1968,8 +1930,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 actual: item_type,
                                 expected: Type::Base(items_type),
                             },
-                            col: bracket_or_comma_token.col,
-                            pointers_count: bracket_or_comma_token.kind.display_len(self.tokens),
+                            col: bracket_or_semicolon_token.col,
+                            pointers_count: bracket_or_semicolon_token.kind.display_len(self.tokens),
                         });
                     }
 
@@ -1983,15 +1945,22 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
                     items.push(item);
 
-                    bracket_or_comma_token =
-                        self.current_token(Expected::CommaOrSemicolonOrClosingSquareBracket)?;
+                    bracket_or_semicolon_token =
+                        self.current_token(Expected::SemicolonOrClosingSquareBracket)?;
 
-                    if let TokenKind::Comma | TokenKind::SemiColon = bracket_or_comma_token.kind {
-                        bracket_or_comma_token =
+                    if let TokenKind::Comma = bracket_or_semicolon_token.kind {
+                        break 'array Err(Error {
+                            kind: ErrorKind::UseSemicolonInsteadOfComma,
+                            col: bracket_or_semicolon_token.col,
+                            pointers_count: bracket_or_semicolon_token.kind.display_len(self.tokens),
+                        })
+                    }
+                    if let TokenKind::SemiColon = bracket_or_semicolon_token.kind {
+                        bracket_or_semicolon_token =
                             self.next_token_bounded(Expected::ArrayElementOrClosingSquareBracket)?;
                     }
 
-                    if let TokenKind::CloseSquareBracket = bracket_or_comma_token.kind {
+                    if let TokenKind::CloseSquareBracket = bracket_or_semicolon_token.kind {
                         debug_assert!(items.len() > 0, "arrays of 0 items are not allowed");
                         break 'array Ok(Expression::Array { base_type: items_type, items });
                     }
@@ -3475,7 +3444,7 @@ pub enum Expected {
     ClosingSquareBracket,
     ClosingRoundBracket,
     ArrayElementOrClosingSquareBracket,
-    CommaOrSemicolonOrClosingSquareBracket,
+    SemicolonOrClosingSquareBracket,
     TypeAnnotationOrVariableDefinition,
     TypeAnnotation,
     ArrayLength,
@@ -3498,8 +3467,8 @@ impl Display for Expected {
             Self::ArrayElementOrClosingSquareBracket => {
                 write!(f, "array item or closing square bracket")
             }
-            Self::CommaOrSemicolonOrClosingSquareBracket => {
-                write!(f, "comma, semicolon or closing square bracket")
+            Self::SemicolonOrClosingSquareBracket => {
+                write!(f, "semicolon or closing square bracket")
             }
             Self::TypeAnnotationOrVariableDefinition => {
                 write!(f, "type annotation or variable definition")
@@ -3549,6 +3518,7 @@ pub enum ErrorKind {
     ArrayOfZeroElements,
     NestedArrayNotSupportedYet,
     ArrayElementTypeMismatch { actual: Type, expected: Type },
+    UseSemicolonInsteadOfComma,
     CannotTakeLenOf(Type),
     CannotTakeAbsoluteValueOf(Type),
     CannotNegate(Type),
@@ -3750,6 +3720,10 @@ impl IntoErrorInfo for ErrorKind {
             Self::ArrayElementTypeMismatch { actual, expected } => (
                 "invalid array element".into(),
                 format!("expected item of type '{expected}', but got '{actual}'").into(),
+            ),
+            Self::UseSemicolonInsteadOfComma => (
+                "invalid array item separator".into(),
+                "this language uses ';' instead of ',' as the array's items separator".into(),
             ),
             Self::CannotTakeLenOf(invalid_type) => (
                 "invalid expression".into(),

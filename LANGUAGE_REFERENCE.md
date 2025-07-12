@@ -169,19 +169,19 @@ array of three `i64` would be of type `i64[3]`.
 > Arrays of 0 elements are not yet allowed because they are phantom values not occupying any memory
 > and cannot yet be represented.
 
-Arrays are defined as comma-separated lists of items, as follows:
+Arrays are defined as semicolon-separated lists of items, as follows:
 
 ```kay
 [];                       # Error: arrays of zero items are not allowed
-[12, 21];                 # this declares an array of two items, namely `i64[2]`
-["Kay", "let's", "go!"]; # trailing commas are allowed, thus the array would be of type `str[3]]
+[12; 21];                 # this declares an array of two items, namely `i64[2]`
+["Kay"; "let's"; "go!";]; # trailing semicolons are allowed, thus the array would be of type `str[3]]
 ```
 
 Arrays can also be indexed with zero-based indexing, to gain access to individual items:
 
 ```kay
-[0, 1, 2, 3, 4][3]; # will return the integer 3
-["01234", "56789"][0][3]; # will return the string "01234", and access the character '3'
+[0; 1; 2; 3; 4][3]; # will return the integer 3
+["01234"; "56789"][0][3]; # will return the string "01234", and access the character '3'
 ```
 
 >[!NOTE]
@@ -267,7 +267,7 @@ Expressions follow this order of operations (precedence from highest to lowest):
     - unary string and array length operator `len`:
 
         ```kay
-        len [12, 21, 42, 19] # -> 4
+        len [12; 21; 42; 19] # -> 4
         len "kay" # -> 3
         ```
 

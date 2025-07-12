@@ -27,6 +27,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 #### Changed
 
 - Made block comments delimited by `#*` and `*#` instead of `##`, allowing for nested block comments
+- Made `;` the array's items separator
 
 #### Fixed
 
