@@ -1108,7 +1108,7 @@ pub struct Parser<'syntax_tree, 'tokens: 'syntax_tree, 'src: 'tokens, 'code: 'sr
     errors: Vec<Error<ErrorKind>>,
 
     tokens: &'tokens Tokens<'code>,
-    node_index: NodeIndex<'code>,
+    node_index: st::NodeIndex<'code>,
     syntax_tree: &'syntax_tree SyntaxTree<'tokens, 'code>,
 
     temp_array_items: Vec<ArrayItem<'code>>,
@@ -1136,7 +1136,7 @@ impl<'syntax_tree, 'tokens: 'syntax_tree, 'src: 'tokens, 'code: 'src, 'path: 'co
             errors: Vec::new(),
 
             tokens,
-            node_index: NodeIndex::new(0),
+            node_index: st::NodeIndex::new(0),
             syntax_tree,
 
             temp_array_items: Vec::new(),
@@ -1172,7 +1172,7 @@ impl<'syntax_tree, 'tokens: 'syntax_tree, 'src: 'tokens, 'code: 'src, 'path: 'co
                     parser.errors.push(err);
 
                     // consuming all remaining nodes until the end of the file
-                    parser.node_index = NodeIndex::new(parser.syntax_tree.nodes.len());
+                    parser.node_index = st::NodeIndex::new(parser.syntax_tree.nodes.len());
                     break;
                 }
             };
@@ -1185,17 +1185,17 @@ impl<'syntax_tree, 'tokens: 'syntax_tree, 'src: 'tokens, 'code: 'src, 'path: 'co
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 struct Peeked<'syntax_tree, 'code: 'syntax_tree> {
     node: &'syntax_tree st::Node<'code>,
-    index: NodeIndex<'code>,
+    index: st::NodeIndex<'code>,
 }
 
 impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> {
     fn peek_next_node(&self) -> Option<Peeked<'syntax_tree, 'code>> {
-        let node_index_end = NodeIndex::new(self.tokens.tokens.len());
+        let node_index_end = st::NodeIndex::new(self.syntax_tree.nodes.len());
         for next_node_index in self.node_index.0..node_index_end.0 {
             let next_node_index_index = st::NodeIndex::new_offset32(next_node_index);
             let next_node = &self.syntax_tree.nodes[next_node_index_index];
             let st::Node::Semicolon { .. } = next_node else {
-                let peeked_node_index_index = NodeIndex::new_offset32(next_node_index_index.0 + 1);
+                let peeked_node_index_index = st::NodeIndex::new_offset32(next_node_index_index.0 + 1);
                 return Some(Peeked { node: next_node, index: peeked_node_index_index });
             };
         }
