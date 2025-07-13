@@ -48,6 +48,7 @@ impl Display for PrefixOperator {
 }
 
 impl PrefixOperator {
+    #[expect(dead_code)]
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
         let op: Op = self.into();
@@ -209,7 +210,7 @@ impl Display for AssignmentOperator {
 }
 
 impl AssignmentOperator {
-    #[expect(dead_code, reason = "kept for consistency")]
+    #[expect(dead_code)]
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
         let op: Op = self.into();
@@ -217,7 +218,6 @@ impl AssignmentOperator {
     }
 }
 
-pub(crate) type ArrayItemsIndex<'code> = SliceIndexPtr<ArrayItem<'code>>;
 pub(crate) type ExpressionIndex<'code> = SliceIndexPtr<Expression<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -311,8 +311,8 @@ pub(crate) enum Expression<'code> {
 #[derive(Clone, Copy, Eq)]
 #[repr(C)]
 pub(crate) union ArrayItemSeparator {
-    some: offset32,
-    none: (),
+    pub(crate) some: offset32,
+    pub(crate) none: (),
 }
 
 impl core::fmt::Debug for ArrayItemSeparator {
@@ -341,6 +341,8 @@ impl PartialEq for ArrayItemSeparator {
     }
 }
 
+pub(crate) type ArrayItemsIndex<'code> = SliceIndexPtr<ArrayItem<'code>>;
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[repr(C)]
 pub(crate) struct ArrayItem<'code> {
@@ -348,27 +350,31 @@ pub(crate) struct ArrayItem<'code> {
     pub(crate) separator: ArrayItemSeparator,
 }
 
+pub(crate) type ArrayDimensionIndex<'code> = SliceIndexPtr<ArrayDimension<'code>>;
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct ArrayDimension<'code> {
-    open_square_bracket_column: offset32,
+    pub(crate) open_square_bracket_column: offset32,
     pub(crate) dimension_expression: ExpressionIndex<'code>,
-    close_square_bracket_column: offset32,
+    pub(crate) close_square_bracket_column: offset32,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct TypeAnnotation<'code> {
-    colon_column: NonZero<offset32>,
+    pub(crate) colon_column: NonZero<offset32>,
     pub(crate) type_name: TextIndex<'code>,
     pub(crate) type_name_column: offset32,
-    pub(crate) array_dimensions_start: offset32,
+    pub(crate) array_dimensions_start: ArrayDimensionIndex<'code>,
     pub(crate) array_dimensions_len: offset32,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct InitialValue<'code> {
-    equals_column: NonZero<offset32>,
+    pub(crate) equals_column: NonZero<offset32>,
     pub(crate) expression: ExpressionIndex<'code>,
 }
+
+pub(crate) type VariableDefinitionIndex<'code> = SliceIndexPtr<VariableDefinition<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct VariableDefinition<'code> {
@@ -378,7 +384,7 @@ pub(crate) struct VariableDefinition<'code> {
     pub(crate) initial_value: Option<InitialValue<'code>>,
 }
 
-pub(crate) type VariableDefinitionIndex<'code> = SliceIndexPtr<VariableDefinition<'code>>;
+pub(crate) type NodeIndex<'code> = SliceIndexPtr<Node<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Node<'code> {
@@ -479,8 +485,6 @@ pub(crate) enum Node<'code> {
         semicolon_column: offset32,
     },
 }
-
-pub(crate) type NodeIndex<'code> = SliceIndexPtr<Node<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 enum ParsedNode<'code> {
@@ -855,9 +859,9 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
             )?;
 
             let dimension_indent = annotation_indent + Self::INDENT_INCREMENT;
-            let array_dimensions_end = array_dimensions_start + array_dimensions_len;
+            let array_dimensions_end = array_dimensions_start.0 + array_dimensions_len;
             let array_dimensions = &self.syntax_tree.array_dimensions
-                [*array_dimensions_start as usize..array_dimensions_end as usize];
+                [array_dimensions_start.0 as usize..array_dimensions_end as usize];
             for ArrayDimension {
                 open_square_bracket_column,
                 dimension_expression,
@@ -2172,8 +2176,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 }
             };
 
-            #[expect(clippy::cast_possible_truncation)]
-            let array_dimensions_start = self.syntax_tree.array_dimensions.len() as offset32;
+            let array_dimensions_start = ArrayDimensionIndex::new(self.syntax_tree.array_dimensions.len());
             while let Some(Peeked {
                 token: Token { kind: TokenKind::OpenSquareBracket, col: open_square_bracket_column },
                 index: open_square_bracket_token_index,
@@ -2216,7 +2219,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 array_dimensions_start,
                 #[expect(clippy::cast_possible_truncation)]
                 array_dimensions_len: self.syntax_tree.array_dimensions.len() as offset32
-                    - array_dimensions_start,
+                    - array_dimensions_start.0,
             })
         };
 

@@ -70,6 +70,7 @@ pub enum Type {
     Array {
         base_type: BaseType,
         // TODO(stefano): allow zero length arrays
+        // TODO(stefano): allow nested arrays
         /// always greater than 0
         len: u64,
     },
@@ -1086,8 +1087,10 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
         let name_str = self.tokens.text[*name];
         writeln!(f, "{:>indent$}Name = {name_str}", "")?;
         writeln!(f, "{:>indent$}Type = {typ}", "")?;
-        writeln!(f, "{:>indent$}InitialValue = {typ}", "")?;
-        return self.info_expression(f, *initial_value, indent);
+        writeln!(f, "{:>indent$}InitialValue", "")?;
+
+        let initial_value_indent = indent + Self::INDENT_INCREMENT;
+        return self.info_expression(f, *initial_value, initial_value_indent);
     }
 }
 
@@ -1876,30 +1879,31 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 let first_item = &self.syntax_tree.array_items[item_index];
                 item_index.0 += 1;
 
-                let parsed_first_item = self.expression(first_item.expression, expected_type)?;
-                let parsed_first_item_type = parsed_first_item.typ(&self.ast);
-                if let Type::Array { .. } = parsed_first_item_type {
+                let parsed_first_item = self.expression(first_item.expression, None)?;
+                let mut expected_array_items_type = parsed_first_item.typ(&self.ast);
+                if let Type::Array { .. } = expected_array_items_type {
                     return Err(Error {
                         kind: ErrorKind::NestedArrayNotSupportedYet,
                         col: self.first_token_column(first_item.expression),
                         pointers_count: self.first_token_display_len(first_item.expression),
                     });
                 }
+
+                if let Some(typ) = expected_type {
+                    expected_array_items_type = Type::Base(typ.base_typ());
+                    self.expect_expression_type(first_item.expression, &expected_array_items_type, &parsed_first_item)?;
+                }
+                let expected_array_items_type_hint = Some(&expected_array_items_type);
+
                 let parsed_first_item_index = self.ast.new_expression(parsed_first_item);
                 self.temp_array_items.push(parsed_first_item_index);
-
-                let expected_array_items_type = if let Some(_) = expected_type {
-                    expected_type
-                } else {
-                    Some(&parsed_first_item_type)
-                };
 
                 let items_end = (items_start.0 + items_len) as usize;
                 while (item_index.0 as usize) < items_end {
                     let item = &self.syntax_tree.array_items[item_index];
                     item_index.0 += 1;
 
-                    let parsed_item = self.expression(item.expression, expected_array_items_type)?;
+                    let parsed_item = self.expression(item.expression, expected_array_items_type_hint)?;
                     let parsed_item_type = parsed_item.typ(&self.ast);
                     if let Type::Array { .. } = parsed_item_type {
                         return Err(Error {
@@ -1916,7 +1920,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 self.ast.array_items.extend_from_slice(array_items);
 
                 let array_expression = Expression::Array {
-                    base_type: parsed_first_item_type.base_typ(),
+                    base_type: expected_array_items_type.base_typ(),
                     items_start: ExpressionIndex::new_offset32(items_start.0),
                     items_len: *items_len as u64,
                 };
@@ -1938,8 +1942,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => {
                             return Err(Error {
                                 kind: ErrorKind::CannotTakeLenOf(right_operand_type),
-                                col: *operator_column,
-                                pointers_count: operator.display_len(),
+                                col: self.first_token_column(*right_operand),
+                                pointers_count: self.first_token_display_len(*right_operand),
                             });
                         }
                     }
@@ -1961,8 +1965,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         Type::Base(BaseType::Str) | Type::Array { .. } => {
                             return Err(Error {
                                 kind: ErrorKind::CannotInvert(right_operand_type),
-                                col: *operator_column,
-                                pointers_count: operator.display_len(),
+                                col: self.first_token_column(*right_operand),
+                                pointers_count: self.first_token_display_len(*right_operand),
                             });
                         }
                     }
@@ -1981,8 +1985,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         Type::Base(BaseType::Bool |BaseType::Ascii | BaseType::Str) | Type::Array { .. } => {
                             return Err(Error {
                                 kind: ErrorKind::CannotTakeAbsoluteValueOf(right_operand_type),
-                                col: *operator_column,
-                                pointers_count: operator.display_len(),
+                                col: self.first_token_column(*right_operand),
+                                pointers_count: self.first_token_display_len(*right_operand),
                             });
                         }
                     }
@@ -2135,8 +2139,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                 Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
                                     return Err(Error {
                                         kind: ErrorKind::CannotNegate(right_operand_type),
-                                        col: *operator_column,
-                                        pointers_count: operator.display_len(),
+                                        col: self.first_token_column(*right_operand),
+                                        pointers_count: self.first_token_display_len(*right_operand),
                                     });
                                 }
                             }
@@ -2188,9 +2192,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::I64) => {}
                             Type::Base(BaseType::Str) | Type::Array { .. } => {
                                 return Err(Error {
-                                    kind: ErrorKind::LeftOperandTypeMismatch(left_operand_type),
-                                    col: *operator_column,
-                                    pointers_count: operator.display_len(),
+                                    kind: ErrorKind::TypeMismatch {
+                                        expected: BinaryOperator::TYPE,
+                                        actual: left_operand_type,
+                                    },
+                                    col: self.first_token_column(*left_operand),
+                                    pointers_count: self.first_token_display_len(*left_operand),
                                 });
                             }
                         }
@@ -2199,9 +2206,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::I64) => {}
                             Type::Base(BaseType::Str) | Type::Array { .. } => {
                                 return Err(Error {
-                                    kind: ErrorKind::RightOperandTypeMismatch(right_operand_type),
-                                    col: *operator_column,
-                                    pointers_count: operator.display_len(),
+                                    kind: ErrorKind::TypeMismatch {
+                                        expected: BinaryOperator::TYPE,
+                                        actual: right_operand_type,
+                                    },
+                                    col: self.first_token_column(*right_operand),
+                                    pointers_count: self.first_token_display_len(*right_operand),
                                 });
                             }
                         }
@@ -2281,9 +2291,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Str)
                             | Type::Array { .. } => {
                                 return Err(Error {
-                                    kind: ErrorKind::LeftOperandTypeMismatch(left_operand_type),
-                                    col: *operator_column,
-                                    pointers_count: operator.display_len(),
+                                    kind: ErrorKind::TypeMismatch {
+                                        expected: BooleanBinaryOperator::TYPE,
+                                        actual: left_operand_type,
+                                    },
+                                    col: self.first_token_column(*left_operand),
+                                    pointers_count: self.first_token_display_len(*left_operand),
                                 });
                             },
                         }
@@ -2293,9 +2306,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Str)
                             | Type::Array { .. } => {
                                 return Err(Error {
-                                    kind: ErrorKind::RightOperandTypeMismatch(right_operand_type),
-                                    col: *operator_column,
-                                    pointers_count: operator.display_len(),
+                                    kind: ErrorKind::TypeMismatch {
+                                        expected: BooleanBinaryOperator::TYPE,
+                                        actual: right_operand_type,
+                                    },
+                                    col: self.first_token_column(*right_operand),
+                                    pointers_count: self.first_token_display_len(*right_operand),
                                 });
                             },
                         }
@@ -2358,20 +2374,30 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         };
 
         if let Some(expected_expression_type) = expected_type {
-            let expression_type = expression.typ(&self.ast);
-            if *expected_expression_type != expression_type {
-                return Err(Error {
-                    kind: ErrorKind::TypeMismatch {
-                        expected: expected_expression_type.clone(),
-                        actual: expression_type,
-                    },
-                    col: self.first_token_column(st_expression_index),
-                    pointers_count: self.first_token_display_len(st_expression_index),
-                });
-            }
+            self.expect_expression_type(st_expression_index, expected_expression_type, &expression)?;
         }
 
         return Ok(expression);
+    }
+
+    fn expect_expression_type(
+        &self,
+        st_expression_index: st::ExpressionIndex<'code>,
+        expected_type: &Type,
+        expression: &Expression<'code>,
+    ) -> Result<(), Error<ErrorKind>> {
+        let expression_type = expression.typ(&self.ast);
+        if expression_type != *expected_type {
+            return Err(Error {
+                kind: ErrorKind::TypeMismatch {
+                    expected: expected_type.clone(),
+                    actual: expression_type,
+                },
+                col: self.first_token_column(st_expression_index),
+                pointers_count: self.first_token_display_len(st_expression_index),
+            });
+        }
+        return Ok(());
     }
 
     #[inline]
@@ -2418,65 +2444,79 @@ impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> 
             });
         };
 
-        let array_dimensions_end = array_dimensions_start + array_dimensions_len;
+        let array_dimensions_end = array_dimensions_start.0 + array_dimensions_len;
         let array_dimensions = &self.syntax_tree.array_dimensions[
-            *array_dimensions_start as usize..array_dimensions_end as usize
+            array_dimensions_start.0 as usize..array_dimensions_end as usize
         ];
         let mut array_dimensions_iter = array_dimensions.iter();
-        let Some(first_dimension) = array_dimensions_iter.next() else {
+        let Some(st::ArrayDimension {
+            dimension_expression,
+            open_square_bracket_column,
+            ..
+        }) = array_dimensions_iter.next() else {
             return Ok(Type::Base(base_type));
         };
 
-        let dimension_expression = first_dimension.dimension_expression;
-        let first_dimension_expression = &self.expression(dimension_expression, None)?;
+        let first_dimension_expression = &self.expression(*dimension_expression, None)?;
         let Expression::I64 { value: len, column } = first_dimension_expression else {
             return Err(Error {
                 kind: ErrorKind::ExpectedIntegerLiteralInArrayType,
-                col: self.first_token_column(dimension_expression),
-                pointers_count: self.first_token_display_len(dimension_expression),
+                col: *open_square_bracket_column,
+                pointers_count: 1,
             });
         };
         if *len < 0 {
             return Err(Error {
                 kind: ErrorKind::ArrayOfNegativeLength,
                 col: *column,
-                pointers_count: self.first_token_display_len(dimension_expression),
+                pointers_count: self.first_token_display_len(*dimension_expression),
             });
         }
         if *len == 0 {
             return Err(Error {
                 kind: ErrorKind::ArrayOfZeroElements,
                 col: *column,
-                pointers_count: self.first_token_display_len(dimension_expression),
+                pointers_count: self.first_token_display_len(*dimension_expression),
             });
         }
 
         for st::ArrayDimension {
-            dimension_expression: ignored_dimension_expression,
+            dimension_expression: other_dimension_expression,
+            open_square_bracket_column: other_open_square_bracket_column,
             ..
         } in array_dimensions_iter {
-            let dimension_expression_expression = &self.expression(*ignored_dimension_expression, None)?;
-            let Expression::I64 { value: ignored_len, column: ignored_column } = dimension_expression_expression else {
+            let dimension_expression_expression = &self.expression(*other_dimension_expression, None)?;
+            let Expression::I64 { value: other_dimension_len, column: other_dimension_column } = dimension_expression_expression else {
                 return Err(Error {
                     kind: ErrorKind::ExpectedIntegerLiteralInArrayType,
-                    col: self.first_token_column(*ignored_dimension_expression),
-                    pointers_count: self.first_token_display_len(*ignored_dimension_expression),
+                    col: *other_open_square_bracket_column,
+                    pointers_count: 1,
                 });
             };
-            if *ignored_len < 0 {
+            if *other_dimension_len < 0 {
                 return Err(Error {
                     kind: ErrorKind::ArrayOfNegativeLength,
-                    col: *ignored_column,
-                    pointers_count: self.first_token_display_len(*ignored_dimension_expression),
+                    col: *other_dimension_column,
+                    pointers_count: self.first_token_display_len(*other_dimension_expression),
                 });
             }
-            if *ignored_len == 0 {
+            if *other_dimension_len == 0 {
                 return Err(Error {
                     kind: ErrorKind::ArrayOfZeroElements,
-                    col: *ignored_column,
-                    pointers_count: self.first_token_display_len(*ignored_dimension_expression),
+                    col: *other_dimension_column,
+                    pointers_count: self.first_token_display_len(*other_dimension_expression),
                 });
             }
+        }
+
+        if *array_dimensions_len > 1 {
+            let type_name_text = self.tokens.text[*type_name];
+            return Err(Error {
+                kind: ErrorKind::NestedArrayNotSupportedYet,
+                col: *type_name_column,
+                #[expect(clippy::cast_possible_truncation)]
+                pointers_count: type_name_text.len() as offset32,
+            });
         }
 
         return Ok(Type::Array {
@@ -2587,8 +2627,6 @@ pub enum ErrorKind {
     CannotTakeAbsoluteValueOf(Type),
     CannotNegate(Type),
     CannotInvert(Type),
-    LeftOperandTypeMismatch(Type),
-    RightOperandTypeMismatch(Type),
     CannotCompareOperands { left_operand_type: Type, right_operand_type: Type },
     CannotChainComparisons,
     CannotIndexIntoExpression,
@@ -2734,7 +2772,7 @@ impl IntoErrorInfo for ErrorKind {
                 "empty arrays are not allowed yet".into()
             ),
             Self::NestedArrayNotSupportedYet => (
-                "invalid array element".into(),
+                "invalid array item".into(),
                 "nested arrays are not supported yet".into(),
             ),
 
@@ -2754,14 +2792,6 @@ impl IntoErrorInfo for ErrorKind {
                 "invalid expression".into(),
                 format!("cannot invert value of type '{invalid_type}'").into(),
             ),
-            Self::LeftOperandTypeMismatch(invalid_type) => (
-                "invalid expression".into(),
-                format!("cannot be preceded by '{invalid_type}'").into(),
-            ),
-            Self::RightOperandTypeMismatch(invalid_type) => (
-                "invalid expression".into(),
-                format!("cannot be followed by '{invalid_type}'").into(),
-            ),
             Self::CannotCompareOperands { left_operand_type, right_operand_type  } => (
                 "invalid expression".into(),
                 format!("cannot compare '{left_operand_type}' to '{right_operand_type}'").into(),
@@ -2775,15 +2805,15 @@ impl IntoErrorInfo for ErrorKind {
                 "cannot index into an expression".into(),
             ),
             Self::ExpectedIntegerExpressionInArrayIndex => (
-                "invalid array index".into(),
-                "must be followed by an integer literal".into(),
+                "invalid expression".into(),
+                "array index must be followed by an integer literal".into(),
             ),
             Self::CannotIndexNonArrayLikeType(non_indexable_type) => (
                 "invalid expression".into(),
                 format!("cannot index into a value of type '{non_indexable_type}'").into(),
             ),
             Self::TypeMismatch { expected, actual } => (
-                "invalid array element".into(),
+                "invalid expression".into(),
                 format!("expected expression of type '{expected}', but got '{actual}'").into(),
             ),
         };
