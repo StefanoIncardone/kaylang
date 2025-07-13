@@ -23,6 +23,7 @@ pub(crate) type utf32 = char;
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Op {
+    // REMOVE(stefano): it's not an operator
     Equals,
 
     /// temporary way of getting the length of strings and arrays
@@ -1140,7 +1141,6 @@ impl LineEnd {
     const CR: Self = Self::LF;
 }
 
-#[forbid(clippy::question_mark_used, reason = "consistency")]
 // iteration of characters
 impl<'code> Tokenizer<'code> {
     #[inline]
@@ -1185,6 +1185,7 @@ impl<'code> Tokenizer<'code> {
         };
     }
 
+    #[expect(clippy::question_mark)]
     #[must_use]
     fn next_byte_multiline(&mut self) -> Option<u8> {
         let Some(next) = self.peek_byte_multiline() else {
@@ -1216,6 +1217,7 @@ impl<'code> Tokenizer<'code> {
         };
     }
 
+    #[expect(clippy::question_mark)]
     #[must_use]
     fn next_byte_singleline(&mut self) -> Option<u8> {
         let Some(next) = self.peek_byte_multiline() else {
@@ -1230,6 +1232,7 @@ impl<'code> Tokenizer<'code> {
         };
     }
 
+    #[expect(clippy::question_mark)]
     #[must_use]
     fn peek_ascii_multiline(&self) -> Option<Result<ascii, &'code str>> {
         let Some(next) = self.peek_byte_multiline() else {
@@ -1249,6 +1252,7 @@ impl<'code> Tokenizer<'code> {
         };
     }
 
+    #[expect(clippy::question_mark)]
     #[must_use]
     fn peek_ascii_singleline(&self) -> Option<Result<ascii, &'code str>> {
         let Some(next) = self.peek_byte_singleline() else {

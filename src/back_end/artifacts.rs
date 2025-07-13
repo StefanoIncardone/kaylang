@@ -17,7 +17,7 @@ pub struct Artifacts {
 }
 
 impl Artifacts {
-    #[expect(clippy::missing_errors_doc, reason = "the code is the documentation")]
+    #[expect(clippy::missing_errors_doc)]
     pub fn new(src_path: &Path, out_path: &Path) -> Result<Self, Error> {
         if src_path.is_dir() {
             return Err(Error::MustBeAFilePath(src_path.to_owned()));
@@ -122,5 +122,5 @@ impl Display for Error {
     }
 }
 
-#[expect(clippy::missing_trait_methods, reason = "using default implementations")]
+#[expect(clippy::missing_trait_methods)]
 impl core::error::Error for Error {}

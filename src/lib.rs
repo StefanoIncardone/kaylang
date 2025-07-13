@@ -1491,5 +1491,5 @@ impl Display for Errors<'_, '_> {
     }
 }
 
-#[expect(clippy::missing_trait_methods, reason = "using default implementations")]
+#[expect(clippy::missing_trait_methods)]
 impl core::error::Error for Errors<'_, '_> {}

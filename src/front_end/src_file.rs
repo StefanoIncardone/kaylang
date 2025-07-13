@@ -39,7 +39,7 @@ pub struct SrcFile<'path> {
 }
 
 impl<'path> SrcFile<'path> {
-    #[expect(clippy::missing_errors_doc, reason = "the code is the documentation")]
+    #[expect(clippy::missing_errors_doc)]
     pub fn load(path: &'path Path) -> Result<Self, Error<'path>> {
         let mut file = match File::open(path) {
             Ok(file) => file,
@@ -120,7 +120,7 @@ impl<'code, 'path: 'code> SrcCode<'code, 'path> {
         #[expect(clippy::cast_possible_truncation)]
         let mut right = self.lines.len() as offset32 - 1;
         while left < right {
-            #[expect(clippy::integer_division, reason = "it's intended to lose precision")]
+            #[expect(clippy::integer_division)]
             let middle = left + (right - left) / 2;
             if column <= self.lines[middle as usize].end {
                 right = middle;
@@ -195,5 +195,5 @@ impl Display for Error<'_> {
     }
 }
 
-#[expect(clippy::missing_trait_methods, reason = "using default implementations")]
+#[expect(clippy::missing_trait_methods)]
 impl core::error::Error for Error<'_> {}

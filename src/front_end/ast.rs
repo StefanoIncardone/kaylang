@@ -124,7 +124,7 @@ impl SizeOf for Type {
     }
 }
 
-#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
+#[expect(dead_code)]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum UnaryOp {
@@ -218,7 +218,7 @@ impl BaseTypeOf for BooleanUnaryOp {
     }
 }
 
-#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
+#[expect(dead_code)]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum BinaryOp {
@@ -294,7 +294,7 @@ impl BaseTypeOf for BinaryOp {
     }
 }
 
-#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
+#[expect(dead_code)]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum BooleanBinaryOp {
@@ -338,7 +338,7 @@ impl BaseTypeOf for BooleanBinaryOp {
     }
 }
 
-#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
+#[expect(dead_code)]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum ComparisonOp {
@@ -395,7 +395,7 @@ impl BaseTypeOf for ComparisonOp {
     }
 }
 
-#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
+#[expect(dead_code)]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
@@ -758,7 +758,7 @@ pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
 
 impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'code, 'path> {
     // IDEA(stefano): move into freestanding function
-    #[expect(clippy::missing_errors_doc, reason = "syntax errors cannot be documented in docs")]
+    #[expect(clippy::missing_errors_doc)]
     pub fn parse(
         src: &'src SrcCode<'code, 'path>,
         tokens: &'tokens Tokens<'code>,
@@ -1509,7 +1509,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             return Some(integer);
         }
 
-        #[expect(clippy::single_call_fn, reason = "readability")]
+        #[expect(clippy::single_call_fn)]
         const fn parse_negative_binary_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Binary;
             let mut integer: i64 = 0;
@@ -1536,7 +1536,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             return Some(integer);
         }
 
-        #[expect(clippy::single_call_fn, reason = "readability")]
+        #[expect(clippy::single_call_fn)]
         const fn parse_negative_octal_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Octal;
             let mut integer: i64 = 0;
@@ -1563,7 +1563,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             return Some(integer);
         }
 
-        #[expect(clippy::single_call_fn, reason = "readability")]
+        #[expect(clippy::single_call_fn)]
         const fn parse_negative_decimal_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Decimal;
             let mut integer: i64 = 0;
@@ -1590,7 +1590,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             return Some(integer);
         }
 
-        #[expect(clippy::single_call_fn, reason = "readability")]
+        #[expect(clippy::single_call_fn)]
         const fn parse_negative_decimal_prefix_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Decimal;
             let mut integer: i64 = 0;
@@ -1617,7 +1617,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             return Some(integer);
         }
 
-        #[expect(clippy::single_call_fn, reason = "readability")]
+        #[expect(clippy::single_call_fn)]
         const fn parse_negative_hexadecimal_i64(literal: &[ascii]) -> Option<i64> {
             const BASE: Base = Base::Hexadecimal;
             let mut integer: i64 = 0;
@@ -2036,7 +2036,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 }
 
                 let start_of_expression = self.tokens.tokens[self.token];
-                #[expect(clippy::wildcard_enum_match_arm, reason = "readability")]
+                #[expect(clippy::wildcard_enum_match_arm)]
                 match start_of_expression.kind {
                     TokenKind::BinaryInteger(literal_index) => {
                         let literal = self.tokens.text[literal_index];

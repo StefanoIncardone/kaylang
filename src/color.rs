@@ -77,7 +77,7 @@ pub enum AnsiCode {
 }
 
 // REMOVE(stefano): make more "pure" by selecting the printing mode each time
-#[expect(non_upper_case_globals, reason = "it's a function, so it should be named like a function")]
+#[expect(non_upper_case_globals, reason = "alias to a function")]
 pub(super) static mut print: fn(
     &str,
     Fg,

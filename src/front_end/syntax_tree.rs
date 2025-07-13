@@ -921,7 +921,7 @@ this is because the first truly relevant error is the first one, which in turn c
 effect that propagates to the rest of the parsing, causing subsequent errors to be wrong
 */
 impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'code, 'path> {
-    #[expect(clippy::missing_errors_doc, reason = "syntax errors cannot be documented in docs")]
+    #[expect(clippy::missing_errors_doc)]
     pub fn parse(
         src: &'src SrcCode<'code, 'path>,
         tokens: &'tokens Tokens<'code>,
@@ -1360,7 +1360,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 }
 
 impl<'code> Parser<'_, '_, 'code, '_> {
-    #[expect(clippy::panic, reason = "it's basically a more descriptive panic implementation")]
+    #[expect(clippy::panic)]
     #[track_caller]
     fn invalid_token(
         &self,

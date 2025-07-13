@@ -104,22 +104,7 @@ impl Display for Type {
     }
 }
 
-// #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-// pub(crate) enum ExpectedType<'typ> {
-//     Exact(&'typ Type),
-//     Array,
-// }
-
-// impl Display for ExpectedType<'_> {
-//     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-//         return match self {
-//             Self::Exact(typ) => write!(f, "{typ}"),
-//             Self::Array => write!(f, "any[]"),
-//         };
-//     }
-// }
-
-#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
+#[expect(dead_code)]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
@@ -178,7 +163,7 @@ impl Display for PrefixOperator {
 }
 
 impl PrefixOperator {
-    #[expect(dead_code, reason = "kept for consistency")]
+    #[expect(dead_code)]
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
         let op: Op = self.into();
@@ -186,7 +171,7 @@ impl PrefixOperator {
     }
 }
 
-#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
+#[expect(dead_code)]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
@@ -236,7 +221,7 @@ impl Display for BooleanPrefixOperator {
 }
 
 impl BooleanPrefixOperator {
-    #[expect(dead_code, reason = "kept for consistency")]
+    #[expect(dead_code)]
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
         let op: Op = self.into();
@@ -244,7 +229,7 @@ impl BooleanPrefixOperator {
     }
 }
 
-#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
+#[expect(dead_code)]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
@@ -327,7 +312,7 @@ impl Display for BinaryOperator {
 }
 
 impl BinaryOperator {
-    #[expect(dead_code, reason = "kept for consistency")]
+    #[expect(dead_code)]
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
         let op: Op = self.into();
@@ -335,7 +320,7 @@ impl BinaryOperator {
     }
 }
 
-#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
+#[expect(dead_code)]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
@@ -386,7 +371,7 @@ impl Display for BooleanBinaryOperator {
 }
 
 impl BooleanBinaryOperator {
-    #[expect(dead_code, reason = "kept for consistency")]
+    #[expect(dead_code)]
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
         let op: Op = self.into();
@@ -394,7 +379,7 @@ impl BooleanBinaryOperator {
     }
 }
 
-#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
+#[expect(dead_code)]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
@@ -444,7 +429,7 @@ impl Display for ComparisonOperator {
 }
 
 impl ComparisonOperator {
-    #[expect(dead_code, reason = "kept for consistency")]
+    #[expect(dead_code)]
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
         let op: Op = self.into();
@@ -452,7 +437,7 @@ impl ComparisonOperator {
     }
 }
 
-#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
+#[expect(dead_code)]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
@@ -509,7 +494,7 @@ impl Display for BooleanComparisonOperator {
 }
 
 impl BooleanComparisonOperator {
-    #[expect(dead_code, reason = "kept for consistency")]
+    #[expect(dead_code)]
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
         let op: Op = self.into();
@@ -517,7 +502,7 @@ impl BooleanComparisonOperator {
     }
 }
 
-#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
+#[expect(dead_code)]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
@@ -600,7 +585,7 @@ impl Display for AssignmentOperator {
 }
 
 impl AssignmentOperator {
-    #[expect(dead_code, reason = "kept for consistency")]
+    #[expect(dead_code)]
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
         let op: Op = self.into();
@@ -1128,7 +1113,7 @@ impl<'syntax_tree, 'tokens: 'syntax_tree, 'src: 'tokens, 'code: 'src, 'path: 'co
     this is because the first truly relevant error is the first one, which in turn causes a ripple
     effect that propagates to the rest of the parsing, causing subsequent errors to be wrong
     */
-    #[expect(clippy::missing_errors_doc, reason = "syntax errors cannot be documented in docs")]
+    #[expect(clippy::missing_errors_doc)]
     pub fn parse(
         src: &'src SrcCode<'code, 'path>,
         tokens: &'tokens Tokens<'code>,
@@ -1277,7 +1262,7 @@ impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> 
 }
 
 impl<'code> Parser<'_, '_, '_, 'code, '_> {
-    #[expect(clippy::panic, reason = "it's basically a more descriptive panic implementation")]
+    #[expect(clippy::panic)]
     #[track_caller]
     fn stray_semicolon(&self, semicolon_colon: offset32) -> ! {
         let DisplayPosition { line, column, display_column } = self.src.display_position(semicolon_colon);
@@ -1316,7 +1301,7 @@ impl<'code> TypedSyntaxTree<'_, '_, 'code> {
 }
 
 impl<'code> Parser<'_, '_, '_, 'code, '_> {
-    #[expect(clippy::single_call_fn, reason = "readability")]
+    #[expect(clippy::single_call_fn)]
     const fn parse_positive_binary_i64(literal: &[ascii]) -> Result<i64, ()> {
         const BASE: Base = Base::Binary;
         let mut integer: i64 = 0;
@@ -1344,7 +1329,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         return Ok(integer);
     }
 
-    #[expect(clippy::single_call_fn, reason = "readability")]
+    #[expect(clippy::single_call_fn)]
     const fn parse_positive_octal_i64(literal: &[ascii]) -> Result<i64, ()> {
         const BASE: Base = Base::Octal;
         let mut integer: i64 = 0;
@@ -1372,7 +1357,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         return Ok(integer);
     }
 
-    #[expect(clippy::single_call_fn, reason = "readability")]
+    #[expect(clippy::single_call_fn)]
     const fn parse_positive_decimal_i64(literal: &[ascii]) -> Result<i64, ()> {
         const BASE: Base = Base::Decimal;
         let mut integer: i64 = 0;
@@ -1400,7 +1385,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         return Ok(integer);
     }
 
-    #[expect(clippy::single_call_fn, reason = "readability")]
+    #[expect(clippy::single_call_fn)]
     const fn parse_positive_decimal_prefix_i64(literal: &[ascii]) -> Result<i64, ()> {
         const BASE: Base = Base::Decimal;
         let mut integer: i64 = 0;
@@ -1428,7 +1413,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         return Ok(integer);
     }
 
-    #[expect(clippy::single_call_fn, reason = "readability")]
+    #[expect(clippy::single_call_fn)]
     const fn parse_positive_hexadecimal_i64(literal: &[ascii]) -> Result<i64, ()> {
         const BASE: Base = Base::Hexadecimal;
         let mut integer: i64 = 0;
@@ -1462,7 +1447,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         return Ok(integer);
     }
 
-    #[expect(clippy::single_call_fn, reason = "readability")]
+    #[expect(clippy::single_call_fn)]
     const fn parse_negative_binary_i64(literal: &[ascii]) -> Result<i64, ()> {
         const BASE: Base = Base::Binary;
         let mut integer: i64 = 0;
@@ -1490,7 +1475,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         return Ok(integer);
     }
 
-    #[expect(clippy::single_call_fn, reason = "readability")]
+    #[expect(clippy::single_call_fn)]
     const fn parse_negative_octal_i64(literal: &[ascii]) -> Result<i64, ()> {
         const BASE: Base = Base::Octal;
         let mut integer: i64 = 0;
@@ -1518,7 +1503,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         return Ok(integer);
     }
 
-    #[expect(clippy::single_call_fn, reason = "readability")]
+    #[expect(clippy::single_call_fn)]
     const fn parse_negative_decimal_i64(literal: &[ascii]) -> Result<i64, ()> {
         const BASE: Base = Base::Decimal;
         let mut integer: i64 = 0;
@@ -1546,7 +1531,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         return Ok(integer);
     }
 
-    #[expect(clippy::single_call_fn, reason = "readability")]
+    #[expect(clippy::single_call_fn)]
     const fn parse_negative_decimal_prefix_i64(literal: &[ascii]) -> Result<i64, ()> {
         const BASE: Base = Base::Decimal;
         let mut integer: i64 = 0;
@@ -1574,7 +1559,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         return Ok(integer);
     }
 
-    #[expect(clippy::single_call_fn, reason = "readability")]
+    #[expect(clippy::single_call_fn)]
     const fn parse_negative_hexadecimal_i64(literal: &[ascii]) -> Result<i64, ()> {
         const BASE: Base = Base::Hexadecimal;
         let mut integer: i64 = 0;
@@ -1608,7 +1593,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         return Ok(integer);
     }
 
-    #[expect(clippy::single_call_fn, reason = "readability")]
+    #[expect(clippy::single_call_fn)]
     const fn parse_ascii(literal: &[ascii]) -> ascii {
         debug_assert!(literal.len() >= 3, "tokenization error");
         return match literal[1] {
