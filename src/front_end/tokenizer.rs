@@ -23,7 +23,7 @@ pub(crate) type utf32 = char;
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Op {
-    // REMOVE(stefano): it's not an operator
+    // REMOVE(stefano): remove when deleting `ast.rs`
     Equals,
 
     /// temporary way of getting the length of strings and arrays
@@ -117,8 +117,9 @@ impl Display for Op {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         #[rustfmt::skip]
         return match self {
-            Self::Len                       => write!(f, "len"),
             Self::Equals                    => write!(f, "="),
+
+            Self::Len                       => write!(f, "len"),
             Self::Not                       => write!(f, "!"),
 
             Self::Pow                       => write!(f,  "**"),

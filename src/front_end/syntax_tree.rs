@@ -146,6 +146,7 @@ impl BinaryOperator {
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum AssignmentOperator {
+    #[expect(dead_code)]
     Equals = Op::Equals as u8,
 
     Pow           = Op::PowEquals as u8,
@@ -210,7 +211,6 @@ impl Display for AssignmentOperator {
 }
 
 impl AssignmentOperator {
-    #[expect(dead_code)]
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
         let op: Op = self.into();
@@ -391,6 +391,7 @@ pub(crate) enum Node<'code> {
     Semicolon {
         column: offset32,
     },
+
     Expression {
         expression: ExpressionIndex<'code>,
         semicolon_column: offset32,
@@ -435,7 +436,6 @@ pub(crate) enum Node<'code> {
         variable_definition: VariableDefinitionIndex<'code>,
         semicolon_column: offset32,
     },
-
     Assignment {
         target: ExpressionIndex<'code>,
         operator: AssignmentOperator,
@@ -571,6 +571,7 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
         #[rustfmt::skip]
         return match node {
             Node::Semicolon { column } => Self::info_semicolon(f, indent, *column),
+
             Node::Expression { expression, semicolon_column } => {
                 self.info_expression(f, *expression, indent)?;
                 Self::info_semicolon(f, indent, *semicolon_column)

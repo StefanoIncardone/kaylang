@@ -25,14 +25,14 @@ impl BaseType {
     const STR_STR: &str = "str";
 
     #[inline]
-    fn matches(self, name: &[ascii]) -> bool {
+    fn matches(self, name: &str) -> bool {
         let self_str = match self {
             Self::I64 => Self::I64_STR,
             Self::Ascii => Self::ASCII_STR,
             Self::Bool => Self::BOOL_STR,
             Self::Str => Self::STR_STR,
         };
-        return name == self_str.as_bytes();
+        return name == self_str;
     }
 }
 
@@ -507,8 +507,6 @@ impl BooleanComparisonOperator {
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum AssignmentOperator {
-    Equals = st::AssignmentOperator::Equals as u8,
-
     Pow           = st::AssignmentOperator::Pow as u8,
     WrappingPow   = st::AssignmentOperator::WrappingPow as u8,
     SaturatingPow = st::AssignmentOperator::SaturatingPow as u8,
@@ -543,9 +541,11 @@ pub(crate) enum AssignmentOperator {
     BitAnd = st::AssignmentOperator::BitAnd as u8,
     BitXor = st::AssignmentOperator::BitXor as u8,
     BitOr  = st::AssignmentOperator::BitOr as u8,
+}
 
-    And    = st::AssignmentOperator::And as u8,
-    Or     = st::AssignmentOperator::Or as u8,
+impl AssignmentOperator {
+    const BASE_TYPE: BaseType = BaseType::I64;
+    const TYPE: Type = Type::Base(Self::BASE_TYPE);
 }
 
 impl Into<AssignmentOperator> for Op {
@@ -593,9 +593,67 @@ impl AssignmentOperator {
     }
 }
 
+#[expect(dead_code)]
+#[rustfmt::skip]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[repr(u8)]
+pub(crate) enum BooleanAssignmentOperator {
+    And    = st::AssignmentOperator::And as u8,
+    Or     = st::AssignmentOperator::Or as u8,
+}
+
+impl BooleanAssignmentOperator {
+    const BASE_TYPE: BaseType = BaseType::Bool;
+    const TYPE: Type = Type::Base(Self::BASE_TYPE);
+}
+
+impl Into<BooleanAssignmentOperator> for Op {
+    #[inline(always)]
+    fn into(self) -> BooleanAssignmentOperator {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<Op> for BooleanAssignmentOperator {
+    #[inline(always)]
+    fn into(self) -> Op {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<st::AssignmentOperator> for BooleanAssignmentOperator {
+    #[inline(always)]
+    fn into(self) -> st::AssignmentOperator {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<BooleanAssignmentOperator> for st::AssignmentOperator {
+    #[inline(always)]
+    fn into(self) -> BooleanAssignmentOperator {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Display for BooleanAssignmentOperator {
+    #[inline(always)]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let op: Op = (*self).into();
+        return write!(f, "{op}");
+    }
+}
+
+impl BooleanAssignmentOperator {
+    #[expect(dead_code)]
+    #[inline(always)]
+    pub(super) fn display_len(self) -> offset32 {
+        let op: Op = self.into();
+        return op.display_len();
+    }
+}
+
 pub(crate) type ExpressionIndex<'code> = SliceIndexPtr<Expression<'code>>;
 pub(crate) type ArrayItemsIndex<'code> = SliceIndexPtr<Expression<'code>>;
-pub(crate) type VariableDefinitionIndex<'code> = SliceIndexPtr<VariableDefinition<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Expression<'code> {
@@ -732,11 +790,13 @@ pub(crate) struct Scope<'code> {
     pub(crate) var_variables: Vec<VariableDefinitionIndex<'code>>,
 }
 
+pub(crate) type VariableDefinitionIndex<'code> = SliceIndexPtr<VariableDefinition<'code>>;
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct VariableDefinition<'code> {
-    name: TextIndex<'code>,
-    typ: Type,
-    initial_value: ExpressionIndex<'code>,
+    pub(crate) name: TextIndex<'code>,
+    pub(crate) typ: Type,
+    pub(crate) initial_value: ExpressionIndex<'code>,
 }
 
 pub(crate) type NodeIndex<'code> = SliceIndexPtr<Node<'code>>;
@@ -766,10 +826,19 @@ pub(crate) enum Node<'code> {
     VarVariableDefinition {
         variable: VariableDefinitionIndex<'code>,
     },
-
     Assignment {
         target: ExpressionIndex<'code>,
+        new_value: ExpressionIndex<'code>,
+    },
+    AssignmentExpression {
+        target: ExpressionIndex<'code>,
         operator: AssignmentOperator,
+        operator_column: offset32,
+        new_value: ExpressionIndex<'code>,
+    },
+    BooleanAssignmentExpression {
+        target: ExpressionIndex<'code>,
+        operator: BooleanAssignmentOperator,
         operator_column: offset32,
         new_value: ExpressionIndex<'code>,
     },
@@ -870,6 +939,27 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
             Node::Expression(expression) => {
                 self.info_expression(f, *expression, indent)
             }
+            Node::Assignment { target, new_value, .. } => {
+                writeln!(f, "{:>indent$}Assignment", "")?;
+                let assignment_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *target, assignment_indent)?;
+                writeln!(f, "{:>assignment_indent$}Equals = =", "")?;
+                self.info_expression(f, *new_value, assignment_indent)
+            }
+            Node::AssignmentExpression { target, operator, new_value, .. } => {
+                writeln!(f, "{:>indent$}AssignmentExpression", "")?;
+                let assignment_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *target, assignment_indent)?;
+                writeln!(f, "{:>assignment_indent$}AssignmentOp = {operator}", "")?;
+                self.info_expression(f, *new_value, assignment_indent)
+            }
+            Node::BooleanAssignmentExpression { target, operator, new_value, .. } => {
+                writeln!(f, "{:>indent$}BooleanAssignmentExpression", "")?;
+                let assignment_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *target, assignment_indent)?;
+                writeln!(f, "{:>assignment_indent$}BooleanAssignmentOp = {operator}", "")?;
+                self.info_expression(f, *new_value, assignment_indent)
+            }
 
             Node::Print { argument } => {
                 writeln!(f, "{:>indent$}Print = print", "")?;
@@ -907,13 +997,6 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
                 writeln!(f, "{:>indent$}VariableDefinition = var", "")?;
                 let definition_indent = indent + Self::INDENT_INCREMENT;
                 self.info_variable(f, *variable, definition_indent)
-            }
-            Node::Assignment { target, operator, new_value, .. } => {
-                writeln!(f, "{:>indent$}Assignment", "")?;
-                let assignment_indent = indent + Self::INDENT_INCREMENT;
-                self.info_expression(f, *target, assignment_indent)?;
-                writeln!(f, "{:>assignment_indent$}AssignmentOp = {operator}", "")?;
-                self.info_expression(f, *new_value, assignment_indent)
             }
 
             Node::Scope { raw_nodes_in_scope_count } => {
@@ -1192,36 +1275,45 @@ impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> 
     }
 }
 
-impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> {
-    fn any(&mut self, node: &'syntax_tree st::Node<'code>) -> Result<ParsedNode<'code>, Error<ErrorKind>> {
+impl<'code> Parser<'_, '_, '_, 'code, '_> {
+    fn any(&mut self, node: &st::Node<'code>) -> Result<ParsedNode<'code>, Error<ErrorKind>> {
         return match node {
             st::Node::Expression { expression, .. } => {
                 let parsed_expression_index = self.parse_expression(*expression, None)?;
                 Ok(ParsedNode::Node(Node::Expression(parsed_expression_index)))
             }
+            st::Node::Assignment { target, operator, operator_column, new_value, .. } => {
+                let parsed_assignment = self.assignment(
+                    *target,
+                    *operator,
+                    *operator_column,
+                    *new_value
+                )?;
+                Ok(ParsedNode::Node(parsed_assignment))
+            }
 
             st::Node::Print { argument, .. } => {
                 let parsed_argument_index = self.parse_expression(*argument, None)?;
                 Ok(ParsedNode::Node(Node::Print { argument: parsed_argument_index }))
-            },
+            }
             st::Node::Println { argument, .. } => {
                 let parsed_argument_index = self.parse_expression(*argument, None)?;
                 Ok(ParsedNode::Node(Node::Println { argument: parsed_argument_index }))
-            },
+            }
             st::Node::PrintlnNoArg { .. } => {
                 Ok(ParsedNode::Node(Node::PrintlnNoArg))
-            },
+            }
             st::Node::Eprint { argument, .. } => {
                 let parsed_argument_index = self.parse_expression(*argument, None)?;
                 Ok(ParsedNode::Node(Node::Eprint { argument: parsed_argument_index }))
-            },
+            }
             st::Node::Eprintln { argument, .. } => {
                 let parsed_argument_index = self.parse_expression(*argument, None)?;
                 Ok(ParsedNode::Node(Node::Eprintln { argument: parsed_argument_index }))
-            },
+            }
             st::Node::EprintlnNoArg { .. } => {
                 Ok(ParsedNode::Node(Node::EprintlnNoArg))
-            },
+            }
 
             st::Node::LetVariableDefinition { variable_definition, .. } => {
                 let variable = self.parse_variable(*variable_definition)?;
@@ -1233,14 +1325,6 @@ impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> 
                 self.scopes[self.scope].var_variables.push(variable);
                 Ok(ParsedNode::Node(Node::VarVariableDefinition { variable }))
             }
-
-            st::Node::Assignment {
-                target,
-                operator,
-                operator_column,
-                new_value,
-                semicolon_column,
-            } => unimplemented!(),
 
             st::Node::Scope {
                 open_curly_bracket_column,
@@ -1291,22 +1375,16 @@ impl<'code> TypedSyntaxTree<'_, '_, 'code> {
         self.expressions.push(expression);
         return index;
     }
-
-    #[inline]
-    fn new_variable(&mut self, variable: VariableDefinition<'code>) -> VariableDefinitionIndex<'code> {
-        let index = VariableDefinitionIndex::new(self.variables.len());
-        self.variables.push(variable);
-        return index;
-    }
 }
 
 impl<'code> Parser<'_, '_, '_, 'code, '_> {
     #[expect(clippy::single_call_fn)]
-    const fn parse_positive_binary_i64(literal: &[ascii]) -> Result<i64, ()> {
+    const fn parse_positive_binary_i64(literal_str: &'code str) -> Result<i64, ()> {
         const BASE: Base = Base::Binary;
         let mut integer: i64 = 0;
         let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
 
+        let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
@@ -1330,11 +1408,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
     }
 
     #[expect(clippy::single_call_fn)]
-    const fn parse_positive_octal_i64(literal: &[ascii]) -> Result<i64, ()> {
+    const fn parse_positive_octal_i64(literal_str: &'code str) -> Result<i64, ()> {
         const BASE: Base = Base::Octal;
         let mut integer: i64 = 0;
         let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
 
+        let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
@@ -1358,11 +1437,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
     }
 
     #[expect(clippy::single_call_fn)]
-    const fn parse_positive_decimal_i64(literal: &[ascii]) -> Result<i64, ()> {
+    const fn parse_positive_decimal_i64(literal_str: &'code str) -> Result<i64, ()> {
         const BASE: Base = Base::Decimal;
         let mut integer: i64 = 0;
         let mut digit_index = 0;
 
+        let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
@@ -1386,11 +1466,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
     }
 
     #[expect(clippy::single_call_fn)]
-    const fn parse_positive_decimal_prefix_i64(literal: &[ascii]) -> Result<i64, ()> {
+    const fn parse_positive_decimal_prefix_i64(literal_str: &'code str) -> Result<i64, ()> {
         const BASE: Base = Base::Decimal;
         let mut integer: i64 = 0;
         let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
 
+        let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
@@ -1414,11 +1495,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
     }
 
     #[expect(clippy::single_call_fn)]
-    const fn parse_positive_hexadecimal_i64(literal: &[ascii]) -> Result<i64, ()> {
+    const fn parse_positive_hexadecimal_i64(literal_str: &'code str) -> Result<i64, ()> {
         const BASE: Base = Base::Hexadecimal;
         let mut integer: i64 = 0;
         let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
 
+        let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
@@ -1448,11 +1530,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
     }
 
     #[expect(clippy::single_call_fn)]
-    const fn parse_negative_binary_i64(literal: &[ascii]) -> Result<i64, ()> {
+    const fn parse_negative_binary_i64(literal_str: &'code str) -> Result<i64, ()> {
         const BASE: Base = Base::Binary;
         let mut integer: i64 = 0;
         let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
 
+        let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
@@ -1476,11 +1559,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
     }
 
     #[expect(clippy::single_call_fn)]
-    const fn parse_negative_octal_i64(literal: &[ascii]) -> Result<i64, ()> {
+    const fn parse_negative_octal_i64(literal_str: &'code str) -> Result<i64, ()> {
         const BASE: Base = Base::Octal;
         let mut integer: i64 = 0;
         let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
 
+        let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
@@ -1504,11 +1588,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
     }
 
     #[expect(clippy::single_call_fn)]
-    const fn parse_negative_decimal_i64(literal: &[ascii]) -> Result<i64, ()> {
+    const fn parse_negative_decimal_i64(literal_str: &'code str) -> Result<i64, ()> {
         const BASE: Base = Base::Decimal;
         let mut integer: i64 = 0;
         let mut digit_index = 0;
 
+        let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
@@ -1532,11 +1617,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
     }
 
     #[expect(clippy::single_call_fn)]
-    const fn parse_negative_decimal_prefix_i64(literal: &[ascii]) -> Result<i64, ()> {
+    const fn parse_negative_decimal_prefix_i64(literal_str: &'code str) -> Result<i64, ()> {
         const BASE: Base = Base::Decimal;
         let mut integer: i64 = 0;
         let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
 
+        let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
@@ -1560,11 +1646,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
     }
 
     #[expect(clippy::single_call_fn)]
-    const fn parse_negative_hexadecimal_i64(literal: &[ascii]) -> Result<i64, ()> {
+    const fn parse_negative_hexadecimal_i64(literal_str: &'code str) -> Result<i64, ()> {
         const BASE: Base = Base::Hexadecimal;
         let mut integer: i64 = 0;
         let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
 
+        let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
@@ -1594,7 +1681,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
     }
 
     #[expect(clippy::single_call_fn)]
-    const fn parse_ascii(literal: &[ascii]) -> ascii {
+    const fn parse_ascii(literal_str: &'code str) -> ascii {
+        let literal = literal_str.as_bytes();
         debug_assert!(literal.len() >= 3, "tokenization error");
         return match literal[1] {
             b'\\' => match literal[2] {
@@ -1613,10 +1701,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
     // NOTE(stefano): only considering the first token in the expression until proper
     // multiline error messages are developed
-    fn first_token_display_len(
-        &self,
-        expression: st::ExpressionIndex<'code>,
-    ) -> offset32 {
+    fn first_token_display_len(&self, expression: st::ExpressionIndex<'code>) -> offset32 {
         let st_expression = &self.syntax_tree.expressions[expression];
         let token_kind = match st_expression {
             st::Expression::False { .. } => TokenKind::False,
@@ -1650,10 +1735,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
     // NOTE(stefano): only considering the first token in the expression until proper
     // multiline error messages are developed
-    fn first_token_column(
-        &self,
-        expression: st::ExpressionIndex<'code>,
-    ) -> offset32 {
+    fn first_token_column(&self, expression: st::ExpressionIndex<'code>) -> offset32 {
         let st_expression = &self.syntax_tree.expressions[expression];
         let column = match st_expression {
             st::Expression::False { column }
@@ -1683,7 +1765,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         return column;
     }
 
-    fn resolve_variable(&self, name: TextIndex<'code>) -> Option<VariableDefinitionIndex<'code>> {
+    fn resolve_variable(&self, name: &'code str) -> Option<VariableDefinitionIndex<'code>> {
         if let Some(variable) = self.resolve_let_variable(name) {
             return Some(variable);
         }
@@ -1691,13 +1773,14 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         return self.resolve_var_variable(name);
     }
 
-    fn resolve_let_variable(&self, name: TextIndex<'code>) -> Option<VariableDefinitionIndex<'code>> {
+    fn resolve_let_variable(&self, name: &'code str) -> Option<VariableDefinitionIndex<'code>> {
         let mut scope_index = self.scope;
         loop {
             let scope = &self.scopes[scope_index];
             for var_index in &scope.let_variables {
                 let var = &self.ast.variables[*var_index];
-                if var.name == name {
+                let var_name_text = self.tokens.text[var.name];
+                if var_name_text == name {
                     return Some(*var_index);
                 }
             }
@@ -1709,13 +1792,14 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         }
     }
 
-    fn resolve_var_variable(&self, name: TextIndex<'code>) -> Option<VariableDefinitionIndex<'code>> {
+    fn resolve_var_variable(&self, name: &'code str) -> Option<VariableDefinitionIndex<'code>> {
         let mut scope_index = self.scope;
         loop {
             let scope = &self.scopes[scope_index];
             for var_index in &scope.var_variables {
                 let var = &self.ast.variables[*var_index];
-                if var.name == name {
+                let var_name_text = self.tokens.text[var.name];
+                if var_name_text == name {
                     return Some(*var_index);
                 }
             }
@@ -1727,13 +1811,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         }
     }
 
-    fn resolve_type(&self, name: TextIndex<'code>) -> Option<BaseType> {
-        let name_text = self.tokens.text[name];
+    fn resolve_type(&self, name: &'code str) -> Option<BaseType> {
         let mut scope_index = self.scope;
         loop {
             let scope = &self.scopes[scope_index];
             for typ in &scope.types {
-                if typ.matches(name_text.as_bytes()) {
+                if typ.matches(name) {
                     return Some(*typ);
                 }
             }
@@ -1756,7 +1839,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             st::Expression::True { column } => Expression::True { column: *column },
             st::Expression::DecimalInteger { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
-                let Ok(value) = Self::parse_positive_decimal_i64(literal_text.as_bytes()) else {
+                let Ok(value) = Self::parse_positive_decimal_i64(literal_text) else {
                     return Err(Error {
                         kind: ErrorKind::DecimalIntegerOverflow,
                         col: *column,
@@ -1768,7 +1851,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             }
             st::Expression::DecimalIntegerPrefix { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
-                let Ok(value) = Self::parse_positive_decimal_prefix_i64(literal_text.as_bytes()) else {
+                let Ok(value) = Self::parse_positive_decimal_prefix_i64(literal_text) else {
                     return Err(Error {
                         kind: ErrorKind::DecimalIntegerOverflow,
                         col: *column,
@@ -1780,7 +1863,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             }
             st::Expression::BinaryInteger { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
-                let Ok(value) = Self::parse_positive_binary_i64(literal_text.as_bytes()) else {
+                let Ok(value) = Self::parse_positive_binary_i64(literal_text) else {
                     return Err(Error {
                         kind: ErrorKind::BinaryIntegerOverflow,
                         col: *column,
@@ -1792,7 +1875,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             }
             st::Expression::OctalInteger { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
-                let Ok(value) = Self::parse_positive_octal_i64(literal_text.as_bytes()) else {
+                let Ok(value) = Self::parse_positive_octal_i64(literal_text) else {
                     return Err(Error {
                         kind: ErrorKind::OctalIntegerOverflow,
                         col: *column,
@@ -1804,7 +1887,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             }
             st::Expression::HexadecimalInteger { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
-                let Ok(value) = Self::parse_positive_hexadecimal_i64(literal_text.as_bytes()) else {
+                let Ok(value) = Self::parse_positive_hexadecimal_i64(literal_text) else {
                     return Err(Error {
                         kind: ErrorKind::HexadecimalIntegerOverflow,
                         col: *column,
@@ -1816,7 +1899,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             }
             st::Expression::Ascii { literal, column } => {
                 let ascii_literal = &self.tokens.text[*literal];
-                let ascii_ch = Self::parse_ascii(ascii_literal.as_bytes());
+                let ascii_ch = Self::parse_ascii(ascii_literal);
                 Expression::Ascii { character: ascii_ch, column: *column }
             }
             st::Expression::Str { literal, column } | st::Expression::RawStr { literal, column } => {
@@ -1824,22 +1907,21 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             }
             st::Expression::Identifier { identifier, column }
             | st::Expression::IdentifierStr { identifier, column } => {
-                if let Some(_) = self.resolve_type(*identifier) {
-                    let name_text = self.tokens.text[*identifier];
+                let identifier_text = self.tokens.text[*identifier];
+                if let Some(_) = self.resolve_type(identifier_text) {
                     return Err(Error {
                         kind: ErrorKind::TypeInExpression,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
-                        pointers_count: name_text.len() as offset32,
+                        pointers_count: identifier_text.len() as offset32,
                     });
                 }
-                let Some(variable) = self.resolve_variable(*identifier) else {
-                    let name_text = self.tokens.text[*identifier];
+                let Some(variable) = self.resolve_variable(identifier_text) else {
                     return Err(Error {
                         kind: ErrorKind::VariableNotPreviouslyDefined,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
-                        pointers_count: name_text.len() as offset32,
+                        pointers_count: identifier_text.len() as offset32,
                     });
                 };
 
@@ -1852,7 +1934,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 // whole type
                 if *items_len == 0 {
                     return Err(Error {
-                        kind: ErrorKind::EmptyArray,
+                        kind: ErrorKind::ArrayOfZeroItems,
                         col: *open_square_bracket_column,
                         pointers_count: 1,
                     });
@@ -1983,7 +2065,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     match st_right_operand {
                         st::Expression::BinaryInteger { literal, column } => {
                             let literal_text = self.tokens.text[*literal];
-                            let right_operand_expression = match Self::parse_negative_binary_i64(literal_text.as_bytes()) {
+                            let right_operand_expression = match Self::parse_negative_binary_i64(literal_text) {
                                 Ok(0) => return Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: *column,
@@ -2007,7 +2089,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         }
                         st::Expression::OctalInteger { literal, column } => {
                             let literal_text = self.tokens.text[*literal];
-                            let right_operand_expression = match Self::parse_negative_octal_i64(literal_text.as_bytes()) {
+                            let right_operand_expression = match Self::parse_negative_octal_i64(literal_text) {
                                 Ok(0) => return Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: *column,
@@ -2031,7 +2113,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         }
                         st::Expression::DecimalInteger { literal, column } => {
                             let literal_text = self.tokens.text[*literal];
-                            let right_operand_expression = match Self::parse_negative_decimal_i64(literal_text.as_bytes()) {
+                            let right_operand_expression = match Self::parse_negative_decimal_i64(literal_text) {
                                 Ok(0) => return Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: *column,
@@ -2055,7 +2137,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         }
                         st::Expression::DecimalIntegerPrefix { literal, column } => {
                             let literal_text = self.tokens.text[*literal];
-                            let right_operand_expression = match Self::parse_negative_decimal_prefix_i64(literal_text.as_bytes()) {
+                            let right_operand_expression = match Self::parse_negative_decimal_prefix_i64(literal_text) {
                                 Ok(0) => return Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: *column,
@@ -2079,7 +2161,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         }
                         st::Expression::HexadecimalInteger { literal, column } => {
                             let literal_text = self.tokens.text[*literal];
-                            let right_operand_expression = match Self::parse_negative_hexadecimal_i64(literal_text.as_bytes()) {
+                            let right_operand_expression = match Self::parse_negative_hexadecimal_i64(literal_text) {
                                 Ok(0) => return Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: *column,
@@ -2177,12 +2259,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::I64) => {}
                             Type::Base(BaseType::Str) | Type::Array { .. } => {
                                 return Err(Error {
-                                    kind: ErrorKind::TypeMismatch {
+                                    kind: ErrorKind::LeftOperandTypeMismatch {
                                         expected: BinaryOperator::TYPE,
                                         actual: left_operand_type,
                                     },
-                                    col: self.first_token_column(*left_operand),
-                                    pointers_count: self.first_token_display_len(*left_operand),
+                                    col: *operator_column,
+                                    pointers_count: operator.display_len(),
                                 });
                             }
                         }
@@ -2191,17 +2273,57 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::I64) => {}
                             Type::Base(BaseType::Str) | Type::Array { .. } => {
                                 return Err(Error {
-                                    kind: ErrorKind::TypeMismatch {
+                                    kind: ErrorKind::RightOperandTypeMismatch {
                                         expected: BinaryOperator::TYPE,
                                         actual: right_operand_type,
                                     },
-                                    col: self.first_token_column(*right_operand),
-                                    pointers_count: self.first_token_display_len(*right_operand),
+                                    col: *operator_column,
+                                    pointers_count: operator.display_len(),
                                 });
                             }
                         }
 
                         Expression::Binary {
+                            left_operand: self.ast.new_expression(left_operand_expression),
+                            operator: (*operator).into(),
+                            operator_column: *operator_column,
+                            right_operand: self.ast.new_expression(right_operand_expression),
+                        }
+                    },
+
+                    st::BinaryOperator::And
+                    | st::BinaryOperator::Or => {
+                        match left_operand_type {
+                            Type::Base(BaseType::Bool) => {},
+                            Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Str)
+                            | Type::Array { .. } => {
+                                return Err(Error {
+                                    kind: ErrorKind::LeftOperandTypeMismatch {
+                                        expected: BooleanBinaryOperator::TYPE,
+                                        actual: left_operand_type,
+                                    },
+                                    col: *operator_column,
+                                    pointers_count: operator.display_len(),
+                                });
+                            },
+                        }
+
+                        match right_operand_type {
+                            Type::Base(BaseType::Bool) => {},
+                            Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Str)
+                            | Type::Array { .. } => {
+                                return Err(Error {
+                                    kind: ErrorKind::RightOperandTypeMismatch {
+                                        expected: BooleanBinaryOperator::TYPE,
+                                        actual: right_operand_type,
+                                    },
+                                    col: *operator_column,
+                                    pointers_count: operator.display_len(),
+                                });
+                            },
+                        }
+
+                        Expression::BooleanBinary {
                             left_operand: self.ast.new_expression(left_operand_expression),
                             operator: (*operator).into(),
                             operator_column: *operator_column,
@@ -2262,46 +2384,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         }
 
                         Expression::BooleanComparison {
-                            left_operand: self.ast.new_expression(left_operand_expression),
-                            operator: (*operator).into(),
-                            operator_column: *operator_column,
-                            right_operand: self.ast.new_expression(right_operand_expression),
-                        }
-                    },
-
-                    st::BinaryOperator::And
-                    | st::BinaryOperator::Or => {
-                        match left_operand_type {
-                            Type::Base(BaseType::Bool) => {},
-                            Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Str)
-                            | Type::Array { .. } => {
-                                return Err(Error {
-                                    kind: ErrorKind::TypeMismatch {
-                                        expected: BooleanBinaryOperator::TYPE,
-                                        actual: left_operand_type,
-                                    },
-                                    col: self.first_token_column(*left_operand),
-                                    pointers_count: self.first_token_display_len(*left_operand),
-                                });
-                            },
-                        }
-
-                        match right_operand_type {
-                            Type::Base(BaseType::Bool) => {},
-                            Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Str)
-                            | Type::Array { .. } => {
-                                return Err(Error {
-                                    kind: ErrorKind::TypeMismatch {
-                                        expected: BooleanBinaryOperator::TYPE,
-                                        actual: right_operand_type,
-                                    },
-                                    col: self.first_token_column(*right_operand),
-                                    pointers_count: self.first_token_display_len(*right_operand),
-                                });
-                            },
-                        }
-
-                        Expression::BooleanBinary {
                             left_operand: self.ast.new_expression(left_operand_expression),
                             operator: (*operator).into(),
                             operator_column: *operator_column,
@@ -2397,7 +2479,16 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
     }
 }
 
-impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> {
+impl<'code> TypedSyntaxTree<'_, '_, 'code> {
+    #[inline]
+    fn new_variable(&mut self, variable: VariableDefinition<'code>) -> VariableDefinitionIndex<'code> {
+        let index = VariableDefinitionIndex::new(self.variables.len());
+        self.variables.push(variable);
+        return index;
+    }
+}
+
+impl<'code> Parser<'_, '_, '_, 'code, '_> {
     // NOTE(stefano): "leaks" memory by parsing and storing expressions, but these expressions
     // should never be used
     fn parse_type_annotation(
@@ -2408,10 +2499,10 @@ impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> 
             array_dimensions_start,
             array_dimensions_len,
             ..
-        }: &'syntax_tree st::TypeAnnotation<'code>,
+        }: &st::TypeAnnotation<'code>,
     ) -> Result<Type, Error<ErrorKind>> {
-        if let Some(_) = self.resolve_variable(*type_name) {
-            let type_name_text = self.tokens.text[*type_name];
+        let type_name_text = self.tokens.text[*type_name];
+        if let Some(_) = self.resolve_variable(type_name_text) {
             return Err(Error {
                 kind: ErrorKind::VariableInTypeAnnotation,
                 col: *type_name_column,
@@ -2419,8 +2510,7 @@ impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> 
                 pointers_count: type_name_text.len() as offset32,
             });
         }
-        let Some(base_type) = self.resolve_type(*type_name) else {
-            let type_name_text = self.tokens.text[*type_name];
+        let Some(base_type) = self.resolve_type(type_name_text) else {
             return Err(Error {
                 kind: ErrorKind::TypeNotPreviouslyDefined,
                 col: *type_name_column,
@@ -2459,7 +2549,7 @@ impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> 
         }
         if *len == 0 {
             return Err(Error {
-                kind: ErrorKind::ArrayOfZeroElements,
+                kind: ErrorKind::ArrayOfZeroItems,
                 col: *column,
                 pointers_count: self.first_token_display_len(*dimension_expression),
             });
@@ -2487,7 +2577,7 @@ impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> 
             }
             if *other_dimension_len == 0 {
                 return Err(Error {
-                    kind: ErrorKind::ArrayOfZeroElements,
+                    kind: ErrorKind::ArrayOfZeroItems,
                     col: *other_dimension_column,
                     pointers_count: self.first_token_display_len(*other_dimension_expression),
                 });
@@ -2495,7 +2585,6 @@ impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> 
         }
 
         if *array_dimensions_len > 1 {
-            let type_name_text = self.tokens.text[*type_name];
             return Err(Error {
                 kind: ErrorKind::NestedArrayNotSupportedYet,
                 col: *type_name_column,
@@ -2522,8 +2611,8 @@ impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> 
             initial_value,
         } = &self.syntax_tree.variable_definitions[variable_definition];
 
-        if let Some(_) = self.resolve_variable(*name) {
-            let name_text = self.tokens.text[*name];
+        let name_text = self.tokens.text[*name];
+        if let Some(_) = self.resolve_variable(name_text) {
             return Err(Error {
                 kind: ErrorKind::VariableAlreadyDefined,
                 col: *name_column,
@@ -2531,8 +2620,7 @@ impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> 
                 pointers_count: name_text.len() as offset32,
             });
         }
-        if let Some(_) = self.resolve_type(*name) {
-            let name_text = self.tokens.text[*name];
+        if let Some(_) = self.resolve_type(name_text) {
             return Err(Error {
                 kind: ErrorKind::TypeInVariableName,
                 col: *name_column,
@@ -2543,7 +2631,6 @@ impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> 
 
         let Some(st::InitialValue { expression, .. }) = initial_value else {
             let Some(_) = type_annotation else {
-                let name_text = self.tokens.text[*name];
                 return Err(Error {
                     kind: ErrorKind::CannotInferTypeOfVariable,
                     col: *name_column,
@@ -2551,7 +2638,6 @@ impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> 
                     pointers_count: name_text.len() as offset32,
                 });
             };
-            let name_text = self.tokens.text[*name];
             return Err(Error {
                 kind: ErrorKind::VariablesMustBeInitialized,
                 col: *name_column,
@@ -2579,6 +2665,247 @@ impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> 
     }
 }
 
+impl<'code> Parser<'_, '_, '_, 'code, '_> {
+    fn assignment(
+        &mut self,
+        target: st::ExpressionIndex<'code>,
+        operator: st::AssignmentOperator,
+        operator_column: offset32,
+        new_value: st::ExpressionIndex<'code>,
+    ) -> Result<Node<'code>, Error<ErrorKind>> {
+        let parsed_target = self.expression(target, None)?;
+
+        let parsed_new_value = self.expression(new_value, None)?;
+        let parsed_new_value_type = parsed_new_value.typ(&self.ast);
+        let parsed_target_type = match &parsed_target {
+            Expression::Variable { variable, column } => {
+                let variable_definition = &self.ast.variables[*variable];
+                let variable_name_text = self.tokens.text[variable_definition.name];
+                if let Some(_) = self.resolve_let_variable(variable_name_text) {
+                    return Err(Error {
+                        kind: ErrorKind::CannotMutateVariable,
+                        col: *column,
+                        #[expect(clippy::cast_possible_truncation)]
+                        pointers_count: variable_name_text.len() as offset32,
+                    });
+                }
+                variable_definition.typ.clone()
+            }
+            Expression::Index { indexed_expression, .. } => {
+                let mut base_indexed = &self.ast.expressions[*indexed_expression];
+                while let Expression::Index {
+                    indexed_expression: inner_indexed_expression,
+                    ..
+                } = base_indexed {
+                    base_indexed = &self.ast.expressions[*inner_indexed_expression];
+                }
+
+                let Expression::Variable { variable, column } = base_indexed else {
+                    return Err(Error {
+                        kind: ErrorKind::CannotAssignToExpression,
+                        col: operator_column,
+                        pointers_count: operator.display_len(),
+                    });
+                };
+
+                let variable_definition = &self.ast.variables[*variable];
+                let variable_name_text = self.tokens.text[variable_definition.name];
+                if let Some(_) = self.resolve_let_variable(variable_name_text) {
+                    return Err(Error {
+                        kind: ErrorKind::CannotMutateVariable,
+                        col: *column,
+                        #[expect(clippy::cast_possible_truncation)]
+                        pointers_count: variable_name_text.len() as offset32,
+                    });
+                }
+
+                if let base_type @ BaseType::Str = variable_definition.typ.base_typ() {
+                    if let BaseType::Ascii = parsed_new_value_type.base_typ() {
+                        return Err(Error {
+                            kind: ErrorKind::CannotMutateStringCharacters,
+                            col: *column,
+                            #[expect(clippy::cast_possible_truncation)]
+                            pointers_count: variable_name_text.len() as offset32,
+                        });
+                    }
+                    Type::Base(base_type)
+                } else {
+                    variable_definition.typ.clone()
+                }
+            },
+            Expression::False { .. }
+            | Expression::True { .. }
+            | Expression::I64 { .. }
+            | Expression::Ascii { .. }
+            | Expression::Str { .. }
+            | Expression::Array { .. }
+            | Expression::Prefix { .. }
+            | Expression::BooleanPrefix { .. }
+            | Expression::Binary { .. }
+            | Expression::BooleanBinary { .. }
+            | Expression::Comparison { .. }
+            | Expression::BooleanComparison { .. } => {
+                return Err(Error {
+                    kind: ErrorKind::CannotAssignToExpression,
+                    col: operator_column,
+                    pointers_count: operator.display_len(),
+                });
+            }
+        };
+
+        let assignment_node = match operator {
+            st::AssignmentOperator::Equals => {
+                if parsed_target_type != parsed_new_value_type {
+                    return Err(Error {
+                        kind: ErrorKind::RightOperandTypeMismatch {
+                            expected: parsed_target_type,
+                            actual: parsed_new_value_type,
+                        },
+                        col: operator_column,
+                        pointers_count: operator.display_len(),
+                    });
+                }
+
+                Node::Assignment {
+                    target: self.ast.new_expression(parsed_target),
+                    new_value: self.ast.new_expression(parsed_new_value)
+                }
+            }
+
+            st::AssignmentOperator::Pow
+            | st::AssignmentOperator::WrappingPow
+            | st::AssignmentOperator::SaturatingPow
+
+            | st::AssignmentOperator::Times
+            | st::AssignmentOperator::WrappingTimes
+            | st::AssignmentOperator::SaturatingTimes
+
+            | st::AssignmentOperator::Divide
+            | st::AssignmentOperator::WrappingDivide
+            | st::AssignmentOperator::SaturatingDivide
+
+            | st::AssignmentOperator::Remainder
+
+            | st::AssignmentOperator::Plus
+            | st::AssignmentOperator::WrappingPlus
+            | st::AssignmentOperator::SaturatingPlus
+
+            | st::AssignmentOperator::Minus
+            | st::AssignmentOperator::WrappingMinus
+            | st::AssignmentOperator::SaturatingMinus
+
+            | st::AssignmentOperator::LeftShift
+            | st::AssignmentOperator::WrappingLeftShift
+            | st::AssignmentOperator::SaturatingLeftShift
+
+            | st::AssignmentOperator::RightShift
+            | st::AssignmentOperator::LeftRotate
+            | st::AssignmentOperator::RightRotate
+            | st::AssignmentOperator::BitAnd
+            | st::AssignmentOperator::BitXor
+            | st::AssignmentOperator::BitOr => {
+                match parsed_target_type {
+                    Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Bool) => {}
+                    Type::Base(BaseType::Str) | Type::Array { .. } => {
+                        return Err(Error {
+                            kind: ErrorKind::LeftOperandTypeMismatch {
+                                expected: BinaryOperator::TYPE,
+                                actual: parsed_target_type,
+                            },
+                            col: operator_column,
+                            pointers_count: operator.display_len(),
+                        });
+                    }
+                }
+
+                match parsed_new_value_type {
+                    Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Bool) => {}
+                    Type::Base(BaseType::Str) | Type::Array { .. } => {
+                        return Err(Error {
+                            kind: ErrorKind::RightOperandTypeMismatch {
+                                expected: BinaryOperator::TYPE,
+                                actual: parsed_new_value_type,
+                            },
+                            col: operator_column,
+                            pointers_count: operator.display_len(),
+                        });
+                    }
+                }
+
+                match (parsed_target_type, parsed_new_value_type) {
+                    (
+                        Type::Base(BaseType::I64),
+                        Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool),
+                    ) => {}
+                    (target_type @ Type::Base(BaseType::Ascii | BaseType::Bool), _) => {
+                        return Err(Error {
+                            kind: ErrorKind::CannotModifyInplace(target_type),
+                            col: operator_column,
+                            pointers_count: operator.display_len(),
+                        });
+                    }
+                    (target_type, new_value_type) => return Err(Error {
+                        kind: ErrorKind::TypeMismatch {
+                            expected: target_type,
+                            actual: new_value_type,
+                        },
+                        col: self.first_token_column(new_value),
+                        pointers_count: self.first_token_display_len(new_value),
+                    }),
+                }
+
+                Node::AssignmentExpression {
+                    target: self.ast.new_expression(parsed_target),
+                    operator: operator.into(),
+                    operator_column,
+                    new_value: self.ast.new_expression(parsed_new_value),
+                }
+            },
+            st::AssignmentOperator::And
+            | st::AssignmentOperator::Or => {
+                match parsed_target_type {
+                    Type::Base(BaseType::Bool) => {},
+                    Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Str)
+                    | Type::Array { .. } => {
+                        return Err(Error {
+                            kind: ErrorKind::LeftOperandTypeMismatch {
+                                expected: BooleanBinaryOperator::TYPE,
+                                actual: parsed_target_type,
+                            },
+                            col: operator_column,
+                            pointers_count: operator.display_len(),
+                        });
+                    },
+                }
+
+                match parsed_new_value_type {
+                    Type::Base(BaseType::Bool) => {},
+                    Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Str)
+                    | Type::Array { .. } => {
+                        return Err(Error {
+                            kind: ErrorKind::RightOperandTypeMismatch {
+                                expected: BooleanBinaryOperator::TYPE,
+                                actual: parsed_new_value_type,
+                            },
+                            col: operator_column,
+                            pointers_count: operator.display_len(),
+                        });
+                    },
+                }
+
+                Node::BooleanAssignmentExpression {
+                    target: self.ast.new_expression(parsed_target),
+                    operator: operator.into(),
+                    operator_column,
+                    new_value: self.ast.new_expression(parsed_new_value),
+                }
+            },
+        };
+
+        return Ok(assignment_node);
+    }
+}
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum ErrorKind {
     BinaryIntegerOverflow,
@@ -2591,22 +2918,20 @@ pub enum ErrorKind {
     DecimalIntegerUnderflow,
     HexadecimalIntegerUnderflow,
 
+    MinusZeroInteger,
+
     VariableNotPreviouslyDefined,
     VariableAlreadyDefined,
     VariableInTypeAnnotation,
     TypeNotPreviouslyDefined,
     ExpectedIntegerLiteralInArrayType,
     ArrayOfNegativeLength,
-    ArrayOfZeroElements,
+    ArrayOfZeroItems,
+    NestedArrayNotSupportedYet,
     TypeInExpression,
     TypeInVariableName,
     CannotInferTypeOfVariable,
     VariablesMustBeInitialized,
-
-    MinusZeroInteger,
-
-    EmptyArray,
-    NestedArrayNotSupportedYet,
 
     CannotTakeLenOf(Type),
     CannotTakeAbsoluteValueOf(Type),
@@ -2617,7 +2942,14 @@ pub enum ErrorKind {
     CannotIndexIntoExpression,
     CannotIndexNonArrayLikeType(Type),
     ExpectedIntegerExpressionInArrayIndex,
+    LeftOperandTypeMismatch { expected: Type, actual: Type },
+    RightOperandTypeMismatch { expected: Type, actual: Type },
     TypeMismatch { expected: Type, actual: Type },
+
+    CannotAssignToExpression,
+    CannotMutateVariable,
+    CannotModifyInplace(Type),
+    CannotMutateStringCharacters,
 }
 
 impl IntoErrorInfo for ErrorKind {
@@ -2702,6 +3034,11 @@ impl IntoErrorInfo for ErrorKind {
                 .into(),
             ),
 
+            Self::MinusZeroInteger => (
+                "invalid integer literal".into(),
+                "-0 is not a valid two's complement integer".into(),
+            ),
+
             Self::VariableNotPreviouslyDefined => (
                 "variable not previously defined".into(),
                 "was not previously defined".into(),
@@ -2726,9 +3063,13 @@ impl IntoErrorInfo for ErrorKind {
                 "invalid array length".into(),
                 "array length must be greater than 1".into(),
             ),
-            Self::ArrayOfZeroElements => (
+            Self::ArrayOfZeroItems => (
                 "invalid array".into(),
                 "arrays of zero items are not allowed yet".into(),
+            ),
+            Self::NestedArrayNotSupportedYet => (
+                "invalid array item".into(),
+                "nested arrays are not supported yet".into(),
             ),
             Self::TypeInExpression => (
                 "invalid expression".into(),
@@ -2745,20 +3086,6 @@ impl IntoErrorInfo for ErrorKind {
             Self::VariablesMustBeInitialized => (
                 "invalid variable definition".into(),
                 "variables must be initialized, provide an initial value".into(),
-            ),
-
-            Self::MinusZeroInteger => (
-                "invalid integer literal".into(),
-                "-0 is not a valid two's complement integer".into(),
-            ),
-
-            Self::EmptyArray => (
-                "invalid array".into(),
-                "empty arrays are not allowed yet".into()
-            ),
-            Self::NestedArrayNotSupportedYet => (
-                "invalid array item".into(),
-                "nested arrays are not supported yet".into(),
             ),
 
             Self::CannotTakeLenOf(invalid_type) => (
@@ -2787,7 +3114,7 @@ impl IntoErrorInfo for ErrorKind {
             ),
             Self::CannotIndexIntoExpression => (
                 "invalid expression".into(),
-                "cannot index into an expression".into(),
+                "cannot index into an expression, only to variables".into(),
             ),
             Self::ExpectedIntegerExpressionInArrayIndex => (
                 "invalid expression".into(),
@@ -2797,9 +3124,34 @@ impl IntoErrorInfo for ErrorKind {
                 "invalid expression".into(),
                 format!("cannot index into a value of type '{non_indexable_type}'").into(),
             ),
+            Self::LeftOperandTypeMismatch { expected, actual } => (
+                "invalid expression".into(),
+                format!("expected expression of type '{expected}', but is preceded by '{actual}'").into(),
+            ),
+            Self::RightOperandTypeMismatch { expected, actual } => (
+                "invalid expression".into(),
+                format!("expected expression of type '{expected}', but is followed by '{actual}'").into(),
+            ),
             Self::TypeMismatch { expected, actual } => (
                 "invalid expression".into(),
                 format!("expected expression of type '{expected}', but got '{actual}'").into(),
+            ),
+
+            Self::CannotAssignToExpression => (
+                "invalid assignment".into(),
+                "cannot assign to expression".into(),
+            ),
+            Self::CannotMutateVariable => (
+                "invalid assignment".into(),
+                "cannot mutate immutable variable".into(),
+            ),
+            Self::CannotModifyInplace(typ) => (
+                "invalid variable reassignment".into(),
+                format!("cannot use inplace assignment operators on `{typ}` values").into(),
+            ),
+            Self::CannotMutateStringCharacters => (
+                "invalid variable reassignment".into(),
+                "cannot mutate string characters".into(),
             ),
         };
 

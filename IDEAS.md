@@ -697,7 +697,7 @@ let ok = match answer {
 };
 ```
 
-## 0.7.0 - Operators
+## ?.?.? - Operators
 
 >[!NOTE]
 > all of these operators could just be functions thanks to "operator" overloading with identifier
@@ -745,6 +745,73 @@ let ok = match answer {
 | **right logical shift**      |  `>>`  | `shr` / `shrx`     |
 | **right arithmetical shift** | `>>-`  | `sar` / `sarx`     |
 
+## 0.6.4 - Inverted short hand assignment operators
+
+```kay
+var a = 12;
+a = a + 21; # non short hand assignment
+# want to convert to short hand assignment
+
+# 1: starting state
+    a = a + 21; 
+# 2:   ^^^ remove the "target" left operand
+    a =+ 21;
+# 3: oh no! the `+` operator is to the right of the `=`, need to invert the positions and done
+    a += 21;
+
+# want to convert from short hand assignment
+
+# 1: starting state
+    a += 21;
+# 2:^^^ copy the variable name to the right of the `=` and add spaces
+    a += a + 21;
+# 3:  ^ remove this `+' and done
+    a = a + 21;
+```
+
+with inverted short hand assignment operators (`+=` -> `=+`):
+
+```kay
+var a = 12;
+a = a + 21; # non short hand assignment
+# want to convert to short hand assignment
+
+# 1: starting state
+    a = a + 21; 
+# 2:   ^^^ remove the "target" left operand and done
+    a =+ 21;
+
+# want to convert from short hand assignment
+
+# 1: starting state
+    a =+ 21;
+# 2:^ copy the variable name to the right of the `=` and add spaces and done
+    a = a + 21;
+```
+
+would need to report incorrect operators, since the majority of languages uses the `*op*=` form:
+
+```kay
+var a = 12;
+a += 21; # Error: this language uses =+
+```
+
+### ?.?.? - Inversion operator (flip operator)
+
+inverted short hand assignment operators would allow for the boolean inversion operator:
+
+```kay
+var b = 12;
+b = b + 21; # traditional non short hand assignment
+b += 21; # traditional short hand assignment
+b =+ 21; # revised short hand assignment
+
+var a = true;
+a = !a; # traditional non short hand inversion
+a !=; # oh no! the "short hand" inversion operator would collide with the "not equals" operator
+a =!; # revised short hand assignment would allow for the inversion operator; 
+```
+
 ## 0.7.0 - Labels on blocks
 
 ```kay
@@ -759,12 +826,6 @@ break:label 21;
 :label if condition { ... }
 :label { ... }
 :label break 21;
-
-# or
-loop condition :label { ... }
-if condition :label { ... }
-:label { ... }
-break 21 :label;
 
 # or
 loop condition :label { ... }

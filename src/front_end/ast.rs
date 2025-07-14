@@ -3083,10 +3083,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | AssignmentOp::RightShift
             | AssignmentOp::LeftRotate
             | AssignmentOp::RightRotate
-            | AssignmentOp::And
             | AssignmentOp::BitAnd
             | AssignmentOp::BitXor
-            | AssignmentOp::Or
             | AssignmentOp::BitOr => match (target_type, new_value_type) {
                 (
                     Type::Base(BaseType::I64),
@@ -3113,6 +3111,31 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     pointers_count: error_token.kind.display_len(self.tokens),
                 }),
             },
+
+            AssignmentOp::And
+            | AssignmentOp::Or => {
+                let Type::Base(BaseType::Bool) = target_type else {
+                    return Err(Error {
+                        kind: ErrorKind::VariableReassignmentTypeMismatch {
+                            expected: Type::Base(BaseType::Bool),
+                            actual: target_type,
+                        },
+                        col: op_token.col,
+                        pointers_count: op_token.kind.display_len(self.tokens),
+                    });
+                };
+                let Type::Base(BaseType::Bool) = new_value_type else {
+                    return Err(Error {
+                        kind: ErrorKind::VariableReassignmentTypeMismatch {
+                            expected: Type::Base(BaseType::Bool),
+                            actual: new_value_type,
+                        },
+                        col: op_token.col,
+                        pointers_count: op_token.kind.display_len(self.tokens),
+                    });
+                };
+                Ok(Node::Reassignment { target, op, op_col: op_token.col, new_value })
+            }
         };
     }
 }
