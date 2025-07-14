@@ -489,9 +489,9 @@ pub(crate) enum Node<'code> {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 enum ParsedNode<'code> {
     Node(Node<'code>),
-    Scope,
-    IfStatement,
-    LoopStatement,
+    ScopeEnd,
+    IfStatementEnd,
+    LoopStatementEnd,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -951,9 +951,9 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
             parser.token_index = peeked.index;
             match parser.any(peeked.token) {
                 Ok(ParsedNode::Node(node)) => parser.syntax_tree.nodes.push(node),
-                Ok(ParsedNode::Scope) => continue,
-                Ok(ParsedNode::IfStatement) => continue,
-                Ok(ParsedNode::LoopStatement) => continue,
+                Ok(ParsedNode::ScopeEnd) => continue,
+                Ok(ParsedNode::IfStatementEnd) => continue,
+                Ok(ParsedNode::LoopStatementEnd) => continue,
                 Err(err) => {
                     parser.errors.push(err);
 
@@ -1240,16 +1240,16 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
                     match self.any(peeked.token)? {
                         ParsedNode::Node(node) => self.syntax_tree.nodes.push(node),
-                        ParsedNode::Scope => continue,
-                        ParsedNode::IfStatement => continue,
-                        ParsedNode::LoopStatement => continue,
+                        ParsedNode::ScopeEnd => continue,
+                        ParsedNode::IfStatementEnd => continue,
+                        ParsedNode::LoopStatementEnd => continue,
                     };
                 }
 
-                Ok(ParsedNode::Scope)
+                Ok(ParsedNode::ScopeEnd)
             }
             TokenKind::If => match self.if_statement(token.col) {
-                Ok(()) => Ok(ParsedNode::IfStatement),
+                Ok(()) => Ok(ParsedNode::IfStatementEnd),
                 Err(err) => Err(err),
             },
 
@@ -1269,7 +1269,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 self.loop_depth -= 1;
 
                 match loop_result {
-                    Ok(()) => Ok(ParsedNode::LoopStatement),
+                    Ok(()) => Ok(ParsedNode::LoopStatementEnd),
                     Err(err) => Err(err),
                 }
             }
@@ -1281,7 +1281,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 self.loop_depth -= 1;
 
                 match loop_result {
-                    Ok(()) => Ok(ParsedNode::LoopStatement),
+                    Ok(()) => Ok(ParsedNode::LoopStatementEnd),
                     Err(err) => Err(err),
                 }
             }
@@ -2326,7 +2326,7 @@ impl Parser<'_, '_, '_, '_> {
         self.syntax_tree.nodes.push(Node::If { if_column, condition, else_ifs_count: 0 });
         let placeholder_if_node_index = self.syntax_tree.nodes.len() - 1;
 
-        let ParsedNode::Scope = self.any(after_if_condition_token)? else {
+        let ParsedNode::ScopeEnd = self.any(after_if_condition_token)? else {
             unreachable!();
         };
 
@@ -2340,7 +2340,7 @@ impl Parser<'_, '_, '_, '_> {
             let after_else_token = self.next_expected_token(Expected::OpenCurlyBracketOrIf)?;
             match after_else_token.kind {
                 TokenKind::OpenCurlyBracket => {
-                    let ParsedNode::Scope = self.any(after_else_token)? else {
+                    let ParsedNode::ScopeEnd = self.any(after_else_token)? else {
                         unreachable!();
                     };
 
@@ -2373,7 +2373,7 @@ impl Parser<'_, '_, '_, '_> {
                         condition: else_if_condition,
                     });
 
-                    let ParsedNode::Scope = self.any(after_else_if_condition_token)? else {
+                    let ParsedNode::ScopeEnd = self.any(after_else_if_condition_token)? else {
                         unreachable!();
                     };
                 }
@@ -2455,7 +2455,7 @@ impl Parser<'_, '_, '_, '_> {
 
         self.syntax_tree.nodes.push(Node::DoLoop { do_column, loop_column, condition });
 
-        let ParsedNode::Scope = self.any(after_condition_token)? else {
+        let ParsedNode::ScopeEnd = self.any(after_condition_token)? else {
             unreachable!();
         };
         return Ok(());
@@ -2477,7 +2477,7 @@ impl Parser<'_, '_, '_, '_> {
 
         self.syntax_tree.nodes.push(Node::Loop { loop_column, condition });
 
-        let ParsedNode::Scope = self.any(after_condition_token)? else {
+        let ParsedNode::ScopeEnd = self.any(after_condition_token)? else {
             unreachable!();
         };
         return Ok(());
@@ -2526,7 +2526,7 @@ impl Display for Expected {
     }
 }
 
-// TODO(stefano): add syntax errors such as if not followed by an expression
+// TODO(stefano): add syntax errors such as "if" not followed by an expression
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum ErrorKind {
     PrematureEndOfFile(Expected),

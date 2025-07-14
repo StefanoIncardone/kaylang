@@ -8,6 +8,8 @@ use super::{
     Error, ErrorInfo, IntoErrorInfo,
 };
 use core::{fmt::Display, marker::PhantomData};
+extern crate alloc;
+use alloc::borrow::Cow;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
@@ -872,9 +874,9 @@ pub(crate) enum Node<'code> {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 enum ParsedNode<'code> {
     Node(Node<'code>),
-    Scope,
-    IfStatement,
-    LoopStatement,
+    ScopeEnd,
+    IfStatementEnd,
+    LoopStatementEnd,
 }
 
 pub(crate) type ArrayItem<'code> = ExpressionIndex<'code>;
@@ -1236,9 +1238,9 @@ impl<'syntax_tree, 'tokens: 'syntax_tree, 'src: 'tokens, 'code: 'src, 'path: 'co
             parser.node_index = peeked.index;
             match parser.any(peeked.node) {
                 Ok(ParsedNode::Node(node)) => parser.ast.nodes.push(node),
-                Ok(ParsedNode::Scope) => continue,
-                Ok(ParsedNode::IfStatement) => continue,
-                Ok(ParsedNode::LoopStatement) => continue,
+                Ok(ParsedNode::ScopeEnd) => continue,
+                Ok(ParsedNode::IfStatementEnd) => continue,
+                Ok(ParsedNode::LoopStatementEnd) => continue,
                 Err(err) => {
                     parser.errors.push(err);
 
@@ -1326,11 +1328,48 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 Ok(ParsedNode::Node(Node::VarVariableDefinition { variable }))
             }
 
-            st::Node::Scope {
-                open_curly_bracket_column,
-                raw_nodes_in_scope_count,
-                close_curly_bracket_column,
-            } => unimplemented!(),
+            st::Node::Scope { open_curly_bracket_column, raw_nodes_in_scope_count, .. } => {
+                let current_scope_index = self.scope;
+                self.scope = ScopeIndex::new(self.scopes.len());
+                self.scopes.push(Scope {
+                    parent: current_scope_index,
+                    types: Vec::new(),
+                    let_variables: Vec::new(),
+                    var_variables: Vec::new(),
+                });
+
+                let placeholder_scope = Node::Scope { raw_nodes_in_scope_count: 0 };
+                let placeholder_scope_node_index = NodeIndex::new(self.ast.nodes.len());
+                self.ast.nodes.push(placeholder_scope);
+
+                let raw_nodes_in_scope_end = self.node_index.0 as usize + *raw_nodes_in_scope_count as usize;
+                while let Some(peeked) = self.peek_next_node() {
+                    if self.node_index.0 as usize >= raw_nodes_in_scope_end {
+                        break;
+                    }
+                    self.node_index = peeked.index;
+
+                    match self.any(peeked.node)? {
+                        ParsedNode::Node(inner_node) => self.ast.nodes.push(inner_node),
+                        ParsedNode::ScopeEnd => break,
+                        ParsedNode::IfStatementEnd => continue,
+                        ParsedNode::LoopStatementEnd => continue,
+                    };
+                }
+
+                let last_scope_node_index = NodeIndex::new(self.ast.nodes.len() - 1);
+                let Node::Scope {
+                    raw_nodes_in_scope_count: placeholder_raw_nodes_in_scope_count,
+                } = &mut self.ast.nodes[placeholder_scope_node_index]
+                else {
+                    self.invalid_scope_index(*open_curly_bracket_column);
+                };
+
+                *placeholder_raw_nodes_in_scope_count = last_scope_node_index.0 - placeholder_scope_node_index.0;
+
+                self.scope = current_scope_index;
+                Ok(ParsedNode::ScopeEnd)
+            }
 
             st::Node::If { if_column, condition, else_ifs_count } => unimplemented!(),
             st::Node::IfTrailingElse { if_column, condition, else_ifs_count, else_column } => unimplemented!(),
@@ -1348,23 +1387,52 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 impl<'code> Parser<'_, '_, '_, 'code, '_> {
     #[expect(clippy::panic)]
     #[track_caller]
-    fn stray_semicolon(&self, semicolon_colon: offset32) -> ! {
-        let DisplayPosition { line, column, display_column } = self.src.display_position(semicolon_colon);
+    fn invalid_node(
+        &self,
+        absolute_column: offset32,
+        pointers_count: offset32,
+        error_message: Cow<'static, str>,
+        error_cause_message: Cow<'static, str>,
+    ) -> ! {
+        let DisplayPosition { line, column, display_column } = self.src.display_position(absolute_column);
         let line_span = self.src.lines[line as usize - 1];
         let line_text = &self.src.code()[line_span.start as usize..line_span.end as usize];
 
         let error = ErrorDisplay {
-            error_message: "unexpected".into(),
+            error_message,
             file: self.src.path(),
             line,
             column,
-            absolute_column: semicolon_colon,
+            absolute_column,
             line_text,
-            pointers_count: 1,
+            pointers_count,
             pointers_offset: display_column,
-            error_cause_message: "should have been skipped in the iteration of tokens".into(),
+            error_cause_message,
         };
         panic!("{error}\n");
+    }
+
+    #[track_caller]
+    fn stray_semicolon(
+        &self,
+        semicolon_colon: offset32,
+    ) -> ! {
+        self.invalid_node(
+            semicolon_colon,
+            1,
+            "unexpected".into(),
+            "should have been skipped in the iteration of nodes".into(),
+        );
+    }
+
+    #[track_caller]
+    fn invalid_scope_index(&self, open_curly_bracket_column: offset32) -> ! {
+        self.invalid_node(
+            open_curly_bracket_column,
+            1,
+            "invalid scope index".into(),
+            "should have been caught during syntax tree parsing".into(),
+        );
     }
 }
 
