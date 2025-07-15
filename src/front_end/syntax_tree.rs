@@ -486,8 +486,6 @@ pub(crate) enum Node<'code> {
 enum ParsedNode<'code> {
     Node(Node<'code>),
     ScopeEnd,
-    // REMOVE(stefano): ScopeEnd is sufficient
-    LoopStatementEnd,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -938,7 +936,6 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
             match parser.any(peeked.token) {
                 Ok(ParsedNode::Node(node)) => parser.syntax_tree.nodes.push(node),
                 Ok(ParsedNode::ScopeEnd) => continue,
-                Ok(ParsedNode::LoopStatementEnd) => continue,
                 Err(err) => {
                     parser.errors.push(err);
 
@@ -946,7 +943,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                     parser.token_index = TokenIndex::new(parser.tokens.tokens.len());
                     break;
                 }
-            };
+            }
         }
 
         return if parser.errors.is_empty() { Ok(parser.syntax_tree) } else { Err(parser.errors) };
@@ -1226,7 +1223,6 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     match self.any(peeked.token)? {
                         ParsedNode::Node(node) => self.syntax_tree.nodes.push(node),
                         ParsedNode::ScopeEnd => continue,
-                        ParsedNode::LoopStatementEnd => continue,
                     };
                 }
 
@@ -1249,10 +1245,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let loop_result = self.do_loop_statement(do_column, loop_token.col);
                 self.loop_depth -= 1;
 
-                match loop_result {
-                    Ok(()) => Ok(ParsedNode::LoopStatementEnd),
-                    Err(err) => Err(err),
-                }
+                loop_result
             }
             TokenKind::Loop => {
                 let loop_token = token;
@@ -1261,10 +1254,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let loop_result = self.loop_statement(loop_token.col);
                 self.loop_depth -= 1;
 
-                match loop_result {
-                    Ok(()) => Ok(ParsedNode::LoopStatementEnd),
-                    Err(err) => Err(err),
-                }
+                loop_result
             }
             TokenKind::Break => {
                 let semicolon_column = self.semicolon()?;
@@ -2405,12 +2395,11 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Ok(ParsedNode::ScopeEnd);
     }
 
-    // TODO(stefano): return ParsedNode::ScopeEnd and removed ParsedNode::LoopStatementEnd
     fn do_loop_statement(
         &mut self,
         do_column: offset32,
         loop_column: offset32,
-    ) -> Result<(), Error<ErrorKind>> {
+    ) -> Result<ParsedNode<'code>, Error<ErrorKind>> {
         let start_of_condition_token = self.next_expected_token(Expected::Expression)?;
         let condition = self.expression(start_of_condition_token)?;
         let end_of_condition_token = self.peek_previous_token();
@@ -2429,10 +2418,10 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         let ParsedNode::ScopeEnd = self.any(after_condition_token)? else {
             unreachable!();
         };
-        return Ok(());
+        return Ok(ParsedNode::ScopeEnd);
     }
 
-    fn loop_statement(&mut self, loop_column: offset32) -> Result<(), Error<ErrorKind>> {
+    fn loop_statement(&mut self, loop_column: offset32) -> Result<ParsedNode<'code>, Error<ErrorKind>> {
         let start_of_condition_token = self.next_expected_token(Expected::Expression)?;
         let condition = self.expression(start_of_condition_token)?;
         let end_of_condition_token = self.peek_previous_token();
@@ -2451,7 +2440,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         let ParsedNode::ScopeEnd = self.any(after_condition_token)? else {
             unreachable!();
         };
-        return Ok(());
+        return Ok(ParsedNode::ScopeEnd);
     }
 }
 

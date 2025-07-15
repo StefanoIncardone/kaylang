@@ -871,7 +871,6 @@ pub(crate) enum Node<'code> {
 enum ParsedNode<'code> {
     Node(Node<'code>),
     ScopeEnd,
-    LoopStatementEnd,
 }
 
 pub(crate) type ArrayItem<'code> = ExpressionIndex<'code>;
@@ -1222,7 +1221,6 @@ impl<'syntax_tree, 'tokens: 'syntax_tree, 'src: 'tokens, 'code: 'src, 'path: 'co
             match parser.any(peeked.node) {
                 Ok(ParsedNode::Node(node)) => parser.ast.nodes.push(node),
                 Ok(ParsedNode::ScopeEnd) => continue,
-                Ok(ParsedNode::LoopStatementEnd) => continue,
                 Err(err) => {
                     parser.errors.push(err);
 
@@ -1333,7 +1331,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     match self.any(peeked.node)? {
                         ParsedNode::Node(inner_node) => self.ast.nodes.push(inner_node),
                         ParsedNode::ScopeEnd => continue,
-                        ParsedNode::LoopStatementEnd => continue,
                     };
                 }
 
@@ -1362,15 +1359,25 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 let parsed_condition_index = self.ast.new_expression(parsed_condition);
                 self.ast.nodes.push(Node::ElseIf { condition: parsed_condition_index });
                 self.scope()
-            },
+            }
             st::Node::Else { .. } => {
                 self.ast.nodes.push(Node::Else);
                 self.scope()
+            }
+            st::Node::Loop { loop_column, condition } => {
+                let parsed_condition = self.loop_condition(*loop_column, *condition)?;
+                let parsed_condition_index = self.ast.new_expression(parsed_condition);
+                self.ast.nodes.push(Node::Loop { condition: parsed_condition_index });
+                self.scope()
+            }
+            st::Node::DoLoop { loop_column, condition, .. } => {
+                let parsed_condition = self.loop_condition(*loop_column, *condition)?;
+                let parsed_condition_index = self.ast.new_expression(parsed_condition);
+                self.ast.nodes.push(Node::DoLoop { condition: parsed_condition_index });
+                self.scope()
             },
-            st::Node::Loop { loop_column, condition } => unimplemented!(),
-            st::Node::DoLoop { do_column, loop_column, condition } => unimplemented!(),
-            st::Node::Break { break_column, semicolon_column } => unimplemented!(),
-            st::Node::Continue { continue_column, semicolon_column } => unimplemented!(),
+            st::Node::Break { .. } => Ok(ParsedNode::Node(Node::Break)),
+            st::Node::Continue { .. } => Ok(ParsedNode::Node(Node::Continue)),
 
             st::Node::Semicolon { column } => self.stray_semicolon(*column),
         };
@@ -2994,6 +3001,26 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 },
                 col: if_column,
                 pointers_count: TokenKind::If.display_len(self.tokens),
+            });
+        };
+        return Ok(condition_expression);
+    }
+
+    fn loop_condition(
+        &mut self,
+        loop_column: offset32,
+        condition: st::ExpressionIndex<'code>,
+    ) -> Result<Expression<'code>, Error<ErrorKind>> {
+        let condition_expression = self.expression(condition, None)?;
+        let condition_expression_type = condition_expression.typ(&self.ast);
+        let Type::Base(BaseType::Bool) = condition_expression_type else {
+            return Err(Error {
+                kind: ErrorKind::RightOperandTypeMismatch {
+                    expected: Type::Base(BaseType::Bool),
+                    actual: condition_expression_type,
+                },
+                col: loop_column,
+                pointers_count: TokenKind::Loop.display_len(self.tokens),
             });
         };
         return Ok(condition_expression);
