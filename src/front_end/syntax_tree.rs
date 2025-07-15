@@ -453,18 +453,14 @@ pub(crate) enum Node<'code> {
     If {
         if_column: offset32,
         condition: ExpressionIndex<'code>,
-        else_ifs_count: offset32,
-    },
-    IfTrailingElse {
-        if_column: offset32,
-        condition: ExpressionIndex<'code>,
-        else_ifs_count: offset32,
-        else_column: offset32,
     },
     ElseIf {
         else_column: offset32,
         if_column: offset32,
         condition: ExpressionIndex<'code>,
+    },
+    Else {
+        else_column: offset32,
     },
 
     Loop {
@@ -490,7 +486,7 @@ pub(crate) enum Node<'code> {
 enum ParsedNode<'code> {
     Node(Node<'code>),
     ScopeEnd,
-    IfStatementEnd,
+    // REMOVE(stefano): ScopeEnd is sufficient
     LoopStatementEnd,
 }
 
@@ -643,27 +639,17 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 writeln!(f, "{:>scope_indent$}CloseCurlyBracket: {close_curly_bracket_column} = }}", "")
             }
 
-            Node::If { if_column, condition, mut else_ifs_count } => {
-                self.info_if(f, node_index, indent, *if_column, *condition)?;
-                while else_ifs_count > 0 {
-                    else_ifs_count -= 1;
-                    self.info_node(f, node_index, indent)?;
-                }
-                Ok(())
-            }
-            Node::IfTrailingElse { if_column, condition, mut else_ifs_count, else_column } => {
-                self.info_if(f, node_index, indent, *if_column, *condition)?;
-                while else_ifs_count > 0 {
-                    else_ifs_count -= 1;
-                    self.info_node(f, node_index, indent)?;
-                }
-                let else_indent = indent + Self::INDENT_INCREMENT;
-                writeln!(f, "{:>indent$}Else: {else_column} = else", "")?;
-                self.info_node(f, node_index, else_indent)
+            Node::If { if_column, condition } => {
+                self.info_if(f, node_index, indent, *if_column, *condition)
             }
             Node::ElseIf { if_column, condition, else_column } => {
                 writeln!(f, "{:>indent$}Else: {else_column} = else", "")?;
                 self.info_if(f, node_index, indent, *if_column, *condition)
+            }
+            Node::Else { else_column } => {
+                writeln!(f, "{:>indent$}Else: {else_column} = else", "")?;
+                let else_indent = indent + Self::INDENT_INCREMENT;
+                self.info_node(f, node_index, else_indent)
             }
 
             Node::Loop { loop_column, condition } => {
@@ -952,7 +938,6 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
             match parser.any(peeked.token) {
                 Ok(ParsedNode::Node(node)) => parser.syntax_tree.nodes.push(node),
                 Ok(ParsedNode::ScopeEnd) => continue,
-                Ok(ParsedNode::IfStatementEnd) => continue,
                 Ok(ParsedNode::LoopStatementEnd) => continue,
                 Err(err) => {
                     parser.errors.push(err);
@@ -1226,7 +1211,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         let Node::Scope {
                             raw_nodes_in_scope_count,
                             close_curly_bracket_column,
-                            open_curly_bracket_column: _open_curly_bracket_column,
+                            ..
                         } = &mut self.syntax_tree.nodes[placeholder_scope_node_index]
                         else {
                             self.unbalanced_bracket(token);
@@ -1241,17 +1226,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     match self.any(peeked.token)? {
                         ParsedNode::Node(node) => self.syntax_tree.nodes.push(node),
                         ParsedNode::ScopeEnd => continue,
-                        ParsedNode::IfStatementEnd => continue,
                         ParsedNode::LoopStatementEnd => continue,
                     };
                 }
 
                 Ok(ParsedNode::ScopeEnd)
             }
-            TokenKind::If => match self.if_statement(token.col) {
-                Ok(()) => Ok(ParsedNode::IfStatementEnd),
-                Err(err) => Err(err),
-            },
+            TokenKind::If => self.if_statement(token.col),
 
             TokenKind::Do => {
                 let do_column = token.col;
@@ -2307,8 +2288,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 }
 
 // control flow statements
-impl Parser<'_, '_, '_, '_> {
-    fn if_statement(&mut self, if_column: offset32) -> Result<(), Error<ErrorKind>> {
+impl<'code> Parser<'_, '_, 'code, '_> {
+    fn if_statement(&mut self, if_column: offset32) -> Result<ParsedNode<'code>, Error<ErrorKind>> {
         let start_of_condition_token = self.next_expected_token(Expected::Expression)?;
         let condition = self.expression(start_of_condition_token)?;
         let end_of_condition_token = self.peek_previous_token();
@@ -2322,9 +2303,7 @@ impl Parser<'_, '_, '_, '_> {
             });
         };
 
-        let mut placeholder_if_else_ifs_count = 0;
-        self.syntax_tree.nodes.push(Node::If { if_column, condition, else_ifs_count: 0 });
-        let placeholder_if_node_index = self.syntax_tree.nodes.len() - 1;
+        self.syntax_tree.nodes.push(Node::If { if_column, condition });
 
         let ParsedNode::ScopeEnd = self.any(after_if_condition_token)? else {
             unreachable!();
@@ -2340,17 +2319,11 @@ impl Parser<'_, '_, '_, '_> {
             let after_else_token = self.next_expected_token(Expected::OpenCurlyBracketOrIf)?;
             match after_else_token.kind {
                 TokenKind::OpenCurlyBracket => {
+                    self.syntax_tree.nodes.push(Node::Else { else_column });
                     let ParsedNode::ScopeEnd = self.any(after_else_token)? else {
                         unreachable!();
                     };
-
-                    self.syntax_tree.nodes[placeholder_if_node_index] = Node::IfTrailingElse {
-                        if_column,
-                        condition,
-                        else_ifs_count: placeholder_if_else_ifs_count,
-                        else_column,
-                    };
-                    return Ok(());
+                    break;
                 }
                 TokenKind::If => {
                     let start_of_else_if_condition_token = self.next_expected_token(Expected::Expression)?;
@@ -2366,7 +2339,6 @@ impl Parser<'_, '_, '_, '_> {
                         });
                     };
 
-                    placeholder_if_else_ifs_count += 1;
                     self.syntax_tree.nodes.push(Node::ElseIf {
                         else_column,
                         if_column: after_else_token.col,
@@ -2430,11 +2402,10 @@ impl Parser<'_, '_, '_, '_> {
             }
         }
 
-        self.syntax_tree.nodes[placeholder_if_node_index] =
-            Node::If { if_column, condition, else_ifs_count: placeholder_if_else_ifs_count };
-        return Ok(());
+        return Ok(ParsedNode::ScopeEnd);
     }
 
+    // TODO(stefano): return ParsedNode::ScopeEnd and removed ParsedNode::LoopStatementEnd
     fn do_loop_statement(
         &mut self,
         do_column: offset32,

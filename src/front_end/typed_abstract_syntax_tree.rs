@@ -851,15 +851,11 @@ pub(crate) enum Node<'code> {
 
     If {
         condition: ExpressionIndex<'code>,
-        else_ifs_count: offset32,
-    },
-    IfTrailingElse {
-        condition: ExpressionIndex<'code>,
-        else_ifs_count: offset32,
     },
     ElseIf {
         condition: ExpressionIndex<'code>,
     },
+    Else,
 
     Loop {
         condition: ExpressionIndex<'code>,
@@ -875,7 +871,6 @@ pub(crate) enum Node<'code> {
 enum ParsedNode<'code> {
     Node(Node<'code>),
     ScopeEnd,
-    IfStatementEnd,
     LoopStatementEnd,
 }
 
@@ -1004,36 +999,24 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
             Node::Scope { raw_nodes_in_scope_count } => {
                 writeln!(f, "{:>indent$}Scope", "")?;
                 let scope_indent = indent + Self::INDENT_INCREMENT;
-                writeln!(f, "{:>scope_indent$}OpenCurlyBracket = {{", "")?;
-
                 let after_end_scope_node_index = node_index.0 + raw_nodes_in_scope_count;
                 while node_index.0 < after_end_scope_node_index {
                     self.info_node(f, node_index, scope_indent)?;
                 }
-                writeln!(f, "{:>scope_indent$}CloseCurlyBracket = }}", "")
-            }
-
-            Node::If { condition, mut else_ifs_count } => {
-                self.info_if(f, node_index, indent, *condition)?;
-                while else_ifs_count > 0 {
-                    else_ifs_count -= 1;
-                    self.info_node(f, node_index, indent)?;
-                }
                 Ok(())
             }
-            Node::IfTrailingElse { condition, mut else_ifs_count } => {
-                self.info_if(f, node_index, indent, *condition)?;
-                while else_ifs_count > 0 {
-                    else_ifs_count -= 1;
-                    self.info_node(f, node_index, indent)?;
-                }
-                let else_indent = indent + Self::INDENT_INCREMENT;
-                writeln!(f, "{:>indent$}Else = else", "")?;
-                self.info_node(f, node_index, else_indent)
+
+            Node::If { condition } => {
+                self.info_if(f, node_index, indent, *condition)
             }
             Node::ElseIf { condition } => {
                 writeln!(f, "{:>indent$}Else = else", "")?;
                 self.info_if(f, node_index, indent, *condition)
+            }
+            Node::Else => {
+                writeln!(f, "{:>indent$}Else = else", "")?;
+                let else_indent = indent + Self::INDENT_INCREMENT;
+                self.info_node(f, node_index, else_indent)
             }
 
             Node::Loop { condition } => {
@@ -1239,7 +1222,6 @@ impl<'syntax_tree, 'tokens: 'syntax_tree, 'src: 'tokens, 'code: 'src, 'path: 'co
             match parser.any(peeked.node) {
                 Ok(ParsedNode::Node(node)) => parser.ast.nodes.push(node),
                 Ok(ParsedNode::ScopeEnd) => continue,
-                Ok(ParsedNode::IfStatementEnd) => continue,
                 Ok(ParsedNode::LoopStatementEnd) => continue,
                 Err(err) => {
                     parser.errors.push(err);
@@ -1342,17 +1324,15 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 let placeholder_scope_node_index = NodeIndex::new(self.ast.nodes.len());
                 self.ast.nodes.push(placeholder_scope);
 
-                let raw_nodes_in_scope_end = self.node_index.0 as usize + *raw_nodes_in_scope_count as usize;
-                while let Some(peeked) = self.peek_next_node() {
-                    if self.node_index.0 as usize >= raw_nodes_in_scope_end {
-                        break;
-                    }
+                let raw_nodes_in_scope_end = self.node_index.0 + *raw_nodes_in_scope_count;
+                while self.node_index.0 < raw_nodes_in_scope_end {
+                    let Some(peeked) = self.peek_next_node() else {
+                        unreachable!();
+                    };
                     self.node_index = peeked.index;
-
                     match self.any(peeked.node)? {
                         ParsedNode::Node(inner_node) => self.ast.nodes.push(inner_node),
-                        ParsedNode::ScopeEnd => break,
-                        ParsedNode::IfStatementEnd => continue,
+                        ParsedNode::ScopeEnd => continue,
                         ParsedNode::LoopStatementEnd => continue,
                     };
                 }
@@ -1371,9 +1351,22 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 Ok(ParsedNode::ScopeEnd)
             }
 
-            st::Node::If { if_column, condition, else_ifs_count } => unimplemented!(),
-            st::Node::IfTrailingElse { if_column, condition, else_ifs_count, else_column } => unimplemented!(),
-            st::Node::ElseIf { else_column, if_column, condition } => unimplemented!(),
+            st::Node::If { if_column, condition } => {
+                let parsed_condition = self.if_condition(*if_column, *condition)?;
+                let parsed_condition_index = self.ast.new_expression(parsed_condition);
+                self.ast.nodes.push(Node::If { condition: parsed_condition_index });
+                self.scope()
+            }
+            st::Node::ElseIf { if_column, condition, .. } => {
+                let parsed_condition = self.if_condition(*if_column, *condition)?;
+                let parsed_condition_index = self.ast.new_expression(parsed_condition);
+                self.ast.nodes.push(Node::ElseIf { condition: parsed_condition_index });
+                self.scope()
+            },
+            st::Node::Else { .. } => {
+                self.ast.nodes.push(Node::Else);
+                self.scope()
+            },
             st::Node::Loop { loop_column, condition } => unimplemented!(),
             st::Node::DoLoop { do_column, loop_column, condition } => unimplemented!(),
             st::Node::Break { break_column, semicolon_column } => unimplemented!(),
@@ -1381,6 +1374,17 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
             st::Node::Semicolon { column } => self.stray_semicolon(*column),
         };
+    }
+
+    fn scope(&mut self) -> Result<ParsedNode<'code>, Error<ErrorKind>> {
+        let Some(peeked) = self.peek_next_node() else{
+            unreachable!();
+        };
+        self.node_index = peeked.index;
+        let ParsedNode::ScopeEnd = self.any(peeked.node)? else {
+            unreachable!();
+        };
+        return Ok(ParsedNode::ScopeEnd);
     }
 }
 
@@ -2971,6 +2975,28 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         };
 
         return Ok(assignment_node);
+    }
+}
+
+impl<'code> Parser<'_, '_, '_, 'code, '_> {
+    fn if_condition(
+        &mut self,
+        if_column: offset32,
+        condition: st::ExpressionIndex<'code>,
+    ) -> Result<Expression<'code>, Error<ErrorKind>> {
+        let condition_expression = self.expression(condition, None)?;
+        let condition_expression_type = condition_expression.typ(&self.ast);
+        let Type::Base(BaseType::Bool) = condition_expression_type else {
+            return Err(Error {
+                kind: ErrorKind::RightOperandTypeMismatch {
+                    expected: Type::Base(BaseType::Bool),
+                    actual: condition_expression_type,
+                },
+                col: if_column,
+                pointers_count: TokenKind::If.display_len(self.tokens),
+            });
+        };
+        return Ok(condition_expression);
     }
 }
 
