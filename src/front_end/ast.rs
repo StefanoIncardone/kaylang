@@ -1,3 +1,4 @@
+// IDEA(stefano): add error for boolean conditions with `!=`, stating that this language uses `!==`
 // IDEA(stefano): fuse tokenization and parsing, making the tokenizer a generator of tokens
 // TODO(stefano): multidimensional arrays
 
@@ -344,7 +345,7 @@ impl BaseTypeOf for BooleanBinaryOp {
 pub(crate) enum ComparisonOp {
     Compare = Op::Compare as u8,
     EqualsEquals = Op::EqualsEquals as u8,
-    NotEquals = Op::NotEquals as u8,
+    NotEqualsEquals = Op::NotEqualsEquals as u8,
     Greater = Op::Greater as u8,
     GreaterOrEquals = Op::GreaterOrEquals as u8,
     Less = Op::Less as u8,
@@ -386,7 +387,7 @@ impl BaseTypeOf for ComparisonOp {
         return match self {
             Self::Compare => BaseType::I64,
             Self::EqualsEquals
-            | Self::NotEquals
+            | Self::NotEqualsEquals
             | Self::Greater
             | Self::GreaterOrEquals
             | Self::Less
@@ -456,6 +457,44 @@ impl Into<Op> for AssignmentOp {
 }
 
 impl Display for AssignmentOp {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let op: Op = (*self).into();
+        return write!(f, "{op}");
+    }
+}
+
+#[expect(dead_code)]
+#[rustfmt::skip]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[repr(u8)]
+pub(crate) enum PrefixAssignmentOp {
+    Not = Op::NotEquals as u8,
+
+    Plus           = Op::PlusEquals as u8,
+    WrappingPlus   = Op::WrappingPlusEquals as u8,
+    SaturatingPlus = Op::SaturatingPlusEquals as u8,
+
+    Minus           = Op::MinusEquals as u8,
+    WrappingMinus   = Op::WrappingMinusEquals as u8,
+    SaturatingMinus = Op::SaturatingMinusEquals as u8,
+}
+
+impl Into<PrefixAssignmentOp> for Op {
+    #[inline(always)]
+    fn into(self) -> PrefixAssignmentOp {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<Op> for PrefixAssignmentOp {
+    #[inline(always)]
+    fn into(self) -> Op {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Display for PrefixAssignmentOp {
     #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -655,7 +694,7 @@ impl<'ast, 'code: 'ast> ExpressionDisplay<'ast, 'code> {
             }
             Expression::Variable { variable_index, .. } => {
                 let variable = &self.ast.variables[*variable_index as usize];
-                let variable_name_str = unsafe { core::str::from_utf8_unchecked(variable.name) };
+                let variable_name_str = unsafe { core::str::from_utf8_unchecked(variable.name.as_bytes()) };
                 write!(f, "{variable_name_str}")
             }
         };
@@ -700,6 +739,7 @@ pub(crate) enum Node {
 
     Definition { var_index: VariableIndex },
     Reassignment { target: Expression, op: AssignmentOp, op_col: offset32, new_value: Expression },
+    PrefixReassignment { target: Expression, op: PrefixAssignmentOp, op_col: offset32 },
 
     Scope { index: ScopeIndex },
 
@@ -718,7 +758,7 @@ pub(crate) struct Scope {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct Variable<'code> {
-    pub(crate) name: &'code [ascii],
+    pub(crate) name: &'code str,
     pub(crate) value: Expression,
 }
 
@@ -857,6 +897,29 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
     fn statement(&mut self, token: Token<'code>) -> Result<Node, Error<ErrorKind>> {
         return match token.kind {
+            TokenKind::Op(
+                op @ (Op::NotEquals
+                | Op::PlusEquals
+                | Op::WrappingPlusEquals
+                | Op::SaturatingPlusEquals
+                | Op::MinusEquals
+                | Op::WrappingMinusEquals
+                | Op::SaturatingMinusEquals),
+            ) => {
+                let _ = self.next_token_bounded(Expected::Expression)?;
+                let expression = self.expression()?;
+                let assignment_op: PrefixAssignmentOp = op.into();
+                let reassignment = self.prefix_reassignment(
+                    expression,
+                    token,
+                    assignment_op,
+                    token,
+                )?;
+
+                self.semicolon()?;
+                Ok(reassignment)
+            }
+
             TokenKind::False
             | TokenKind::True
             | TokenKind::BinaryInteger(_)
@@ -1373,288 +1436,316 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         };
     }
 
-    #[expect(clippy::panic, clippy::panic_in_result_fn)]
+    const fn parse_positive_binary_i64(literal_str: &'code str) -> Option<i64> {
+        const BASE: Base = Base::Binary;
+        let mut integer: i64 = 0;
+        let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
+
+        let literal = literal_str.as_bytes();
+        while digit_index < literal.len() {
+            let ascii_digit = literal[digit_index];
+            digit_index += 1;
+            if ascii_digit == b'_' {
+                continue;
+            }
+
+            let digit = ascii_digit - b'0';
+            debug_assert!(digit < BASE as u8, "invalid binary digit");
+            integer = match integer.checked_mul(BASE as i64) {
+                Some(integer_) => integer_,
+                None => return None,
+            };
+            integer = match integer.checked_add(digit as i64) {
+                Some(integer_) => integer_,
+                None => return None,
+            };
+        }
+        return Some(integer);
+    }
+
+    const fn parse_positive_octal_i64(literal_str: &'code str) -> Option<i64> {
+        const BASE: Base = Base::Octal;
+        let mut integer: i64 = 0;
+        let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
+
+        let literal = literal_str.as_bytes();
+        while digit_index < literal.len() {
+            let ascii_digit = literal[digit_index];
+            digit_index += 1;
+            if ascii_digit == b'_' {
+                continue;
+            }
+
+            let digit = ascii_digit - b'0';
+            debug_assert!(digit < BASE as u8, "invalid octal digit");
+            integer = match integer.checked_mul(BASE as i64) {
+                Some(integer_) => integer_,
+                None => return None,
+            };
+            integer = match integer.checked_add(digit as i64) {
+                Some(integer_) => integer_,
+                None => return None,
+            };
+        }
+        return Some(integer);
+    }
+
+    const fn parse_positive_decimal_i64(literal_str: &'code str) -> Option<i64> {
+        const BASE: Base = Base::Decimal;
+        let mut integer: i64 = 0;
+        let mut digit_index = 0;
+
+        let literal = literal_str.as_bytes();
+        while digit_index < literal.len() {
+            let ascii_digit = literal[digit_index];
+            digit_index += 1;
+            if ascii_digit == b'_' {
+                continue;
+            }
+
+            let digit = ascii_digit - b'0';
+            debug_assert!(digit < BASE as u8, "invalid decimal digit");
+            integer = match integer.checked_mul(BASE as i64) {
+                Some(integer_) => integer_,
+                None => return None,
+            };
+            integer = match integer.checked_add(digit as i64) {
+                Some(integer_) => integer_,
+                None => return None,
+            };
+        }
+        return Some(integer);
+    }
+
+    const fn parse_positive_decimal_prefix_i64(literal_str: &'code str) -> Option<i64> {
+        const BASE: Base = Base::Decimal;
+        let mut integer: i64 = 0;
+        let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
+
+        let literal = literal_str.as_bytes();
+        while digit_index < literal.len() {
+            let ascii_digit = literal[digit_index];
+            digit_index += 1;
+            if ascii_digit == b'_' {
+                continue;
+            }
+
+            let digit = ascii_digit - b'0';
+            debug_assert!(digit < BASE as u8, "invalid decimal digit");
+            integer = match integer.checked_mul(BASE as i64) {
+                Some(integer_) => integer_,
+                None => return None,
+            };
+            integer = match integer.checked_add(digit as i64) {
+                Some(integer_) => integer_,
+                None => return None,
+            };
+        }
+        return Some(integer);
+    }
+
+    const fn parse_positive_hexadecimal_i64(literal_str: &'code str) -> Option<i64> {
+        const BASE: Base = Base::Hexadecimal;
+        let mut integer: i64 = 0;
+        let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
+
+        let literal = literal_str.as_bytes();
+        while digit_index < literal.len() {
+            let ascii_digit = literal[digit_index];
+            digit_index += 1;
+            if ascii_digit == b'_' {
+                continue;
+            }
+
+            let digit = match ascii_digit {
+                number @ b'0'..=b'9' => number - b'0',
+                uppercase_letter @ b'A'..=b'F' => uppercase_letter - b'A' + 10,
+                lowercase_letter @ b'a'..=b'f' => lowercase_letter - b'a' + 10,
+                _ => panic!("invalid hexadecimal digit"),
+            };
+            integer = match integer.checked_mul(BASE as i64) {
+                Some(integer_) => integer_,
+                None => return None,
+            };
+            integer = match integer.checked_add(digit as i64) {
+                Some(integer_) => integer_,
+                None => return None,
+            };
+        }
+        return Some(integer);
+    }
+
+    #[expect(clippy::single_call_fn)]
+    const fn parse_negative_binary_i64(literal_str: &'code str) -> Option<i64> {
+        const BASE: Base = Base::Binary;
+        let mut integer: i64 = 0;
+        let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
+
+        let literal = literal_str.as_bytes();
+        while digit_index < literal.len() {
+            let ascii_digit = literal[digit_index];
+            digit_index += 1;
+            if ascii_digit == b'_' {
+                continue;
+            }
+
+            let digit = ascii_digit - b'0';
+            debug_assert!(digit < BASE as u8, "invalid binary digit");
+            integer = match integer.checked_mul(BASE as i64) {
+                Some(integer_) => integer_,
+                None => return None,
+            };
+            integer = match integer.checked_sub(digit as i64) {
+                Some(integer_) => integer_,
+                None => return None,
+            };
+        }
+        return Some(integer);
+    }
+
+    #[expect(clippy::single_call_fn)]
+    const fn parse_negative_octal_i64(literal_str: &'code str) -> Option<i64> {
+        const BASE: Base = Base::Octal;
+        let mut integer: i64 = 0;
+        let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
+
+        let literal = literal_str.as_bytes();
+        while digit_index < literal.len() {
+            let ascii_digit = literal[digit_index];
+            digit_index += 1;
+            if ascii_digit == b'_' {
+                continue;
+            }
+
+            let digit = ascii_digit - b'0';
+            debug_assert!(digit < BASE as u8, "invalid octal digit");
+            integer = match integer.checked_mul(BASE as i64) {
+                Some(integer_) => integer_,
+                None => return None,
+            };
+            integer = match integer.checked_sub(digit as i64) {
+                Some(integer_) => integer_,
+                None => return None,
+            };
+        }
+        return Some(integer);
+    }
+
+    #[expect(clippy::single_call_fn)]
+    const fn parse_negative_decimal_i64(literal_str: &'code str) -> Option<i64> {
+        const BASE: Base = Base::Decimal;
+        let mut integer: i64 = 0;
+        let mut digit_index = 0;
+
+        let literal = literal_str.as_bytes();
+        while digit_index < literal.len() {
+            let ascii_digit = literal[digit_index];
+            digit_index += 1;
+            if ascii_digit == b'_' {
+                continue;
+            }
+
+            let digit = ascii_digit - b'0';
+            debug_assert!(digit < BASE as u8, "invalid decimal digit");
+            integer = match integer.checked_mul(BASE as i64) {
+                Some(integer_) => integer_,
+                None => return None,
+            };
+            integer = match integer.checked_sub(digit as i64) {
+                Some(integer_) => integer_,
+                None => return None,
+            };
+        }
+        return Some(integer);
+    }
+
+    #[expect(clippy::single_call_fn)]
+    const fn parse_negative_decimal_prefix_i64(literal_str: &'code str) -> Option<i64> {
+        const BASE: Base = Base::Decimal;
+        let mut integer: i64 = 0;
+        let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
+
+        let literal = literal_str.as_bytes();
+        while digit_index < literal.len() {
+            let ascii_digit = literal[digit_index];
+            digit_index += 1;
+            if ascii_digit == b'_' {
+                continue;
+            }
+
+            let digit = ascii_digit - b'0';
+            debug_assert!(digit < BASE as u8, "invalid decimal digit");
+            integer = match integer.checked_mul(BASE as i64) {
+                Some(integer_) => integer_,
+                None => return None,
+            };
+            integer = match integer.checked_sub(digit as i64) {
+                Some(integer_) => integer_,
+                None => return None,
+            };
+        }
+        return Some(integer);
+    }
+
+    #[expect(clippy::single_call_fn)]
+    const fn parse_negative_hexadecimal_i64(literal_str: &'code str) -> Option<i64> {
+        const BASE: Base = Base::Hexadecimal;
+        let mut integer: i64 = 0;
+        let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
+
+        let literal = literal_str.as_bytes();
+        while digit_index < literal.len() {
+            let ascii_digit = literal[digit_index];
+            digit_index += 1;
+            if ascii_digit == b'_' {
+                continue;
+            }
+
+            let digit = match ascii_digit {
+                number @ b'0'..=b'9' => number - b'0',
+                uppercase_letter @ b'A'..=b'F' => uppercase_letter - b'A' + 10,
+                lowercase_letter @ b'a'..=b'f' => lowercase_letter - b'a' + 10,
+                _ => panic!("invalid hexadecimal digit"),
+            };
+            integer = match integer.checked_mul(BASE as i64) {
+                Some(integer_) => integer_,
+                None => return None,
+            };
+            integer = match integer.checked_sub(digit as i64) {
+                Some(integer_) => integer_,
+                None => return None,
+            };
+        }
+        return Some(integer);
+    }
+
+    #[expect(clippy::single_call_fn)]
+    const fn parse_ascii(literal_str: &'code str) -> ascii {
+        let literal = literal_str.as_bytes();
+        debug_assert!(literal.len() >= 3, "tokenization error");
+        return match literal[1] {
+            b'\\' => match literal[2] {
+                b'\\' => b'\\',
+                b'\'' => b'\'',
+                b'"' => b'"',
+                b'n' => b'\n',
+                b'r' => b'\r',
+                b't' => b'\t',
+                b'0' => b'\0',
+                _ => unreachable!(),
+            }
+            other => other,
+        };
+    }
+
     fn primary_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
-        const fn parse_positive_binary_i64(literal: &[ascii]) -> Option<i64> {
-            const BASE: Base = Base::Binary;
-            let mut integer: i64 = 0;
-            let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
-
-            while digit_index < literal.len() {
-                let ascii_digit = literal[digit_index];
-                digit_index += 1;
-                if ascii_digit == b'_' {
-                    continue;
-                }
-
-                let digit = ascii_digit - b'0';
-                debug_assert!(digit < BASE as u8, "invalid binary digit");
-                integer = match integer.checked_mul(BASE as i64) {
-                    Some(integer_) => integer_,
-                    None => return None,
-                };
-                integer = match integer.checked_add(digit as i64) {
-                    Some(integer_) => integer_,
-                    None => return None,
-                };
-            }
-            return Some(integer);
-        }
-
-        const fn parse_positive_octal_i64(literal: &[ascii]) -> Option<i64> {
-            const BASE: Base = Base::Octal;
-            let mut integer: i64 = 0;
-            let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
-
-            while digit_index < literal.len() {
-                let ascii_digit = literal[digit_index];
-                digit_index += 1;
-                if ascii_digit == b'_' {
-                    continue;
-                }
-
-                let digit = ascii_digit - b'0';
-                debug_assert!(digit < BASE as u8, "invalid octal digit");
-                integer = match integer.checked_mul(BASE as i64) {
-                    Some(integer_) => integer_,
-                    None => return None,
-                };
-                integer = match integer.checked_add(digit as i64) {
-                    Some(integer_) => integer_,
-                    None => return None,
-                };
-            }
-            return Some(integer);
-        }
-
-        const fn parse_positive_decimal_i64(literal: &[ascii]) -> Option<i64> {
-            const BASE: Base = Base::Decimal;
-            let mut integer: i64 = 0;
-            let mut digit_index = 0;
-
-            while digit_index < literal.len() {
-                let ascii_digit = literal[digit_index];
-                digit_index += 1;
-                if ascii_digit == b'_' {
-                    continue;
-                }
-
-                let digit = ascii_digit - b'0';
-                debug_assert!(digit < BASE as u8, "invalid decimal digit");
-                integer = match integer.checked_mul(BASE as i64) {
-                    Some(integer_) => integer_,
-                    None => return None,
-                };
-                integer = match integer.checked_add(digit as i64) {
-                    Some(integer_) => integer_,
-                    None => return None,
-                };
-            }
-            return Some(integer);
-        }
-
-        const fn parse_positive_decimal_prefix_i64(literal: &[ascii]) -> Option<i64> {
-            const BASE: Base = Base::Decimal;
-            let mut integer: i64 = 0;
-            let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
-
-            while digit_index < literal.len() {
-                let ascii_digit = literal[digit_index];
-                digit_index += 1;
-                if ascii_digit == b'_' {
-                    continue;
-                }
-
-                let digit = ascii_digit - b'0';
-                debug_assert!(digit < BASE as u8, "invalid decimal digit");
-                integer = match integer.checked_mul(BASE as i64) {
-                    Some(integer_) => integer_,
-                    None => return None,
-                };
-                integer = match integer.checked_add(digit as i64) {
-                    Some(integer_) => integer_,
-                    None => return None,
-                };
-            }
-            return Some(integer);
-        }
-
-        const fn parse_positive_hexadecimal_i64(literal: &[ascii]) -> Option<i64> {
-            const BASE: Base = Base::Hexadecimal;
-            let mut integer: i64 = 0;
-            let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
-
-            while digit_index < literal.len() {
-                let ascii_digit = literal[digit_index];
-                digit_index += 1;
-                if ascii_digit == b'_' {
-                    continue;
-                }
-
-                let digit = match ascii_digit {
-                    number @ b'0'..=b'9' => number - b'0',
-                    uppercase_letter @ b'A'..=b'F' => uppercase_letter - b'A' + 10,
-                    lowercase_letter @ b'a'..=b'f' => lowercase_letter - b'a' + 10,
-                    _ => panic!("invalid hexadecimal digit"),
-                };
-                integer = match integer.checked_mul(BASE as i64) {
-                    Some(integer_) => integer_,
-                    None => return None,
-                };
-                integer = match integer.checked_add(digit as i64) {
-                    Some(integer_) => integer_,
-                    None => return None,
-                };
-            }
-            return Some(integer);
-        }
-
-        #[expect(clippy::single_call_fn)]
-        const fn parse_negative_binary_i64(literal: &[ascii]) -> Option<i64> {
-            const BASE: Base = Base::Binary;
-            let mut integer: i64 = 0;
-            let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
-
-            while digit_index < literal.len() {
-                let ascii_digit = literal[digit_index];
-                digit_index += 1;
-                if ascii_digit == b'_' {
-                    continue;
-                }
-
-                let digit = ascii_digit - b'0';
-                debug_assert!(digit < BASE as u8, "invalid binary digit");
-                integer = match integer.checked_mul(BASE as i64) {
-                    Some(integer_) => integer_,
-                    None => return None,
-                };
-                integer = match integer.checked_sub(digit as i64) {
-                    Some(integer_) => integer_,
-                    None => return None,
-                };
-            }
-            return Some(integer);
-        }
-
-        #[expect(clippy::single_call_fn)]
-        const fn parse_negative_octal_i64(literal: &[ascii]) -> Option<i64> {
-            const BASE: Base = Base::Octal;
-            let mut integer: i64 = 0;
-            let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
-
-            while digit_index < literal.len() {
-                let ascii_digit = literal[digit_index];
-                digit_index += 1;
-                if ascii_digit == b'_' {
-                    continue;
-                }
-
-                let digit = ascii_digit - b'0';
-                debug_assert!(digit < BASE as u8, "invalid octal digit");
-                integer = match integer.checked_mul(BASE as i64) {
-                    Some(integer_) => integer_,
-                    None => return None,
-                };
-                integer = match integer.checked_sub(digit as i64) {
-                    Some(integer_) => integer_,
-                    None => return None,
-                };
-            }
-            return Some(integer);
-        }
-
-        #[expect(clippy::single_call_fn)]
-        const fn parse_negative_decimal_i64(literal: &[ascii]) -> Option<i64> {
-            const BASE: Base = Base::Decimal;
-            let mut integer: i64 = 0;
-            let mut digit_index = 0;
-
-            while digit_index < literal.len() {
-                let ascii_digit = literal[digit_index];
-                digit_index += 1;
-                if ascii_digit == b'_' {
-                    continue;
-                }
-
-                let digit = ascii_digit - b'0';
-                debug_assert!(digit < BASE as u8, "invalid decimal digit");
-                integer = match integer.checked_mul(BASE as i64) {
-                    Some(integer_) => integer_,
-                    None => return None,
-                };
-                integer = match integer.checked_sub(digit as i64) {
-                    Some(integer_) => integer_,
-                    None => return None,
-                };
-            }
-            return Some(integer);
-        }
-
-        #[expect(clippy::single_call_fn)]
-        const fn parse_negative_decimal_prefix_i64(literal: &[ascii]) -> Option<i64> {
-            const BASE: Base = Base::Decimal;
-            let mut integer: i64 = 0;
-            let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
-
-            while digit_index < literal.len() {
-                let ascii_digit = literal[digit_index];
-                digit_index += 1;
-                if ascii_digit == b'_' {
-                    continue;
-                }
-
-                let digit = ascii_digit - b'0';
-                debug_assert!(digit < BASE as u8, "invalid decimal digit");
-                integer = match integer.checked_mul(BASE as i64) {
-                    Some(integer_) => integer_,
-                    None => return None,
-                };
-                integer = match integer.checked_sub(digit as i64) {
-                    Some(integer_) => integer_,
-                    None => return None,
-                };
-            }
-            return Some(integer);
-        }
-
-        #[expect(clippy::single_call_fn)]
-        const fn parse_negative_hexadecimal_i64(literal: &[ascii]) -> Option<i64> {
-            const BASE: Base = Base::Hexadecimal;
-            let mut integer: i64 = 0;
-            let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
-
-            while digit_index < literal.len() {
-                let ascii_digit = literal[digit_index];
-                digit_index += 1;
-                if ascii_digit == b'_' {
-                    continue;
-                }
-
-                let digit = match ascii_digit {
-                    number @ b'0'..=b'9' => number - b'0',
-                    uppercase_letter @ b'A'..=b'F' => uppercase_letter - b'A' + 10,
-                    lowercase_letter @ b'a'..=b'f' => lowercase_letter - b'a' + 10,
-                    _ => panic!("invalid hexadecimal digit"),
-                };
-                integer = match integer.checked_mul(BASE as i64) {
-                    Some(integer_) => integer_,
-                    None => return None,
-                };
-                integer = match integer.checked_sub(digit as i64) {
-                    Some(integer_) => integer_,
-                    None => return None,
-                };
-            }
-            return Some(integer);
-        }
-
         let current_token = self.current_token(Expected::Expression)?;
         let expression_result = match current_token.kind {
             TokenKind::False => Ok(Expression::False),
             TokenKind::True => Ok(Expression::True),
             TokenKind::BinaryInteger(literal_index) => {
                 let literal = self.tokens.text[literal_index];
-                match parse_positive_binary_i64(literal.as_bytes()) {
+                match Self::parse_positive_binary_i64(literal) {
                     Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Error {
                         kind: ErrorKind::BinaryIntegerOverflow,
@@ -1665,7 +1756,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             }
             TokenKind::OctalInteger(literal_index) => {
                 let literal = self.tokens.text[literal_index];
-                match parse_positive_octal_i64(literal.as_bytes()) {
+                match Self::parse_positive_octal_i64(literal) {
                     Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Error {
                         kind: ErrorKind::OctalIntegerOverflow,
@@ -1676,7 +1767,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             }
             TokenKind::DecimalInteger(literal_index) => {
                 let literal = self.tokens.text[literal_index];
-                match parse_positive_decimal_i64(literal.as_bytes()) {
+                match Self::parse_positive_decimal_i64(literal) {
                     Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Error {
                         kind: ErrorKind::DecimalIntegerOverflow,
@@ -1687,7 +1778,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             }
             TokenKind::DecimalIntegerPrefix(literal_index) => {
                 let literal = self.tokens.text[literal_index];
-                match parse_positive_decimal_prefix_i64(literal.as_bytes()) {
+                match Self::parse_positive_decimal_prefix_i64(literal) {
                     Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Error {
                         kind: ErrorKind::DecimalIntegerOverflow,
@@ -1698,7 +1789,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             }
             TokenKind::HexadecimalInteger(literal_index) => {
                 let literal = self.tokens.text[literal_index];
-                match parse_positive_hexadecimal_i64(literal.as_bytes()) {
+                match Self::parse_positive_hexadecimal_i64(literal) {
                     Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Error {
                         kind: ErrorKind::HexadecimalIntegerOverflow,
@@ -1708,12 +1799,9 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 }
             }
             TokenKind::Ascii(literal_index) => {
-                let string = self.tokens.text[literal_index];
-                let string_contents = &string[1..string.len() - 1];
-                let Ok(literal) = string_contents.parse::<u8>() else {
-                    panic!("wrong parsing of ascii literals");
-                };
-                Ok(Expression::Ascii(literal))
+                let literal = self.tokens.text[literal_index];
+                let ascii_ch = Self::parse_ascii(literal);
+                Ok(Expression::Ascii(ascii_ch))
             }
             TokenKind::Str(string_index) => {
                 let string_label = self.string_label;
@@ -1733,8 +1821,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             }
             TokenKind::Identifier(name_index) | TokenKind::IdentifierStr(name_index) => {
                 let name = self.tokens.text[name_index];
-                match self.resolve_type(name.as_bytes()) {
-                    None => match self.resolve_variable(name.as_bytes()) {
+                match self.resolve_type(name) {
+                    None => match self.resolve_variable(name) {
                         Some(variable_index) => {
                             let var = &self.ast.variables[variable_index as usize];
                             Ok(Expression::Variable { typ: var.value.typ(), variable_index })
@@ -1764,6 +1852,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
                         match op {
                             Op::Equals
+                            | Op::NotEquals
                             | Op::PowEquals
                             | Op::WrappingPowEquals
                             | Op::SaturatingPowEquals
@@ -1829,7 +1918,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             | Op::Or
                             | Op::Compare
                             | Op::EqualsEquals
-                            | Op::NotEquals
+                            | Op::NotEqualsEquals
                             | Op::Greater
                             | Op::GreaterOrEquals
                             | Op::Less
@@ -2041,7 +2130,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     TokenKind::BinaryInteger(literal_index) => {
                         let literal = self.tokens.text[literal_index];
                         if should_be_negated {
-                            match parse_negative_binary_i64(literal.as_bytes()) {
+                            match Self::parse_negative_binary_i64(literal) {
                                 Some(0) => Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
@@ -2059,7 +2148,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 }),
                             }
                         } else {
-                            match parse_positive_binary_i64(literal.as_bytes()) {
+                            match Self::parse_positive_binary_i64(literal) {
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Error {
                                     kind: ErrorKind::BinaryIntegerOverflow,
@@ -2074,7 +2163,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     TokenKind::OctalInteger(literal_index) => {
                         let literal = self.tokens.text[literal_index];
                         if should_be_negated {
-                            match parse_negative_octal_i64(literal.as_bytes()) {
+                            match Self::parse_negative_octal_i64(literal) {
                                 Some(0) => Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
@@ -2092,7 +2181,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 }),
                             }
                         } else {
-                            match parse_positive_octal_i64(literal.as_bytes()) {
+                            match Self::parse_positive_octal_i64(literal) {
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Error {
                                     kind: ErrorKind::OctalIntegerOverflow,
@@ -2107,7 +2196,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     TokenKind::DecimalInteger(literal_index) => {
                         let literal = self.tokens.text[literal_index];
                         if should_be_negated {
-                            match parse_negative_decimal_i64(literal.as_bytes()) {
+                            match Self::parse_negative_decimal_i64(literal) {
                                 Some(0) => Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
@@ -2125,7 +2214,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 }),
                             }
                         } else {
-                            match parse_positive_decimal_i64(literal.as_bytes()) {
+                            match Self::parse_positive_decimal_i64(literal) {
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Error {
                                     kind: ErrorKind::DecimalIntegerOverflow,
@@ -2140,7 +2229,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     TokenKind::DecimalIntegerPrefix(literal_index) => {
                         let literal = self.tokens.text[literal_index];
                         if should_be_negated {
-                            match parse_negative_decimal_prefix_i64(literal.as_bytes()) {
+                            match Self::parse_negative_decimal_prefix_i64(literal) {
                                 Some(0) => Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
@@ -2158,7 +2247,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 }),
                             }
                         } else {
-                            match parse_positive_decimal_prefix_i64(literal.as_bytes()) {
+                            match Self::parse_positive_decimal_prefix_i64(literal) {
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Error {
                                     kind: ErrorKind::DecimalIntegerOverflow,
@@ -2173,7 +2262,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     TokenKind::HexadecimalInteger(literal_index) => {
                         let literal = self.tokens.text[literal_index];
                         if should_be_negated {
-                            match parse_negative_hexadecimal_i64(literal.as_bytes()) {
+                            match Self::parse_negative_hexadecimal_i64(literal) {
                                 Some(0) => Err(Error {
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
@@ -2191,7 +2280,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 }),
                             }
                         } else {
-                            match parse_positive_hexadecimal_i64(literal.as_bytes()) {
+                            match Self::parse_positive_hexadecimal_i64(literal) {
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Error {
                                     kind: ErrorKind::HexadecimalIntegerOverflow,
@@ -2541,7 +2630,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         let ops = [
             Op::Compare,
             Op::EqualsEquals,
-            Op::NotEquals,
+            Op::NotEqualsEquals,
             Op::Greater,
             Op::GreaterOrEquals,
             Op::Less,
@@ -2641,7 +2730,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
 // variables and typesk
 impl<'code> Parser<'_, '_, 'code, '_> {
-    fn resolve_variable(&self, name: &[ascii]) -> Option<VariableIndex> {
+    fn resolve_variable(&self, name: &'code str) -> Option<VariableIndex> {
         if let Some(variable) = self.resolve_let_variable(name) {
             return Some(variable);
         }
@@ -2649,7 +2738,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return self.resolve_var_variable(name);
     }
 
-    fn resolve_let_variable(&self, name: &[ascii]) -> Option<VariableIndex> {
+    fn resolve_let_variable(&self, name: &'code str) -> Option<VariableIndex> {
         let mut scope_index = self.scope;
         loop {
             let scope = &self.scopes[scope_index as usize];
@@ -2667,7 +2756,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         }
     }
 
-    fn resolve_var_variable(&self, name: &[ascii]) -> Option<VariableIndex> {
+    fn resolve_var_variable(&self, name: &'code str) -> Option<VariableIndex> {
         let mut scope_index = self.scope;
         loop {
             let scope = &self.scopes[scope_index as usize];
@@ -2685,13 +2774,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         }
     }
 
-    // NOTE(stefano): why accept a &[ascii] and not &str
-    fn resolve_type(&self, name: &[ascii]) -> Option<BaseType> {
+    // NOTE(stefano): why accept a &'code str and not &str
+    fn resolve_type(&self, name: &'code str) -> Option<BaseType> {
         let mut scope_index = self.scope;
         loop {
             let scope = &self.scopes[scope_index as usize];
             for typ in &scope.base_types {
-                if typ.to_string().as_bytes() == name {
+                if typ.to_string() == name {
                     return Some(*typ);
                 }
             }
@@ -2721,9 +2810,9 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         };
 
         let type_name = self.tokens.text[type_name_index];
-        let Some(base_type) = self.resolve_type(type_name.as_bytes()) else {
+        let Some(base_type) = self.resolve_type(type_name) else {
             // REMOVE(stefano): remove possibility of emulating `typeof` using other variables as type annotation
-            return match self.resolve_variable(type_name.as_bytes()) {
+            return match self.resolve_variable(type_name) {
                 Some(var_index) => {
                     let var = &self.ast.variables[var_index as usize];
                     Ok(Some((type_token, var.value.typ())))
@@ -2793,7 +2882,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         let name = match name_token.kind {
             TokenKind::Identifier(name_index) | TokenKind::IdentifierStr(name_index) => {
                 let name = self.tokens.text[name_index];
-                match self.resolve_type(name.as_bytes()) {
+                match self.resolve_type(name) {
                     None => name,
                     Some(_) => {
                         return Err(Error {
@@ -2931,7 +3020,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             });
         };
 
-        let None = self.resolve_variable(name.as_bytes()) else {
+        let None = self.resolve_variable(name) else {
             return Err(Error {
                 kind: ErrorKind::VariableAlreadyDefined,
                 col: name_token.col,
@@ -2953,7 +3042,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             }
         }
         self.semicolon()?;
-        return Ok(Variable { name: name.as_bytes(), value: expression });
+        return Ok(Variable { name, value: expression });
     }
 
     // NOTE(stefano): mutations of string characters are disallowed until a sort of "borrow checker" is developed
@@ -2986,7 +3075,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
                 let error_token = if let TokenKind::Identifier(name_index) = target_token.kind {
                     let name = self.tokens.text[name_index];
-                    if let Some(_) = self.resolve_let_variable(name.as_bytes()) {
+                    if let Some(_) = self.resolve_let_variable(name) {
                         return Err(Error {
                             kind: ErrorKind::CannotMutateVariable,
                             col: target_token.col,
@@ -3050,17 +3139,19 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         let new_value_type = new_value.typ();
 
         return match op {
-            AssignmentOp::Equals if target_type == new_value_type => {
+            AssignmentOp::Equals => {
+                if target_type != new_value_type {
+                    return Err(Error {
+                        kind: ErrorKind::VariableReassignmentTypeMismatch {
+                            expected: target_type,
+                            actual: new_value_type,
+                        },
+                        col: error_token.col,
+                        pointers_count: error_token.kind.display_len(self.tokens),
+                    });
+                }
                 Ok(Node::Reassignment { target, op, op_col: op_token.col, new_value })
             }
-            AssignmentOp::Equals => Err(Error {
-                kind: ErrorKind::VariableReassignmentTypeMismatch {
-                    expected: target_type,
-                    actual: new_value_type,
-                },
-                col: error_token.col,
-                pointers_count: error_token.kind.display_len(self.tokens),
-            }),
             AssignmentOp::Pow
             | AssignmentOp::WrappingPow
             | AssignmentOp::SaturatingPow
@@ -3085,31 +3176,33 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | AssignmentOp::RightRotate
             | AssignmentOp::BitAnd
             | AssignmentOp::BitXor
-            | AssignmentOp::BitOr => match (target_type, new_value_type) {
-                (
-                    Type::Base(BaseType::I64),
-                    Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool),
-                ) => Ok(Node::Reassignment { target, op, op_col: op_token.col, new_value }),
-                /* IDEA(stefano):
-                allow only certain kinds of *op*=:
-                ```kay
-                var condition = true;
-                condition &&= false; # should instead be allowed
-                ```
-                */
-                (Type::Base(BaseType::Ascii | BaseType::Bool), _) => Err(Error {
-                    kind: ErrorKind::CannotModifyInplace(target_type),
-                    col: op_token.col,
-                    pointers_count: op_token.kind.display_len(self.tokens),
-                }),
-                _ => Err(Error {
-                    kind: ErrorKind::VariableReassignmentTypeMismatch {
-                        expected: target_type,
-                        actual: new_value_type,
-                    },
-                    col: error_token.col,
-                    pointers_count: error_token.kind.display_len(self.tokens),
-                }),
+            | AssignmentOp::BitOr => {
+                match (target_type, new_value_type) {
+                    (
+                        Type::Base(BaseType::I64),
+                        Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool),
+                    ) => Ok(Node::Reassignment { target, op, op_col: op_token.col, new_value }),
+                    /* IDEA(stefano):
+                    allow only certain kinds of *op*=:
+                    ```kay
+                    var condition = true;
+                    condition &&= false; # should instead be allowed
+                    ```
+                    */
+                    (Type::Base(BaseType::Ascii | BaseType::Bool), _) => Err(Error {
+                        kind: ErrorKind::CannotModifyInplace(target_type),
+                        col: op_token.col,
+                        pointers_count: op_token.kind.display_len(self.tokens),
+                    }),
+                    _ => Err(Error {
+                        kind: ErrorKind::VariableReassignmentTypeMismatch {
+                            expected: target_type,
+                            actual: new_value_type,
+                        },
+                        col: error_token.col,
+                        pointers_count: error_token.kind.display_len(self.tokens),
+                    }),
+                }
             },
 
             AssignmentOp::And
@@ -3135,6 +3228,138 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     });
                 };
                 Ok(Node::Reassignment { target, op, op_col: op_token.col, new_value })
+            }
+        };
+    }
+
+    fn prefix_reassignment(
+        &self,
+        target: Expression,
+        target_token: Token<'code>,
+        op: PrefixAssignmentOp,
+        op_token: Token<'code>,
+    ) -> Result<Node, Error<ErrorKind>> {
+        let (error_token, target_type) = match &target {
+            Expression::ArrayIndex { base_type, indexable_index, .. } => {
+                let indexable = &self.ast.expressions[*indexable_index as usize];
+                let mut unwrapped_indexable = indexable;
+                while let Expression::ArrayIndex {
+                    indexable_index: inner_indexable_index, ..
+                } = unwrapped_indexable
+                {
+                    let inner_indexable = &self.ast.expressions[*inner_indexable_index as usize];
+                    unwrapped_indexable = inner_indexable;
+                }
+
+                let Expression::Variable { typ, .. } = unwrapped_indexable else {
+                    return Err(Error {
+                        kind: ErrorKind::CannotAssignToExpression,
+                        col: op_token.col,
+                        pointers_count: op_token.kind.display_len(self.tokens),
+                    });
+                };
+
+                let error_token = if let TokenKind::Identifier(name_index) = target_token.kind {
+                    let name = self.tokens.text[name_index];
+                    if let Some(_) = self.resolve_let_variable(name) {
+                        return Err(Error {
+                            kind: ErrorKind::CannotMutateVariable,
+                            col: target_token.col,
+                            pointers_count: target_token.kind.display_len(self.tokens),
+                        });
+                    }
+
+                    if let BaseType::Str = typ.base_typ() {
+                        if let BaseType::Ascii = base_type {
+                            return Err(Error {
+                                kind: ErrorKind::CannotMutateStringCharacters,
+                                col: target_token.col,
+                                pointers_count: target_token.kind.display_len(self.tokens),
+                            });
+                        }
+                    }
+
+                    target_token
+                } else {
+                    op_token
+                };
+
+                (error_token, Type::Base(*base_type))
+            }
+            Expression::Variable { typ, variable_index } => {
+                let var = &self.ast.variables[*variable_index as usize];
+                if let Some(_) = self.resolve_let_variable(var.name) {
+                    return Err(Error {
+                        kind: ErrorKind::CannotMutateVariable,
+                        col: target_token.col,
+                        pointers_count: target_token.kind.display_len(self.tokens),
+                    });
+                }
+
+                (target_token, *typ)
+            }
+
+            Expression::False
+            | Expression::True
+            | Expression::I64(_)
+            | Expression::Ascii(_)
+            | Expression::Str { .. }
+            | Expression::Array { .. }
+            | Expression::Parenthesis { .. }
+            | Expression::Unary { .. }
+            | Expression::BooleanUnary { .. }
+            | Expression::Binary { .. }
+            | Expression::BooleanBinary { .. }
+            | Expression::Comparison { .. }
+            | Expression::Temporary { .. } => {
+                return Err(Error {
+                    kind: ErrorKind::CannotAssignToExpression,
+                    col: op_token.col,
+                    pointers_count: op_token.kind.display_len(self.tokens),
+                });
+            }
+        };
+
+        return match op {
+            PrefixAssignmentOp::Not => {
+                match target_type {
+                    Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => {
+                        Ok(Node::PrefixReassignment {
+                            target,
+                            op: PrefixAssignmentOp::Not,
+                            op_col: op_token.col,
+                        })
+                    }
+                    invalid_typ @ (Type::Base(BaseType::Str) | Type::Array { .. }) => Err(Error {
+                        kind: ErrorKind::CannotInvert(invalid_typ),
+                        col: error_token.col,
+                        pointers_count: error_token.kind.display_len(self.tokens),
+                    }),
+                }
+            }
+            PrefixAssignmentOp::Plus
+            | PrefixAssignmentOp::WrappingPlus
+            | PrefixAssignmentOp::SaturatingPlus => {
+                match target_type {
+                    Type::Base(BaseType::I64) => Ok(Node::PrefixReassignment { target, op, op_col: op_token.col }),
+                    invalid_type @ (Type::Base(BaseType::Str | BaseType::Ascii | BaseType::Bool) | Type::Array{ .. }) => Err(Error {
+                        kind: ErrorKind::CannotTakeAbsoluteValueOf(invalid_type),
+                        col: error_token.col,
+                        pointers_count: error_token.kind.display_len(self.tokens),
+                    }),
+                }
+            }
+            PrefixAssignmentOp::Minus
+            | PrefixAssignmentOp::WrappingMinus
+            | PrefixAssignmentOp::SaturatingMinus => {
+                match target_type {
+                    Type::Base(BaseType::Ascii | BaseType::I64) => Ok(Node::PrefixReassignment { target, op, op_col: op_token.col }),
+                    invalid_type @ (Type::Base(BaseType::Str | BaseType::Bool) | Type::Array{ .. }) => Err(Error {
+                        kind: ErrorKind::CannotNegate(invalid_type),
+                        col: error_token.col,
+                        pointers_count: error_token.kind.display_len(self.tokens),
+                    }),
+                }
             }
         };
     }

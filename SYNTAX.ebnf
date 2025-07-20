@@ -2,7 +2,7 @@ ASCII_valid_character = ? U+0032..U+0126 ?;
 UTF-8_character = ? U+0080.. ?;
 
 (* comments *)
-line_comment = "#", [{ASCII_valid_character | UTF-8_character}], "\n";
+line_comment  = "#",  [{ASCII_valid_character | UTF-8_character}], "\n";
 block_comment = "#*", [{ASCII_valid_character | UTF-8_character | "\n" | block_comment}], "*#";
 
 (* booleans *)
@@ -32,58 +32,60 @@ character_escapes = "\\" | "\'" | '\"' | "\n" | "\r" | "\t" | "\0";
 character_literal = "'", (ASCII_valid_character | character_escapes), "'";
 
 (* strings *)
-string_literal = '"', [{ASCII_valid_character | character_escapes}], '"';
+string_escapes = character_escapes;
+string_literal = '"', [{ASCII_valid_character | string_escapes}], '"';
 
 (* raw strings *)
 raw_string_escapes = '\"';
 raw_string_literal = 'r"', [{ASCII_valid_character | raw_string_escapes}], '"';
 
 (* identifiers *)
-identifier_regular = "_" | "A".."Z" | "a".."z", [{"_" | "A".."Z" | "a".."z" | decimal_digit}];
+identifier_regular = ("_" | "A".."Z" | "a".."z"), [{"_" | "A".."Z" | "a".."z" | decimal_digit}];
 identifier_str     = "`", [{ASCII_valid_character}], "`";
 identifier         = identifier_regular | identifier_str;
 
 (* operators *)
-operator_equals             = "=";
-operator_len                = "len";
-operator_not                = "!";
-operator_pow                = "**" | "**\" | "**|";
-operator_pow_equals         = "**=" | "**\=" | "**|=";
-operator_times              = "*" | "*\" | "*|";
-operator_times_equals       = "*=" | "*\=" | "*|=";
-operator_divide             = "/" | "/\" | "/|";
-operator_divide_equals      = "/=" | "/\=" | "/|=";
-operator_remainder          = "%";
-operator_remainder_equals   = "%=";
-operator_plus               = "+" | "+\" | "+|";
-operator_plus_equals        = "+=" | "+\=" | "+|=";
-operator_minus              = "-" | "-\" | "-|";
-operator_minus_equals       = "-=" | "-\=" | "-|=";
-operator_leftshift          = "<<" | "<<\" | "<<|";
-operator_leftshift_equals   = "<<=" | "<<\=" | "<<|=";
-operator_rightshift         = ">>";
-operator_rightshift_equals  = ">>=";
-operator_leftrotate         = "<<<";
-operator_leftrotate_equals  = "<<<=";
-operator_rightrotate        = ">>>";
-operator_rightrotate_equals = ">>>=";
-operator_bitand             = "&";
-operator_bitand_equals      = "&=";
-operator_bitxor             = "^";
-operator_bitxor_equals      = "^=";
-operator_bitor              = "|";
-operator_bitor_equals       = "|=";
-operator_and                = "&&";
-operator_and_equals         = "&&=";
-operator_or                 = "||";
-operator_or_equals          = "||=";
-operator_compare            = "<=>";
-operator_equalsequals       = "==";
-operator_notequals          = "==";
-operator_greater            = ">";
-operator_greater_or_equals  = ">=";
-operator_less               = "<";
-operator_less_or_equals     = "<=";
+operator_equals              = "=";
+operator_len                 = "len";
+operator_not                 = "!";
+operator_not_equals          = "!=";
+operator_pow                 = "**"  | "**\"  | "**|";
+operator_pow_equals          = "**=" | "**\=" | "**|=";
+operator_times               = "*"   | "*\"   | "*|";
+operator_times_equals        = "*="  | "*\="  | "*|=";
+operator_divide              = "/"   | "/\"   | "/|";
+operator_divide_equals       = "/="  | "/\="  | "/|=";
+operator_remainder           = "%";
+operator_remainder_equals    = "%=";
+operator_plus                = "+"   | "+\"   | "+|";
+operator_plus_equals         = "+="  | "+\="  | "+|=";
+operator_minus               = "-"   | "-\"   | "-|";
+operator_minus_equals        = "-="  | "-\="  | "-|=";
+operator_left_shift          = "<<"  | "<<\"  | "<<|";
+operator_left_shift_equals   = "<<=" | "<<\=" | "<<|=";
+operator_right_shift         = ">>";
+operator_right_shift_equals  = ">>=";
+operator_left_rotate         = "<<<";
+operator_left_rotate_equals  = "<<<=";
+operator_right_rotate        = ">>>";
+operator_right_rotate_equals = ">>>=";
+operator_bit_and             = "&";
+operator_bit_and_equals      = "&=";
+operator_bit_xor             = "^";
+operator_bit_xor_equals      = "^=";
+operator_bit_or              = "|";
+operator_bit_or_equals       = "|=";
+operator_and                 = "&&";
+operator_and_equals          = "&&=";
+operator_or                  = "||";
+operator_or_equals           = "||=";
+operator_compare             = "<=>";
+operator_equals_equals       = "==";
+operator_not_equals_equals   = "!==";
+operator_greater             = ">";
+operator_greater_or_equals   = ">=";
+operator_less                = "<";
+operator_less_or_equals      = "<=";
 
 operator_prefix =
     operator_len
@@ -91,51 +93,52 @@ operator_prefix =
     | operator_plus
     | operator_minus
     ;
-
+operator_multiplicative =
+    operator_times
+    | operator_divide
+    | operator_remainder
+    ;
+operator_additive =
+    operator_plus
+    | operator_minus
+    ;
+operator_shift =
+    operator_left_shift
+    | operator_right_shift
+    | operator_left_rotate
+    | operator_right_rotate
+    ;
 operator_comparison =
     operator_compare
-    | operator_equalsequals
-    | operator_notequals
+    | operator_equals_equals
+    | operator_not_equals_equals
     | operator_greater
     | operator_greater_or_equals
     | operator_less
     | operator_less_or_equals
     ;
 
-operator_binary =
-    operator_pow
-    | operator_times
-    | operator_divide
-    | operator_remainder
-    | operator_plus
-    | operator_minus
-    | operator_leftshift
-    | operator_rightshift
-    | operator_leftrotate
-    | operator_rightrotate
-    | operator_bitand
-    | operator_bitxor
-    | operator_bitor
-    | operator_comparison
-    | operator_and
-    | operator_or
+operator_prefix_assignment =
+    operator_not_equals
+    | operator_plus_equals
+    | operator_minus_equals
     ;
-
-operator_assignment =
+operator_binary_assignment =
     operator_equals
+    | operator_not_equals
     | operator_pow_equals
     | operator_times_equals
     | operator_divide_equals
     | operator_remainder_equals
     | operator_plus_equals
     | operator_minus_equals
-    | operator_leftshift_equals
-    | operator_rightshift_equals
-    | operator_leftrotate_equals
-    | operator_rightrotate_equals
-    | operator_bitand_equals
-    | operator_bitxor_equals
-    | operator_bitor_equals
+    | operator_left_shift_equals
+    | operator_right_shift_equals
+    | operator_left_rotate_equals
+    | operator_right_rotate_equals
+    | operator_bit_and_equals
+    | operator_bit_xor_equals
+    | operator_bit_or_equals
     | operator_and_equals
     | operator_or_equals
     ;
@@ -159,29 +162,31 @@ primary_expression =
     ;
 
 exponentiative_expression = primary_expression, [operator_pow, primary_expression];
-multiplicative_expression = boolean_literal, [(operator_times | operator_divide | operator_remainder), boolean_literal];
-additive_expression       = multiplicative_expression, [(operator_plus | operator_minus), multiplicative_expression];
-shift_expression          = additive_expression, [(operator_rightshift | operator_rightrotate | operator_leftshift | operator_leftrotate), additive_expression];
-bitand_expression         = shift_expression, [operator_bitand, shift_expression];
-bitxor_expression         = bitand_expression, [operator_bitxor, bitand_expression];
-bitor_expression          = bitxor_expression, [operator_bitor, bitxor_expression];
-comparison_expression     = bitor_expression, [operator_comparison, bitor_expression];
+multiplicative_expression = boolean_literal, [operator_multiplicative, boolean_literal];
+additive_expression       = multiplicative_expression, [operator_additive, multiplicative_expression];
+shift_expression          = additive_expression, [operator_shift, additive_expression];
+bit_and_expression        = shift_expression, [operator_bit_and, shift_expression];
+bit_xor_expression        = bit_and_expression, [operator_bit_xor, bit_and_expression];
+bit_or_expression         = bit_xor_expression, [operator_bit_or, bit_xor_expression];
+comparison_expression     = bit_or_expression, [operator_comparison, bit_or_expression];
 and_expression            = comparison_expression, [operator_and, comparison_expression];
 or_expression             = and_expression, [operator_or, and_expression];
 expression                = or_expression;
 
 (* statements *)
 type = identifier, ["[", expression, "]"];
-variable_declaration = ("let" | "var"), identifier, [":", type], "=", expression, ";";
-variable_reassignment = expression, operator_assignment, expression, ";";
+variable_declaration       = ("let" | "var"), identifier, [":", type], "=", expression, ";";
+variable_binary_assignment = expression, operator_binary_assignment, expression, ";";
+variable_prefix_assignment = operator_prefix_assignment, expression, ";";
+variable_assignment        = variable_binary_assignment | variable_prefix_assignment;
 
-break_statement = "break", ";";
+break_statement    = "break", ";";
 continue_statement = "continue", ";";
 
-statement = expression | print | variable_declaration | variable_reassignment | if | loop;
-statement_in_loop = statement | break_statement | continue_statement;
-scope         = "{", [{line_comment | block_comment | statement | scope}], "}";
-scope_in_loop = "{", [{line_comment | block_comment | statement_in_loop | scope_in_loop}], "}";
+print    = "print", expression, ";";
+eprint   = "eprint", expression, ";";
+println  = "println", [expression], ";";
+eprintln = "eprintln", [expression], ";";
 
 if =
     "if", expression, scope,
@@ -190,7 +195,7 @@ if =
     ;
 loop  = ["do"], "loop", expression, scope_in_loop;
 
-print    = "print", expression, ";";
-eprint   = "eprint", expression, ";";
-println  = "println", [expression], ";";
-eprintln = "eprintln", [expression], ";";
+statement         = expression | print | variable_declaration | variable_assignment | if | loop;
+statement_in_loop = statement | break_statement | continue_statement;
+scope             = "{", [{line_comment | block_comment | statement | scope}], "}";
+scope_in_loop     = "{", [{line_comment | block_comment | statement_in_loop | scope_in_loop}], "}";

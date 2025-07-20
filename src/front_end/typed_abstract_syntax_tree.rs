@@ -38,22 +38,17 @@ impl BaseType {
     }
 }
 
-impl BaseType {
-    #[inline(always)]
-    pub(crate) const fn typ(self) -> Type {
-        return Type::Base(self);
-    }
-
-    #[inline]
-    pub(crate) const fn size(&self) -> usize {
-        return match self {
-            Self::I64 => size_of::<i64>(),
-            Self::Ascii => size_of::<ascii>(),
-            Self::Bool => size_of::<bool>(),
-            Self::Str => size_of::<u64>() + size_of::<*const ascii>(),
-        };
-    }
-}
+// impl BaseType {
+//     #[inline]
+//     pub(crate) const fn size(&self) -> usize {
+//         return match self {
+//             Self::I64 => size_of::<i64>(),
+//             Self::Ascii => size_of::<ascii>(),
+//             Self::Bool => size_of::<bool>(),
+//             Self::Str => size_of::<u64>() + size_of::<*const ascii>(),
+//         };
+//     }
+// }
 
 impl Display for BaseType {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -87,14 +82,14 @@ impl Type {
         };
     }
 
-    #[inline]
-    pub(crate) const fn size(&self) -> usize {
-        return match self {
-            Self::Base(typ) => typ.size(),
-            #[expect(clippy::cast_possible_truncation)]
-            Self::Array { base_type, len } => base_type.size() * *len as usize,
-        };
-    }
+    // #[inline]
+    // pub(crate) const fn size(&self) -> usize {
+    //     return match self {
+    //         Self::Base(typ) => typ.size(),
+    //         #[expect(clippy::cast_possible_truncation)]
+    //         Self::Array { base_type, len } => base_type.size() * *len as usize,
+    //     };
+    // }
 }
 
 impl Display for Type {
@@ -110,53 +105,53 @@ impl Display for Type {
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
-pub(crate) enum PrefixOperator {
-    Len = st::PrefixOperator::Len as u8,
-    Not = st::PrefixOperator::Not as u8,
+pub(crate) enum PrefixOp {
+    Len = st::PrefixOp::Len as u8,
+    Not = st::PrefixOp::Not as u8,
 
-    Plus           = st::PrefixOperator::Plus as u8,
-    WrappingPlus   = st::PrefixOperator::WrappingPlus as u8,
-    SaturatingPlus = st::PrefixOperator::SaturatingPlus as u8,
+    Plus           = st::PrefixOp::Plus as u8,
+    WrappingPlus   = st::PrefixOp::WrappingPlus as u8,
+    SaturatingPlus = st::PrefixOp::SaturatingPlus as u8,
 
-    Minus           = st::PrefixOperator::Minus as u8,
-    WrappingMinus   = st::PrefixOperator::WrappingMinus as u8,
-    SaturatingMinus = st::PrefixOperator::SaturatingMinus as u8,
+    Minus           = st::PrefixOp::Minus as u8,
+    WrappingMinus   = st::PrefixOp::WrappingMinus as u8,
+    SaturatingMinus = st::PrefixOp::SaturatingMinus as u8,
 }
 
-impl PrefixOperator {
+impl PrefixOp {
     const BASE_TYPE: BaseType = BaseType::I64;
     const TYPE: Type = Type::Base(Self::BASE_TYPE);
 }
 
-impl Into<PrefixOperator> for Op {
+impl Into<PrefixOp> for Op {
     #[inline(always)]
-    fn into(self) -> PrefixOperator {
+    fn into(self) -> PrefixOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<Op> for PrefixOperator {
+impl Into<Op> for PrefixOp {
     #[inline(always)]
     fn into(self) -> Op {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<st::PrefixOperator> for PrefixOperator {
+impl Into<st::PrefixOp> for PrefixOp {
     #[inline(always)]
-    fn into(self) -> st::PrefixOperator {
+    fn into(self) -> st::PrefixOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<PrefixOperator> for st::PrefixOperator {
+impl Into<PrefixOp> for st::PrefixOp {
     #[inline(always)]
-    fn into(self) -> PrefixOperator {
+    fn into(self) -> PrefixOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Display for PrefixOperator {
+impl Display for PrefixOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -164,7 +159,7 @@ impl Display for PrefixOperator {
     }
 }
 
-impl PrefixOperator {
+impl PrefixOp {
     #[expect(dead_code)]
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
@@ -177,44 +172,44 @@ impl PrefixOperator {
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
-pub(crate) enum BooleanPrefixOperator {
-    Not = st::PrefixOperator::Not as u8,
+pub(crate) enum BooleanPrefixOp {
+    Not = st::PrefixOp::Not as u8,
 }
 
-impl BooleanPrefixOperator {
+impl BooleanPrefixOp {
     const BASE_TYPE: BaseType = BaseType::Bool;
     const TYPE: Type = Type::Base(Self::BASE_TYPE);
 }
 
-impl Into<BooleanPrefixOperator> for Op {
+impl Into<BooleanPrefixOp> for Op {
     #[inline(always)]
-    fn into(self) -> BooleanPrefixOperator {
+    fn into(self) -> BooleanPrefixOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<Op> for BooleanPrefixOperator {
+impl Into<Op> for BooleanPrefixOp {
     #[inline(always)]
     fn into(self) -> Op {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<st::PrefixOperator> for BooleanPrefixOperator {
+impl Into<st::PrefixOp> for BooleanPrefixOp {
     #[inline(always)]
-    fn into(self) -> st::PrefixOperator {
+    fn into(self) -> st::PrefixOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<BooleanPrefixOperator> for st::PrefixOperator {
+impl Into<BooleanPrefixOp> for st::PrefixOp {
     #[inline(always)]
-    fn into(self) -> BooleanPrefixOperator {
+    fn into(self) -> BooleanPrefixOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Display for BooleanPrefixOperator {
+impl Display for BooleanPrefixOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -222,7 +217,7 @@ impl Display for BooleanPrefixOperator {
     }
 }
 
-impl BooleanPrefixOperator {
+impl BooleanPrefixOp {
     #[expect(dead_code)]
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
@@ -235,77 +230,77 @@ impl BooleanPrefixOperator {
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
-pub(crate) enum BinaryOperator {
-    Pow           = st::BinaryOperator::Pow as u8,
-    WrappingPow   = st::BinaryOperator::WrappingPow as u8,
-    SaturatingPow = st::BinaryOperator::SaturatingPow as u8,
+pub(crate) enum BinaryOp {
+    Pow           = st::BinaryOp::Pow as u8,
+    WrappingPow   = st::BinaryOp::WrappingPow as u8,
+    SaturatingPow = st::BinaryOp::SaturatingPow as u8,
 
-    Times           = st::BinaryOperator::Times as u8,
-    WrappingTimes   = st::BinaryOperator::WrappingTimes as u8,
-    SaturatingTimes = st::BinaryOperator::SaturatingTimes as u8,
+    Times           = st::BinaryOp::Times as u8,
+    WrappingTimes   = st::BinaryOp::WrappingTimes as u8,
+    SaturatingTimes = st::BinaryOp::SaturatingTimes as u8,
 
-    Divide           = st::BinaryOperator::Divide as u8,
-    WrappingDivide   = st::BinaryOperator::WrappingDivide as u8,
-    SaturatingDivide = st::BinaryOperator::SaturatingDivide as u8,
+    Divide           = st::BinaryOp::Divide as u8,
+    WrappingDivide   = st::BinaryOp::WrappingDivide as u8,
+    SaturatingDivide = st::BinaryOp::SaturatingDivide as u8,
 
-    Remainder = st::BinaryOperator::Remainder as u8,
+    Remainder = st::BinaryOp::Remainder as u8,
 
-    Plus           = st::BinaryOperator::Plus as u8,
-    WrappingPlus   = st::BinaryOperator::WrappingPlus as u8,
-    SaturatingPlus = st::BinaryOperator::SaturatingPlus as u8,
+    Plus           = st::BinaryOp::Plus as u8,
+    WrappingPlus   = st::BinaryOp::WrappingPlus as u8,
+    SaturatingPlus = st::BinaryOp::SaturatingPlus as u8,
 
-    Minus           = st::BinaryOperator::Minus as u8,
-    WrappingMinus   = st::BinaryOperator::WrappingMinus as u8,
-    SaturatingMinus = st::BinaryOperator::SaturatingMinus as u8,
+    Minus           = st::BinaryOp::Minus as u8,
+    WrappingMinus   = st::BinaryOp::WrappingMinus as u8,
+    SaturatingMinus = st::BinaryOp::SaturatingMinus as u8,
 
-    LeftShift           = st::BinaryOperator::LeftShift as u8,
-    WrappingLeftShift   = st::BinaryOperator::WrappingLeftShift as u8,
-    SaturatingLeftShift = st::BinaryOperator::SaturatingLeftShift as u8,
+    LeftShift           = st::BinaryOp::LeftShift as u8,
+    WrappingLeftShift   = st::BinaryOp::WrappingLeftShift as u8,
+    SaturatingLeftShift = st::BinaryOp::SaturatingLeftShift as u8,
 
-    RightShift = st::BinaryOperator::RightShift as u8,
+    RightShift = st::BinaryOp::RightShift as u8,
 
-    LeftRotate  = st::BinaryOperator::LeftRotate as u8,
-    RightRotate = st::BinaryOperator::RightRotate as u8,
+    LeftRotate  = st::BinaryOp::LeftRotate as u8,
+    RightRotate = st::BinaryOp::RightRotate as u8,
 
-    BitAnd = st::BinaryOperator::BitAnd as u8,
-    BitXor = st::BinaryOperator::BitXor as u8,
-    BitOr  = st::BinaryOperator::BitOr as u8,
+    BitAnd = st::BinaryOp::BitAnd as u8,
+    BitXor = st::BinaryOp::BitXor as u8,
+    BitOr  = st::BinaryOp::BitOr as u8,
 }
 
-impl BinaryOperator {
+impl BinaryOp {
     const BASE_TYPE: BaseType = BaseType::I64;
     const TYPE: Type = Type::Base(Self::BASE_TYPE);
 }
 
-impl Into<BinaryOperator> for Op {
+impl Into<BinaryOp> for Op {
     #[inline(always)]
-    fn into(self) -> BinaryOperator {
+    fn into(self) -> BinaryOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<Op> for BinaryOperator {
+impl Into<Op> for BinaryOp {
     #[inline(always)]
     fn into(self) -> Op {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<st::BinaryOperator> for BinaryOperator {
+impl Into<st::BinaryOp> for BinaryOp {
     #[inline(always)]
-    fn into(self) -> st::BinaryOperator {
+    fn into(self) -> st::BinaryOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<BinaryOperator> for st::BinaryOperator {
+impl Into<BinaryOp> for st::BinaryOp {
     #[inline(always)]
-    fn into(self) -> BinaryOperator {
+    fn into(self) -> BinaryOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Display for BinaryOperator {
+impl Display for BinaryOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -313,7 +308,7 @@ impl Display for BinaryOperator {
     }
 }
 
-impl BinaryOperator {
+impl BinaryOp {
     #[expect(dead_code)]
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
@@ -326,45 +321,45 @@ impl BinaryOperator {
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
-pub(crate) enum BooleanBinaryOperator {
-    And = st::BinaryOperator::And as u8,
-    Or  = st::BinaryOperator::Or as u8,
+pub(crate) enum BooleanBinaryOp {
+    And = st::BinaryOp::And as u8,
+    Or  = st::BinaryOp::Or as u8,
 }
 
-impl BooleanBinaryOperator {
+impl BooleanBinaryOp {
     const BASE_TYPE: BaseType = BaseType::Bool;
     const TYPE: Type = Type::Base(Self::BASE_TYPE);
 }
 
-impl Into<BooleanBinaryOperator> for Op {
+impl Into<BooleanBinaryOp> for Op {
     #[inline(always)]
-    fn into(self) -> BooleanBinaryOperator {
+    fn into(self) -> BooleanBinaryOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<Op> for BooleanBinaryOperator {
+impl Into<Op> for BooleanBinaryOp {
     #[inline(always)]
     fn into(self) -> Op {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<st::BinaryOperator> for BooleanBinaryOperator {
+impl Into<st::BinaryOp> for BooleanBinaryOp {
     #[inline(always)]
-    fn into(self) -> st::BinaryOperator {
+    fn into(self) -> st::BinaryOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<BooleanBinaryOperator> for st::BinaryOperator {
+impl Into<BooleanBinaryOp> for st::BinaryOp {
     #[inline(always)]
-    fn into(self) -> BooleanBinaryOperator {
+    fn into(self) -> BooleanBinaryOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Display for BooleanBinaryOperator {
+impl Display for BooleanBinaryOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -372,7 +367,7 @@ impl Display for BooleanBinaryOperator {
     }
 }
 
-impl BooleanBinaryOperator {
+impl BooleanBinaryOp {
     #[expect(dead_code)]
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
@@ -385,44 +380,44 @@ impl BooleanBinaryOperator {
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
-pub(crate) enum ComparisonOperator {
-    Compare = st::BinaryOperator::Compare as u8,
+pub(crate) enum ComparisonOp {
+    Compare = st::BinaryOp::Compare as u8,
 }
 
-impl ComparisonOperator {
+impl ComparisonOp {
     const BASE_TYPE: BaseType = BaseType::I64;
     const TYPE: Type = Type::Base(Self::BASE_TYPE);
 }
 
-impl Into<ComparisonOperator> for Op {
+impl Into<ComparisonOp> for Op {
     #[inline(always)]
-    fn into(self) -> ComparisonOperator {
+    fn into(self) -> ComparisonOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<Op> for ComparisonOperator {
+impl Into<Op> for ComparisonOp {
     #[inline(always)]
     fn into(self) -> Op {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<st::BinaryOperator> for ComparisonOperator {
+impl Into<st::BinaryOp> for ComparisonOp {
     #[inline(always)]
-    fn into(self) -> st::BinaryOperator {
+    fn into(self) -> st::BinaryOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<ComparisonOperator> for st::BinaryOperator {
+impl Into<ComparisonOp> for st::BinaryOp {
     #[inline(always)]
-    fn into(self) -> ComparisonOperator {
+    fn into(self) -> ComparisonOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Display for ComparisonOperator {
+impl Display for ComparisonOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -430,7 +425,7 @@ impl Display for ComparisonOperator {
     }
 }
 
-impl ComparisonOperator {
+impl ComparisonOp {
     #[expect(dead_code)]
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
@@ -443,51 +438,51 @@ impl ComparisonOperator {
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
-pub(crate) enum BooleanComparisonOperator {
-    EqualsEquals    = st::BinaryOperator::EqualsEquals as u8,
-    NotEquals       = st::BinaryOperator::NotEquals as u8,
+pub(crate) enum BooleanComparisonOp {
+    EqualsEquals    = st::BinaryOp::EqualsEquals as u8,
+    NotEqualsEquals = st::BinaryOp::NotEqualsEquals as u8,
 
-    Greater         = st::BinaryOperator::Greater as u8,
-    GreaterOrEquals = st::BinaryOperator::GreaterOrEquals as u8,
+    Greater         = st::BinaryOp::Greater as u8,
+    GreaterOrEquals = st::BinaryOp::GreaterOrEquals as u8,
 
-    Less            = st::BinaryOperator::Less as u8,
-    LessOrEquals    = st::BinaryOperator::LessOrEquals as u8,
+    Less            = st::BinaryOp::Less as u8,
+    LessOrEquals    = st::BinaryOp::LessOrEquals as u8,
 }
 
-impl BooleanComparisonOperator {
+impl BooleanComparisonOp {
     const BASE_TYPE: BaseType = BaseType::Bool;
     const TYPE: Type = Type::Base(Self::BASE_TYPE);
 }
 
-impl Into<BooleanComparisonOperator> for Op {
+impl Into<BooleanComparisonOp> for Op {
     #[inline(always)]
-    fn into(self) -> BooleanComparisonOperator {
+    fn into(self) -> BooleanComparisonOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<Op> for BooleanComparisonOperator {
+impl Into<Op> for BooleanComparisonOp {
     #[inline(always)]
     fn into(self) -> Op {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<st::BinaryOperator> for BooleanComparisonOperator {
+impl Into<st::BinaryOp> for BooleanComparisonOp {
     #[inline(always)]
-    fn into(self) -> st::BinaryOperator {
+    fn into(self) -> st::BinaryOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<BooleanComparisonOperator> for st::BinaryOperator {
+impl Into<BooleanComparisonOp> for st::BinaryOp {
     #[inline(always)]
-    fn into(self) -> BooleanComparisonOperator {
+    fn into(self) -> BooleanComparisonOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Display for BooleanComparisonOperator {
+impl Display for BooleanComparisonOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -495,7 +490,120 @@ impl Display for BooleanComparisonOperator {
     }
 }
 
-impl BooleanComparisonOperator {
+impl BooleanComparisonOp {
+    #[expect(dead_code)]
+    #[inline(always)]
+    pub(super) fn display_len(self) -> offset32 {
+        let op: Op = self.into();
+        return op.display_len();
+    }
+}
+
+#[rustfmt::skip]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[repr(u8)]
+pub(crate) enum AssignmentOp {
+    Equals        = st::BinaryAssignmentOp::Equals as u8,
+}
+
+impl Into<AssignmentOp> for Op {
+    #[inline(always)]
+    fn into(self) -> AssignmentOp {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<Op> for AssignmentOp {
+    #[inline(always)]
+    fn into(self) -> Op {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<st::BinaryAssignmentOp> for AssignmentOp {
+    #[inline(always)]
+    fn into(self) -> st::BinaryAssignmentOp {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<AssignmentOp> for st::BinaryAssignmentOp {
+    #[inline(always)]
+    fn into(self) -> AssignmentOp {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Display for AssignmentOp {
+    #[inline(always)]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let op: Op = (*self).into();
+        return write!(f, "{op}");
+    }
+}
+
+impl AssignmentOp {
+    #[expect(dead_code)]
+    #[inline(always)]
+    pub(super) fn display_len(self) -> offset32 {
+        let op: Op = self.into();
+        return op.display_len();
+    }
+}
+
+#[expect(dead_code, clippy::enum_variant_names)]
+#[rustfmt::skip]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[repr(u8)]
+pub(crate) enum PrefixAssignmentOp {
+    NotEquals = st::PrefixAssignmentOp::NotEquals as u8,
+
+    PlusEquals = st::PrefixAssignmentOp::PlusEquals as u8,
+    WrappingPlusEquals = st::PrefixAssignmentOp::WrappingPlusEquals as u8,
+    SaturatingPlusEquals = st::PrefixAssignmentOp::SaturatingPlusEquals as u8,
+
+    MinusEquals = st::PrefixAssignmentOp::MinusEquals as u8,
+    WrappingMinusEquals = st::PrefixAssignmentOp::WrappingMinusEquals as u8,
+    SaturatingMinusEquals = st::PrefixAssignmentOp::SaturatingMinusEquals as u8,
+}
+
+impl Into<PrefixAssignmentOp> for Op {
+    #[inline(always)]
+    fn into(self) -> PrefixAssignmentOp {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<Op> for PrefixAssignmentOp {
+    #[inline(always)]
+    fn into(self) -> Op {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<st::PrefixAssignmentOp> for PrefixAssignmentOp {
+    #[inline(always)]
+    fn into(self) -> st::PrefixAssignmentOp {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<PrefixAssignmentOp> for st::PrefixAssignmentOp {
+    #[inline(always)]
+    fn into(self) -> PrefixAssignmentOp {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Display for PrefixAssignmentOp {
+    #[inline(always)]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let op: Op = (*self).into();
+        return write!(f, "{op}");
+    }
+}
+
+impl PrefixAssignmentOp {
     #[expect(dead_code)]
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
@@ -508,77 +616,39 @@ impl BooleanComparisonOperator {
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
-pub(crate) enum AssignmentOperator {
-    Pow           = st::AssignmentOperator::Pow as u8,
-    WrappingPow   = st::AssignmentOperator::WrappingPow as u8,
-    SaturatingPow = st::AssignmentOperator::SaturatingPow as u8,
-
-    Times           = st::AssignmentOperator::Times as u8,
-    WrappingTimes   = st::AssignmentOperator::WrappingTimes as u8,
-    SaturatingTimes = st::AssignmentOperator::SaturatingTimes as u8,
-
-    Divide           = st::AssignmentOperator::Divide as u8,
-    WrappingDivide   = st::AssignmentOperator::WrappingDivide as u8,
-    SaturatingDivide = st::AssignmentOperator::SaturatingDivide as u8,
-
-    Remainder = st::AssignmentOperator::Remainder as u8,
-
-    Plus           = st::AssignmentOperator::Plus as u8,
-    WrappingPlus   = st::AssignmentOperator::WrappingPlus as u8,
-    SaturatingPlus = st::AssignmentOperator::SaturatingPlus as u8,
-
-    Minus           = st::AssignmentOperator::Minus as u8,
-    WrappingMinus   = st::AssignmentOperator::WrappingMinus as u8,
-    SaturatingMinus = st::AssignmentOperator::SaturatingMinus as u8,
-
-    LeftShift           = st::AssignmentOperator::LeftShift as u8,
-    WrappingLeftShift   = st::AssignmentOperator::WrappingLeftShift as u8,
-    SaturatingLeftShift = st::AssignmentOperator::SaturatingLeftShift as u8,
-
-    RightShift = st::AssignmentOperator::RightShift as u8,
-
-    LeftRotate  = st::AssignmentOperator::LeftRotate as u8,
-    RightRotate = st::AssignmentOperator::RightRotate as u8,
-
-    BitAnd = st::AssignmentOperator::BitAnd as u8,
-    BitXor = st::AssignmentOperator::BitXor as u8,
-    BitOr  = st::AssignmentOperator::BitOr as u8,
+pub(crate) enum BooleanPrefixAssignmentOp {
+    NotEquals = st::PrefixAssignmentOp::NotEquals as u8,
 }
 
-impl AssignmentOperator {
-    const BASE_TYPE: BaseType = BaseType::I64;
-    const TYPE: Type = Type::Base(Self::BASE_TYPE);
-}
-
-impl Into<AssignmentOperator> for Op {
+impl Into<BooleanPrefixAssignmentOp> for Op {
     #[inline(always)]
-    fn into(self) -> AssignmentOperator {
+    fn into(self) -> BooleanPrefixAssignmentOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<Op> for AssignmentOperator {
+impl Into<Op> for BooleanPrefixAssignmentOp {
     #[inline(always)]
     fn into(self) -> Op {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<st::AssignmentOperator> for AssignmentOperator {
+impl Into<st::PrefixAssignmentOp> for BooleanPrefixAssignmentOp {
     #[inline(always)]
-    fn into(self) -> st::AssignmentOperator {
+    fn into(self) -> st::PrefixAssignmentOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<AssignmentOperator> for st::AssignmentOperator {
+impl Into<BooleanPrefixAssignmentOp> for st::PrefixAssignmentOp {
     #[inline(always)]
-    fn into(self) -> AssignmentOperator {
+    fn into(self) -> BooleanPrefixAssignmentOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Display for AssignmentOperator {
+impl Display for BooleanPrefixAssignmentOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -586,7 +656,7 @@ impl Display for AssignmentOperator {
     }
 }
 
-impl AssignmentOperator {
+impl BooleanPrefixAssignmentOp {
     #[expect(dead_code)]
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
@@ -599,45 +669,72 @@ impl AssignmentOperator {
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
-pub(crate) enum BooleanAssignmentOperator {
-    And    = st::AssignmentOperator::And as u8,
-    Or     = st::AssignmentOperator::Or as u8,
+pub(crate) enum BinaryAssignmentOp {
+    Pow           = st::BinaryAssignmentOp::Pow as u8,
+    WrappingPow   = st::BinaryAssignmentOp::WrappingPow as u8,
+    SaturatingPow = st::BinaryAssignmentOp::SaturatingPow as u8,
+
+    Times           = st::BinaryAssignmentOp::Times as u8,
+    WrappingTimes   = st::BinaryAssignmentOp::WrappingTimes as u8,
+    SaturatingTimes = st::BinaryAssignmentOp::SaturatingTimes as u8,
+
+    Divide           = st::BinaryAssignmentOp::Divide as u8,
+    WrappingDivide   = st::BinaryAssignmentOp::WrappingDivide as u8,
+    SaturatingDivide = st::BinaryAssignmentOp::SaturatingDivide as u8,
+
+    Remainder = st::BinaryAssignmentOp::Remainder as u8,
+
+    Plus           = st::BinaryAssignmentOp::Plus as u8,
+    WrappingPlus   = st::BinaryAssignmentOp::WrappingPlus as u8,
+    SaturatingPlus = st::BinaryAssignmentOp::SaturatingPlus as u8,
+
+    Minus           = st::BinaryAssignmentOp::Minus as u8,
+    WrappingMinus   = st::BinaryAssignmentOp::WrappingMinus as u8,
+    SaturatingMinus = st::BinaryAssignmentOp::SaturatingMinus as u8,
+
+    LeftShift           = st::BinaryAssignmentOp::LeftShift as u8,
+    WrappingLeftShift   = st::BinaryAssignmentOp::WrappingLeftShift as u8,
+    SaturatingLeftShift = st::BinaryAssignmentOp::SaturatingLeftShift as u8,
+
+    RightShift = st::BinaryAssignmentOp::RightShift as u8,
+
+    LeftRotate  = st::BinaryAssignmentOp::LeftRotate as u8,
+    RightRotate = st::BinaryAssignmentOp::RightRotate as u8,
+
+    BitAnd = st::BinaryAssignmentOp::BitAnd as u8,
+    BitXor = st::BinaryAssignmentOp::BitXor as u8,
+    BitOr  = st::BinaryAssignmentOp::BitOr as u8,
 }
 
-impl BooleanAssignmentOperator {
-    const BASE_TYPE: BaseType = BaseType::Bool;
-    const TYPE: Type = Type::Base(Self::BASE_TYPE);
-}
-
-impl Into<BooleanAssignmentOperator> for Op {
+impl Into<BinaryAssignmentOp> for Op {
     #[inline(always)]
-    fn into(self) -> BooleanAssignmentOperator {
+    fn into(self) -> BinaryAssignmentOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<Op> for BooleanAssignmentOperator {
+impl Into<Op> for BinaryAssignmentOp {
     #[inline(always)]
     fn into(self) -> Op {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<st::AssignmentOperator> for BooleanAssignmentOperator {
+impl Into<st::BinaryAssignmentOp> for BinaryAssignmentOp {
     #[inline(always)]
-    fn into(self) -> st::AssignmentOperator {
+    fn into(self) -> st::BinaryAssignmentOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<BooleanAssignmentOperator> for st::AssignmentOperator {
+impl Into<BinaryAssignmentOp> for st::BinaryAssignmentOp {
     #[inline(always)]
-    fn into(self) -> BooleanAssignmentOperator {
+    fn into(self) -> BinaryAssignmentOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Display for BooleanAssignmentOperator {
+impl Display for BinaryAssignmentOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -645,7 +742,61 @@ impl Display for BooleanAssignmentOperator {
     }
 }
 
-impl BooleanAssignmentOperator {
+impl BinaryAssignmentOp {
+    #[expect(dead_code)]
+    #[inline(always)]
+    pub(super) fn display_len(self) -> offset32 {
+        let op: Op = self.into();
+        return op.display_len();
+    }
+}
+
+#[expect(dead_code)]
+#[rustfmt::skip]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[repr(u8)]
+pub(crate) enum BooleanBinaryAssignmentOp {
+    And    = st::BinaryAssignmentOp::And as u8,
+    Or     = st::BinaryAssignmentOp::Or as u8,
+}
+
+impl Into<BooleanBinaryAssignmentOp> for Op {
+    #[inline(always)]
+    fn into(self) -> BooleanBinaryAssignmentOp {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<Op> for BooleanBinaryAssignmentOp {
+    #[inline(always)]
+    fn into(self) -> Op {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<st::BinaryAssignmentOp> for BooleanBinaryAssignmentOp {
+    #[inline(always)]
+    fn into(self) -> st::BinaryAssignmentOp {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<BooleanBinaryAssignmentOp> for st::BinaryAssignmentOp {
+    #[inline(always)]
+    fn into(self) -> BooleanBinaryAssignmentOp {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Display for BooleanBinaryAssignmentOp {
+    #[inline(always)]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let op: Op = (*self).into();
+        return write!(f, "{op}");
+    }
+}
+
+impl BooleanBinaryAssignmentOp {
     #[expect(dead_code)]
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
@@ -689,36 +840,36 @@ pub(crate) enum Expression<'code> {
     },
 
     Prefix {
-        operator: PrefixOperator,
+        operator: PrefixOp,
         operator_column: offset32,
         right_operand: ExpressionIndex<'code>,
     },
     BooleanPrefix {
-        operator: BooleanPrefixOperator,
+        operator: BooleanPrefixOp,
         operator_column: offset32,
         right_operand: ExpressionIndex<'code>,
     },
     Binary {
         left_operand: ExpressionIndex<'code>,
-        operator: BinaryOperator,
+        operator: BinaryOp,
         operator_column: offset32,
         right_operand: ExpressionIndex<'code>,
     },
     BooleanBinary {
         left_operand: ExpressionIndex<'code>,
-        operator: BooleanBinaryOperator,
+        operator: BooleanBinaryOp,
         operator_column: offset32,
         right_operand: ExpressionIndex<'code>,
     },
     Comparison {
         left_operand: ExpressionIndex<'code>,
-        operator: ComparisonOperator,
+        operator: ComparisonOp,
         operator_column: offset32,
         right_operand: ExpressionIndex<'code>,
     },
     BooleanComparison {
         left_operand: ExpressionIndex<'code>,
-        operator: BooleanComparisonOperator,
+        operator: BooleanComparisonOp,
         operator_column: offset32,
         right_operand: ExpressionIndex<'code>,
     },
@@ -731,30 +882,6 @@ pub(crate) enum Expression<'code> {
 }
 
 impl Expression<'_> {
-    pub(crate) fn base_typ(&self, ast: &TypedSyntaxTree<'_, '_, '_>) -> BaseType {
-        return match self {
-            Self::False { .. } | Self::True { .. } => BaseType::Bool,
-            Self::I64 { .. } => BaseType::I64,
-            Self::Ascii { .. } => BaseType::Ascii,
-            Self::Str { .. } => BaseType::Str,
-            Self::Variable { variable, .. } => {
-                let variable_definition = &ast.variables[*variable];
-                variable_definition.typ.base_typ()
-            }
-            Self::Array { base_type, .. } => *base_type,
-            Self::Prefix { .. } => PrefixOperator::BASE_TYPE,
-            Self::BooleanPrefix { .. } => BooleanPrefixOperator::BASE_TYPE,
-            Self::Binary { .. } => BinaryOperator::BASE_TYPE,
-            Self::BooleanBinary { .. } => BooleanBinaryOperator::BASE_TYPE,
-            Self::Comparison { .. } => ComparisonOperator::BASE_TYPE,
-            Self::BooleanComparison { .. } => BooleanComparisonOperator::BASE_TYPE,
-            Self::Index { indexed_expression, .. } => {
-                let expression = &ast.expressions[*indexed_expression];
-                expression.base_typ(ast)
-            }
-        };
-    }
-
     pub(crate) fn typ(&self, ast: &TypedSyntaxTree<'_, '_, '_>) -> Type {
         return match self {
             Self::False { .. } | Self::True { .. } => Type::Base(BaseType::Bool),
@@ -768,15 +895,19 @@ impl Expression<'_> {
             Self::Array { base_type, items_len, .. } => {
                 Type::Array { base_type: *base_type, len: *items_len }
             }
-            Self::Prefix { .. } => PrefixOperator::TYPE,
-            Self::BooleanPrefix { .. } => BooleanPrefixOperator::TYPE,
-            Self::Binary { .. } => BinaryOperator::TYPE,
-            Self::BooleanBinary { .. } => BooleanBinaryOperator::TYPE,
-            Self::Comparison { .. } => ComparisonOperator::TYPE,
-            Self::BooleanComparison { .. } => BooleanComparisonOperator::TYPE,
+            Self::Prefix { .. } => PrefixOp::TYPE,
+            Self::BooleanPrefix { .. } => BooleanPrefixOp::TYPE,
+            Self::Binary { .. } => BinaryOp::TYPE,
+            Self::BooleanBinary { .. } => BooleanBinaryOp::TYPE,
+            Self::Comparison { .. } => ComparisonOp::TYPE,
+            Self::BooleanComparison { .. } => BooleanComparisonOp::TYPE,
             Self::Index { indexed_expression, .. } => {
                 let expression = &ast.expressions[*indexed_expression];
-                expression.typ(ast)
+                match expression.typ(ast) {
+                    Type::Base(BaseType::Str) => Type::Base(BaseType::Ascii),
+                    base_type @ Type::Base(BaseType::I64 | BaseType::Bool | BaseType::Ascii) => base_type,
+                    Type::Array { base_type, .. } => Type::Base(base_type),
+                }
             }
         };
     }
@@ -830,19 +961,30 @@ pub(crate) enum Node<'code> {
     },
     Assignment {
         target: ExpressionIndex<'code>,
+        operator: AssignmentOp,
         new_value: ExpressionIndex<'code>,
     },
-    AssignmentExpression {
+    BinaryAssignment {
         target: ExpressionIndex<'code>,
-        operator: AssignmentOperator,
+        operator: BinaryAssignmentOp,
         operator_column: offset32,
         new_value: ExpressionIndex<'code>,
     },
     BooleanAssignmentExpression {
         target: ExpressionIndex<'code>,
-        operator: BooleanAssignmentOperator,
+        operator: BooleanBinaryAssignmentOp,
         operator_column: offset32,
         new_value: ExpressionIndex<'code>,
+    },
+    PrefixAssignmentExpression {
+        target: ExpressionIndex<'code>,
+        operator: PrefixAssignmentOp,
+        operator_column: offset32,
+    },
+    BooleanPrefixAssignment {
+        target: ExpressionIndex<'code>,
+        operator: BooleanPrefixAssignmentOp,
+        operator_column: offset32,
     },
 
     Scope {
@@ -935,26 +1077,38 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
             Node::Expression(expression) => {
                 self.info_expression(f, *expression, indent)
             }
-            Node::Assignment { target, new_value, .. } => {
+            Node::Assignment { target, new_value, operator } => {
                 writeln!(f, "{:>indent$}Assignment", "")?;
                 let assignment_indent = indent + Self::INDENT_INCREMENT;
                 self.info_expression(f, *target, assignment_indent)?;
-                writeln!(f, "{:>assignment_indent$}Equals = =", "")?;
+                writeln!(f, "{:>assignment_indent$}AssignmentOp = {operator}", "")?;
                 self.info_expression(f, *new_value, assignment_indent)
             }
-            Node::AssignmentExpression { target, operator, new_value, .. } => {
+            Node::BinaryAssignment { target, operator, new_value, .. } => {
                 writeln!(f, "{:>indent$}AssignmentExpression", "")?;
                 let assignment_indent = indent + Self::INDENT_INCREMENT;
                 self.info_expression(f, *target, assignment_indent)?;
-                writeln!(f, "{:>assignment_indent$}AssignmentOp = {operator}", "")?;
+                writeln!(f, "{:>assignment_indent$}BinaryAssignmentOp = {operator}", "")?;
                 self.info_expression(f, *new_value, assignment_indent)
             }
             Node::BooleanAssignmentExpression { target, operator, new_value, .. } => {
                 writeln!(f, "{:>indent$}BooleanAssignmentExpression", "")?;
                 let assignment_indent = indent + Self::INDENT_INCREMENT;
                 self.info_expression(f, *target, assignment_indent)?;
-                writeln!(f, "{:>assignment_indent$}BooleanAssignmentOp = {operator}", "")?;
+                writeln!(f, "{:>assignment_indent$}BooleanBinaryAssignmentOp = {operator}", "")?;
                 self.info_expression(f, *new_value, assignment_indent)
+            }
+            Node::PrefixAssignmentExpression { target, operator, .. } => {
+                writeln!(f, "{:>indent$}Assignment", "")?;
+                let assignment_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *target, assignment_indent)?;
+                writeln!(f, "{:>assignment_indent$}PrefixAssignmentOp = {operator}", "")
+            }
+            Node::BooleanPrefixAssignment { target, operator, .. } => {
+                writeln!(f, "{:>indent$}Assignment", "")?;
+                let assignment_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *target, assignment_indent)?;
+                writeln!(f, "{:>assignment_indent$}BooleanPrefixAssignmentOp = {operator}", "")
             }
 
             Node::Print { argument } => {
@@ -1067,7 +1221,7 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
                 let variable_definition = &self.typed_syntax_tree.variables[*variable];
                 let identifier_str = self.tokens.text[variable_definition.name];
                 writeln!(f, "{:>indent$}Identifier = {identifier_str}", "")
-            },
+            }
             Expression::Array { items_start, items_len, .. } => {
                 writeln!(f, "{:>indent$}Array", "")?;
 
@@ -1079,42 +1233,42 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
                     self.info_expression(f, *item_expression, items_indent)?;
                 }
                 Ok(())
-            },
+            }
 
             Expression::Prefix { operator, right_operand, .. } => {
                 writeln!(f, "{:>indent$}PrefixExpression", "")?;
-                writeln!(f, "{:>expression_indent$}PrefixOperator = {operator}", "")?;
+                writeln!(f, "{:>expression_indent$}PrefixOp = {operator}", "")?;
                 self.info_expression(f, *right_operand, expression_indent)
             }
             Expression::BooleanPrefix { operator, right_operand, .. } => {
                 writeln!(f, "{:>indent$}BooleanPrefixExpression", "")?;
-                writeln!(f, "{:>expression_indent$}BooleanPrefixOperator = {operator}", "")?;
+                writeln!(f, "{:>expression_indent$}BooleanPrefixOp = {operator}", "")?;
                 self.info_expression(f, *right_operand, expression_indent)
             }
             Expression::Binary { left_operand, operator, right_operand, .. } => {
                 writeln!(f, "{:>indent$}BinaryExpression", "")?;
                 self.info_expression(f, *left_operand, expression_indent)?;
-                writeln!(f, "{:>expression_indent$}BinaryOperator = {operator}", "")?;
+                writeln!(f, "{:>expression_indent$}BinaryOp = {operator}", "")?;
                 self.info_expression(f, *right_operand, expression_indent)
-            },
+            }
             Expression::BooleanBinary { left_operand, operator, right_operand, .. } => {
                 writeln!(f, "{:>indent$}BooleanBinaryExpression", "")?;
                 self.info_expression(f, *left_operand, expression_indent)?;
-                writeln!(f, "{:>expression_indent$}BooleanBinaryOperator = {operator}", "")?;
+                writeln!(f, "{:>expression_indent$}BooleanBinaryOp = {operator}", "")?;
                 self.info_expression(f, *right_operand, expression_indent)
-            },
+            }
             Expression::Comparison { left_operand, operator, right_operand, .. } => {
                 writeln!(f, "{:>indent$}Comparison", "")?;
                 self.info_expression(f, *left_operand, expression_indent)?;
-                writeln!(f, "{:>expression_indent$}ComparisonOperator = {operator}", "")?;
+                writeln!(f, "{:>expression_indent$}ComparisonOp = {operator}", "")?;
                 self.info_expression(f, *right_operand, expression_indent)
-            },
+            }
             Expression::BooleanComparison { left_operand, operator, right_operand, .. } => {
                 writeln!(f, "{:>indent$}BooleanComparison", "")?;
                 self.info_expression(f, *left_operand, expression_indent)?;
-                writeln!(f, "{:>expression_indent$}BooleanComparisonOperator = {operator}", "")?;
+                writeln!(f, "{:>expression_indent$}BooleanComparisonOp = {operator}", "")?;
                 self.info_expression(f, *right_operand, expression_indent)
-            },
+            }
 
             Expression::Index {
                 indexed_expression,
@@ -1124,7 +1278,7 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
                 writeln!(f, "{:indent$}IndexExpression", "")?;
                 self.info_expression(f, *indexed_expression, expression_indent)?;
                 self.info_expression(f, *index_expression, expression_indent)
-            },
+            }
         };
     }
 
@@ -1264,12 +1418,20 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 let parsed_expression_index = self.parse_expression(*expression, None)?;
                 Ok(ParsedNode::Node(Node::Expression(parsed_expression_index)))
             }
-            st::Node::Assignment { target, operator, operator_column, new_value, .. } => {
-                let parsed_assignment = self.assignment(
+            st::Node::BinaryAssignment { target, operator, operator_column, new_value, .. } => {
+                let parsed_assignment = self.binary_assignment(
                     *target,
                     *operator,
                     *operator_column,
-                    *new_value
+                    *new_value,
+                )?;
+                Ok(ParsedNode::Node(parsed_assignment))
+            }
+            st::Node::PrefixAssignment { target, operator, operator_column, .. } => {
+                let parsed_assignment = self.prefix_assignment(
+                    *target,
+                    *operator,
+                    *operator_column,
                 )?;
                 Ok(ParsedNode::Node(parsed_assignment))
             }
@@ -1375,7 +1537,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 let parsed_condition_index = self.ast.new_expression(parsed_condition);
                 self.ast.nodes.push(Node::DoLoop { condition: parsed_condition_index });
                 self.scope()
-            },
+            }
             st::Node::Break { .. } => Ok(ParsedNode::Node(Node::Break)),
             st::Node::Continue { .. } => Ok(ParsedNode::Node(Node::Continue)),
 
@@ -1773,7 +1935,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 b't' => b'\t',
                 b'0' => b'\0',
                 _ => unreachable!(),
-            },
+            }
             other => other,
         };
     }
@@ -1799,14 +1961,14 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             st::Expression::Prefix { operator, .. } => {
                 let op: Op = (*operator).into();
                 TokenKind::Op(op)
-            },
+            }
             st::Expression::Binary { left_operand, .. } => {
                 return self.first_token_display_len(*left_operand);
-            },
+            }
             st::Expression::Parenthesis { .. } => TokenKind::OpenRoundBracket,
             st::Expression::Index { indexed_expression, .. } => {
                 return self.first_token_display_len(*indexed_expression);
-            },
+            }
         };
 
         return token_kind.display_len(self.tokens);
@@ -1834,11 +1996,11 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             st::Expression::Prefix { operator_column, .. } => *operator_column,
             st::Expression::Binary { left_operand, .. } => {
                 return self.first_token_column(*left_operand);
-            },
+            }
             st::Expression::Parenthesis { open_round_bracket_column, .. } => *open_round_bracket_column,
             st::Expression::Index { indexed_expression, .. } => {
                 return self.first_token_column(*indexed_expression);
-            },
+            }
         };
 
         return column;
@@ -2076,7 +2238,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             }
 
             st::Expression::Prefix { operator, operator_column, right_operand } => match operator {
-                st::PrefixOperator::Len => {
+                st::PrefixOp::Len => {
                     let right_operand_expression = self.expression(*right_operand, None)?;
                     let right_operand_type = right_operand_expression.typ(&self.ast);
                     match right_operand_type {
@@ -2094,7 +2256,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         }
                     }
                 }
-                st::PrefixOperator::Not => {
+                st::PrefixOp::Not => {
                     let right_operand_expression = self.expression(*right_operand, None)?;
                     let right_operand_type = right_operand_expression.typ(&self.ast);
                     match right_operand_type {
@@ -2117,9 +2279,9 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         }
                     }
                 }
-                st::PrefixOperator::Plus
-                | st::PrefixOperator::WrappingPlus
-                | st::PrefixOperator::SaturatingPlus => {
+                st::PrefixOp::Plus
+                | st::PrefixOp::WrappingPlus
+                | st::PrefixOp::SaturatingPlus => {
                     let right_operand_expression = self.expression(*right_operand, None)?;
                     let right_operand_type = right_operand_expression.typ(&self.ast);
                     match right_operand_type {
@@ -2137,9 +2299,9 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         }
                     }
                 }
-                st::PrefixOperator::Minus
-                | st::PrefixOperator::WrappingMinus
-                | st::PrefixOperator::SaturatingMinus => {
+                st::PrefixOp::Minus
+                | st::PrefixOp::WrappingMinus
+                | st::PrefixOp::SaturatingMinus => {
                     let st_right_operand = &self.syntax_tree.expressions[*right_operand];
                     match st_right_operand {
                         st::Expression::BinaryInteger { literal, column } => {
@@ -2277,7 +2439,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             let right_operand_expression = self.expression(*right_operand, None)?;
                             let right_operand_type = right_operand_expression.typ(&self.ast);
                             match right_operand_type {
-                                Type::Base(BaseType::I64 | BaseType::Ascii) => Expression::Prefix {
+                                Type::Base(BaseType::I64 | BaseType::Ascii) |
+                                Type::Array { base_type: BaseType::I64 | BaseType::Ascii, .. } => Expression::Prefix {
                                     operator: (*operator).into(),
                                     operator_column: *operator_column,
                                     right_operand: self.ast.new_expression(right_operand_expression),
@@ -2302,44 +2465,44 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 let right_operand_type = right_operand_expression.typ(&self.ast);
 
                 match operator {
-                    st::BinaryOperator::Pow
-                    | st::BinaryOperator::WrappingPow
-                    | st::BinaryOperator::SaturatingPow
+                    st::BinaryOp::Pow
+                    | st::BinaryOp::WrappingPow
+                    | st::BinaryOp::SaturatingPow
 
-                    | st::BinaryOperator::Times
-                    | st::BinaryOperator::WrappingTimes
-                    | st::BinaryOperator::SaturatingTimes
+                    | st::BinaryOp::Times
+                    | st::BinaryOp::WrappingTimes
+                    | st::BinaryOp::SaturatingTimes
 
-                    | st::BinaryOperator::Divide
-                    | st::BinaryOperator::WrappingDivide
-                    | st::BinaryOperator::SaturatingDivide
+                    | st::BinaryOp::Divide
+                    | st::BinaryOp::WrappingDivide
+                    | st::BinaryOp::SaturatingDivide
 
-                    | st::BinaryOperator::Remainder
+                    | st::BinaryOp::Remainder
 
-                    | st::BinaryOperator::Plus
-                    | st::BinaryOperator::WrappingPlus
-                    | st::BinaryOperator::SaturatingPlus
+                    | st::BinaryOp::Plus
+                    | st::BinaryOp::WrappingPlus
+                    | st::BinaryOp::SaturatingPlus
 
-                    | st::BinaryOperator::Minus
-                    | st::BinaryOperator::WrappingMinus
-                    | st::BinaryOperator::SaturatingMinus
+                    | st::BinaryOp::Minus
+                    | st::BinaryOp::WrappingMinus
+                    | st::BinaryOp::SaturatingMinus
 
-                    | st::BinaryOperator::LeftShift
-                    | st::BinaryOperator::WrappingLeftShift
-                    | st::BinaryOperator::SaturatingLeftShift
+                    | st::BinaryOp::LeftShift
+                    | st::BinaryOp::WrappingLeftShift
+                    | st::BinaryOp::SaturatingLeftShift
 
-                    | st::BinaryOperator::RightShift
-                    | st::BinaryOperator::LeftRotate
-                    | st::BinaryOperator::RightRotate
-                    | st::BinaryOperator::BitAnd
-                    | st::BinaryOperator::BitXor
-                    | st::BinaryOperator::BitOr => {
+                    | st::BinaryOp::RightShift
+                    | st::BinaryOp::LeftRotate
+                    | st::BinaryOp::RightRotate
+                    | st::BinaryOp::BitAnd
+                    | st::BinaryOp::BitXor
+                    | st::BinaryOp::BitOr => {
                         match left_operand_type {
                             Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::I64) => {}
                             Type::Base(BaseType::Str) | Type::Array { .. } => {
                                 return Err(Error {
                                     kind: ErrorKind::LeftOperandTypeMismatch {
-                                        expected: BinaryOperator::TYPE,
+                                        expected: BinaryOp::TYPE,
                                         actual: left_operand_type,
                                     },
                                     col: *operator_column,
@@ -2353,7 +2516,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             Type::Base(BaseType::Str) | Type::Array { .. } => {
                                 return Err(Error {
                                     kind: ErrorKind::RightOperandTypeMismatch {
-                                        expected: BinaryOperator::TYPE,
+                                        expected: BinaryOp::TYPE,
                                         actual: right_operand_type,
                                     },
                                     col: *operator_column,
@@ -2368,38 +2531,38 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             operator_column: *operator_column,
                             right_operand: self.ast.new_expression(right_operand_expression),
                         }
-                    },
+                    }
 
-                    st::BinaryOperator::And
-                    | st::BinaryOperator::Or => {
+                    st::BinaryOp::And
+                    | st::BinaryOp::Or => {
                         match left_operand_type {
-                            Type::Base(BaseType::Bool) => {},
+                            Type::Base(BaseType::Bool) => {}
                             Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Str)
                             | Type::Array { .. } => {
                                 return Err(Error {
                                     kind: ErrorKind::LeftOperandTypeMismatch {
-                                        expected: BooleanBinaryOperator::TYPE,
+                                        expected: BooleanBinaryOp::TYPE,
                                         actual: left_operand_type,
                                     },
                                     col: *operator_column,
                                     pointers_count: operator.display_len(),
                                 });
-                            },
+                            }
                         }
 
                         match right_operand_type {
-                            Type::Base(BaseType::Bool) => {},
+                            Type::Base(BaseType::Bool) => {}
                             Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Str)
                             | Type::Array { .. } => {
                                 return Err(Error {
                                     kind: ErrorKind::RightOperandTypeMismatch {
-                                        expected: BooleanBinaryOperator::TYPE,
+                                        expected: BooleanBinaryOp::TYPE,
                                         actual: right_operand_type,
                                     },
                                     col: *operator_column,
                                     pointers_count: operator.display_len(),
                                 });
-                            },
+                            }
                         }
 
                         Expression::BooleanBinary {
@@ -2408,9 +2571,9 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             operator_column: *operator_column,
                             right_operand: self.ast.new_expression(right_operand_expression),
                         }
-                    },
+                    }
 
-                    st::BinaryOperator::Compare => {
+                    st::BinaryOp::Compare => {
                         if left_operand_type != right_operand_type {
                             return Err(Error {
                                 kind: ErrorKind::CannotCompareOperands {
@@ -2436,13 +2599,13 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             operator_column: *operator_column,
                             right_operand: self.ast.new_expression(right_operand_expression),
                         }
-                    },
-                    st::BinaryOperator::EqualsEquals
-                    | st::BinaryOperator::NotEquals
-                    | st::BinaryOperator::Greater
-                    | st::BinaryOperator::GreaterOrEquals
-                    | st::BinaryOperator::Less
-                    | st::BinaryOperator::LessOrEquals => {
+                    }
+                    st::BinaryOp::EqualsEquals
+                    | st::BinaryOp::NotEqualsEquals
+                    | st::BinaryOp::Greater
+                    | st::BinaryOp::GreaterOrEquals
+                    | st::BinaryOp::Less
+                    | st::BinaryOp::LessOrEquals => {
                         if left_operand_type != right_operand_type {
                             return Err(Error {
                                 kind: ErrorKind::CannotCompareOperands {
@@ -2468,7 +2631,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             operator_column: *operator_column,
                             right_operand: self.ast.new_expression(right_operand_expression),
                         }
-                    },
+                    }
                 }
             }
             st::Expression::Parenthesis { inner_expression, .. } => {
@@ -2491,7 +2654,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         let index_expression_expression = self.expression(*index_expression, None)?;
                         let index_expression_type = index_expression_expression.typ(&self.ast);
                         match index_expression_type {
-                            Type::Base(BaseType::I64) => {},
+                            Type::Base(BaseType::I64) => {}
                             Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
                             | Type::Array { .. } => {
                                 return Err(Error {
@@ -2499,7 +2662,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                     col: self.first_token_column(*index_expression),
                                     pointers_count: self.first_token_display_len(*index_expression),
                                 });
-                            },
+                            }
                         }
 
                         Expression::Index {
@@ -2745,10 +2908,10 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 }
 
 impl<'code> Parser<'_, '_, '_, 'code, '_> {
-    fn assignment(
+    fn binary_assignment(
         &mut self,
         target: st::ExpressionIndex<'code>,
-        operator: st::AssignmentOperator,
+        operator: st::BinaryAssignmentOp,
         operator_column: offset32,
         new_value: st::ExpressionIndex<'code>,
     ) -> Result<Node<'code>, Error<ErrorKind>> {
@@ -2811,7 +2974,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 } else {
                     variable_definition.typ.clone()
                 }
-            },
+            }
             Expression::False { .. }
             | Expression::True { .. }
             | Expression::I64 { .. }
@@ -2833,7 +2996,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         };
 
         let assignment_node = match operator {
-            st::AssignmentOperator::Equals => {
+            st::BinaryAssignmentOp::Equals => {
                 if parsed_target_type != parsed_new_value_type {
                     return Err(Error {
                         kind: ErrorKind::RightOperandTypeMismatch {
@@ -2847,48 +3010,49 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
                 Node::Assignment {
                     target: self.ast.new_expression(parsed_target),
+                    operator: AssignmentOp::Equals,
                     new_value: self.ast.new_expression(parsed_new_value)
                 }
             }
 
-            st::AssignmentOperator::Pow
-            | st::AssignmentOperator::WrappingPow
-            | st::AssignmentOperator::SaturatingPow
+            st::BinaryAssignmentOp::Pow
+            | st::BinaryAssignmentOp::WrappingPow
+            | st::BinaryAssignmentOp::SaturatingPow
 
-            | st::AssignmentOperator::Times
-            | st::AssignmentOperator::WrappingTimes
-            | st::AssignmentOperator::SaturatingTimes
+            | st::BinaryAssignmentOp::Times
+            | st::BinaryAssignmentOp::WrappingTimes
+            | st::BinaryAssignmentOp::SaturatingTimes
 
-            | st::AssignmentOperator::Divide
-            | st::AssignmentOperator::WrappingDivide
-            | st::AssignmentOperator::SaturatingDivide
+            | st::BinaryAssignmentOp::Divide
+            | st::BinaryAssignmentOp::WrappingDivide
+            | st::BinaryAssignmentOp::SaturatingDivide
 
-            | st::AssignmentOperator::Remainder
+            | st::BinaryAssignmentOp::Remainder
 
-            | st::AssignmentOperator::Plus
-            | st::AssignmentOperator::WrappingPlus
-            | st::AssignmentOperator::SaturatingPlus
+            | st::BinaryAssignmentOp::Plus
+            | st::BinaryAssignmentOp::WrappingPlus
+            | st::BinaryAssignmentOp::SaturatingPlus
 
-            | st::AssignmentOperator::Minus
-            | st::AssignmentOperator::WrappingMinus
-            | st::AssignmentOperator::SaturatingMinus
+            | st::BinaryAssignmentOp::Minus
+            | st::BinaryAssignmentOp::WrappingMinus
+            | st::BinaryAssignmentOp::SaturatingMinus
 
-            | st::AssignmentOperator::LeftShift
-            | st::AssignmentOperator::WrappingLeftShift
-            | st::AssignmentOperator::SaturatingLeftShift
+            | st::BinaryAssignmentOp::LeftShift
+            | st::BinaryAssignmentOp::WrappingLeftShift
+            | st::BinaryAssignmentOp::SaturatingLeftShift
 
-            | st::AssignmentOperator::RightShift
-            | st::AssignmentOperator::LeftRotate
-            | st::AssignmentOperator::RightRotate
-            | st::AssignmentOperator::BitAnd
-            | st::AssignmentOperator::BitXor
-            | st::AssignmentOperator::BitOr => {
+            | st::BinaryAssignmentOp::RightShift
+            | st::BinaryAssignmentOp::LeftRotate
+            | st::BinaryAssignmentOp::RightRotate
+            | st::BinaryAssignmentOp::BitAnd
+            | st::BinaryAssignmentOp::BitXor
+            | st::BinaryAssignmentOp::BitOr => {
                 match parsed_target_type {
                     Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Bool) => {}
                     Type::Base(BaseType::Str) | Type::Array { .. } => {
                         return Err(Error {
                             kind: ErrorKind::LeftOperandTypeMismatch {
-                                expected: BinaryOperator::TYPE,
+                                expected: BinaryOp::TYPE,
                                 actual: parsed_target_type,
                             },
                             col: operator_column,
@@ -2902,7 +3066,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     Type::Base(BaseType::Str) | Type::Array { .. } => {
                         return Err(Error {
                             kind: ErrorKind::RightOperandTypeMismatch {
-                                expected: BinaryOperator::TYPE,
+                                expected: BinaryOp::TYPE,
                                 actual: parsed_new_value_type,
                             },
                             col: operator_column,
@@ -2933,43 +3097,43 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     }),
                 }
 
-                Node::AssignmentExpression {
+                Node::BinaryAssignment {
                     target: self.ast.new_expression(parsed_target),
                     operator: operator.into(),
                     operator_column,
                     new_value: self.ast.new_expression(parsed_new_value),
                 }
-            },
-            st::AssignmentOperator::And
-            | st::AssignmentOperator::Or => {
+            }
+            st::BinaryAssignmentOp::And
+            | st::BinaryAssignmentOp::Or => {
                 match parsed_target_type {
-                    Type::Base(BaseType::Bool) => {},
+                    Type::Base(BaseType::Bool) => {}
                     Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Str)
                     | Type::Array { .. } => {
                         return Err(Error {
                             kind: ErrorKind::LeftOperandTypeMismatch {
-                                expected: BooleanBinaryOperator::TYPE,
+                                expected: BooleanBinaryOp::TYPE,
                                 actual: parsed_target_type,
                             },
                             col: operator_column,
                             pointers_count: operator.display_len(),
                         });
-                    },
+                    }
                 }
 
                 match parsed_new_value_type {
-                    Type::Base(BaseType::Bool) => {},
+                    Type::Base(BaseType::Bool) => {}
                     Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Str)
                     | Type::Array { .. } => {
                         return Err(Error {
                             kind: ErrorKind::RightOperandTypeMismatch {
-                                expected: BooleanBinaryOperator::TYPE,
+                                expected: BooleanBinaryOp::TYPE,
                                 actual: parsed_new_value_type,
                             },
                             col: operator_column,
                             pointers_count: operator.display_len(),
                         });
-                    },
+                    }
                 }
 
                 Node::BooleanAssignmentExpression {
@@ -2978,7 +3142,152 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     operator_column,
                     new_value: self.ast.new_expression(parsed_new_value),
                 }
-            },
+            }
+        };
+
+        return Ok(assignment_node);
+    }
+
+    fn prefix_assignment(
+        &mut self,
+        target: st::ExpressionIndex<'code>,
+        operator: st::PrefixAssignmentOp,
+        operator_column: offset32,
+    ) -> Result<Node<'code>, Error<ErrorKind>> {
+        let parsed_target = self.expression(target, None)?;
+
+        let parsed_target_type = match &parsed_target {
+            Expression::Variable { variable, column } => {
+                let variable_definition = &self.ast.variables[*variable];
+                let variable_name_text = self.tokens.text[variable_definition.name];
+                if let Some(_) = self.resolve_let_variable(variable_name_text) {
+                    return Err(Error {
+                        kind: ErrorKind::CannotMutateVariable,
+                        col: *column,
+                        #[expect(clippy::cast_possible_truncation)]
+                        pointers_count: variable_name_text.len() as offset32,
+                    });
+                }
+                variable_definition.typ.clone()
+            }
+            Expression::Index { indexed_expression, .. } => {
+                let mut base_indexed = &self.ast.expressions[*indexed_expression];
+                while let Expression::Index {
+                    indexed_expression: inner_indexed_expression,
+                    ..
+                } = base_indexed {
+                    base_indexed = &self.ast.expressions[*inner_indexed_expression];
+                }
+
+                let Expression::Variable { variable, column } = base_indexed else {
+                    return Err(Error {
+                        kind: ErrorKind::CannotAssignToExpression,
+                        col: operator_column,
+                        pointers_count: operator.display_len(),
+                    });
+                };
+
+                let variable_definition = &self.ast.variables[*variable];
+                let variable_name_text = self.tokens.text[variable_definition.name];
+                if let Some(_) = self.resolve_let_variable(variable_name_text) {
+                    return Err(Error {
+                        kind: ErrorKind::CannotMutateVariable,
+                        col: *column,
+                        #[expect(clippy::cast_possible_truncation)]
+                        pointers_count: variable_name_text.len() as offset32,
+                    });
+                }
+
+                variable_definition.typ.clone()
+            }
+            Expression::False { .. }
+            | Expression::True { .. }
+            | Expression::I64 { .. }
+            | Expression::Ascii { .. }
+            | Expression::Str { .. }
+            | Expression::Array { .. }
+            | Expression::Prefix { .. }
+            | Expression::BooleanPrefix { .. }
+            | Expression::Binary { .. }
+            | Expression::BooleanBinary { .. }
+            | Expression::Comparison { .. }
+            | Expression::BooleanComparison { .. } => {
+                return Err(Error {
+                    kind: ErrorKind::CannotAssignToExpression,
+                    col: operator_column,
+                    pointers_count: operator.display_len(),
+                });
+            }
+        };
+
+        let assignment_node = match operator {
+            st::PrefixAssignmentOp::NotEquals => {
+                match parsed_target_type {
+                    Type::Base(BaseType::Ascii | BaseType::I64) => {
+                        Node::PrefixAssignmentExpression {
+                            target: self.ast.new_expression(parsed_target),
+                            operator: operator.into(),
+                            operator_column,
+                        }
+                    }
+                    Type::Base(BaseType::Bool) => {
+                        Node::BooleanPrefixAssignment {
+                            target: self.ast.new_expression(parsed_target),
+                            operator: operator.into(),
+                            operator_column,
+                        }
+                    }
+                    Type::Base(BaseType::Str) | Type::Array { .. } => {
+                        return Err(Error {
+                            kind: ErrorKind::CannotInvert(parsed_target_type),
+                            col: operator_column,
+                            pointers_count: operator.display_len(),
+                        });
+                    }
+                }
+            }
+
+            st::PrefixAssignmentOp::PlusEquals
+            | st::PrefixAssignmentOp::WrappingPlusEquals
+            | st::PrefixAssignmentOp::SaturatingPlusEquals => {
+                match parsed_target_type {
+                    Type::Base(BaseType::I64) => {}
+                    Type::Base(BaseType::Str | BaseType::Ascii | BaseType::Bool) | Type::Array { .. } => {
+                        return Err(Error {
+                            kind: ErrorKind::CannotTakeAbsoluteValueOf(parsed_target_type),
+                            col: operator_column,
+                            pointers_count: operator.display_len(),
+                        });
+                    }
+                }
+
+                Node::PrefixAssignmentExpression {
+                    target: self.ast.new_expression(parsed_target),
+                    operator: operator.into(),
+                    operator_column,
+                }
+            }
+
+            | st::PrefixAssignmentOp::MinusEquals
+            | st::PrefixAssignmentOp::WrappingMinusEquals
+            | st::PrefixAssignmentOp::SaturatingMinusEquals => {
+                match parsed_target_type {
+                    Type::Base(BaseType::Ascii | BaseType::I64) => {}
+                    Type::Base(BaseType::Str | BaseType::Bool) | Type::Array { .. } => {
+                        return Err(Error {
+                            kind: ErrorKind::CannotNegate(parsed_target_type),
+                            col: operator_column,
+                            pointers_count: operator.display_len(),
+                        });
+                    }
+                }
+
+                Node::PrefixAssignmentExpression {
+                    target: self.ast.new_expression(parsed_target),
+                    operator: operator.into(),
+                    operator_column,
+                }
+            }
         };
 
         return Ok(assignment_node);

@@ -12,7 +12,7 @@ use back_to_front::offset32;
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
-pub(crate) enum PrefixOperator {
+pub(crate) enum PrefixOp {
     Len = Op::Len as u8,
     Not = Op::Not as u8,
 
@@ -25,21 +25,21 @@ pub(crate) enum PrefixOperator {
     SaturatingMinus = Op::SaturatingMinus as u8,
 }
 
-impl Into<PrefixOperator> for Op {
+impl Into<PrefixOp> for Op {
     #[inline(always)]
-    fn into(self) -> PrefixOperator {
+    fn into(self) -> PrefixOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<Op> for PrefixOperator {
+impl Into<Op> for PrefixOp {
     #[inline(always)]
     fn into(self) -> Op {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Display for PrefixOperator {
+impl Display for PrefixOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -47,7 +47,7 @@ impl Display for PrefixOperator {
     }
 }
 
-impl PrefixOperator {
+impl PrefixOp {
     #[expect(dead_code)]
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
@@ -59,7 +59,7 @@ impl PrefixOperator {
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
-pub(crate) enum BinaryOperator {
+pub(crate) enum BinaryOp {
     // binary operators
     Pow           = Op::Pow as u8,
     WrappingPow   = Op::WrappingPow as u8,
@@ -105,28 +105,28 @@ pub(crate) enum BinaryOperator {
 
     // boolean comparison operators
     EqualsEquals    = Op::EqualsEquals as u8,
-    NotEquals       = Op::NotEquals as u8,
+    NotEqualsEquals = Op::NotEqualsEquals as u8,
     Greater         = Op::Greater as u8,
     GreaterOrEquals = Op::GreaterOrEquals as u8,
     Less            = Op::Less as u8,
     LessOrEquals    = Op::LessOrEquals as u8,
 }
 
-impl Into<BinaryOperator> for Op {
+impl Into<BinaryOp> for Op {
     #[inline(always)]
-    fn into(self) -> BinaryOperator {
+    fn into(self) -> BinaryOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<Op> for BinaryOperator {
+impl Into<Op> for BinaryOp {
     #[inline(always)]
     fn into(self) -> Op {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Display for BinaryOperator {
+impl Display for BinaryOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -134,7 +134,7 @@ impl Display for BinaryOperator {
     }
 }
 
-impl BinaryOperator {
+impl BinaryOp {
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
         let op: Op = self.into();
@@ -145,8 +145,7 @@ impl BinaryOperator {
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
-pub(crate) enum AssignmentOperator {
-    #[expect(dead_code)]
+pub(crate) enum BinaryAssignmentOp {
     Equals = Op::Equals as u8,
 
     Pow           = Op::PowEquals as u8,
@@ -188,21 +187,21 @@ pub(crate) enum AssignmentOperator {
     Or     = Op::OrEquals as u8,
 }
 
-impl Into<AssignmentOperator> for Op {
+impl Into<BinaryAssignmentOp> for Op {
     #[inline(always)]
-    fn into(self) -> AssignmentOperator {
+    fn into(self) -> BinaryAssignmentOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<Op> for AssignmentOperator {
+impl Into<Op> for BinaryAssignmentOp {
     #[inline(always)]
     fn into(self) -> Op {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Display for AssignmentOperator {
+impl Display for BinaryAssignmentOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -210,7 +209,53 @@ impl Display for AssignmentOperator {
     }
 }
 
-impl AssignmentOperator {
+impl BinaryAssignmentOp {
+    #[inline(always)]
+    pub(super) fn display_len(self) -> offset32 {
+        let op: Op = self.into();
+        return op.display_len();
+    }
+}
+
+#[expect(clippy::enum_variant_names)]
+#[rustfmt::skip]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[repr(u8)]
+pub(crate) enum PrefixAssignmentOp {
+    NotEquals = Op::NotEquals as u8,
+
+    PlusEquals = Op::PlusEquals as u8,
+    WrappingPlusEquals = Op::WrappingPlusEquals as u8,
+    SaturatingPlusEquals = Op::SaturatingPlusEquals as u8,
+
+    MinusEquals = Op::MinusEquals as u8,
+    WrappingMinusEquals = Op::WrappingMinusEquals as u8,
+    SaturatingMinusEquals = Op::SaturatingMinusEquals as u8,
+}
+
+impl Into<PrefixAssignmentOp> for Op {
+    #[inline(always)]
+    fn into(self) -> PrefixAssignmentOp {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<Op> for PrefixAssignmentOp {
+    #[inline(always)]
+    fn into(self) -> Op {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Display for PrefixAssignmentOp {
+    #[inline(always)]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let op: Op = (*self).into();
+        return write!(f, "{op}");
+    }
+}
+
+impl PrefixAssignmentOp {
     #[inline(always)]
     pub(super) fn display_len(self) -> offset32 {
         let op: Op = self.into();
@@ -283,13 +328,13 @@ pub(crate) enum Expression<'code> {
     },
 
     Prefix {
-        operator: PrefixOperator,
+        operator: PrefixOp,
         operator_column: offset32,
         right_operand: ExpressionIndex<'code>,
     },
     Binary {
         left_operand: ExpressionIndex<'code>,
-        operator: BinaryOperator,
+        operator: BinaryOp,
         operator_column: offset32,
         right_operand: ExpressionIndex<'code>,
     },
@@ -436,11 +481,17 @@ pub(crate) enum Node<'code> {
         variable_definition: VariableDefinitionIndex<'code>,
         semicolon_column: offset32,
     },
-    Assignment {
+    BinaryAssignment {
         target: ExpressionIndex<'code>,
-        operator: AssignmentOperator,
+        operator: BinaryAssignmentOp,
         operator_column: offset32,
         new_value: ExpressionIndex<'code>,
+        semicolon_column: offset32,
+    },
+    PrefixAssignment {
+        operator: PrefixAssignmentOp,
+        operator_column: offset32,
+        target: ExpressionIndex<'code>,
         semicolon_column: offset32,
     },
 
@@ -616,12 +667,19 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 self.info_variable_definition(f, *variable_definition, definition_indent)?;
                 Self::info_semicolon(f, definition_indent, *semicolon_column)
             }
-            Node::Assignment { target, operator, operator_column, new_value, semicolon_column } => {
-                writeln!(f, "{:>indent$}Assignment", "")?;
+            Node::BinaryAssignment { target, operator, operator_column, new_value, semicolon_column } => {
+                writeln!(f, "{:>indent$}BinaryAssignment", "")?;
                 let assignment_indent = indent + Self::INDENT_INCREMENT;
                 self.info_expression(f, *target, assignment_indent)?;
-                writeln!(f, "{:>assignment_indent$}AssignmentOp: {operator_column} = {operator}", "")?;
+                writeln!(f, "{:>assignment_indent$}BinaryAssignmentOp: {operator_column} = {operator}", "")?;
                 self.info_expression(f, *new_value, assignment_indent)?;
+                Self::info_semicolon(f, assignment_indent, *semicolon_column)
+            }
+            Node::PrefixAssignment { operator, operator_column, target, semicolon_column } => {
+                writeln!(f, "{:>indent$}PrefixAssignment", "")?;
+                let assignment_indent = indent + Self::INDENT_INCREMENT;
+                writeln!(f, "{:>assignment_indent$}PrefixAssignmentOp: {operator_column} = {operator}", "")?;
+                self.info_expression(f, *target, assignment_indent)?;
                 Self::info_semicolon(f, assignment_indent, *semicolon_column)
             }
 
@@ -722,11 +780,11 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
             Expression::Identifier { identifier, column } => {
                 let identifier_str = self.tokens.text[*identifier];
                 writeln!(f, "{:>indent$}Identifier: {column} = {identifier_str}", "")
-            },
+            }
             Expression::IdentifierStr { identifier, column } => {
                 let identifier_str = self.tokens.text[*identifier];
                 writeln!(f, "{:>indent$}IdentifierStr: {column} = {identifier_str}", "")
-            },
+            }
             Expression::Array {
                 open_square_bracket_column,
                 items_start,
@@ -747,7 +805,7 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 }
 
                 writeln!(f, "{:>expression_indent$}CloseSquareBracket: {close_square_bracket_column} = ]", "")
-            },
+            }
             Expression::ArrayTrailingItem {
                 open_square_bracket_column,
                 items_start,
@@ -773,19 +831,19 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
 
                 self.info_expression(f, last_item.expression, items_indent)?;
                 writeln!(f, "{:>expression_indent$}CloseSquareBracket: {close_square_bracket_column} = ]", "")
-            },
+            }
 
             Expression::Prefix { operator, operator_column, right_operand } => {
                 writeln!(f, "{:>indent$}PrefixExpression", "")?;
-                writeln!(f, "{:>expression_indent$}PrefixOperator: {operator_column} = {operator}", "")?;
+                writeln!(f, "{:>expression_indent$}PrefixOp: {operator_column} = {operator}", "")?;
                 self.info_expression(f, *right_operand, expression_indent)
             }
             Expression::Binary { left_operand, operator, operator_column, right_operand } => {
                 writeln!(f, "{:>indent$}BinaryExpression", "")?;
                 self.info_expression(f, *left_operand, expression_indent)?;
-                writeln!(f, "{:>expression_indent$}BinaryOperator: {operator_column} = {operator}", "")?;
+                writeln!(f, "{:>expression_indent$}BinaryOp: {operator_column} = {operator}", "")?;
                 self.info_expression(f, *right_operand, expression_indent)
-            },
+            }
 
             Expression::Parenthesis {
                 open_round_bracket_column,
@@ -796,7 +854,7 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 writeln!(f, "{:>expression_indent$}OpenRoundBracket: {open_round_bracket_column} = (", "")?;
                 self.info_expression(f, *inner_expression, expression_indent)?;
                 writeln!(f, "{:>expression_indent$}CloseRoundBracket: {close_round_bracket_column} = )", "")
-            },
+            }
 
             Expression::Index {
                 indexed_expression,
@@ -809,7 +867,7 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 writeln!(f, "{:>expression_indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
                 self.info_expression(f, *index_expression, expression_indent)?;
                 writeln!(f, "{:>expression_indent$}CloseSquareBracket: {close_square_bracket_column} = ]", "")
-            },
+            }
         };
     }
 
@@ -953,6 +1011,28 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
 impl<'code> Parser<'_, '_, 'code, '_> {
     fn any(&mut self, token: Token<'code>) -> Result<ParsedNode<'code>, Error<ErrorKind>> {
         return match token.kind {
+            TokenKind::Op(operator @ (
+                Op::NotEquals
+
+                | Op::PlusEquals
+                | Op::WrappingPlusEquals
+                | Op::SaturatingPlusEquals
+
+                | Op::MinusEquals
+                | Op::WrappingMinusEquals
+                | Op::SaturatingMinusEquals
+            )) => {
+                let start_of_new_value_token = self.next_expected_token(Expected::Expression)?;
+                let expression = self.expression(start_of_new_value_token)?;
+                let semicolon_column = self.semicolon()?;
+                Ok(ParsedNode::Node(Node::PrefixAssignment {
+                    operator: operator.into(),
+                    operator_column: token.col,
+                    target: expression,
+                    semicolon_column,
+                }))
+            }
+
             TokenKind::True
             | TokenKind::False
             | TokenKind::DecimalInteger(_)
@@ -988,6 +1068,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     })),
                     TokenKind::Op(
                         operator @ (Op::Equals
+                        | Op::NotEquals
                         | Op::PowEquals
                         | Op::WrappingPowEquals
                         | Op::SaturatingPowEquals
@@ -1020,7 +1101,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             self.next_expected_token(Expected::Expression)?;
                         let new_value = self.expression(start_of_new_value_token)?;
                         let semicolon_column = self.semicolon()?;
-                        Ok(ParsedNode::Node(Node::Assignment {
+                        Ok(ParsedNode::Node(Node::BinaryAssignment {
                             target: expression,
                             operator: operator.into(),
                             operator_column: after_expression_token.col,
@@ -1060,7 +1141,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         | Op::Or
                         | Op::Compare
                         | Op::EqualsEquals
-                        | Op::NotEquals
+                        | Op::NotEqualsEquals
                         | Op::Greater
                         | Op::GreaterOrEquals
                         | Op::Less
@@ -1635,7 +1716,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 col: semicolon_or_close_square_bracket_token.col,
                                 pointers_count: semicolon_or_close_square_bracket_token.kind.display_len(self.tokens),
                             });
-                        },
+                        }
                         TokenKind::Colon
                         | TokenKind::Op(_)
                         | TokenKind::OpenRoundBracket
@@ -1965,7 +2046,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         static OPS: [Op; 7] = [
             Op::Compare,
             Op::EqualsEquals,
-            Op::NotEquals,
+            Op::NotEqualsEquals,
             Op::Greater,
             Op::GreaterOrEquals,
             Op::Less,
@@ -2269,7 +2350,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     col: equals_or_semicolon_token.col,
                     pointers_count: equals_or_semicolon_token.kind.display_len(self.tokens),
                 }),
-            },
+            }
             TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
                 self.should_have_been_skipped(equals_or_semicolon_token)
             }

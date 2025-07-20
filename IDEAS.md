@@ -796,20 +796,26 @@ var a = 12;
 a += 21; # Error: this language uses =+
 ```
 
-### ?.?.? - Inversion operator (flip operator)
+## ?.?.? - Removal of the "abs" operator
 
-inverted short hand assignment operators would allow for the boolean inversion operator:
+the absolute value operator `+i` is inconsistent with the math prefix `+` which has basically no
+effect on the expression, so the prefix `+` operator could just be kept for formatting reasons:
 
 ```kay
-var b = 12;
-b = b + 21; # traditional non short hand assignment
-b += 21; # traditional short hand assignment
-b =+ 21; # revised short hand assignment
+-i; # makes 12 negative
++i; # leaves i unchanged
+```
 
-var a = true;
-a = !a; # traditional non short hand inversion
-a !=; # oh no! the "short hand" inversion operator would collide with the "not equals" operator
-a =!; # revised short hand assignment would allow for the inversion operator; 
+may even remove the possibility of using the `+` operator as a prefix operator:
+
+```kay
+-i;  # safe negation
+-\i; # wrapping negation
+-|i; # saturating negation
+
++i;  # no effect
++\i; # no effect
++|i; # no effect
 ```
 
 ## 0.7.0 - Labels on blocks

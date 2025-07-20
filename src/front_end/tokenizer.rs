@@ -29,6 +29,7 @@ pub enum Op {
     /// temporary way of getting the length of strings and arrays
     Len,
     Not,
+    NotEquals,
 
     Pow,
     WrappingPow,
@@ -91,22 +92,19 @@ pub enum Op {
 
     BitAnd,
     BitAndEquals,
-
     BitXor,
     BitXorEquals,
-
     BitOr,
     BitOrEquals,
 
     And,
     AndEquals,
-
     Or,
     OrEquals,
 
     Compare,
     EqualsEquals,
-    NotEquals,
+    NotEqualsEquals,
     Greater,
     GreaterOrEquals,
     Less,
@@ -121,6 +119,7 @@ impl Display for Op {
 
             Self::Len                       => write!(f, "len"),
             Self::Not                       => write!(f, "!"),
+            Self::NotEquals                 => write!(f, "!="),
 
             Self::Pow                       => write!(f,  "**"),
             Self::WrappingPow               => write!(f, r"**\"),
@@ -192,7 +191,7 @@ impl Display for Op {
 
             Self::Compare                   => write!(f, "<=>"),
             Self::EqualsEquals              => write!(f, "=="),
-            Self::NotEquals                 => write!(f, "!="),
+            Self::NotEqualsEquals           => write!(f, "!=="),
             Self::Greater                   => write!(f, ">"),
             Self::GreaterOrEquals           => write!(f, ">="),
             Self::Less                      => write!(f, "<"),
@@ -207,6 +206,7 @@ impl Op {
             Self::Len => 3,
             Self::Equals => 1,
             Self::Not => 1,
+            Self::NotEquals => 2,
 
             Self::Pow => 2,
             Self::WrappingPow => 3,
@@ -277,7 +277,7 @@ impl Op {
             Self::RightRotateEquals => 4,
 
             Self::EqualsEquals => 2,
-            Self::NotEquals => 2,
+            Self::NotEqualsEquals => 3,
             Self::Greater => 1,
             Self::GreaterOrEquals => 2,
             Self::Less => 1,
@@ -536,7 +536,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             tokenizer.col += 1;
                             other
                         }
-                    },
+                    }
                     Err(grapheme) => {
                         tokenizer.errors.push(Error {
                             kind: ErrorKind::Utf8Character { grapheme },
@@ -558,7 +558,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             tokenizer.raw_str_literal()
                         }
                         _ => tokenizer.identifier(),
-                    },
+                    }
                     b'a'..=b'z' | b'A'..=b'Z' | b'_' => tokenizer.identifier(),
                     b'0' => match tokenizer.peek_byte_singleline() {
                         None => {
@@ -582,7 +582,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             tokenizer.integer_decimal_prefix()
                         }
                         Some(_) => tokenizer.integer_decimal(),
-                    },
+                    }
                     b'1'..=b'9' => tokenizer.integer_decimal(),
                     b'\'' => tokenizer.ascii_literal(),
                     b'"' => tokenizer.str_literal(),
@@ -615,7 +615,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                         }
                                         Some(_) => {}
                                         None => break 'next_character,
-                                    },
+                                    }
                                     Some(b'#') => {
                                         let comment_start_col = tokenizer.col - 1;
                                         match tokenizer.next_byte_multiline() {
@@ -664,7 +664,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             let comment_index = tokenizer.new_token_text();
                             Ok(TokenKind::LineComment(comment_index))
                         }
-                    },
+                    }
                     b'(' => {
                         let back_patch = BackPatch {
                             token: TokenIndex::new(tokenizer.tokens.tokens.len()),
@@ -800,10 +800,16 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                     b'!' => match tokenizer.peek_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
-                            Ok(TokenKind::Op(Op::NotEquals))
+                            match tokenizer.peek_byte_multiline() {
+                                Some(b'=') => {
+                                    tokenizer.col += 1;
+                                    Ok(TokenKind::Op(Op::NotEqualsEquals))
+                                }
+                                _ => Ok(TokenKind::Op(Op::NotEquals))
+                            }
                         }
                         _ => Ok(TokenKind::Op(Op::Not)),
-                    },
+                    }
                     b'*' => match tokenizer.peek_byte_multiline() {
                         Some(b'*') => {
                             tokenizer.col += 1;
@@ -860,7 +866,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             }
                         }
                         _ => Ok(TokenKind::Op(Op::Times)),
-                    },
+                    }
                     b'/' => match tokenizer.peek_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
@@ -887,14 +893,14 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             }
                         }
                         _ => Ok(TokenKind::Op(Op::Divide)),
-                    },
+                    }
                     b'%' => match tokenizer.peek_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::RemainderEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::Remainder)),
-                    },
+                    }
                     b'+' => match tokenizer.peek_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
@@ -921,7 +927,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             }
                         }
                         _ => Ok(TokenKind::Op(Op::Plus)),
-                    },
+                    }
                     b'-' => match tokenizer.peek_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
@@ -948,7 +954,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             }
                         }
                         _ => Ok(TokenKind::Op(Op::Minus)),
-                    },
+                    }
                     b'&' => match tokenizer.peek_byte_multiline() {
                         Some(b'&') => {
                             tokenizer.col += 1;
@@ -965,14 +971,14 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             Ok(TokenKind::Op(Op::BitAndEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::BitAnd)),
-                    },
+                    }
                     b'^' => match tokenizer.peek_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::BitXorEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::BitXor)),
-                    },
+                    }
                     b'|' => match tokenizer.peek_byte_multiline() {
                         Some(b'|') => {
                             tokenizer.col += 1;
@@ -989,14 +995,14 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             Ok(TokenKind::Op(Op::BitOrEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::BitOr)),
-                    },
+                    }
                     b'=' => match tokenizer.peek_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::EqualsEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::Equals)),
-                    },
+                    }
                     b'>' => match tokenizer.peek_byte_multiline() {
                         Some(b'>') => {
                             tokenizer.col += 1;
@@ -1023,7 +1029,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             Ok(TokenKind::Op(Op::GreaterOrEquals))
                         }
                         _ => Ok(TokenKind::Op(Op::Greater)),
-                    },
+                    }
                     b'<' => match tokenizer.peek_byte_multiline() {
                         Some(b'<') => {
                             tokenizer.col += 1;
@@ -1076,7 +1082,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             }
                         }
                         _ => Ok(TokenKind::Op(Op::Less)),
-                    },
+                    }
                     unrecognized => {
                         tokenizer.errors.push(Error {
                             kind: ErrorKind::UnrecognizedCharacter(unrecognized),

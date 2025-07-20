@@ -23,11 +23,14 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 #### Added
 
 - Decimal number prefix `0d` for consistency
+- Prefix short hand assignment operators `!=`, `+=`, `+\=`, `+|=`, `-=`, `-\=`, `-|=`:
+    `i = !i;` -> `!=i;`
 
 #### Changed
 
 - Made block comments delimited by `#*` and `*#` instead of `##`, allowing for nested block comments
 - Made `;` the array's items separator
+- Made `!=` -> `!==` (boolean comparison "not equals" operator is now "not equals equals" operator)
 
 #### Fixed
 
@@ -56,6 +59,10 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Corrected cli error messages
 - Corrected line ending tokenization
 - Actually removed do-statements
+<!--  -->
+- Corrected crashes in compilation of unary operators on non-`i64` types
+- Corrected crashes in compilation of comparison expressions in variable assignments
+- Corrected parsing of character literals
 
 ## 0.6.3 - 2025-06-21
 
