@@ -63,6 +63,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Corrected crashes in compilation of unary operators on non-`i64` types
 - Corrected crashes in compilation of comparison expressions in variable assignments
 - Corrected parsing of character literals
+- Corrected tokenization of vertical tabs
 
 ## 0.6.3 - 2025-06-21
 

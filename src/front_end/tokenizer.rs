@@ -505,7 +505,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
             let token_kind_result = 'next_token: {
                 let next = match next_character {
                     Ok(next) => match next {
-                        b' ' | b'\t' | b'\x0C' => {
+                        b' ' | b'\t' | b'\x0B' | b'\x0C' => {
                             // ignore whitespace
                             tokenizer.col += 1;
                             continue 'tokenization;
