@@ -186,7 +186,7 @@ impl Display for Error<'_> {
             ErrorKind::MustBeAFilePath => "must be a file path".to_owned(),
             ErrorKind::FileTooBig { max } => {
                 format!("file exceeds the size limit of {max} bytes")
-            }
+            },
             ErrorKind::CouldNotReadEntireFile => "failed to read entire file".to_owned(),
         };
 

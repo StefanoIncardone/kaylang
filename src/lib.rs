@@ -827,11 +827,11 @@ impl<'args> ArgsParser<'args> {
                     None => {
                         let command = Command::Check { src_path, verbosity };
                         parser.selected_command = Some((command_flag, command));
-                    }
+                    },
                     Some((previous_command_flag, previous_command)) => match previous_command {
                         Command::Help | Command::Version => {
                             // make sure the command is properly formatted
-                        }
+                        },
                         Command::Check { .. } | Command::Compile { .. } | Command::Run { .. } => {
                             parser.errors.push((
                                 ErrorKind::CommandAlreadySelected {
@@ -840,7 +840,7 @@ impl<'args> ArgsParser<'args> {
                                 },
                                 current_flag_index,
                             ));
-                        }
+                        },
                     },
                 }
                 continue 'next_arg;
@@ -875,11 +875,11 @@ impl<'args> ArgsParser<'args> {
                     None => {
                         let command = Command::Compile { language, src_path, out_path, verbosity };
                         parser.selected_command = Some((command_flag, command));
-                    }
+                    },
                     Some((previous_command_flag, previous_command)) => match previous_command {
                         Command::Help | Command::Version => {
                             // make sure the command is properly formatted
-                        }
+                        },
                         Command::Check { .. } | Command::Compile { .. } | Command::Run { .. } => {
                             parser.errors.push((
                                 ErrorKind::CommandAlreadySelected {
@@ -888,7 +888,7 @@ impl<'args> ArgsParser<'args> {
                                 },
                                 current_flag_index,
                             ));
-                        }
+                        },
                     },
                 }
                 continue 'next_arg;
@@ -923,11 +923,11 @@ impl<'args> ArgsParser<'args> {
                     None => {
                         let command = Command::Run { language, src_path, out_path, verbosity };
                         parser.selected_command = Some((command_flag, command));
-                    }
+                    },
                     Some((previous_command_flag, previous_command)) => match previous_command {
                         Command::Help | Command::Version => {
                             // make sure the command is properly formatted
-                        }
+                        },
                         Command::Check { .. } | Command::Compile { .. } | Command::Run { .. } => {
                             parser.errors.push((
                                 ErrorKind::CommandAlreadySelected {
@@ -936,7 +936,7 @@ impl<'args> ArgsParser<'args> {
                                 },
                                 current_flag_index,
                             ));
-                        }
+                        },
                     },
                 }
                 continue 'next_arg;
@@ -1006,7 +1006,7 @@ impl<'args> ArgsParser<'args> {
             Some(b'/') => {
                 let content = &arg[1..];
                 (FlagPrefix::Slash, content)
-            }
+            },
             Some(b'-') => {
                 if let Some(b'-') = arg_characters.get(1) {
                     let content = &arg[2..];
@@ -1015,7 +1015,7 @@ impl<'args> ArgsParser<'args> {
                     let content = &arg[1..];
                     (FlagPrefix::Dash, content)
                 }
-            }
+            },
             Some(_) | None => (FlagPrefix::Empty, arg),
         };
 
@@ -1131,7 +1131,7 @@ impl<'args> ArgsParser<'args> {
                 self.errors
                     .push((ErrorKind::MustBeFollowedByOutputFlag(command_flag), src_path_index));
                 return ArgResult::Err;
-            }
+            },
         };
         return ArgResult::Ok(out_path);
     }
@@ -1200,7 +1200,7 @@ impl<'args> ArgsParser<'args> {
                     flag_index,
                 ));
                 return ArgResult::Err;
-            }
+            },
         };
 
         return ArgResult::Ok((color, flag));
@@ -1379,7 +1379,7 @@ impl Display for Errors<'_, '_> {
                 ErrorKind::Empty => {
                     _ = write!(error_message, "invalid argument");
                     _ = write!(error_cause_message, "cannot be empty");
-                }
+                },
                 ErrorKind::MustBeFollowedByColorMode(flag) => {
                     _ = write!(error_message, "invalid '{flag}' option");
                     _ = write!(
@@ -1389,7 +1389,7 @@ impl Display for Errors<'_, '_> {
                         always = Color::Always,
                         never = Color::Never,
                     );
-                }
+                },
                 ErrorKind::UnrecognizedColorMode { start_of_color_index } => {
                     pointers_offset_inside_arg = *start_of_color_index as usize + 1;
                     let color = &erroneous_arg[*start_of_color_index as usize..];
@@ -1402,22 +1402,22 @@ impl Display for Errors<'_, '_> {
                         always = Color::Always,
                         never = Color::Never,
                     );
-                }
+                },
                 ErrorKind::CommandAlreadySelected { current, previous } => {
                     _ = write!(error_message, "invalid '{current}' command");
                     _ = write!(
                         error_cause_message,
                         "cannot use '{current}' because '{previous}' was already selected"
                     );
-                }
+                },
                 ErrorKind::MustBeFollowedBySourceFilePath(command) => {
                     _ = write!(error_message, "invalid '{command}' command");
                     _ = write!(error_cause_message, "must be followed by a source file path");
-                }
+                },
                 ErrorKind::MustBeAFilePath => {
                     _ = write!(error_message, "invalid '{erroneous_arg}' path");
                     _ = write!(error_cause_message, "must be a source file path");
-                }
+                },
                 ErrorKind::MustBeFollowedByOutputFlag(command) => {
                     _ = write!(error_message, "invalid '{command}' command");
                     _ = write!(
@@ -1426,18 +1426,18 @@ impl Display for Errors<'_, '_> {
                         _o = OutputFlag::Short,
                         __output = OutputFlag::Long,
                     );
-                }
+                },
                 ErrorKind::MissingOutputDirectoryPath(option) => {
                     _ = write!(error_message, "invalid '{option}' option");
                     _ = write!(error_cause_message, "must be followed by an output directory path");
-                }
+                },
                 ErrorKind::MustBeADirectoryPath { start_of_path_index } => {
                     pointers_offset_inside_arg = *start_of_path_index as usize + 1;
                     let path = &erroneous_arg[*start_of_path_index as usize..];
 
                     _ = write!(error_message, "invalid '{path}' path");
                     _ = write!(error_cause_message, "must be a directory path");
-                }
+                },
                 ErrorKind::StrayOutputDirectoryOption(option) => {
                     _ = write!(error_message, "stray '{option}' option");
                     _ = write!(
@@ -1446,7 +1446,7 @@ impl Display for Errors<'_, '_> {
                         compile = CommandFlag::Compile,
                         run = CommandFlag::Run,
                     );
-                }
+                },
                 ErrorKind::StrayLanguageOption(option) => {
                     _ = write!(error_message, "stray '{option}' option");
                     _ = write!(
@@ -1456,7 +1456,7 @@ impl Display for Errors<'_, '_> {
                         compile = CommandFlag::Compile,
                         run = CommandFlag::Run,
                     );
-                }
+                },
                 ErrorKind::StrayVerbosityOption(option) => {
                     _ = write!(error_message, "stray '{option}' option");
                     _ = write!(
@@ -1466,11 +1466,11 @@ impl Display for Errors<'_, '_> {
                         compile = CommandFlag::Compile,
                         run = CommandFlag::Run,
                     );
-                }
+                },
                 ErrorKind::Unrecognized => {
                     _ = write!(error_message, "unrecognized '{erroneous_arg}' arg");
                     _ = write!(error_cause_message, "unrecognized");
-                }
+                },
             }
 
             let display_pointers_offset = pointers_offset + pointers_offset_inside_arg;

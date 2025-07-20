@@ -37,7 +37,7 @@ fn main() -> ExitCode {
             Err(err) => {
                 eprintln!("{err}");
                 return ExitCode::FAILURE;
-            }
+            },
         }
     };
 
@@ -52,7 +52,7 @@ fn main() -> ExitCode {
                     eprintln!("{}\n", error.display(&src));
                 }
                 return ExitCode::FAILURE;
-            }
+            },
         }
     };
 
@@ -67,7 +67,7 @@ fn main() -> ExitCode {
                     eprintln!("{}\n", error.display(&src));
                 }
                 return ExitCode::FAILURE;
-            }
+            },
         }
     };
 
@@ -78,7 +78,7 @@ fn main() -> ExitCode {
         Err(err) => {
             eprintln!("{err}");
             return ExitCode::FAILURE;
-        }
+        },
     };
 
     Logger::info(&COMPILING, src_path);
@@ -114,12 +114,12 @@ fn main() -> ExitCode {
                         None => ExitCode::FAILURE,
                     };
                 }
-            }
+            },
             Err(err) => {
                 let error = error::Msg { kind: &COULD_NOT_RUN_ASSEMBLER, message: &err };
                 eprintln!("{error}");
                 return ExitCode::FAILURE;
-            }
+            },
         }
     };
 
@@ -142,12 +142,12 @@ fn main() -> ExitCode {
                         None => ExitCode::FAILURE,
                     };
                 }
-            }
+            },
             Err(err) => {
                 let error = error::Msg { kind: &COULD_NOT_RUN_LINKER, message: &err };
                 eprintln!("{error}");
                 return ExitCode::FAILURE;
-            }
+            },
         }
     };
 

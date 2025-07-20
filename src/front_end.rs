@@ -1,6 +1,6 @@
-pub mod syntax_tree;
 pub mod ast;
 pub mod src_file;
+pub mod syntax_tree;
 pub mod tokenizer;
 pub mod typed_abstract_syntax_tree;
 
@@ -14,10 +14,7 @@ use std::path::Path;
 
 #[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
-pub(crate) struct SliceIndexPtr<T>(
-    pub(crate) offset32,
-    core::marker::PhantomData<T>,
-);
+pub(crate) struct SliceIndexPtr<T>(pub(crate) offset32, core::marker::PhantomData<T>);
 
 #[expect(clippy::missing_trait_methods)]
 impl<T> Clone for SliceIndexPtr<T> {

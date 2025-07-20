@@ -87,7 +87,7 @@ impl Display for Type {
             Self::Array { base_type, len } => {
                 debug_assert!(*len > 0, "arrays of 0 items are not allowed");
                 write!(f, "{base_type}[{len}]")
-            }
+            },
         };
     }
 }
@@ -120,7 +120,7 @@ impl SizeOf for Type {
                 {
                     base_type.size() * *len as usize
                 }
-            }
+            },
         };
     }
 }
@@ -582,7 +582,7 @@ impl TypeOf for Expression {
             Self::Array { base_type, items } => {
                 debug_assert!(items.len() > 0, "arrays of 0 items are not allowed");
                 Type::Array { base_type: *base_type, len: items.len() as u64 }
-            }
+            },
             Self::Parenthesis { typ, .. } => *typ,
             Self::Temporary { typ, .. } => *typ,
             Self::Unary { op, .. } => op.typ(),
@@ -637,49 +637,49 @@ impl<'ast, 'code: 'ast> ExpressionDisplay<'ast, 'code> {
 
                 self.display(f, last_item)?;
                 write!(f, "]")
-            }
+            },
             Expression::Parenthesis { expression_index, .. } => {
                 let inner = &self.ast.expressions[*expression_index as usize];
                 write!(f, "(")?;
                 self.display(f, inner)?;
                 write!(f, ")")
-            }
+            },
             Expression::Unary { op: len @ UnaryOp::Len, operand_index, .. } => {
                 let operand = &self.ast.expressions[*operand_index as usize];
                 write!(f, "{len} ")?;
                 self.display(f, operand)
-            }
+            },
             Expression::Unary { op, operand_index, .. } => {
                 let operand = &self.ast.expressions[*operand_index as usize];
                 write!(f, "{op}")?;
                 self.display(f, operand)
-            }
+            },
             Expression::BooleanUnary { op, operand_index } => {
                 let operand = &self.ast.expressions[*operand_index as usize];
                 write!(f, "{op}")?;
                 self.display(f, operand)
-            }
+            },
             Expression::Binary { lhs_index, op, rhs_index, .. } => {
                 let lhs = &self.ast.expressions[*lhs_index as usize];
                 let rhs = &self.ast.expressions[*rhs_index as usize];
                 self.display(f, lhs)?;
                 write!(f, " {op} ")?;
                 self.display(f, rhs)
-            }
+            },
             Expression::BooleanBinary { lhs_index, op, rhs_index } => {
                 let lhs = &self.ast.expressions[*lhs_index as usize];
                 let rhs = &self.ast.expressions[*rhs_index as usize];
                 self.display(f, lhs)?;
                 write!(f, " {op} ")?;
                 self.display(f, rhs)
-            }
+            },
             Expression::Comparison { lhs_index, op, rhs_index } => {
                 let lhs = &self.ast.expressions[*lhs_index as usize];
                 let rhs = &self.ast.expressions[*rhs_index as usize];
                 self.display(f, lhs)?;
                 write!(f, " {op} ")?;
                 self.display(f, rhs)
-            }
+            },
             Expression::ArrayIndex { indexable_index, index_expression_index, .. } => {
                 let indexable = &self.ast.expressions[*indexable_index as usize];
                 let index_expression = &self.ast.expressions[*index_expression_index as usize];
@@ -687,16 +687,17 @@ impl<'ast, 'code: 'ast> ExpressionDisplay<'ast, 'code> {
                 write!(f, "[")?;
                 self.display(f, index_expression)?;
                 write!(f, "]")
-            }
+            },
             Expression::Temporary { temporary_value_index, .. } => {
                 let temp = &self.ast.temporaries[*temporary_value_index as usize];
                 self.display(f, temp)
-            }
+            },
             Expression::Variable { variable_index, .. } => {
                 let variable = &self.ast.variables[*variable_index as usize];
-                let variable_name_str = unsafe { core::str::from_utf8_unchecked(variable.name.as_bytes()) };
+                let variable_name_str =
+                    unsafe { core::str::from_utf8_unchecked(variable.name.as_bytes()) };
                 write!(f, "{variable_name_str}")
-            }
+            },
         };
     }
 }
@@ -890,7 +891,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     // consuming all remaining tokens until the end of the file
                     self.token = TokenIndex::new(self.tokens.tokens.len());
                     break;
-                }
+                },
             }
         }
     }
@@ -909,16 +910,12 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let _ = self.next_token_bounded(Expected::Expression)?;
                 let expression = self.expression()?;
                 let assignment_op: PrefixAssignmentOp = op.into();
-                let reassignment = self.prefix_reassignment(
-                    expression,
-                    token,
-                    assignment_op,
-                    token,
-                )?;
+                let reassignment =
+                    self.prefix_reassignment(expression, token, assignment_op, token)?;
 
                 self.semicolon()?;
                 Ok(reassignment)
-            }
+            },
 
             TokenKind::False
             | TokenKind::True
@@ -969,7 +966,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
                         _ = self.next_token();
                         Ok(Node::Expression(expression))
-                    }
+                    },
                     TokenKind::Op(
                         op @ (Op::Equals
                         | Op::PowEquals
@@ -1010,7 +1007,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
                         self.semicolon()?;
                         Ok(reassignment)
-                    }
+                    },
 
                     TokenKind::OpenRoundBracket
                     | TokenKind::CloseRoundBracket
@@ -1051,13 +1048,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             col: previous_token.col,
                             pointers_count: previous_token.kind.display_len(self.tokens),
                         })
-                    }
+                    },
                     TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
                         unreachable!("should be skipped by the token iterator")
-                    }
+                    },
                     TokenKind::Unexpected(_) => unreachable!("only valid tokens should be present"),
                 }
-            }
+            },
             TokenKind::Let => {
                 let variable = self.variable_definition()?;
 
@@ -1066,7 +1063,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 self.scopes[self.scope as usize].let_variables.push(var_index);
                 self.ast.variables.push(variable);
                 Ok(Node::Definition { var_index })
-            }
+            },
             TokenKind::Var => {
                 let variable = self.variable_definition()?;
 
@@ -1075,12 +1072,12 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 self.scopes[self.scope as usize].var_variables.push(var_index);
                 self.ast.variables.push(variable);
                 Ok(Node::Definition { var_index })
-            }
+            },
             TokenKind::Print => {
                 let arg = self.print_arg()?;
                 self.semicolon()?;
                 Ok(Node::Print(arg))
-            }
+            },
             TokenKind::PrintLn => {
                 if let Some(Token { kind: TokenKind::SemiColon, .. }) = self.peek_next_token() {
                     _ = self.next_token();
@@ -1090,12 +1087,12 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let arg = self.print_arg()?;
                 self.semicolon()?;
                 Ok(Node::Println(Some(arg)))
-            }
+            },
             TokenKind::Eprint => {
                 let arg = self.print_arg()?;
                 self.semicolon()?;
                 Ok(Node::Eprint(arg))
-            }
+            },
             TokenKind::EprintLn => {
                 if let Some(Token { kind: TokenKind::SemiColon, .. }) = self.peek_next_token() {
                     _ = self.next_token();
@@ -1105,7 +1102,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let arg = self.print_arg()?;
                 self.semicolon()?;
                 Ok(Node::Eprintln(Some(arg)))
-            }
+            },
             TokenKind::If => Ok(self.iff()?),
             TokenKind::Else => {
                 _ = self.next_token();
@@ -1114,13 +1111,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     col: token.col,
                     pointers_count: token.kind.display_len(self.tokens),
                 })
-            }
+            },
             TokenKind::Do | TokenKind::Loop => {
                 self.loop_depth += 1;
                 let looop_statement = self.loop_statement();
                 self.loop_depth -= 1;
                 looop_statement
-            }
+            },
             TokenKind::Break => {
                 _ = self.next_token();
                 if self.loop_depth == 0 {
@@ -1133,7 +1130,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
                 self.semicolon()?;
                 Ok(Node::Break)
-            }
+            },
             TokenKind::Continue => {
                 _ = self.next_token();
                 if self.loop_depth == 0 {
@@ -1146,18 +1143,18 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
                 self.semicolon()?;
                 Ok(Node::Continue)
-            }
+            },
             TokenKind::SemiColon => {
                 _ = self.next_token();
                 Ok(Node::Semicolon)
-            }
+            },
             TokenKind::OpenCurlyBracket => {
                 let Position { line, column } = self.src.position(token.col);
                 unreachable!(
                     "blocks not allowed in single statements: {file}:{line}:{column}",
                     file = self.src.path().display(),
                 );
-            }
+            },
             TokenKind::CloseCurlyBracket
             | TokenKind::CloseSquareBracket
             | TokenKind::CloseRoundBracket => {
@@ -1166,7 +1163,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     "should have been cought during tokenization: {file}:{line}:{column}",
                     file = self.src.path().display(),
                 );
-            }
+            },
             TokenKind::Colon => {
                 _ = self.next_token();
                 Err(Error {
@@ -1174,7 +1171,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     col: token.col,
                     pointers_count: token.kind.display_len(self.tokens),
                 })
-            }
+            },
             TokenKind::Comma => {
                 _ = self.next_token();
                 Err(Error {
@@ -1182,7 +1179,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     col: token.col,
                     pointers_count: token.kind.display_len(self.tokens),
                 })
-            }
+            },
             TokenKind::Op(op) => {
                 _ = self.next_token();
                 Err(Error {
@@ -1190,10 +1187,10 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     col: token.col,
                     pointers_count: token.kind.display_len(self.tokens),
                 })
-            }
+            },
             TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
                 unreachable!("should be skipped by the token iterator")
-            }
+            },
             TokenKind::Unexpected(_) => unreachable!("only valid tokens should be present"),
         };
     }
@@ -1215,12 +1212,12 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 _ = self.next_token();
                 self.scope();
                 Ok(Node::Scope { index: new_scope_index })
-            }
+            },
             TokenKind::CloseCurlyBracket => {
                 self.scope = self.scopes[self.scope as usize].parent;
                 _ = self.next_token();
                 Ok(Node::ScopeEnd)
-            }
+            },
             TokenKind::OpenRoundBracket
             | TokenKind::CloseRoundBracket
             | TokenKind::OpenSquareBracket
@@ -1733,7 +1730,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 b't' => b'\t',
                 b'0' => b'\0',
                 _ => unreachable!(),
-            }
+            },
             other => other,
         };
     }
@@ -1753,7 +1750,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         pointers_count: current_token.kind.display_len(self.tokens),
                     }),
                 }
-            }
+            },
             TokenKind::OctalInteger(literal_index) => {
                 let literal = self.tokens.text[literal_index];
                 match Self::parse_positive_octal_i64(literal) {
@@ -1764,7 +1761,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         pointers_count: current_token.kind.display_len(self.tokens),
                     }),
                 }
-            }
+            },
             TokenKind::DecimalInteger(literal_index) => {
                 let literal = self.tokens.text[literal_index];
                 match Self::parse_positive_decimal_i64(literal) {
@@ -1775,7 +1772,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         pointers_count: current_token.kind.display_len(self.tokens),
                     }),
                 }
-            }
+            },
             TokenKind::DecimalIntegerPrefix(literal_index) => {
                 let literal = self.tokens.text[literal_index];
                 match Self::parse_positive_decimal_prefix_i64(literal) {
@@ -1786,7 +1783,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         pointers_count: current_token.kind.display_len(self.tokens),
                     }),
                 }
-            }
+            },
             TokenKind::HexadecimalInteger(literal_index) => {
                 let literal = self.tokens.text[literal_index];
                 match Self::parse_positive_hexadecimal_i64(literal) {
@@ -1797,12 +1794,12 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         pointers_count: current_token.kind.display_len(self.tokens),
                     }),
                 }
-            }
+            },
             TokenKind::Ascii(literal_index) => {
                 let literal = self.tokens.text[literal_index];
                 let ascii_ch = Self::parse_ascii(literal);
                 Ok(Expression::Ascii(ascii_ch))
-            }
+            },
             TokenKind::Str(string_index) => {
                 let string_label = self.string_label;
                 let string = self.tokens.text[string_index];
@@ -1810,7 +1807,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 self.string_label += 1;
 
                 Ok(Expression::Str { label: string_label })
-            }
+            },
             TokenKind::RawStr(string_index) => {
                 let string_label = self.string_label;
                 let string = self.tokens.text[string_index];
@@ -1818,7 +1815,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 self.string_label += 1;
 
                 Ok(Expression::Str { label: string_label })
-            }
+            },
             TokenKind::Identifier(name_index) | TokenKind::IdentifierStr(name_index) => {
                 let name = self.tokens.text[name_index];
                 match self.resolve_type(name) {
@@ -1826,7 +1823,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         Some(variable_index) => {
                             let var = &self.ast.variables[variable_index as usize];
                             Ok(Expression::Variable { typ: var.value.typ(), variable_index })
-                        }
+                        },
                         None => Err(Error {
                             kind: ErrorKind::VariableNotPreviouslyDefined,
                             col: current_token.col,
@@ -1885,7 +1882,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                     col: current_token.col,
                                     pointers_count: current_token.kind.display_len(self.tokens),
                                 });
-                            }
+                            },
 
                             Op::Len
                             | Op::Not
@@ -1928,11 +1925,11 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                     col: current_token.col,
                                     pointers_count: current_token.kind.display_len(self.tokens),
                                 });
-                            }
+                            },
                         }
-                    }
+                    },
                 }
-            }
+            },
             TokenKind::OpenRoundBracket => 'parenthesis: {
                 let expression_start_token = self.next_token_bounded(Expected::Expression)?;
 
@@ -1959,7 +1956,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     typ: expression.typ(),
                     expression_index: self.new_expression(expression),
                 })
-            }
+            },
             TokenKind::OpenSquareBracket => 'array: {
                 let mut bracket_or_semicolon_token =
                     self.next_token_bounded(Expected::ArrayElementOrClosingSquareBracket)?;
@@ -1983,7 +1980,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         kind: ErrorKind::UseSemicolonInsteadOfComma,
                         col: bracket_or_semicolon_token.col,
                         pointers_count: bracket_or_semicolon_token.kind.display_len(self.tokens),
-                    })
+                    });
                 }
                 if let TokenKind::SemiColon = bracket_or_semicolon_token.kind {
                     bracket_or_semicolon_token =
@@ -1998,7 +1995,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             col: current_token.col,
                             pointers_count: current_token.kind.display_len(self.tokens),
                         })
-                    }
+                    },
                 };
                 let mut items = vec![first_item];
 
@@ -2020,7 +2017,9 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 expected: Type::Base(items_type),
                             },
                             col: bracket_or_semicolon_token.col,
-                            pointers_count: bracket_or_semicolon_token.kind.display_len(self.tokens),
+                            pointers_count: bracket_or_semicolon_token
+                                .kind
+                                .display_len(self.tokens),
                         });
                     }
 
@@ -2041,8 +2040,10 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         break 'array Err(Error {
                             kind: ErrorKind::UseSemicolonInsteadOfComma,
                             col: bracket_or_semicolon_token.col,
-                            pointers_count: bracket_or_semicolon_token.kind.display_len(self.tokens),
-                        })
+                            pointers_count: bracket_or_semicolon_token
+                                .kind
+                                .display_len(self.tokens),
+                        });
                     }
                     if let TokenKind::SemiColon = bracket_or_semicolon_token.kind {
                         bracket_or_semicolon_token =
@@ -2054,7 +2055,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         break 'array Ok(Expression::Array { base_type: items_type, items });
                     }
                 }
-            }
+            },
             TokenKind::Op(Op::Len) => {
                 _ = self.next_token();
                 let operand = self.primary_expression()?;
@@ -2072,9 +2073,9 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             col: current_token.col,
                             pointers_count: current_token.kind.display_len(self.tokens),
                         });
-                    }
+                    },
                 };
-            }
+            },
             TokenKind::Op(plus @ (Op::Plus | Op::WrappingPlus | Op::SaturatingPlus)) => {
                 let mut should_be_made_positive = true;
 
@@ -2101,17 +2102,17 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         } else {
                             Ok(operand)
                         }
-                    }
-                    invalid_type @ (
-                        Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
-                        | Type::Array { .. }
-                    ) => Err(Error {
+                    },
+                    invalid_type @ (Type::Base(
+                        BaseType::Ascii | BaseType::Bool | BaseType::Str,
+                    )
+                    | Type::Array { .. }) => Err(Error {
                         kind: ErrorKind::CannotTakeAbsoluteValueOf(invalid_type),
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(self.tokens),
                     }),
                 };
-            }
+            },
             TokenKind::Op(minus @ (Op::Minus | Op::WrappingMinus | Op::SaturatingMinus)) => {
                 let mut should_be_negated = true;
 
@@ -2159,7 +2160,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 }),
                             }
                         }
-                    }
+                    },
                     TokenKind::OctalInteger(literal_index) => {
                         let literal = self.tokens.text[literal_index];
                         if should_be_negated {
@@ -2192,7 +2193,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 }),
                             }
                         }
-                    }
+                    },
                     TokenKind::DecimalInteger(literal_index) => {
                         let literal = self.tokens.text[literal_index];
                         if should_be_negated {
@@ -2225,7 +2226,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 }),
                             }
                         }
-                    }
+                    },
                     TokenKind::DecimalIntegerPrefix(literal_index) => {
                         let literal = self.tokens.text[literal_index];
                         if should_be_negated {
@@ -2258,7 +2259,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 }),
                             }
                         }
-                    }
+                    },
                     TokenKind::HexadecimalInteger(literal_index) => {
                         let literal = self.tokens.text[literal_index];
                         if should_be_negated {
@@ -2291,7 +2292,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 }),
                             }
                         }
-                    }
+                    },
                     _ => {
                         let operand = self.primary_expression()?;
 
@@ -2307,7 +2308,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 } else {
                                     Ok(operand)
                                 }
-                            }
+                            },
                             invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str)
                             | Type::Array { .. }) => Err(Error {
                                 kind: ErrorKind::CannotNegate(invalid_typ),
@@ -2315,9 +2316,9 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 pointers_count: current_token.kind.display_len(self.tokens),
                             }),
                         };
-                    }
+                    },
                 }
-            }
+            },
             TokenKind::Op(Op::Not) => {
                 let mut should_be_inverted = true;
 
@@ -2341,7 +2342,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         } else {
                             Ok(operand)
                         }
-                    }
+                    },
                     Type::Base(BaseType::Bool) => {
                         if should_be_inverted {
                             Ok(Expression::BooleanUnary {
@@ -2351,14 +2352,14 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         } else {
                             Ok(operand)
                         }
-                    }
+                    },
                     invalid_typ @ (Type::Base(BaseType::Str) | Type::Array { .. }) => Err(Error {
                         kind: ErrorKind::CannotInvert(invalid_typ),
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(self.tokens),
                     }),
                 };
-            }
+            },
             TokenKind::Let
             | TokenKind::Var
             | TokenKind::Print
@@ -2440,7 +2441,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             col: open_bracket_token.col,
                             pointers_count: open_bracket_token.kind.display_len(self.tokens),
                         })
-                    }
+                    },
                 },
                 Type::Array { base_type, .. } => Expression::ArrayIndex {
                     base_type,
@@ -2646,7 +2647,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             let can_compare = match (lhs_type, rhs_type) {
                 (Type::Base(lhs_base_type), Type::Base(rhs_base_type)) => {
                     lhs_base_type == rhs_base_type
-                }
+                },
                 (
                     Type::Array { base_type: lhs_base_typ, len: lhs_len },
                     Type::Array { base_type: rhs_base_typ, len: rhs_len },
@@ -2654,7 +2655,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     debug_assert!(lhs_len > 0, "arrays of 0 items are not allowed");
                     debug_assert!(rhs_len > 0, "arrays of 0 items are not allowed");
                     lhs_base_typ == rhs_base_typ && lhs_len == rhs_len
-                }
+                },
                 _ => false,
             };
 
@@ -2816,7 +2817,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 Some(var_index) => {
                     let var = &self.ast.variables[var_index as usize];
                     Ok(Some((type_token, var.value.typ())))
-                }
+                },
                 None => Err(Error {
                     kind: ErrorKind::VariableNotPreviouslyDefined,
                     col: type_token.col,
@@ -2890,9 +2891,9 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             col: name_token.col,
                             pointers_count: name_token.kind.display_len(self.tokens),
                         })
-                    }
+                    },
                 }
-            }
+            },
             TokenKind::LineComment(_)
             | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
@@ -2921,7 +2922,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     col: name_token.col,
                     pointers_count: name_token.kind.display_len(self.tokens),
                 })
-            }
+            },
             TokenKind::Let
             | TokenKind::Var
             | TokenKind::Print
@@ -2939,7 +2940,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     col: name_token.col,
                     pointers_count: name_token.kind.display_len(self.tokens),
                 })
-            }
+            },
         };
 
         let annotation = self.type_annotation()?;
@@ -2950,7 +2951,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             TokenKind::Op(Op::Equals) => {
                 _ = self.next_token();
                 Some(self.expression()?)
-            }
+            },
             TokenKind::SemiColon => None,
             TokenKind::Op(_)
             | TokenKind::LineComment(_)
@@ -2994,14 +2995,14 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         col: name_token.col,
                         pointers_count: name_token.kind.display_len(self.tokens),
                     })
-                }
+                },
                 Some((annotation_token, _)) => {
                     return Err(Error {
                         kind: ErrorKind::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
                         col: annotation_token.col,
                         pointers_count: annotation_token.kind.display_len(self.tokens),
                     })
-                }
+                },
             },
         };
 
@@ -3099,7 +3100,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 };
 
                 (error_token, Type::Base(*base_type))
-            }
+            },
             Expression::Variable { typ, variable_index } => {
                 let var = &self.ast.variables[*variable_index as usize];
                 if let Some(_) = self.resolve_let_variable(var.name) {
@@ -3111,7 +3112,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 }
 
                 (target_token, *typ)
-            }
+            },
 
             Expression::False
             | Expression::True
@@ -3131,7 +3132,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     col: op_token.col,
                     pointers_count: op_token.kind.display_len(self.tokens),
                 });
-            }
+            },
         };
 
         _ = self.next_token();
@@ -3151,7 +3152,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     });
                 }
                 Ok(Node::Reassignment { target, op, op_col: op_token.col, new_value })
-            }
+            },
             AssignmentOp::Pow
             | AssignmentOp::WrappingPow
             | AssignmentOp::SaturatingPow
@@ -3205,8 +3206,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 }
             },
 
-            AssignmentOp::And
-            | AssignmentOp::Or => {
+            AssignmentOp::And | AssignmentOp::Or => {
                 let Type::Base(BaseType::Bool) = target_type else {
                     return Err(Error {
                         kind: ErrorKind::VariableReassignmentTypeMismatch {
@@ -3228,7 +3228,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     });
                 };
                 Ok(Node::Reassignment { target, op, op_col: op_token.col, new_value })
-            }
+            },
         };
     }
 
@@ -3285,7 +3285,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 };
 
                 (error_token, Type::Base(*base_type))
-            }
+            },
             Expression::Variable { typ, variable_index } => {
                 let var = &self.ast.variables[*variable_index as usize];
                 if let Some(_) = self.resolve_let_variable(var.name) {
@@ -3297,7 +3297,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 }
 
                 (target_token, *typ)
-            }
+            },
 
             Expression::False
             | Expression::True
@@ -3317,50 +3317,50 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     col: op_token.col,
                     pointers_count: op_token.kind.display_len(self.tokens),
                 });
-            }
+            },
         };
 
         return match op {
-            PrefixAssignmentOp::Not => {
-                match target_type {
-                    Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => {
-                        Ok(Node::PrefixReassignment {
-                            target,
-                            op: PrefixAssignmentOp::Not,
-                            op_col: op_token.col,
-                        })
-                    }
-                    invalid_typ @ (Type::Base(BaseType::Str) | Type::Array { .. }) => Err(Error {
-                        kind: ErrorKind::CannotInvert(invalid_typ),
-                        col: error_token.col,
-                        pointers_count: error_token.kind.display_len(self.tokens),
-                    }),
-                }
-            }
+            PrefixAssignmentOp::Not => match target_type {
+                Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => {
+                    Ok(Node::PrefixReassignment {
+                        target,
+                        op: PrefixAssignmentOp::Not,
+                        op_col: op_token.col,
+                    })
+                },
+                invalid_typ @ (Type::Base(BaseType::Str) | Type::Array { .. }) => Err(Error {
+                    kind: ErrorKind::CannotInvert(invalid_typ),
+                    col: error_token.col,
+                    pointers_count: error_token.kind.display_len(self.tokens),
+                }),
+            },
             PrefixAssignmentOp::Plus
             | PrefixAssignmentOp::WrappingPlus
-            | PrefixAssignmentOp::SaturatingPlus => {
-                match target_type {
-                    Type::Base(BaseType::I64) => Ok(Node::PrefixReassignment { target, op, op_col: op_token.col }),
-                    invalid_type @ (Type::Base(BaseType::Str | BaseType::Ascii | BaseType::Bool) | Type::Array{ .. }) => Err(Error {
-                        kind: ErrorKind::CannotTakeAbsoluteValueOf(invalid_type),
-                        col: error_token.col,
-                        pointers_count: error_token.kind.display_len(self.tokens),
-                    }),
-                }
-            }
+            | PrefixAssignmentOp::SaturatingPlus => match target_type {
+                Type::Base(BaseType::I64) => {
+                    Ok(Node::PrefixReassignment { target, op, op_col: op_token.col })
+                },
+                invalid_type @ (Type::Base(BaseType::Str | BaseType::Ascii | BaseType::Bool)
+                | Type::Array { .. }) => Err(Error {
+                    kind: ErrorKind::CannotTakeAbsoluteValueOf(invalid_type),
+                    col: error_token.col,
+                    pointers_count: error_token.kind.display_len(self.tokens),
+                }),
+            },
             PrefixAssignmentOp::Minus
             | PrefixAssignmentOp::WrappingMinus
-            | PrefixAssignmentOp::SaturatingMinus => {
-                match target_type {
-                    Type::Base(BaseType::Ascii | BaseType::I64) => Ok(Node::PrefixReassignment { target, op, op_col: op_token.col }),
-                    invalid_type @ (Type::Base(BaseType::Str | BaseType::Bool) | Type::Array{ .. }) => Err(Error {
-                        kind: ErrorKind::CannotNegate(invalid_type),
-                        col: error_token.col,
-                        pointers_count: error_token.kind.display_len(self.tokens),
-                    }),
-                }
-            }
+            | PrefixAssignmentOp::SaturatingMinus => match target_type {
+                Type::Base(BaseType::Ascii | BaseType::I64) => {
+                    Ok(Node::PrefixReassignment { target, op, op_col: op_token.col })
+                },
+                invalid_type
+                @ (Type::Base(BaseType::Str | BaseType::Bool) | Type::Array { .. }) => Err(Error {
+                    kind: ErrorKind::CannotNegate(invalid_type),
+                    col: error_token.col,
+                    pointers_count: error_token.kind.display_len(self.tokens),
+                }),
+            },
         };
     }
 }
@@ -3405,7 +3405,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 TokenKind::OpenCurlyBracket => {
                     let scope = self.any(after_condition_token)?;
                     IfStatement { condition, statement: scope }
-                }
+                },
                 TokenKind::OpenRoundBracket
                 | TokenKind::CloseRoundBracket
                 | TokenKind::OpenSquareBracket
@@ -3448,7 +3448,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         col: before_curly_bracket_token.col,
                         pointers_count: before_curly_bracket_token.kind.display_len(self.tokens),
                     });
-                }
+                },
             };
 
             ifs.push(if_statement);
@@ -3500,7 +3500,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         let scope = self.any(after_else_token)?;
                         els = Some(scope);
                         break 'iff;
-                    }
+                    },
                     TokenKind::If => break,
                     TokenKind::OpenRoundBracket
                     | TokenKind::CloseRoundBracket
@@ -3570,7 +3570,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 };
 
                 loop_token
-            }
+            },
             TokenKind::LineComment(_)
             | TokenKind::BlockComment(_)
             | TokenKind::Unexpected(_)
@@ -3624,7 +3624,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             TokenKind::OpenCurlyBracket => {
                 let scope = self.any(after_condition_token)?;
                 Ok(scope)
-            }
+            },
             TokenKind::OpenRoundBracket
             | TokenKind::CloseRoundBracket
             | TokenKind::OpenSquareBracket
@@ -3667,7 +3667,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     col: before_curly_bracket_token.col,
                     pointers_count: before_curly_bracket_token.kind.display_len(self.tokens),
                 })
-            }
+            },
         };
 
         let statement = statement_result?;
@@ -3714,13 +3714,13 @@ impl Display for Expected {
             Self::ClosingRoundBracket => write!(f, "closing round bracket"),
             Self::ArrayElementOrClosingSquareBracket => {
                 write!(f, "array item or closing square bracket")
-            }
+            },
             Self::SemicolonOrClosingSquareBracket => {
                 write!(f, "semicolon or closing square bracket")
-            }
+            },
             Self::TypeAnnotationOrVariableDefinition => {
                 write!(f, "type annotation or variable definition")
-            }
+            },
             Self::TypeAnnotation => write!(f, "type annotation"),
             Self::ArrayLength => write!(f, "array length"),
             Self::Identifier => write!(f, "identifier"),

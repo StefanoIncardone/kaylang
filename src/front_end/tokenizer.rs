@@ -356,15 +356,15 @@ impl<'code> TokenKind<'code> {
             Self::LineComment(comment) => {
                 let text = tokens.text[comment];
                 text.display_len()
-            }
+            },
             Self::BlockComment(comment) => {
                 let text = tokens.text[comment];
                 text.display_len()
-            }
+            },
             Self::Unexpected(unexpected) => {
                 let text = tokens.text[unexpected];
                 text.display_len()
-            }
+            },
 
             Self::OpenRoundBracket
             | Self::CloseRoundBracket
@@ -384,41 +384,41 @@ impl<'code> TokenKind<'code> {
             Self::DecimalInteger(integer) | Self::DecimalIntegerPrefix(integer) => {
                 let text = tokens.text[integer];
                 text.len() as offset32
-            }
+            },
             Self::BinaryInteger(integer) => {
                 let text = tokens.text[integer];
                 text.len() as offset32
-            }
+            },
             Self::OctalInteger(integer) => {
                 let text = tokens.text[integer];
                 text.len() as offset32
-            }
+            },
             Self::HexadecimalInteger(integer) => {
                 let text = tokens.text[integer];
                 text.len() as offset32
-            }
+            },
 
             Self::Ascii(ascii_char) => {
                 let text = tokens.text[ascii_char];
                 text.len() as offset32
-            }
+            },
             Self::Str(string) => {
                 let text = tokens.text[string];
                 text.len() as offset32
-            }
+            },
             Self::RawStr(string) => {
                 let text = tokens.text[string];
                 text.len() as offset32
-            }
+            },
             Self::IdentifierStr(identifier) => {
                 let text = tokens.text[identifier];
                 text.len() as offset32
-            }
+            },
 
             Self::Identifier(identifier) => {
                 let text = tokens.text[identifier];
                 text.len() as offset32
-            }
+            },
 
             Self::Print => 5,
             Self::PrintLn => 7,
@@ -509,12 +509,12 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             // ignore whitespace
                             tokenizer.col += 1;
                             continue 'tokenization;
-                        }
+                        },
 
                         b'\n' => {
                             tokenizer.new_line(LineEnd::LF);
                             continue 'tokenization;
-                        }
+                        },
                         b'\r' => {
                             if let Some(b'\n') =
                                 tokenizer.code.as_bytes().get(tokenizer.col as usize + 1)
@@ -530,13 +530,13 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             // });
                             tokenizer.new_line(LineEnd::CR);
                             continue 'tokenization;
-                        }
+                        },
                         other => {
                             tokenizer.token_start_col = tokenizer.col;
                             tokenizer.col += 1;
                             other
-                        }
-                    }
+                        },
+                    },
                     Err(grapheme) => {
                         tokenizer.errors.push(Error {
                             kind: ErrorKind::Utf8Character { grapheme },
@@ -548,7 +548,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             tokenizer.col += grapheme.len() as offset32;
                         }
                         break 'next_token Err(());
-                    }
+                    },
                 };
 
                 match next {
@@ -556,33 +556,33 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         Some(b'"') => {
                             tokenizer.col += 1; // skip the `r` prefix
                             tokenizer.raw_str_literal()
-                        }
+                        },
                         _ => tokenizer.identifier(),
-                    }
+                    },
                     b'a'..=b'z' | b'A'..=b'Z' | b'_' => tokenizer.identifier(),
                     b'0' => match tokenizer.peek_byte_singleline() {
                         None => {
                             let literal_index = tokenizer.new_token_text();
                             Ok(TokenKind::DecimalInteger(literal_index))
-                        }
+                        },
                         Some(b'b') => {
                             tokenizer.col += 1;
                             tokenizer.integer_binary()
-                        }
+                        },
                         Some(b'o') => {
                             tokenizer.col += 1;
                             tokenizer.integer_octal()
-                        }
+                        },
                         Some(b'x') => {
                             tokenizer.col += 1;
                             tokenizer.integer_hexadecimal()
-                        }
+                        },
                         Some(b'd') => {
                             tokenizer.col += 1;
                             tokenizer.integer_decimal_prefix()
-                        }
+                        },
                         Some(_) => tokenizer.integer_decimal(),
-                    }
+                    },
                     b'1'..=b'9' => tokenizer.integer_decimal(),
                     b'\'' => tokenizer.ascii_literal(),
                     b'"' => tokenizer.str_literal(),
@@ -611,27 +611,27 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                                 kind,
                                                 col: tokenizer.token_start_col,
                                             });
-                                            tokenizer.token_start_col = unsafe { token_start_col.column };
-                                        }
-                                        Some(_) => {}
+                                            tokenizer.token_start_col =
+                                                unsafe { token_start_col.column };
+                                        },
+                                        Some(_) => {},
                                         None => break 'next_character,
-                                    }
+                                    },
                                     Some(b'#') => {
                                         let comment_start_col = tokenizer.col - 1;
                                         match tokenizer.next_byte_multiline() {
                                             Some(b'*') => {
-                                                let back_patch = BackPatch {
-                                                    column: tokenizer.token_start_col,
-                                                };
+                                                let back_patch =
+                                                    BackPatch { column: tokenizer.token_start_col };
                                                 back_patches.push(back_patch);
                                                 tokenizer.token_start_col = comment_start_col;
                                                 continue 'next_character;
-                                            }
-                                            Some(_) => {}
+                                            },
+                                            Some(_) => {},
                                             None => break 'next_character,
                                         }
-                                    }
-                                    Some(_) => {}
+                                    },
+                                    Some(_) => {},
                                     None => break 'next_character,
                                 }
                             }
@@ -652,26 +652,25 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                 });
                             }
                             Err(())
-                        }
+                        },
                         Some(_) => {
                             while let Some(_) = tokenizer.next_byte_singleline() {
                                 // consume next character
                             }
                             let comment_index = tokenizer.new_token_text();
                             Ok(TokenKind::LineComment(comment_index))
-                        }
+                        },
                         None => {
                             let comment_index = tokenizer.new_token_text();
                             Ok(TokenKind::LineComment(comment_index))
-                        }
-                    }
+                        },
+                    },
                     b'(' => {
-                        let back_patch = BackPatch {
-                            token: TokenIndex::new(tokenizer.tokens.tokens.len()),
-                        };
+                        let back_patch =
+                            BackPatch { token: TokenIndex::new(tokenizer.tokens.tokens.len()) };
                         back_patches.push(back_patch);
                         Ok(TokenKind::OpenRoundBracket)
-                    }
+                    },
                     b')' => 'bracket: {
                         let Some(bracket_index) = back_patches.pop() else {
                             tokenizer.errors.push(Error {
@@ -696,7 +695,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                     pointers_count: 1,
                                 });
                                 Err(())
-                            }
+                            },
                             TokenKind::OpenSquareBracket => {
                                 tokenizer.errors.push(Error {
                                     kind: ErrorKind::MismatchedSquareRoundBracket,
@@ -704,17 +703,16 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                     pointers_count: 1,
                                 });
                                 Err(())
-                            }
+                            },
                             _ => unreachable!("incorrect bracket index"),
                         }
-                    }
+                    },
                     b'[' => {
-                        let back_patch = BackPatch {
-                            token: TokenIndex::new(tokenizer.tokens.tokens.len()),
-                        };
+                        let back_patch =
+                            BackPatch { token: TokenIndex::new(tokenizer.tokens.tokens.len()) };
                         back_patches.push(back_patch);
                         Ok(TokenKind::OpenSquareBracket)
-                    }
+                    },
                     b']' => 'bracket: {
                         let Some(bracket_index) = back_patches.pop() else {
                             tokenizer.errors.push(Error {
@@ -739,7 +737,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                     pointers_count: 1,
                                 });
                                 Err(())
-                            }
+                            },
                             TokenKind::OpenRoundBracket => {
                                 tokenizer.errors.push(Error {
                                     kind: ErrorKind::MismatchedRoundSquareBracket,
@@ -747,17 +745,16 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                     pointers_count: 1,
                                 });
                                 Err(())
-                            }
+                            },
                             _ => unreachable!("incorrect bracket index"),
                         }
-                    }
+                    },
                     b'{' => {
-                        let back_patch = BackPatch {
-                            token: TokenIndex::new(tokenizer.tokens.tokens.len()),
-                        };
+                        let back_patch =
+                            BackPatch { token: TokenIndex::new(tokenizer.tokens.tokens.len()) };
                         back_patches.push(back_patch);
                         Ok(TokenKind::OpenCurlyBracket)
-                    }
+                    },
                     b'}' => 'bracket: {
                         let Some(bracket_index) = back_patches.pop() else {
                             tokenizer.errors.push(Error {
@@ -782,7 +779,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                     pointers_count: 1,
                                 });
                                 Err(())
-                            }
+                            },
                             TokenKind::OpenSquareBracket => {
                                 tokenizer.errors.push(Error {
                                     kind: ErrorKind::MismatchedSquareCurlyBracket,
@@ -790,10 +787,10 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                     pointers_count: 1,
                                 });
                                 Err(())
-                            }
+                            },
                             _ => unreachable!("incorrect bracket index"),
                         }
-                    }
+                    },
                     b':' => Ok(TokenKind::Colon),
                     b';' => Ok(TokenKind::SemiColon),
                     b',' => Ok(TokenKind::Comma),
@@ -804,12 +801,12 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::NotEqualsEquals))
-                                }
-                                _ => Ok(TokenKind::Op(Op::NotEquals))
+                                },
+                                _ => Ok(TokenKind::Op(Op::NotEquals)),
                             }
-                        }
+                        },
                         _ => Ok(TokenKind::Op(Op::Not)),
-                    }
+                    },
                     b'*' => match tokenizer.peek_byte_multiline() {
                         Some(b'*') => {
                             tokenizer.col += 1;
@@ -817,144 +814,144 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::PowEquals))
-                                }
+                                },
                                 Some(b'\\') => {
                                     tokenizer.col += 1;
                                     match tokenizer.peek_byte_multiline() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::WrappingPowEquals))
-                                        }
+                                        },
                                         _ => Ok(TokenKind::Op(Op::WrappingPow)),
                                     }
-                                }
+                                },
                                 Some(b'|') => {
                                     tokenizer.col += 1;
                                     match tokenizer.peek_byte_multiline() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::SaturatingPowEquals))
-                                        }
+                                        },
                                         _ => Ok(TokenKind::Op(Op::SaturatingPow)),
                                     }
-                                }
+                                },
                                 _ => Ok(TokenKind::Op(Op::Pow)),
                             }
-                        }
+                        },
                         Some(b'=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::TimesEquals))
-                        }
+                        },
                         Some(b'\\') => {
                             tokenizer.col += 1;
                             match tokenizer.peek_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::WrappingTimesEquals))
-                                }
+                                },
                                 _ => Ok(TokenKind::Op(Op::WrappingTimes)),
                             }
-                        }
+                        },
                         Some(b'|') => {
                             tokenizer.col += 1;
                             match tokenizer.peek_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::SaturatingTimesEquals))
-                                }
+                                },
                                 _ => Ok(TokenKind::Op(Op::SaturatingTimes)),
                             }
-                        }
+                        },
                         _ => Ok(TokenKind::Op(Op::Times)),
-                    }
+                    },
                     b'/' => match tokenizer.peek_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::DivideEquals))
-                        }
+                        },
                         Some(b'\\') => {
                             tokenizer.col += 1;
                             match tokenizer.peek_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::WrappingDivideEquals))
-                                }
+                                },
                                 _ => Ok(TokenKind::Op(Op::WrappingDivide)),
                             }
-                        }
+                        },
                         Some(b'|') => {
                             tokenizer.col += 1;
                             match tokenizer.peek_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::SaturatingDivideEquals))
-                                }
+                                },
                                 _ => Ok(TokenKind::Op(Op::SaturatingDivide)),
                             }
-                        }
+                        },
                         _ => Ok(TokenKind::Op(Op::Divide)),
-                    }
+                    },
                     b'%' => match tokenizer.peek_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::RemainderEquals))
-                        }
+                        },
                         _ => Ok(TokenKind::Op(Op::Remainder)),
-                    }
+                    },
                     b'+' => match tokenizer.peek_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::PlusEquals))
-                        }
+                        },
                         Some(b'\\') => {
                             tokenizer.col += 1;
                             match tokenizer.peek_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::WrappingPlusEquals))
-                                }
+                                },
                                 _ => Ok(TokenKind::Op(Op::WrappingPlus)),
                             }
-                        }
+                        },
                         Some(b'|') => {
                             tokenizer.col += 1;
                             match tokenizer.peek_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::SaturatingPlusEquals))
-                                }
+                                },
                                 _ => Ok(TokenKind::Op(Op::SaturatingPlus)),
                             }
-                        }
+                        },
                         _ => Ok(TokenKind::Op(Op::Plus)),
-                    }
+                    },
                     b'-' => match tokenizer.peek_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::MinusEquals))
-                        }
+                        },
                         Some(b'\\') => {
                             tokenizer.col += 1;
                             match tokenizer.peek_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::WrappingMinusEquals))
-                                }
+                                },
                                 _ => Ok(TokenKind::Op(Op::WrappingMinus)),
                             }
-                        }
+                        },
                         Some(b'|') => {
                             tokenizer.col += 1;
                             match tokenizer.peek_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::SaturatingMinusEquals))
-                                }
+                                },
                                 _ => Ok(TokenKind::Op(Op::SaturatingMinus)),
                             }
-                        }
+                        },
                         _ => Ok(TokenKind::Op(Op::Minus)),
-                    }
+                    },
                     b'&' => match tokenizer.peek_byte_multiline() {
                         Some(b'&') => {
                             tokenizer.col += 1;
@@ -962,23 +959,23 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::AndEquals))
-                                }
+                                },
                                 _ => Ok(TokenKind::Op(Op::And)),
                             }
-                        }
+                        },
                         Some(b'=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::BitAndEquals))
-                        }
+                        },
                         _ => Ok(TokenKind::Op(Op::BitAnd)),
-                    }
+                    },
                     b'^' => match tokenizer.peek_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::BitXorEquals))
-                        }
+                        },
                         _ => Ok(TokenKind::Op(Op::BitXor)),
-                    }
+                    },
                     b'|' => match tokenizer.peek_byte_multiline() {
                         Some(b'|') => {
                             tokenizer.col += 1;
@@ -986,23 +983,23 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::OrEquals))
-                                }
+                                },
                                 _ => Ok(TokenKind::Op(Op::Or)),
                             }
-                        }
+                        },
                         Some(b'=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::BitOrEquals))
-                        }
+                        },
                         _ => Ok(TokenKind::Op(Op::BitOr)),
-                    }
+                    },
                     b'=' => match tokenizer.peek_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::EqualsEquals))
-                        }
+                        },
                         _ => Ok(TokenKind::Op(Op::Equals)),
-                    }
+                    },
                     b'>' => match tokenizer.peek_byte_multiline() {
                         Some(b'>') => {
                             tokenizer.col += 1;
@@ -1013,23 +1010,23 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::RightRotateEquals))
-                                        }
+                                        },
                                         _ => Ok(TokenKind::Op(Op::RightRotate)),
                                     }
-                                }
+                                },
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::RightShiftEquals))
-                                }
+                                },
                                 _ => Ok(TokenKind::Op(Op::RightShift)),
                             }
-                        }
+                        },
                         Some(b'=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::GreaterOrEquals))
-                        }
+                        },
                         _ => Ok(TokenKind::Op(Op::Greater)),
-                    }
+                    },
                     b'<' => match tokenizer.peek_byte_multiline() {
                         Some(b'<') => {
                             tokenizer.col += 1;
@@ -1040,49 +1037,49 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::LeftRotateEquals))
-                                        }
+                                        },
                                         _ => Ok(TokenKind::Op(Op::LeftRotate)),
                                     }
-                                }
+                                },
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::LeftShiftEquals))
-                                }
+                                },
                                 Some(b'\\') => {
                                     tokenizer.col += 1;
                                     match tokenizer.peek_byte_multiline() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::WrappingLeftShiftEquals))
-                                        }
+                                        },
                                         _ => Ok(TokenKind::Op(Op::WrappingLeftShift)),
                                     }
-                                }
+                                },
                                 Some(b'|') => {
                                     tokenizer.col += 1;
                                     match tokenizer.peek_byte_multiline() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::SaturatingLeftShiftEquals))
-                                        }
+                                        },
                                         _ => Ok(TokenKind::Op(Op::SaturatingLeftShift)),
                                     }
-                                }
+                                },
                                 _ => Ok(TokenKind::Op(Op::LeftShift)),
                             }
-                        }
+                        },
                         Some(b'=') => {
                             tokenizer.col += 1;
                             match tokenizer.peek_byte_multiline() {
                                 Some(b'>') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::Compare))
-                                }
+                                },
                                 _ => Ok(TokenKind::Op(Op::LessOrEquals)),
                             }
-                        }
+                        },
                         _ => Ok(TokenKind::Op(Op::Less)),
-                    }
+                    },
                     unrecognized => {
                         tokenizer.errors.push(Error {
                             kind: ErrorKind::UnrecognizedCharacter(unrecognized),
@@ -1090,7 +1087,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             pointers_count: 1,
                         });
                         Err(())
-                    }
+                    },
                 }
             };
 
@@ -1099,7 +1096,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                 Err(()) => {
                     let unexpected_index = tokenizer.new_token_text();
                     TokenKind::Unexpected(unexpected_index)
-                }
+                },
             };
 
             tokenizer.tokens.tokens.push(Token { kind, col: tokenizer.token_start_col });
@@ -1202,7 +1199,7 @@ impl<'code> Tokenizer<'code> {
             b'\n' => {
                 self.new_line(LineEnd::LF);
                 Some(b'\n')
-            }
+            },
             b'\r' => {
                 if let Some(b'\n') = self.code.as_bytes().get(self.col as usize + 1) {
                     self.new_line(LineEnd::CRLF);
@@ -1216,11 +1213,11 @@ impl<'code> Tokenizer<'code> {
                 // });
                 self.new_line(LineEnd::CR);
                 Some(b'\n')
-            }
+            },
             other => {
                 self.col += 1;
                 Some(other)
-            }
+            },
         };
     }
 
@@ -1235,7 +1232,7 @@ impl<'code> Tokenizer<'code> {
             other => {
                 self.col += 1;
                 Some(other)
-            }
+            },
         };
     }
 
@@ -1255,7 +1252,7 @@ impl<'code> Tokenizer<'code> {
                 };
 
                 Some(Err(grapheme))
-            }
+            },
         };
     }
 
@@ -1275,7 +1272,7 @@ impl<'code> Tokenizer<'code> {
                 };
 
                 Some(Err(grapheme))
-            }
+            },
         };
     }
 }
@@ -1291,7 +1288,7 @@ impl<'code> Tokenizer<'code> {
             match self.peek_ascii_multiline() {
                 Some(Ok(b'0'..=b'9' | b'_')) => {
                     self.col += 1;
-                }
+                },
                 Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
                     self.errors.push(Error {
                         kind: ErrorKind::LetterInDecimalNumberLiteral(letter),
@@ -1299,7 +1296,7 @@ impl<'code> Tokenizer<'code> {
                         pointers_count: 1,
                     });
                     self.col += 1;
-                }
+                },
                 Some(Err(grapheme)) => {
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InDecimalNumberLiteral { grapheme },
@@ -1310,7 +1307,7 @@ impl<'code> Tokenizer<'code> {
                     {
                         self.col += grapheme.len() as offset32;
                     }
-                }
+                },
                 Some(Ok(_)) | None => break,
             }
         }
@@ -1330,7 +1327,7 @@ impl<'code> Tokenizer<'code> {
             match self.peek_ascii_multiline() {
                 Some(Ok(b'0'..=b'9' | b'_')) => {
                     self.col += 1;
-                }
+                },
                 Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
                     self.errors.push(Error {
                         kind: ErrorKind::LetterInDecimalNumberLiteral(letter),
@@ -1338,7 +1335,7 @@ impl<'code> Tokenizer<'code> {
                         pointers_count: 1,
                     });
                     self.col += 1;
-                }
+                },
                 Some(Err(grapheme)) => {
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InDecimalNumberLiteral { grapheme },
@@ -1349,7 +1346,7 @@ impl<'code> Tokenizer<'code> {
                     {
                         self.col += grapheme.len() as offset32;
                     }
-                }
+                },
                 Some(Ok(_)) | None => break,
             }
         }
@@ -1369,7 +1366,7 @@ impl<'code> Tokenizer<'code> {
             match self.peek_ascii_multiline() {
                 Some(Ok(b'0'..=b'1' | b'_')) => {
                     self.col += 1;
-                }
+                },
                 Some(Ok(out_of_range @ b'2'..=b'9')) => {
                     self.errors.push(Error {
                         kind: ErrorKind::DigitOutOfRangeInBinaryNumberLiteral(out_of_range),
@@ -1377,7 +1374,7 @@ impl<'code> Tokenizer<'code> {
                         pointers_count: 1,
                     });
                     self.col += 1;
-                }
+                },
                 Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
                     self.errors.push(Error {
                         kind: ErrorKind::LetterInBinaryNumberLiteral(letter),
@@ -1385,7 +1382,7 @@ impl<'code> Tokenizer<'code> {
                         pointers_count: 1,
                     });
                     self.col += 1;
-                }
+                },
                 Some(Err(grapheme)) => {
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InBinaryNumberLiteral { grapheme },
@@ -1396,7 +1393,7 @@ impl<'code> Tokenizer<'code> {
                     {
                         self.col += grapheme.len() as offset32;
                     }
-                }
+                },
                 Some(Ok(_)) | None => break,
             }
         }
@@ -1416,7 +1413,7 @@ impl<'code> Tokenizer<'code> {
             match self.peek_ascii_multiline() {
                 Some(Ok(b'0'..=b'7' | b'_')) => {
                     self.col += 1;
-                }
+                },
                 Some(Ok(out_of_range @ b'8'..=b'9')) => {
                     self.errors.push(Error {
                         kind: ErrorKind::DigitOutOfRangeInOctalNumberLiteral(out_of_range),
@@ -1424,7 +1421,7 @@ impl<'code> Tokenizer<'code> {
                         pointers_count: 1,
                     });
                     self.col += 1;
-                }
+                },
                 Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
                     self.errors.push(Error {
                         kind: ErrorKind::LetterInOctalNumberLiteral(letter),
@@ -1432,7 +1429,7 @@ impl<'code> Tokenizer<'code> {
                         pointers_count: 1,
                     });
                     self.col += 1;
-                }
+                },
                 Some(Err(grapheme)) => {
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InOctalNumberLiteral { grapheme },
@@ -1443,7 +1440,7 @@ impl<'code> Tokenizer<'code> {
                     {
                         self.col += grapheme.len() as offset32;
                     }
-                }
+                },
                 Some(Ok(_)) | None => break,
             }
         }
@@ -1463,7 +1460,7 @@ impl<'code> Tokenizer<'code> {
             match self.peek_ascii_multiline() {
                 Some(Ok(b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F' | b'_')) => {
                     self.col += 1;
-                }
+                },
                 Some(Ok(out_of_range @ (b'g'..=b'z' | b'G'..=b'Z'))) => {
                     self.errors.push(Error {
                         kind: ErrorKind::DigitOutOfRangeInHexadecimalNumberLiteral(out_of_range),
@@ -1471,7 +1468,7 @@ impl<'code> Tokenizer<'code> {
                         pointers_count: 1,
                     });
                     self.col += 1;
-                }
+                },
                 Some(Err(grapheme)) => {
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InHexadecimalNumberLiteral { grapheme },
@@ -1482,7 +1479,7 @@ impl<'code> Tokenizer<'code> {
                     {
                         self.col += grapheme.len() as offset32;
                     }
-                }
+                },
                 Some(Ok(_)) | None => break,
             }
         }
@@ -1513,7 +1510,7 @@ impl<'code> Tokenizer<'code> {
                         self.col += grapheme.len() as offset32;
                     }
                     continue;
-                }
+                },
                 None => {
                     self.errors.push(Error {
                         kind: ErrorKind::UnclosedCharacterLiteral,
@@ -1521,7 +1518,7 @@ impl<'code> Tokenizer<'code> {
                         pointers_count: self.token_text().display_len(),
                     });
                     break;
-                }
+                },
             };
             self.col += 1;
 
@@ -1540,7 +1537,7 @@ impl<'code> Tokenizer<'code> {
                                 self.col += grapheme.len() as offset32;
                             }
                             continue;
-                        }
+                        },
                         None => {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnclosedCharacterLiteral,
@@ -1548,12 +1545,12 @@ impl<'code> Tokenizer<'code> {
                                 pointers_count: self.token_text().display_len(),
                             });
                             break;
-                        }
+                        },
                     };
                     self.col += 1;
 
                     match escape_character {
-                        b'\\' | b'\'' | b'"' | b'n' | b'r' | b't' | b'0' => {}
+                        b'\\' | b'\'' | b'"' | b'n' | b'r' | b't' | b'0' => {},
                         unrecognized => {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnrecognizedEscapeCharacterInCharacterLiteral(
@@ -1562,18 +1559,18 @@ impl<'code> Tokenizer<'code> {
                                 col: self.col - 2,
                                 pointers_count: 2,
                             });
-                        }
+                        },
                     }
-                }
+                },
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Error {
                         kind: ErrorKind::ControlCharacterInCharacterLiteral(control),
                         col: self.col - 1,
                         pointers_count: 1,
                     });
-                }
+                },
                 b'\'' => break,
-                _ => {}
+                _ => {},
             }
 
             logical_characters_count += 1;
@@ -1621,7 +1618,7 @@ impl<'code> Tokenizer<'code> {
                         self.col += grapheme.len() as offset32;
                     }
                     continue;
-                }
+                },
                 None => {
                     self.errors.push(Error {
                         kind: ErrorKind::UnclosedStrLiteral,
@@ -1629,7 +1626,7 @@ impl<'code> Tokenizer<'code> {
                         pointers_count: self.token_text().display_len(),
                     });
                     break;
-                }
+                },
             };
             self.col += 1;
 
@@ -1648,7 +1645,7 @@ impl<'code> Tokenizer<'code> {
                                 self.col += grapheme.len() as offset32;
                             }
                             continue;
-                        }
+                        },
                         None => {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnclosedStrLiteral,
@@ -1656,12 +1653,12 @@ impl<'code> Tokenizer<'code> {
                                 pointers_count: self.token_text().display_len(),
                             });
                             break;
-                        }
+                        },
                     };
                     self.col += 1;
 
                     match escape_character {
-                        b'\\' | b'\'' | b'"' | b'n' | b'r' | b't' | b'0' => {}
+                        b'\\' | b'\'' | b'"' | b'n' | b'r' | b't' | b'0' => {},
                         unrecognized => {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnrecognizedEscapeCharacterInStrLiteral(
@@ -1670,18 +1667,18 @@ impl<'code> Tokenizer<'code> {
                                 col: self.col - 2,
                                 pointers_count: 2,
                             });
-                        }
+                        },
                     }
-                }
+                },
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Error {
                         kind: ErrorKind::ControlCharacterInStrLiteral(control),
                         col: self.col - 1,
                         pointers_count: 1,
                     });
-                }
+                },
                 b'"' => break,
-                _ => {}
+                _ => {},
             }
         }
 
@@ -1710,7 +1707,7 @@ impl<'code> Tokenizer<'code> {
                         self.col += grapheme.len() as offset32;
                     }
                     continue;
-                }
+                },
                 None => {
                     self.errors.push(Error {
                         kind: ErrorKind::UnclosedRawStrLiteral,
@@ -1718,7 +1715,7 @@ impl<'code> Tokenizer<'code> {
                         pointers_count: self.token_text().display_len(),
                     });
                     break;
-                }
+                },
             };
             self.col += 1;
 
@@ -1737,7 +1734,7 @@ impl<'code> Tokenizer<'code> {
                                 self.col += grapheme.len() as offset32;
                             }
                             continue;
-                        }
+                        },
                         None => {
                             self.errors.push(Error {
                                 kind: ErrorKind::UnclosedRawStrLiteral,
@@ -1745,22 +1742,22 @@ impl<'code> Tokenizer<'code> {
                                 pointers_count: self.token_text().display_len(),
                             });
                             break;
-                        }
+                        },
                     };
 
                     if escape_character == b'"' {
                         self.col += 1;
                     }
-                }
+                },
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Error {
                         kind: ErrorKind::ControlCharacterInRawStrLiteral(control),
                         col: self.col - 1,
                         pointers_count: 1,
                     });
-                }
+                },
                 b'"' => break,
-                _ => {}
+                _ => {},
             }
         }
 
@@ -1790,7 +1787,7 @@ impl<'code> Tokenizer<'code> {
                         self.col += grapheme.len() as offset32;
                     }
                     continue;
-                }
+                },
                 None => {
                     self.errors.push(Error {
                         kind: ErrorKind::UnclosedIdentifierStr,
@@ -1798,7 +1795,7 @@ impl<'code> Tokenizer<'code> {
                         pointers_count: self.token_text().display_len(),
                     });
                     break;
-                }
+                },
             };
             self.col += 1;
 
@@ -1809,9 +1806,9 @@ impl<'code> Tokenizer<'code> {
                         col: self.col - 1,
                         pointers_count: 1,
                     });
-                }
+                },
                 b'`' => break,
-                _ => {}
+                _ => {},
             }
         }
 
@@ -1843,7 +1840,7 @@ impl<'code> Tokenizer<'code> {
             match self.peek_ascii_singleline() {
                 Some(Ok(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {
                     self.col += 1;
-                }
+                },
                 Some(Err(grapheme)) => {
                     self.errors.push(Error {
                         kind: ErrorKind::Utf8InIdentifier { grapheme },
@@ -1854,7 +1851,7 @@ impl<'code> Tokenizer<'code> {
                     {
                         self.col += grapheme.len() as offset32;
                     }
-                }
+                },
                 Some(Ok(_)) | None => break,
             }
         }
@@ -1894,7 +1891,7 @@ impl<'code> Tokenizer<'code> {
                 let identifier_index = TextIndex::new(self.tokens.text.len());
                 self.tokens.text.push(identifier);
                 TokenKind::Identifier(identifier_index)
-            }
+            },
         };
 
         return Ok(identifier);

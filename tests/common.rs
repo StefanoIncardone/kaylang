@@ -3,7 +3,11 @@
 use kaylang::{
     back_end::{artifacts::Artifacts, Compiler},
     front_end::{
-        ast::Parser, src_file::SrcFile, syntax_tree, tokenizer::{TokenizedCode, Tokenizer}, typed_abstract_syntax_tree
+        ast::Parser,
+        src_file::SrcFile,
+        syntax_tree,
+        tokenizer::{TokenizedCode, Tokenizer},
+        typed_abstract_syntax_tree,
     },
     Logger, ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER,
     COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, DONE,
@@ -31,7 +35,7 @@ pub(crate) fn check(src_path: &Path) -> Result<(), ExitCode> {
         Err(err) => {
             eprintln!("{err}");
             return Err(ExitCode::FAILURE);
-        }
+        },
     };
 
     let (src, tokens) = {
@@ -43,7 +47,7 @@ pub(crate) fn check(src_path: &Path) -> Result<(), ExitCode> {
                     eprintln!("{}\n", error.display(&src));
                 }
                 return Err(ExitCode::FAILURE);
-            }
+            },
         }
     };
 
@@ -54,7 +58,7 @@ pub(crate) fn check(src_path: &Path) -> Result<(), ExitCode> {
                 eprintln!("{}\n", error.display(&src));
             }
             return Err(ExitCode::FAILURE);
-        }
+        },
     };
 
     execution_step.step(&DONE, None);
@@ -78,7 +82,7 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
         Err(err) => {
             eprintln!("{err}");
             return Err(ExitCode::FAILURE);
-        }
+        },
     };
 
     let (src, tokens) = {
@@ -90,7 +94,7 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
                     eprintln!("{}\n", error.display(&src));
                 }
                 return Err(ExitCode::FAILURE);
-            }
+            },
         }
     };
 
@@ -101,23 +105,24 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
                 eprintln!("{}\n", error.display(&src));
             }
             return Err(ExitCode::FAILURE);
-        }
+        },
     };
 
     #[expect(clippy::let_unit_value)]
-    let _typed_syntax_tree = match typed_abstract_syntax_tree::Parser::parse(&src, &tokens, &syntax_tree) {
-        #[expect(clippy::print_stdout)]
-        Ok(typed_syntax_tree) => {
-            // typed_syntax_tree
-            println!("{}", typed_syntax_tree.display(&syntax_tree, &tokens));
-        }
-        Err(errors) => {
-            for error in errors {
-                eprintln!("{}\n", error.display(&src));
-            }
-            // return ExitCode::FAILURE;
-        }
-    };
+    let _typed_syntax_tree =
+        match typed_abstract_syntax_tree::Parser::parse(&src, &tokens, &syntax_tree) {
+            #[expect(clippy::print_stdout)]
+            Ok(typed_syntax_tree) => {
+                // typed_syntax_tree
+                println!("{}", typed_syntax_tree.display(&syntax_tree, &tokens));
+            },
+            Err(errors) => {
+                for error in errors {
+                    eprintln!("{}\n", error.display(&src));
+                }
+                // return ExitCode::FAILURE;
+            },
+        };
 
     let ast = match Parser::parse(&src, &tokens) {
         Ok(ast) => ast,
@@ -126,7 +131,7 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
                 eprintln!("{}\n", error.display(&src));
             }
             return Err(ExitCode::FAILURE);
-        }
+        },
     };
 
     Logger::info(&COMPILING, src_path);
@@ -136,7 +141,7 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
         Err(err) => {
             eprintln!("{err}");
             return Err(ExitCode::FAILURE);
-        }
+        },
     };
 
     let compiled_code = Compiler::compile(&src, &ast);
@@ -156,11 +161,11 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
                     None => Err(ExitCode::FAILURE),
                 };
             }
-        }
+        },
         Err(err) => {
             eprintln!("{COULD_NOT_RUN_ASSEMBLER}: {err}");
             return Err(ExitCode::FAILURE);
-        }
+        },
     };
 
     let _linker_status: () = match artifacts.linker().output() {
@@ -174,11 +179,11 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
                     None => Err(ExitCode::FAILURE),
                 };
             }
-        }
+        },
         Err(err) => {
             eprintln!("{COULD_NOT_RUN_LINKER}: {err}");
             return Err(ExitCode::FAILURE);
-        }
+        },
     };
 
     execution_step.step(&DONE, None);
@@ -193,7 +198,7 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
         Err(err) => {
             eprintln!("{COULD_NOT_RUN_EXECUTABLE}: {err}");
             return Err(ExitCode::FAILURE);
-        }
+        },
     };
     running_step.step(&DONE, None);
 

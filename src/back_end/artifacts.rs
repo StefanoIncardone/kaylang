@@ -102,19 +102,19 @@ impl Display for Error {
             Self::MustBeAFilePath(path) => {
                 _ = write!(message, "invalid '{}' path", path.display());
                 _ = write!(cause, "'{}' must be a file path", path.display());
-            }
+            },
             Self::SrcPathCannotBeEmpty => {
                 _ = write!(message, "invalid src path");
                 _ = write!(cause, "cannot be empty");
-            }
+            },
             Self::MustBeADirectoryPath(path) => {
                 _ = write!(message, "invalid '{}' path", path.display());
                 _ = write!(cause, "'{}' must be a directory path", path.display());
-            }
+            },
             Self::CouldNotCreateOutputDirectory { path, err } => {
                 _ = write!(message, "could not create output directory '{}", path.display());
                 _ = write!(cause, "{err} ({})", err.kind());
-            }
+            },
         }
 
         let error = MsgWithCause { kind: &ERROR, message: &message, cause: &cause };
