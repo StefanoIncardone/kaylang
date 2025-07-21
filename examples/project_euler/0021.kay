@@ -38,7 +38,7 @@ loop number < MAX {
         divisor += 1;
     }
 
-    if second_sum_of_divisors == number && sum_of_divisor != second_sum_of_divisors {
+    if second_sum_of_divisors == number && sum_of_divisor !== second_sum_of_divisors {
         sum_of_amicable_numbers += number;
     }
     number += 1;

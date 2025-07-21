@@ -2076,9 +2076,10 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         &mut self,
         token: Token<'code>,
     ) -> Result<ExpressionIndex<'code>, Error<ErrorKind>> {
-        static OPS: [Op; 7] = [
+        static OPS: [Op; 8] = [
             Op::Compare,
             Op::EqualsEquals,
+            Op::NotEquals,
             Op::NotEqualsEquals,
             Op::Greater,
             Op::GreaterOrEquals,
@@ -2088,6 +2089,14 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
         let mut left_operand = self.bitor_expression(token)?;
         while let Some(Operator { token: operator_token, operator }) = self.operator(&OPS) {
+            if let Op::NotEquals = operator {
+                return Err(Error {
+                    kind: ErrorKind::UseNotEqualsEqualsInsteadOfNotEquals,
+                    col: operator_token.col,
+                    pointers_count: operator.display_len(),
+                });
+            }
+
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.bitor_expression(start_of_right_operand_token)?;
             left_operand = self.syntax_tree.new_expression(Expression::Binary {
@@ -2630,6 +2639,7 @@ pub enum ErrorKind {
     ExpectedSemicolonOrCloseSquareBracket,
     MissingCloseSquareBracketInIndex,
     StrayOperator(Op),
+    UseNotEqualsEqualsInsteadOfNotEquals,
 
     // variables
     ExpectedVariableName,
@@ -2710,6 +2720,10 @@ impl IntoErrorInfo for ErrorKind {
             Self::MissingCloseSquareBracketInIndex => (
                 "invalid array index".into(),
                 "must be followed by a ']'".into(),
+            ),
+            Self::UseNotEqualsEqualsInsteadOfNotEquals => (
+                "invalid operator".into(),
+                "this language uses '!==' instead of '!=' as the 'not equals' operator".into(),
             ),
 
             Self::ExpectedVariableName => (

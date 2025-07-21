@@ -723,9 +723,6 @@ let ok = match answer {
     let division, remainder = 3 /% 2; # will result in 1, 1
     ```
 
-- boolean flip operator `=!`:
-    `boolean = !boolean;` -> `boolean =!;`
-
 ### Revised remainder/mod operators
 
 | strategy                    | symbol | math equation                                                          |
@@ -745,7 +742,7 @@ let ok = match answer {
 | **right logical shift**      |  `>>`  | `shr` / `shrx`     |
 | **right arithmetical shift** | `>>-`  | `sar` / `sarx`     |
 
-## 0.6.4 - Inverted short hand assignment operators
+## ?.?.? - Inverted short hand assignment operators
 
 ```kay
 var a = 12;
