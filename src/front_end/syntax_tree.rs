@@ -2147,15 +2147,15 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         ];
 
         let mut left_operand = self.bitor_expression(token)?;
-        while let Some(Operator { token: operator_token, operator }) = self.operator(&OPS) {
+        while let Some(Operator { token: operator_token, mut operator }) = self.operator(&OPS) {
             if let Op::NotEquals = operator {
                 self.errors.push(Msg {
-                    severity: MsgSeverity::Error,
+                    severity: MsgSeverity::NonTerminalError,
                     kind: ErrorKind::UseNotEqualsEqualsInsteadOfNotEquals,
                     col: operator_token.col,
                     pointers_count: operator.display_len(),
                 });
-                return Err(());
+                operator = Op::NotEqualsEquals;
             }
 
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
