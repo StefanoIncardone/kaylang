@@ -46,7 +46,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 #### Added
 
-- Implemented basic missing semicolon fault tolerance
+- Implemented basic syntax errors fault tolerance
 
 #### Changed
 

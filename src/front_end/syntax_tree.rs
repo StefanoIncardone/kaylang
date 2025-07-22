@@ -993,21 +993,23 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
             },
         };
 
-        while let Some(peeked) = parser.peek_next_token() {
+        'parsing: while let Some(peeked) = parser.peek_next_token() {
+            let errors_start_index = parser.errors.len();
             parser.token_index = peeked.index;
             match parser.any(peeked.token) {
                 Ok(ParsedNode::Node(node)) => parser.syntax_tree.nodes.push(node),
-                Ok(ParsedNode::ScopeEnd) => continue,
-                Err(err) => {
-                    let err_severity = err.severity;
-                    parser.errors.push(err);
-                    match err_severity {
-                        MsgSeverity::Error => {
-                            // consuming all remaining tokens until the end of the file
-                            parser.token_index = TokenIndex::new(parser.tokens.tokens.len());
-                            break;
+                Ok(ParsedNode::ScopeEnd) => {},
+                Err(()) => {
+                    let new_errors = &parser.errors[errors_start_index..];
+                    for error in new_errors {
+                        match error.severity {
+                            MsgSeverity::Error => {
+                                // consuming all remaining tokens until the end of the file
+                                parser.token_index = TokenIndex::new(parser.tokens.tokens.len());
+                                break 'parsing;
+                            }
+                            MsgSeverity::NonTerminalError => {}
                         }
-                        MsgSeverity::NonTerminalError => {}
                     }
                 },
             }
@@ -1018,7 +1020,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
 }
 
 impl<'code> Parser<'_, '_, 'code, '_> {
-    fn any(&mut self, token: Token<'code>) -> Result<ParsedNode<'code>, Msg<ErrorKind>> {
+    fn any(&mut self, token: Token<'code>) -> Result<ParsedNode<'code>, ()> {
         return match token.kind {
             TokenKind::Op(
                 operator @ (Op::NotEquals
@@ -1189,12 +1191,15 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     | TokenKind::Else
                     | TokenKind::Loop
                     | TokenKind::Break
-                    | TokenKind::Continue => Err(Msg {
-                        severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::MissingSemicolon,
-                        col: end_of_expression_token.col,
-                        pointers_count: end_of_expression_token.kind.display_len(self.tokens),
-                    }),
+                    | TokenKind::Continue => {
+                        self.errors.push(Msg {
+                            severity: MsgSeverity::NonTerminalError,
+                            kind: ErrorKind::MissingSemicolon,
+                            col: end_of_expression_token.col,
+                            pointers_count: end_of_expression_token.kind.display_len(self.tokens),
+                        });
+                        Err(())
+                    }
                     TokenKind::Unexpected(_)
                     | TokenKind::LineComment(_)
                     | TokenKind::BlockComment(_) => self.should_have_been_skipped(token),
@@ -1326,12 +1331,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let do_column = token.col;
                 let loop_token = self.next_expected_token(Expected::LoopStatement)?;
                 let TokenKind::Loop = loop_token.kind else {
-                    return Err(Msg {
+                    self.errors.push(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::DoMustBeFollowedByLoop,
                         col: token.col,
                         pointers_count: token.kind.display_len(self.tokens),
                     });
+                    return Err(());
                 };
 
                 self.loop_depth += 1;
@@ -1353,12 +1359,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let semicolon_column = self.semicolon()?;
 
                 if self.loop_depth == 0 {
-                    return Err(Msg {
+                    self.errors.push(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::StrayBreak,
                         col: token.col,
                         pointers_count: token.kind.display_len(self.tokens),
                     });
+                    return Err(());
                 }
 
                 Ok(ParsedNode::Node(Node::Break { break_column: token.col, semicolon_column }))
@@ -1367,12 +1374,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let semicolon_column = self.semicolon()?;
 
                 if self.loop_depth == 0 {
-                    return Err(Msg {
+                    self.errors.push(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::StrayContinue,
                         col: token.col,
                         pointers_count: token.kind.display_len(self.tokens),
                     });
+                    return Err(());
                 }
 
                 Ok(ParsedNode::Node(Node::Continue {
@@ -1381,30 +1389,42 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 }))
             },
 
-            TokenKind::Else => Err(Msg {
-                severity: MsgSeverity::Error,
-                kind: ErrorKind::StrayElse,
-                col: token.col,
-                pointers_count: token.kind.display_len(self.tokens),
-            }),
-            TokenKind::Colon => Err(Msg {
-                severity: MsgSeverity::Error,
-                kind: ErrorKind::StrayColon,
-                col: token.col,
-                pointers_count: token.kind.display_len(self.tokens),
-            }),
-            TokenKind::Comma => Err(Msg {
-                severity: MsgSeverity::Error,
-                kind: ErrorKind::StrayComma,
-                col: token.col,
-                pointers_count: token.kind.display_len(self.tokens),
-            }),
-            TokenKind::Op(op) => Err(Msg {
-                severity: MsgSeverity::Error,
-                kind: ErrorKind::StrayOperator(op),
-                col: token.col,
-                pointers_count: token.kind.display_len(self.tokens),
-            }),
+            TokenKind::Else => {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::Error,
+                    kind: ErrorKind::StrayElse,
+                    col: token.col,
+                    pointers_count: token.kind.display_len(self.tokens),
+                });
+                Err(())
+            }
+            TokenKind::Colon => {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::Error,
+                    kind: ErrorKind::StrayColon,
+                    col: token.col,
+                    pointers_count: token.kind.display_len(self.tokens),
+                });
+                Err(())
+            }
+            TokenKind::Comma => {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::Error,
+                    kind: ErrorKind::StrayComma,
+                    col: token.col,
+                    pointers_count: token.kind.display_len(self.tokens),
+                });
+                Err(())
+            }
+            TokenKind::Op(op) => {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::Error,
+                    kind: ErrorKind::StrayOperator(op),
+                    col: token.col,
+                    pointers_count: token.kind.display_len(self.tokens),
+                });
+                Err(())
+            }
             TokenKind::CloseRoundBracket
             | TokenKind::CloseSquareBracket
             | TokenKind::CloseCurlyBracket => self.unbalanced_bracket(token),
@@ -1414,16 +1434,17 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         };
     }
 
-    fn semicolon(&mut self) -> Result<offset32, Msg<ErrorKind>> {
+    fn semicolon(&mut self) -> Result<offset32, ()> {
         let peeked = self.peek_next_expected_token(Expected::Semicolon)?;
         let TokenKind::SemiColon = peeked.token.kind else {
             let previous_token = self.peek_previous_token();
-            return Err(Msg {
+            self.errors.push(Msg {
                 severity: MsgSeverity::NonTerminalError,
                 kind: ErrorKind::MissingSemicolon,
                 col: previous_token.col,
                 pointers_count: previous_token.kind.display_len(self.tokens),
             });
+            return Err(());
         };
 
         self.token_index = peeked.index;
@@ -1547,17 +1568,18 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     }
 
     fn peek_next_expected_token(
-        &self,
+        &mut self,
         expected: Expected,
-    ) -> Result<Peeked<'code>, Msg<ErrorKind>> {
+    ) -> Result<Peeked<'code>, ()> {
         let Some(peeked) = self.peek_next_token() else {
             let previous_token = self.peek_previous_token();
-            return Err(Msg {
+            self.errors.push(Msg {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::PrematureEndOfFile(expected),
                 col: previous_token.col,
                 pointers_count: previous_token.kind.display_len(self.tokens),
             });
+            return Err(());
         };
 
         return Ok(peeked);
@@ -1566,7 +1588,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn next_expected_token(
         &mut self,
         expected: Expected,
-    ) -> Result<Token<'code>, Msg<ErrorKind>> {
+    ) -> Result<Token<'code>, ()> {
         let peeked = self.peek_next_expected_token(expected)?;
         self.token_index = peeked.index;
         return Ok(peeked.token);
@@ -1648,7 +1670,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn primary_expression(
         &mut self,
         token: Token<'code>,
-    ) -> Result<ExpressionIndex<'code>, Msg<ErrorKind>> {
+    ) -> Result<ExpressionIndex<'code>, ()> {
         let mut expression = match token.kind {
             TokenKind::False => Expression::False { column: token.col },
             TokenKind::True => Expression::True { column: token.col },
@@ -1682,12 +1704,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let start_of_inner_expression_token =
                     self.next_expected_token(Expected::Operand)?;
                 if let TokenKind::CloseRoundBracket = start_of_inner_expression_token.kind {
-                    return Err(Msg {
+                    self.errors.push(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::EmptyParenthesis,
                         col: open_round_bracket_token.col,
                         pointers_count: 1,
                     });
+                    return Err(());
                 }
 
                 let inner_expression = self.expression(start_of_inner_expression_token)?;
@@ -1695,12 +1718,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let close_round_bracket_token =
                     self.next_expected_token(Expected::CloseRoundBracket)?;
                 let TokenKind::CloseRoundBracket = close_round_bracket_token.kind else {
-                    return Err(Msg {
+                    self.errors.push(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::ExpectedCloseRoundBracket,
                         col: close_round_bracket_token.col,
                         pointers_count: close_round_bracket_token.kind.display_len(self.tokens),
                     });
+                    return Err(());
                 };
 
                 Expression::Parenthesis {
@@ -1744,14 +1768,20 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             );
                         },
                         TokenKind::Comma => {
-                            return Err(Msg {
-                                severity: MsgSeverity::Error,
+                            self.errors.push(Msg {
+                                severity: MsgSeverity::NonTerminalError,
                                 kind: ErrorKind::UseSemicolonInsteadOfComma,
                                 col: semicolon_or_close_square_bracket_token.col,
                                 pointers_count: semicolon_or_close_square_bracket_token
                                     .kind
                                     .display_len(self.tokens),
                             });
+                            ArrayItem {
+                                expression: item,
+                                separator: ArrayItemSeparator {
+                                    some: semicolon_or_close_square_bracket_token.col,
+                                },
+                            }
                         },
                         TokenKind::Colon
                         | TokenKind::Op(_)
@@ -1784,7 +1814,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         | TokenKind::Loop
                         | TokenKind::Break
                         | TokenKind::Continue => {
-                            return Err(Msg {
+                            self.errors.push(Msg {
                                 severity: MsgSeverity::Error,
                                 kind: ErrorKind::ExpectedSemicolonOrCloseSquareBracket,
                                 col: semicolon_or_close_square_bracket_token.col,
@@ -1792,6 +1822,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                     .kind
                                     .display_len(self.tokens),
                             });
+                            return Err(());
                         },
                         TokenKind::Unexpected(_)
                         | TokenKind::LineComment(_)
@@ -1869,12 +1900,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::Eprint
             | TokenKind::EprintLn
             | TokenKind::Do => {
-                return Err(Msg {
+                self.errors.push(Msg {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::KeywordInExpression,
                     col: token.col,
                     pointers_count: token.kind.display_len(self.tokens),
-                })
+                });
+                return Err(());
             },
             TokenKind::CloseRoundBracket
             | TokenKind::CloseSquareBracket
@@ -1884,12 +1916,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::Colon
             | TokenKind::SemiColon
             | TokenKind::Comma => {
-                return Err(Msg {
+                self.errors.push(Msg {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::ExpectedOperand,
                     col: token.col,
                     pointers_count: token.kind.display_len(self.tokens),
-                })
+                });
+                return Err(());
             },
             TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
                 self.should_have_been_skipped(token)
@@ -1909,12 +1942,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
             let after_expression_token = self.next_expected_token(Expected::CloseSquareBracket)?;
             let TokenKind::CloseSquareBracket = after_expression_token.kind else {
-                return Err(Msg {
+                self.errors.push(Msg {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::MissingCloseSquareBracketInIndex,
                     col: end_of_index_expression_token.col,
                     pointers_count: end_of_index_expression_token.kind.display_len(self.tokens),
                 });
+                return Err(());
             };
 
             expression = Expression::Index {
@@ -1931,7 +1965,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn exponentiative_expression(
         &mut self,
         token: Token<'code>,
-    ) -> Result<ExpressionIndex<'code>, Msg<ErrorKind>> {
+    ) -> Result<ExpressionIndex<'code>, ()> {
         static OPS: [Op; 3] = [Op::Pow, Op::WrappingPow, Op::SaturatingPow];
 
         let mut left_operand = self.primary_expression(token)?;
@@ -1952,7 +1986,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn multiplicative_expression(
         &mut self,
         token: Token<'code>,
-    ) -> Result<ExpressionIndex<'code>, Msg<ErrorKind>> {
+    ) -> Result<ExpressionIndex<'code>, ()> {
         static OPS: [Op; 7] = [
             Op::Times,
             Op::WrappingTimes,
@@ -1981,7 +2015,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn additive_expression(
         &mut self,
         token: Token<'code>,
-    ) -> Result<ExpressionIndex<'code>, Msg<ErrorKind>> {
+    ) -> Result<ExpressionIndex<'code>, ()> {
         static OPS: [Op; 6] = [
             Op::Plus,
             Op::WrappingPlus,
@@ -2009,7 +2043,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn shift_expression(
         &mut self,
         token: Token<'code>,
-    ) -> Result<ExpressionIndex<'code>, Msg<ErrorKind>> {
+    ) -> Result<ExpressionIndex<'code>, ()> {
         static OPS: [Op; 6] = [
             Op::LeftShift,
             Op::WrappingLeftShift,
@@ -2037,7 +2071,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn bitand_expression(
         &mut self,
         token: Token<'code>,
-    ) -> Result<ExpressionIndex<'code>, Msg<ErrorKind>> {
+    ) -> Result<ExpressionIndex<'code>, ()> {
         static OPS: [Op; 1] = [Op::BitAnd];
 
         let mut left_operand = self.shift_expression(token)?;
@@ -2058,7 +2092,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn bitxor_expression(
         &mut self,
         token: Token<'code>,
-    ) -> Result<ExpressionIndex<'code>, Msg<ErrorKind>> {
+    ) -> Result<ExpressionIndex<'code>, ()> {
         static OPS: [Op; 1] = [Op::BitXor];
 
         let mut left_operand = self.bitand_expression(token)?;
@@ -2079,7 +2113,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn bitor_expression(
         &mut self,
         token: Token<'code>,
-    ) -> Result<ExpressionIndex<'code>, Msg<ErrorKind>> {
+    ) -> Result<ExpressionIndex<'code>, ()> {
         static OPS: [Op; 1] = [Op::BitOr];
 
         let mut left_operand = self.bitxor_expression(token)?;
@@ -2100,7 +2134,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn comparison_expression(
         &mut self,
         token: Token<'code>,
-    ) -> Result<ExpressionIndex<'code>, Msg<ErrorKind>> {
+    ) -> Result<ExpressionIndex<'code>, ()> {
         static OPS: [Op; 8] = [
             Op::Compare,
             Op::EqualsEquals,
@@ -2115,12 +2149,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         let mut left_operand = self.bitor_expression(token)?;
         while let Some(Operator { token: operator_token, operator }) = self.operator(&OPS) {
             if let Op::NotEquals = operator {
-                return Err(Msg {
+                self.errors.push(Msg {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::UseNotEqualsEqualsInsteadOfNotEquals,
                     col: operator_token.col,
                     pointers_count: operator.display_len(),
                 });
+                return Err(());
             }
 
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
@@ -2139,7 +2174,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn and_expression(
         &mut self,
         token: Token<'code>,
-    ) -> Result<ExpressionIndex<'code>, Msg<ErrorKind>> {
+    ) -> Result<ExpressionIndex<'code>, ()> {
         static OPS: [Op; 1] = [Op::And];
 
         let mut left_operand = self.comparison_expression(token)?;
@@ -2160,7 +2195,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn or_expression(
         &mut self,
         token: Token<'code>,
-    ) -> Result<ExpressionIndex<'code>, Msg<ErrorKind>> {
+    ) -> Result<ExpressionIndex<'code>, ()> {
         static OPS: [Op; 1] = [Op::Or];
 
         let mut left_operand = self.and_expression(token)?;
@@ -2181,7 +2216,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn expression(
         &mut self,
         token: Token<'code>,
-    ) -> Result<ExpressionIndex<'code>, Msg<ErrorKind>> {
+    ) -> Result<ExpressionIndex<'code>, ()> {
         return self.or_expression(token);
     }
 }
@@ -2190,7 +2225,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn variable_definition(
         &mut self,
         mutability_token: Token<'code>,
-    ) -> Result<(VariableDefinition<'code>, offset32), Msg<ErrorKind>> {
+    ) -> Result<(VariableDefinition<'code>, offset32), ()> {
         let variable_name_token = self.next_expected_token(Expected::VariableName)?;
         let variable_name = match variable_name_token.kind {
             TokenKind::Identifier(name) | TokenKind::IdentifierStr(name) => name,
@@ -2214,12 +2249,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_) => {
-                return Err(Msg {
+                self.errors.push(Msg {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::ExpectedVariableName,
                     col: mutability_token.col,
                     pointers_count: mutability_token.kind.display_len(self.tokens),
-                })
+                });
+                return Err(());
             },
             TokenKind::Let
             | TokenKind::Var
@@ -2233,12 +2269,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::Loop
             | TokenKind::Break
             | TokenKind::Continue => {
-                return Err(Msg {
+                self.errors.push(Msg {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::KeywordInVariableName,
                     col: mutability_token.col,
                     pointers_count: mutability_token.kind.display_len(self.tokens),
-                })
+                });
+                return Err(());
             },
             TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
                 self.should_have_been_skipped(variable_name_token)
@@ -2277,12 +2314,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 | TokenKind::Ascii(_)
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_) => {
-                    return Err(Msg {
+                    self.errors.push(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::ExpectedTypeName,
                         col: after_variable_name_token.col,
                         pointers_count: after_variable_name_token.kind.display_len(self.tokens),
-                    })
+                    });
+                    return Err(());
                 },
                 TokenKind::Let
                 | TokenKind::Var
@@ -2296,12 +2334,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 | TokenKind::Loop
                 | TokenKind::Break
                 | TokenKind::Continue => {
-                    return Err(Msg {
+                    self.errors.push(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::KeywordInTypeName,
                         col: after_variable_name_token.col,
                         pointers_count: after_variable_name_token.kind.display_len(self.tokens),
-                    })
+                    });
+                    return Err(());
                 },
                 TokenKind::Unexpected(_)
                 | TokenKind::LineComment(_)
@@ -2328,12 +2367,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     index: close_square_bracket_token_index,
                 }) = self.peek_next_token()
                 else {
-                    return Err(Msg {
+                    self.errors.push(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::MissingCloseSquareBracketInArrayType,
                         col: dimension_expression_token.col,
                         pointers_count: dimension_expression_token.kind.display_len(self.tokens),
                     });
+                    return Err(());
                 };
                 self.token_index = close_square_bracket_token_index;
 
@@ -2423,18 +2463,24 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::Loop
             | TokenKind::Break
             | TokenKind::Continue => match type_annotation {
-                None => Err(Msg {
-                    severity: MsgSeverity::Error,
-                    kind: ErrorKind::ExpectedEqualsOrSemicolonAfterVariableName,
-                    col: variable_name_token.col,
-                    pointers_count: variable_name_token.kind.display_len(self.tokens),
-                }),
-                Some(_) => Err(Msg {
-                    severity: MsgSeverity::Error,
-                    kind: ErrorKind::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
-                    col: equals_or_semicolon_token.col,
-                    pointers_count: equals_or_semicolon_token.kind.display_len(self.tokens),
-                }),
+                None => {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::Error,
+                        kind: ErrorKind::ExpectedEqualsOrSemicolonAfterVariableName,
+                        col: variable_name_token.col,
+                        pointers_count: variable_name_token.kind.display_len(self.tokens),
+                    });
+                    Err(())
+                }
+                Some(_) => {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::Error,
+                        kind: ErrorKind::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
+                        col: equals_or_semicolon_token.col,
+                        pointers_count: equals_or_semicolon_token.kind.display_len(self.tokens),
+                    });
+                    Err(())
+                }
             },
             TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
                 self.should_have_been_skipped(equals_or_semicolon_token)
@@ -2445,19 +2491,20 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
 // control flow statements
 impl<'code> Parser<'_, '_, 'code, '_> {
-    fn if_statement(&mut self, if_column: offset32) -> Result<ParsedNode<'code>, Msg<ErrorKind>> {
+    fn if_statement(&mut self, if_column: offset32) -> Result<ParsedNode<'code>, ()> {
         let start_of_condition_token = self.next_expected_token(Expected::Expression)?;
         let condition = self.expression(start_of_condition_token)?;
         let end_of_condition_token = self.peek_previous_token();
 
         let after_if_condition_token = self.next_expected_token(Expected::OpenCurlyBracket)?;
         let TokenKind::OpenCurlyBracket = after_if_condition_token.kind else {
-            return Err(Msg {
+            self.errors.push(Msg {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::IfMustBeFollowedByBlock,
                 col: end_of_condition_token.col,
                 pointers_count: end_of_condition_token.kind.display_len(self.tokens),
             });
+            return Err(());
         };
 
         self.syntax_tree.nodes.push(Node::If { if_column, condition });
@@ -2489,12 +2536,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
                     let after_else_if_condition_token = self.next_expected_token(Expected::OpenCurlyBracket)?;
                     let TokenKind::OpenCurlyBracket = after_else_if_condition_token.kind else {
-                        return Err(Msg {
+                        self.errors.push(Msg {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::IfMustBeFollowedByBlock,
                             col: end_of_else_if_condition_token.col,
                             pointers_count: end_of_else_if_condition_token.kind.display_len(self.tokens),
                         });
+                        return Err(());
                     };
 
                     self.syntax_tree.nodes.push(Node::ElseIf {
@@ -2548,12 +2596,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 | TokenKind::Loop
                 | TokenKind::Break
                 | TokenKind::Continue => {
-                    return Err(Msg {
+                    self.errors.push(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::ElseMustBeFollowedByBlockOrIf,
                         col: else_token.col,
                         pointers_count: else_token.kind.display_len(self.tokens),
                     });
+                    return Err(());
                 }
                 TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
                     self.should_have_been_skipped(after_else_token)
@@ -2568,19 +2617,20 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         &mut self,
         do_column: offset32,
         loop_column: offset32,
-    ) -> Result<ParsedNode<'code>, Msg<ErrorKind>> {
+    ) -> Result<ParsedNode<'code>, ()> {
         let start_of_condition_token = self.next_expected_token(Expected::Expression)?;
         let condition = self.expression(start_of_condition_token)?;
         let end_of_condition_token = self.peek_previous_token();
 
         let after_condition_token = self.next_expected_token(Expected::OpenCurlyBracket)?;
         let TokenKind::OpenCurlyBracket = after_condition_token.kind else {
-            return Err(Msg {
+            self.errors.push(Msg {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::LoopMustBeFollowedByBlock,
                 col: end_of_condition_token.col,
                 pointers_count: end_of_condition_token.kind.display_len(self.tokens),
             });
+            return Err(());
         };
 
         self.syntax_tree.nodes.push(Node::DoLoop { do_column, loop_column, condition });
@@ -2594,19 +2644,20 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn loop_statement(
         &mut self,
         loop_column: offset32,
-    ) -> Result<ParsedNode<'code>, Msg<ErrorKind>> {
+    ) -> Result<ParsedNode<'code>, ()> {
         let start_of_condition_token = self.next_expected_token(Expected::Expression)?;
         let condition = self.expression(start_of_condition_token)?;
         let end_of_condition_token = self.peek_previous_token();
 
         let after_condition_token = self.next_expected_token(Expected::OpenCurlyBracket)?;
         let TokenKind::OpenCurlyBracket = after_condition_token.kind else {
-            return Err(Msg {
+            self.errors.push(Msg {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::LoopMustBeFollowedByBlock,
                 col: end_of_condition_token.col,
                 pointers_count: end_of_condition_token.kind.display_len(self.tokens),
             });
+            return Err(());
         };
 
         self.syntax_tree.nodes.push(Node::Loop { loop_column, condition });
