@@ -1950,7 +1950,7 @@ let i64_or_i64_error: i64 | err: i64;
 type i64_or_i64_error = i64 | err: i64;
 ```
 
-## ?.?.? - casts
+## 0.6.4/0.6.5 - casts
 
 ability to define/overload the casting operator for specific types.
 types with explicit conversions can be bit-casted to other types when possible
@@ -2355,6 +2355,31 @@ let result: i64, remainder: i64 = divmod(a = dividend: i64; b = divisor: i64) {
 let result, remainder = divmod(a = dividend: i64; b = divisor: i64) {
 let result, remainder = divmod(a = 12; b = 21) {
 let result, remainder = divmod(a = 12; b = 21);
+
+# could just provide multiple names
+fn result: i64, remainder: i64 = divmod(
+    a alias dividend alias foo: i64;
+    b alias divisor alias bar: i64;
+) { ... }
+# or
+fn result: i64, remainder: i64 = divmod(
+    a | dividend | foo: i64;
+    b | divisor | bar: i64;
+) { ... }
+
+let result, remainder = divmod(a = 12; b = 21);
+let result, remainder = divmod(dividend = 12; divisor = 21);
+let result, remainder = divmod(foo = 12; bar = 21);
+```
+
+named arguments could become breaking changes:
+
+```kay
+fn result: i64, remainder: i64 = divmod(
+    a | dividend | @deprecated_name_warning(foo) baz: i64;
+    b | divisor | bar: i64;
+) { ... }
+let result, remainder = divmod(foo = 12; bar = 21); # Warning: "foo" is deprecated, use "baz" instead
 ```
 
 ### Operator overloading
