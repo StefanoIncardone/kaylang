@@ -51,6 +51,32 @@ pub(crate) fn check(src_path: &Path) -> Result<(), ExitCode> {
         }
     };
 
+    let syntax_tree = match syntax_tree::Parser::parse(&src, &tokens) {
+        Ok(syntax_tree) => syntax_tree,
+        Err(errors) => {
+            for error in errors {
+                eprintln!("{}\n", error.display(&src));
+            }
+            return Err(ExitCode::FAILURE);
+        },
+    };
+
+    #[expect(clippy::let_unit_value)]
+    let _typed_syntax_tree =
+        match typed_abstract_syntax_tree::Parser::parse(&src, &tokens, &syntax_tree) {
+            // #[expect(clippy::print_stdout)]
+            Ok(_typed_syntax_tree) => {
+                // typed_syntax_tree
+                // println!("{}", typed_syntax_tree.display(&syntax_tree, &tokens));
+            },
+            Err(errors) => {
+                for error in errors {
+                    eprintln!("{}\n", error.display(&src));
+                }
+                // return ExitCode::FAILURE;
+            },
+        };
+
     let _ast = match Parser::parse(&src, &tokens) {
         Ok(ast) => ast,
         Err(errors) => {
@@ -111,10 +137,10 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
     #[expect(clippy::let_unit_value)]
     let _typed_syntax_tree =
         match typed_abstract_syntax_tree::Parser::parse(&src, &tokens, &syntax_tree) {
-            #[expect(clippy::print_stdout)]
-            Ok(typed_syntax_tree) => {
+            // #[expect(clippy::print_stdout)]
+            Ok(_typed_syntax_tree) => {
                 // typed_syntax_tree
-                println!("{}", typed_syntax_tree.display(&syntax_tree, &tokens));
+                // println!("{}", typed_syntax_tree.display(&syntax_tree, &tokens));
             },
             Err(errors) => {
                 for error in errors {
