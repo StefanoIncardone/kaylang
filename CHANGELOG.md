@@ -44,9 +44,14 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ### Compiler
 
+#### Added
+
+- Implemented basic missing semicolon fault tolerance
+
 #### Changed
 
 - `tokenizer::Token` is now `pub(crate)`
+- Syntax errors related entities are now named as `Msg` instead of `Error`
 - Refactored cli arguments and parsing:
     - Introduced `ArgParser`: does not require the first argument to be the executable file
     - `Command::Help` no longer contains the executable name

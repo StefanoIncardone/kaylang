@@ -1,7 +1,5 @@
 use crate::front_end::{
-    src_file::DisplayPosition,
-    tokenizer::{Base, TokenKind, Tokens},
-    ErrorDisplay, SliceIndexPtr,
+    src_file::DisplayPosition, tokenizer::{Base, TokenKind, Tokens}, MsgDisplay, MsgSeverity, SliceIndexPtr
 };
 use back_to_front::offset32;
 
@@ -9,7 +7,7 @@ use super::{
     src_file::SrcCode,
     syntax_tree::{self as st, SyntaxTree},
     tokenizer::{ascii, Op, TextIndex},
-    Error, ErrorInfo, IntoErrorInfo,
+    Msg, MsgInfo, IntoMsgInfo,
 };
 use core::{fmt::Display, marker::PhantomData};
 extern crate alloc;
@@ -1327,7 +1325,7 @@ impl Display for TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Parser<'syntax_tree, 'tokens: 'syntax_tree, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     src: &'src SrcCode<'code, 'path>,
-    errors: Vec<Error<ErrorKind>>,
+    errors: Vec<Msg<ErrorKind>>,
 
     tokens: &'tokens Tokens<'code>,
     node_index: st::NodeIndex<'code>,
@@ -1352,7 +1350,7 @@ impl<'syntax_tree, 'tokens: 'syntax_tree, 'src: 'tokens, 'code: 'src, 'path: 'co
         src: &'src SrcCode<'code, 'path>,
         tokens: &'tokens Tokens<'code>,
         syntax_tree: &'syntax_tree SyntaxTree<'tokens, 'code>,
-    ) -> Result<TypedSyntaxTree<'syntax_tree, 'tokens, 'code>, Vec<Error<ErrorKind>>> {
+    ) -> Result<TypedSyntaxTree<'syntax_tree, 'tokens, 'code>, Vec<Msg<ErrorKind>>> {
         let mut parser = Self {
             src,
             errors: Vec::new(),
@@ -1421,7 +1419,7 @@ impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> 
 }
 
 impl<'code> Parser<'_, '_, '_, 'code, '_> {
-    fn any(&mut self, node: &st::Node<'code>) -> Result<ParsedNode<'code>, Error<ErrorKind>> {
+    fn any(&mut self, node: &st::Node<'code>) -> Result<ParsedNode<'code>, Msg<ErrorKind>> {
         return match node {
             st::Node::Expression { expression, .. } => {
                 let parsed_expression_index = self.parse_expression(*expression, None)?;
@@ -1543,7 +1541,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         };
     }
 
-    fn scope(&mut self) -> Result<ParsedNode<'code>, Error<ErrorKind>> {
+    fn scope(&mut self) -> Result<ParsedNode<'code>, Msg<ErrorKind>> {
         let Some(peeked) = self.peek_next_node() else {
             unreachable!();
         };
@@ -1570,7 +1568,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         let line_span = self.src.lines[line as usize - 1];
         let line_text = &self.src.code()[line_span.start as usize..line_span.end as usize];
 
-        let error = ErrorDisplay {
+        let error = MsgDisplay {
+            severity: MsgSeverity::Error,
             error_message,
             file: self.src.path(),
             line,
@@ -2081,7 +2080,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         &mut self,
         st_expression_index: st::ExpressionIndex<'code>,
         expected_type: Option<&Type>,
-    ) -> Result<Expression<'code>, Error<ErrorKind>> {
+    ) -> Result<Expression<'code>, Msg<ErrorKind>> {
         let st_expression = &self.syntax_tree.expressions[st_expression_index];
         let expression = match st_expression {
             st::Expression::False { column } => Expression::False { column: *column },
@@ -2089,7 +2088,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             st::Expression::DecimalInteger { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
                 let Ok(value) = Self::parse_positive_decimal_i64(literal_text) else {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::DecimalIntegerOverflow,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
@@ -2101,7 +2101,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             st::Expression::DecimalIntegerPrefix { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
                 let Ok(value) = Self::parse_positive_decimal_prefix_i64(literal_text) else {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::DecimalIntegerOverflow,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
@@ -2113,7 +2114,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             st::Expression::BinaryInteger { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
                 let Ok(value) = Self::parse_positive_binary_i64(literal_text) else {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::BinaryIntegerOverflow,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
@@ -2125,7 +2127,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             st::Expression::OctalInteger { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
                 let Ok(value) = Self::parse_positive_octal_i64(literal_text) else {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::OctalIntegerOverflow,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
@@ -2137,7 +2140,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             st::Expression::HexadecimalInteger { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
                 let Ok(value) = Self::parse_positive_hexadecimal_i64(literal_text) else {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::HexadecimalIntegerOverflow,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
@@ -2159,7 +2163,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             | st::Expression::IdentifierStr { identifier, column } => {
                 let identifier_text = self.tokens.text[*identifier];
                 if let Some(_) = self.resolve_type(identifier_text) {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::TypeInExpression,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
@@ -2167,7 +2172,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     });
                 }
                 let Some(variable) = self.resolve_variable(identifier_text) else {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::VariableNotPreviouslyDefined,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
@@ -2190,7 +2196,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 // TODO(stefano): take into consideration the array base type instead of the
                 // whole type
                 if *items_len == 0 {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::ArrayOfZeroItems,
                         col: *open_square_bracket_column,
                         pointers_count: 1,
@@ -2206,7 +2213,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 let parsed_first_item = self.expression(first_item.expression, None)?;
                 let mut expected_array_items_type = parsed_first_item.typ(&self.ast);
                 if let Type::Array { .. } = expected_array_items_type {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::NestedArrayNotSupportedYet,
                         col: self.first_token_column(first_item.expression),
                         pointers_count: self.first_token_display_len(first_item.expression),
@@ -2235,7 +2243,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         self.expression(item.expression, expected_array_items_type_hint)?;
                     let parsed_item_type = parsed_item.typ(&self.ast);
                     if let Type::Array { .. } = parsed_item_type {
-                        return Err(Error {
+                        return Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::NestedArrayNotSupportedYet,
                             col: self.first_token_column(item.expression),
                             pointers_count: self.first_token_display_len(item.expression),
@@ -2271,7 +2280,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             right_operand: self.ast.new_expression(right_operand_expression),
                         },
                         Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => {
-                            return Err(Error {
+                            return Err(Msg {
+                                severity: MsgSeverity::Error,
                                 kind: ErrorKind::CannotTakeLenOf(right_operand_type),
                                 col: self.first_token_column(*right_operand),
                                 pointers_count: self.first_token_display_len(*right_operand),
@@ -2294,7 +2304,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             right_operand: self.ast.new_expression(right_operand_expression),
                         },
                         Type::Base(BaseType::Str) | Type::Array { .. } => {
-                            return Err(Error {
+                            return Err(Msg {
+                                severity: MsgSeverity::Error,
                                 kind: ErrorKind::CannotInvert(right_operand_type),
                                 col: self.first_token_column(*right_operand),
                                 pointers_count: self.first_token_display_len(*right_operand),
@@ -2313,7 +2324,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         },
                         Type::Base(BaseType::Bool | BaseType::Ascii | BaseType::Str)
                         | Type::Array { .. } => {
-                            return Err(Error {
+                            return Err(Msg {
+                                severity: MsgSeverity::Error,
                                 kind: ErrorKind::CannotTakeAbsoluteValueOf(right_operand_type),
                                 col: self.first_token_column(*right_operand),
                                 pointers_count: self.first_token_display_len(*right_operand),
@@ -2331,7 +2343,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             let right_operand_expression =
                                 match Self::parse_negative_binary_i64(literal_text) {
                                     Ok(0) => {
-                                        return Err(Error {
+                                        return Err(Msg {
+                                            severity: MsgSeverity::Error,
                                             kind: ErrorKind::MinusZeroInteger,
                                             col: *column,
                                             #[expect(clippy::cast_possible_truncation)]
@@ -2342,7 +2355,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         Expression::I64 { value: integer, column: *column }
                                     },
                                     Err(()) => {
-                                        return Err(Error {
+                                        return Err(Msg {
+                                            severity: MsgSeverity::Error,
                                             kind: ErrorKind::BinaryIntegerUnderflow,
                                             col: *column,
                                             #[expect(clippy::cast_possible_truncation)]
@@ -2362,7 +2376,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             let right_operand_expression =
                                 match Self::parse_negative_octal_i64(literal_text) {
                                     Ok(0) => {
-                                        return Err(Error {
+                                        return Err(Msg {
+                                            severity: MsgSeverity::Error,
                                             kind: ErrorKind::MinusZeroInteger,
                                             col: *column,
                                             #[expect(clippy::cast_possible_truncation)]
@@ -2373,7 +2388,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         Expression::I64 { value: integer, column: *column }
                                     },
                                     Err(()) => {
-                                        return Err(Error {
+                                        return Err(Msg {
+                                            severity: MsgSeverity::Error,
                                             kind: ErrorKind::OctalIntegerUnderflow,
                                             col: *column,
                                             #[expect(clippy::cast_possible_truncation)]
@@ -2393,7 +2409,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             let right_operand_expression =
                                 match Self::parse_negative_decimal_i64(literal_text) {
                                     Ok(0) => {
-                                        return Err(Error {
+                                        return Err(Msg {
+                                            severity: MsgSeverity::Error,
                                             kind: ErrorKind::MinusZeroInteger,
                                             col: *column,
                                             #[expect(clippy::cast_possible_truncation)]
@@ -2404,7 +2421,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         Expression::I64 { value: integer, column: *column }
                                     },
                                     Err(()) => {
-                                        return Err(Error {
+                                        return Err(Msg {
+                                            severity: MsgSeverity::Error,
                                             kind: ErrorKind::DecimalIntegerUnderflow,
                                             col: *column,
                                             #[expect(clippy::cast_possible_truncation)]
@@ -2424,7 +2442,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             let right_operand_expression =
                                 match Self::parse_negative_decimal_prefix_i64(literal_text) {
                                     Ok(0) => {
-                                        return Err(Error {
+                                        return Err(Msg {
+                                            severity: MsgSeverity::Error,
                                             kind: ErrorKind::MinusZeroInteger,
                                             col: *column,
                                             #[expect(clippy::cast_possible_truncation)]
@@ -2435,7 +2454,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         Expression::I64 { value: integer, column: *column }
                                     },
                                     Err(()) => {
-                                        return Err(Error {
+                                        return Err(Msg {
+                                            severity: MsgSeverity::Error,
                                             kind: ErrorKind::DecimalIntegerUnderflow,
                                             col: *column,
                                             #[expect(clippy::cast_possible_truncation)]
@@ -2455,7 +2475,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             let right_operand_expression =
                                 match Self::parse_negative_hexadecimal_i64(literal_text) {
                                     Ok(0) => {
-                                        return Err(Error {
+                                        return Err(Msg {
+                                            severity: MsgSeverity::Error,
                                             kind: ErrorKind::MinusZeroInteger,
                                             col: *column,
                                             #[expect(clippy::cast_possible_truncation)]
@@ -2466,7 +2487,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         Expression::I64 { value: integer, column: *column }
                                     },
                                     Err(()) => {
-                                        return Err(Error {
+                                        return Err(Msg {
+                                            severity: MsgSeverity::Error,
                                             kind: ErrorKind::HexadecimalIntegerUnderflow,
                                             col: *column,
                                             #[expect(clippy::cast_possible_truncation)]
@@ -2508,7 +2530,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         .new_expression(right_operand_expression),
                                 },
                                 Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
-                                    return Err(Error {
+                                    return Err(Msg {
+                                        severity: MsgSeverity::Error,
                                         kind: ErrorKind::CannotNegate(right_operand_type),
                                         col: self.first_token_column(*right_operand),
                                         pointers_count: self
@@ -2556,7 +2579,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         match left_operand_type {
                             Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::I64) => {},
                             Type::Base(BaseType::Str) | Type::Array { .. } => {
-                                return Err(Error {
+                                return Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::LeftOperandTypeMismatch {
                                         expected: BinaryOp::TYPE,
                                         actual: left_operand_type,
@@ -2570,7 +2594,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         match right_operand_type {
                             Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::I64) => {},
                             Type::Base(BaseType::Str) | Type::Array { .. } => {
-                                return Err(Error {
+                                return Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::RightOperandTypeMismatch {
                                         expected: BinaryOp::TYPE,
                                         actual: right_operand_type,
@@ -2594,7 +2619,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             Type::Base(BaseType::Bool) => {},
                             Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Str)
                             | Type::Array { .. } => {
-                                return Err(Error {
+                                return Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::LeftOperandTypeMismatch {
                                         expected: BooleanBinaryOp::TYPE,
                                         actual: left_operand_type,
@@ -2609,7 +2635,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             Type::Base(BaseType::Bool) => {},
                             Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Str)
                             | Type::Array { .. } => {
-                                return Err(Error {
+                                return Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::RightOperandTypeMismatch {
                                         expected: BooleanBinaryOp::TYPE,
                                         actual: right_operand_type,
@@ -2630,7 +2657,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
                     st::BinaryOp::Compare => {
                         if left_operand_type != right_operand_type {
-                            return Err(Error {
+                            return Err(Msg {
+                                severity: MsgSeverity::Error,
                                 kind: ErrorKind::CannotCompareOperands {
                                     left_operand_type,
                                     right_operand_type,
@@ -2641,7 +2669,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         }
 
                         if let Expression::Comparison { .. } = &left_operand_expression {
-                            return Err(Error {
+                            return Err(Msg {
+                                severity: MsgSeverity::Error,
                                 kind: ErrorKind::CannotChainComparisons,
                                 col: *operator_column,
                                 pointers_count: operator.display_len(),
@@ -2662,7 +2691,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     | st::BinaryOp::Less
                     | st::BinaryOp::LessOrEquals => {
                         if left_operand_type != right_operand_type {
-                            return Err(Error {
+                            return Err(Msg {
+                                severity: MsgSeverity::Error,
                                 kind: ErrorKind::CannotCompareOperands {
                                     left_operand_type,
                                     right_operand_type,
@@ -2673,7 +2703,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         }
 
                         if let Expression::BooleanComparison { .. } = &left_operand_expression {
-                            return Err(Error {
+                            return Err(Msg {
+                                severity: MsgSeverity::Error,
                                 kind: ErrorKind::CannotChainComparisons,
                                 col: *operator_column,
                                 pointers_count: operator.display_len(),
@@ -2701,7 +2732,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 // IDEA(stefano): try parsing a complete type instead of just an identifier
                 let indexed_expression_expression = self.expression(*indexed_expression, None)?;
                 let Expression::Variable { .. } = indexed_expression_expression else {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotIndexIntoExpression,
                         col: self.first_token_column(*indexed_expression),
                         pointers_count: self.first_token_display_len(*indexed_expression),
@@ -2718,7 +2750,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             Type::Base(BaseType::I64) => {},
                             Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
                             | Type::Array { .. } => {
-                                return Err(Error {
+                                return Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::ExpectedIntegerExpressionInArrayIndex,
                                     col: self.first_token_column(*index_expression),
                                     pointers_count: self.first_token_display_len(*index_expression),
@@ -2735,7 +2768,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         }
                     },
                     Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => {
-                        return Err(Error {
+                        return Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::CannotIndexNonArrayLikeType(indexed_expression_type),
                             col: self.first_token_column(*indexed_expression),
                             pointers_count: self.first_token_display_len(*indexed_expression),
@@ -2761,10 +2795,11 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         st_expression_index: st::ExpressionIndex<'code>,
         expected_type: &Type,
         expression: &Expression<'code>,
-    ) -> Result<(), Error<ErrorKind>> {
+    ) -> Result<(), Msg<ErrorKind>> {
         let expression_type = expression.typ(&self.ast);
         if expression_type != *expected_type {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::TypeMismatch {
                     expected: expected_type.clone(),
                     actual: expression_type,
@@ -2781,7 +2816,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         &mut self,
         st_expression_index: st::ExpressionIndex<'code>,
         expected_type: Option<&Type>,
-    ) -> Result<ExpressionIndex<'code>, Error<ErrorKind>> {
+    ) -> Result<ExpressionIndex<'code>, Msg<ErrorKind>> {
         let expression = self.expression(st_expression_index, expected_type)?;
         let expression_index = self.ast.new_expression(expression);
         return Ok(expression_index);
@@ -2812,10 +2847,11 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             array_dimensions_len,
             ..
         }: &st::TypeAnnotation<'code>,
-    ) -> Result<Type, Error<ErrorKind>> {
+    ) -> Result<Type, Msg<ErrorKind>> {
         let type_name_text = self.tokens.text[*type_name];
         if let Some(_) = self.resolve_variable(type_name_text) {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::VariableInTypeAnnotation,
                 col: *type_name_column,
                 #[expect(clippy::cast_possible_truncation)]
@@ -2823,7 +2859,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             });
         }
         let Some(base_type) = self.resolve_type(type_name_text) else {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::TypeNotPreviouslyDefined,
                 col: *type_name_column,
                 #[expect(clippy::cast_possible_truncation)]
@@ -2843,21 +2880,24 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
         let first_dimension_expression = &self.expression(*dimension_expression, None)?;
         let Expression::I64 { value: len, column } = first_dimension_expression else {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::ExpectedIntegerLiteralInArrayType,
                 col: *open_square_bracket_column,
                 pointers_count: 1,
             });
         };
         if *len < 0 {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::ArrayOfNegativeLength,
                 col: *column,
                 pointers_count: self.first_token_display_len(*dimension_expression),
             });
         }
         if *len == 0 {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::ArrayOfZeroItems,
                 col: *column,
                 pointers_count: self.first_token_display_len(*dimension_expression),
@@ -2875,21 +2915,24 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             let Expression::I64 { value: other_dimension_len, column: other_dimension_column } =
                 dimension_expression_expression
             else {
-                return Err(Error {
+                return Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::ExpectedIntegerLiteralInArrayType,
                     col: *other_open_square_bracket_column,
                     pointers_count: 1,
                 });
             };
             if *other_dimension_len < 0 {
-                return Err(Error {
+                return Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::ArrayOfNegativeLength,
                     col: *other_dimension_column,
                     pointers_count: self.first_token_display_len(*other_dimension_expression),
                 });
             }
             if *other_dimension_len == 0 {
-                return Err(Error {
+                return Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::ArrayOfZeroItems,
                     col: *other_dimension_column,
                     pointers_count: self.first_token_display_len(*other_dimension_expression),
@@ -2898,7 +2941,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         }
 
         if *array_dimensions_len > 1 {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::NestedArrayNotSupportedYet,
                 col: *type_name_column,
                 #[expect(clippy::cast_possible_truncation)]
@@ -2916,13 +2960,14 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
     fn parse_variable(
         &mut self,
         variable_definition: st::VariableDefinitionIndex<'code>,
-    ) -> Result<VariableDefinitionIndex<'code>, Error<ErrorKind>> {
+    ) -> Result<VariableDefinitionIndex<'code>, Msg<ErrorKind>> {
         let st::VariableDefinition { name, name_column, type_annotation, initial_value } =
             &self.syntax_tree.variable_definitions[variable_definition];
 
         let name_text = self.tokens.text[*name];
         if let Some(_) = self.resolve_variable(name_text) {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::VariableAlreadyDefined,
                 col: *name_column,
                 #[expect(clippy::cast_possible_truncation)]
@@ -2930,7 +2975,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             });
         }
         if let Some(_) = self.resolve_type(name_text) {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::TypeInVariableName,
                 col: *name_column,
                 #[expect(clippy::cast_possible_truncation)]
@@ -2940,14 +2986,16 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
         let Some(st::InitialValue { expression, .. }) = initial_value else {
             let Some(_) = type_annotation else {
-                return Err(Error {
+                return Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::CannotInferTypeOfVariable,
                     col: *name_column,
                     #[expect(clippy::cast_possible_truncation)]
                     pointers_count: name_text.len() as offset32,
                 });
             };
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::VariablesMustBeInitialized,
                 col: *name_column,
                 #[expect(clippy::cast_possible_truncation)]
@@ -2982,7 +3030,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         operator: st::BinaryAssignmentOp,
         operator_column: offset32,
         new_value: st::ExpressionIndex<'code>,
-    ) -> Result<Node<'code>, Error<ErrorKind>> {
+    ) -> Result<Node<'code>, Msg<ErrorKind>> {
         let parsed_target = self.expression(target, None)?;
 
         let parsed_new_value = self.expression(new_value, None)?;
@@ -2992,7 +3040,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 let variable_definition = &self.ast.variables[*variable];
                 let variable_name_text = self.tokens.text[variable_definition.name];
                 if let Some(_) = self.resolve_let_variable(variable_name_text) {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotMutateVariable,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
@@ -3011,7 +3060,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 }
 
                 let Expression::Variable { variable, column } = base_indexed else {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotAssignToExpression,
                         col: operator_column,
                         pointers_count: operator.display_len(),
@@ -3021,7 +3071,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 let variable_definition = &self.ast.variables[*variable];
                 let variable_name_text = self.tokens.text[variable_definition.name];
                 if let Some(_) = self.resolve_let_variable(variable_name_text) {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotMutateVariable,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
@@ -3031,7 +3082,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
                 if let base_type @ BaseType::Str = variable_definition.typ.base_typ() {
                     if let BaseType::Ascii = parsed_new_value_type.base_typ() {
-                        return Err(Error {
+                        return Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::CannotMutateStringCharacters,
                             col: *column,
                             #[expect(clippy::cast_possible_truncation)]
@@ -3055,7 +3107,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             | Expression::BooleanBinary { .. }
             | Expression::Comparison { .. }
             | Expression::BooleanComparison { .. } => {
-                return Err(Error {
+                return Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::CannotAssignToExpression,
                     col: operator_column,
                     pointers_count: operator.display_len(),
@@ -3066,7 +3119,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         let assignment_node = match operator {
             st::BinaryAssignmentOp::Equals => {
                 if parsed_target_type != parsed_new_value_type {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::RightOperandTypeMismatch {
                             expected: parsed_target_type,
                             actual: parsed_new_value_type,
@@ -3111,7 +3165,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 match parsed_target_type {
                     Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Bool) => {},
                     Type::Base(BaseType::Str) | Type::Array { .. } => {
-                        return Err(Error {
+                        return Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::LeftOperandTypeMismatch {
                                 expected: BinaryOp::TYPE,
                                 actual: parsed_target_type,
@@ -3125,7 +3180,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 match parsed_new_value_type {
                     Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Bool) => {},
                     Type::Base(BaseType::Str) | Type::Array { .. } => {
-                        return Err(Error {
+                        return Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::RightOperandTypeMismatch {
                                 expected: BinaryOp::TYPE,
                                 actual: parsed_new_value_type,
@@ -3142,14 +3198,16 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool),
                     ) => {},
                     (target_type @ Type::Base(BaseType::Ascii | BaseType::Bool), _) => {
-                        return Err(Error {
+                        return Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::CannotModifyInplace(target_type),
                             col: operator_column,
                             pointers_count: operator.display_len(),
                         });
                     },
                     (target_type, new_value_type) => {
-                        return Err(Error {
+                        return Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::TypeMismatch {
                                 expected: target_type,
                                 actual: new_value_type,
@@ -3172,7 +3230,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     Type::Base(BaseType::Bool) => {},
                     Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Str)
                     | Type::Array { .. } => {
-                        return Err(Error {
+                        return Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::LeftOperandTypeMismatch {
                                 expected: BooleanBinaryOp::TYPE,
                                 actual: parsed_target_type,
@@ -3187,7 +3246,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     Type::Base(BaseType::Bool) => {},
                     Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Str)
                     | Type::Array { .. } => {
-                        return Err(Error {
+                        return Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::RightOperandTypeMismatch {
                                 expected: BooleanBinaryOp::TYPE,
                                 actual: parsed_new_value_type,
@@ -3215,7 +3275,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         target: st::ExpressionIndex<'code>,
         operator: st::PrefixAssignmentOp,
         operator_column: offset32,
-    ) -> Result<Node<'code>, Error<ErrorKind>> {
+    ) -> Result<Node<'code>, Msg<ErrorKind>> {
         let parsed_target = self.expression(target, None)?;
 
         let parsed_target_type = match &parsed_target {
@@ -3223,7 +3283,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 let variable_definition = &self.ast.variables[*variable];
                 let variable_name_text = self.tokens.text[variable_definition.name];
                 if let Some(_) = self.resolve_let_variable(variable_name_text) {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotMutateVariable,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
@@ -3242,7 +3303,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 }
 
                 let Expression::Variable { variable, column } = base_indexed else {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotAssignToExpression,
                         col: operator_column,
                         pointers_count: operator.display_len(),
@@ -3252,7 +3314,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 let variable_definition = &self.ast.variables[*variable];
                 let variable_name_text = self.tokens.text[variable_definition.name];
                 if let Some(_) = self.resolve_let_variable(variable_name_text) {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotMutateVariable,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
@@ -3274,7 +3337,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             | Expression::BooleanBinary { .. }
             | Expression::Comparison { .. }
             | Expression::BooleanComparison { .. } => {
-                return Err(Error {
+                return Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::CannotAssignToExpression,
                     col: operator_column,
                     pointers_count: operator.display_len(),
@@ -3295,7 +3359,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     operator_column,
                 },
                 Type::Base(BaseType::Str) | Type::Array { .. } => {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotInvert(parsed_target_type),
                         col: operator_column,
                         pointers_count: operator.display_len(),
@@ -3310,7 +3375,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     Type::Base(BaseType::I64) => {},
                     Type::Base(BaseType::Str | BaseType::Ascii | BaseType::Bool)
                     | Type::Array { .. } => {
-                        return Err(Error {
+                        return Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::CannotTakeAbsoluteValueOf(parsed_target_type),
                             col: operator_column,
                             pointers_count: operator.display_len(),
@@ -3331,7 +3397,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 match parsed_target_type {
                     Type::Base(BaseType::Ascii | BaseType::I64) => {},
                     Type::Base(BaseType::Str | BaseType::Bool) | Type::Array { .. } => {
-                        return Err(Error {
+                        return Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::CannotNegate(parsed_target_type),
                             col: operator_column,
                             pointers_count: operator.display_len(),
@@ -3356,11 +3423,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         &mut self,
         if_column: offset32,
         condition: st::ExpressionIndex<'code>,
-    ) -> Result<Expression<'code>, Error<ErrorKind>> {
+    ) -> Result<Expression<'code>, Msg<ErrorKind>> {
         let condition_expression = self.expression(condition, None)?;
         let condition_expression_type = condition_expression.typ(&self.ast);
         let Type::Base(BaseType::Bool) = condition_expression_type else {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::RightOperandTypeMismatch {
                     expected: Type::Base(BaseType::Bool),
                     actual: condition_expression_type,
@@ -3376,11 +3444,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         &mut self,
         loop_column: offset32,
         condition: st::ExpressionIndex<'code>,
-    ) -> Result<Expression<'code>, Error<ErrorKind>> {
+    ) -> Result<Expression<'code>, Msg<ErrorKind>> {
         let condition_expression = self.expression(condition, None)?;
         let condition_expression_type = condition_expression.typ(&self.ast);
         let Type::Base(BaseType::Bool) = condition_expression_type else {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::RightOperandTypeMismatch {
                     expected: Type::Base(BaseType::Bool),
                     actual: condition_expression_type,
@@ -3439,8 +3508,8 @@ pub enum ErrorKind {
     CannotMutateStringCharacters,
 }
 
-impl IntoErrorInfo for ErrorKind {
-    fn info(&self) -> ErrorInfo {
+impl IntoMsgInfo for ErrorKind {
+    fn info(&self) -> MsgInfo {
         let (error_message, error_cause_message) = match self {
             Self::BinaryIntegerOverflow => (
                 "integer literal overflow".into(),
@@ -3632,6 +3701,6 @@ impl IntoErrorInfo for ErrorKind {
             },
         };
 
-        return ErrorInfo { error_message, error_cause_message };
+        return MsgInfo { message: error_message, cause: error_cause_message };
     }
 }

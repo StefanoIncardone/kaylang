@@ -96,36 +96,44 @@ impl<T> core::ops::IndexMut<SliceIndexPtr<T>> for Vec<T> {
     }
 }
 
-pub trait IntoErrorInfo {
-    fn info(&self) -> ErrorInfo;
+pub trait IntoMsgInfo {
+    fn info(&self) -> MsgInfo;
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct ErrorInfo {
-    pub error_message: Cow<'static, str>,
-    pub error_cause_message: Cow<'static, str>,
+pub struct MsgInfo {
+    pub message: Cow<'static, str>,
+    pub cause: Cow<'static, str>,
+}
+
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub enum MsgSeverity {
+    Error,
+    NonTerminalError,
 }
 
 // IDEA(stefano): allow pointers to start past the end of the line
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct Error<K: IntoErrorInfo> {
+pub struct Msg<K: IntoMsgInfo> {
+    pub severity: MsgSeverity,
     pub kind: K,
     /// absolute source code byte position
     pub col: offset32,
     pub pointers_count: offset32,
 }
 
-impl<K: IntoErrorInfo> Error<K> {
+impl<K: IntoMsgInfo> Msg<K> {
     pub fn display<'code, 'path: 'code>(
         &self,
         src: &SrcCode<'code, 'path>,
-    ) -> ErrorDisplay<'code, 'path> {
+    ) -> MsgDisplay<'code, 'path> {
         let DisplayPosition { line, column, display_column } = src.display_position(self.col);
         let line_span = src.lines[line as usize - 1];
         let line_text = &src.code()[line_span.start as usize..line_span.end as usize];
 
-        let ErrorInfo { error_message, error_cause_message } = self.kind.info();
-        return ErrorDisplay {
+        let MsgInfo { message: error_message, cause: error_cause_message } = self.kind.info();
+        return MsgDisplay {
+            severity: self.severity,
             error_message,
             file: src.path(),
             line,
@@ -140,7 +148,8 @@ impl<K: IntoErrorInfo> Error<K> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct ErrorDisplay<'code, 'path: 'code> {
+pub struct MsgDisplay<'code, 'path: 'code> {
+    pub severity: MsgSeverity,
     pub error_message: Cow<'static, str>,
     pub file: &'path Path,
     pub line: offset32,
@@ -152,7 +161,7 @@ pub struct ErrorDisplay<'code, 'path: 'code> {
     pub error_cause_message: Cow<'static, str>,
 }
 
-impl Display for ErrorDisplay<'_, '_> {
+impl Display for MsgDisplay<'_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let error = MsgWithCauseUnderTextWithLocation {
             kind: &ERROR,
@@ -171,4 +180,4 @@ impl Display for ErrorDisplay<'_, '_> {
 }
 
 #[expect(clippy::missing_trait_methods)]
-impl core::error::Error for ErrorDisplay<'_, '_> {}
+impl core::error::Error for MsgDisplay<'_, '_> {}

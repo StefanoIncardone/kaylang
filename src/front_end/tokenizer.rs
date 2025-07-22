@@ -3,9 +3,9 @@
 
 use super::{
     src_file::{Line, SrcCode, SrcFile},
-    Error, ErrorInfo, IntoErrorInfo,
+    Msg, MsgInfo, IntoMsgInfo,
 };
-use crate::{error::DisplayLen as _, front_end::SliceIndexPtr};
+use crate::{error::DisplayLen as _, front_end::{MsgSeverity, SliceIndexPtr}};
 use back_to_front::offset32;
 use core::fmt::Display;
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -454,7 +454,7 @@ pub struct Tokens<'code> {
 #[must_use = "this is similar to a `Result`, which should be handled"]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct TokenizedCode<'code, 'path: 'code> {
-    pub result: Result<Tokens<'code>, Vec<Error<ErrorKind<'code>>>>,
+    pub result: Result<Tokens<'code>, Vec<Msg<ErrorKind<'code>>>>,
     pub src: SrcCode<'code, 'path>,
 }
 
@@ -468,7 +468,7 @@ pub struct Tokenizer<'code> {
     token_start_col: offset32,
     tokens: Tokens<'code>,
 
-    errors: Vec<Error<ErrorKind<'code>>>,
+    errors: Vec<Msg<ErrorKind<'code>>>,
 }
 
 impl<'code, 'path: 'code> Tokenizer<'code> {
@@ -524,6 +524,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             }
 
                             // tokenizer.errors.push(Error {
+                            //     severity: MsgKind::NonTerminalError,
                             //     kind: ErrorKind::StrayCarriageReturn,
                             //     col: tokenizer.line_start,
                             //     pointers_count: 0,
@@ -538,7 +539,8 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         },
                     },
                     Err(grapheme) => {
-                        tokenizer.errors.push(Error {
+                        tokenizer.errors.push(Msg {
+                            severity: MsgSeverity::NonTerminalError,
                             kind: ErrorKind::Utf8Character { grapheme },
                             col: tokenizer.col,
                             pointers_count: grapheme.display_len(),
@@ -636,7 +638,8 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                 }
                             }
 
-                            tokenizer.errors.push(Error {
+                            tokenizer.errors.push(Msg {
+                                severity: MsgSeverity::NonTerminalError,
                                 kind: ErrorKind::UnclosedBlockComment,
                                 col: tokenizer.token_start_col,
                                 pointers_count: 2,
@@ -645,7 +648,8 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                 let Some(block_comment_token_start) = back_patches.pop() else {
                                     break;
                                 };
-                                tokenizer.errors.push(Error {
+                                tokenizer.errors.push(Msg {
+                                    severity: MsgSeverity::NonTerminalError,
                                     kind: ErrorKind::UnclosedBlockComment,
                                     col: unsafe { block_comment_token_start.column },
                                     pointers_count: 2,
@@ -673,7 +677,8 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                     },
                     b')' => 'bracket: {
                         let Some(bracket_index) = back_patches.pop() else {
-                            tokenizer.errors.push(Error {
+                            tokenizer.errors.push(Msg {
+                                severity: MsgSeverity::NonTerminalError,
                                 kind: ErrorKind::UnopenedRoundBracket,
                                 col: tokenizer.token_start_col,
                                 pointers_count: 1,
@@ -689,7 +694,8 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             | TokenKind::CloseCurlyBracket
                             | TokenKind::CloseSquareBracket => Ok(TokenKind::CloseRoundBracket),
                             TokenKind::OpenCurlyBracket => {
-                                tokenizer.errors.push(Error {
+                                tokenizer.errors.push(Msg {
+                                    severity: MsgSeverity::NonTerminalError,
                                     kind: ErrorKind::MismatchedCurlyRoundBracket,
                                     col: tokenizer.token_start_col,
                                     pointers_count: 1,
@@ -697,7 +703,8 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                 Err(())
                             },
                             TokenKind::OpenSquareBracket => {
-                                tokenizer.errors.push(Error {
+                                tokenizer.errors.push(Msg {
+                                    severity: MsgSeverity::NonTerminalError,
                                     kind: ErrorKind::MismatchedSquareRoundBracket,
                                     col: tokenizer.token_start_col,
                                     pointers_count: 1,
@@ -715,7 +722,8 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                     },
                     b']' => 'bracket: {
                         let Some(bracket_index) = back_patches.pop() else {
-                            tokenizer.errors.push(Error {
+                            tokenizer.errors.push(Msg {
+                                severity: MsgSeverity::NonTerminalError,
                                 kind: ErrorKind::UnopenedSquareBracket,
                                 col: tokenizer.token_start_col,
                                 pointers_count: 1,
@@ -731,7 +739,8 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             | TokenKind::CloseCurlyBracket
                             | TokenKind::CloseRoundBracket => Ok(TokenKind::CloseSquareBracket),
                             TokenKind::OpenCurlyBracket => {
-                                tokenizer.errors.push(Error {
+                                tokenizer.errors.push(Msg {
+                                    severity: MsgSeverity::NonTerminalError,
                                     kind: ErrorKind::MismatchedCurlySquareBracket,
                                     col: tokenizer.token_start_col,
                                     pointers_count: 1,
@@ -739,7 +748,8 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                 Err(())
                             },
                             TokenKind::OpenRoundBracket => {
-                                tokenizer.errors.push(Error {
+                                tokenizer.errors.push(Msg {
+                                    severity: MsgSeverity::NonTerminalError,
                                     kind: ErrorKind::MismatchedRoundSquareBracket,
                                     col: tokenizer.token_start_col,
                                     pointers_count: 1,
@@ -757,7 +767,8 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                     },
                     b'}' => 'bracket: {
                         let Some(bracket_index) = back_patches.pop() else {
-                            tokenizer.errors.push(Error {
+                            tokenizer.errors.push(Msg {
+                                severity: MsgSeverity::NonTerminalError,
                                 kind: ErrorKind::UnopenedCurlyBracket,
                                 col: tokenizer.token_start_col,
                                 pointers_count: 1,
@@ -773,7 +784,8 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             | TokenKind::CloseRoundBracket
                             | TokenKind::CloseSquareBracket => Ok(TokenKind::CloseCurlyBracket),
                             TokenKind::OpenRoundBracket => {
-                                tokenizer.errors.push(Error {
+                                tokenizer.errors.push(Msg {
+                                    severity: MsgSeverity::NonTerminalError,
                                     kind: ErrorKind::MismatchedRoundCurlyBracket,
                                     col: tokenizer.token_start_col,
                                     pointers_count: 1,
@@ -781,7 +793,8 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                 Err(())
                             },
                             TokenKind::OpenSquareBracket => {
-                                tokenizer.errors.push(Error {
+                                tokenizer.errors.push(Msg {
+                                    severity: MsgSeverity::NonTerminalError,
                                     kind: ErrorKind::MismatchedSquareCurlyBracket,
                                     col: tokenizer.token_start_col,
                                     pointers_count: 1,
@@ -1081,7 +1094,8 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         _ => Ok(TokenKind::Op(Op::Less)),
                     },
                     unrecognized => {
-                        tokenizer.errors.push(Error {
+                        tokenizer.errors.push(Msg {
+                            severity: MsgSeverity::NonTerminalError,
                             kind: ErrorKind::UnrecognizedCharacter(unrecognized),
                             col: tokenizer.token_start_col,
                             pointers_count: 1,
@@ -1121,7 +1135,8 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                 _ => unreachable!("incorrect bracket index"),
             };
 
-            tokenizer.errors.push(Error {
+            tokenizer.errors.push(Msg {
+                severity: MsgSeverity::NonTerminalError,
                 kind: error_kind,
                 col: bracket_token.col,
                 pointers_count: 1,
@@ -1207,6 +1222,7 @@ impl<'code> Tokenizer<'code> {
                 }
 
                 // self.errors.push(Error {
+                //     severity: MsgSeverity::NonTerminalError,
                 //     kind: ErrorKind::StrayCarriageReturn,
                 //     col: self.line_start,
                 //     pointers_count: 0,
@@ -1290,7 +1306,8 @@ impl<'code> Tokenizer<'code> {
                     self.col += 1;
                 },
                 Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::LetterInDecimalNumberLiteral(letter),
                         col: self.col,
                         pointers_count: 1,
@@ -1298,7 +1315,8 @@ impl<'code> Tokenizer<'code> {
                     self.col += 1;
                 },
                 Some(Err(grapheme)) => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::Utf8InDecimalNumberLiteral { grapheme },
                         col: self.col,
                         pointers_count: grapheme.display_len(),
@@ -1329,7 +1347,8 @@ impl<'code> Tokenizer<'code> {
                     self.col += 1;
                 },
                 Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::LetterInDecimalNumberLiteral(letter),
                         col: self.col,
                         pointers_count: 1,
@@ -1337,7 +1356,8 @@ impl<'code> Tokenizer<'code> {
                     self.col += 1;
                 },
                 Some(Err(grapheme)) => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::Utf8InDecimalNumberLiteral { grapheme },
                         col: self.col,
                         pointers_count: grapheme.display_len(),
@@ -1368,7 +1388,8 @@ impl<'code> Tokenizer<'code> {
                     self.col += 1;
                 },
                 Some(Ok(out_of_range @ b'2'..=b'9')) => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::DigitOutOfRangeInBinaryNumberLiteral(out_of_range),
                         col: self.col,
                         pointers_count: 1,
@@ -1376,7 +1397,8 @@ impl<'code> Tokenizer<'code> {
                     self.col += 1;
                 },
                 Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::LetterInBinaryNumberLiteral(letter),
                         col: self.col,
                         pointers_count: 1,
@@ -1384,7 +1406,8 @@ impl<'code> Tokenizer<'code> {
                     self.col += 1;
                 },
                 Some(Err(grapheme)) => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::Utf8InBinaryNumberLiteral { grapheme },
                         col: self.col,
                         pointers_count: grapheme.display_len(),
@@ -1415,7 +1438,8 @@ impl<'code> Tokenizer<'code> {
                     self.col += 1;
                 },
                 Some(Ok(out_of_range @ b'8'..=b'9')) => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::DigitOutOfRangeInOctalNumberLiteral(out_of_range),
                         col: self.col,
                         pointers_count: 1,
@@ -1423,7 +1447,8 @@ impl<'code> Tokenizer<'code> {
                     self.col += 1;
                 },
                 Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::LetterInOctalNumberLiteral(letter),
                         col: self.col,
                         pointers_count: 1,
@@ -1431,7 +1456,8 @@ impl<'code> Tokenizer<'code> {
                     self.col += 1;
                 },
                 Some(Err(grapheme)) => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::Utf8InOctalNumberLiteral { grapheme },
                         col: self.col,
                         pointers_count: grapheme.display_len(),
@@ -1462,7 +1488,8 @@ impl<'code> Tokenizer<'code> {
                     self.col += 1;
                 },
                 Some(Ok(out_of_range @ (b'g'..=b'z' | b'G'..=b'Z'))) => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::DigitOutOfRangeInHexadecimalNumberLiteral(out_of_range),
                         col: self.col,
                         pointers_count: 1,
@@ -1470,7 +1497,8 @@ impl<'code> Tokenizer<'code> {
                     self.col += 1;
                 },
                 Some(Err(grapheme)) => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::Utf8InHexadecimalNumberLiteral { grapheme },
                         col: self.col,
                         pointers_count: grapheme.display_len(),
@@ -1500,7 +1528,8 @@ impl<'code> Tokenizer<'code> {
             let next_character = match self.peek_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(grapheme)) => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::Utf8InCharacterLiteral { grapheme },
                         col: self.col,
                         pointers_count: grapheme.display_len(),
@@ -1512,7 +1541,8 @@ impl<'code> Tokenizer<'code> {
                     continue;
                 },
                 None => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::UnclosedCharacterLiteral,
                         col: self.token_start_col,
                         pointers_count: self.token_text().display_len(),
@@ -1527,7 +1557,8 @@ impl<'code> Tokenizer<'code> {
                     let escape_character = match self.peek_ascii_singleline() {
                         Some(Ok(escape_character)) => escape_character,
                         Some(Err(grapheme)) => {
-                            self.errors.push(Error {
+                            self.errors.push(Msg {
+                                severity: MsgSeverity::NonTerminalError,
                                 kind: ErrorKind::Utf8InCharacterLiteral { grapheme },
                                 col: self.col,
                                 pointers_count: grapheme.display_len(),
@@ -1539,7 +1570,8 @@ impl<'code> Tokenizer<'code> {
                             continue;
                         },
                         None => {
-                            self.errors.push(Error {
+                            self.errors.push(Msg {
+                                severity: MsgSeverity::NonTerminalError,
                                 kind: ErrorKind::UnclosedCharacterLiteral,
                                 col: self.token_start_col,
                                 pointers_count: self.token_text().display_len(),
@@ -1552,7 +1584,8 @@ impl<'code> Tokenizer<'code> {
                     match escape_character {
                         b'\\' | b'\'' | b'"' | b'n' | b'r' | b't' | b'0' => {},
                         unrecognized => {
-                            self.errors.push(Error {
+                            self.errors.push(Msg {
+                                severity: MsgSeverity::NonTerminalError,
                                 kind: ErrorKind::UnrecognizedEscapeCharacterInCharacterLiteral(
                                     unrecognized,
                                 ),
@@ -1563,7 +1596,8 @@ impl<'code> Tokenizer<'code> {
                     }
                 },
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::ControlCharacterInCharacterLiteral(control),
                         col: self.col - 1,
                         pointers_count: 1,
@@ -1581,7 +1615,8 @@ impl<'code> Tokenizer<'code> {
         }
 
         if logical_characters_count == 0 {
-            self.errors.push(Error {
+            self.errors.push(Msg {
+                severity: MsgSeverity::NonTerminalError,
                 kind: ErrorKind::EmptyCharacterLiteral,
                 col: self.token_start_col,
                 pointers_count: 2,
@@ -1589,7 +1624,8 @@ impl<'code> Tokenizer<'code> {
             return Err(());
         }
         if logical_characters_count > 1 {
-            self.errors.push(Error {
+            self.errors.push(Msg {
+                severity: MsgSeverity::NonTerminalError,
                 kind: ErrorKind::MultipleCharactersInCharacterLiteral,
                 col: self.token_start_col,
                 pointers_count: self.token_text().display_len(),
@@ -1608,7 +1644,8 @@ impl<'code> Tokenizer<'code> {
             let next_character = match self.peek_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(grapheme)) => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::Utf8InStrLiteral { grapheme },
                         col: self.col,
                         pointers_count: grapheme.display_len(),
@@ -1620,7 +1657,8 @@ impl<'code> Tokenizer<'code> {
                     continue;
                 },
                 None => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::UnclosedStrLiteral,
                         col: self.token_start_col,
                         pointers_count: self.token_text().display_len(),
@@ -1635,7 +1673,8 @@ impl<'code> Tokenizer<'code> {
                     let escape_character = match self.peek_ascii_singleline() {
                         Some(Ok(escape_character)) => escape_character,
                         Some(Err(grapheme)) => {
-                            self.errors.push(Error {
+                            self.errors.push(Msg {
+                                severity: MsgSeverity::NonTerminalError,
                                 kind: ErrorKind::Utf8InStrLiteral { grapheme },
                                 col: self.col,
                                 pointers_count: grapheme.display_len(),
@@ -1647,7 +1686,8 @@ impl<'code> Tokenizer<'code> {
                             continue;
                         },
                         None => {
-                            self.errors.push(Error {
+                            self.errors.push(Msg {
+                                severity: MsgSeverity::NonTerminalError,
                                 kind: ErrorKind::UnclosedStrLiteral,
                                 col: self.token_start_col,
                                 pointers_count: self.token_text().display_len(),
@@ -1660,7 +1700,8 @@ impl<'code> Tokenizer<'code> {
                     match escape_character {
                         b'\\' | b'\'' | b'"' | b'n' | b'r' | b't' | b'0' => {},
                         unrecognized => {
-                            self.errors.push(Error {
+                            self.errors.push(Msg {
+                                severity: MsgSeverity::NonTerminalError,
                                 kind: ErrorKind::UnrecognizedEscapeCharacterInStrLiteral(
                                     unrecognized,
                                 ),
@@ -1671,7 +1712,8 @@ impl<'code> Tokenizer<'code> {
                     }
                 },
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::ControlCharacterInStrLiteral(control),
                         col: self.col - 1,
                         pointers_count: 1,
@@ -1697,7 +1739,8 @@ impl<'code> Tokenizer<'code> {
             let next_character = match self.peek_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(grapheme)) => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::Utf8InRawStrLiteral { grapheme },
                         col: self.col,
                         pointers_count: grapheme.display_len(),
@@ -1709,7 +1752,8 @@ impl<'code> Tokenizer<'code> {
                     continue;
                 },
                 None => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::UnclosedRawStrLiteral,
                         col: self.token_start_col,
                         pointers_count: self.token_text().display_len(),
@@ -1724,7 +1768,8 @@ impl<'code> Tokenizer<'code> {
                     let escape_character = match self.peek_ascii_singleline() {
                         Some(Ok(escape_character)) => escape_character,
                         Some(Err(grapheme)) => {
-                            self.errors.push(Error {
+                            self.errors.push(Msg {
+                                severity: MsgSeverity::NonTerminalError,
                                 kind: ErrorKind::Utf8InRawStrLiteral { grapheme },
                                 col: self.col,
                                 pointers_count: grapheme.display_len(),
@@ -1736,7 +1781,8 @@ impl<'code> Tokenizer<'code> {
                             continue;
                         },
                         None => {
-                            self.errors.push(Error {
+                            self.errors.push(Msg {
+                                severity: MsgSeverity::NonTerminalError,
                                 kind: ErrorKind::UnclosedRawStrLiteral,
                                 col: self.token_start_col,
                                 pointers_count: self.token_text().display_len(),
@@ -1750,7 +1796,8 @@ impl<'code> Tokenizer<'code> {
                     }
                 },
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::ControlCharacterInRawStrLiteral(control),
                         col: self.col - 1,
                         pointers_count: 1,
@@ -1777,7 +1824,8 @@ impl<'code> Tokenizer<'code> {
             let next_character = match self.peek_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(grapheme)) => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::Utf8InIdentifierStr { grapheme },
                         col: self.col,
                         pointers_count: grapheme.display_len(),
@@ -1789,7 +1837,8 @@ impl<'code> Tokenizer<'code> {
                     continue;
                 },
                 None => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::UnclosedIdentifierStr,
                         col: self.token_start_col,
                         pointers_count: self.token_text().display_len(),
@@ -1801,7 +1850,8 @@ impl<'code> Tokenizer<'code> {
 
             match next_character {
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::ControlCharacterInIdentifierStr(control),
                         col: self.col - 1,
                         pointers_count: 1,
@@ -1820,7 +1870,8 @@ impl<'code> Tokenizer<'code> {
         #[expect(clippy::cast_possible_truncation)]
         let identifier_len = identifier.len() as offset32 - 2; // - 2 for the quotes
         if identifier_len > Self::MAX_IDENTIFIER_LEN {
-            self.errors.push(Error {
+            self.errors.push(Msg {
+                severity: MsgSeverity::NonTerminalError,
                 kind: ErrorKind::IdentifierStrTooLong { max: Self::MAX_IDENTIFIER_LEN },
                 col: self.token_start_col,
                 pointers_count: identifier_len,
@@ -1842,7 +1893,8 @@ impl<'code> Tokenizer<'code> {
                     self.col += 1;
                 },
                 Some(Err(grapheme)) => {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::Utf8InIdentifier { grapheme },
                         col: self.col,
                         pointers_count: grapheme.display_len(),
@@ -1880,7 +1932,8 @@ impl<'code> Tokenizer<'code> {
                 #[expect(clippy::cast_possible_truncation)]
                 let identifier_len = identifier.len() as offset32;
                 if identifier_len > Self::MAX_IDENTIFIER_LEN {
-                    self.errors.push(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::IdentifierTooLong { max: Self::MAX_IDENTIFIER_LEN },
                         col: self.token_start_col,
                         pointers_count: identifier_len,
@@ -1996,8 +2049,8 @@ pub enum ErrorKind<'code> {
     // StrayCarriageReturn,
 }
 
-impl IntoErrorInfo for ErrorKind<'_> {
-    fn info(&self) -> ErrorInfo {
+impl IntoMsgInfo for ErrorKind<'_> {
+    fn info(&self) -> MsgInfo {
         let (error_message, error_cause_message) = match self {
             Self::UnclosedBlockComment => (
                 "unclosed block comment".into(),
@@ -2221,6 +2274,6 @@ impl IntoErrorInfo for ErrorKind<'_> {
             // )
         };
 
-        return ErrorInfo { error_message, error_cause_message };
+        return MsgInfo { message: error_message, cause: error_cause_message };
     }
 }

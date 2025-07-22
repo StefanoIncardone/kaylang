@@ -4,10 +4,12 @@
 
 use back_to_front::offset32;
 
+use crate::front_end::MsgSeverity;
+
 use super::{
     src_file::{Position, SrcCode},
     tokenizer::{ascii, Base, Op, Token, TokenIndex, TokenKind, Tokens},
-    Error, ErrorInfo, IntoErrorInfo,
+    Msg, MsgInfo, IntoMsgInfo,
 };
 use core::fmt::{Debug, Display};
 
@@ -785,7 +787,7 @@ pub struct Ast<'code> {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     src: &'src SrcCode<'code, 'path>,
-    errors: Vec<Error<ErrorKind>>,
+    errors: Vec<Msg<ErrorKind>>,
 
     token: TokenIndex<'code>,
     tokens: &'tokens Tokens<'code>,
@@ -803,7 +805,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
     pub fn parse(
         src: &'src SrcCode<'code, 'path>,
         tokens: &'tokens Tokens<'code>,
-    ) -> Result<Ast<'code>, Vec<Error<ErrorKind>>> {
+    ) -> Result<Ast<'code>, Vec<Msg<ErrorKind>>> {
         let ast = Ast {
             nodes: vec![vec![]],
 
@@ -858,11 +860,12 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
 
 // parsing of statements
 impl<'code> Parser<'_, '_, 'code, '_> {
-    fn semicolon(&mut self) -> Result<(), Error<ErrorKind>> {
+    fn semicolon(&mut self) -> Result<(), Msg<ErrorKind>> {
         let semicolon_token = self.current_token(Expected::Semicolon)?;
         let TokenKind::SemiColon = semicolon_token.kind else {
             let previous_token = self.peek_previous_token();
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::MissingSemicolon,
                 col: previous_token.col,
                 pointers_count: previous_token.kind.display_len(self.tokens),
@@ -896,7 +899,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         }
     }
 
-    fn statement(&mut self, token: Token<'code>) -> Result<Node, Error<ErrorKind>> {
+    fn statement(&mut self, token: Token<'code>) -> Result<Node, Msg<ErrorKind>> {
         return match token.kind {
             TokenKind::Op(
                 op @ (Op::NotEquals
@@ -1043,7 +1046,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     | TokenKind::Break
                     | TokenKind::Continue => {
                         let previous_token = self.peek_previous_token();
-                        Err(Error {
+                        Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::MissingSemicolon,
                             col: previous_token.col,
                             pointers_count: previous_token.kind.display_len(self.tokens),
@@ -1106,7 +1110,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             TokenKind::If => Ok(self.iff()?),
             TokenKind::Else => {
                 _ = self.next_token();
-                Err(Error {
+                Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::StrayElseBlock,
                     col: token.col,
                     pointers_count: token.kind.display_len(self.tokens),
@@ -1121,7 +1126,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             TokenKind::Break => {
                 _ = self.next_token();
                 if self.loop_depth == 0 {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::StrayBreakStatement,
                         col: token.col,
                         pointers_count: token.kind.display_len(self.tokens),
@@ -1134,7 +1140,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             TokenKind::Continue => {
                 _ = self.next_token();
                 if self.loop_depth == 0 {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::StrayContinueStatement,
                         col: token.col,
                         pointers_count: token.kind.display_len(self.tokens),
@@ -1166,7 +1173,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             },
             TokenKind::Colon => {
                 _ = self.next_token();
-                Err(Error {
+                Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::StrayColon,
                     col: token.col,
                     pointers_count: token.kind.display_len(self.tokens),
@@ -1174,7 +1182,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             },
             TokenKind::Comma => {
                 _ = self.next_token();
-                Err(Error {
+                Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::StrayComma,
                     col: token.col,
                     pointers_count: token.kind.display_len(self.tokens),
@@ -1182,7 +1191,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             },
             TokenKind::Op(op) => {
                 _ = self.next_token();
-                Err(Error {
+                Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::StrayOperator(op),
                     col: token.col,
                     pointers_count: token.kind.display_len(self.tokens),
@@ -1195,7 +1205,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         };
     }
 
-    fn any(&mut self, token: Token<'code>) -> Result<Node, Error<ErrorKind>> {
+    fn any(&mut self, token: Token<'code>) -> Result<Node, Msg<ErrorKind>> {
         return match token.kind {
             TokenKind::OpenCurlyBracket => {
                 #[expect(clippy::cast_possible_truncation)]
@@ -1260,10 +1270,11 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 // iteration over tokens
 impl<'code> Parser<'_, '_, 'code, '_> {
     // IDEA(stefano): remove self.current_token method and pass the current token around
-    fn current_token(&self, expected: Expected) -> Result<Token<'code>, Error<ErrorKind>> {
+    fn current_token(&self, expected: Expected) -> Result<Token<'code>, Msg<ErrorKind>> {
         let Some(token) = self.token.get(&self.tokens.tokens) else {
             let previous = self.peek_previous_token();
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::PrematureEndOfFile(expected),
                 col: previous.col,
                 pointers_count: previous.kind.display_len(self.tokens),
@@ -1290,14 +1301,15 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         }
     }
 
-    fn next_token_bounded(&mut self, expected: Expected) -> Result<Token<'code>, Error<ErrorKind>> {
+    fn next_token_bounded(&mut self, expected: Expected) -> Result<Token<'code>, Msg<ErrorKind>> {
         loop {
             #[expect(clippy::cast_possible_truncation)]
             let tokens_len = self.tokens.tokens.len() as offset32;
             if self.token.0 >= tokens_len - 1 {
                 let previous = self.tokens.tokens[self.token];
                 self.token.0 = tokens_len;
-                return Err(Error {
+                return Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::PrematureEndOfFile(expected),
                     col: previous.col,
                     pointers_count: previous.kind.display_len(self.tokens),
@@ -1355,10 +1367,11 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         &self,
         op_token: Token<'code>,
         lhs: &Expression,
-    ) -> Result<(), Error<ErrorKind>> {
+    ) -> Result<(), Msg<ErrorKind>> {
         let lhs_type = lhs.typ();
         if let Type::Base(BaseType::Str) | Type::Array { .. } = lhs_type {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::LeftOperandTypeMismatch(lhs_type),
                 col: op_token.col,
                 pointers_count: op_token.kind.display_len(self.tokens),
@@ -1372,10 +1385,11 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         &self,
         op_token: Token<'code>,
         rhs: &Expression,
-    ) -> Result<(), Error<ErrorKind>> {
+    ) -> Result<(), Msg<ErrorKind>> {
         let rhs_type = rhs.typ();
         if let Type::Base(BaseType::Str) | Type::Array { .. } = rhs_type {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::RightOperandTypeMismatch(rhs_type),
                 col: op_token.col,
                 pointers_count: op_token.kind.display_len(self.tokens),
@@ -1389,10 +1403,11 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         &self,
         op_token: Token<'code>,
         lhs: &Expression,
-    ) -> Result<(), Error<ErrorKind>> {
+    ) -> Result<(), Msg<ErrorKind>> {
         let lhs_type = lhs.typ();
         let Type::Base(BaseType::Bool) = lhs_type else {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::LeftOperandTypeMismatch(lhs_type),
                 col: op_token.col,
                 pointers_count: op_token.kind.display_len(self.tokens),
@@ -1406,10 +1421,11 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         &self,
         op_token: Token<'code>,
         rhs: &Expression,
-    ) -> Result<(), Error<ErrorKind>> {
+    ) -> Result<(), Msg<ErrorKind>> {
         let rhs_type = rhs.typ();
         let Type::Base(BaseType::Bool) = rhs_type else {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::RightOperandTypeMismatch(rhs_type),
                 col: op_token.col,
                 pointers_count: op_token.kind.display_len(self.tokens),
@@ -1419,7 +1435,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Ok(());
     }
 
-    fn operator(&mut self, ops: &[Op]) -> Result<Option<(Token<'code>, Op)>, Error<ErrorKind>> {
+    fn operator(&mut self, ops: &[Op]) -> Result<Option<(Token<'code>, Op)>, Msg<ErrorKind>> {
         let current_token = self.current_token(Expected::OperatorOrSemicolon)?;
         let TokenKind::Op(op) = current_token.kind else {
             return Ok(None);
@@ -1735,7 +1751,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         };
     }
 
-    fn primary_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
+    fn primary_expression(&mut self) -> Result<Expression, Msg<ErrorKind>> {
         let current_token = self.current_token(Expected::Expression)?;
         let expression_result = match current_token.kind {
             TokenKind::False => Ok(Expression::False),
@@ -1744,7 +1760,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let literal = self.tokens.text[literal_index];
                 match Self::parse_positive_binary_i64(literal) {
                     Some(integer) => Ok(Expression::I64(integer)),
-                    None => Err(Error {
+                    None => Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::BinaryIntegerOverflow,
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(self.tokens),
@@ -1755,7 +1772,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let literal = self.tokens.text[literal_index];
                 match Self::parse_positive_octal_i64(literal) {
                     Some(integer) => Ok(Expression::I64(integer)),
-                    None => Err(Error {
+                    None => Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::OctalIntegerOverflow,
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(self.tokens),
@@ -1766,7 +1784,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let literal = self.tokens.text[literal_index];
                 match Self::parse_positive_decimal_i64(literal) {
                     Some(integer) => Ok(Expression::I64(integer)),
-                    None => Err(Error {
+                    None => Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::DecimalIntegerOverflow,
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(self.tokens),
@@ -1777,7 +1796,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let literal = self.tokens.text[literal_index];
                 match Self::parse_positive_decimal_prefix_i64(literal) {
                     Some(integer) => Ok(Expression::I64(integer)),
-                    None => Err(Error {
+                    None => Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::DecimalIntegerOverflow,
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(self.tokens),
@@ -1788,7 +1808,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let literal = self.tokens.text[literal_index];
                 match Self::parse_positive_hexadecimal_i64(literal) {
                     Some(integer) => Ok(Expression::I64(integer)),
-                    None => Err(Error {
+                    None => Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::HexadecimalIntegerOverflow,
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(self.tokens),
@@ -1824,7 +1845,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             let var = &self.ast.variables[variable_index as usize];
                             Ok(Expression::Variable { typ: var.value.typ(), variable_index })
                         },
-                        None => Err(Error {
+                        None => Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::VariableNotPreviouslyDefined,
                             col: current_token.col,
                             pointers_count: current_token.kind.display_len(self.tokens),
@@ -1832,7 +1854,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     },
                     Some(_) => 'type_in_expression: {
                         let Some(possible_reassignment_operator) = self.peek_next_token() else {
-                            break 'type_in_expression Err(Error {
+                            break 'type_in_expression Err(Msg {
+                                severity: MsgSeverity::Error,
                                 kind: ErrorKind::TypeInExpression,
                                 col: current_token.col,
                                 pointers_count: current_token.kind.display_len(self.tokens),
@@ -1840,7 +1863,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         };
 
                         let TokenKind::Op(op) = possible_reassignment_operator.kind else {
-                            break 'type_in_expression Err(Error {
+                            break 'type_in_expression Err(Msg {
+                                severity: MsgSeverity::Error,
                                 kind: ErrorKind::TypeInExpression,
                                 col: current_token.col,
                                 pointers_count: current_token.kind.display_len(self.tokens),
@@ -1877,7 +1901,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             | Op::BitOrEquals
                             | Op::AndEquals
                             | Op::OrEquals => {
-                                break 'type_in_expression Err(Error {
+                                break 'type_in_expression Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::TypeInVariableReassignment,
                                     col: current_token.col,
                                     pointers_count: current_token.kind.display_len(self.tokens),
@@ -1920,7 +1945,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             | Op::GreaterOrEquals
                             | Op::Less
                             | Op::LessOrEquals => {
-                                break 'type_in_expression Err(Error {
+                                break 'type_in_expression Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::TypeInExpression,
                                     col: current_token.col,
                                     pointers_count: current_token.kind.display_len(self.tokens),
@@ -1934,7 +1960,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let expression_start_token = self.next_token_bounded(Expected::Expression)?;
 
                 if let TokenKind::CloseRoundBracket = expression_start_token.kind {
-                    break 'parenthesis Err(Error {
+                    break 'parenthesis Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::EmptyExpression,
                         col: expression_start_token.col,
                         pointers_count: expression_start_token.kind.display_len(self.tokens),
@@ -1945,7 +1972,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let close_bracket_token = self.current_token(Expected::ClosingRoundBracket)?;
 
                 let TokenKind::CloseRoundBracket = close_bracket_token.kind else {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::UnclosedRoundBracket,
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(self.tokens),
@@ -1963,7 +1991,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
                 // REMOVE(stefano): allow arrays of 0 elements
                 if let TokenKind::CloseSquareBracket = bracket_or_semicolon_token.kind {
-                    break 'array Err(Error {
+                    break 'array Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::ArrayOfZeroElements,
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(self.tokens),
@@ -1976,7 +2005,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     self.current_token(Expected::SemicolonOrClosingSquareBracket)?;
 
                 if let TokenKind::Comma = bracket_or_semicolon_token.kind {
-                    break 'array Err(Error {
+                    break 'array Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::UseSemicolonInsteadOfComma,
                         col: bracket_or_semicolon_token.col,
                         pointers_count: bracket_or_semicolon_token.kind.display_len(self.tokens),
@@ -1990,7 +2020,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let items_type = match first_item.typ() {
                     Type::Base(base_type) => base_type,
                     Type::Array { .. } => {
-                        break 'array Err(Error {
+                        break 'array Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::NestedArrayNotSupportedYet,
                             col: current_token.col,
                             pointers_count: current_token.kind.display_len(self.tokens),
@@ -2011,7 +2042,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     this wrapping of items_type will be removed once nested arrays are supported
                     */
                     if Type::Base(items_type) != item_type {
-                        break 'array Err(Error {
+                        break 'array Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::ArrayElementTypeMismatch {
                                 actual: item_type,
                                 expected: Type::Base(items_type),
@@ -2024,7 +2056,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     }
 
                     if let Type::Array { .. } = item_type {
-                        break 'array Err(Error {
+                        break 'array Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::NestedArrayNotSupportedYet,
                             col: current_token.col,
                             pointers_count: current_token.kind.display_len(self.tokens),
@@ -2037,7 +2070,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         self.current_token(Expected::SemicolonOrClosingSquareBracket)?;
 
                     if let TokenKind::Comma = bracket_or_semicolon_token.kind {
-                        break 'array Err(Error {
+                        break 'array Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::UseSemicolonInsteadOfComma,
                             col: bracket_or_semicolon_token.col,
                             pointers_count: bracket_or_semicolon_token
@@ -2068,7 +2102,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         operand_index: self.new_expression(operand),
                     }),
                     Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => {
-                        return Err(Error {
+                        return Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::CannotTakeLenOf(operand_typ),
                             col: current_token.col,
                             pointers_count: current_token.kind.display_len(self.tokens),
@@ -2106,7 +2141,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     invalid_type @ (Type::Base(
                         BaseType::Ascii | BaseType::Bool | BaseType::Str,
                     )
-                    | Type::Array { .. }) => Err(Error {
+                    | Type::Array { .. }) => Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotTakeAbsoluteValueOf(invalid_type),
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(self.tokens),
@@ -2132,7 +2168,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         let literal = self.tokens.text[literal_index];
                         if should_be_negated {
                             match Self::parse_negative_binary_i64(literal) {
-                                Some(0) => Err(Error {
+                                Some(0) => Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
                                     pointers_count: start_of_expression
@@ -2140,7 +2177,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                         .display_len(self.tokens),
                                 }),
                                 Some(integer) => Ok(Expression::I64(integer)),
-                                None => Err(Error {
+                                None => Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::BinaryIntegerUnderflow,
                                     col: start_of_expression.col,
                                     pointers_count: start_of_expression
@@ -2151,7 +2189,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         } else {
                             match Self::parse_positive_binary_i64(literal) {
                                 Some(integer) => Ok(Expression::I64(integer)),
-                                None => Err(Error {
+                                None => Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::BinaryIntegerOverflow,
                                     col: start_of_expression.col,
                                     pointers_count: start_of_expression
@@ -2165,7 +2204,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         let literal = self.tokens.text[literal_index];
                         if should_be_negated {
                             match Self::parse_negative_octal_i64(literal) {
-                                Some(0) => Err(Error {
+                                Some(0) => Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
                                     pointers_count: start_of_expression
@@ -2173,7 +2213,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                         .display_len(self.tokens),
                                 }),
                                 Some(integer) => Ok(Expression::I64(integer)),
-                                None => Err(Error {
+                                None => Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::OctalIntegerUnderflow,
                                     col: start_of_expression.col,
                                     pointers_count: start_of_expression
@@ -2184,7 +2225,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         } else {
                             match Self::parse_positive_octal_i64(literal) {
                                 Some(integer) => Ok(Expression::I64(integer)),
-                                None => Err(Error {
+                                None => Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::OctalIntegerOverflow,
                                     col: start_of_expression.col,
                                     pointers_count: start_of_expression
@@ -2198,7 +2240,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         let literal = self.tokens.text[literal_index];
                         if should_be_negated {
                             match Self::parse_negative_decimal_i64(literal) {
-                                Some(0) => Err(Error {
+                                Some(0) => Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
                                     pointers_count: start_of_expression
@@ -2206,7 +2249,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                         .display_len(self.tokens),
                                 }),
                                 Some(integer) => Ok(Expression::I64(integer)),
-                                None => Err(Error {
+                                None => Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::DecimalIntegerUnderflow,
                                     col: start_of_expression.col,
                                     pointers_count: start_of_expression
@@ -2217,7 +2261,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         } else {
                             match Self::parse_positive_decimal_i64(literal) {
                                 Some(integer) => Ok(Expression::I64(integer)),
-                                None => Err(Error {
+                                None => Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::DecimalIntegerOverflow,
                                     col: start_of_expression.col,
                                     pointers_count: start_of_expression
@@ -2231,7 +2276,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         let literal = self.tokens.text[literal_index];
                         if should_be_negated {
                             match Self::parse_negative_decimal_prefix_i64(literal) {
-                                Some(0) => Err(Error {
+                                Some(0) => Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
                                     pointers_count: start_of_expression
@@ -2239,7 +2285,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                         .display_len(self.tokens),
                                 }),
                                 Some(integer) => Ok(Expression::I64(integer)),
-                                None => Err(Error {
+                                None => Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::DecimalIntegerUnderflow,
                                     col: start_of_expression.col,
                                     pointers_count: start_of_expression
@@ -2250,7 +2297,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         } else {
                             match Self::parse_positive_decimal_prefix_i64(literal) {
                                 Some(integer) => Ok(Expression::I64(integer)),
-                                None => Err(Error {
+                                None => Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::DecimalIntegerOverflow,
                                     col: start_of_expression.col,
                                     pointers_count: start_of_expression
@@ -2264,7 +2312,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         let literal = self.tokens.text[literal_index];
                         if should_be_negated {
                             match Self::parse_negative_hexadecimal_i64(literal) {
-                                Some(0) => Err(Error {
+                                Some(0) => Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
                                     pointers_count: start_of_expression
@@ -2272,7 +2321,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                         .display_len(self.tokens),
                                 }),
                                 Some(integer) => Ok(Expression::I64(integer)),
-                                None => Err(Error {
+                                None => Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::HexadecimalIntegerUnderflow,
                                     col: start_of_expression.col,
                                     pointers_count: start_of_expression
@@ -2283,7 +2333,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         } else {
                             match Self::parse_positive_hexadecimal_i64(literal) {
                                 Some(integer) => Ok(Expression::I64(integer)),
-                                None => Err(Error {
+                                None => Err(Msg {
+                                    severity: MsgSeverity::Error,
                                     kind: ErrorKind::HexadecimalIntegerOverflow,
                                     col: start_of_expression.col,
                                     pointers_count: start_of_expression
@@ -2310,7 +2361,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 }
                             },
                             invalid_typ @ (Type::Base(BaseType::Bool | BaseType::Str)
-                            | Type::Array { .. }) => Err(Error {
+                            | Type::Array { .. }) => Err(Msg {
+                                severity: MsgSeverity::Error,
                                 kind: ErrorKind::CannotNegate(invalid_typ),
                                 col: current_token.col,
                                 pointers_count: current_token.kind.display_len(self.tokens),
@@ -2353,7 +2405,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             Ok(operand)
                         }
                     },
-                    invalid_typ @ (Type::Base(BaseType::Str) | Type::Array { .. }) => Err(Error {
+                    invalid_typ @ (Type::Base(BaseType::Str) | Type::Array { .. }) => Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotInvert(invalid_typ),
                         col: current_token.col,
                         pointers_count: current_token.kind.display_len(self.tokens),
@@ -2371,7 +2424,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::Continue
             | TokenKind::Eprint
             | TokenKind::EprintLn
-            | TokenKind::Do => Err(Error {
+            | TokenKind::Do => Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::KeywordInExpression,
                 col: current_token.col,
                 pointers_count: current_token.kind.display_len(self.tokens),
@@ -2386,7 +2440,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::Unexpected(_)
             | TokenKind::Colon
             | TokenKind::SemiColon
-            | TokenKind::Comma => Err(Error {
+            | TokenKind::Comma => Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::ExpectedOperand,
                 col: current_token.col,
                 pointers_count: current_token.kind.display_len(self.tokens),
@@ -2400,7 +2455,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             let _start_of_index = self.next_token();
             let index = self.expression()?;
             let Type::Base(BaseType::I64) = index.typ() else {
-                return Err(Error {
+                return Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::ExpectedNumberLiteralInArrayIndex,
                     col: open_bracket_token.col,
                     pointers_count: open_bracket_token.kind.display_len(self.tokens),
@@ -2411,7 +2467,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
             let TokenKind::CloseSquareBracket = after_index_token.kind else {
                 let before_index_token = self.peek_previous_token();
-                return Err(Error {
+                return Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::MissingClosingSquareBracketInIndex,
                     col: before_index_token.col,
                     pointers_count: before_index_token.kind.display_len(self.tokens),
@@ -2419,7 +2476,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             };
 
             let Expression::Variable { .. } = expression else {
-                return Err(Error {
+                return Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::CannotIndexIntoExpression,
                     col: open_bracket_token.col,
                     pointers_count: open_bracket_token.kind.display_len(self.tokens),
@@ -2436,7 +2494,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         index_expression_index: self.new_expression(index),
                     },
                     BaseType::I64 | BaseType::Ascii | BaseType::Bool => {
-                        return Err(Error {
+                        return Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::CannotIndexNonArrayType(expression_type),
                             col: open_bracket_token.col,
                             pointers_count: open_bracket_token.kind.display_len(self.tokens),
@@ -2455,7 +2514,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Ok(expression);
     }
 
-    fn exponentiative_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
+    fn exponentiative_expression(&mut self) -> Result<Expression, Msg<ErrorKind>> {
         let mut lhs = self.primary_expression()?;
 
         let ops = [Op::Pow, Op::WrappingPow, Op::SaturatingPow];
@@ -2476,7 +2535,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Ok(lhs);
     }
 
-    fn multiplicative_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
+    fn multiplicative_expression(&mut self) -> Result<Expression, Msg<ErrorKind>> {
         let mut lhs = self.exponentiative_expression()?;
 
         let ops = [
@@ -2505,7 +2564,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Ok(lhs);
     }
 
-    fn additive_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
+    fn additive_expression(&mut self) -> Result<Expression, Msg<ErrorKind>> {
         let mut lhs = self.multiplicative_expression()?;
 
         let ops = [
@@ -2537,7 +2596,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     when the lhs is a literal integer shifts could be optimized to throw errors
     when preconditions such as negative integers and shifts over 6bits are not met
     */
-    fn shift_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
+    fn shift_expression(&mut self) -> Result<Expression, Msg<ErrorKind>> {
         let mut lhs = self.additive_expression()?;
 
         let ops = [
@@ -2565,7 +2624,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Ok(lhs);
     }
 
-    fn bitand_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
+    fn bitand_expression(&mut self) -> Result<Expression, Msg<ErrorKind>> {
         let mut lhs = self.shift_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitAnd])? {
@@ -2585,7 +2644,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Ok(lhs);
     }
 
-    fn bitxor_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
+    fn bitxor_expression(&mut self) -> Result<Expression, Msg<ErrorKind>> {
         let mut lhs = self.bitand_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitXor])? {
@@ -2605,7 +2664,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Ok(lhs);
     }
 
-    fn bitor_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
+    fn bitor_expression(&mut self) -> Result<Expression, Msg<ErrorKind>> {
         let mut lhs = self.bitxor_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::BitOr])? {
@@ -2625,7 +2684,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Ok(lhs);
     }
 
-    fn comparison_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
+    fn comparison_expression(&mut self) -> Result<Expression, Msg<ErrorKind>> {
         let mut lhs = self.bitor_expression()?;
 
         let ops = [
@@ -2660,7 +2719,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             };
 
             if !can_compare {
-                return Err(Error {
+                return Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::CannotCompareOperands { lhs_type, rhs_type },
                     col: op_token.col,
                     pointers_count: op_token.kind.display_len(self.tokens),
@@ -2668,7 +2728,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             }
 
             if is_chained {
-                return Err(Error {
+                return Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::CannotChainComparisons,
                     col: op_token.col,
                     pointers_count: op_token.kind.display_len(self.tokens),
@@ -2686,7 +2747,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Ok(lhs);
     }
 
-    fn and_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
+    fn and_expression(&mut self) -> Result<Expression, Msg<ErrorKind>> {
         let mut lhs = self.comparison_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::And])? {
@@ -2705,7 +2766,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Ok(lhs);
     }
 
-    fn or_expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
+    fn or_expression(&mut self) -> Result<Expression, Msg<ErrorKind>> {
         let mut lhs = self.and_expression()?;
 
         while let Some((op_token, op)) = self.operator(&[Op::Or])? {
@@ -2724,7 +2785,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Ok(lhs);
     }
 
-    fn expression(&mut self) -> Result<Expression, Error<ErrorKind>> {
+    fn expression(&mut self) -> Result<Expression, Msg<ErrorKind>> {
         return self.or_expression();
     }
 }
@@ -2793,7 +2854,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         }
     }
 
-    fn type_annotation(&mut self) -> Result<Option<(Token<'code>, Type)>, Error<ErrorKind>> {
+    fn type_annotation(&mut self) -> Result<Option<(Token<'code>, Type)>, Msg<ErrorKind>> {
         let colon_token = self.next_token_bounded(Expected::TypeAnnotationOrVariableDefinition)?;
 
         let TokenKind::Colon = colon_token.kind else {
@@ -2803,7 +2864,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
         let type_token = self.next_token_bounded(Expected::TypeAnnotation)?;
         let TokenKind::Identifier(type_name_index) = type_token.kind else {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::ExpectedType,
                 col: colon_token.col,
                 pointers_count: colon_token.kind.display_len(self.tokens),
@@ -2818,7 +2880,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     let var = &self.ast.variables[var_index as usize];
                     Ok(Some((type_token, var.value.typ())))
                 },
-                None => Err(Error {
+                None => Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::VariableNotPreviouslyDefined,
                     col: type_token.col,
                     pointers_count: type_token.kind.display_len(self.tokens),
@@ -2839,7 +2902,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         let len_token = self.next_token_bounded(Expected::ArrayLength)?;
         let len_expression = self.expression()?;
         let Expression::I64(len) = len_expression else {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::ExpectedNumberLiteralInArrayType,
                 col: open_square_bracket_token.col,
                 pointers_count: open_square_bracket_token.kind.display_len(self.tokens),
@@ -2847,7 +2911,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         };
 
         if len < 0 {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::ArrayOfNegativeLength,
                 col: len_token.col,
                 pointers_count: len_token.kind.display_len(self.tokens),
@@ -2858,7 +2923,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         #[expect(clippy::cast_sign_loss, clippy::shadow_reuse)]
         let len = len as u64;
         if len == 0 {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::ArrayOfZeroElements,
                 col: len_token.col,
                 pointers_count: len_token.kind.display_len(self.tokens),
@@ -2867,7 +2933,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
         let close_square_bracket_token = self.current_token(Expected::ClosingSquareBracket)?;
         let TokenKind::CloseSquareBracket = close_square_bracket_token.kind else {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::MissingClosingSquareBracketInArrayType,
                 col: open_square_bracket_token.col,
                 pointers_count: open_square_bracket_token.kind.display_len(self.tokens),
@@ -2878,7 +2945,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     }
 
     // TODO(stefano): remove default values on uninitialized variables
-    fn variable_definition(&mut self) -> Result<Variable<'code>, Error<ErrorKind>> {
+    fn variable_definition(&mut self) -> Result<Variable<'code>, Msg<ErrorKind>> {
         let name_token = self.next_token_bounded(Expected::Identifier)?;
         let name = match name_token.kind {
             TokenKind::Identifier(name_index) | TokenKind::IdentifierStr(name_index) => {
@@ -2886,7 +2953,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 match self.resolve_type(name) {
                     None => name,
                     Some(_) => {
-                        return Err(Error {
+                        return Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::TypeInVariableName,
                             col: name_token.col,
                             pointers_count: name_token.kind.display_len(self.tokens),
@@ -2917,7 +2985,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::Ascii(_)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_) => {
-                return Err(Error {
+                return Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::ExpectedVariableName,
                     col: name_token.col,
                     pointers_count: name_token.kind.display_len(self.tokens),
@@ -2935,7 +3004,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::Loop
             | TokenKind::Break
             | TokenKind::Continue => {
-                return Err(Error {
+                return Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::KeywordInVariableName,
                     col: name_token.col,
                     pointers_count: name_token.kind.display_len(self.tokens),
@@ -2990,14 +3060,16 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::Break
             | TokenKind::Continue => match annotation {
                 None => {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::ExpectedEqualsOrSemicolonAfterVariableName,
                         col: name_token.col,
                         pointers_count: name_token.kind.display_len(self.tokens),
                     })
                 },
                 Some((annotation_token, _)) => {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
                         col: annotation_token.col,
                         pointers_count: annotation_token.kind.display_len(self.tokens),
@@ -3008,13 +3080,15 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
         let Some(expression) = initial_value else {
             let Some(_) = annotation else {
-                return Err(Error {
+                return Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::CannotInferTypeOfVariable,
                     col: name_token.col,
                     pointers_count: name_token.kind.display_len(self.tokens),
                 });
             };
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::VariablesMustBeInitialized,
                 col: name_token.col,
                 pointers_count: name_token.kind.display_len(self.tokens),
@@ -3022,7 +3096,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         };
 
         let None = self.resolve_variable(name) else {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::VariableAlreadyDefined,
                 col: name_token.col,
                 pointers_count: name_token.kind.display_len(self.tokens),
@@ -3032,7 +3107,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         let expression_typ = expression.typ();
         if let Some((token, annotation_typ)) = annotation {
             if annotation_typ != expression_typ {
-                return Err(Error {
+                return Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::VariableDefinitionTypeMismatch {
                         expected: annotation_typ,
                         actual: expression_typ,
@@ -3053,7 +3129,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         target_token: Token<'code>,
         op: AssignmentOp,
         op_token: Token<'code>,
-    ) -> Result<Node, Error<ErrorKind>> {
+    ) -> Result<Node, Msg<ErrorKind>> {
         let (error_token, target_type) = match &target {
             Expression::ArrayIndex { base_type, indexable_index, .. } => {
                 let indexable = &self.ast.expressions[*indexable_index as usize];
@@ -3067,7 +3143,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 }
 
                 let Expression::Variable { typ, .. } = unwrapped_indexable else {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotAssignToExpression,
                         col: op_token.col,
                         pointers_count: op_token.kind.display_len(self.tokens),
@@ -3077,7 +3154,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let error_token = if let TokenKind::Identifier(name_index) = target_token.kind {
                     let name = self.tokens.text[name_index];
                     if let Some(_) = self.resolve_let_variable(name) {
-                        return Err(Error {
+                        return Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::CannotMutateVariable,
                             col: target_token.col,
                             pointers_count: target_token.kind.display_len(self.tokens),
@@ -3086,7 +3164,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
                     if let BaseType::Str = typ.base_typ() {
                         if let BaseType::Ascii = base_type {
-                            return Err(Error {
+                            return Err(Msg {
+                                severity: MsgSeverity::Error,
                                 kind: ErrorKind::CannotMutateStringCharacters,
                                 col: target_token.col,
                                 pointers_count: target_token.kind.display_len(self.tokens),
@@ -3104,7 +3183,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             Expression::Variable { typ, variable_index } => {
                 let var = &self.ast.variables[*variable_index as usize];
                 if let Some(_) = self.resolve_let_variable(var.name) {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotMutateVariable,
                         col: target_token.col,
                         pointers_count: target_token.kind.display_len(self.tokens),
@@ -3127,7 +3207,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | Expression::BooleanBinary { .. }
             | Expression::Comparison { .. }
             | Expression::Temporary { .. } => {
-                return Err(Error {
+                return Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::CannotAssignToExpression,
                     col: op_token.col,
                     pointers_count: op_token.kind.display_len(self.tokens),
@@ -3142,7 +3223,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return match op {
             AssignmentOp::Equals => {
                 if target_type != new_value_type {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::VariableReassignmentTypeMismatch {
                             expected: target_type,
                             actual: new_value_type,
@@ -3190,12 +3272,14 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     condition &&= false; # should instead be allowed
                     ```
                     */
-                    (Type::Base(BaseType::Ascii | BaseType::Bool), _) => Err(Error {
+                    (Type::Base(BaseType::Ascii | BaseType::Bool), _) => Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotModifyInplace(target_type),
                         col: op_token.col,
                         pointers_count: op_token.kind.display_len(self.tokens),
                     }),
-                    _ => Err(Error {
+                    _ => Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::VariableReassignmentTypeMismatch {
                             expected: target_type,
                             actual: new_value_type,
@@ -3208,7 +3292,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
             AssignmentOp::And | AssignmentOp::Or => {
                 let Type::Base(BaseType::Bool) = target_type else {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::VariableReassignmentTypeMismatch {
                             expected: Type::Base(BaseType::Bool),
                             actual: target_type,
@@ -3218,7 +3303,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     });
                 };
                 let Type::Base(BaseType::Bool) = new_value_type else {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::VariableReassignmentTypeMismatch {
                             expected: Type::Base(BaseType::Bool),
                             actual: new_value_type,
@@ -3238,7 +3324,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         target_token: Token<'code>,
         op: PrefixAssignmentOp,
         op_token: Token<'code>,
-    ) -> Result<Node, Error<ErrorKind>> {
+    ) -> Result<Node, Msg<ErrorKind>> {
         let (error_token, target_type) = match &target {
             Expression::ArrayIndex { base_type, indexable_index, .. } => {
                 let indexable = &self.ast.expressions[*indexable_index as usize];
@@ -3252,7 +3338,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 }
 
                 let Expression::Variable { typ, .. } = unwrapped_indexable else {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotAssignToExpression,
                         col: op_token.col,
                         pointers_count: op_token.kind.display_len(self.tokens),
@@ -3262,7 +3349,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let error_token = if let TokenKind::Identifier(name_index) = target_token.kind {
                     let name = self.tokens.text[name_index];
                     if let Some(_) = self.resolve_let_variable(name) {
-                        return Err(Error {
+                        return Err(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::CannotMutateVariable,
                             col: target_token.col,
                             pointers_count: target_token.kind.display_len(self.tokens),
@@ -3271,7 +3359,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
                     if let BaseType::Str = typ.base_typ() {
                         if let BaseType::Ascii = base_type {
-                            return Err(Error {
+                            return Err(Msg {
+                                severity: MsgSeverity::Error,
                                 kind: ErrorKind::CannotMutateStringCharacters,
                                 col: target_token.col,
                                 pointers_count: target_token.kind.display_len(self.tokens),
@@ -3289,7 +3378,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             Expression::Variable { typ, variable_index } => {
                 let var = &self.ast.variables[*variable_index as usize];
                 if let Some(_) = self.resolve_let_variable(var.name) {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotMutateVariable,
                         col: target_token.col,
                         pointers_count: target_token.kind.display_len(self.tokens),
@@ -3312,7 +3402,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | Expression::BooleanBinary { .. }
             | Expression::Comparison { .. }
             | Expression::Temporary { .. } => {
-                return Err(Error {
+                return Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::CannotAssignToExpression,
                     col: op_token.col,
                     pointers_count: op_token.kind.display_len(self.tokens),
@@ -3329,7 +3420,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         op_col: op_token.col,
                     })
                 },
-                invalid_typ @ (Type::Base(BaseType::Str) | Type::Array { .. }) => Err(Error {
+                invalid_typ @ (Type::Base(BaseType::Str) | Type::Array { .. }) => Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::CannotInvert(invalid_typ),
                     col: error_token.col,
                     pointers_count: error_token.kind.display_len(self.tokens),
@@ -3342,7 +3434,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     Ok(Node::PrefixReassignment { target, op, op_col: op_token.col })
                 },
                 invalid_type @ (Type::Base(BaseType::Str | BaseType::Ascii | BaseType::Bool)
-                | Type::Array { .. }) => Err(Error {
+                | Type::Array { .. }) => Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::CannotTakeAbsoluteValueOf(invalid_type),
                     col: error_token.col,
                     pointers_count: error_token.kind.display_len(self.tokens),
@@ -3355,7 +3448,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     Ok(Node::PrefixReassignment { target, op, op_col: op_token.col })
                 },
                 invalid_type
-                @ (Type::Base(BaseType::Str | BaseType::Bool) | Type::Array { .. }) => Err(Error {
+                @ (Type::Base(BaseType::Str | BaseType::Bool) | Type::Array { .. }) => Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::CannotNegate(invalid_type),
                     col: error_token.col,
                     pointers_count: error_token.kind.display_len(self.tokens),
@@ -3367,7 +3461,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
 // print statements
 impl<'code> Parser<'_, '_, 'code, '_> {
-    fn print_arg(&mut self) -> Result<Expression, Error<ErrorKind>> {
+    fn print_arg(&mut self) -> Result<Expression, Msg<ErrorKind>> {
         let _start_of_expression_token = self.next_token_bounded(Expected::Expression)?;
         let argument = self.expression()?;
         if let Expression::Array { .. } = argument {
@@ -3384,7 +3478,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
 // if statements
 impl<'code> Parser<'_, '_, 'code, '_> {
-    fn iff(&mut self) -> Result<Node, Error<ErrorKind>> {
+    fn iff(&mut self) -> Result<Node, Msg<ErrorKind>> {
         let mut ifs = Vec::new();
         let mut els = None;
 
@@ -3393,7 +3487,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
             let condition = self.expression()?;
             let Type::Base(BaseType::Bool) = condition.typ() else {
-                return Err(Error {
+                return Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::IfMustBeFollowedByBooleanExpression,
                     col: if_token.col,
                     pointers_count: if_token.kind.display_len(self.tokens),
@@ -3443,7 +3538,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 | TokenKind::Continue
                 | TokenKind::Do => {
                     let before_curly_bracket_token = self.peek_previous_token();
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::IfMustBeFollowedByBlock,
                         col: before_curly_bracket_token.col,
                         pointers_count: before_curly_bracket_token.kind.display_len(self.tokens),
@@ -3536,7 +3632,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     | TokenKind::Loop
                     | TokenKind::Break
                     | TokenKind::Continue
-                    | TokenKind::Do => Err(Error {
+                    | TokenKind::Do => Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::MustBeFollowedByBlockOrIfStatement,
                         col: else_token.col,
                         pointers_count: else_token.kind.display_len(self.tokens),
@@ -3556,13 +3653,14 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
 // loop statements
 impl<'code> Parser<'_, '_, 'code, '_> {
-    fn loop_statement(&mut self) -> Result<Node, Error<ErrorKind>> {
+    fn loop_statement(&mut self) -> Result<Node, Msg<ErrorKind>> {
         let do_token = self.tokens.tokens[self.token];
         let loop_token = match do_token.kind {
             TokenKind::Do => {
                 let loop_token = self.next_token_bounded(Expected::LoopStatement)?;
                 let TokenKind::Loop = loop_token.kind else {
-                    return Err(Error {
+                    return Err(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::DoMustBeFollowedByLoop,
                         col: do_token.col,
                         pointers_count: do_token.kind.display_len(self.tokens),
@@ -3612,7 +3710,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         _ = self.next_token_bounded(Expected::BooleanExpression)?;
         let condition = self.expression()?;
         let Type::Base(BaseType::Bool) = condition.typ() else {
-            return Err(Error {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::LoopMustBeFollowedByBooleanExpression,
                 col: loop_token.col,
                 pointers_count: loop_token.kind.display_len(self.tokens),
@@ -3662,7 +3761,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::Continue
             | TokenKind::Do => {
                 let before_curly_bracket_token = self.peek_previous_token();
-                Err(Error {
+                Err(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::LoopMustBeFollowedByBlock,
                     col: before_curly_bracket_token.col,
                     pointers_count: before_curly_bracket_token.kind.display_len(self.tokens),
@@ -3809,8 +3909,8 @@ pub enum ErrorKind {
     StrayContinueStatement,
 }
 
-impl IntoErrorInfo for ErrorKind {
-    fn info(&self) -> ErrorInfo {
+impl IntoMsgInfo for ErrorKind {
+    fn info(&self) -> MsgInfo {
         let (error_message, error_cause_message) = match self {
             Self::PrematureEndOfFile(expected) => (
                 "premature end of file".into(),
@@ -4114,6 +4214,6 @@ impl IntoErrorInfo for ErrorKind {
             ),
         };
 
-        return ErrorInfo { error_message, error_cause_message };
+        return MsgInfo { message: error_message, cause: error_cause_message };
     }
 }
