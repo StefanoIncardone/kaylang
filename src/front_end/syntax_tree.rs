@@ -485,6 +485,8 @@ pub(crate) enum Node<'code> {
         variable_definition: VariableDefinitionIndex<'code>,
         semicolon_column: offset32,
     },
+
+    // TODO(stefano): move to Expression
     BinaryAssignment {
         target: ExpressionIndex<'code>,
         operator: BinaryAssignmentOp,
@@ -492,6 +494,7 @@ pub(crate) enum Node<'code> {
         new_value: ExpressionIndex<'code>,
         semicolon_column: offset32,
     },
+    // TODO(stefano): move to Expression
     PrefixAssignment {
         operator: PrefixAssignmentOp,
         operator_column: offset32,
@@ -1347,10 +1350,10 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 loop_result
             },
             TokenKind::Loop => {
-                let loop_token = token;
+                let loop_column = token.col;
 
                 self.loop_depth += 1;
-                let loop_result = self.loop_statement(loop_token.col);
+                let loop_result = self.loop_statement(loop_column);
                 self.loop_depth -= 1;
 
                 loop_result
@@ -1360,7 +1363,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
                 if self.loop_depth == 0 {
                     self.errors.push(Msg {
-                        severity: MsgSeverity::Error,
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::StrayBreak,
                         col: token.col,
                         pointers_count: token.kind.display_len(self.tokens),
@@ -1375,7 +1378,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
                 if self.loop_depth == 0 {
                     self.errors.push(Msg {
-                        severity: MsgSeverity::Error,
+                        severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::StrayContinue,
                         col: token.col,
                         pointers_count: token.kind.display_len(self.tokens),
