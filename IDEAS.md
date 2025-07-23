@@ -836,6 +836,11 @@ if condition :label { ... }
 :label { ... }
 break:label 21;
 
+loop condition label: { ... }
+if condition label: { ... }
+label: { ... }
+break label: 21;
+
 let x = loop:loop_label condition {
     # implicit break from direct loop parent block
     break 12;
