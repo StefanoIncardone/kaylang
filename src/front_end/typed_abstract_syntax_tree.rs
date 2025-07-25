@@ -23,11 +23,12 @@ pub enum BaseType {
 }
 
 impl BaseType {
-    const I64_STR: &str = "i64";
-    const ASCII_STR: &str = "ascii";
-    const BOOL_STR: &str = "bool";
-    const STR_STR: &str = "str";
+    pub(crate) const I64_STR: &str = "i64";
+    pub(crate) const ASCII_STR: &str = "ascii";
+    pub(crate) const BOOL_STR: &str = "bool";
+    pub(crate) const STR_STR: &str = "str";
 
+    #[must_use]
     #[inline]
     fn matches(self, name: &str) -> bool {
         let self_str = match self {
@@ -40,17 +41,18 @@ impl BaseType {
     }
 }
 
-// impl BaseType {
-//     #[inline]
-//     pub(crate) const fn size(&self) -> usize {
-//         return match self {
-//             Self::I64 => size_of::<i64>(),
-//             Self::Ascii => size_of::<ascii>(),
-//             Self::Bool => size_of::<bool>(),
-//             Self::Str => size_of::<u64>() + size_of::<*const ascii>(),
-//         };
-//     }
-// }
+impl BaseType {
+    #[must_use]
+    #[inline]
+    pub const fn size(&self) -> usize {
+        return match self {
+            Self::I64 => size_of::<i64>(),
+            Self::Ascii => size_of::<ascii>(),
+            Self::Bool => size_of::<bool>(),
+            Self::Str => size_of::<u64>() + size_of::<*const ascii>(),
+        };
+    }
+}
 
 impl Display for BaseType {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -76,22 +78,24 @@ pub enum Type {
 }
 
 impl Type {
+    #[must_use]
     #[inline]
-    pub(crate) const fn base_typ(&self) -> BaseType {
+    pub const fn base_typ(&self) -> BaseType {
         return match self {
             Self::Base(typ) => *typ,
             Self::Array { base_type, .. } => *base_type,
         };
     }
 
-    // #[inline]
-    // pub(crate) const fn size(&self) -> usize {
-    //     return match self {
-    //         Self::Base(typ) => typ.size(),
-    //         #[expect(clippy::cast_possible_truncation)]
-    //         Self::Array { base_type, len } => base_type.size() * *len as usize,
-    //     };
-    // }
+    #[must_use]
+    #[inline]
+    pub const fn size(&self) -> usize {
+        return match self {
+            Self::Base(typ) => typ.size(),
+            #[expect(clippy::cast_possible_truncation)]
+            Self::Array { base_type, len } => base_type.size() * *len as usize,
+        };
+    }
 }
 
 impl Display for Type {
@@ -1022,39 +1026,35 @@ enum ParsedNode<'code> {
 pub(crate) type ArrayItem<'code> = ExpressionIndex<'code>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct TypedSyntaxTree<'syntax_tree, 'tokens: 'syntax_tree, 'code: 'tokens> {
+pub struct TypedSyntaxTree<'st, 'tokens: 'st, 'code: 'tokens> {
     pub(crate) nodes: Vec<Node<'code>>,
 
     pub(crate) expressions: Vec<Expression<'code>>,
     pub(crate) array_items: Vec<ArrayItem<'code>>,
     pub(crate) variables: Vec<VariableDefinition<'code>>,
 
-    _syntax_tree: PhantomData<&'syntax_tree SyntaxTree<'tokens, 'code>>,
+    _syntax_tree: PhantomData<&'st SyntaxTree<'tokens, 'code>>,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct TypedSyntaxTreeDisplay<
-    'typed_syntax_tree,
-    'syntax_tree: 'typed_syntax_tree,
-    'tokens: 'syntax_tree,
+    'tast,
+    'st: 'tast,
+    'tokens: 'st,
     'code: 'tokens,
 > {
-    pub(crate) typed_syntax_tree: &'typed_syntax_tree TypedSyntaxTree<'syntax_tree, 'tokens, 'code>,
-    pub(crate) syntax_tree: &'syntax_tree SyntaxTree<'tokens, 'code>,
+    pub(crate) typed_syntax_tree: &'tast TypedSyntaxTree<'st, 'tokens, 'code>,
     pub(crate) tokens: &'tokens Tokens<'code>,
 }
 
-impl<'syntax_tree, 'tokens: 'syntax_tree, 'code: 'tokens>
-    TypedSyntaxTree<'syntax_tree, 'tokens, 'code>
-{
+impl<'tokens> TypedSyntaxTree<'_, 'tokens, '_> {
     #[must_use]
     #[inline(always)]
     pub const fn display(
         &self,
-        syntax_tree: &'syntax_tree SyntaxTree<'tokens, 'code>,
-        tokens: &'tokens Tokens<'code>,
-    ) -> TypedSyntaxTreeDisplay<'_, 'syntax_tree, 'tokens, 'code> {
-        return TypedSyntaxTreeDisplay { typed_syntax_tree: self, syntax_tree, tokens };
+        tokens: &'tokens Tokens<'_>,
+    ) -> TypedSyntaxTreeDisplay<'_, '_, 'tokens, '_> {
+        return TypedSyntaxTreeDisplay { typed_syntax_tree: self, tokens };
     }
 }
 
@@ -1211,7 +1211,6 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
         expression_index: ExpressionIndex<'_>,
         indent: usize,
     ) -> core::fmt::Result {
-        let expression_indent = indent + Self::INDENT_INCREMENT;
         let expression = &self.typed_syntax_tree.expressions[expression_index];
 
         #[rustfmt::skip]
@@ -1234,6 +1233,7 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
                 writeln!(f, "{:>indent$}Identifier = {identifier_str}", "")
             }
             Expression::Array { items_start, items_len, .. } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}Array", "")?;
 
                 let items_indent = expression_indent + Self::INDENT_INCREMENT;
@@ -1247,34 +1247,40 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
             }
 
             Expression::Prefix { operator, right_operand, .. } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}PrefixExpression", "")?;
                 writeln!(f, "{:>expression_indent$}PrefixOp = {operator}", "")?;
                 self.info_expression(f, *right_operand, expression_indent)
             }
             Expression::BooleanPrefix { operator, right_operand, .. } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}BooleanPrefixExpression", "")?;
                 writeln!(f, "{:>expression_indent$}BooleanPrefixOp = {operator}", "")?;
                 self.info_expression(f, *right_operand, expression_indent)
             }
             Expression::Binary { left_operand, operator, right_operand, .. } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}BinaryExpression", "")?;
                 self.info_expression(f, *left_operand, expression_indent)?;
                 writeln!(f, "{:>expression_indent$}BinaryOp = {operator}", "")?;
                 self.info_expression(f, *right_operand, expression_indent)
             }
             Expression::BooleanBinary { left_operand, operator, right_operand, .. } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}BooleanBinaryExpression", "")?;
                 self.info_expression(f, *left_operand, expression_indent)?;
                 writeln!(f, "{:>expression_indent$}BooleanBinaryOp = {operator}", "")?;
                 self.info_expression(f, *right_operand, expression_indent)
             }
             Expression::Comparison { left_operand, operator, right_operand, .. } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}Comparison", "")?;
                 self.info_expression(f, *left_operand, expression_indent)?;
                 writeln!(f, "{:>expression_indent$}ComparisonOp = {operator}", "")?;
                 self.info_expression(f, *right_operand, expression_indent)
             }
             Expression::BooleanComparison { left_operand, operator, right_operand, .. } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}BooleanComparison", "")?;
                 self.info_expression(f, *left_operand, expression_indent)?;
                 writeln!(f, "{:>expression_indent$}BooleanComparisonOp = {operator}", "")?;
@@ -1286,6 +1292,7 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
                 index_expression,
                 ..
             } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:indent$}IndexExpression", "")?;
                 self.info_expression(f, *indexed_expression, expression_indent)?;
                 self.info_expression(f, *index_expression, expression_indent)
@@ -1323,34 +1330,29 @@ impl Display for TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct Parser<'syntax_tree, 'tokens: 'syntax_tree, 'src: 'tokens, 'code: 'src, 'path: 'code> {
+pub struct Parser<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     src: &'src SrcCode<'code, 'path>,
     errors: Vec<Msg<ErrorKind>>,
 
     tokens: &'tokens Tokens<'code>,
     node_index: st::NodeIndex<'code>,
-    syntax_tree: &'syntax_tree SyntaxTree<'tokens, 'code>,
+    syntax_tree: &'st SyntaxTree<'tokens, 'code>,
 
     temp_array_items: Vec<ArrayItem<'code>>,
-    ast: TypedSyntaxTree<'syntax_tree, 'tokens, 'code>,
+    tast: TypedSyntaxTree<'st, 'tokens, 'code>,
     scope: ScopeIndex<'code>,
     scopes: Vec<Scope<'code>>,
 }
 
-impl<'syntax_tree, 'tokens: 'syntax_tree, 'src: 'tokens, 'code: 'src, 'path: 'code>
-    Parser<'syntax_tree, 'tokens, 'src, 'code, 'path>
+impl<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code>
+    Parser<'st, 'tokens, 'src, 'code, 'path>
 {
-    /* NOTE(stefano):
-    only parsing until the first error until a fault tolerant parser is developed,
-    this is because the first truly relevant error is the first one, which in turn causes a ripple
-    effect that propagates to the rest of the parsing, causing subsequent errors to be wrong
-    */
     #[expect(clippy::missing_errors_doc)]
     pub fn parse(
         src: &'src SrcCode<'code, 'path>,
         tokens: &'tokens Tokens<'code>,
-        syntax_tree: &'syntax_tree SyntaxTree<'tokens, 'code>,
-    ) -> Result<TypedSyntaxTree<'syntax_tree, 'tokens, 'code>, Vec<Msg<ErrorKind>>> {
+        syntax_tree: &'st SyntaxTree<'tokens, 'code>,
+    ) -> Result<TypedSyntaxTree<'st, 'tokens, 'code>, Vec<Msg<ErrorKind>>> {
         let mut parser = Self {
             src,
             errors: Vec::new(),
@@ -1360,7 +1362,7 @@ impl<'syntax_tree, 'tokens: 'syntax_tree, 'src: 'tokens, 'code: 'src, 'path: 'co
             syntax_tree,
 
             temp_array_items: Vec::new(),
-            ast: TypedSyntaxTree {
+            tast: TypedSyntaxTree {
                 nodes: Vec::new(),
                 expressions: Vec::new(),
                 array_items: Vec::new(),
@@ -1379,7 +1381,7 @@ impl<'syntax_tree, 'tokens: 'syntax_tree, 'src: 'tokens, 'code: 'src, 'path: 'co
         while let Some(peeked) = parser.peek_next_node() {
             parser.node_index = peeked.index;
             match parser.any(peeked.node) {
-                Ok(ParsedNode::Node(node)) => parser.ast.nodes.push(node),
+                Ok(ParsedNode::Node(node)) => parser.tast.nodes.push(node),
                 Ok(ParsedNode::ScopeEnd) => continue,
                 Err(err) => {
                     parser.errors.push(err);
@@ -1391,34 +1393,9 @@ impl<'syntax_tree, 'tokens: 'syntax_tree, 'src: 'tokens, 'code: 'src, 'path: 'co
             };
         }
 
-        return if parser.errors.is_empty() { Ok(parser.ast) } else { Err(parser.errors) };
+        return if parser.errors.is_empty() { Ok(parser.tast) } else { Err(parser.errors) };
     }
-}
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-struct Peeked<'syntax_tree, 'code: 'syntax_tree> {
-    node: &'syntax_tree st::Node<'code>,
-    index: st::NodeIndex<'code>,
-}
-
-impl<'syntax_tree, 'code: 'syntax_tree> Parser<'syntax_tree, '_, '_, 'code, '_> {
-    fn peek_next_node(&self) -> Option<Peeked<'syntax_tree, 'code>> {
-        let node_index_end = st::NodeIndex::new(self.syntax_tree.nodes.len());
-        for next_node_index in self.node_index.0..node_index_end.0 {
-            let next_node_index_index = st::NodeIndex::new_offset32(next_node_index);
-            let next_node = &self.syntax_tree.nodes[next_node_index_index];
-            let st::Node::Semicolon { .. } = next_node else {
-                let peeked_node_index_index =
-                    st::NodeIndex::new_offset32(next_node_index_index.0 + 1);
-                return Some(Peeked { node: next_node, index: peeked_node_index_index });
-            };
-        }
-
-        return None;
-    }
-}
-
-impl<'code> Parser<'_, '_, '_, 'code, '_> {
     fn any(&mut self, node: &st::Node<'code>) -> Result<ParsedNode<'code>, Msg<ErrorKind>> {
         return match node {
             st::Node::Expression { expression, .. } => {
@@ -1477,8 +1454,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 });
 
                 let placeholder_scope = Node::Scope { raw_nodes_in_scope_count: 0 };
-                let placeholder_scope_node_index = NodeIndex::new(self.ast.nodes.len());
-                self.ast.nodes.push(placeholder_scope);
+                let placeholder_scope_node_index = NodeIndex::new(self.tast.nodes.len());
+                self.tast.nodes.push(placeholder_scope);
 
                 let raw_nodes_in_scope_end = self.node_index.0 + *raw_nodes_in_scope_count;
                 while self.node_index.0 < raw_nodes_in_scope_end {
@@ -1487,14 +1464,14 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     };
                     self.node_index = peeked.index;
                     match self.any(peeked.node)? {
-                        ParsedNode::Node(inner_node) => self.ast.nodes.push(inner_node),
+                        ParsedNode::Node(inner_node) => self.tast.nodes.push(inner_node),
                         ParsedNode::ScopeEnd => continue,
                     };
                 }
 
-                let last_scope_node_index = NodeIndex::new(self.ast.nodes.len() - 1);
+                let last_scope_node_index = NodeIndex::new(self.tast.nodes.len() - 1);
                 let Node::Scope { raw_nodes_in_scope_count: placeholder_raw_nodes_in_scope_count } =
-                    &mut self.ast.nodes[placeholder_scope_node_index]
+                    &mut self.tast.nodes[placeholder_scope_node_index]
                 else {
                     self.invalid_scope_index(*open_curly_bracket_column);
                 };
@@ -1508,30 +1485,30 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
             st::Node::If { if_column, condition } => {
                 let parsed_condition = self.if_condition(*if_column, *condition)?;
-                let parsed_condition_index = self.ast.new_expression(parsed_condition);
-                self.ast.nodes.push(Node::If { condition: parsed_condition_index });
+                let parsed_condition_index = self.tast.new_expression(parsed_condition);
+                self.tast.nodes.push(Node::If { condition: parsed_condition_index });
                 self.scope()
             },
             st::Node::ElseIf { if_column, condition, .. } => {
                 let parsed_condition = self.if_condition(*if_column, *condition)?;
-                let parsed_condition_index = self.ast.new_expression(parsed_condition);
-                self.ast.nodes.push(Node::ElseIf { condition: parsed_condition_index });
+                let parsed_condition_index = self.tast.new_expression(parsed_condition);
+                self.tast.nodes.push(Node::ElseIf { condition: parsed_condition_index });
                 self.scope()
             },
             st::Node::Else { .. } => {
-                self.ast.nodes.push(Node::Else);
+                self.tast.nodes.push(Node::Else);
                 self.scope()
             },
             st::Node::Loop { loop_column, condition } => {
                 let parsed_condition = self.loop_condition(*loop_column, *condition)?;
-                let parsed_condition_index = self.ast.new_expression(parsed_condition);
-                self.ast.nodes.push(Node::Loop { condition: parsed_condition_index });
+                let parsed_condition_index = self.tast.new_expression(parsed_condition);
+                self.tast.nodes.push(Node::Loop { condition: parsed_condition_index });
                 self.scope()
             },
             st::Node::DoLoop { loop_column, condition, .. } => {
                 let parsed_condition = self.loop_condition(*loop_column, *condition)?;
-                let parsed_condition_index = self.ast.new_expression(parsed_condition);
-                self.ast.nodes.push(Node::DoLoop { condition: parsed_condition_index });
+                let parsed_condition_index = self.tast.new_expression(parsed_condition);
+                self.tast.nodes.push(Node::DoLoop { condition: parsed_condition_index });
                 self.scope()
             },
             st::Node::Break { .. } => Ok(ParsedNode::Node(Node::Break)),
@@ -1551,9 +1528,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         };
         return Ok(ParsedNode::ScopeEnd);
     }
-}
 
-impl<'code> Parser<'_, '_, '_, 'code, '_> {
     #[expect(clippy::panic)]
     #[track_caller]
     fn invalid_node(
@@ -1601,6 +1576,29 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             "invalid scope index".into(),
             "should have been caught during syntax tree parsing".into(),
         );
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+struct Peeked<'st, 'code: 'st> {
+    node: &'st st::Node<'code>,
+    index: st::NodeIndex<'code>,
+}
+
+impl<'st, 'code: 'st> Parser<'st, '_, '_, 'code, '_> {
+    fn peek_next_node(&self) -> Option<Peeked<'st, 'code>> {
+        let node_index_end = st::NodeIndex::new(self.syntax_tree.nodes.len());
+        for next_node_index in self.node_index.0..node_index_end.0 {
+            let next_node_index_index = st::NodeIndex::new_offset32(next_node_index);
+            let next_node = &self.syntax_tree.nodes[next_node_index_index];
+            let st::Node::Semicolon { .. } = next_node else {
+                let peeked_node_index_index =
+                    st::NodeIndex::new_offset32(next_node_index_index.0 + 1);
+                return Some(Peeked { node: next_node, index: peeked_node_index_index });
+            };
+        }
+
+        return None;
     }
 }
 
@@ -2026,7 +2024,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         loop {
             let scope = &self.scopes[scope_index];
             for var_index in &scope.let_variables {
-                let var = &self.ast.variables[*var_index];
+                let var = &self.tast.variables[*var_index];
                 let var_name_text = self.tokens.text[var.name];
                 if var_name_text == name {
                     return Some(*var_index);
@@ -2045,7 +2043,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         loop {
             let scope = &self.scopes[scope_index];
             for var_index in &scope.var_variables {
-                let var = &self.ast.variables[*var_index];
+                let var = &self.tast.variables[*var_index];
                 let var_name_text = self.tokens.text[var.name];
                 if var_name_text == name {
                     return Some(*var_index);
@@ -2211,7 +2209,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 item_index.0 += 1;
 
                 let parsed_first_item = self.expression(first_item.expression, None)?;
-                let mut expected_array_items_type = parsed_first_item.typ(&self.ast);
+                let mut expected_array_items_type = parsed_first_item.typ(&self.tast);
                 if let Type::Array { .. } = expected_array_items_type {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
@@ -2231,7 +2229,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 }
                 let expected_array_items_type_hint = Some(&expected_array_items_type);
 
-                let parsed_first_item_index = self.ast.new_expression(parsed_first_item);
+                let parsed_first_item_index = self.tast.new_expression(parsed_first_item);
                 self.temp_array_items.push(parsed_first_item_index);
 
                 let items_end = (items_start.0 + items_len) as usize;
@@ -2241,7 +2239,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
                     let parsed_item =
                         self.expression(item.expression, expected_array_items_type_hint)?;
-                    let parsed_item_type = parsed_item.typ(&self.ast);
+                    let parsed_item_type = parsed_item.typ(&self.tast);
                     if let Type::Array { .. } = parsed_item_type {
                         return Err(Msg {
                             severity: MsgSeverity::Error,
@@ -2250,12 +2248,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             pointers_count: self.first_token_display_len(item.expression),
                         });
                     }
-                    let parsed_item_index = self.ast.new_expression(parsed_item);
+                    let parsed_item_index = self.tast.new_expression(parsed_item);
                     self.temp_array_items.push(parsed_item_index);
                 }
 
                 let array_items = &self.temp_array_items[temp_array_items_start..];
-                self.ast.array_items.extend_from_slice(array_items);
+                self.tast.array_items.extend_from_slice(array_items);
 
                 let array_expression = Expression::Array {
                     base_type: expected_array_items_type.base_typ(),
@@ -2272,12 +2270,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             st::Expression::Prefix { operator, operator_column, right_operand } => match operator {
                 st::PrefixOp::Len => {
                     let right_operand_expression = self.expression(*right_operand, None)?;
-                    let right_operand_type = right_operand_expression.typ(&self.ast);
+                    let right_operand_type = right_operand_expression.typ(&self.tast);
                     match right_operand_type {
                         Type::Base(BaseType::Str) | Type::Array { .. } => Expression::Prefix {
                             operator: (*operator).into(),
                             operator_column: *operator_column,
-                            right_operand: self.ast.new_expression(right_operand_expression),
+                            right_operand: self.tast.new_expression(right_operand_expression),
                         },
                         Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => {
                             return Err(Msg {
@@ -2291,17 +2289,17 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 },
                 st::PrefixOp::Not => {
                     let right_operand_expression = self.expression(*right_operand, None)?;
-                    let right_operand_type = right_operand_expression.typ(&self.ast);
+                    let right_operand_type = right_operand_expression.typ(&self.tast);
                     match right_operand_type {
                         Type::Base(BaseType::Ascii | BaseType::I64) => Expression::Prefix {
                             operator: (*operator).into(),
                             operator_column: *operator_column,
-                            right_operand: self.ast.new_expression(right_operand_expression),
+                            right_operand: self.tast.new_expression(right_operand_expression),
                         },
                         Type::Base(BaseType::Bool) => Expression::BooleanPrefix {
                             operator: (*operator).into(),
                             operator_column: *operator_column,
-                            right_operand: self.ast.new_expression(right_operand_expression),
+                            right_operand: self.tast.new_expression(right_operand_expression),
                         },
                         Type::Base(BaseType::Str) | Type::Array { .. } => {
                             return Err(Msg {
@@ -2315,12 +2313,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 },
                 st::PrefixOp::Plus | st::PrefixOp::WrappingPlus | st::PrefixOp::SaturatingPlus => {
                     let right_operand_expression = self.expression(*right_operand, None)?;
-                    let right_operand_type = right_operand_expression.typ(&self.ast);
+                    let right_operand_type = right_operand_expression.typ(&self.tast);
                     match right_operand_type {
                         Type::Base(BaseType::I64) => Expression::Prefix {
                             operator: (*operator).into(),
                             operator_column: *operator_column,
-                            right_operand: self.ast.new_expression(right_operand_expression),
+                            right_operand: self.tast.new_expression(right_operand_expression),
                         },
                         Type::Base(BaseType::Bool | BaseType::Ascii | BaseType::Str)
                         | Type::Array { .. } => {
@@ -2368,7 +2366,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             Expression::Prefix {
                                 operator: (*operator).into(),
                                 operator_column: *operator_column,
-                                right_operand: self.ast.new_expression(right_operand_expression),
+                                right_operand: self.tast.new_expression(right_operand_expression),
                             }
                         },
                         st::Expression::OctalInteger { literal, column } => {
@@ -2401,7 +2399,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             Expression::Prefix {
                                 operator: (*operator).into(),
                                 operator_column: *operator_column,
-                                right_operand: self.ast.new_expression(right_operand_expression),
+                                right_operand: self.tast.new_expression(right_operand_expression),
                             }
                         },
                         st::Expression::DecimalInteger { literal, column } => {
@@ -2434,7 +2432,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             Expression::Prefix {
                                 operator: (*operator).into(),
                                 operator_column: *operator_column,
-                                right_operand: self.ast.new_expression(right_operand_expression),
+                                right_operand: self.tast.new_expression(right_operand_expression),
                             }
                         },
                         st::Expression::DecimalIntegerPrefix { literal, column } => {
@@ -2467,7 +2465,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             Expression::Prefix {
                                 operator: (*operator).into(),
                                 operator_column: *operator_column,
-                                right_operand: self.ast.new_expression(right_operand_expression),
+                                right_operand: self.tast.new_expression(right_operand_expression),
                             }
                         },
                         st::Expression::HexadecimalInteger { literal, column } => {
@@ -2500,7 +2498,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             Expression::Prefix {
                                 operator: (*operator).into(),
                                 operator_column: *operator_column,
-                                right_operand: self.ast.new_expression(right_operand_expression),
+                                right_operand: self.tast.new_expression(right_operand_expression),
                             }
                         },
                         st::Expression::Array { .. }
@@ -2517,7 +2515,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         | st::Expression::Parenthesis { .. }
                         | st::Expression::Index { .. } => {
                             let right_operand_expression = self.expression(*right_operand, None)?;
-                            let right_operand_type = right_operand_expression.typ(&self.ast);
+                            let right_operand_type = right_operand_expression.typ(&self.tast);
                             match right_operand_type {
                                 Type::Base(BaseType::I64 | BaseType::Ascii)
                                 | Type::Array {
@@ -2526,7 +2524,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                     operator: (*operator).into(),
                                     operator_column: *operator_column,
                                     right_operand: self
-                                        .ast
+                                        .tast
                                         .new_expression(right_operand_expression),
                                 },
                                 Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
@@ -2545,10 +2543,10 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             },
             st::Expression::Binary { left_operand, operator, operator_column, right_operand } => {
                 let left_operand_expression = self.expression(*left_operand, None)?;
-                let left_operand_type = left_operand_expression.typ(&self.ast);
+                let left_operand_type = left_operand_expression.typ(&self.tast);
 
                 let right_operand_expression = self.expression(*right_operand, None)?;
-                let right_operand_type = right_operand_expression.typ(&self.ast);
+                let right_operand_type = right_operand_expression.typ(&self.tast);
 
                 match operator {
                     st::BinaryOp::Pow
@@ -2607,10 +2605,10 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         }
 
                         Expression::Binary {
-                            left_operand: self.ast.new_expression(left_operand_expression),
+                            left_operand: self.tast.new_expression(left_operand_expression),
                             operator: (*operator).into(),
                             operator_column: *operator_column,
-                            right_operand: self.ast.new_expression(right_operand_expression),
+                            right_operand: self.tast.new_expression(right_operand_expression),
                         }
                     },
 
@@ -2648,10 +2646,10 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         }
 
                         Expression::BooleanBinary {
-                            left_operand: self.ast.new_expression(left_operand_expression),
+                            left_operand: self.tast.new_expression(left_operand_expression),
                             operator: (*operator).into(),
                             operator_column: *operator_column,
-                            right_operand: self.ast.new_expression(right_operand_expression),
+                            right_operand: self.tast.new_expression(right_operand_expression),
                         }
                     },
 
@@ -2678,10 +2676,10 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         }
 
                         Expression::Comparison {
-                            left_operand: self.ast.new_expression(left_operand_expression),
+                            left_operand: self.tast.new_expression(left_operand_expression),
                             operator: (*operator).into(),
                             operator_column: *operator_column,
-                            right_operand: self.ast.new_expression(right_operand_expression),
+                            right_operand: self.tast.new_expression(right_operand_expression),
                         }
                     },
                     st::BinaryOp::EqualsEquals
@@ -2712,10 +2710,10 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         }
 
                         Expression::BooleanComparison {
-                            left_operand: self.ast.new_expression(left_operand_expression),
+                            left_operand: self.tast.new_expression(left_operand_expression),
                             operator: (*operator).into(),
                             operator_column: *operator_column,
-                            right_operand: self.ast.new_expression(right_operand_expression),
+                            right_operand: self.tast.new_expression(right_operand_expression),
                         }
                     },
                 }
@@ -2740,12 +2738,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     });
                 };
 
-                let indexed_expression_type = indexed_expression_expression.typ(&self.ast);
+                let indexed_expression_type = indexed_expression_expression.typ(&self.tast);
                 match indexed_expression_type {
                     Type::Base(BaseType::Str) | Type::Array { .. } => {
                         let index_expression_expression =
                             self.expression(*index_expression, None)?;
-                        let index_expression_type = index_expression_expression.typ(&self.ast);
+                        let index_expression_type = index_expression_expression.typ(&self.tast);
                         match index_expression_type {
                             Type::Base(BaseType::I64) => {},
                             Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
@@ -2761,10 +2759,10 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
                         Expression::Index {
                             indexed_expression: self
-                                .ast
+                                .tast
                                 .new_expression(indexed_expression_expression),
                             open_square_bracket_column: *open_square_bracket_column,
-                            index_expression: self.ast.new_expression(index_expression_expression),
+                            index_expression: self.tast.new_expression(index_expression_expression),
                         }
                     },
                     Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => {
@@ -2796,7 +2794,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         expected_type: &Type,
         expression: &Expression<'code>,
     ) -> Result<(), Msg<ErrorKind>> {
-        let expression_type = expression.typ(&self.ast);
+        let expression_type = expression.typ(&self.tast);
         if expression_type != *expected_type {
             return Err(Msg {
                 severity: MsgSeverity::Error,
@@ -2818,7 +2816,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         expected_type: Option<&Type>,
     ) -> Result<ExpressionIndex<'code>, Msg<ErrorKind>> {
         let expression = self.expression(st_expression_index, expected_type)?;
-        let expression_index = self.ast.new_expression(expression);
+        let expression_index = self.tast.new_expression(expression);
         return Ok(expression_index);
     }
 }
@@ -3009,16 +3007,16 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 (self.expression(*expression, Some(&expression_type))?, expression_type)
             } else {
                 let parsed_expression = self.expression(*expression, None)?;
-                let expression_type = parsed_expression.typ(&self.ast);
+                let expression_type = parsed_expression.typ(&self.tast);
                 (parsed_expression, expression_type)
             };
 
         let variable = VariableDefinition {
             name: *name,
             typ: expression_type,
-            initial_value: self.ast.new_expression(parsed_expression),
+            initial_value: self.tast.new_expression(parsed_expression),
         };
-        let variable_index = self.ast.new_variable(variable);
+        let variable_index = self.tast.new_variable(variable);
         return Ok(variable_index);
     }
 }
@@ -3034,10 +3032,10 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         let parsed_target = self.expression(target, None)?;
 
         let parsed_new_value = self.expression(new_value, None)?;
-        let parsed_new_value_type = parsed_new_value.typ(&self.ast);
+        let parsed_new_value_type = parsed_new_value.typ(&self.tast);
         let parsed_target_type = match &parsed_target {
             Expression::Variable { variable, column } => {
-                let variable_definition = &self.ast.variables[*variable];
+                let variable_definition = &self.tast.variables[*variable];
                 let variable_name_text = self.tokens.text[variable_definition.name];
                 if let Some(_) = self.resolve_let_variable(variable_name_text) {
                     return Err(Msg {
@@ -3051,12 +3049,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 variable_definition.typ.clone()
             },
             Expression::Index { indexed_expression, .. } => {
-                let mut base_indexed = &self.ast.expressions[*indexed_expression];
+                let mut base_indexed = &self.tast.expressions[*indexed_expression];
                 while let Expression::Index {
                     indexed_expression: inner_indexed_expression, ..
                 } = base_indexed
                 {
-                    base_indexed = &self.ast.expressions[*inner_indexed_expression];
+                    base_indexed = &self.tast.expressions[*inner_indexed_expression];
                 }
 
                 let Expression::Variable { variable, column } = base_indexed else {
@@ -3068,7 +3066,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     });
                 };
 
-                let variable_definition = &self.ast.variables[*variable];
+                let variable_definition = &self.tast.variables[*variable];
                 let variable_name_text = self.tokens.text[variable_definition.name];
                 if let Some(_) = self.resolve_let_variable(variable_name_text) {
                     return Err(Msg {
@@ -3080,7 +3078,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     });
                 }
 
-                if let base_type @ BaseType::Str = variable_definition.typ.base_typ() {
+                if let Type::Base(BaseType::Str) = variable_definition.typ {
                     if let BaseType::Ascii = parsed_new_value_type.base_typ() {
                         return Err(Msg {
                             severity: MsgSeverity::Error,
@@ -3090,9 +3088,9 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             pointers_count: variable_name_text.len() as offset32,
                         });
                     }
-                    Type::Base(base_type)
+                    Type::Base(BaseType::Str)
                 } else {
-                    variable_definition.typ.clone()
+                    Type::Base(variable_definition.typ.base_typ())
                 }
             },
             Expression::False { .. }
@@ -3131,9 +3129,9 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 }
 
                 Node::Assignment {
-                    target: self.ast.new_expression(parsed_target),
+                    target: self.tast.new_expression(parsed_target),
                     operator: AssignmentOp::Equals,
-                    new_value: self.ast.new_expression(parsed_new_value),
+                    new_value: self.tast.new_expression(parsed_new_value),
                 }
             },
 
@@ -3219,10 +3217,10 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 }
 
                 Node::BinaryAssignment {
-                    target: self.ast.new_expression(parsed_target),
+                    target: self.tast.new_expression(parsed_target),
                     operator: operator.into(),
                     operator_column,
-                    new_value: self.ast.new_expression(parsed_new_value),
+                    new_value: self.tast.new_expression(parsed_new_value),
                 }
             },
             st::BinaryAssignmentOp::And | st::BinaryAssignmentOp::Or => {
@@ -3259,10 +3257,10 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 }
 
                 Node::BooleanAssignmentExpression {
-                    target: self.ast.new_expression(parsed_target),
+                    target: self.tast.new_expression(parsed_target),
                     operator: operator.into(),
                     operator_column,
-                    new_value: self.ast.new_expression(parsed_new_value),
+                    new_value: self.tast.new_expression(parsed_new_value),
                 }
             },
         };
@@ -3280,7 +3278,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
         let parsed_target_type = match &parsed_target {
             Expression::Variable { variable, column } => {
-                let variable_definition = &self.ast.variables[*variable];
+                let variable_definition = &self.tast.variables[*variable];
                 let variable_name_text = self.tokens.text[variable_definition.name];
                 if let Some(_) = self.resolve_let_variable(variable_name_text) {
                     return Err(Msg {
@@ -3294,12 +3292,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 variable_definition.typ.clone()
             },
             Expression::Index { indexed_expression, .. } => {
-                let mut base_indexed = &self.ast.expressions[*indexed_expression];
+                let mut base_indexed = &self.tast.expressions[*indexed_expression];
                 while let Expression::Index {
                     indexed_expression: inner_indexed_expression, ..
                 } = base_indexed
                 {
-                    base_indexed = &self.ast.expressions[*inner_indexed_expression];
+                    base_indexed = &self.tast.expressions[*inner_indexed_expression];
                 }
 
                 let Expression::Variable { variable, column } = base_indexed else {
@@ -3311,7 +3309,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     });
                 };
 
-                let variable_definition = &self.ast.variables[*variable];
+                let variable_definition = &self.tast.variables[*variable];
                 let variable_name_text = self.tokens.text[variable_definition.name];
                 if let Some(_) = self.resolve_let_variable(variable_name_text) {
                     return Err(Msg {
@@ -3349,12 +3347,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         let assignment_node = match operator {
             st::PrefixAssignmentOp::NotEquals => match parsed_target_type {
                 Type::Base(BaseType::Ascii | BaseType::I64) => Node::PrefixAssignmentExpression {
-                    target: self.ast.new_expression(parsed_target),
+                    target: self.tast.new_expression(parsed_target),
                     operator: operator.into(),
                     operator_column,
                 },
                 Type::Base(BaseType::Bool) => Node::BooleanPrefixAssignment {
-                    target: self.ast.new_expression(parsed_target),
+                    target: self.tast.new_expression(parsed_target),
                     operator: operator.into(),
                     operator_column,
                 },
@@ -3385,7 +3383,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 }
 
                 Node::PrefixAssignmentExpression {
-                    target: self.ast.new_expression(parsed_target),
+                    target: self.tast.new_expression(parsed_target),
                     operator: operator.into(),
                     operator_column,
                 }
@@ -3407,7 +3405,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 }
 
                 Node::PrefixAssignmentExpression {
-                    target: self.ast.new_expression(parsed_target),
+                    target: self.tast.new_expression(parsed_target),
                     operator: operator.into(),
                     operator_column,
                 }
@@ -3425,7 +3423,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         condition: st::ExpressionIndex<'code>,
     ) -> Result<Expression<'code>, Msg<ErrorKind>> {
         let condition_expression = self.expression(condition, None)?;
-        let condition_expression_type = condition_expression.typ(&self.ast);
+        let condition_expression_type = condition_expression.typ(&self.tast);
         let Type::Base(BaseType::Bool) = condition_expression_type else {
             return Err(Msg {
                 severity: MsgSeverity::Error,
@@ -3446,7 +3444,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         condition: st::ExpressionIndex<'code>,
     ) -> Result<Expression<'code>, Msg<ErrorKind>> {
         let condition_expression = self.expression(condition, None)?;
-        let condition_expression_type = condition_expression.typ(&self.ast);
+        let condition_expression_type = condition_expression.typ(&self.tast);
         let Type::Base(BaseType::Bool) = condition_expression_type else {
             return Err(Msg {
                 severity: MsgSeverity::Error,
