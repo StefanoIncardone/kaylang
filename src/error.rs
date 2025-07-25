@@ -30,12 +30,12 @@ impl DisplayLen for str {
 }
 
 #[derive(Clone)]
-pub struct Msg<'kind, 'message> {
+pub struct MsgSimple<'kind, 'message> {
     pub kind: &'kind dyn Display,
     pub message: &'message dyn Display,
 }
 
-impl Display for Msg<'_, '_> {
+impl Display for MsgSimple<'_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return write!(f, "{kind}: {message}", kind = self.kind, message = self.message);
     }

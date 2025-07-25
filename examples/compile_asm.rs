@@ -36,7 +36,7 @@ fn main() -> ExitCode {
         match assembler_result {
             Ok(output) => {
                 if !output.status.success() {
-                    let error = error::Msg {
+                    let error = error::MsgSimple {
                         kind: &ASSEMBLING_ERROR,
                         message: &String::from_utf8_lossy(&output.stderr),
                     };
@@ -49,7 +49,7 @@ fn main() -> ExitCode {
                 }
             },
             Err(err) => {
-                let error = error::Msg { kind: &COULD_NOT_RUN_ASSEMBLER, message: &err };
+                let error = error::MsgSimple { kind: &COULD_NOT_RUN_ASSEMBLER, message: &err };
                 eprintln!("{error}");
                 return ExitCode::FAILURE;
             },
@@ -64,7 +64,7 @@ fn main() -> ExitCode {
         match linker_result {
             Ok(output) => {
                 if !output.status.success() {
-                    let error = error::Msg {
+                    let error = error::MsgSimple {
                         kind: &LINKING_ERROR,
                         message: &String::from_utf8_lossy(&output.stderr),
                     };
@@ -77,7 +77,7 @@ fn main() -> ExitCode {
                 }
             },
             Err(err) => {
-                let error = error::Msg { kind: &COULD_NOT_RUN_LINKER, message: &err };
+                let error = error::MsgSimple { kind: &COULD_NOT_RUN_LINKER, message: &err };
                 eprintln!("{error}");
                 return ExitCode::FAILURE;
             },
