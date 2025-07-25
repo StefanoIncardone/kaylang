@@ -574,13 +574,13 @@ pub struct SyntaxTreeDisplay<'syntax_tree, 'tokens: 'syntax_tree, 'code: 'tokens
     pub(crate) tokens: &'tokens Tokens<'code>,
 }
 
-impl<'tokens, 'code: 'tokens> SyntaxTree<'tokens, 'code> {
+impl<'tokens> SyntaxTree<'tokens, '_> {
     #[must_use]
     #[inline(always)]
     pub const fn display(
         &self,
-        tokens: &'tokens Tokens<'code>,
-    ) -> SyntaxTreeDisplay<'_, 'tokens, 'code> {
+        tokens: &'tokens Tokens<'_>,
+    ) -> SyntaxTreeDisplay<'_, 'tokens, '_> {
         return SyntaxTreeDisplay { syntax_tree: self, tokens };
     }
 }
@@ -745,7 +745,6 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
         expression_index: ExpressionIndex<'_>,
         indent: usize,
     ) -> core::fmt::Result {
-        let expression_indent = indent + Self::INDENT_INCREMENT;
         let expression = &self.syntax_tree.expressions[expression_index];
 
         #[rustfmt::skip]
@@ -798,6 +797,7 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 items_len,
                 close_square_bracket_column
             } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}Array", "")?;
                 writeln!(f, "{:>expression_indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
 
@@ -819,6 +819,7 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 items_len,
                 close_square_bracket_column
             } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}Array", "")?;
                 writeln!(f, "{:>expression_indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
 
@@ -841,11 +842,13 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
             }
 
             Expression::Prefix { operator, operator_column, right_operand } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}PrefixExpression", "")?;
                 writeln!(f, "{:>expression_indent$}PrefixOp: {operator_column} = {operator}", "")?;
                 self.info_expression(f, *right_operand, expression_indent)
             }
             Expression::Binary { left_operand, operator, operator_column, right_operand } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}BinaryExpression", "")?;
                 self.info_expression(f, *left_operand, expression_indent)?;
                 writeln!(f, "{:>expression_indent$}BinaryOp: {operator_column} = {operator}", "")?;
@@ -857,6 +860,7 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 inner_expression,
                 close_round_bracket_column
             } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:indent$}ParenthesisExpression", "")?;
                 writeln!(f, "{:>expression_indent$}OpenRoundBracket: {open_round_bracket_column} = (", "")?;
                 self.info_expression(f, *inner_expression, expression_indent)?;
@@ -869,6 +873,7 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 index_expression,
                 close_square_bracket_column
             } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:indent$}IndexExpression", "")?;
                 self.info_expression(f, *indexed_expression, expression_indent)?;
                 writeln!(f, "{:>expression_indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
@@ -965,11 +970,6 @@ pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     syntax_tree: SyntaxTree<'tokens, 'code>,
 }
 
-/* NOTE(stefano):
-only parsing until the first error until a fault tolerant parser is developed,
-this is because the first truly relevant error is the first one, which in turn causes a ripple
-effect that propagates to the rest of the parsing, causing subsequent errors to be wrong
-*/
 impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'code, 'path> {
     #[expect(clippy::missing_errors_doc)]
     pub fn parse(
@@ -1020,9 +1020,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
 
         return if parser.errors.is_empty() { Ok(parser.syntax_tree) } else { Err(parser.errors) };
     }
-}
 
-impl<'code> Parser<'_, '_, 'code, '_> {
     fn any(&mut self, token: Token<'code>) -> Result<ParsedNode<'code>, ()> {
         return match token.kind {
             TokenKind::Op(
@@ -1453,9 +1451,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         self.token_index = peeked.index;
         return Ok(peeked.token.col);
     }
-}
 
-impl<'code> Parser<'_, '_, 'code, '_> {
     #[expect(clippy::panic)]
     #[track_caller]
     fn invalid_token(

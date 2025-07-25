@@ -20,6 +20,7 @@ pub(crate) type ascii = u8;
 /// kay's utf32 character type
 pub(crate) type utf32 = char;
 
+// IDEA(stefano): make composable by or-ing components such as BaseOp and OpModifier
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Op {
@@ -201,7 +202,7 @@ impl Display for Op {
 }
 
 impl Op {
-    pub(super) const fn display_len(self) -> offset32 {
+    pub(crate) const fn display_len(self) -> offset32 {
         return match self {
             Self::Len => 3,
             Self::Equals => 1,
@@ -350,7 +351,7 @@ pub(crate) enum TokenKind<'code> {
 }
 
 impl<'code> TokenKind<'code> {
-    pub(super) fn display_len(self, tokens: &Tokens<'code>) -> offset32 {
+    pub(crate) fn display_len(self, tokens: &Tokens<'code>) -> offset32 {
         #[expect(clippy::cast_possible_truncation)]
         return match self {
             Self::LineComment(comment) => {
