@@ -1,5 +1,7 @@
 use crate::front_end::{
-    src_file::DisplayPosition, tokenizer::{Base, TokenKind, Tokens}, MsgDisplay, MsgSeverity, SliceIndexPtr
+    src_file::DisplayPosition,
+    tokenizer::{Base, TokenKind, Tokens},
+    MsgDisplay, MsgSeverity, SliceIndexPtr,
 };
 use back_to_front::offset32;
 
@@ -7,7 +9,7 @@ use super::{
     src_file::SrcCode,
     syntax_tree::{self as st, SyntaxTree},
     tokenizer::{ascii, Op, TextIndex},
-    Msg, MsgInfo, IntoMsgInfo,
+    IntoMsgInfo, Msg, MsgInfo,
 };
 use core::{fmt::Display, marker::PhantomData};
 extern crate alloc;
@@ -28,17 +30,30 @@ impl BaseType {
     pub(crate) const BOOL_STR: &str = "bool";
     pub(crate) const STR_STR: &str = "str";
 
+    #[expect(clippy::single_call_fn)]
     #[must_use]
     #[inline]
-    fn matches(self, name: &str) -> bool {
-        let self_str = match self {
-            Self::I64 => Self::I64_STR,
-            Self::Ascii => Self::ASCII_STR,
-            Self::Bool => Self::BOOL_STR,
-            Self::Str => Self::STR_STR,
+    fn from_str(name: &str) -> Option<Self> {
+        return match name {
+            Self::I64_STR => Some(Self::I64),
+            Self::ASCII_STR => Some(Self::Ascii),
+            Self::BOOL_STR => Some(Self::Bool),
+            Self::STR_STR => Some(Self::Str),
+            _ => None,
         };
-        return name == self_str;
     }
+
+    // #[must_use]
+    // #[inline]
+    // fn matches(self, name: &str) -> bool {
+    //     let self_str = match self {
+    //         Self::I64 => Self::I64_STR,
+    //         Self::Ascii => Self::ASCII_STR,
+    //         Self::Bool => Self::BOOL_STR,
+    //         Self::Str => Self::STR_STR,
+    //     };
+    //     return name == self_str;
+    // }
 }
 
 impl BaseType {
@@ -926,7 +941,7 @@ pub(crate) type ScopeIndex<'code> = SliceIndexPtr<Scope<'code>>;
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct Scope<'code> {
     pub(crate) parent: ScopeIndex<'code>,
-    pub(crate) types: Vec<BaseType>,
+    // pub(crate) types: Vec<BaseType>,
     pub(crate) let_variables: Vec<VariableDefinitionIndex<'code>>,
     pub(crate) var_variables: Vec<VariableDefinitionIndex<'code>>,
 }
@@ -1037,12 +1052,7 @@ pub struct TypedSyntaxTree<'st, 'tokens: 'st, 'code: 'tokens> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct TypedSyntaxTreeDisplay<
-    'tast,
-    'st: 'tast,
-    'tokens: 'st,
-    'code: 'tokens,
-> {
+pub struct TypedSyntaxTreeDisplay<'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens> {
     pub(crate) typed_syntax_tree: &'tast TypedSyntaxTree<'st, 'tokens, 'code>,
     pub(crate) tokens: &'tokens Tokens<'code>,
 }
@@ -1372,7 +1382,7 @@ impl<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code>
             scope: ScopeIndex::new(0),
             scopes: vec![Scope {
                 parent: ScopeIndex::new(0),
-                types: vec![BaseType::I64, BaseType::Ascii, BaseType::Bool, BaseType::Str],
+                // types: vec![BaseType::I64, BaseType::Ascii, BaseType::Bool, BaseType::Str],
                 let_variables: Vec::new(),
                 var_variables: Vec::new(),
             }],
@@ -1393,7 +1403,7 @@ impl<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code>
             };
         }
 
-        return if parser.errors.is_empty() { Ok(parser.tast) } else { Err(parser.errors) };
+        return if parser.errors.len() == 0 { Ok(parser.tast) } else { Err(parser.errors) };
     }
 
     fn any(&mut self, node: &st::Node<'code>) -> Result<ParsedNode<'code>, Msg<ErrorKind>> {
@@ -1448,7 +1458,7 @@ impl<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code>
                 self.scope = ScopeIndex::new(self.scopes.len());
                 self.scopes.push(Scope {
                     parent: current_scope_index,
-                    types: Vec::new(),
+                    // types: Vec::new(),
                     let_variables: Vec::new(),
                     var_variables: Vec::new(),
                 });
@@ -2057,21 +2067,24 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         }
     }
 
+    #[expect(clippy::unused_self)]
     fn resolve_type(&self, name: &'code str) -> Option<BaseType> {
-        let mut scope_index = self.scope;
-        loop {
-            let scope = &self.scopes[scope_index];
-            for typ in &scope.types {
-                if typ.matches(name) {
-                    return Some(*typ);
-                }
-            }
+        return BaseType::from_str(name);
 
-            scope_index = match scope_index.0 {
-                0 => return None,
-                _ => scope.parent,
-            };
-        }
+        // let mut scope_index = self.scope;
+        // loop {
+        //     let scope = &self.scopes[scope_index];
+        //     for typ in &scope.types {
+        //         if typ.matches(name) {
+        //             return Some(*typ);
+        //         }
+        //     }
+
+        //     scope_index = match scope_index.0 {
+        //         0 => return None,
+        //         _ => scope.parent,
+        //     };
+        // }
     }
 
     fn expression(

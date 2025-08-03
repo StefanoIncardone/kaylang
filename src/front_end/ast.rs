@@ -820,7 +820,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
             raw_string_labels: Vec::new(),
         };
 
-        if tokens.tokens.is_empty() {
+        if tokens.tokens.len() == 0 {
             return Ok(ast);
         }
 
@@ -854,7 +854,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
 
         parser.scope();
 
-        return if parser.errors.is_empty() { Ok(parser.ast) } else { Err(parser.errors) };
+        return if parser.errors.len() == 0 { Ok(parser.ast) } else { Err(parser.errors) };
     }
 }
 

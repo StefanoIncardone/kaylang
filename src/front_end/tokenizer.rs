@@ -1145,7 +1145,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
         }
 
         let result =
-            if tokenizer.errors.is_empty() { Ok(tokenizer.tokens) } else { Err(tokenizer.errors) };
+            if tokenizer.errors.len() == 0 { Ok(tokenizer.tokens) } else { Err(tokenizer.errors) };
         return TokenizedCode { result, src: SrcCode { src_file, lines: tokenizer.lines } };
     }
 }

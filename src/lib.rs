@@ -1,3 +1,4 @@
+// TODO(stefano): add `#[must_use]` everywhere
 #![warn(clippy::print_stdout, clippy::print_stderr)]
 
 #[cfg(not(target_pointer_width = "64"))]
@@ -975,7 +976,7 @@ impl<'args> ArgsParser<'args> {
             parser.arg_index += 1;
         }
 
-        if !parser.errors.is_empty() {
+        if parser.errors.len() != 0 {
             return Args { color: parser.color, command: Err(parser.errors) };
         }
 

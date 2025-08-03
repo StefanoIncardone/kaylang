@@ -486,7 +486,7 @@ pub(crate) enum Node<'code> {
         semicolon_column: offset32,
     },
 
-    // TODO(stefano): move to Expression
+    // TODO(stefano): parse in self.expression
     BinaryAssignment {
         target: ExpressionIndex<'code>,
         operator: BinaryAssignmentOp,
@@ -494,7 +494,7 @@ pub(crate) enum Node<'code> {
         new_value: ExpressionIndex<'code>,
         semicolon_column: offset32,
     },
-    // TODO(stefano): move to Expression
+    // TODO(stefano): parse in self.expression
     PrefixAssignment {
         operator: PrefixAssignmentOp,
         operator_column: offset32,
@@ -1018,7 +1018,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
             }
         }
 
-        return if parser.errors.is_empty() { Ok(parser.syntax_tree) } else { Err(parser.errors) };
+        return if parser.errors.len() == 0 { Ok(parser.syntax_tree) } else { Err(parser.errors) };
     }
 
     fn any(&mut self, token: Token<'code>) -> Result<ParsedNode<'code>, ()> {
