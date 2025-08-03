@@ -1,4 +1,3 @@
-// TODO(stefano): more escape characters
 // TODO(stefano): implement own escaping
 
 use super::{
@@ -1521,6 +1520,16 @@ impl<'code> Tokenizer<'code> {
         return Ok(TokenKind::HexadecimalInteger(literal_index));
     }
 
+    #[inline]
+    const fn escape_ascii(ch: ascii) -> Result<(), ()> {
+        // IDEA(stefano): ASCII escape characters: \aNUL, \aBEL, \aLF
+        // IDEA(stefano): binary\octal\decimal\hexadecimal escapes: \aNUL, \aBEL, \aLF
+        return match ch {
+            b'\\' | b'\'' | b'"' | b'n' | b'r' | b't' | b'0' => Ok(()),
+            _ => Err(()),
+        };
+    }
+
     fn ascii_literal(&mut self) -> Result<TokenKind<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
@@ -1582,18 +1591,15 @@ impl<'code> Tokenizer<'code> {
                     };
                     self.col += 1;
 
-                    match escape_character {
-                        b'\\' | b'\'' | b'"' | b'n' | b'r' | b't' | b'0' => {},
-                        unrecognized => {
-                            self.errors.push(Msg {
-                                severity: MsgSeverity::NonTerminalError,
-                                kind: ErrorKind::UnrecognizedEscapeCharacterInCharacterLiteral(
-                                    unrecognized,
-                                ),
-                                col: self.col - 2,
-                                pointers_count: 2,
-                            });
-                        },
+                    if let Err(()) = Self::escape_ascii(escape_character) {
+                        self.errors.push(Msg {
+                            severity: MsgSeverity::NonTerminalError,
+                            kind: ErrorKind::UnrecognizedEscapeCharacterInCharacterLiteral(
+                                escape_character,
+                            ),
+                            col: self.col - 2,
+                            pointers_count: 2,
+                        });
                     }
                 },
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
@@ -1698,18 +1704,15 @@ impl<'code> Tokenizer<'code> {
                     };
                     self.col += 1;
 
-                    match escape_character {
-                        b'\\' | b'\'' | b'"' | b'n' | b'r' | b't' | b'0' => {},
-                        unrecognized => {
-                            self.errors.push(Msg {
-                                severity: MsgSeverity::NonTerminalError,
-                                kind: ErrorKind::UnrecognizedEscapeCharacterInStrLiteral(
-                                    unrecognized,
-                                ),
-                                col: self.col - 2,
-                                pointers_count: 2,
-                            });
-                        },
+                    if let Err(()) = Self::escape_ascii(escape_character) {
+                        self.errors.push(Msg {
+                            severity: MsgSeverity::NonTerminalError,
+                            kind: ErrorKind::UnrecognizedEscapeCharacterInStrLiteral(
+                                escape_character,
+                            ),
+                            col: self.col - 2,
+                            pointers_count: 2,
+                        });
                     }
                 },
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
@@ -2108,73 +2111,130 @@ impl IntoMsgInfo for ErrorKind<'_> {
             ),
 
             Self::Utf8InDecimalNumberLiteral { grapheme } => (
-                format!("invalid decimal integer literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
+                format!(
+                    "invalid decimal integer literal character '{escaped}' ({raw})",
+                    escaped = grapheme.escape_unicode(),
+                    raw = grapheme,
+                ).into(),
             ),
             Self::LetterInDecimalNumberLiteral(letter) => (
-                format!("invalid integer literal letter '{}'", *letter as utf32).into(),
-                format!("not allowed in a base {} number", Base::Decimal as u8).into(),
+                "invalid integer literal".into(),
+                format!(
+                    "letter '{escaped}' ({raw}) not allowed in a base {} number",
+                    Base::Decimal as u8,
+                    escaped = *letter as utf32,
+                    raw = letter,
+                ).into(),
             ),
 
             Self::Utf8InBinaryNumberLiteral { grapheme } => (
-                format!("invalid binary integer literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
+                format!(
+                    "invalid binary integer literal character '{letter}' ({codepoint})",
+                    letter = grapheme,
+                    codepoint = grapheme.escape_unicode(),
+                ).into(),
             ),
             Self::LetterInBinaryNumberLiteral(letter) => (
-                format!("invalid integer literal letter '{}'", *letter as utf32).into(),
-                format!("not allowed in a base {} number", Base::Binary as u8).into(),
+                "invalid integer literal".into(),
+                format!(
+                    "letter '{escaped}' ({raw}) not allowed in a base {} number",
+                    Base::Binary as u8,
+                    escaped = *letter as utf32,
+                    raw = letter,
+                ).into(),
             ),
             Self::DigitOutOfRangeInBinaryNumberLiteral(digit) => {
                 const BASE: Base = Base::Binary;
                 (
-                    format!("invalid integer literal digit '{}'", *digit as utf32).into(),
-                    format!("out of the valid range for a base {} number {:?}", BASE as u8, BASE.range()).into(),
+                    "invalid integer literal".into(),
+                    format!(
+                        "digit '{escaped}' ({raw}) out of the valid range for a base {} number {:?}",
+                        BASE as u8,
+                        BASE.range(),
+                        escaped = *digit as utf32,
+                        raw = digit,
+                    ).into(),
                 )
             }
 
             Self::Utf8InOctalNumberLiteral { grapheme } => (
-                format!("invalid octal integer literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
+                format!(
+                    "invalid octal integer literal character '{letter}' ({codepoint})",
+                    letter = grapheme,
+                    codepoint = grapheme.escape_unicode(),
+                ).into(),
             ),
             Self::LetterInOctalNumberLiteral(letter) => (
-                format!("invalid integer literal letter '{}'", *letter as utf32).into(),
-                format!("not allowed in a base {} number", Base::Octal as u8).into(),
+                "invalid integer literal".into(),
+                format!(
+                    "letter '{escaped}' ({raw}) not allowed in a base {} number",
+                    Base::Octal as u8,
+                    escaped = *letter as utf32,
+                    raw = letter,
+                ).into(),
             ),
             Self::DigitOutOfRangeInOctalNumberLiteral(digit) => {
                 const BASE: Base = Base::Octal;
                 (
-                    format!("invalid integer literal digit '{}'", *digit as utf32).into(),
-                    format!("out of the valid range for a base {} number {:?}", BASE as u8, BASE.range()).into(),
+                    "invalid integer literal".into(),
+                    format!(
+                        "digit '{escaped}' ({raw}) out of the valid range for a base {} number {:?}",
+                        BASE as u8,
+                        BASE.range(),
+                        escaped = *digit as utf32,
+                        raw = digit,
+                    ).into(),
                 )
             }
 
             Self::Utf8InHexadecimalNumberLiteral { grapheme } => (
-                format!("invalid hexadecimal integer literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
+                format!(
+                    "invalid hexadecimal integer literal character '{letter}' ({codepoint})",
+                    letter = grapheme,
+                    codepoint = grapheme.escape_unicode(),
+                ).into(),
             ),
             Self::DigitOutOfRangeInHexadecimalNumberLiteral(digit) => {
                 const BASE: Base = Base::Hexadecimal;
                 (
-                    format!("invalid integer literal digit '{}'", *digit as utf32).into(),
-                    format!("out of the valid range for a base {} number {:?}", BASE as u8, BASE.range()).into(),
+                    "invalid integer literal".into(),
+                    format!(
+                        "digit '{escaped}' ({raw}) out of the valid range for a base {} number {:?}",
+                        BASE as u8,
+                        BASE.range(),
+                        escaped = *digit as utf32,
+                        raw = digit,
+                    ).into(),
                 )
             }
 
             Self::Utf8InCharacterLiteral { grapheme } => (
-                format!("invalid character literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
+                format!(
+                    "invalid character literal character '{letter}' ({codepoint})",
+                    letter = grapheme,
+                    codepoint = grapheme.escape_unicode(),
+                ).into(),
             ),
             Self::UnrecognizedEscapeCharacterInCharacterLiteral(unrecognized) => (
                 "invalid character literal".into(),
-                format!("unrecognized '{unrecognized}' escape character").into(),
+                format!(
+                    "unrecognized escape character '{letter}' ({codepoint})",
+                    letter = *unrecognized as utf32,
+                    codepoint = unrecognized,
+                ).into(),
             ),
             Self::ControlCharacterInCharacterLiteral(control_character) => (
-                format!(
-                    "invalid character literal character '{}' {}",
-                    control_character.escape_ascii(),
-                    (*control_character as utf32).escape_unicode()
-                ).into(),
                 "control characters are not allowed".into(),
+                format!(
+                    "invalid character literal character '{escaped}' ({raw})",
+                    escaped = control_character.escape_ascii(),
+                    raw = control_character,
+                ).into(),
             ),
             Self::UnclosedCharacterLiteral => (
                 "unclosed character literal".into(),
@@ -2190,20 +2250,28 @@ impl IntoMsgInfo for ErrorKind<'_> {
             ),
 
             Self::Utf8InStrLiteral { grapheme } => (
-                format!("invalid string literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
+                format!(
+                    "invalid string literal character '{letter}' ({codepoint})",
+                    letter = grapheme,
+                    codepoint = grapheme.escape_unicode(),
+                ).into(),
             ),
             Self::UnrecognizedEscapeCharacterInStrLiteral(unrecognized) => (
                 "invalid string literal".into(),
-                format!("unrecognized '{unrecognized}' escape character").into(),
+                format!(
+                    "unrecognized escape character '{escaped}' ({raw})",
+                    escaped = *unrecognized as utf32,
+                    raw = unrecognized,
+                ).into(),
             ),
             Self::ControlCharacterInStrLiteral(control_character) => (
-                format!(
-                    "invalid string literal character '{}' {}",
-                    control_character.escape_ascii(),
-                    (*control_character as utf32).escape_unicode()
-                ).into(),
                 "control characters are not allowed".into(),
+                format!(
+                    "invalid character literal character '{escaped}' ({raw})",
+                    escaped = control_character.escape_ascii(),
+                    raw = control_character,
+                ).into(),
             ),
             Self::UnclosedStrLiteral => (
                 "unclosed string literal".into(),
@@ -2211,20 +2279,28 @@ impl IntoMsgInfo for ErrorKind<'_> {
             ),
 
             Self::Utf8InRawStrLiteral { grapheme } => (
-                format!("invalid raw string literal character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
+                format!(
+                    "invalid raw string literal character '{letter}' ({codepoint})",
+                    letter = grapheme,
+                    codepoint = grapheme.escape_unicode(),
+                ).into(),
             ),
             Self::UnrecognizedEscapeCharacterInRawStrLiteral(unrecognized) => (
                 "invalid raw string literal".into(),
-                format!("unrecognized '{unrecognized}' escape character").into(),
+                format!(
+                    "unrecognized escape character '{escaped}' ({raw})",
+                    escaped = *unrecognized as utf32,
+                    raw = unrecognized,
+                ).into(),
             ),
             Self::ControlCharacterInRawStrLiteral(control_character) => (
-                format!(
-                    "invalid raw string literal character '{}' {}",
-                    control_character.escape_ascii(),
-                    (*control_character as utf32).escape_unicode()
-                ).into(),
                 "control characters are not allowed".into(),
+                format!(
+                    "invalid character literal character '{escaped}' ({raw})",
+                    escaped = control_character.escape_ascii(),
+                    raw = control_character,
+                ).into(),
             ),
             Self::UnclosedRawStrLiteral => (
                 "unclosed raw string literal".into(),
@@ -2232,16 +2308,20 @@ impl IntoMsgInfo for ErrorKind<'_> {
             ),
 
             Self::Utf8InIdentifierStr { grapheme } => (
-                format!("invalid identifier string character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
+                format!(
+                    "invalid identifier string character '{letter}' ({codepoint})",
+                    letter = grapheme,
+                    codepoint = grapheme.escape_unicode(),
+                ).into(),
             ),
             Self::ControlCharacterInIdentifierStr(control_character) => (
-                format!(
-                    "invalid identifier string character '{}' {}",
-                    control_character.escape_ascii(),
-                    (*control_character as utf32).escape_unicode()
-                ).into(),
                 "control characters are not allowed".into(),
+                format!(
+                    "invalid character literal character '{escaped}' ({raw})",
+                    escaped = control_character.escape_ascii(),
+                    raw = control_character,
+                ).into(),
             ),
             Self::UnclosedIdentifierStr => (
                 "unclosed identifier string".into(),
@@ -2253,8 +2333,12 @@ impl IntoMsgInfo for ErrorKind<'_> {
             ),
 
             Self::Utf8InIdentifier { grapheme } => (
-                format!("invalid identifier character '{grapheme}' {}", grapheme.escape_unicode()).into(),
                 "utf8 characters are not allowed".into(),
+                format!(
+                    "invalid identifier character '{letter}' ({codepoint})",
+                    letter = grapheme,
+                    codepoint = grapheme.escape_unicode(),
+                ).into(),
             ),
             Self::IdentifierTooLong { max } => (
                 "invalid identifier".into(),
@@ -2262,12 +2346,20 @@ impl IntoMsgInfo for ErrorKind<'_> {
             ),
 
             Self::Utf8Character { grapheme } => (
-                format!("invalid character '{grapheme}' {}", grapheme.escape_unicode()).into(),
-                "utf8 characters are not allowed".into()
+                "utf8 characters are not allowed".into(),
+                format!(
+                    "invalid character '{letter}' ({codepoint})",
+                    letter = grapheme,
+                    codepoint = grapheme.escape_unicode(),
+                ).into(),
             ),
             Self::UnrecognizedCharacter(unrecognized) => (
-                format!("invalid character '{unrecognized}' {}", unrecognized.escape_ascii()).into(),
                 "unrecognized".into(),
+                format!(
+                    "invalid character '{letter}' ({codepoint})",
+                    letter = *unrecognized as utf32,
+                    codepoint = unrecognized,
+                ).into(),
             ),
             // Self::StrayCarriageReturn => (
             //     "invalid line ending".into(),
