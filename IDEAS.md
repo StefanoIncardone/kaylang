@@ -393,7 +393,7 @@ case 19 {
 # switch statement:
 # - 1 level of indentation
 # - no additional keywords, let would become the "pattern matching" keyword
-# - would allow to mix and match patterns and regular comparisons 
+# - would allow to mix and match patterns and regular comparisons
 # - same semantics as a regular if statement
 #   - every case is like an `else if` branch
 if answer # note: this code makes no sense, it's just to showcase possible syntaxes
@@ -437,8 +437,8 @@ case 19 {
 # - short and concise
 # - can declare mutability modifiers `let` or `var` on matched values
 if answer
-case let Ok(ok) { println ok; } # ok is available only in the do statement and is immutable
-case var Err(err) { println err; } # err is available only in the do statement and is mutable
+case let Ok(ok) { println ok; } # ok is available only in the following block and is immutable
+case var Err(err) { println err; } # err is available only in the following block and is mutable
 case let Err2(var err1; err2) {
     println err1; # err1 is available only in this block and is mutable
     println err2; # err2 is available only in this block and is immutable
@@ -451,24 +451,17 @@ case var Err2(let err1; err2) {
 # could benefit from rust's mutability modifiers
 # - would get rid of the initial mutabilty modifiers
 if answer
-case Ok(ok) { println ok; } # ok is available only in the do statement and is immutable by default
+case Ok(let ok) { println ok; } # ok is available only in the following block and is immutable by default
 case Ok_b(let ok) { println ok; } # `let` is redundant
-case Err(var err) { println err; } # err is available only in the do statement and is mutable
-case Err2(var err1; err2) {
+case Err(var err) { println err; } # err is available only in the following block and is mutable
+case Err2(var err1; let err2) {
     println err1; # err1 is available only in this block and is mutable
     println err2; # err2 is available only in this block and is immutable
 }
 
 # rust-inspired let else syntax:
 # - `ok` will be available from now on
-let Ok(ok) = answer else {
-    println "err";
-    return; # branch need to diverge
-}
-
-# rust-inspired let else syntax, but more consistent with a regular pattern match:
-# - `ok` will be available from now on
-if Ok(let ok) = answer else {
+let case Ok(let ok) = answer else {
     println "err";
     return; # branch need to diverge
 }
@@ -477,7 +470,8 @@ if Ok(let ok) = answer else {
 # - literally just add the pattern corresponding to the err case
 # - 'err' will only be available in it's switch branch
 # - `case` required to allow for more consistency when adding multiple cases
-let Ok(ok) = answer else case let Err(err) {
+let case Ok(let ok) = answer else
+case Err(let err) {
     println err
     return;
 }
@@ -486,10 +480,10 @@ let Ok(ok) = answer else case let Err(err) {
 # - just add the other patterns
 # - debate wheter the repetition of the `else` kewword should be addressed
 let Ok(ok) = answer else
-case let Err0(err0) {
+case Err0(let err0) {
     println err0;
     return;
-} case var Err1(err1) {
+} case Err1(var err1) {
     println err1;
     return;
 } else {
@@ -499,13 +493,12 @@ case let Err0(err0) {
 
 # would just be syntactic sugar for
 let ok = if answer
-case let Ok(ok) {
+case Ok(let ok) {
     break ok;
-}
-case let Err0(err0) {
+} case Err0(let err0) {
     println err0;
     return;
-} case var Err1(err1) {
+} case Err1(var err1) {
     println err1;
     return;
 } else {
@@ -750,7 +743,7 @@ a = a + 21; # non short hand assignment
 # want to convert to short hand assignment
 
 # 1: starting state
-    a = a + 21; 
+    a = a + 21;
 # 2:   ^^^ remove the "target" left operand
     a =+ 21;
 # 3: oh no! the `+` operator is to the right of the `=`, need to invert the positions and done
@@ -774,7 +767,7 @@ a = a + 21; # non short hand assignment
 # want to convert to short hand assignment
 
 # 1: starting state
-    a = a + 21; 
+    a = a + 21;
 # 2:   ^^^ remove the "target" left operand and done
     a =+ 21;
 
@@ -867,7 +860,7 @@ let x = loop:loop_label condition {
     let x = :scope_label {
         break:scope_label 12;
     }
-    
+
     break:loop_label x;
 }
 ```
@@ -1111,7 +1104,7 @@ case let mismatch: none { println("equals"); } # would not be reached since ther
 case let mismatch: u64 { println(f"mismatch at index {mismatch}"); } # mismatch would have the value of 2
 else { ... } # unreachable branch: all variants have been matched
 
-# T[*: N] means just the pointer part of the array 
+# T[*: N] means just the pointer part of the array
 fn mismatch_index: u64 | none = array_eq[T: type; N: u64](dst: T[*: N]; src: T[*: N]) {
     loop var i = N; i > 0; i -= 1 {
         if dst* != src* {
@@ -2023,6 +2016,13 @@ let rgba_u32: u32 = rgba as u32;
 let rgba_u32: u32 = rgba alias u32;
 let rgba_u32: u32 = rgba cast u32;
 let rgba_u32: u32 = rgba view u32;
+let rgba_u32: u32 = u32::rgba;
+let rgba_u32: u32 = u32:rgba;
+let rgba_u32: u32 = rgba:u32;
+let rgba_u32: u32 = rgba: u32;
+let rgba_u32: u32 = rgba `:` u32; # identifier strings would allow for `:` to be overloaded as the
+                                  # "casting" "operator", where arbitrary code would be executed,
+                                  # while the plain : would be the builtin bitwise casting operator
 
 let red = Rgba(r = 255);
 let green = Rgba(g = 255);
@@ -2033,12 +2033,30 @@ let red_plus_green = red + green;
 # while this would be treated as u32 + u32 and no conversion code would be run
 let red_plus_green = (red as u32 + green as u32) as Rgba;
 
-# so it avoids this
-var red_plus_green: Rgba;
-red_plus_green.r = red.r + green.r;
-red_plus_green.g = red.g + green.g;
-red_plus_green.b = red.b + green.b;
-red_plus_green.a = red.a + green.b;
+# these two could both be accepted as the first one is easier to read, especially for multiline
+# statements, while the second one is more consistent with other language features
+let red_plus_green = Rgba:(u32:red + u32:green);
+let red_plus_green = (red: u32 + green: u32): Rgba;
+
+let a = i64[2][3]: [[1; 2; 3]; [4; 5; 6]];
+let a = i64[2][3]: [
+    i64[3]: [1; 2; 3];
+    i64[3]: [4; 5; 6];
+];
+
+let a = [[1; 2; 3]; [4; 5; 6]]: i64[2][3];
+let a = [
+    [1; 2; 3]: i64[3];
+    [4; 5; 6]: i64[3];
+]: i64[2][3];
+
+# could introduce the "any" or "automatic" casting operator, similar to jai xx
+let f: u32 = Rgba(...)::;
+let f: u32 = ::Rgba(...);
+let f: u32 = *:Rgba(...);
+let f: u32 = Rgba(...):*;
+let f: u32 = *:Rgba(...);
+let f: u32 = Rgba(...):*;
 ```
 
 casts that call conversion functions/builtins that are not just bit reinterpretations:
@@ -2108,7 +2126,7 @@ divmod
 # function arguments
 (dividend: i64; divisor: i64)
 
-# body of the function, can also be in the do single-statement form
+# body of the function
 {
     # we can name our return values
     return result = dividend / divisor, remainder = dividend % divisor;
@@ -2145,18 +2163,21 @@ fn result: i64, remainder: i64 = divmod(dividend: i64; divisor: i64) {
 
 # from here onwards we are pretending that each line is the progression of steps needed to go from function definition to the usage
 
-# copy paste the definition
-fn result: i64, remainder: i64 = divmod(dividend: i64; divisor: i64)
+# copy paste the definition line
+fn result: i64, remainder: i64 = divmod(dividend: i64; divisor: i64) {
 
 # change 'fn' to 'let'/'var'
 # - explicit mutability qualifiers needed for each variable
-let result: i64, var remainder: i64 = divmod(dividend: i64; divisor: i64)
+let result: i64, var remainder: i64 = divmod(dividend: i64; divisor: i64) {
 
-# add a semicolon at the end
+# replace the bracket with a semicolon at the end
 let result: i64, var remainder: i64 = divmod(dividend: i64; divisor: i64);
 
 # remove the function arguments' type hints and you are done!
 let result: i64, var remainder: i64 = divmod(dividend; divisor);
+
+# optionally remove the variables' type hints
+let result, var remainder = divmod(dividend; divisor);
 ```
 
 going from usage to function definition would look like this
@@ -2197,6 +2218,60 @@ fn result: i64, remainder: i64 = divmod(dividend: i64; divisor: i64) {
 # and done!
 ```
 
+this poses a problem where functions definitions are hard to search:
+
+```kay
+fn result: i64 = foo(a: i64; b: i64) { ... }
+
+let result = foo(12; 21);
+
+# searching for the function definition is really hard, like in C
+# you would have to construct regexes everytime like `fn .*?= foo` to find the definition
+
+# rust or python like definitions are very easy to search for with just `fn foo`
+fn foo(a: i64; b: i64) -> result: i64 { ... }
+
+# could come up with some other syntax to get the best of refactorability and searchability
+
+# this style only replaces `=` with `<-` for easy searching,
+# so instead of `fn .*?= foo` or `fn foo` you could search for `<- foo`
+fn result: i64 <- foo(a: i64; b: i64) { ... }
+
+# `<=` would have been even better but it conflicts with the `less than or equals to` operator
+# searching for `<= foo` would find both definition and usage
+fn result: i64 <= foo(a: i64; b: i64) { ... }
+if c <= foo(a; b) { ... }
+
+# nameless functions or "lambdas" could look something like this, truly nameless functions
+let nameless_function = fn result: i64 <- (a: i64; b: i64) { ... }
+
+# going from variable to usage
+let nameless_function = fn result: i64 <- (a: i64; b: i64) { ... }
+let  = fn result: i64 <- nameless_function(a: i64; b: i64) { ... }
+let result: i64 <- nameless_function(a: i64; b: i64) { ... }
+let result: i64 = nameless_function(a: i64; b: i64) { ... }
+let result: i64 = nameless_function(a; b) { ... }
+let result: i64 = nameless_function(a; b);
+let result = nameless_function(a; b); # optional
+
+# could revert to the usual rust or python syntax for more consistent searching using the leading
+# keyword
+fn foo(a: i64; b: i64) -> result: i64 { ... } # find: `fn foo`
+fn foo(a: i64; b: i64): result: i64 { ... }   # find: `fn foo`
+let bar = 12;                                 # find: `let bar`
+struct Baz(a: i64; b: i64)                    # find: `struct Baz`
+type byte = u8;                               # find: `type byte`
+alias word = u16;                             # find: `alias word`
+
+# even MOAR consistency, searching using `let`, and even with terminating semicolon
+let foo = fn(a: i64; b: i64) -> result: i64 { ... }; # find: `let foo`
+let foo = fn(a: i64; b: i64): result: i64 { ... };   # find: `let foo`
+let bar = 12;                                        # find: `let bar`
+let Baz = struct(a: i64; b: i64);                    # find: `let Baz`
+let byte = type u8;                                  # find: `let byte`
+let word = alias u16;                                # find: `let word`
+```
+
 ### Inline functions
 
 Ability to inline a function at the call site for finer granularity, while still retaining a hint to
@@ -2208,7 +2283,7 @@ fn result: i64, remainder: i64 = divmod_inline!(dividend: i64; divisor: i64) {
     return result = dividend / divisor, remainder = dividend % divisor;
 }
 
-let result, let remainder = divmod_inline(21; 12); # regular function call would not be allowed, or would emit a warning 
+let result, let remainder = divmod_inline(21; 12); # regular function call would not be allowed, or would emit a warning
 let result, let remainder = divmod_inline!(21; 12); # inline function call syntax would be mandatory
 let result, let remainder = divmod_inline: { # would be inlined as this as many times as possible, could emit a warning when inlining could be performed
     let dividend = 21;
@@ -2636,6 +2711,11 @@ let b: ascii = b; # fine, since ascii is just an other name for u8
 type ascii = u8; # ascii is a different type from u8
 let a: u8 = 12;
 let b: ascii = a; # Error: ascii is a different type from u8
+
+# could use the `alias` keyword for compile time contants, similar to rust's `const`s
+alias MAX = 21; # basically #define MAX 21
+const MAX = 21; # instead of this, saving on the `const` keyword
+let f = MAX - 1; # equivalent to `let f = 21 - 1;`
 ```
 
 ## ?.?.? - Capturing scopes
@@ -2728,4 +2808,172 @@ Would only work on stand alone blocks, control flow and functions cannot be mark
 if condition @no_scope { # Error: @no_scope directive cannot be applied to if blocks
     ...
 }
+```
+
+## ?.?.? - Embeddable intermediate representation
+
+```kay
+# other calculations in kay language
+@kbe {
+    # calculations in kbe language
+    let a = 12;
+    let b = 21;
+    $0 = a + b;
+    println($0);
+}
+# other calculations in kay language
+
+# or entire functions
+fn foo(a: i64, b: i64) @kbe {
+    $0 = a + b;
+    println($0);
+}
+```
+
+## ?.?.? - Embeddable assembly
+
+```kay
+# other calculations in kay language
+@asm {
+    # calculations in assembly language (need to decide for what architecture)
+}
+# other calculations in kay language
+
+# could specify what architecture, based on compiler support
+@asm(x86_64) {
+    # calculations in x86_64 assembly language
+    mov rdi, 12
+    add rdi, 21
+    call i64_print
+    mov dil, 10
+    call ascii_print
+}
+
+# or entire functions
+fn foo(a: i64, b: i64) @asm(x86_64, rdi.a, rsi.b) {
+    add rdi.a, rsi.b
+    call i64_print
+    mov dil, 10
+    call ascii_print
+    ret
+}
+```
+
+## ?.?.? - Nasm -> kay debug lines
+
+```nasm
+section .text
+_start:
+ %line 10+0 "../examples/project_euler/0001.kay"
+ push rbp
+ sub rsp, 16
+ mov rbp, rsp
+
+ ; sum = 0
+ %line 10+0
+ mov rdi, 0
+ mov [rbp + 0], rdi
+
+ ; number = 1
+ %line 12+0
+ mov rdi, 1
+ mov [rbp + 8], rdi
+
+loop_0:; loop number < 1000
+ %line 13+0
+ mov rdi, [rbp + 8]
+ mov rsi, 1000
+ cmp rdi, rsi
+ jge loop_0_end
+
+ ; sum += (number % 3 == 0 || number % 5 == 0) * number
+ %line 14+0
+ mov rdi, [rbp + 8]
+ mov rsi, 3
+ mov rdx, 14
+ mov rcx, 20
+ call i64_safe_remainder
+ mov rsi, 0
+ cmp rdi, rsi
+ mov rdi, false
+ sete dil
+ push rdi
+ mov rdi, [rbp + 8]
+ mov rsi, 5
+ mov rdx, 14
+ mov rcx, 39
+ call i64_safe_remainder
+ mov rsi, 0
+ cmp rdi, rsi
+ mov rdi, false
+ sete dil
+ mov rsi, rdi
+ pop rdi
+ or rdi, rsi
+ mov rsi, [rbp + 8]
+ mov rdx, 14
+ mov rcx, 49
+ call i64_safe_mul
+ mov rsi, rdi
+ mov rdi, [rbp + 0]
+ mov rdx, 14
+ mov rcx, 9
+ call i64_safe_add
+ mov [rbp + 0], rdi
+
+ ; print str_0
+ %line 16+0
+ mov rdi, str_0_len
+ mov rsi, str_0
+ call str_print
+ ; println sum
+ mov rdi, [rbp + 0]
+ call i64_print
+ mov dil, newline
+ call ascii_print
+
+ ; number += 1
+ %line 17+0
+ mov rdi, 1
+ mov rsi, rdi
+ mov rdi, [rbp + 8]
+ mov rdx, 16
+ mov rcx, 12
+ call i64_safe_add
+ mov [rbp + 8], rdi
+
+ %line 18+0
+ jmp loop_0
+loop_0_end:
+
+ ; print str_1
+ %line 20+0
+ mov rdi, str_1_len
+ mov rsi, str_1
+ call str_print
+ ; println 233168
+ mov rdi, 233168
+ call i64_print
+ mov dil, newline
+ call ascii_print
+
+ ; print str_2
+ %line 21+0
+ mov rdi, str_2_len
+ mov rsi, str_2
+ call str_print
+ ; println sum
+ mov rdi, [rbp + 0]
+ call i64_print
+ mov dil, newline
+ call ascii_print
+
+ %line 22+0
+ add rsp, 16
+ pop rbp
+ mov rdi, EXIT_SUCCESS
+ mov rax, SYS_exit
+ syscall
+
+ %line 116 "0001.asm"
 ```
