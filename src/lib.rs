@@ -686,8 +686,8 @@ impl Default for Args<'_> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct ArgsParser<'args> {
-    args: &'args [String],
+pub struct ArgsParser<'args, S: AsRef<str>> {
+    args: &'args [S],
     arg_index: usize,
 
     color: Color,
@@ -695,14 +695,12 @@ pub struct ArgsParser<'args> {
     errors: Vec<Error>,
 }
 
-impl<'args> ArgsParser<'args> {
+impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
     // IDEA(stefano): make help and version commands collide with other commands
     // i.e.: `kay run file.txt help` should raise an error
     // i.e.: `kay run file.txt --help` should not raise an error
-    // TODO(stefano): accept any kind of "string", not just String
-    #[expect(clippy::single_match)]
     #[must_use]
-    pub fn parse(args: &'args [String]) -> Args<'args> {
+    pub fn parse(args: &'args [S]) -> Args<'args> {
         let mut parser = Self {
             args,
             arg_index: 0,
@@ -712,111 +710,8 @@ impl<'args> ArgsParser<'args> {
             errors: Vec::new(),
         };
 
-        'next_arg: while let Some(raw_arg) = parser.current_arg() {
-            let current_flag_index = parser.arg_index;
-            if raw_arg.len() == 0 {
-                parser.errors.push(Error { kind: ErrorKind::Empty, arg_index: current_flag_index });
-                parser.arg_index += 1;
-                continue 'next_arg;
-            }
-
-            let (prefix, arg) = Self::split_prefix(raw_arg);
-
-            match parser.parse_color_flag(prefix, arg) {
-                ArgResult::Ok((color, _)) => {
-                    parser.color = color;
-                    continue 'next_arg;
-                },
-                ArgResult::Err => continue 'next_arg,
-                ArgResult::Unrecognized => {},
-            }
-
-            match parser.parse_help_command(prefix, arg) {
-                Some(command_flag) => {
-                    let command = Command::Help;
-                    parser.set_help_command(command, command_flag, current_flag_index);
-                    continue 'next_arg;
-                },
-                None => {},
-            }
-
-            match parser.parse_version_command(prefix, arg) {
-                Some(command_flag) => {
-                    let command = Command::Version;
-                    parser.set_help_command(command, command_flag, current_flag_index);
-                    continue 'next_arg;
-                },
-                None => {},
-            }
-
-            match parser.parse_check_command(prefix, arg) {
-                ArgResult::Ok((command_flag, src_path, verbosity)) => {
-                    let command = Command::Check { src_path, verbosity };
-                    parser.set_build_command(command, command_flag, current_flag_index);
-                    continue 'next_arg;
-                },
-                ArgResult::Err => continue 'next_arg,
-                ArgResult::Unrecognized => {},
-            }
-
-            match parser.parse_build_command(prefix, arg, "compile") {
-                ArgResult::Ok((command_flag, language, src_path, out_path, verbosity)) => {
-                    let command = Command::Compile { language, src_path, out_path, verbosity };
-                    parser.set_build_command(command, command_flag, current_flag_index);
-                    continue 'next_arg;
-                },
-                ArgResult::Err => continue 'next_arg,
-                ArgResult::Unrecognized => {},
-            }
-
-            match parser.parse_build_command(prefix, arg, "run") {
-                ArgResult::Ok((command_flag, language, src_path, out_path, verbosity)) => {
-                    let command = Command::Run { language, src_path, out_path, verbosity };
-                    parser.set_build_command(command, command_flag, current_flag_index);
-                    continue 'next_arg;
-                },
-                ArgResult::Err => continue 'next_arg,
-                ArgResult::Unrecognized => {},
-            }
-
-            match parser.parse_language_flag(prefix, arg) {
-                Some((_, flag)) => {
-                    parser.errors.push(Error {
-                        kind: ErrorKind::StrayLanguageFlag(flag),
-                        arg_index: current_flag_index,
-                    });
-                    continue 'next_arg;
-                },
-                None => {},
-            }
-
-            match parser.parse_out_path(prefix, arg) {
-                ArgResult::Ok((_, flag)) => {
-                    parser.errors.push(Error {
-                        kind: ErrorKind::StrayOutputDirectoryFlag(flag),
-                        arg_index: current_flag_index,
-                    });
-                    continue 'next_arg;
-                },
-                ArgResult::Err => continue 'next_arg,
-                ArgResult::Unrecognized => {},
-            }
-
-            match parser.parse_verbosity_flag(prefix, arg) {
-                Some((_, flag)) => {
-                    parser.errors.push(Error {
-                        kind: ErrorKind::StrayVerbosityOption(flag),
-                        arg_index: current_flag_index,
-                    });
-                    continue 'next_arg;
-                },
-                None => {},
-            }
-
-            parser
-                .errors
-                .push(Error { kind: ErrorKind::Unrecognized, arg_index: current_flag_index });
-            parser.arg_index += 1;
+        while let Some(raw_arg) = parser.current_arg() {
+            parser.parse_arg(raw_arg);
         }
 
         if parser.errors.len() != 0 {
@@ -838,7 +733,8 @@ impl<'args> ArgsParser<'args> {
         }
 
         let arg = &self.args[self.arg_index];
-        return Some(arg.as_str());
+        let arg_str = arg.as_ref();
+        return Some(arg_str);
     }
 
     #[must_use]
@@ -856,9 +752,115 @@ impl<'args> ArgsParser<'args> {
         let argument = &arg[prefix_len..];
         return (prefix, argument);
     }
+
+    #[expect(clippy::single_match)]
+    fn parse_arg(&mut self, raw_arg: &'args str) {
+        let current_flag_index = self.arg_index;
+        if raw_arg.len() == 0 {
+            self.errors.push(Error { kind: ErrorKind::Empty, arg_index: current_flag_index });
+            self.arg_index += 1;
+            return;
+        }
+
+        let (prefix, arg) = Self::split_prefix(raw_arg);
+
+        match self.parse_color_flag(prefix, arg) {
+            ArgResult::Ok((color, _)) => {
+                self.color = color;
+                return;
+            },
+            ArgResult::Err => return,
+            ArgResult::Unrecognized => {},
+        }
+
+        match self.parse_help_command(prefix, arg) {
+            Some(command_flag) => {
+                let command = Command::Help;
+                self.set_help_command(command, command_flag, current_flag_index);
+                return;
+            },
+            None => {},
+        }
+
+        match self.parse_version_command(prefix, arg) {
+            Some(command_flag) => {
+                let command = Command::Version;
+                self.set_help_command(command, command_flag, current_flag_index);
+                return;
+            },
+            None => {},
+        }
+
+        match self.parse_check_command(prefix, arg) {
+            ArgResult::Ok((command_flag, src_path, verbosity)) => {
+                let command = Command::Check { src_path, verbosity };
+                self.set_build_command(command, command_flag, current_flag_index);
+                return;
+            },
+            ArgResult::Err => return,
+            ArgResult::Unrecognized => {},
+        }
+
+        match self.parse_build_command(prefix, arg, "compile") {
+            ArgResult::Ok((command_flag, language, src_path, out_path, verbosity)) => {
+                let command = Command::Compile { language, src_path, out_path, verbosity };
+                self.set_build_command(command, command_flag, current_flag_index);
+                return;
+            },
+            ArgResult::Err => return,
+            ArgResult::Unrecognized => {},
+        }
+
+        match self.parse_build_command(prefix, arg, "run") {
+            ArgResult::Ok((command_flag, language, src_path, out_path, verbosity)) => {
+                let command = Command::Run { language, src_path, out_path, verbosity };
+                self.set_build_command(command, command_flag, current_flag_index);
+                return;
+            },
+            ArgResult::Err => return,
+            ArgResult::Unrecognized => {},
+        }
+
+        match self.parse_language_flag(prefix, arg) {
+            Some((_, flag)) => {
+                self.errors.push(Error {
+                    kind: ErrorKind::StrayLanguageFlag(flag),
+                    arg_index: current_flag_index,
+                });
+                return;
+            },
+            None => {},
+        }
+
+        match self.parse_out_path(prefix, arg) {
+            ArgResult::Ok((_, flag)) => {
+                self.errors.push(Error {
+                    kind: ErrorKind::StrayOutputDirectoryFlag(flag),
+                    arg_index: current_flag_index,
+                });
+                return;
+            },
+            ArgResult::Err => return,
+            ArgResult::Unrecognized => {},
+        }
+
+        match self.parse_verbosity_flag(prefix, arg) {
+            Some((_, flag)) => {
+                self.errors.push(Error {
+                    kind: ErrorKind::StrayVerbosityOption(flag),
+                    arg_index: current_flag_index,
+                });
+                return;
+            },
+            None => {},
+        }
+
+        self.errors.push(Error { kind: ErrorKind::Unrecognized, arg_index: current_flag_index });
+        self.arg_index += 1;
+    }
 }
 
-impl<'args> ArgsParser<'args> {
+impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
     #[must_use]
     fn parse_color_flag(
         &mut self,
@@ -1350,13 +1352,13 @@ pub struct Error {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct Errors<'executable_name, 'args> {
+pub struct Errors<'executable_name, 'args, S: AsRef<str>> {
     pub executable_name: Option<&'executable_name Path>,
-    pub args: &'args [String],
+    pub args: &'args [S],
     pub errors: Vec<Error>,
 }
 
-impl Display for Errors<'_, '_> {
+impl<S: AsRef<str>> Display for Errors<'_, '_, S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut args_text = String::new();
 
@@ -1369,12 +1371,12 @@ impl Display for Errors<'_, '_> {
 
         let mut arg_index = 0;
         while arg_index < self.args.len() - 1 {
-            let arg = &self.args[arg_index];
+            let arg = &self.args[arg_index].as_ref();
             arg_index += 1;
             _ = write!(args_text, "{arg} ");
         }
 
-        let last_arg = &self.args[arg_index];
+        let last_arg = &self.args[arg_index].as_ref();
         _ = write!(args_text, "{last_arg}");
 
         let mut error_message = String::new();
@@ -1384,17 +1386,17 @@ impl Display for Errors<'_, '_> {
         for Error { kind, arg_index: erroneous_arg_index } in &self.errors {
             // Note: these two loops are mutually exclusive and avoid extra checking
             while arg_index < *erroneous_arg_index {
-                let arg = &self.args[arg_index];
+                let arg = &self.args[arg_index].as_ref();
                 arg_index += 1;
                 pointers_offset += arg.len() + 1; // + 1 to account for the space between args
             }
             while arg_index > *erroneous_arg_index {
                 arg_index -= 1;
-                let arg = &self.args[arg_index];
+                let arg = &self.args[arg_index].as_ref();
                 pointers_offset -= arg.len() + 1; // + 1 to account for the space between args
             }
 
-            let erroneous_arg = &self.args[arg_index];
+            let erroneous_arg = &self.args[arg_index].as_ref();
             let pointers_count = match erroneous_arg.len() {
                 0 => 1, // empty arguments will at least get one pointer
                 other => other,
@@ -1538,4 +1540,4 @@ impl Display for Errors<'_, '_> {
 }
 
 #[expect(clippy::missing_trait_methods)]
-impl core::error::Error for Errors<'_, '_> {}
+impl<S: AsRef<str> + core::fmt::Debug> core::error::Error for Errors<'_, '_, S> {}
