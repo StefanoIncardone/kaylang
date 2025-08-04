@@ -1096,6 +1096,15 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         },
                         _ => Ok(TokenKind::Op(Op::Less)),
                     },
+                    control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
+                        tokenizer.errors.push(Msg {
+                            severity: MsgSeverity::NonTerminalError,
+                            kind: ErrorKind::ControlCharacter(control),
+                            col: tokenizer.token_start_col,
+                            pointers_count: 1,
+                        });
+                        Err(())
+                    },
                     unrecognized => {
                         tokenizer.errors.push(Msg {
                             severity: MsgSeverity::NonTerminalError,
@@ -1311,7 +1320,7 @@ impl<'code> Tokenizer<'code> {
                 Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::LetterInDecimalNumberLiteral(letter),
+                        kind: ErrorKind::DigitOutOfRange(letter, Base::Decimal),
                         col: self.col,
                         pointers_count: 1,
                     });
@@ -1320,7 +1329,7 @@ impl<'code> Tokenizer<'code> {
                 Some(Err(grapheme)) => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::Utf8InDecimalNumberLiteral { grapheme },
+                        kind: ErrorKind::Utf8Character { grapheme },
                         col: self.col,
                         pointers_count: grapheme.display_len(),
                     });
@@ -1352,7 +1361,7 @@ impl<'code> Tokenizer<'code> {
                 Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::LetterInDecimalNumberLiteral(letter),
+                        kind: ErrorKind::DigitOutOfRange(letter, Base::Decimal),
                         col: self.col,
                         pointers_count: 1,
                     });
@@ -1361,7 +1370,7 @@ impl<'code> Tokenizer<'code> {
                 Some(Err(grapheme)) => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::Utf8InDecimalNumberLiteral { grapheme },
+                        kind: ErrorKind::Utf8Character { grapheme },
                         col: self.col,
                         pointers_count: grapheme.display_len(),
                     });
@@ -1393,7 +1402,7 @@ impl<'code> Tokenizer<'code> {
                 Some(Ok(out_of_range @ b'2'..=b'9')) => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::DigitOutOfRangeInBinaryNumberLiteral(out_of_range),
+                        kind: ErrorKind::DigitOutOfRange(out_of_range, Base::Binary),
                         col: self.col,
                         pointers_count: 1,
                     });
@@ -1402,7 +1411,7 @@ impl<'code> Tokenizer<'code> {
                 Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::LetterInBinaryNumberLiteral(letter),
+                        kind: ErrorKind::DigitOutOfRange(letter, Base::Binary),
                         col: self.col,
                         pointers_count: 1,
                     });
@@ -1411,7 +1420,7 @@ impl<'code> Tokenizer<'code> {
                 Some(Err(grapheme)) => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::Utf8InBinaryNumberLiteral { grapheme },
+                        kind: ErrorKind::Utf8Character { grapheme },
                         col: self.col,
                         pointers_count: grapheme.display_len(),
                     });
@@ -1443,7 +1452,7 @@ impl<'code> Tokenizer<'code> {
                 Some(Ok(out_of_range @ b'8'..=b'9')) => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::DigitOutOfRangeInOctalNumberLiteral(out_of_range),
+                        kind: ErrorKind::DigitOutOfRange(out_of_range, Base::Octal),
                         col: self.col,
                         pointers_count: 1,
                     });
@@ -1452,7 +1461,7 @@ impl<'code> Tokenizer<'code> {
                 Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::LetterInOctalNumberLiteral(letter),
+                        kind: ErrorKind::DigitOutOfRange(letter, Base::Octal),
                         col: self.col,
                         pointers_count: 1,
                     });
@@ -1461,7 +1470,7 @@ impl<'code> Tokenizer<'code> {
                 Some(Err(grapheme)) => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::Utf8InOctalNumberLiteral { grapheme },
+                        kind: ErrorKind::Utf8Character { grapheme },
                         col: self.col,
                         pointers_count: grapheme.display_len(),
                     });
@@ -1493,7 +1502,7 @@ impl<'code> Tokenizer<'code> {
                 Some(Ok(out_of_range @ (b'g'..=b'z' | b'G'..=b'Z'))) => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::DigitOutOfRangeInHexadecimalNumberLiteral(out_of_range),
+                        kind: ErrorKind::DigitOutOfRange(out_of_range, Base::Hexadecimal),
                         col: self.col,
                         pointers_count: 1,
                     });
@@ -1502,7 +1511,7 @@ impl<'code> Tokenizer<'code> {
                 Some(Err(grapheme)) => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::Utf8InHexadecimalNumberLiteral { grapheme },
+                        kind: ErrorKind::Utf8Character { grapheme },
                         col: self.col,
                         pointers_count: grapheme.display_len(),
                     });
@@ -1524,7 +1533,7 @@ impl<'code> Tokenizer<'code> {
     }
 
     #[inline]
-    const fn escape_ascii(ch: ascii) -> Result<ascii, ()> {
+    fn escape_ascii(&mut self, ch: ascii) -> Result<ascii, ()> {
         /* IDEA(stefano): implement more escape characters
             - ASCII full name escape characters: \aNUL, \aBEL, \aLF...
             - ASCII caret escape characters: \^C, \^D...
@@ -1540,6 +1549,24 @@ impl<'code> Tokenizer<'code> {
             b'r'  => b'\r',
             b't'  => b'\t',
             b'0'  => b'\0',
+            b'b'  => {
+                unimplemented!("ascii binary");
+            },
+            b'o'  => {
+                unimplemented!("ascii octal");
+            },
+            b'x'  => {
+                unimplemented!("ascii hexadecimal");
+            },
+            b'd'  => {
+                unimplemented!("ascii decimal");
+            },
+            b'a'  => {
+                unimplemented!("ascii mnemonics");
+            },
+            b'^'  => {
+                unimplemented!("ascii caret");
+            },
             _ => return Err(()),
         };
 
@@ -1556,7 +1583,7 @@ impl<'code> Tokenizer<'code> {
                 Some(Err(grapheme)) => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::Utf8InCharacterLiteral { grapheme },
+                        kind: ErrorKind::Utf8Character { grapheme },
                         col: self.col,
                         pointers_count: grapheme.display_len(),
                     });
@@ -1585,7 +1612,7 @@ impl<'code> Tokenizer<'code> {
                         Some(Err(grapheme)) => {
                             self.errors.push(Msg {
                                 severity: MsgSeverity::NonTerminalError,
-                                kind: ErrorKind::Utf8InCharacterLiteral { grapheme },
+                                kind: ErrorKind::Utf8Character { grapheme },
                                 col: self.col,
                                 pointers_count: grapheme.display_len(),
                             });
@@ -1607,12 +1634,10 @@ impl<'code> Tokenizer<'code> {
                     };
                     self.col += 1;
 
-                    if let Err(()) = Self::escape_ascii(escape_character) {
+                    if let Err(()) = self.escape_ascii(escape_character) {
                         self.errors.push(Msg {
                             severity: MsgSeverity::NonTerminalError,
-                            kind: ErrorKind::UnrecognizedEscapeCharacterInCharacterLiteral(
-                                escape_character,
-                            ),
+                            kind: ErrorKind::UnrecognizedEscapeCharacter(escape_character),
                             col: self.col - 2,
                             pointers_count: 2,
                         });
@@ -1621,7 +1646,7 @@ impl<'code> Tokenizer<'code> {
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::ControlCharacterInCharacterLiteral(control),
+                        kind: ErrorKind::ControlCharacter(control),
                         col: self.col - 1,
                         pointers_count: 1,
                     });
@@ -1669,7 +1694,7 @@ impl<'code> Tokenizer<'code> {
                 Some(Err(grapheme)) => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::Utf8InStrLiteral { grapheme },
+                        kind: ErrorKind::Utf8Character { grapheme },
                         col: self.col,
                         pointers_count: grapheme.display_len(),
                     });
@@ -1698,7 +1723,7 @@ impl<'code> Tokenizer<'code> {
                         Some(Err(grapheme)) => {
                             self.errors.push(Msg {
                                 severity: MsgSeverity::NonTerminalError,
-                                kind: ErrorKind::Utf8InStrLiteral { grapheme },
+                                kind: ErrorKind::Utf8Character { grapheme },
                                 col: self.col,
                                 pointers_count: grapheme.display_len(),
                             });
@@ -1720,12 +1745,10 @@ impl<'code> Tokenizer<'code> {
                     };
                     self.col += 1;
 
-                    if let Err(()) = Self::escape_ascii(escape_character) {
+                    if let Err(()) = self.escape_ascii(escape_character) {
                         self.errors.push(Msg {
                             severity: MsgSeverity::NonTerminalError,
-                            kind: ErrorKind::UnrecognizedEscapeCharacterInStrLiteral(
-                                escape_character,
-                            ),
+                            kind: ErrorKind::UnrecognizedEscapeCharacter(escape_character),
                             col: self.col - 2,
                             pointers_count: 2,
                         });
@@ -1734,7 +1757,7 @@ impl<'code> Tokenizer<'code> {
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::ControlCharacterInStrLiteral(control),
+                        kind: ErrorKind::ControlCharacter(control),
                         col: self.col - 1,
                         pointers_count: 1,
                     });
@@ -1761,7 +1784,7 @@ impl<'code> Tokenizer<'code> {
                 Some(Err(grapheme)) => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::Utf8InRawStrLiteral { grapheme },
+                        kind: ErrorKind::Utf8Character { grapheme },
                         col: self.col,
                         pointers_count: grapheme.display_len(),
                     });
@@ -1790,7 +1813,7 @@ impl<'code> Tokenizer<'code> {
                         Some(Err(grapheme)) => {
                             self.errors.push(Msg {
                                 severity: MsgSeverity::NonTerminalError,
-                                kind: ErrorKind::Utf8InRawStrLiteral { grapheme },
+                                kind: ErrorKind::Utf8Character { grapheme },
                                 col: self.col,
                                 pointers_count: grapheme.display_len(),
                             });
@@ -1818,7 +1841,7 @@ impl<'code> Tokenizer<'code> {
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::ControlCharacterInRawStrLiteral(control),
+                        kind: ErrorKind::ControlCharacter(control),
                         col: self.col - 1,
                         pointers_count: 1,
                     });
@@ -1836,7 +1859,6 @@ impl<'code> Tokenizer<'code> {
         return Ok(TokenKind::RawStr(literal_index));
     }
 
-    // IDEA(stefano): allow for escaped \`
     fn identifier_str(&mut self) -> Result<TokenKind<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
@@ -1846,7 +1868,7 @@ impl<'code> Tokenizer<'code> {
                 Some(Err(grapheme)) => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::Utf8InIdentifierStr { grapheme },
+                        kind: ErrorKind::Utf8Character { grapheme },
                         col: self.col,
                         pointers_count: grapheme.display_len(),
                     });
@@ -1872,7 +1894,7 @@ impl<'code> Tokenizer<'code> {
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::ControlCharacterInIdentifierStr(control),
+                        kind: ErrorKind::ControlCharacter(control),
                         col: self.col - 1,
                         pointers_count: 1,
                     });
@@ -1892,7 +1914,7 @@ impl<'code> Tokenizer<'code> {
         if identifier_len > Self::MAX_IDENTIFIER_LEN {
             self.errors.push(Msg {
                 severity: MsgSeverity::NonTerminalError,
-                kind: ErrorKind::IdentifierStrTooLong { max: Self::MAX_IDENTIFIER_LEN },
+                kind: ErrorKind::IdentifierTooLong { max: Self::MAX_IDENTIFIER_LEN },
                 col: self.token_start_col,
                 pointers_count: identifier_len,
             });
@@ -1915,7 +1937,7 @@ impl<'code> Tokenizer<'code> {
                 Some(Err(grapheme)) => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::Utf8InIdentifier { grapheme },
+                        kind: ErrorKind::Utf8Character { grapheme },
                         col: self.col,
                         pointers_count: grapheme.display_len(),
                     });
@@ -2022,45 +2044,21 @@ pub enum ErrorKind<'code> {
     MismatchedCurlyRoundBracket,
     MismatchedCurlySquareBracket,
 
-    Utf8InDecimalNumberLiteral { grapheme: &'code str },
-    LetterInDecimalNumberLiteral(ascii),
+    DigitOutOfRange(ascii, Base),
 
-    Utf8InBinaryNumberLiteral { grapheme: &'code str },
-    LetterInBinaryNumberLiteral(ascii),
-    DigitOutOfRangeInBinaryNumberLiteral(ascii),
+    UnrecognizedEscapeCharacter(ascii),
 
-    Utf8InOctalNumberLiteral { grapheme: &'code str },
-    LetterInOctalNumberLiteral(ascii),
-    DigitOutOfRangeInOctalNumberLiteral(ascii),
-
-    Utf8InHexadecimalNumberLiteral { grapheme: &'code str },
-    DigitOutOfRangeInHexadecimalNumberLiteral(ascii),
-
-    Utf8InCharacterLiteral { grapheme: &'code str },
-    UnrecognizedEscapeCharacterInCharacterLiteral(ascii),
-    ControlCharacterInCharacterLiteral(ascii),
     UnclosedCharacterLiteral,
+    UnclosedStrLiteral,
+    UnclosedRawStrLiteral,
+    UnclosedIdentifierStr,
+
     EmptyCharacterLiteral,
     MultipleCharactersInCharacterLiteral,
 
-    Utf8InStrLiteral { grapheme: &'code str },
-    UnrecognizedEscapeCharacterInStrLiteral(ascii),
-    ControlCharacterInStrLiteral(ascii),
-    UnclosedStrLiteral,
-
-    Utf8InRawStrLiteral { grapheme: &'code str },
-    UnrecognizedEscapeCharacterInRawStrLiteral(ascii),
-    ControlCharacterInRawStrLiteral(ascii),
-    UnclosedRawStrLiteral,
-
-    Utf8InIdentifierStr { grapheme: &'code str },
-    ControlCharacterInIdentifierStr(ascii),
-    UnclosedIdentifierStr,
-    IdentifierStrTooLong { max: offset32 },
-
-    Utf8InIdentifier { grapheme: &'code str },
     IdentifierTooLong { max: offset32 },
 
+    ControlCharacter(ascii),
     Utf8Character { grapheme: &'code str },
     UnrecognizedCharacter(ascii),
     // IDEA(stefano): report this as a warning instead of an error
@@ -2126,132 +2124,26 @@ impl IntoMsgInfo for ErrorKind<'_> {
                 "']' closes the wrong bracket, expected a '}' instead".into()
             ),
 
-            Self::Utf8InDecimalNumberLiteral { grapheme } => (
-                "utf8 characters are not allowed".into(),
-                format!(
-                    "invalid decimal integer literal character '{escaped}' ({raw})",
-                    escaped = grapheme.escape_unicode(),
-                    raw = grapheme,
-                ).into(),
-            ),
-            Self::LetterInDecimalNumberLiteral(letter) => (
+            Self::DigitOutOfRange(digit, base) => (
                 "invalid integer literal".into(),
                 format!(
-                    "letter '{escaped}' ({raw}) not allowed in a base {} number",
-                    Base::Decimal as u8,
-                    escaped = *letter as utf32,
-                    raw = letter,
+                    "digit '{escaped}' ({raw}) out of the valid range for a base {} number {:?}",
+                    *base as u8,
+                    base.range(),
+                    escaped = *digit as utf32,
+                    raw = digit,
                 ).into(),
             ),
 
-            Self::Utf8InBinaryNumberLiteral { grapheme } => (
-                "utf8 characters are not allowed".into(),
-                format!(
-                    "invalid binary integer literal character '{letter}' ({codepoint})",
-                    letter = grapheme,
-                    codepoint = grapheme.escape_unicode(),
-                ).into(),
-            ),
-            Self::LetterInBinaryNumberLiteral(letter) => (
-                "invalid integer literal".into(),
-                format!(
-                    "letter '{escaped}' ({raw}) not allowed in a base {} number",
-                    Base::Binary as u8,
-                    escaped = *letter as utf32,
-                    raw = letter,
-                ).into(),
-            ),
-            Self::DigitOutOfRangeInBinaryNumberLiteral(digit) => {
-                const BASE: Base = Base::Binary;
-                (
-                    "invalid integer literal".into(),
-                    format!(
-                        "digit '{escaped}' ({raw}) out of the valid range for a base {} number {:?}",
-                        BASE as u8,
-                        BASE.range(),
-                        escaped = *digit as utf32,
-                        raw = digit,
-                    ).into(),
-                )
-            }
-
-            Self::Utf8InOctalNumberLiteral { grapheme } => (
-                "utf8 characters are not allowed".into(),
-                format!(
-                    "invalid octal integer literal character '{letter}' ({codepoint})",
-                    letter = grapheme,
-                    codepoint = grapheme.escape_unicode(),
-                ).into(),
-            ),
-            Self::LetterInOctalNumberLiteral(letter) => (
-                "invalid integer literal".into(),
-                format!(
-                    "letter '{escaped}' ({raw}) not allowed in a base {} number",
-                    Base::Octal as u8,
-                    escaped = *letter as utf32,
-                    raw = letter,
-                ).into(),
-            ),
-            Self::DigitOutOfRangeInOctalNumberLiteral(digit) => {
-                const BASE: Base = Base::Octal;
-                (
-                    "invalid integer literal".into(),
-                    format!(
-                        "digit '{escaped}' ({raw}) out of the valid range for a base {} number {:?}",
-                        BASE as u8,
-                        BASE.range(),
-                        escaped = *digit as utf32,
-                        raw = digit,
-                    ).into(),
-                )
-            }
-
-            Self::Utf8InHexadecimalNumberLiteral { grapheme } => (
-                "utf8 characters are not allowed".into(),
-                format!(
-                    "invalid hexadecimal integer literal character '{letter}' ({codepoint})",
-                    letter = grapheme,
-                    codepoint = grapheme.escape_unicode(),
-                ).into(),
-            ),
-            Self::DigitOutOfRangeInHexadecimalNumberLiteral(digit) => {
-                const BASE: Base = Base::Hexadecimal;
-                (
-                    "invalid integer literal".into(),
-                    format!(
-                        "digit '{escaped}' ({raw}) out of the valid range for a base {} number {:?}",
-                        BASE as u8,
-                        BASE.range(),
-                        escaped = *digit as utf32,
-                        raw = digit,
-                    ).into(),
-                )
-            }
-
-            Self::Utf8InCharacterLiteral { grapheme } => (
-                "utf8 characters are not allowed".into(),
-                format!(
-                    "invalid character literal character '{letter}' ({codepoint})",
-                    letter = grapheme,
-                    codepoint = grapheme.escape_unicode(),
-                ).into(),
-            ),
-            Self::UnrecognizedEscapeCharacterInCharacterLiteral(unrecognized) => (
-                "invalid character literal".into(),
+            Self::UnrecognizedEscapeCharacter(unrecognized) => (
+                "invalid escape character".into(),
                 format!(
                     "unrecognized escape character '{letter}' ({codepoint})",
                     letter = *unrecognized as utf32,
                     codepoint = unrecognized,
                 ).into(),
             ),
-            Self::ControlCharacterInCharacterLiteral(control_character) => (
-                "control characters are not allowed".into(),
-                format!(
-                    "invalid character literal character '{escaped}' ({raw})",
-                    escaped = control_character.escape_ascii(),
-                    raw = control_character,
-                ).into(),
-            ),
+
             Self::UnclosedCharacterLiteral => (
                 "unclosed character literal".into(),
                 "missing closing ' quote".into()
@@ -2265,102 +2157,34 @@ impl IntoMsgInfo for ErrorKind<'_> {
                 "must not contain more than one character, if you meant to write a string literal try changing the quotes to \"".into(),
             ),
 
-            Self::Utf8InStrLiteral { grapheme } => (
-                "utf8 characters are not allowed".into(),
-                format!(
-                    "invalid string literal character '{letter}' ({codepoint})",
-                    letter = grapheme,
-                    codepoint = grapheme.escape_unicode(),
-                ).into(),
-            ),
-            Self::UnrecognizedEscapeCharacterInStrLiteral(unrecognized) => (
-                "invalid string literal".into(),
-                format!(
-                    "unrecognized escape character '{escaped}' ({raw})",
-                    escaped = *unrecognized as utf32,
-                    raw = unrecognized,
-                ).into(),
-            ),
-            Self::ControlCharacterInStrLiteral(control_character) => (
-                "control characters are not allowed".into(),
-                format!(
-                    "invalid character literal character '{escaped}' ({raw})",
-                    escaped = control_character.escape_ascii(),
-                    raw = control_character,
-                ).into(),
-            ),
             Self::UnclosedStrLiteral => (
                 "unclosed string literal".into(),
                 "missing closing \" quote".into()
             ),
 
-            Self::Utf8InRawStrLiteral { grapheme } => (
-                "utf8 characters are not allowed".into(),
-                format!(
-                    "invalid raw string literal character '{letter}' ({codepoint})",
-                    letter = grapheme,
-                    codepoint = grapheme.escape_unicode(),
-                ).into(),
-            ),
-            Self::UnrecognizedEscapeCharacterInRawStrLiteral(unrecognized) => (
-                "invalid raw string literal".into(),
-                format!(
-                    "unrecognized escape character '{escaped}' ({raw})",
-                    escaped = *unrecognized as utf32,
-                    raw = unrecognized,
-                ).into(),
-            ),
-            Self::ControlCharacterInRawStrLiteral(control_character) => (
-                "control characters are not allowed".into(),
-                format!(
-                    "invalid character literal character '{escaped}' ({raw})",
-                    escaped = control_character.escape_ascii(),
-                    raw = control_character,
-                ).into(),
-            ),
             Self::UnclosedRawStrLiteral => (
                 "unclosed raw string literal".into(),
                 "missing closing \" quote".into()
             ),
 
-            Self::Utf8InIdentifierStr { grapheme } => (
-                "utf8 characters are not allowed".into(),
-                format!(
-                    "invalid identifier string character '{letter}' ({codepoint})",
-                    letter = grapheme,
-                    codepoint = grapheme.escape_unicode(),
-                ).into(),
-            ),
-            Self::ControlCharacterInIdentifierStr(control_character) => (
-                "control characters are not allowed".into(),
-                format!(
-                    "invalid character literal character '{escaped}' ({raw})",
-                    escaped = control_character.escape_ascii(),
-                    raw = control_character,
-                ).into(),
-            ),
             Self::UnclosedIdentifierStr => (
                 "unclosed identifier string".into(),
                 "missing closing ` quote".into()
             ),
-            Self::IdentifierStrTooLong { max } => (
-                "invalid identifier string".into(),
-                format!("exceeds the length limit of {max} characters bewteen quotes").into(),
-            ),
 
-            Self::Utf8InIdentifier { grapheme } => (
-                "utf8 characters are not allowed".into(),
-                format!(
-                    "invalid identifier character '{letter}' ({codepoint})",
-                    letter = grapheme,
-                    codepoint = grapheme.escape_unicode(),
-                ).into(),
-            ),
             Self::IdentifierTooLong { max } => (
                 "invalid identifier".into(),
                 format!("exceeds the length limit of {max}").into(),
             ),
 
+            Self::ControlCharacter(control_character) => (
+                "control characters are not allowed".into(),
+                format!(
+                    "invalid character '{escaped}' ({raw})",
+                    escaped = control_character.escape_ascii(),
+                    raw = control_character,
+                ).into(),
+            ),
             Self::Utf8Character { grapheme } => (
                 "utf8 characters are not allowed".into(),
                 format!(
