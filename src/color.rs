@@ -76,7 +76,7 @@ pub enum AnsiCode {
     PositiveText = 27,
 }
 
-// REMOVE(stefano): make more "pure" by selecting the printing mode each time
+// IDEA(stefano): make more "pure" by selecting the printing mode each time
 #[expect(non_upper_case_globals, reason = "alias to a function")]
 pub(super) static mut print: fn(
     &str,

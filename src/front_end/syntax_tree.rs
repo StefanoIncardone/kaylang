@@ -353,8 +353,6 @@ pub(crate) enum Expression<'code> {
     },
 }
 
-// IDEA(stefano): add ArrayItemSeparatorKind and treat commas instead of semicolons as non terminal
-// errors
 #[derive(Clone, Copy, Eq)]
 #[repr(C)]
 pub(crate) union ArrayItemSeparator {
@@ -2517,15 +2515,6 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 }
                 TokenKind::Do
                 | TokenKind::Colon
-                /* NOTE(stefano):
-                warn on semicolons after if statements followed by else branches
-                ```
-                if true { println "1"; }; # < here
-                else if true { println "2"; }
-                else if true { println 3; }
-                else { println "ciao"; }
-                ```
-                */
                 | TokenKind::SemiColon
                 | TokenKind::Comma
                 | TokenKind::Op(_)

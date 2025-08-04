@@ -1,3 +1,4 @@
+// TODO(stefano): take TypedSyntaxTree instead of Ast and remove ast module
 use crate::front_end::{
     ast::{
         self, AssignmentOp, Ast, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression,

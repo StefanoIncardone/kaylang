@@ -31,7 +31,7 @@ pub struct DisplayPosition {
     pub display_column: offset32,
 }
 
-// IDEA(stefano, 0.7.0): let the user chose how to obtain the source code and just store a reference to it
+// IDEA(stefano): let the user chose how to obtain the source code and just store a reference to it
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct SrcFile<'path> {
     pub(crate) path: &'path Path,
