@@ -542,12 +542,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         },
                     },
                     Err(grapheme) => {
-                        tokenizer.errors.push(Msg {
-                            severity: MsgSeverity::NonTerminalError,
-                            kind: ErrorKind::Utf8Character { grapheme },
-                            col: tokenizer.col,
-                            pointers_count: grapheme.display_len(),
-                        });
+                        tokenizer.push_utf8_error(grapheme);
                         #[expect(clippy::cast_possible_truncation)]
                         {
                             tokenizer.col += grapheme.len() as offset32;
@@ -1303,6 +1298,40 @@ impl<'code> Tokenizer<'code> {
             },
         };
     }
+
+    #[expect(clippy::question_mark)]
+    #[must_use]
+    fn next_ascii_singleline(&mut self) -> Option<ascii> {
+        loop {
+            let Some(next) = self.peek_byte_singleline() else {
+                return None;
+            };
+            match next {
+                ascii_ch @ 0..=b'\x7F' => return Some(ascii_ch),
+                _utf8_ch => {
+                    let rest_of_code = &self.code[self.col as usize..];
+                    let mut rest_of_line_graphemes = rest_of_code.graphemes(true);
+                    let Some(grapheme) = rest_of_line_graphemes.next() else {
+                        unreachable!("this branch assured we would have a valid grapheme");
+                    };
+                    self.push_utf8_error(grapheme);
+                    #[expect(clippy::cast_possible_truncation)]
+                    {
+                        self.col += grapheme.len() as offset32;
+                    }
+                }
+            }
+        }
+    }
+
+    fn push_utf8_error(&mut self, grapheme: &'code str) {
+        self.errors.push(Msg {
+            severity: MsgSeverity::NonTerminalError,
+            kind: ErrorKind::Utf8Character { grapheme },
+            col: self.col,
+            pointers_count: grapheme.display_len(),
+        });
+    }
 }
 
 // tokenization of numbers, strings and identifiers
@@ -1312,12 +1341,12 @@ impl<'code> Tokenizer<'code> {
     fn integer_decimal(&mut self) -> Result<TokenKind<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
-        loop {
-            match self.peek_ascii_multiline() {
-                Some(Ok(b'0'..=b'9' | b'_')) => {
+        while let Some(digit) = self.next_ascii_singleline() {
+            match digit {
+                b'0'..=b'9' | b'_' => {
                     self.col += 1;
                 },
-                Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
+                letter @ (b'a'..=b'z' | b'A'..=b'Z') => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::DigitOutOfRange(letter, Base::Decimal),
@@ -1326,19 +1355,7 @@ impl<'code> Tokenizer<'code> {
                     });
                     self.col += 1;
                 },
-                Some(Err(grapheme)) => {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::Utf8Character { grapheme },
-                        col: self.col,
-                        pointers_count: grapheme.display_len(),
-                    });
-                    #[expect(clippy::cast_possible_truncation)]
-                    {
-                        self.col += grapheme.len() as offset32;
-                    }
-                },
-                Some(Ok(_)) | None => break,
+                _ => break,
             }
         }
 
@@ -1353,12 +1370,12 @@ impl<'code> Tokenizer<'code> {
     fn integer_decimal_prefix(&mut self) -> Result<TokenKind<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
-        loop {
-            match self.peek_ascii_multiline() {
-                Some(Ok(b'0'..=b'9' | b'_')) => {
+        while let Some(digit) = self.next_ascii_singleline() {
+            match digit {
+                b'0'..=b'9' | b'_' => {
                     self.col += 1;
                 },
-                Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
+                letter @ (b'a'..=b'z' | b'A'..=b'Z') => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::DigitOutOfRange(letter, Base::Decimal),
@@ -1367,19 +1384,7 @@ impl<'code> Tokenizer<'code> {
                     });
                     self.col += 1;
                 },
-                Some(Err(grapheme)) => {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::Utf8Character { grapheme },
-                        col: self.col,
-                        pointers_count: grapheme.display_len(),
-                    });
-                    #[expect(clippy::cast_possible_truncation)]
-                    {
-                        self.col += grapheme.len() as offset32;
-                    }
-                },
-                Some(Ok(_)) | None => break,
+                _ => break,
             }
         }
 
@@ -1394,12 +1399,12 @@ impl<'code> Tokenizer<'code> {
     fn integer_binary(&mut self) -> Result<TokenKind<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
-        loop {
-            match self.peek_ascii_multiline() {
-                Some(Ok(b'0'..=b'1' | b'_')) => {
+        while let Some(digit) = self.next_ascii_singleline() {
+            match digit {
+                b'0'..=b'1' | b'_' => {
                     self.col += 1;
                 },
-                Some(Ok(out_of_range @ b'2'..=b'9')) => {
+                out_of_range @ b'2'..=b'9' => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::DigitOutOfRange(out_of_range, Base::Binary),
@@ -1408,7 +1413,7 @@ impl<'code> Tokenizer<'code> {
                     });
                     self.col += 1;
                 },
-                Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
+                letter @ (b'a'..=b'z' | b'A'..=b'Z') => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::DigitOutOfRange(letter, Base::Binary),
@@ -1417,19 +1422,7 @@ impl<'code> Tokenizer<'code> {
                     });
                     self.col += 1;
                 },
-                Some(Err(grapheme)) => {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::Utf8Character { grapheme },
-                        col: self.col,
-                        pointers_count: grapheme.display_len(),
-                    });
-                    #[expect(clippy::cast_possible_truncation)]
-                    {
-                        self.col += grapheme.len() as offset32;
-                    }
-                },
-                Some(Ok(_)) | None => break,
+                _ => break,
             }
         }
 
@@ -1444,12 +1437,12 @@ impl<'code> Tokenizer<'code> {
     fn integer_octal(&mut self) -> Result<TokenKind<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
-        loop {
-            match self.peek_ascii_multiline() {
-                Some(Ok(b'0'..=b'7' | b'_')) => {
+        while let Some(digit) = self.next_ascii_singleline() {
+            match digit {
+                b'0'..=b'7' | b'_' => {
                     self.col += 1;
                 },
-                Some(Ok(out_of_range @ b'8'..=b'9')) => {
+                out_of_range @ b'8'..=b'9' => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::DigitOutOfRange(out_of_range, Base::Octal),
@@ -1458,7 +1451,7 @@ impl<'code> Tokenizer<'code> {
                     });
                     self.col += 1;
                 },
-                Some(Ok(letter @ (b'a'..=b'z' | b'A'..=b'Z'))) => {
+                letter @ (b'a'..=b'z' | b'A'..=b'Z') => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::DigitOutOfRange(letter, Base::Octal),
@@ -1467,19 +1460,7 @@ impl<'code> Tokenizer<'code> {
                     });
                     self.col += 1;
                 },
-                Some(Err(grapheme)) => {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::Utf8Character { grapheme },
-                        col: self.col,
-                        pointers_count: grapheme.display_len(),
-                    });
-                    #[expect(clippy::cast_possible_truncation)]
-                    {
-                        self.col += grapheme.len() as offset32;
-                    }
-                },
-                Some(Ok(_)) | None => break,
+                _ => break,
             }
         }
 
@@ -1494,12 +1475,12 @@ impl<'code> Tokenizer<'code> {
     fn integer_hexadecimal(&mut self) -> Result<TokenKind<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
-        loop {
-            match self.peek_ascii_multiline() {
-                Some(Ok(b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F' | b'_')) => {
+        while let Some(digit) = self.next_ascii_singleline() {
+            match digit {
+                b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F' | b'_' => {
                     self.col += 1;
                 },
-                Some(Ok(out_of_range @ (b'g'..=b'z' | b'G'..=b'Z'))) => {
+                out_of_range @ (b'g'..=b'z' | b'G'..=b'Z') => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::DigitOutOfRange(out_of_range, Base::Hexadecimal),
@@ -1508,19 +1489,7 @@ impl<'code> Tokenizer<'code> {
                     });
                     self.col += 1;
                 },
-                Some(Err(grapheme)) => {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::Utf8Character { grapheme },
-                        col: self.col,
-                        pointers_count: grapheme.display_len(),
-                    });
-                    #[expect(clippy::cast_possible_truncation)]
-                    {
-                        self.col += grapheme.len() as offset32;
-                    }
-                },
-                Some(Ok(_)) | None => break,
+                _ => break,
             }
         }
 
@@ -1581,12 +1550,7 @@ impl<'code> Tokenizer<'code> {
             let next_character = match self.peek_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(grapheme)) => {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::Utf8Character { grapheme },
-                        col: self.col,
-                        pointers_count: grapheme.display_len(),
-                    });
+                    self.push_utf8_error(grapheme);
                     #[expect(clippy::cast_possible_truncation)]
                     {
                         self.col += grapheme.len() as offset32;
@@ -1603,6 +1567,7 @@ impl<'code> Tokenizer<'code> {
                     break;
                 },
             };
+            let start_of_next_character = self.col;
             self.col += 1;
 
             match next_character {
@@ -1610,12 +1575,7 @@ impl<'code> Tokenizer<'code> {
                     let escape_character = match self.peek_ascii_singleline() {
                         Some(Ok(escape_character)) => escape_character,
                         Some(Err(grapheme)) => {
-                            self.errors.push(Msg {
-                                severity: MsgSeverity::NonTerminalError,
-                                kind: ErrorKind::Utf8Character { grapheme },
-                                col: self.col,
-                                pointers_count: grapheme.display_len(),
-                            });
+                            self.push_utf8_error(grapheme);
                             #[expect(clippy::cast_possible_truncation)]
                             {
                                 self.col += grapheme.len() as offset32;
@@ -1638,7 +1598,7 @@ impl<'code> Tokenizer<'code> {
                         self.errors.push(Msg {
                             severity: MsgSeverity::NonTerminalError,
                             kind: ErrorKind::UnrecognizedEscapeCharacter(escape_character),
-                            col: self.col - 2,
+                            col: start_of_next_character,
                             pointers_count: 2,
                         });
                     }
@@ -1647,7 +1607,7 @@ impl<'code> Tokenizer<'code> {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::ControlCharacter(control),
-                        col: self.col - 1,
+                        col: start_of_next_character,
                         pointers_count: 1,
                     });
                 },
@@ -1692,12 +1652,7 @@ impl<'code> Tokenizer<'code> {
             let next_character = match self.peek_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(grapheme)) => {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::Utf8Character { grapheme },
-                        col: self.col,
-                        pointers_count: grapheme.display_len(),
-                    });
+                    self.push_utf8_error(grapheme);
                     #[expect(clippy::cast_possible_truncation)]
                     {
                         self.col += grapheme.len() as offset32;
@@ -1714,6 +1669,7 @@ impl<'code> Tokenizer<'code> {
                     break;
                 },
             };
+            let start_of_next_character = self.col;
             self.col += 1;
 
             match next_character {
@@ -1721,12 +1677,7 @@ impl<'code> Tokenizer<'code> {
                     let escape_character = match self.peek_ascii_singleline() {
                         Some(Ok(escape_character)) => escape_character,
                         Some(Err(grapheme)) => {
-                            self.errors.push(Msg {
-                                severity: MsgSeverity::NonTerminalError,
-                                kind: ErrorKind::Utf8Character { grapheme },
-                                col: self.col,
-                                pointers_count: grapheme.display_len(),
-                            });
+                            self.push_utf8_error(grapheme);
                             #[expect(clippy::cast_possible_truncation)]
                             {
                                 self.col += grapheme.len() as offset32;
@@ -1749,7 +1700,7 @@ impl<'code> Tokenizer<'code> {
                         self.errors.push(Msg {
                             severity: MsgSeverity::NonTerminalError,
                             kind: ErrorKind::UnrecognizedEscapeCharacter(escape_character),
-                            col: self.col - 2,
+                            col: start_of_next_character,
                             pointers_count: 2,
                         });
                     }
@@ -1758,7 +1709,7 @@ impl<'code> Tokenizer<'code> {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::ControlCharacter(control),
-                        col: self.col - 1,
+                        col: start_of_next_character,
                         pointers_count: 1,
                     });
                 },
@@ -1782,12 +1733,7 @@ impl<'code> Tokenizer<'code> {
             let next_character = match self.peek_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(grapheme)) => {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::Utf8Character { grapheme },
-                        col: self.col,
-                        pointers_count: grapheme.display_len(),
-                    });
+                    self.push_utf8_error(grapheme);
                     #[expect(clippy::cast_possible_truncation)]
                     {
                         self.col += grapheme.len() as offset32;
@@ -1804,6 +1750,7 @@ impl<'code> Tokenizer<'code> {
                     break;
                 },
             };
+            let start_of_next_character = self.col;
             self.col += 1;
 
             match next_character {
@@ -1811,12 +1758,7 @@ impl<'code> Tokenizer<'code> {
                     let escape_character = match self.peek_ascii_singleline() {
                         Some(Ok(escape_character)) => escape_character,
                         Some(Err(grapheme)) => {
-                            self.errors.push(Msg {
-                                severity: MsgSeverity::NonTerminalError,
-                                kind: ErrorKind::Utf8Character { grapheme },
-                                col: self.col,
-                                pointers_count: grapheme.display_len(),
-                            });
+                            self.push_utf8_error(grapheme);
                             #[expect(clippy::cast_possible_truncation)]
                             {
                                 self.col += grapheme.len() as offset32;
@@ -1842,7 +1784,7 @@ impl<'code> Tokenizer<'code> {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::ControlCharacter(control),
-                        col: self.col - 1,
+                        col: start_of_next_character,
                         pointers_count: 1,
                     });
                 },
@@ -1866,12 +1808,7 @@ impl<'code> Tokenizer<'code> {
             let next_character = match self.peek_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(grapheme)) => {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::Utf8Character { grapheme },
-                        col: self.col,
-                        pointers_count: grapheme.display_len(),
-                    });
+                    self.push_utf8_error(grapheme);
                     #[expect(clippy::cast_possible_truncation)]
                     {
                         self.col += grapheme.len() as offset32;
@@ -1888,6 +1825,7 @@ impl<'code> Tokenizer<'code> {
                     break;
                 },
             };
+            let start_of_next_character = self.col;
             self.col += 1;
 
             match next_character {
@@ -1895,7 +1833,7 @@ impl<'code> Tokenizer<'code> {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::ControlCharacter(control),
-                        col: self.col - 1,
+                        col: start_of_next_character,
                         pointers_count: 1,
                     });
                 },
@@ -1929,24 +1867,12 @@ impl<'code> Tokenizer<'code> {
     fn identifier(&mut self) -> Result<TokenKind<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
-        loop {
-            match self.peek_ascii_singleline() {
-                Some(Ok(b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_')) => {
+        while let Some(letter) = self.next_ascii_singleline() {
+            match letter {
+                b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
                     self.col += 1;
                 },
-                Some(Err(grapheme)) => {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::Utf8Character { grapheme },
-                        col: self.col,
-                        pointers_count: grapheme.display_len(),
-                    });
-                    #[expect(clippy::cast_possible_truncation)]
-                    {
-                        self.col += grapheme.len() as offset32;
-                    }
-                },
-                Some(Ok(_)) | None => break,
+                _ => break,
             }
         }
 

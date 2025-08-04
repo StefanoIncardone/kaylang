@@ -15,6 +15,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Lack of windows/unix path normalization in log messages
 - Optional cli arguments cannot be placed in arbitrary order and produce false positive errors
+- Incorrect error message pointers when line contains "invisible" characters such as tabs
 
 ## 0.6.4 -
 
