@@ -1524,13 +1524,26 @@ impl<'code> Tokenizer<'code> {
     }
 
     #[inline]
-    const fn escape_ascii(ch: ascii) -> Result<(), ()> {
-        // IDEA(stefano): ASCII escape characters: \aNUL, \aBEL, \aLF
-        // IDEA(stefano): binary\octal\decimal\hexadecimal escapes: \aNUL, \aBEL, \aLF
-        return match ch {
-            b'\\' | b'\'' | b'"' | b'n' | b'r' | b't' | b'0' => Ok(()),
-            _ => Err(()),
+    const fn escape_ascii(ch: ascii) -> Result<ascii, ()> {
+        /* IDEA(stefano): implement more escape characters
+            - ASCII full name escape characters: \aNUL, \aBEL, \aLF...
+            - ASCII caret escape characters: \^C, \^D...
+            - binary\octal\decimal\hexadecimal escapes: \b1111111, \o177, \d127, \x7f
+        */
+
+        let escaped = match ch {
+            b'\\' => b'\\',
+            b'\'' => b'\'',
+            b'"'  => b'"',
+            b'e'  => b'\x1b',
+            b'n'  => b'\n',
+            b'r'  => b'\r',
+            b't'  => b'\t',
+            b'0'  => b'\0',
+            _ => return Err(()),
         };
+
+        return Ok(escaped);
     }
 
     fn ascii_literal(&mut self) -> Result<TokenKind<'code>, ()> {

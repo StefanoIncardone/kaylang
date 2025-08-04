@@ -115,6 +115,7 @@ These are the available escaped characters:
 '\\'; # backslash
 '\''; # single quote
 '\"'; # double quote
+'\e'; # escape
 '\n'; # newline
 '\r'; # carriage return
 '\t'; # tab character

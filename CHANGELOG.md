@@ -25,6 +25,8 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Decimal number prefix `0d` for consistency
 - Prefix short hand assignment operators `!=`, `+=`, `+\=`, `+|=`, `-=`, `-\=`, `-|=`:
     `i = !i;` -> `!=i;`
+- More string and characters escape codes:
+    - `\e` -> ASCII `ESC` (`0x1b`)
 
 #### Changed
 
