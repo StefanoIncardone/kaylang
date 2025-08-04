@@ -1,8 +1,9 @@
 #![expect(clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
-    back_end::artifacts::Artifacts, error, Color, Logger, ASSEMBLING, ASSEMBLING_ERROR, COMPILING,
-    COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_LINKER, DONE, LINKING, LINKING_ERROR, SUBSTEP_DONE,
+    back_end::artifacts::Artifacts, error::MsgSimple, Color, Logger, ASSEMBLING, ASSEMBLING_ERROR,
+    COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_LINKER, DONE, LINKING, LINKING_ERROR,
+    SUBSTEP_DONE,
 };
 use std::{path::Path, process::ExitCode};
 
@@ -36,7 +37,7 @@ fn main() -> ExitCode {
         match assembler_result {
             Ok(output) => {
                 if !output.status.success() {
-                    let error = error::MsgSimple {
+                    let error = MsgSimple {
                         kind: &ASSEMBLING_ERROR,
                         message: &String::from_utf8_lossy(&output.stderr),
                     };
@@ -49,7 +50,7 @@ fn main() -> ExitCode {
                 }
             },
             Err(err) => {
-                let error = error::MsgSimple { kind: &COULD_NOT_RUN_ASSEMBLER, message: &err };
+                let error = MsgSimple { kind: &COULD_NOT_RUN_ASSEMBLER, message: &err };
                 eprintln!("{error}");
                 return ExitCode::FAILURE;
             },
@@ -64,7 +65,7 @@ fn main() -> ExitCode {
         match linker_result {
             Ok(output) => {
                 if !output.status.success() {
-                    let error = error::MsgSimple {
+                    let error = MsgSimple {
                         kind: &LINKING_ERROR,
                         message: &String::from_utf8_lossy(&output.stderr),
                     };
@@ -77,7 +78,7 @@ fn main() -> ExitCode {
                 }
             },
             Err(err) => {
-                let error = error::MsgSimple { kind: &COULD_NOT_RUN_LINKER, message: &err };
+                let error = MsgSimple { kind: &COULD_NOT_RUN_LINKER, message: &err };
                 eprintln!("{error}");
                 return ExitCode::FAILURE;
             },

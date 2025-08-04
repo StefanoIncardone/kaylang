@@ -9,7 +9,7 @@ use crate::front_end::MsgSeverity;
 use super::{
     src_file::{Position, SrcCode},
     tokenizer::{ascii, Base, Op, Token, TokenIndex, TokenKind, Tokens},
-    Msg, MsgInfo, IntoMsgInfo,
+    IntoMsgInfo, Msg, MsgInfo,
 };
 use core::fmt::{Debug, Display};
 

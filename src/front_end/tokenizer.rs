@@ -2,9 +2,12 @@
 
 use super::{
     src_file::{Line, SrcCode, SrcFile},
-    Msg, MsgInfo, IntoMsgInfo,
+    IntoMsgInfo, Msg, MsgInfo,
 };
-use crate::{error::DisplayLen as _, front_end::{MsgSeverity, SliceIndexPtr}};
+use crate::{
+    error::DisplayLen as _,
+    front_end::{MsgSeverity, SliceIndexPtr},
+};
 use back_to_front::offset32;
 use core::fmt::Display;
 use unicode_segmentation::UnicodeSegmentation as _;
