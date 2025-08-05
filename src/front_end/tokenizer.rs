@@ -22,11 +22,9 @@ pub(crate) type ascii = u8;
 /// kay's utf32 character type
 pub(crate) type utf32 = char;
 
-// IDEA(stefano): make composable by or-ing components such as BaseOp and OpModifier
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Op {
-    // REMOVE(stefano): remove when deleting `ast.rs`
     Equals,
 
     /// temporary way of getting the length of strings and arrays
@@ -1334,13 +1332,6 @@ impl<'code> Tokenizer<'code> {
     }
 }
 
-#[derive(Clone, Copy)]
-#[repr(u8)]
-enum QuotedLiteralKind {
-    Character,
-    Str,
-}
-
 // tokenization of numbers, strings and identifiers
 impl<'code> Tokenizer<'code> {
     const MAX_IDENTIFIER_LEN: offset32 = 63;
@@ -1513,14 +1504,7 @@ impl<'code> Tokenizer<'code> {
         &mut self,
         ch: ascii,
         start_of_ch: offset32,
-        quoted_literal_kind: QuotedLiteralKind
-    ) -> Result<ascii, ()> {
-        // TODO: find better way of dealing with different quoted literals
-        let unclosed_error_kind = match quoted_literal_kind {
-            QuotedLiteralKind::Character => ErrorKind::UnclosedCharacterLiteral,
-            QuotedLiteralKind::Str => ErrorKind::UnclosedStrLiteral,
-        };
-
+    ) -> Result<ascii, bool> {
         let escaped_character = match ch {
             b'\\' => b'\\',
             b'\'' => b'\'',
@@ -1554,16 +1538,16 @@ impl<'code> Tokenizer<'code> {
                         {
                             self.col += grapheme.len() as offset32;
                         }
-                        return Err(());
+                        return Err(false);
                     },
                     None => {
                         self.errors.push(Msg {
                             severity: MsgSeverity::NonTerminalError,
-                            kind: unclosed_error_kind,
-                            col: self.token_start_col,
-                            pointers_count: self.token_text().display_len(),
+                            kind: ErrorKind::UnterminatedEscapeCharacter,
+                            col: start_of_ch,
+                            pointers_count: self.col - start_of_ch,
                         });
-                        return Err(());
+                        return Err(true);
                     },
                 };
                 self.col += 1;
@@ -1579,7 +1563,7 @@ impl<'code> Tokenizer<'code> {
                             col: start_of_ch,
                             pointers_count: 3,
                         });
-                        return Err(());
+                        return Err(false);
                     },
                 }
             },
@@ -1590,7 +1574,7 @@ impl<'code> Tokenizer<'code> {
                     col: start_of_ch + 1,
                     pointers_count: 1,
                 });
-                return Err(());
+                return Err(false);
             },
             unrecognized => {
                 self.errors.push(Msg {
@@ -1599,7 +1583,7 @@ impl<'code> Tokenizer<'code> {
                     col: start_of_ch,
                     pointers_count: 2,
                 });
-                return Err(());
+                return Err(false);
             },
         };
 
@@ -1648,12 +1632,11 @@ impl<'code> Tokenizer<'code> {
                             continue;
                         },
                         None => {
-                            // IDEA(stefano): return error of unfinished escape
                             self.errors.push(Msg {
                                 severity: MsgSeverity::NonTerminalError,
-                                kind: ErrorKind::UnclosedCharacterLiteral,
-                                col: self.token_start_col,
-                                pointers_count: self.token_text().display_len(),
+                                kind: ErrorKind::UnterminatedEscapeCharacter,
+                                col: start_of_next_character,
+                                pointers_count: self.col - start_of_next_character,
                             });
                             break;
                         },
@@ -1663,10 +1646,10 @@ impl<'code> Tokenizer<'code> {
                     logical_character = match self.parse_escape_character(
                         escape_character,
                         start_of_next_character,
-                        QuotedLiteralKind::Character
                     ) {
                         Ok(ch) => ch,
-                        Err(()) => continue,
+                        Err(true) => break,
+                        Err(false) => continue,
                     };
                 },
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
@@ -1753,20 +1736,23 @@ impl<'code> Tokenizer<'code> {
                         None => {
                             self.errors.push(Msg {
                                 severity: MsgSeverity::NonTerminalError,
-                                kind: ErrorKind::UnclosedStrLiteral,
-                                col: self.token_start_col,
-                                pointers_count: self.token_text().display_len(),
+                                kind: ErrorKind::UnterminatedEscapeCharacter,
+                                col: start_of_next_character,
+                                pointers_count: self.col - start_of_next_character,
                             });
                             break;
                         },
                     };
                     self.col += 1;
 
-                    _ = self.parse_escape_character(
+                    let _logical_character = match self.parse_escape_character(
                         escape_character,
                         start_of_next_character,
-                        QuotedLiteralKind::Str
-                    );
+                    ) {
+                        Ok(ch) => ch,
+                        Err(true) => break,
+                        Err(false) => continue,
+                    };
                 },
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Msg {
@@ -1831,9 +1817,9 @@ impl<'code> Tokenizer<'code> {
                         None => {
                             self.errors.push(Msg {
                                 severity: MsgSeverity::NonTerminalError,
-                                kind: ErrorKind::UnclosedRawStrLiteral,
-                                col: self.token_start_col,
-                                pointers_count: self.token_text().display_len(),
+                                kind: ErrorKind::UnterminatedEscapeCharacter,
+                                col: start_of_next_character,
+                                pointers_count: self.col - start_of_next_character,
                             });
                             break;
                         },
@@ -2036,6 +2022,7 @@ pub enum ErrorKind<'code> {
     DigitOutOfRange(ascii, Base),
 
     UnrecognizedEscapeCharacter(ascii),
+    UnterminatedEscapeCharacter,
 
     UnclosedCharacterLiteral,
     UnclosedStrLiteral,
@@ -2131,6 +2118,10 @@ impl IntoMsgInfo for ErrorKind<'_> {
                     letter = *unrecognized as utf32,
                     codepoint = unrecognized,
                 ).into(),
+            ),
+            Self::UnterminatedEscapeCharacter => (
+                "invalid escape character".into(),
+                "unterminated escape character".into(),
             ),
 
             Self::UnclosedCharacterLiteral => (
