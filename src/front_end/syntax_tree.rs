@@ -3,7 +3,7 @@ use super::{
     tokenizer::{Op, TextIndex, Token, TokenIndex, TokenKind, Tokens},
     IntoMsgInfo, Msg, MsgDisplay, MsgInfo,
 };
-use crate::front_end::{MsgSeverity, SliceIndexPtr};
+use crate::front_end::{tokenizer::ascii, MsgSeverity, SliceIndexPtr};
 use core::{fmt::Display, marker::PhantomData, num::NonZero};
 extern crate alloc;
 use alloc::borrow::Cow;
@@ -295,6 +295,7 @@ pub(crate) enum Expression<'code> {
     },
     Ascii {
         literal: TextIndex<'code>,
+        value: ascii,
         column: offset32,
     },
     Str {
@@ -766,7 +767,7 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 let literal_str = self.tokens.text[*literal];
                 writeln!(f, "{:>indent$}HexadecimalInteger: {column} = {literal_str}", "")
             }
-            Expression::Ascii { literal, column } => {
+            Expression::Ascii { literal, column, .. } => {
                 let literal_str = &self.tokens.text[*literal];
                 writeln!(f, "{:>indent$}Ascii: {column} = {literal_str}", "")
             }
@@ -1045,7 +1046,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
             | TokenKind::BinaryInteger(_)
             | TokenKind::OctalInteger(_)
             | TokenKind::HexadecimalInteger(_)
-            | TokenKind::Ascii(_)
+            | TokenKind::Ascii(_, _)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
@@ -1171,7 +1172,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                     | TokenKind::BinaryInteger(_)
                     | TokenKind::OctalInteger(_)
                     | TokenKind::HexadecimalInteger(_)
-                    | TokenKind::Ascii(_)
+                    | TokenKind::Ascii(_, _)
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
                     | TokenKind::Identifier(_)
@@ -1532,7 +1533,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 | TokenKind::BinaryInteger(_)
                 | TokenKind::OctalInteger(_)
                 | TokenKind::HexadecimalInteger(_)
-                | TokenKind::Ascii(_)
+                | TokenKind::Ascii(_, _)
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_)
                 | TokenKind::Identifier(_)
@@ -1605,7 +1606,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 | TokenKind::BinaryInteger(_)
                 | TokenKind::OctalInteger(_)
                 | TokenKind::HexadecimalInteger(_)
-                | TokenKind::Ascii(_)
+                | TokenKind::Ascii(_, _)
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_)
                 | TokenKind::Identifier(_)
@@ -1674,7 +1675,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             TokenKind::HexadecimalInteger(literal) => {
                 Expression::HexadecimalInteger { literal, column: token.col }
             },
-            TokenKind::Ascii(literal) => Expression::Ascii { literal, column: token.col },
+            TokenKind::Ascii(literal, value) => Expression::Ascii { literal, value, column: token.col },
             TokenKind::Str(literal) => Expression::Str { literal, column: token.col },
             TokenKind::RawStr(literal) => Expression::RawStr { literal, column: token.col },
             TokenKind::Identifier(identifier) => {
@@ -1782,7 +1783,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         | TokenKind::BinaryInteger(_)
                         | TokenKind::OctalInteger(_)
                         | TokenKind::HexadecimalInteger(_)
-                        | TokenKind::Ascii(_)
+                        | TokenKind::Ascii(_, _)
                         | TokenKind::Str(_)
                         | TokenKind::RawStr(_)
                         | TokenKind::Identifier(_)
@@ -2204,7 +2205,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::BinaryInteger(_)
             | TokenKind::OctalInteger(_)
             | TokenKind::HexadecimalInteger(_)
-            | TokenKind::Ascii(_)
+            | TokenKind::Ascii(_, _)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_) => {
                 self.errors.push(Msg {
@@ -2269,7 +2270,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 | TokenKind::BinaryInteger(_)
                 | TokenKind::OctalInteger(_)
                 | TokenKind::HexadecimalInteger(_)
-                | TokenKind::Ascii(_)
+                | TokenKind::Ascii(_, _)
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_) => {
                     self.errors.push(Msg {
@@ -2404,7 +2405,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::BinaryInteger(_)
             | TokenKind::OctalInteger(_)
             | TokenKind::HexadecimalInteger(_)
-            | TokenKind::Ascii(_)
+            | TokenKind::Ascii(_, _)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
@@ -2530,7 +2531,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 | TokenKind::BinaryInteger(_)
                 | TokenKind::OctalInteger(_)
                 | TokenKind::HexadecimalInteger(_)
-                | TokenKind::Ascii(_)
+                | TokenKind::Ascii(_, _)
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_)
                 | TokenKind::Identifier(_)

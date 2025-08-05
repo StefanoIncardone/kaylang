@@ -103,7 +103,8 @@ in source code as being surrounded by `'`:
 '\n'; # or a valid escape character
 '';   # Error: empty characters are not allowed
 'f;   # Error: unclosed character
-'\f;  # Error: unclosed escape character
+'\f;  # Error: unclosed character
+'\    # Error: unclosed character
 ```
 
 ### Escape sequences
@@ -120,8 +121,9 @@ These are the available escaped characters:
 '\r'; # carriage return
 '\t'; # tab character
 '\0'; # null character
+'\^@'; '\^A'; ..; '\^Z'; '\^['; '\^\'; '\^]'; '\^^'; '\^_'; '\^?'; # ASCII caret notation
 
-'\f'; # anything not in the previous list is considered an invalid escape sequence
+'\f'; '\^f'; # anything not in the previous list is considered an invalid escape sequence
 ```
 
 ## ASCII Strings

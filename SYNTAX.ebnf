@@ -28,7 +28,17 @@ integer_literal =
     ;
 
 (* characters *)
-character_escapes = "\\" | "\'" | '\"' | "\e" | "\n" | "\r" | "\t" | "\0";
+character_escapes =
+    "\\"
+    | "\'"
+    | '\"'
+    | "\e"
+    | "\n"
+    | "\r"
+    | "\t"
+    | "\0"
+    | ("\^", ("@" | "A".."Z" | "[" | "\" | "]" | "^" | "_" | "?"))
+    ;
 character_literal = "'", (ASCII_valid_character | character_escapes), "'";
 
 (* strings *)

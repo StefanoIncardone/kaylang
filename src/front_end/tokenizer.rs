@@ -324,7 +324,7 @@ pub(crate) enum TokenKind<'code> {
     OctalInteger(TextIndex<'code>),
     HexadecimalInteger(TextIndex<'code>),
 
-    Ascii(TextIndex<'code>),
+    Ascii(TextIndex<'code>, ascii),
     Str(TextIndex<'code>),
     RawStr(TextIndex<'code>),
     IdentifierStr(TextIndex<'code>),
@@ -401,7 +401,7 @@ impl<'code> TokenKind<'code> {
                 text.len() as offset32
             },
 
-            Self::Ascii(ascii_char) => {
+            Self::Ascii(ascii_char, _) => {
                 let text = tokens.text[ascii_char];
                 text.len() as offset32
             },
@@ -1334,6 +1334,13 @@ impl<'code> Tokenizer<'code> {
     }
 }
 
+#[derive(Clone, Copy)]
+#[repr(u8)]
+enum QuotedLiteralKind {
+    Character,
+    Str,
+}
+
 // tokenization of numbers, strings and identifiers
 impl<'code> Tokenizer<'code> {
     const MAX_IDENTIFIER_LEN: offset32 = 63;
@@ -1502,49 +1509,107 @@ impl<'code> Tokenizer<'code> {
     }
 
     #[inline]
-    fn escape_ascii(&mut self, ch: ascii) -> Result<ascii, ()> {
-        /* IDEA(stefano): implement more escape characters
-            - ASCII full name escape characters: \aNUL, \aBEL, \aLF...
-            - ASCII caret escape characters: \^C, \^D...
-            - binary\octal\decimal\hexadecimal escapes: \b1111111, \o177, \d127, \x7f
-        */
+    fn parse_escape_character(
+        &mut self,
+        ch: ascii,
+        start_of_ch: offset32,
+        quoted_literal_kind: QuotedLiteralKind
+    ) -> Result<ascii, ()> {
+        // TODO: find better way of dealing with different quoted literals
+        let unclosed_error_kind = match quoted_literal_kind {
+            QuotedLiteralKind::Character => ErrorKind::UnclosedCharacterLiteral,
+            QuotedLiteralKind::Str => ErrorKind::UnclosedStrLiteral,
+        };
 
-        let escaped = match ch {
+        let escaped_character = match ch {
             b'\\' => b'\\',
             b'\'' => b'\'',
-            b'"'  => b'"',
+            b'"'  => b'\"',
             b'e'  => b'\x1b',
             b'n'  => b'\n',
             b'r'  => b'\r',
             b't'  => b'\t',
             b'0'  => b'\0',
-            b'b'  => {
-                unimplemented!("ascii binary");
-            },
-            b'o'  => {
-                unimplemented!("ascii octal");
-            },
-            b'x'  => {
-                unimplemented!("ascii hexadecimal");
-            },
-            b'd'  => {
-                unimplemented!("ascii decimal");
-            },
-            b'a'  => {
-                unimplemented!("ascii mnemonics");
-            },
+            // b'b'  => {
+            //     unimplemented!("ascii binary");
+            // },
+            // b'o'  => {
+            //     unimplemented!("ascii octal");
+            // },
+            // b'x'  => {
+            //     unimplemented!("ascii hexadecimal");
+            // },
+            // b'd'  => {
+            //     unimplemented!("ascii decimal");
+            // },
+            // b'a'  => {
+            //     unimplemented!("ascii mnemonics");
+            // },
             b'^'  => {
-                unimplemented!("ascii caret");
+                let caret_character = match self.peek_ascii_singleline() {
+                    Some(Ok(escape_character)) => escape_character,
+                    Some(Err(grapheme)) => {
+                        self.push_utf8_error(grapheme);
+                        #[expect(clippy::cast_possible_truncation)]
+                        {
+                            self.col += grapheme.len() as offset32;
+                        }
+                        return Err(());
+                    },
+                    None => {
+                        self.errors.push(Msg {
+                            severity: MsgSeverity::NonTerminalError,
+                            kind: unclosed_error_kind,
+                            col: self.token_start_col,
+                            pointers_count: self.token_text().display_len(),
+                        });
+                        return Err(());
+                    },
+                };
+                self.col += 1;
+
+                match caret_character {
+                    b'@'..=b'Z' => caret_character - b'@',
+                    b'['..=b'_' => caret_character - b'[' + b'Z' - b'@' + 1,
+                    b'?' => b'\x7f',
+                    unrecognized => {
+                        self.errors.push(Msg {
+                            severity: MsgSeverity::NonTerminalError,
+                            kind: ErrorKind::UnrecognizedEscapeCharacter(unrecognized),
+                            col: start_of_ch,
+                            pointers_count: 3,
+                        });
+                        return Err(());
+                    },
+                }
             },
-            _ => return Err(()),
+            control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::NonTerminalError,
+                    kind: ErrorKind::ControlCharacter(control),
+                    col: start_of_ch + 1,
+                    pointers_count: 1,
+                });
+                return Err(());
+            },
+            unrecognized => {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::NonTerminalError,
+                    kind: ErrorKind::UnrecognizedEscapeCharacter(unrecognized),
+                    col: start_of_ch,
+                    pointers_count: 2,
+                });
+                return Err(());
+            },
         };
 
-        return Ok(escaped);
+        return Ok(escaped_character);
     }
 
     fn ascii_literal(&mut self) -> Result<TokenKind<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
+        let mut logical_character = b'\0';
         let mut logical_characters_count = 0;
         loop {
             let next_character = match self.peek_ascii_singleline() {
@@ -1583,6 +1648,7 @@ impl<'code> Tokenizer<'code> {
                             continue;
                         },
                         None => {
+                            // IDEA(stefano): return error of unfinished escape
                             self.errors.push(Msg {
                                 severity: MsgSeverity::NonTerminalError,
                                 kind: ErrorKind::UnclosedCharacterLiteral,
@@ -1594,14 +1660,14 @@ impl<'code> Tokenizer<'code> {
                     };
                     self.col += 1;
 
-                    if let Err(()) = self.escape_ascii(escape_character) {
-                        self.errors.push(Msg {
-                            severity: MsgSeverity::NonTerminalError,
-                            kind: ErrorKind::UnrecognizedEscapeCharacter(escape_character),
-                            col: start_of_next_character,
-                            pointers_count: 2,
-                        });
-                    }
+                    logical_character = match self.parse_escape_character(
+                        escape_character,
+                        start_of_next_character,
+                        QuotedLiteralKind::Character
+                    ) {
+                        Ok(ch) => ch,
+                        Err(()) => continue,
+                    };
                 },
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Msg {
@@ -1642,7 +1708,7 @@ impl<'code> Tokenizer<'code> {
         }
 
         let literal_index = self.new_token_text();
-        return Ok(TokenKind::Ascii(literal_index));
+        return Ok(TokenKind::Ascii(literal_index, logical_character));
     }
 
     fn str_literal(&mut self) -> Result<TokenKind<'code>, ()> {
@@ -1696,14 +1762,11 @@ impl<'code> Tokenizer<'code> {
                     };
                     self.col += 1;
 
-                    if let Err(()) = self.escape_ascii(escape_character) {
-                        self.errors.push(Msg {
-                            severity: MsgSeverity::NonTerminalError,
-                            kind: ErrorKind::UnrecognizedEscapeCharacter(escape_character),
-                            col: start_of_next_character,
-                            pointers_count: 2,
-                        });
-                    }
+                    _ = self.parse_escape_character(
+                        escape_character,
+                        start_of_next_character,
+                        QuotedLiteralKind::Str
+                    );
                 },
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Msg {

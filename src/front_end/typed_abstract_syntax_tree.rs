@@ -1924,25 +1924,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         return Ok(integer);
     }
 
-    #[expect(clippy::single_call_fn)]
-    const fn parse_ascii(literal_str: &'code str) -> ascii {
-        let literal = literal_str.as_bytes();
-        debug_assert!(literal.len() >= 3, "tokenization error");
-        return match literal[1] {
-            b'\\' => match literal[2] {
-                b'\\' => b'\\',
-                b'\'' => b'\'',
-                b'"' => b'"',
-                b'n' => b'\n',
-                b'r' => b'\r',
-                b't' => b'\t',
-                b'0' => b'\0',
-                _ => unreachable!(),
-            },
-            other => other,
-        };
-    }
-
     // NOTE(stefano): only considering the first token in the expression until proper
     // multiline error messages are developed
     fn first_token_display_len(&self, expression: st::ExpressionIndex<'code>) -> offset32 {
@@ -1959,7 +1940,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             st::Expression::HexadecimalInteger { literal, .. } => {
                 TokenKind::HexadecimalInteger(*literal)
             },
-            st::Expression::Ascii { literal, .. } => TokenKind::Ascii(*literal),
+            st::Expression::Ascii { literal, value, .. } => TokenKind::Ascii(*literal, *value),
             st::Expression::Str { literal, .. } => TokenKind::Str(*literal),
             st::Expression::RawStr { literal, .. } => TokenKind::RawStr(*literal),
             st::Expression::Identifier { identifier, .. } => TokenKind::Identifier(*identifier),
@@ -2161,10 +2142,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 };
                 Expression::I64 { value, column: *column }
             },
-            st::Expression::Ascii { literal, column } => {
-                let ascii_literal = &self.tokens.text[*literal];
-                let ascii_ch = Self::parse_ascii(ascii_literal);
-                Expression::Ascii { character: ascii_ch, column: *column }
+            st::Expression::Ascii { value, column, .. } => {
+                Expression::Ascii { character: *value, column: *column }
             },
             st::Expression::Str { literal, column }
             | st::Expression::RawStr { literal, column } => {

@@ -2977,3 +2977,46 @@ loop_0_end:
 
  %line 116 "0001.asm"
 ```
+
+## 0.6.4 - More escape characters
+
+```kay
+# ASCII full name escape characters controls
+"\cNUL";
+"\cBEL";
+# or delimited versions, to avoid confusions such as "...\aNULL..." where \aNULL are two distinct
+# characters \aNUL and L
+"\cNUL\";
+"\(NUL)";
+"\c(NUL)";
+
+# binary\octal\decimal\hexadecimal escapes
+"\b1111111";
+"\o177";
+"\d127";
+"\x7f";
+# or delimited versions, to avoid confusions such as "...\x7FF..." where x7FF are two distinct
+# characters \x7F and F, or with "...\b00001111..." where \b0000111 is one character and 1 is
+# another character, since ascii only use 7 bits and it's difficult to count 7 vs 8 1s
+"\x7f\";
+"\(x7f)";
+"\x(7f)";
+
+# Unicode binary\octal\decimal\hexadecimal codepoints
+"\ub(...)";
+"\ub...\";
+"\uo(...)";
+"\ud(...)";
+"\ux(...)";
+# or
+"\c0(...)"; # controls group C0
+"\c1(...)"; # controls group C1
+"\c0NUL"; # controls group C0
+"\c0(NUL)"; # controls group C0
+"\c0(NUL)"; # controls group C0
+# or
+"\cNUL\"; # ASCII controls in group C0
+"\ceNUL\"; # extended ASCII controls in group C1
+"\c(NUL)"; # ASCII controls in group C0
+"\ce(NUL)"; # extended ASCII controls in group C1
+```

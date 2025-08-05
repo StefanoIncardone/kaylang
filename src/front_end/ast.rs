@@ -927,7 +927,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::DecimalInteger(_)
             | TokenKind::DecimalIntegerPrefix(_)
             | TokenKind::HexadecimalInteger(_)
-            | TokenKind::Ascii(_)
+            | TokenKind::Ascii(_, _)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
@@ -1028,7 +1028,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     | TokenKind::DecimalInteger(_)
                     | TokenKind::DecimalIntegerPrefix(_)
                     | TokenKind::HexadecimalInteger(_)
-                    | TokenKind::Ascii(_)
+                    | TokenKind::Ascii(_, _)
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
                     | TokenKind::Identifier(_)
@@ -1246,7 +1246,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::DecimalInteger(_)
             | TokenKind::DecimalIntegerPrefix(_)
             | TokenKind::HexadecimalInteger(_)
-            | TokenKind::Ascii(_)
+            | TokenKind::Ascii(_, _)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
@@ -1732,25 +1732,6 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Some(integer);
     }
 
-    #[expect(clippy::single_call_fn)]
-    const fn parse_ascii(literal_str: &'code str) -> ascii {
-        let literal = literal_str.as_bytes();
-        debug_assert!(literal.len() >= 3, "tokenization error");
-        return match literal[1] {
-            b'\\' => match literal[2] {
-                b'\\' => b'\\',
-                b'\'' => b'\'',
-                b'"' => b'"',
-                b'n' => b'\n',
-                b'r' => b'\r',
-                b't' => b'\t',
-                b'0' => b'\0',
-                _ => unreachable!(),
-            },
-            other => other,
-        };
-    }
-
     fn primary_expression(&mut self) -> Result<Expression, Msg<ErrorKind>> {
         let current_token = self.current_token(Expected::Expression)?;
         let expression_result = match current_token.kind {
@@ -1816,10 +1797,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     }),
                 }
             },
-            TokenKind::Ascii(literal_index) => {
-                let literal = self.tokens.text[literal_index];
-                let ascii_ch = Self::parse_ascii(literal);
-                Ok(Expression::Ascii(ascii_ch))
+            TokenKind::Ascii(_, value) => {
+                Ok(Expression::Ascii(value))
             },
             TokenKind::Str(string_index) => {
                 let string_label = self.string_label;
@@ -2982,7 +2961,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::DecimalInteger(_)
             | TokenKind::DecimalIntegerPrefix(_)
             | TokenKind::HexadecimalInteger(_)
-            | TokenKind::Ascii(_)
+            | TokenKind::Ascii(_, _)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_) => {
                 return Err(Msg {
@@ -3042,7 +3021,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::DecimalInteger(_)
             | TokenKind::DecimalIntegerPrefix(_)
             | TokenKind::HexadecimalInteger(_)
-            | TokenKind::Ascii(_)
+            | TokenKind::Ascii(_, _)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
@@ -3520,7 +3499,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 | TokenKind::DecimalInteger(_)
                 | TokenKind::DecimalIntegerPrefix(_)
                 | TokenKind::HexadecimalInteger(_)
-                | TokenKind::Ascii(_)
+                | TokenKind::Ascii(_, _)
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_)
                 | TokenKind::Identifier(_)
@@ -3572,7 +3551,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     | TokenKind::DecimalInteger(_)
                     | TokenKind::DecimalIntegerPrefix(_)
                     | TokenKind::HexadecimalInteger(_)
-                    | TokenKind::Ascii(_)
+                    | TokenKind::Ascii(_, _)
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
                     | TokenKind::Identifier(_)
@@ -3617,7 +3596,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     | TokenKind::DecimalInteger(_)
                     | TokenKind::DecimalIntegerPrefix(_)
                     | TokenKind::HexadecimalInteger(_)
-                    | TokenKind::Ascii(_)
+                    | TokenKind::Ascii(_, _)
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
                     | TokenKind::Identifier(_)
@@ -3689,7 +3668,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::DecimalInteger(_)
             | TokenKind::DecimalIntegerPrefix(_)
             | TokenKind::HexadecimalInteger(_)
-            | TokenKind::Ascii(_)
+            | TokenKind::Ascii(_, _)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
@@ -3743,7 +3722,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::DecimalInteger(_)
             | TokenKind::DecimalIntegerPrefix(_)
             | TokenKind::HexadecimalInteger(_)
-            | TokenKind::Ascii(_)
+            | TokenKind::Ascii(_, _)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
