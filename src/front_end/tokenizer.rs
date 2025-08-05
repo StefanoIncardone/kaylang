@@ -473,6 +473,7 @@ pub struct Tokenizer<'code> {
 }
 
 impl<'code, 'path: 'code> Tokenizer<'code> {
+    // TODO(stefano): move actual tokenization of tokens to own function to use self instead of tokenizer
     pub fn tokenize(src_file: &'code SrcFile<'path>) -> TokenizedCode<'code, 'path> {
         #[repr(C)]
         union BackPatch<'code> {
@@ -552,7 +553,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                 match next {
                     b'r' => match tokenizer.peek_byte_multiline() {
                         Some(b'"') => {
-                            tokenizer.col += 1; // skip the `r` prefix
+                            tokenizer.col += 1;
                             tokenizer.raw_str_literal()
                         },
                         _ => tokenizer.identifier(),
@@ -560,7 +561,8 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                     b'a'..=b'z' | b'A'..=b'Z' | b'_' => tokenizer.identifier(),
                     b'0' => match tokenizer.peek_byte_singleline() {
                         None => {
-                            let literal_index = tokenizer.new_token_text();
+                            let literal_text = tokenizer.token_text();
+                            let literal_index = tokenizer.new_token_text(literal_text);
                             Ok(TokenKind::DecimalInteger(literal_index))
                         },
                         Some(b'b') => {
@@ -579,7 +581,9 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             tokenizer.col += 1;
                             tokenizer.integer_decimal_prefix()
                         },
-                        Some(_) => tokenizer.integer_decimal(),
+                        Some(_) => {
+                            tokenizer.integer_decimal()
+                        }
                     },
                     b'1'..=b'9' => tokenizer.integer_decimal(),
                     b'\'' => tokenizer.ascii_literal(),
@@ -592,7 +596,8 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                 match tokenizer.next_byte_multiline() {
                                     Some(b'*') => match tokenizer.next_byte_multiline() {
                                         Some(b'#') => {
-                                            let comment_index = tokenizer.new_token_text();
+                                            let comment_text = tokenizer.token_text();
+                                            let comment_index = tokenizer.new_token_text(comment_text);
                                             if back_patches.len()
                                                 == previous_block_comments_token_start_len
                                             {
@@ -657,11 +662,13 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             while let Some(_) = tokenizer.next_byte_singleline() {
                                 // consume next character
                             }
-                            let comment_index = tokenizer.new_token_text();
+                            let comment_text = tokenizer.token_text();
+                            let comment_index = tokenizer.new_token_text(comment_text);
                             Ok(TokenKind::LineComment(comment_index))
                         },
                         None => {
-                            let comment_index = tokenizer.new_token_text();
+                            let comment_text = tokenizer.token_text();
+                            let comment_index = tokenizer.new_token_text(comment_text);
                             Ok(TokenKind::LineComment(comment_index))
                         },
                     },
@@ -1113,7 +1120,8 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
             let kind = match token_kind_result {
                 Ok(kind) => kind,
                 Err(()) => {
-                    let unexpected_index = tokenizer.new_token_text();
+                    let unexpected_text = tokenizer.token_text();
+                    let unexpected_index = tokenizer.new_token_text(unexpected_text);
                     TokenKind::Unexpected(unexpected_index)
                 },
             };
@@ -1176,8 +1184,8 @@ impl<'code> Tokenizer<'code> {
     }
 
     #[must_use]
-    fn new_token_text(&mut self) -> TextIndex<'code> {
-        let text = self.token_text();
+    #[inline]
+    fn new_token_text(&mut self, text: &'code str) -> TextIndex<'code> {
         let index = TextIndex::new(self.tokens.text.len());
         self.tokens.text.push(text);
         return index;
@@ -1336,175 +1344,177 @@ impl<'code> Tokenizer<'code> {
 impl<'code> Tokenizer<'code> {
     const MAX_IDENTIFIER_LEN: offset32 = 63;
 
-    fn integer_decimal(&mut self) -> Result<TokenKind<'code>, ()> {
+    #[expect(clippy::single_call_fn)]
+    #[inline]
+    const fn integer_decimal_digit(digit: ascii) -> Option<Result<ascii, ascii>> {
+        return match digit {
+            b'0'..=b'9' | b'_' => Some(Ok(digit)),
+            b'a'..=b'z' | b'A'..=b'Z' => Some(Err(digit)),
+            _ => None,
+        };
+    }
+
+    fn integer_decimal_digits(&mut self) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
 
         while let Some(digit) = self.next_ascii_singleline() {
-            match digit {
-                b'0'..=b'9' | b'_' => {
+            let Some(digit_result) = Self::integer_decimal_digit(digit) else {
+                break;
+            };
                     self.col += 1;
-                },
-                letter @ (b'a'..=b'z' | b'A'..=b'Z') => {
+            if let Err(out_of_range) = digit_result {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::DigitOutOfRange(letter, Base::Decimal),
+                    kind: ErrorKind::DigitOutOfRange(out_of_range, Base::Decimal),
                         col: self.col,
                         pointers_count: 1,
                     });
-                    self.col += 1;
-                },
-                _ => break,
             }
         }
 
         if previous_errors_len != self.errors.len() {
             return Err(());
         }
+        let literal_text = self.token_text();
+        return Ok(literal_text)
+    }
 
-        let literal_index = self.new_token_text();
+    fn integer_decimal(&mut self) -> Result<TokenKind<'code>, ()> {
+        let literal_text = self.integer_decimal_digits()?;
+        let literal_index = self.new_token_text(literal_text);
         return Ok(TokenKind::DecimalInteger(literal_index));
     }
 
     fn integer_decimal_prefix(&mut self) -> Result<TokenKind<'code>, ()> {
-        let previous_errors_len = self.errors.len();
-
-        while let Some(digit) = self.next_ascii_singleline() {
-            match digit {
-                b'0'..=b'9' | b'_' => {
-                    self.col += 1;
-                },
-                letter @ (b'a'..=b'z' | b'A'..=b'Z') => {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::DigitOutOfRange(letter, Base::Decimal),
-                        col: self.col,
-                        pointers_count: 1,
-                    });
-                    self.col += 1;
-                },
-                _ => break,
-            }
-        }
-
-        if previous_errors_len != self.errors.len() {
-            return Err(());
-        }
-
-        let literal_index = self.new_token_text();
+        let literal_text = self.integer_decimal_digits()?;
+        let literal_index = self.new_token_text(literal_text);
         return Ok(TokenKind::DecimalIntegerPrefix(literal_index));
     }
 
-    fn integer_binary(&mut self) -> Result<TokenKind<'code>, ()> {
+    #[expect(clippy::single_call_fn)]
+    #[inline]
+    const fn integer_binary_digit(digit: ascii) -> Option<Result<ascii, ascii>> {
+        return match digit {
+            b'0'..=b'1' | b'_' => Some(Ok(digit)),
+            b'2'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' => Some(Err(digit)),
+            _ => None,
+        };
+    }
+
+    fn integer_binary_digits(&mut self) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
 
         while let Some(digit) = self.next_ascii_singleline() {
-            match digit {
-                b'0'..=b'1' | b'_' => {
+            let Some(digit_result) = Self::integer_binary_digit(digit) else {
+                break;
+            };
                     self.col += 1;
-                },
-                out_of_range @ b'2'..=b'9' => {
+            if let Err(out_of_range) = digit_result {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::DigitOutOfRange(out_of_range, Base::Binary),
                         col: self.col,
                         pointers_count: 1,
                     });
-                    self.col += 1;
-                },
-                letter @ (b'a'..=b'z' | b'A'..=b'Z') => {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::DigitOutOfRange(letter, Base::Binary),
-                        col: self.col,
-                        pointers_count: 1,
-                    });
-                    self.col += 1;
-                },
-                _ => break,
             }
         }
 
         if previous_errors_len != self.errors.len() {
             return Err(());
         }
+        let literal_text = self.token_text();
+        return Ok(literal_text)
+    }
 
-        let literal_index = self.new_token_text();
+    fn integer_binary(&mut self) -> Result<TokenKind<'code>, ()> {
+        let literal_text = self.integer_binary_digits()?;
+        let literal_index = self.new_token_text(literal_text);
         return Ok(TokenKind::BinaryInteger(literal_index));
     }
 
-    fn integer_octal(&mut self) -> Result<TokenKind<'code>, ()> {
+    #[expect(clippy::single_call_fn)]
+    #[inline]
+    const fn integer_octal_digit(digit: ascii) -> Option<Result<ascii, ascii>> {
+        return match digit {
+            b'0'..=b'7' | b'_' => Some(Ok(digit)),
+            b'8'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' => Some(Err(digit)),
+            _ => None,
+        };
+    }
+
+    fn integer_octal_digits(&mut self) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
 
         while let Some(digit) = self.next_ascii_singleline() {
-            match digit {
-                b'0'..=b'7' | b'_' => {
+            let Some(digit_result) = Self::integer_octal_digit(digit) else {
+                break;
+            };
                     self.col += 1;
-                },
-                out_of_range @ b'8'..=b'9' => {
+            if let Err(out_of_range) = digit_result {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::DigitOutOfRange(out_of_range, Base::Octal),
                         col: self.col,
                         pointers_count: 1,
                     });
-                    self.col += 1;
-                },
-                letter @ (b'a'..=b'z' | b'A'..=b'Z') => {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::DigitOutOfRange(letter, Base::Octal),
-                        col: self.col,
-                        pointers_count: 1,
-                    });
-                    self.col += 1;
-                },
-                _ => break,
             }
         }
 
         if previous_errors_len != self.errors.len() {
             return Err(());
         }
+        let literal_text = self.token_text();
+        return Ok(literal_text)
+    }
 
-        let literal_index = self.new_token_text();
+    fn integer_octal(&mut self) -> Result<TokenKind<'code>, ()> {
+        let literal_text = self.integer_octal_digits()?;
+        let literal_index = self.new_token_text(literal_text);
         return Ok(TokenKind::OctalInteger(literal_index));
     }
 
-    fn integer_hexadecimal(&mut self) -> Result<TokenKind<'code>, ()> {
+    #[expect(clippy::single_call_fn)]
+    #[inline]
+    const fn integer_hexadecimal_digit(digit: ascii) -> Option<Result<ascii, ascii>> {
+        return match digit {
+            b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F' | b'_' => Some(Ok(digit)),
+            b'g'..=b'z' | b'G'..=b'Z' => Some(Err(digit)),
+            _ => None,
+        };
+    }
+
+    fn integer_hexadecimal_digits(&mut self) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
 
         while let Some(digit) = self.next_ascii_singleline() {
-            match digit {
-                b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F' | b'_' => {
+            let Some(digit_result) = Self::integer_hexadecimal_digit(digit) else {
+                break;
+            };
                     self.col += 1;
-                },
-                out_of_range @ (b'g'..=b'z' | b'G'..=b'Z') => {
+            if let Err(out_of_range) = digit_result {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::DigitOutOfRange(out_of_range, Base::Hexadecimal),
                         col: self.col,
                         pointers_count: 1,
                     });
-                    self.col += 1;
-                },
-                _ => break,
             }
         }
 
         if previous_errors_len != self.errors.len() {
             return Err(());
         }
+        let literal_text = self.token_text();
+        return Ok(literal_text)
+    }
 
-        let literal_index = self.new_token_text();
+    fn integer_hexadecimal(&mut self) -> Result<TokenKind<'code>, ()> {
+        let literal_text = self.integer_hexadecimal_digits()?;
+        let literal_index = self.new_token_text(literal_text);
         return Ok(TokenKind::HexadecimalInteger(literal_index));
     }
 
-    #[inline]
-    fn parse_escape_character(
-        &mut self,
-        ch: ascii,
-        start_of_ch: offset32,
-    ) -> Result<ascii, bool> {
+    fn escape_character(&mut self, ch: ascii, start_of_ch: offset32) -> Result<ascii, bool> {
         let escaped_character = match ch {
             b'\\' => b'\\',
             b'\'' => b'\'',
@@ -1520,14 +1530,14 @@ impl<'code> Tokenizer<'code> {
             // b'o'  => {
             //     unimplemented!("ascii octal");
             // },
-            // b'x'  => {
-            //     unimplemented!("ascii hexadecimal");
-            // },
             // b'd'  => {
             //     unimplemented!("ascii decimal");
             // },
-            // b'a'  => {
-            //     unimplemented!("ascii mnemonics");
+            // b'x'  => {
+            //     unimplemented!("ascii hexadecimal");
+            // },
+            // b'c'  => {
+            //     unimplemented!("ascii control mnemonics");
             // },
             b'^'  => {
                 let caret_character = match self.peek_ascii_singleline() {
@@ -1590,7 +1600,7 @@ impl<'code> Tokenizer<'code> {
         return Ok(escaped_character);
     }
 
-    fn ascii_literal(&mut self) -> Result<TokenKind<'code>, ()> {
+    fn ascii_literal_characters(&mut self) -> Result<(&'code str, ascii), ()> {
         let previous_errors_len = self.errors.len();
 
         let mut logical_character = b'\0';
@@ -1643,7 +1653,7 @@ impl<'code> Tokenizer<'code> {
                     };
                     self.col += 1;
 
-                    logical_character = match self.parse_escape_character(
+                    logical_character = match self.escape_character(
                         escape_character,
                         start_of_next_character,
                     ) {
@@ -1689,12 +1699,17 @@ impl<'code> Tokenizer<'code> {
             });
             return Err(());
         }
-
-        let literal_index = self.new_token_text();
-        return Ok(TokenKind::Ascii(literal_index, logical_character));
+        let literal_text = self.token_text();
+        return Ok((literal_text, logical_character));
     }
 
-    fn str_literal(&mut self) -> Result<TokenKind<'code>, ()> {
+    fn ascii_literal(&mut self) -> Result<TokenKind<'code>, ()> {
+        let (literal_text, ascii_value) = self.ascii_literal_characters()?;
+        let literal_index = self.new_token_text(literal_text);
+        return Ok(TokenKind::Ascii(literal_index, ascii_value));
+    }
+
+    fn str_literal_characters(&mut self) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1745,7 +1760,7 @@ impl<'code> Tokenizer<'code> {
                     };
                     self.col += 1;
 
-                    let _logical_character = match self.parse_escape_character(
+                    let _logical_character = match self.escape_character(
                         escape_character,
                         start_of_next_character,
                     ) {
@@ -1770,12 +1785,17 @@ impl<'code> Tokenizer<'code> {
         if previous_errors_len != self.errors.len() {
             return Err(());
         };
+        let literal_text = self.token_text();
+        return Ok(literal_text)
+    }
 
-        let literal_index = self.new_token_text();
+    fn str_literal(&mut self) -> Result<TokenKind<'code>, ()> {
+        let literal_text = self.str_literal_characters()?;
+        let literal_index = self.new_token_text(literal_text);
         return Ok(TokenKind::Str(literal_index));
     }
 
-    fn raw_str_literal(&mut self) -> Result<TokenKind<'code>, ()> {
+    fn raw_str_literal_characters(&mut self) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1845,12 +1865,17 @@ impl<'code> Tokenizer<'code> {
         if previous_errors_len != self.errors.len() {
             return Err(());
         }
+        let literal_text = self.token_text();
+        return Ok(literal_text)
+    }
 
-        let literal_index = self.new_token_text();
+    fn raw_str_literal(&mut self) -> Result<TokenKind<'code>, ()> {
+        let literal_text = self.raw_str_literal_characters()?;
+        let literal_index = self.new_token_text(literal_text);
         return Ok(TokenKind::RawStr(literal_index));
     }
 
-    fn identifier_str(&mut self) -> Result<TokenKind<'code>, ()> {
+    fn identifier_str_characters(&mut self) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1908,9 +1933,13 @@ impl<'code> Tokenizer<'code> {
             return Err(());
         }
 
-        let identifier_index = TextIndex::new(self.tokens.text.len());
-        self.tokens.text.push(identifier);
-        return Ok(TokenKind::IdentifierStr(identifier_index));
+        return Ok(identifier);
+    }
+
+    fn identifier_str(&mut self) -> Result<TokenKind<'code>, ()> {
+        let literal_text = self.identifier_str_characters()?;
+        let literal_index = self.new_token_text(literal_text);
+        return Ok(TokenKind::IdentifierStr(literal_index));
     }
 
     fn identifier(&mut self) -> Result<TokenKind<'code>, ()> {
@@ -1958,8 +1987,7 @@ impl<'code> Tokenizer<'code> {
                     return Err(());
                 }
 
-                let identifier_index = TextIndex::new(self.tokens.text.len());
-                self.tokens.text.push(identifier);
+                let identifier_index = self.new_token_text(identifier);
                 TokenKind::Identifier(identifier_index)
             },
         };
